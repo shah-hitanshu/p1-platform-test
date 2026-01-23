@@ -81,6 +81,7 @@ import type {
  * Type assertion helper - ensures a value conforms to a type at compile time.
  * If the type doesn't match, TypeScript will error during compilation.
  */
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 function assertType<T>(_value: T): void {
   // No runtime assertion needed - this is purely for compile-time checking
 }
