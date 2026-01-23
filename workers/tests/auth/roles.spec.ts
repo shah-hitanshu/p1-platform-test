@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { RoleName, RolePermissions, PantheonRole } from '../../src/types';
+import type { RoleName, RolePermissions } from '../../src/types';
 
 // These will be imported from the implementation once created
 // import { ROLES, mapPantheonRole, maxRole, roleAtLeast } from '../../src/auth/roles';

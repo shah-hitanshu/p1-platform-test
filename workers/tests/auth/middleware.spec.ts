@@ -6,7 +6,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { AuthenticatedPrincipal, RolePermissions } from '../../src/types';
+import type { AuthenticatedPrincipal } from '../../src/types';
+import type { AuthorizedRequest, MiddlewareResponse } from '../../src/auth/middleware';
 
 // Mock the authorization module
 vi.mock('../../src/auth/authorization', () => ({
@@ -15,7 +16,7 @@ vi.mock('../../src/auth/authorization', () => ({
     constructor(
       message: string,
       public requiredPermission: string,
-      public roleName: string
+      public roleName: string,
     ) {
       super(message);
       this.name = 'AuthorizationError';
@@ -24,8 +25,15 @@ vi.mock('../../src/auth/authorization', () => ({
 }));
 
 describe('Phase 2.2: Permission Middleware', () => {
+  // Extended principal type that includes 'guest' for middleware testing
+  type TestPrincipal = AuthenticatedPrincipal & {
+    type: 'user' | 'agent' | 'service' | 'guest';
+  };
+
   // Helper to create a test principal
-  function createPrincipal(overrides: Partial<AuthenticatedPrincipal> = {}): AuthenticatedPrincipal {
+  function createPrincipal(
+    overrides: Partial<TestPrincipal> = {},
+  ): TestPrincipal {
     return {
       id: 'user-123',
       type: 'user',
@@ -36,31 +44,29 @@ describe('Phase 2.2: Permission Middleware', () => {
     };
   }
 
-  // Mock request/response objects
-  interface MockRequest {
-    principal?: AuthenticatedPrincipal;
-    params: Record<string, string>;
-    effectiveRole?: RolePermissions;
-    effectiveRoleName?: string;
-  }
-
-  interface MockResponse {
-    status: ReturnType<typeof vi.fn>;
-    json: ReturnType<typeof vi.fn>;
-  }
-
-  function createMockRequest(overrides: Partial<MockRequest> = {}): MockRequest {
+  // Mock request/response objects that satisfy the middleware interfaces
+  function createMockRequest(
+    overrides: Partial<AuthorizedRequest> = {},
+  ): AuthorizedRequest {
     return {
       params: { siteId: 'site-1', branchId: 'branch-1' },
       ...overrides,
     };
   }
 
+  // Mock response that satisfies MiddlewareResponse and allows mock assertions
+  interface MockResponse extends MiddlewareResponse {
+    status: ReturnType<typeof vi.fn> & MiddlewareResponse['status'];
+    json: ReturnType<typeof vi.fn> & MiddlewareResponse['json'];
+  }
+
   function createMockResponse(): MockResponse {
-    const res: MockResponse = {
-      status: vi.fn().mockReturnThis(),
-      json: vi.fn().mockReturnThis(),
-    };
+    const statusFn = vi.fn();
+    const jsonFn = vi.fn();
+    const res = {
+      status: statusFn.mockReturnThis(),
+      json: jsonFn.mockReturnThis(),
+    } as MockResponse;
     return res;
   }
 
@@ -122,7 +128,7 @@ describe('Phase 2.2: Permission Middleware', () => {
       const next = vi.fn();
 
       const middleware = requirePermission('canView');
-      await middleware(req as any, res as any, next);
+      await middleware(req, res, next);
 
       expect(next).toHaveBeenCalledTimes(1);
       expect(next).toHaveBeenCalledWith();
@@ -157,13 +163,13 @@ describe('Phase 2.2: Permission Middleware', () => {
       const next = vi.fn();
 
       const middleware = requirePermission('canMergeToMain');
-      await middleware(req as any, res as any, next);
+      await middleware(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(403);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.stringContaining('canMergeToMain'),
-        })
+        }),
       );
       expect(next).not.toHaveBeenCalled();
     });
@@ -196,13 +202,13 @@ describe('Phase 2.2: Permission Middleware', () => {
       const next = vi.fn();
 
       const middleware = requirePermission('canManageGrants');
-      await middleware(req as any, res as any, next);
+      await middleware(req, res, next);
 
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           required: 'canManageGrants',
           yourRole: 'EDITOR',
-        })
+        }),
       );
     });
 
@@ -236,7 +242,7 @@ describe('Phase 2.2: Permission Middleware', () => {
       const next = vi.fn();
 
       const middleware = requirePermission('canView');
-      await middleware(req as any, res as any, next);
+      await middleware(req, res, next);
 
       expect(req.effectiveRole).toEqual(mockRole);
       expect(req.effectiveRoleName).toBe('ADMIN');
@@ -271,12 +277,12 @@ describe('Phase 2.2: Permission Middleware', () => {
       const next = vi.fn();
 
       const middleware = requirePermission('canView');
-      await middleware(req as any, res as any, next);
+      await middleware(req, res, next);
 
       expect(authorization.getEffectiveRole).toHaveBeenCalledWith(
         principal,
         'my-site',
-        'my-branch'
+        'my-branch',
       );
     });
   });
@@ -287,7 +293,7 @@ describe('Phase 2.2: Permission Middleware', () => {
 
       const guestPrincipal = createPrincipal({
         id: 'guest-123',
-        type: 'guest' as any, // Guest type
+        type: 'guest',
         pantheonSiteRoles: {},
       });
 
@@ -296,7 +302,7 @@ describe('Phase 2.2: Permission Middleware', () => {
       const next = vi.fn();
 
       const middleware = requirePermission('canView');
-      await middleware(req as any, res as any, next);
+      await middleware(req, res, next);
 
       expect(next).toHaveBeenCalledTimes(1);
       expect(res.status).not.toHaveBeenCalled();
@@ -307,7 +313,7 @@ describe('Phase 2.2: Permission Middleware', () => {
 
       const guestPrincipal = createPrincipal({
         id: 'guest-123',
-        type: 'guest' as any,
+        type: 'guest',
         pantheonSiteRoles: {},
       });
 
@@ -316,13 +322,13 @@ describe('Phase 2.2: Permission Middleware', () => {
       const next = vi.fn();
 
       const middleware = requirePermission('canEdit');
-      await middleware(req as any, res as any, next);
+      await middleware(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(403);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.stringContaining('Guests can only view'),
-        })
+        }),
       );
       expect(next).not.toHaveBeenCalled();
     });
@@ -333,7 +339,7 @@ describe('Phase 2.2: Permission Middleware', () => {
 
       const guestPrincipal = createPrincipal({
         id: 'guest-123',
-        type: 'guest' as any,
+        type: 'guest',
         pantheonSiteRoles: {},
       });
 
@@ -342,7 +348,7 @@ describe('Phase 2.2: Permission Middleware', () => {
       const next = vi.fn();
 
       const middleware = requirePermission('canView');
-      await middleware(req as any, res as any, next);
+      await middleware(req, res, next);
 
       expect(authorization.getEffectiveRole).not.toHaveBeenCalled();
     });
@@ -357,13 +363,13 @@ describe('Phase 2.2: Permission Middleware', () => {
       const next = vi.fn();
 
       const middleware = requirePermission('canView');
-      await middleware(req as any, res as any, next);
+      await middleware(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(401);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.stringContaining('Authentication required'),
-        })
+        }),
       );
       expect(next).not.toHaveBeenCalled();
     });
@@ -382,13 +388,13 @@ describe('Phase 2.2: Permission Middleware', () => {
       const next = vi.fn();
 
       const middleware = requirePermission('canView');
-      await middleware(req as any, res as any, next);
+      await middleware(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.stringContaining('siteId'),
-        })
+        }),
       );
       expect(next).not.toHaveBeenCalled();
     });
@@ -405,13 +411,13 @@ describe('Phase 2.2: Permission Middleware', () => {
       const next = vi.fn();
 
       const middleware = requirePermission('canView');
-      await middleware(req as any, res as any, next);
+      await middleware(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.stringContaining('branchId'),
-        })
+        }),
       );
       expect(next).not.toHaveBeenCalled();
     });
@@ -432,7 +438,7 @@ describe('Phase 2.2: Permission Middleware', () => {
       const next = vi.fn();
 
       const middleware = requirePermission('canView');
-      await middleware(req as any, res as any, next);
+      await middleware(req, res, next);
 
       expect(next).toHaveBeenCalledWith(dbError);
     });
@@ -475,7 +481,7 @@ describe('Phase 2.2: Permission Middleware', () => {
       const next = vi.fn();
 
       const middleware = requireRole('EDITOR');
-      await middleware(req as any, res as any, next);
+      await middleware(req, res, next);
 
       expect(next).toHaveBeenCalledTimes(1);
       expect(res.status).not.toHaveBeenCalled();
@@ -509,7 +515,7 @@ describe('Phase 2.2: Permission Middleware', () => {
       const next = vi.fn();
 
       const middleware = requireRole('EDITOR');
-      await middleware(req as any, res as any, next);
+      await middleware(req, res, next);
 
       expect(next).toHaveBeenCalledTimes(1);
     });
@@ -542,7 +548,7 @@ describe('Phase 2.2: Permission Middleware', () => {
       const next = vi.fn();
 
       const middleware = requireRole('ADMIN');
-      await middleware(req as any, res as any, next);
+      await middleware(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(403);
       expect(next).not.toHaveBeenCalled();

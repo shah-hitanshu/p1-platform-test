@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { AuthenticatedPrincipal, RoleName, PantheonRole } from '../../src/types';
+import type { AuthenticatedPrincipal } from '../../src/types';
 
 // Mock database module - will be replaced with actual implementation
 vi.mock('../../src/db', () => ({
@@ -221,7 +221,7 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
 
         expect(db.query).toHaveBeenCalledWith(
           expect.stringContaining('branch_grants'),
-          expect.arrayContaining(['branch-xyz', 'user-456'])
+          expect.arrayContaining(['branch-xyz', 'user-456']),
         );
       });
     });
@@ -361,7 +361,7 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
       vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await expect(
-        assertPermission(principal, 'site-1', 'branch-1', 'canView')
+        assertPermission(principal, 'site-1', 'branch-1', 'canView'),
       ).resolves.not.toThrow();
     });
 
@@ -376,7 +376,7 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
       vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await expect(
-        assertPermission(principal, 'site-1', 'branch-1', 'canMergeToMain')
+        assertPermission(principal, 'site-1', 'branch-1', 'canMergeToMain'),
       ).rejects.toThrow(AuthorizationError);
     });
 
@@ -418,7 +418,7 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
       const error = new AuthorizationError(
         'Missing permission',
         'canMergeToMain',
-        'EDITOR'
+        'EDITOR',
       );
 
       expect(error.requiredPermission).toBe('canMergeToMain');

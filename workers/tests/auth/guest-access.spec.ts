@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { GuestLink, GuestLinkStatus } from '../../src/types';
+import type { GuestLink } from '../../src/types';
 import * as crypto from 'crypto';
 
 // Mock database module
@@ -74,7 +74,7 @@ describe('Phase 2.2: Guest Access Validation', () => {
 
       expect(db.query).toHaveBeenCalledWith(
         expect.stringContaining('token_hash'),
-        expect.arrayContaining([expectedHash])
+        expect.arrayContaining([expectedHash]),
       );
     });
 
@@ -93,11 +93,8 @@ describe('Phase 2.2: Guest Access Validation', () => {
       const { validateGuestToken } = await import('../../src/auth/guest-access');
       const db = await import('../../src/db');
 
-      const expiredGuestLink = createGuestLinkRecord({
-        expiresAt: new Date(Date.now() - 86400000).toISOString(), // 24 hours ago
-      });
-
-      // Database query checks expiry in WHERE clause
+      // Database query checks expiry in WHERE clause, so expired tokens return empty rows
+      // Example expired token would have: expiresAt: new Date(Date.now() - 86400000).toISOString()
       vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       const result = await validateGuestToken('valid-token');
@@ -127,7 +124,7 @@ describe('Phase 2.2: Guest Access Validation', () => {
 
       expect(db.query).toHaveBeenCalledWith(
         expect.stringMatching(/status\s*=\s*['"]?active/i),
-        expect.any(Array)
+        expect.any(Array),
       );
     });
 
@@ -141,7 +138,7 @@ describe('Phase 2.2: Guest Access Validation', () => {
 
       expect(db.query).toHaveBeenCalledWith(
         expect.stringMatching(/expires_at\s*>/i),
-        expect.any(Array)
+        expect.any(Array),
       );
     });
   });
@@ -269,7 +266,7 @@ describe('Phase 2.2: Guest Access Validation', () => {
       expect(db.query).toHaveBeenCalledTimes(2);
       expect(db.query).toHaveBeenLastCalledWith(
         expect.stringMatching(/UPDATE.*guest_links.*access_count/is),
-        expect.arrayContaining(['guest-link-123'])
+        expect.arrayContaining(['guest-link-123']),
       );
     });
 
@@ -287,7 +284,7 @@ describe('Phase 2.2: Guest Access Validation', () => {
 
       expect(db.query).toHaveBeenLastCalledWith(
         expect.stringMatching(/last_access_at/i),
-        expect.any(Array)
+        expect.any(Array),
       );
     });
   });
@@ -358,7 +355,7 @@ describe('Phase 2.2: Guest Access Validation', () => {
         expect.stringContaining('INSERT'),
         expect.arrayContaining([
           expect.stringMatching(/^[a-f0-9]{64}$/i), // SHA-256 hash is 64 hex chars
-        ])
+        ]),
       );
     });
 
@@ -380,7 +377,7 @@ describe('Phase 2.2: Guest Access Validation', () => {
 
       expect(db.query).toHaveBeenCalledWith(
         expect.any(String),
-        expect.arrayContaining(['active'])
+        expect.arrayContaining(['active']),
       );
     });
 
@@ -407,7 +404,7 @@ describe('Phase 2.2: Guest Access Validation', () => {
 
       expect(db.query).toHaveBeenCalledWith(
         expect.any(String),
-        expect.arrayContaining([expectedExpiry])
+        expect.arrayContaining([expectedExpiry]),
       );
 
       vi.useRealTimers();
@@ -425,7 +422,7 @@ describe('Phase 2.2: Guest Access Validation', () => {
 
       expect(db.query).toHaveBeenCalledWith(
         expect.stringMatching(/UPDATE.*guest_links.*status.*revoked/is),
-        expect.arrayContaining(['link-id'])
+        expect.arrayContaining(['link-id']),
       );
     });
 
@@ -481,7 +478,7 @@ describe('Phase 2.2: Guest Access Validation', () => {
 
       expect(db.query).toHaveBeenCalledWith(
         expect.stringMatching(/status\s*=\s*['"]?active/i),
-        expect.any(Array)
+        expect.any(Array),
       );
     });
 
@@ -496,7 +493,7 @@ describe('Phase 2.2: Guest Access Validation', () => {
       // Should not filter by status
       expect(db.query).toHaveBeenCalledWith(
         expect.not.stringMatching(/status\s*=\s*['"]?active/i),
-        expect.any(Array)
+        expect.any(Array),
       );
     });
   });
