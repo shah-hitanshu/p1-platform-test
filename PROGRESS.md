@@ -62,21 +62,49 @@ This document tracks the implementation progress of the Collaborative JSON State
   - 55 tests covering all tables, columns, indexes, and constraints
   - Seed data validation tests
 
+### Phase 1.3: Core TypeScript Types
+
+**Status:** Complete
+**Commits:**
+- `e36ee3d` - Add Phase 1.3 type definition tests (TDD)
+- `7164341` - Implement Phase 1.3: Core TypeScript types
+
+#### Deliverables:
+- [x] Core type definitions (`workers/src/types.ts`)
+  - 50 type definitions in a single file
+  - ISO strings for all timestamp fields (database compatible)
+  - Optional field syntax (`?:`) for nullable fields
+- [x] Union/enum types (17 total):
+  - ActorType, PantheonRole, AgentSiteRole, RoleName
+  - BranchStatus, CheckpointType, DocumentVersionSource
+  - MergeRequestStatus, ApprovalRequestStatus, GuestLinkStatus
+  - MergeApprovalMode, ApproverMode, ConflictResolutionStrategy
+  - StructureType, NodeType, SchemaEnforcementMode, EditOperationType
+- [x] Core entity interfaces:
+  - Site, WorkflowSettings, Branch, Document, DocumentVersion
+  - Checkpoint
+- [x] Merge types:
+  - MergeRequest, ConflictDetails, DocumentConflict, StructureMergeConflict
+- [x] Authorization types:
+  - Role, RolePermissions, BranchGrant, GuestLink, ApprovalRequest
+- [x] Identity types:
+  - AuthenticatedPrincipal, AgentIdentity
+  - MockUser, MockAgent, MockIdentityConfig
+- [x] Structure types:
+  - SiteStructure, StructureNode, BranchStructureState, BranchDocumentMetadata
+  - SchemaValidationResult, NonConformingDocument, SchemaValidationError
+- [x] Operations types:
+  - EditOperation, ConnectionMeta
+- [x] Audit types:
+  - AuditEvent, AuditActor, AuditResource
+- [x] Type validation tests (`workers/tests/types/types.spec.ts`)
+  - 73 tests covering all types
+  - Compile-time type checking
+  - Database schema compatibility validation
+
 ---
 
 ## Outstanding Work
-
-### Phase 1: Foundation (Next Steps)
-
-#### Phase 1.3: Core TypeScript Types
-- [ ] Define TypeScript interfaces matching the architecture:
-  - Site, Branch, Document, DocumentVersion
-  - Checkpoint, MergeRequest
-  - BranchGrant, GuestLink, ApprovalRequest
-  - AuthenticatedPrincipal, AgentIdentity
-  - WorkflowSettings, Role definitions
-
----
 
 ### Phase 2: Authentication and Authorization
 
@@ -200,6 +228,29 @@ Decisions made during implementation that may affect or refine the architecture.
 
 *No architectural decisions required - standard tooling setup.*
 
+### Phase 1.3 Decisions
+
+#### Decision: Single Types File
+- **Date:** 2026-01-23
+- **Context:** Architecture defines 50+ types across multiple domains
+- **Decision:** Use a single `types.ts` file instead of modular approach
+- **Rationale:** Avoids circular dependency issues, simpler imports, ~400 lines is manageable
+- **Impact:** All types imported from one location
+
+#### Decision: ISO String Timestamps
+- **Date:** 2026-01-23
+- **Context:** Database returns TIMESTAMPTZ as strings; Date objects require conversion
+- **Decision:** Use ISO string (`string` type) for all timestamp fields
+- **Rationale:** Direct database compatibility, no conversion layer needed
+- **Impact:** Consumers must parse strings if Date operations needed
+
+#### Decision: Optional Field Syntax
+- **Date:** 2026-01-23
+- **Context:** TypeScript supports both `field?: T` and `field: T | null`
+- **Decision:** Use `?:` syntax for optional fields
+- **Rationale:** Cleaner ergonomics, aligns with common TypeScript patterns
+- **Impact:** Optional fields are `undefined` when absent, not `null`
+
 <!--
 Template for future decisions:
 
@@ -219,6 +270,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-23 | 1.3 | Core TypeScript types complete (50 types) |
 | 2026-01-23 | 1.2 | Database schema and migrations complete |
 | 2026-01-23 | 1.1 | Initial project configuration and build tooling complete |
 
