@@ -1,0 +1,49 @@
+# What we are doing
+We are developing a complex system which is based on architectural documentation provided in collaborative-state-system-architecture-v2.2.md
+
+This service may provide the backend to a number of applications. The initial focus will be on providing a JSON backend to a [Puck Editor](https://puckeditor.com) interface which we will develop in a later stage. You may use Puck Editor's documentation for reference, but do not yet develop new code for the front-end. We will do that in a separate project.
+
+# Code development guidelines
+When creating code, you MUST follow the follow these guidelines
+1. Divide components of the architecture into logical segments driven by the architectural design.
+2. Create an overall plan that you review with me for approval on each section of development before proceeding with any code creation.
+3. Work on one component at a time from this approved plan following a rigorous test-driven process
+    a. First write tests based on expected inputs and outputs
+    b. Run these tests an verify that they fail. These tests must fail initially because you should not write application code until I give the direction to proceed.
+    c. Review the tests with me, and after I approve, commit them to the repository.
+    d. Ask for permission to proceed before writing any code. 
+    e. Once I give permission, create application code only within the component we have chosen for development. Use subagents to write code appropriately following the guidance of the architectural documentation and any additional context I have provided. YOU MUST NOT modify any tests without my explicit permission. Also verify these tests with independent subagents to ensure you are not overfitting to the tests.
+    f. Perform linting to follow language standards
+    g. Review your work with me, and when I am satisfied with your result, commit the changes to the repo.
+4. As each component is finished and tests pass, proceed to the next component with my permission and follow the instructions in section 3 above to develop the application.
+5. Ensure that you're designing systems in such a way that they interface with the infrastructure we have defined in the README.md file. 
+
+# Ask me for help and do not expand scope without permission
+Do not expand the scope of the architecture. If you see gaps or opportunities as we develop, prepare a reasoned summary for my review before proceeding. 
+
+# Testing practices at Pantheon
+Pantheon uses Playwright as the standard framework for UI and E2E testing in Node/JavaScript codebases, delivered through the internal "Carbon Framework." For unit testing, Vitest (with @testing-library/react) is used for React-based projects, and Jest is also used in some E2E configurations [1][2].
+UI/E2E Testing (Carbon Framework)
+The Carbon Framework is Pantheon's standard for UI test automation, built upon:
+
+Playwright - primary test automation library [1]
+Allure - detailed test reporting
+axe-core - accessibility testing
+Google JavaScript StyleGuide - coding standards [1]
+
+Tests are written as .spec.js files in the tests directory. The framework is available via the carbon-js-web-automation GitHub repo [1].
+Unit Testing
+For unit testing React-based projects, the standard is:
+
+Vitest - test runner
+@testing-library/react - for snapshot tests and component testing [2]
+
+Key Guidelines
+
+Follow the Google JavaScript StyleGuide
+Use Visual Studio Code with ESLint extension
+Emphasize reusability (DRY principle)
+Maintain code to production standards [1]
+[1] UI Test Automation with Carbon Framework - Feb 28, 2024
+[2] PCC User Acceptance Testing site - Jan 16, 2026
+[3] #cms-ecosystem-updates Slack - Nov 26, 2025
