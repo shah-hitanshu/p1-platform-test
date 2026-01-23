@@ -30,7 +30,7 @@ export interface Env {
 }
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  fetch(_request: Request, _env: Env, _ctx: ExecutionContext): Response {
     return new Response('Collaborative State System - Not Yet Implemented', {
       status: 501,
       headers: { 'Content-Type': 'text/plain' },

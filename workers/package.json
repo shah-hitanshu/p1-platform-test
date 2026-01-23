@@ -4,29 +4,55 @@
   "description": "Cloudflare Workers infrastructure for collaborative state system",
   "private": true,
   "type": "module",
-  
+
   "scripts": {
     "dev": "wrangler dev --local",
     "dev:remote": "wrangler dev",
-    
+
     "deploy:sbx1": "wrangler deploy --env sbx1",
     "deploy:production": "wrangler deploy --env production",
-    
+
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:typecheck": "vitest --typecheck.only",
+
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests",
+    "lint:fix": "eslint src tests --fix",
+
     "cf:login": "wrangler login",
     "cf:whoami": "wrangler whoami",
     "cf:tail": "wrangler tail",
     "cf:kv:list": "wrangler kv:key list --binding CONFIG_KV"
   },
-  
+
+  "dependencies": {
+    "fast-json-patch": "^3.1.1",
+    "jose": "^5.2.0",
+    "object-hash": "^3.0.0",
+    "postgres": "^3.4.3",
+    "yjs": "^13.6.0"
+  },
+
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.0",
+    "@types/object-hash": "^3.0.6",
+    "@vitest/coverage-v8": "^2.1.0",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.18.0",
+    "vitest": "^2.1.0",
     "wrangler": "^3.98.0"
   },
-  
+
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=8.0.0"
   },
-  
+
   "packageManager": "pnpm@9.14.4"
 }

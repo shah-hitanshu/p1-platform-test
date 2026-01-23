@@ -19,16 +19,18 @@ describe('Project Configuration', () => {
       const tsconfigPath = path.resolve(__dirname, '../tsconfig.json');
       expect(fs.existsSync(tsconfigPath)).toBe(true);
 
-      const tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, 'utf-8'));
-      expect(tsconfig.compilerOptions).toBeDefined();
-      expect(tsconfig.compilerOptions.strict).toBe(true);
-      expect(tsconfig.compilerOptions.target).toBeDefined();
+      // Verify tsconfig contains required settings (string matching since it has comments)
+      const tsconfigContent = fs.readFileSync(tsconfigPath, 'utf-8');
+      expect(tsconfigContent).toContain('"strict": true');
+      expect(tsconfigContent).toContain('"target"');
+      expect(tsconfigContent).toContain('"compilerOptions"');
     });
 
     it('should compile TypeScript without errors', async () => {
       // This test passing means TypeScript compilation worked
       const indexModule = await import('../src/index');
       expect(indexModule.default).toBeDefined();
+      // fetch is a function (may be async or sync depending on implementation)
       expect(typeof indexModule.default.fetch).toBe('function');
     });
   });
@@ -86,13 +88,13 @@ describe('Project Configuration', () => {
     it('should have Cloudflare Workers types available', () => {
       // These types should be available globally from @cloudflare/workers-types
       // If TypeScript compilation succeeds, types are properly configured
-      const envCheck: {
+      const _envCheck: {
         DOCUMENT_STATE: DurableObjectNamespace;
         CONFIG_KV: KVNamespace;
       } = {} as any;
 
       // Type assertions - these will fail at compile time if types are missing
-      expect(true).toBe(true);
+      expect(_envCheck).toBeDefined();
     });
   });
 });
