@@ -38,26 +38,35 @@ This document tracks the implementation progress of the Collaborative JSON State
   - Dependency availability checks
   - Cloudflare Workers types validation
 
+### Phase 1.2: Database Schema and Migrations
+
+**Status:** Complete
+**Commit:** `80ea8b4` - Implement Phase 1.2: Database schema and migrations
+
+#### Deliverables:
+- [x] Migration runner (`workers/src/db/migrate.ts`)
+  - Lightweight TypeScript migration system
+  - Tracks applied migrations in `schema_migrations` table
+  - Supports run, status, and reset commands
+  - npm scripts: `db:migrate`, `db:migrate:status`, `db:migrate:reset`
+- [x] Core schema migrations:
+  - `001_core_schema.sql`: sites, documents, branches, document_versions
+  - `002_checkpoints.sql`: checkpoints, checkpoint_documents
+  - `003_merge_requests.sql`: merge_requests, approval_requests
+  - `004_authorization.sql`: branch_grants, guest_links
+  - `005_site_structures.sql`: site_structures, structure_nodes,
+    branch_structure_state, branch_document_metadata,
+    checkpoint_structures, checkpoint_document_metadata
+  - `006_seed_data.sql`: test sites, branches, documents, checkpoints
+- [x] Schema validation tests (`workers/tests/db/schema.spec.ts`)
+  - 55 tests covering all tables, columns, indexes, and constraints
+  - Seed data validation tests
+
 ---
 
 ## Outstanding Work
 
 ### Phase 1: Foundation (Next Steps)
-
-#### Phase 1.2: Database Schema and Migrations
-- [ ] Set up database migration tooling
-- [ ] Implement PostgreSQL schema from architecture doc:
-  - `sites` table
-  - `documents` table
-  - `branches` table
-  - `document_versions` table
-  - `checkpoints` table
-  - `checkpoint_documents` table
-  - `merge_requests` table
-  - `branch_grants` table
-  - `guest_links` table
-  - `approval_requests` table
-- [ ] Create seed data for testing
 
 #### Phase 1.3: Core TypeScript Types
 - [ ] Define TypeScript interfaces matching the architecture:
@@ -210,6 +219,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-23 | 1.2 | Database schema and migrations complete |
 | 2026-01-23 | 1.1 | Initial project configuration and build tooling complete |
 
 ---
