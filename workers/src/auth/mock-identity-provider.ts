@@ -4,17 +4,33 @@
  * Provides authentication for local development without external dependencies.
  * Issues JWTs for test users and validates agent API keys.
  *
- * STUB FILE: This is a placeholder for TDD. Implementation pending.
- *
  * @see collaborative-state-system-architecture-v2.2.md
  */
+
+import * as jose from 'jose';
 
 import type {
   AuthenticatedPrincipal,
   MockIdentityConfig,
   MockUser,
   MockAgent,
+  PantheonRole,
 } from '../types';
+
+/**
+ * JWT issuer used for all tokens issued by the mock provider.
+ */
+const ISSUER = 'mock-identity-provider';
+
+/**
+ * Minimum required length for JWT secret.
+ */
+const MIN_SECRET_LENGTH = 32;
+
+/**
+ * Default token expiry if not specified.
+ */
+const DEFAULT_TOKEN_EXPIRY = '24h';
 
 /**
  * Configuration options for the MockIdentityProvider.
@@ -26,6 +42,17 @@ export interface MockIdentityProviderOptions {
   jwtSecret: string;
   /** Token expiry duration (e.g., '1h', '24h'). Defaults to '24h' */
   tokenExpiry?: string;
+}
+
+/**
+ * JWT payload structure for user tokens.
+ */
+interface UserTokenPayload {
+  sub: string;
+  email: string;
+  name: string;
+  type: 'user';
+  siteRoles: Record<string, PantheonRole>;
 }
 
 /**
@@ -51,11 +78,32 @@ export interface MockIdentityProviderOptions {
  * ```
  */
 export class MockIdentityProvider {
-  // TODO: Implement in Phase 2.1
+  private readonly config: MockIdentityConfig;
+  private readonly secret: Uint8Array;
+  private readonly tokenExpiry: string;
 
-  constructor(_options: MockIdentityProviderOptions) {
-    // STUB: Implementation pending
-    throw new Error('MockIdentityProvider not yet implemented');
+  constructor(options: MockIdentityProviderOptions) {
+    // Validate jwtSecret
+    if (options.jwtSecret === '') {
+      throw new Error('jwtSecret is required');
+    }
+    if (options.jwtSecret.length < MIN_SECRET_LENGTH) {
+      throw new Error(
+        `jwtSecret must be at least ${String(MIN_SECRET_LENGTH)} characters`,
+      );
+    }
+
+    // Validate config
+    if (!Array.isArray(options.config.users)) {
+      throw new Error('config.users is required');
+    }
+    if (!Array.isArray(options.config.agents)) {
+      throw new Error('config.agents is required');
+    }
+
+    this.config = options.config;
+    this.secret = new TextEncoder().encode(options.jwtSecret);
+    this.tokenExpiry = options.tokenExpiry ?? DEFAULT_TOKEN_EXPIRY;
   }
 
   /**
@@ -64,9 +112,28 @@ export class MockIdentityProvider {
    * @returns A signed JWT string
    * @throws If the user is not found in the configuration
    */
-  async issueToken(_userId: string): Promise<string> {
-    await Promise.resolve(); // Placeholder for async implementation
-    throw new Error('issueToken not yet implemented');
+  async issueToken(userId: string): Promise<string> {
+    const user = this.getUser(userId);
+    if (!user) {
+      throw new Error(`User not found: ${userId}`);
+    }
+
+    const payload: UserTokenPayload = {
+      sub: user.id,
+      email: user.email,
+      name: user.name,
+      type: 'user',
+      siteRoles: user.siteRoles,
+    };
+
+    const token = await new jose.SignJWT(payload as unknown as jose.JWTPayload)
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuer(ISSUER)
+      .setIssuedAt()
+      .setExpirationTime(this.tokenExpiry)
+      .sign(this.secret);
+
+    return token;
   }
 
   /**
@@ -74,9 +141,43 @@ export class MockIdentityProvider {
    * @param token - The JWT to validate
    * @returns The authenticated principal, or null if invalid
    */
-  async validateToken(_token: string): Promise<AuthenticatedPrincipal | null> {
-    await Promise.resolve(); // Placeholder for async implementation
-    throw new Error('validateToken not yet implemented');
+  async validateToken(token: string): Promise<AuthenticatedPrincipal | null> {
+    if (!token) {
+      return null;
+    }
+
+    try {
+      const { payload } = await jose.jwtVerify(token, this.secret, {
+        issuer: ISSUER,
+      });
+
+      // Extract claims
+      const sub = payload.sub;
+      const type = payload.type as 'user' | 'agent' | 'service' | undefined;
+      const email = payload.email as string | undefined;
+      const siteRoles = payload.siteRoles as
+        | Record<string, PantheonRole>
+        | undefined;
+      const exp = payload.exp;
+
+      if (sub == null || type == null || exp == null) {
+        return null;
+      }
+
+      // Convert expiration to ISO string
+      const tokenExpiry = new Date(exp * 1000).toISOString();
+
+      return {
+        id: sub,
+        type,
+        email,
+        pantheonSiteRoles: siteRoles ?? {},
+        tokenExpiry,
+      };
+    } catch {
+      // Token is invalid (expired, wrong signature, malformed, etc.)
+      return null;
+    }
   }
 
   /**
@@ -85,10 +186,33 @@ export class MockIdentityProvider {
    * @returns The authenticated principal, or null if invalid
    */
   async validateAgentKey(
-    _apiKey: string,
+    apiKey: string,
   ): Promise<AuthenticatedPrincipal | null> {
-    await Promise.resolve(); // Placeholder for async implementation
-    throw new Error('validateAgentKey not yet implemented');
+    // Maintain async signature for consistency with validateToken
+    await Promise.resolve();
+
+    if (apiKey === '') {
+      return null;
+    }
+
+    const agent = this.config.agents.find((a) => a.apiKey === apiKey);
+    if (!agent) {
+      return null;
+    }
+
+    // Agent tokens expire 24 hours from now
+    const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+    return {
+      id: agent.id,
+      type: 'agent',
+      // Agents don't have email - intentionally omitted
+      pantheonSiteRoles: agent.siteRoles as unknown as Record<
+        string,
+        PantheonRole
+      >,
+      tokenExpiry,
+    };
   }
 
   /**
@@ -96,8 +220,8 @@ export class MockIdentityProvider {
    * @param userId - The user ID to look up
    * @returns The user, or undefined if not found
    */
-  getUser(_userId: string): MockUser | undefined {
-    throw new Error('getUser not yet implemented');
+  getUser(userId: string): MockUser | undefined {
+    return this.config.users.find((u) => u.id === userId);
   }
 
   /**
@@ -105,8 +229,8 @@ export class MockIdentityProvider {
    * @param email - The email address to look up
    * @returns The user, or undefined if not found
    */
-  getUserByEmail(_email: string): MockUser | undefined {
-    throw new Error('getUserByEmail not yet implemented');
+  getUserByEmail(email: string): MockUser | undefined {
+    return this.config.users.find((u) => u.email === email);
   }
 
   /**
@@ -114,7 +238,7 @@ export class MockIdentityProvider {
    * @param agentId - The agent ID to look up
    * @returns The agent, or undefined if not found
    */
-  getAgent(_agentId: string): MockAgent | undefined {
-    throw new Error('getAgent not yet implemented');
+  getAgent(agentId: string): MockAgent | undefined {
+    return this.config.agents.find((a) => a.id === agentId);
   }
 }
