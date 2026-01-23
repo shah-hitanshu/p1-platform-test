@@ -36,11 +36,12 @@
   
   // ==========================================================================
   // KV Namespaces - Used for caching and session storage
-  // IDs are populated per-environment; empty for local development
+  // For local development, we use preview_id to bypass the id requirement
+  // Production/sandbox environments specify actual KV namespace IDs
   // ==========================================================================
   "kv_namespaces": [
-    { "binding": "CONFIG_KV", "id": "" },
-    { "binding": "SESSION_KV", "id": "" }
+    { "binding": "CONFIG_KV", "id": "local-config-kv", "preview_id": "local-config-kv-preview" },
+    { "binding": "SESSION_KV", "id": "local-session-kv", "preview_id": "local-session-kv-preview" }
   ],
   
   // ==========================================================================

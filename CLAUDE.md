@@ -48,5 +48,8 @@ Maintain code to production standards [1]
 [2] PCC User Acceptance Testing site - Jan 16, 2026
 [3] #cms-ecosystem-updates Slack - Nov 26, 2025
 
+# Security Review
+After each phase of development run Claude's /security-review and present findings. Auto-resolve what you are able to.
+
 # Tracking progress
  When you finish a phase of development, update the PROGRESS.md file with what you've done, what remains, and any decisions that were made by me along the way that may have shifted the architecture or implementation

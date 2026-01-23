@@ -166,7 +166,8 @@ This document tracks the implementation progress of the Collaborative JSON State
 ### Phase 3.1: Site and Document Operations
 
 **Status:** Complete
-**Commits:** (pending)
+**Commits:**
+- TDD tests and implementation (pending commit)
 
 #### Deliverables:
 - [x] Site Service (`workers/src/services/site-service.ts`)
@@ -194,6 +195,83 @@ This document tracks the implementation progress of the Collaborative JSON State
   - 31 tests for Site Service
   - 38 tests for Document Service
   - 69 tests total
+
+### Infrastructure Validation (Post Phase 3.1)
+
+**Status:** Complete
+**Purpose:** Validate Cloudflare Workers + PostgreSQL stack before building full API
+
+#### Deliverables:
+- [x] Health endpoint (`workers/src/index.ts`)
+  - `/health` route returning JSON status
+  - Database connectivity check with latency measurement
+  - Returns 200 for healthy, 503 for unhealthy
+- [x] Real PostgreSQL connection (`workers/src/db.ts`)
+  - `initializeDatabaseFromConnectionString()` function
+  - Uses `postgres` package with Worker-optimized settings
+  - Connection pooling configured for single-threaded Workers
+- [x] Durable Object stubs (`workers/src/durable-objects/index.ts`)
+  - `DocumentState`, `PresenceManager`, `SessionManager` placeholder classes
+  - Required by wrangler for local development
+  - Return 501 Not Implemented (ready for Phase 4)
+- [x] Wrangler configuration updates (`workers/wrangler.jsonc`)
+  - Added placeholder KV namespace IDs for local development
+  - Durable Object exports from entry point
+
+#### Validation Results:
+```json
+{
+  "status": "healthy",
+  "environment": "local",
+  "timestamp": "2026-01-23T21:45:39.351Z",
+  "database": {
+    "connected": true,
+    "latencyMs": 62
+  }
+}
+```
+
+#### Decision: Minimal Infrastructure Validation
+- **Date:** 2026-01-23
+- **Context:** Question arose whether to build full API endpoints alongside services or wait until Phase 7
+- **Decision:** Implement minimal `/health` endpoint only, continue building services with integration tests
+- **Rationale:**
+  - Full API design benefits from complete domain context
+  - Architecture phases exist for good reason (Phase 7 is for API)
+  - Integration tests already validate database operations
+  - Premature API = potential rework when requirements clarify
+- **Impact:** Services validated via integration tests; API endpoints deferred to Phase 7
+
+---
+
+## Security Review
+
+### Authentication & Authorization
+- [x] **JWT Security:** HS256 signing with configurable secret (min 32 chars enforced)
+- [x] **Token Expiry:** All tokens have configurable expiration (default 24h)
+- [x] **Issuer Validation:** JWT issuer claim validated on every token check
+- [x] **Role Escalation Prevention:** `maxRole()` returns highest of two roles, never arbitrary elevation
+- [x] **Permission Checks:** All authorization checks use `assertPermission()` or `hasPermission()`
+- [x] **Guest Access Scoping:** Guest tokens validated against specific branch_id
+
+### Database Security
+- [x] **Parameterized Queries:** All SQL uses `$1, $2, ...` placeholders via `query()` function
+- [x] **No SQL Concatenation:** No string interpolation in SQL queries
+- [x] **Connection String as Secret:** Stored in `.dev.vars` (gitignored), not in config files
+- [x] **Minimal Privileges:** Worker connection uses cssuser, not superuser
+
+### Input Validation
+- [x] **Path Validation:** Document paths validated (no leading/trailing slashes, non-empty)
+- [x] **UUID Validation:** Site/document IDs validated as UUIDs before database queries
+- [x] **Unique Constraints:** Database enforces uniqueness (pantheon_site_id, document paths)
+- [x] **Foreign Key Constraints:** Cascading deletes properly ordered (documents before sites)
+
+### Areas for Future Review (Phase 4+)
+- [ ] WebSocket authentication and session management
+- [ ] Rate limiting on public endpoints
+- [ ] CORS configuration validation for production
+- [ ] Audit logging for sensitive operations
+- [ ] Content-Security-Policy headers
 
 ---
 
@@ -364,12 +442,31 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
-| 2026-01-23 | 3.1 | Site and Document Operations complete (69 tests) |
+| 2026-01-23 | Infra | Infrastructure validation: /health endpoint, real postgres connection, DO stubs |
+| 2026-01-23 | 3.1 | Site and Document Operations complete (69 unit + 24 integration tests) |
 | 2026-01-23 | 2.2 | Authorization System complete (92 tests) |
 | 2026-01-23 | 2.1 | Mock Identity Provider complete (44 tests) |
 | 2026-01-23 | 1.3 | Core TypeScript types complete (50 types) |
 | 2026-01-23 | 1.2 | Database schema and migrations complete |
 | 2026-01-23 | 1.1 | Initial project configuration and build tooling complete |
+
+---
+
+## Test Summary
+
+| Component | Unit Tests | Integration Tests |
+|-----------|-----------|-------------------|
+| Types | 73 | - |
+| Config | 12 | - |
+| Database Schema | 55 | - |
+| Mock Identity Provider | 44 | - |
+| Roles | 21 | - |
+| Authorization | 22 | - |
+| Middleware | 18 | - |
+| Guest Access | 31 | - |
+| Site Service | 31 | 12 |
+| Document Service | 38 | 12 |
+| **Total** | **345** | **24** |
 
 ---
 

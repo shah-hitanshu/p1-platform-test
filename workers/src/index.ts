@@ -1,9 +1,14 @@
 /**
  * Collaborative State System - Cloudflare Worker Entry Point
  *
- * This is a placeholder that will be replaced with the full implementation.
- * It exists to allow TypeScript compilation and testing to proceed.
+ * Provides HTTP API for the collaborative state system.
+ * Currently implements minimal infrastructure validation endpoints.
  */
+
+import { initializeDatabaseFromConnectionString, query } from './db';
+
+// Export Durable Objects for wrangler
+export { DocumentState, PresenceManager, SessionManager } from './durable-objects';
 
 export interface Env {
   // Environment variables
@@ -32,11 +37,82 @@ export interface Env {
   SESSION_KV: KVNamespace;
 }
 
+/**
+ * Health check response type.
+ */
+interface HealthResponse {
+  status: 'healthy' | 'unhealthy';
+  environment: string;
+  timestamp: string;
+  database?: {
+    connected: boolean;
+    latencyMs?: number;
+    error?: string;
+  };
+}
+
+/**
+ * Handle health check endpoint.
+ * Validates database connectivity.
+ */
+async function handleHealth(env: Env): Promise<Response> {
+  const health: HealthResponse = {
+    status: 'healthy',
+    environment: env.ENVIRONMENT,
+    timestamp: new Date().toISOString(),
+  };
+
+  // Test database connection
+  try {
+    initializeDatabaseFromConnectionString(env.POSTGRES_CONNECTION_STRING);
+    const start = Date.now();
+    const result = await query<{ now: string }>('SELECT NOW() as now');
+    const latencyMs = Date.now() - start;
+
+    health.database = {
+      connected: true,
+      latencyMs,
+    };
+
+    // Verify we got a result
+    if (result.rows.length === 0) {
+      throw new Error('No result from database');
+    }
+  } catch (error) {
+    health.status = 'unhealthy';
+    health.database = {
+      connected: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+
+  return new Response(JSON.stringify(health, null, 2), {
+    status: health.status === 'healthy' ? 200 : 503,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 export default {
-  fetch(_request: Request, _env: Env, _ctx: ExecutionContext): Response {
-    return new Response('Collaborative State System - Not Yet Implemented', {
-      status: 501,
-      headers: { 'Content-Type': 'text/plain' },
-    });
+  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+    const path = url.pathname;
+
+    // Route requests
+    if (path === '/health' || path === '/health/') {
+      return handleHealth(env);
+    }
+
+    // Default: not implemented
+    return new Response(
+      JSON.stringify({
+        error: 'Not Found',
+        message: `No handler for ${request.method} ${path}`,
+        availableEndpoints: ['/health'],
+      }),
+      {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
   },
 };

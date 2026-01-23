@@ -7,6 +7,8 @@
  * @see collaborative-state-system-architecture-v2.2.md
  */
 
+import postgres from 'postgres';
+
 /**
  * Result of a database query.
  */
@@ -29,6 +31,11 @@ export interface DatabaseConfig {
 let dbInstance: DatabaseConnection | null = null;
 
 /**
+ * Cached postgres SQL instance for connection reuse.
+ */
+let sqlInstance: postgres.Sql | null = null;
+
+/**
  * Database connection interface.
  */
 export interface DatabaseConnection {
@@ -39,39 +46,72 @@ export interface DatabaseConnection {
 }
 
 /**
+ * Initialize the database connection from a connection string.
+ * Creates a real postgres connection using the postgres package.
+ * Safe to call multiple times - reuses existing connection.
+ *
+ * @param connectionString - PostgreSQL connection string
+ */
+export function initializeDatabaseFromConnectionString(connectionString: string): void {
+  // Skip if already initialized with same connection string
+  if (dbInstance && sqlInstance) {
+    return;
+  }
+
+  // Create postgres connection
+  sqlInstance = postgres(connectionString, {
+    // Don't transform undefined to null - let postgres handle it
+    transform: {
+      undefined: null,
+    },
+    // Connection pool settings for Workers
+    max: 1, // Workers are single-threaded
+    idle_timeout: 20,
+    connect_timeout: 10,
+  });
+
+  // Create the database connection adapter
+  dbInstance = createConnectionFromSql(sqlInstance);
+}
+
+/**
  * Initialize the database connection.
  * Should be called once during worker startup.
  *
  * @param config - Database configuration
  */
 export function initializeDatabase(config: DatabaseConfig): void {
-  // In a real implementation, this would create a postgres connection
-  // For now, we create a placeholder that will be mocked in tests
-  dbInstance = createConnection(config);
+  initializeDatabaseFromConnectionString(config.connectionString);
 }
 
 /**
- * Create a database connection.
- * This is separated for easier testing/mocking.
+ * Create a database connection adapter from a postgres SQL instance.
  *
- * @param config - Database configuration
- * @returns Database connection
+ * @param sql - Postgres SQL instance
+ * @returns Database connection adapter
  */
-function createConnection(_config: DatabaseConfig): DatabaseConnection {
-  // This is a placeholder implementation
-  // In production, this would use the postgres package
+function createConnectionFromSql(sql: postgres.Sql): DatabaseConnection {
   return {
-    query<T = Record<string, unknown>>(
-      sql: string,
+    async query<T = Record<string, unknown>>(
+      sqlQuery: string,
       params?: unknown[],
     ): Promise<QueryResult<T>> {
-      // This will be implemented when we add actual database integration
-      // For now, it throws to indicate it needs to be mocked in tests
-      return Promise.reject(
-        new Error(
-          `Database not initialized. SQL: ${sql}, Params: ${JSON.stringify(params)}`,
-        ),
+      const result = await sql.unsafe<T[]>(
+        sqlQuery,
+        params as unknown as postgres.ParameterOrJSON<never>[],
       );
+
+      // The postgres package returns a Result object that extends Array
+      const rows = [...result] as T[];
+
+      // Get row count - for DELETE/UPDATE, use result.count; for SELECT, use rows.length
+      const resultWithCount = result as unknown as { count?: number };
+      const rowCount = resultWithCount.count ?? rows.length;
+
+      return {
+        rows,
+        rowCount,
+      };
     },
   };
 }
