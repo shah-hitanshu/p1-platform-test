@@ -51,5 +51,7 @@ Maintain code to production standards [1]
 # Security Review
 After each phase of development run Claude's /security-review and present findings. Auto-resolve what you are able to.
 
+If findings from the security review are remediated, be sure to commit the changes after review.
+
 # Tracking progress
  When you finish a phase of development, update the PROGRESS.md file with what you've done, what remains, and any decisions that were made by me along the way that may have shifted the architecture or implementation
