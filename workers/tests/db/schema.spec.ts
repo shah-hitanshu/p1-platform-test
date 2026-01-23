@@ -15,7 +15,7 @@ import postgres from 'postgres';
 
 // Test database connection - uses same config as docker-compose
 const TEST_DATABASE_URL =
-  process.env.POSTGRES_CONNECTION_STRING ||
+  process.env.POSTGRES_CONNECTION_STRING ??
   'postgresql://cssuser:csspass@localhost:5432/cssdb';
 
 let sql: ReturnType<typeof postgres>;
@@ -69,7 +69,7 @@ async function tableExists(tableName: string, schema = 'app'): Promise<boolean> 
 
 async function getTableColumns(
   tableName: string,
-  schema = 'app'
+  schema = 'app',
 ): Promise<ColumnInfo[]> {
   return sql<ColumnInfo[]>`
     SELECT column_name, data_type, is_nullable, column_default
@@ -82,7 +82,7 @@ async function getTableColumns(
 
 async function getTableIndexes(
   tableName: string,
-  schema = 'app'
+  schema = 'app',
 ): Promise<IndexInfo[]> {
   return sql<IndexInfo[]>`
     SELECT indexname, indexdef
@@ -94,7 +94,7 @@ async function getTableIndexes(
 
 async function getTableConstraints(
   tableName: string,
-  schema = 'app'
+  schema = 'app',
 ): Promise<ConstraintInfo[]> {
   return sql<ConstraintInfo[]>`
     SELECT constraint_name, constraint_type
@@ -107,11 +107,11 @@ async function getTableConstraints(
 function hasColumn(
   columns: ColumnInfo[],
   name: string,
-  expectedType?: string
+  expectedType?: string,
 ): boolean {
   const col = columns.find((c) => c.column_name === name);
-  if (!col) return false;
-  if (expectedType && col.data_type !== expectedType) return false;
+  if (col === undefined) return false;
+  if (expectedType !== undefined && col.data_type !== expectedType) return false;
   return true;
 }
 
@@ -171,7 +171,7 @@ describe('Sites Table', () => {
     const hasUnique = constraints.some(
       (c) =>
         c.constraint_type === 'UNIQUE' &&
-        c.constraint_name.includes('pantheon_site_id')
+        c.constraint_name.includes('pantheon_site_id'),
     );
     expect(hasUnique).toBe(true);
   });
@@ -552,7 +552,7 @@ describe('Branch Structure State Table', () => {
     expect(hasColumn(columns, 'metadata_schema', 'jsonb')).toBe(true);
     expect(hasColumn(columns, 'schema_enforcement', 'text')).toBe(true);
     expect(hasColumn(columns, 'has_changes_since_checkpoint', 'boolean')).toBe(
-      true
+      true,
     );
     expect(hasColumn(columns, 'last_modified_at')).toBe(true);
     expect(hasColumn(columns, 'last_modified_by', 'uuid')).toBe(true);
