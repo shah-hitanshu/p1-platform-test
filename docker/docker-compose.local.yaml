@@ -1,0 +1,96 @@
+# Docker Compose - Local Development Environment
+# 
+# Provides backend services for local Cloudflare Worker development:
+# - PostgreSQL 16 for document/state persistence
+# - Firestore emulator for notifications and activity feed
+#
+# Usage:
+#   make docker-up       # Start services
+#   make docker-down     # Stop services
+#   make docker-logs     # View logs
+#
+# Note: Miniflare (Cloudflare Worker) runs separately via `make worker-dev`
+
+version: '3.8'
+
+services:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PostgreSQL - Document and state storage
+  # ─────────────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: css-postgres
+    environment:
+      POSTGRES_USER: cssuser
+      POSTGRES_PASSWORD: csspass
+      POSTGRES_DB: cssdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cssuser -d cssdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - css-network
+    labels:
+      - "pan-service=collaborative-state-system"
+      - "pan-environment=local"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Firestore Emulator - Notifications and activity feed
+  # ─────────────────────────────────────────────────────────────────────────────
+  firestore:
+    image: google/cloud-sdk:slim
+    platform: linux/amd64
+    container_name: css-firestore
+    command: >
+      bash -c "
+        apt-get update -qq && apt-get install -qq -y openjdk-17-jre-headless google-cloud-cli-firestore-emulator > /dev/null 2>&1 &&
+        gcloud emulators firestore start --host-port=0.0.0.0:8080 --project=local-css-project
+      "
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - css-network
+    labels:
+      - "pan-service=collaborative-state-system"
+      - "pan-environment=local"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # pgAdmin - Database management UI (optional, use with --profile tools)
+  # ─────────────────────────────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: css-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - tools
+    networks:
+      - css-network
+
+volumes:
+  postgres_data:
+    name: css-postgres-data
+
+networks:
+  css-network:
+    name: css-network
+    driver: bridge

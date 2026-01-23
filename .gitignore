@@ -1,0 +1,116 @@
+# Collaborative State System - .gitignore
+# Following Pantheon repository standards
+
+# =============================================================================
+# Environment & Secrets
+# =============================================================================
+.env
+.env.*
+!.env.example
+*.local
+
+# Wrangler secrets (NEVER commit)
+workers/.dev.vars
+.dev.vars
+
+# =============================================================================
+# Terraform
+# =============================================================================
+# Local .terraform directories
+**/.terraform/*
+
+# .tfstate files
+*.tfstate
+*.tfstate.*
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Exclude all .tfvars files (may contain sensitive data)
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Terraform plan files
+*.tfplan
+tfplan
+
+# Terraform lock file (can be committed for consistency)
+# Uncomment to ignore:
+# .terraform.lock.hcl
+
+# =============================================================================
+# Node / pnpm
+# =============================================================================
+node_modules/
+.pnpm-store/
+pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Cache
+.cache/
+*.cache
+
+# =============================================================================
+# IDE & Editors
+# =============================================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# =============================================================================
+# Testing
+# =============================================================================
+coverage/
+.nyc_output/
+*.lcov
+
+# =============================================================================
+# Docker
+# =============================================================================
+# Don't ignore docker-compose files, but ignore any local overrides
+docker-compose.override.yml
+docker-compose.override.yaml
+
+# =============================================================================
+# Logs
+# =============================================================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =============================================================================
+# OS Generated
+# =============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# =============================================================================
+# Misc
+# =============================================================================
+*.bak
+*.tmp
+*.temp
+.wrangler/

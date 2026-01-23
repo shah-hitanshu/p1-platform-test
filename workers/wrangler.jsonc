@@ -1,0 +1,101 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/schemas/config.json",
+  
+  // Worker identity - follows Pantheon naming convention
+  "name": "collaborative-state-worker",
+  "main": "src/index.ts",
+  
+  // Compatibility settings
+  "compatibility_date": "2024-12-01",
+  "compatibility_flags": ["nodejs_compat"],
+  
+  // ==========================================================================
+  // Durable Objects Configuration
+  // Define class names here; bindings reference these classes
+  // Actual implementations will be added during application development
+  // ==========================================================================
+  "durable_objects": {
+    "bindings": [
+      // Document state management (collaborative editing)
+      { "name": "DOCUMENT_STATE", "class_name": "DocumentState" },
+      // User presence tracking (cursors, online status)
+      { "name": "PRESENCE", "class_name": "PresenceManager" },
+      // Session/auth management
+      { "name": "SESSION", "class_name": "SessionManager" }
+    ]
+  },
+  
+  // Durable Object migrations - required for production deployments
+  // Add new migrations when adding/renaming DO classes
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_classes": ["DocumentState", "PresenceManager", "SessionManager"]
+    }
+  ],
+  
+  // ==========================================================================
+  // KV Namespaces - Used for caching and session storage
+  // IDs are populated per-environment; empty for local development
+  // ==========================================================================
+  "kv_namespaces": [
+    { "binding": "CONFIG_KV", "id": "" },
+    { "binding": "SESSION_KV", "id": "" }
+  ],
+  
+  // ==========================================================================
+  // Environment Variables (non-secret)
+  // Secrets go in .dev.vars (local) or Vault (production)
+  // ==========================================================================
+  "vars": {
+    "ENVIRONMENT": "local",
+    "LOG_LEVEL": "debug",
+    "CORS_ORIGINS": "http://localhost:3000,http://localhost:8080,http://localhost:5173",
+    "WEBSOCKET_HEARTBEAT_INTERVAL": "30000",
+    "DOCUMENT_SYNC_BATCH_SIZE": "50",
+    "PRESENCE_TTL_SECONDS": "120"
+  },
+  
+  // ==========================================================================
+  // Local Development (Miniflare)
+  // ==========================================================================
+  "dev": {
+    "port": 8787,
+    "local_protocol": "http",
+    "ip": "0.0.0.0"
+  },
+  
+  // ==========================================================================
+  // Environment Overrides
+  // Deploy with: pnpm exec wrangler deploy --env <env>
+  // ==========================================================================
+  "env": {
+    // Sandbox environment
+    "sbx1": {
+      "name": "collaborative-state-worker-sbx1",
+      "vars": {
+        "ENVIRONMENT": "sbx1",
+        "LOG_LEVEL": "info",
+        "CORS_ORIGINS": "https://sbx1.pantheon.io"
+      },
+      "kv_namespaces": [
+        { "binding": "CONFIG_KV", "id": "REPLACE_WITH_SBX1_CONFIG_KV_ID" },
+        { "binding": "SESSION_KV", "id": "REPLACE_WITH_SBX1_SESSION_KV_ID" }
+      ]
+    },
+    
+    // Production environment
+    "production": {
+      "name": "collaborative-state-worker-prod",
+      "vars": {
+        "ENVIRONMENT": "production",
+        "LOG_LEVEL": "warn",
+        "CORS_ORIGINS": "https://pantheon.io,https://app.pantheon.io"
+      },
+      "kv_namespaces": [
+        { "binding": "CONFIG_KV", "id": "REPLACE_WITH_PROD_CONFIG_KV_ID" },
+        { "binding": "SESSION_KV", "id": "REPLACE_WITH_PROD_SESSION_KV_ID" }
+      ]
+    }
+  }
+}
