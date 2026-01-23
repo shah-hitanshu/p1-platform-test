@@ -3,8 +3,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     // Test file patterns
+    // Exclude integration tests by default (run with: npm run test:integration)
     include: ['tests/**/*.spec.ts', 'tests/**/*.test.ts'],
-    exclude: ['node_modules', 'dist'],
+    exclude: ['node_modules', 'dist', 'tests/integration/**'],
 
     // Environment
     environment: 'node',

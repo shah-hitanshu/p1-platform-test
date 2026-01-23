@@ -41,12 +41,13 @@ export interface ListSitesOptions {
 
 /**
  * Database row format for sites.
+ * workflow_settings can be returned as string or object depending on DB driver.
  */
 interface SiteRow {
   id: string;
   pantheon_site_id: string;
   name: string;
-  workflow_settings: WorkflowSettings;
+  workflow_settings: WorkflowSettings | string;
   created_at: string;
   updated_at: string;
 }
@@ -99,6 +100,17 @@ const DEFAULT_WORKFLOW_SETTINGS: WorkflowSettings = {
 // =============================================================================
 
 /**
+ * Parses workflow settings from database.
+ * Handles both string and object formats for JSONB columns.
+ */
+function parseWorkflowSettings(value: WorkflowSettings | string): WorkflowSettings {
+  if (typeof value === 'string') {
+    return JSON.parse(value) as WorkflowSettings;
+  }
+  return value;
+}
+
+/**
  * Maps a database row to a Site domain object.
  */
 function mapRowToSite(row: SiteRow): Site {
@@ -106,7 +118,7 @@ function mapRowToSite(row: SiteRow): Site {
     id: row.id,
     pantheonSiteId: row.pantheon_site_id,
     name: row.name,
-    workflowSettings: row.workflow_settings,
+    workflowSettings: parseWorkflowSettings(row.workflow_settings),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

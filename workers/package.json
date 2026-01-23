@@ -11,6 +11,8 @@
     "deploy:production": "wrangler deploy --env production",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:all": "vitest run && vitest run --config vitest.integration.config.ts",
     "test:coverage": "vitest run --coverage",
     "test:typecheck": "vitest --typecheck.only",
     "typecheck": "tsc --noEmit",
