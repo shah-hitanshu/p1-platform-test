@@ -102,17 +102,33 @@ This document tracks the implementation progress of the Collaborative JSON State
   - Compile-time type checking
   - Database schema compatibility validation
 
+### Phase 2.1: Mock Identity Provider
+
+**Status:** Complete
+**Commits:**
+- `ac24f9b` - Add Phase 2.1 TDD tests for MockIdentityProvider
+- `effbd06` - Implement Phase 2.1: MockIdentityProvider
+
+#### Deliverables:
+- [x] MockIdentityProvider class (`workers/src/auth/mock-identity-provider.ts`)
+  - JWT issuance with jose library using HS256 signing
+  - Token validation with issuer verification (`mock-identity-provider`)
+  - Agent API key validation with 24-hour expiry
+  - User/agent lookup methods (getUser, getUserByEmail, getAgent)
+- [x] Configuration validation
+  - jwtSecret minimum 32 characters
+  - Required users and agents arrays
+  - Default token expiry of 24 hours
+- [x] Sample configuration file (`workers/mock-identity.config.json`)
+- [x] Environment integration (`MOCK_JWT_SECRET` in Env interface)
+- [x] Test suite (`workers/tests/auth/mock-identity-provider.spec.ts`)
+  - 44 tests covering constructor, token issuance, validation, edge cases
+
 ---
 
 ## Outstanding Work
 
 ### Phase 2: Authentication and Authorization
-
-#### Phase 2.1: Mock Identity Provider
-- [ ] Implement MockIdentityProvider class
-- [ ] JWT token issuance for test users
-- [ ] Agent API key validation
-- [ ] Configuration file format (mock-identity.config.json)
 
 #### Phase 2.2: Authorization System
 - [ ] Role definitions (NO_ACCESS, VIEWER, EDITOR, ADMIN)
@@ -251,6 +267,29 @@ Decisions made during implementation that may affect or refine the architecture.
 - **Rationale:** Cleaner ergonomics, aligns with common TypeScript patterns
 - **Impact:** Optional fields are `undefined` when absent, not `null`
 
+### Phase 2.1 Decisions
+
+#### Decision: Hardcoded JWT Issuer
+- **Date:** 2026-01-23
+- **Context:** JWT tokens need an issuer claim for validation
+- **Decision:** Use hardcoded issuer `mock-identity-provider`
+- **Rationale:** Makes tokens self-documenting, aids debugging, standard practice
+- **Impact:** Tokens are rejected if issuer doesn't match
+
+#### Decision: API Key Only for Agents
+- **Date:** 2026-01-23
+- **Context:** Agents could use API keys or JWTs for authentication
+- **Decision:** Use API keys only (no JWT issuance for agents)
+- **Rationale:** Matches architecture document, simpler for automation
+- **Impact:** WebSocket auth may need revisiting in Phase 4 if agents need stateless tokens
+
+#### Decision: Hybrid Configuration
+- **Date:** 2026-01-23
+- **Context:** Config could be all JSON, all env vars, or hybrid
+- **Decision:** JSON file for user/agent definitions, JWT secret from `.dev.vars`
+- **Rationale:** Structured data in readable JSON, secrets not committed to repo
+- **Impact:** Two configuration sources, but follows established patterns
+
 <!--
 Template for future decisions:
 
@@ -270,6 +309,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-23 | 2.1 | Mock Identity Provider complete (44 tests) |
 | 2026-01-23 | 1.3 | Core TypeScript types complete (50 types) |
 | 2026-01-23 | 1.2 | Database schema and migrations complete |
 | 2026-01-23 | 1.1 | Initial project configuration and build tooling complete |
