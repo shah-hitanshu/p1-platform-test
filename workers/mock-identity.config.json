@@ -1,0 +1,54 @@
+{
+  "$schema": "./mock-identity.schema.json",
+  "tokenExpiry": "24h",
+  "users": [
+    {
+      "id": "user-alice",
+      "email": "alice@example.com",
+      "name": "Alice Developer",
+      "siteRoles": {
+        "site-123": "admin",
+        "site-456": "developer"
+      }
+    },
+    {
+      "id": "user-bob",
+      "email": "bob@example.com",
+      "name": "Bob Reviewer",
+      "siteRoles": {
+        "site-123": "team_member"
+      }
+    },
+    {
+      "id": "user-carol",
+      "email": "carol@example.com",
+      "name": "Carol Editor",
+      "siteRoles": {
+        "site-123": "developer",
+        "site-456": "admin"
+      }
+    }
+  ],
+  "agents": [
+    {
+      "id": "agent-zappy",
+      "name": "Zappy AI Assistant",
+      "apiKey": "test-agent-key-zappy",
+      "siteRoles": {
+        "site-123": "editor"
+      }
+    },
+    {
+      "id": "agent-helper",
+      "name": "Helper Bot",
+      "apiKey": "test-agent-key-helper",
+      "siteRoles": {
+        "site-123": "viewer",
+        "site-456": "editor"
+      }
+    }
+  ],
+  "defaultSiteRoles": {
+    "site-123": "team_member"
+  }
+}

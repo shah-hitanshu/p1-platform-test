@@ -19,6 +19,9 @@ export interface Env {
   FIRESTORE_PROJECT_ID: string;
   FIRESTORE_EMULATOR_HOST?: string;
 
+  // Mock Identity Provider (local development only)
+  MOCK_JWT_SECRET?: string;
+
   // Durable Object bindings
   DOCUMENT_STATE: DurableObjectNamespace;
   PRESENCE: DurableObjectNamespace;
