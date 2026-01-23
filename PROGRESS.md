@@ -124,20 +124,48 @@ This document tracks the implementation progress of the Collaborative JSON State
 - [x] Test suite (`workers/tests/auth/mock-identity-provider.spec.ts`)
   - 44 tests covering constructor, token issuance, validation, edge cases
 
+### Phase 2.2: Authorization System
+
+**Status:** Complete
+**Commits:**
+- `9137b89` - Add Phase 2.2 TDD tests for Authorization System
+- `2a51f94` - Implement Phase 2.2: Authorization System
+
+#### Deliverables:
+- [x] Role definitions (`workers/src/auth/roles.ts`)
+  - `ROLES` constant with NO_ACCESS, VIEWER, EDITOR, ADMIN
+  - Each role has 9 permission flags (canView, canEdit, canCreateBranch, etc.)
+  - `mapPantheonRole()` for Pantheon to system role mapping
+  - `maxRole()` for role comparison (elevation logic)
+  - `roleAtLeast()` for minimum role checks
+  - `getRolePermissions()` for role lookup
+- [x] Database interface (`workers/src/db.ts`)
+  - Query abstraction for PostgreSQL
+  - Supports parameterized queries for SQL injection prevention
+  - Designed for Cloudflare Workers compatibility
+- [x] Branch-level authorization (`workers/src/auth/authorization.ts`)
+  - `getEffectiveRole()` - calculates max(Pantheon Site Role, Branch Grant)
+  - `hasPermission()` - checks specific permission
+  - `assertPermission()` - throws AuthorizationError if denied
+  - `AuthorizationError` class with permission and role info
+- [x] Permission middleware (`workers/src/auth/middleware.ts`)
+  - `requirePermission()` - factory for permission-based access control
+  - `requireRole()` - factory for role-based access control
+  - Guest principal handling (fixed VIEWER role, canView only)
+  - Attaches effectiveRole and effectiveRoleName to request
+- [x] Guest access validation (`workers/src/auth/guest-access.ts`)
+  - `validateGuestToken()` - SHA-256 hash lookup, expiry check
+  - `createGuestLink()` - secure token generation, database insert
+  - `revokeGuestLink()` - status update to revoked
+  - `getGuestLinksByBranch()` - list active/all guest links
+  - `isGuestBranchAccess()` - scope validation
+  - `GUEST_ROLE` constant (fixed VIEWER permissions)
+- [x] Test suite
+  - 92 tests across 4 test files (roles, authorization, middleware, guest-access)
+
 ---
 
 ## Outstanding Work
-
-### Phase 2: Authentication and Authorization
-
-#### Phase 2.2: Authorization System
-- [ ] Role definitions (NO_ACCESS, VIEWER, EDITOR, ADMIN)
-- [ ] Pantheon role mapping
-- [ ] Branch-level authorization (effective role calculation)
-- [ ] Permission middleware
-- [ ] Guest access validation
-
----
 
 ### Phase 3: Document and Branch Management
 
@@ -309,6 +337,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-23 | 2.2 | Authorization System complete (92 tests) |
 | 2026-01-23 | 2.1 | Mock Identity Provider complete (44 tests) |
 | 2026-01-23 | 1.3 | Core TypeScript types complete (50 types) |
 | 2026-01-23 | 1.2 | Database schema and migrations complete |
