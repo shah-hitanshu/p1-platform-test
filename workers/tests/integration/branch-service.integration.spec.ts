@@ -15,7 +15,7 @@ import { setDatabaseInstance, getDatabaseInstance } from '../../src/db';
 import type { DatabaseConnection, QueryResult } from '../../src/db';
 
 // Import site service for setting up test sites
-import { createSite, deleteSite } from '../../src/services/site-service';
+import { createSite } from '../../src/services/site-service';
 
 // Import branch service (to be implemented)
 import {
@@ -38,6 +38,10 @@ import {
 // Test configuration
 const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
 
+// Use valid UUIDs for created_by_id fields (database expects UUID type)
+const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
+const TEST_AGENT_ID = '00000000-0000-0000-0000-000000000002';
+
 // Track created resources for cleanup
 const createdSiteIds: string[] = [];
 const createdBranchIds: string[] = [];
@@ -52,6 +56,17 @@ function getFirst<T>(arr: T[]): T {
     throw new Error('Expected array to have at least one element');
   }
   return first;
+}
+
+/**
+ * Helper function to assert a value is not null/undefined.
+ * Throws if the value is null/undefined (test should fail).
+ */
+function assertDefined<T>(value: T | null | undefined, message = 'Expected value to be defined'): T {
+  if (value === null || value === undefined) {
+    throw new Error(message);
+  }
+  return value;
 }
 
 /**
@@ -170,7 +185,7 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
     it('should create main branch for a site', async () => {
       const mainBranch = await createMainBranch({
         siteId: testSiteId,
-        createdById: 'test-user-id',
+        createdById: TEST_USER_ID,
         createdByType: 'user',
       });
 
@@ -199,7 +214,7 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
       await expect(
         createMainBranch({
           siteId: testSiteId,
-          createdById: 'test-user-id',
+          createdById: TEST_USER_ID,
           createdByType: 'user',
         }),
       ).rejects.toThrow(DuplicateBranchNameError);
@@ -209,7 +224,7 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
       const mainBranch = await getMainBranch(testSiteId);
       expect(mainBranch).not.toBeNull();
 
-      await expect(deleteBranch(mainBranch!.id)).rejects.toThrow(MainBranchProtectionError);
+      await expect(deleteBranch(assertDefined(mainBranch).id)).rejects.toThrow(MainBranchProtectionError);
 
       // Verify main branch still exists
       const stillExists = await getMainBranch(testSiteId);
@@ -221,7 +236,7 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
       expect(mainBranch).not.toBeNull();
 
       await expect(
-        updateBranchStatus(mainBranch!.id, 'archived'),
+        updateBranchStatus(assertDefined(mainBranch).id, 'archived'),
       ).rejects.toThrow(MainBranchProtectionError);
     });
   });
@@ -243,7 +258,7 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
         name: 'feature-login',
         description: 'Implement login functionality',
         sourceBranchId: mainBranchId,
-        createdById: 'test-user-id',
+        createdById: TEST_USER_ID,
         createdByType: 'user',
       });
 
@@ -293,13 +308,13 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
         name: 'agent-updates',
         description: 'Automated content updates',
         sourceBranchId: mainBranchId,
-        createdById: 'agent-uuid-123',
+        createdById: TEST_AGENT_ID,
         createdByType: 'agent',
       });
 
       createdBranchIds.push(branch.id);
 
-      expect(branch.createdById).toBe('agent-uuid-123');
+      expect(branch.createdById).toBe(TEST_AGENT_ID);
       expect(branch.createdByType).toBe('agent');
     });
 
@@ -309,7 +324,7 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
           siteId: testSiteId,
           name: 'feature-login', // Already exists
           sourceBranchId: mainBranchId,
-          createdById: 'test-user-id',
+          createdById: TEST_USER_ID,
           createdByType: 'user',
         }),
       ).rejects.toThrow(DuplicateBranchNameError);
@@ -321,7 +336,7 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
           siteId: testSiteId,
           name: '',
           sourceBranchId: mainBranchId,
-          createdById: 'test-user-id',
+          createdById: TEST_USER_ID,
           createdByType: 'user',
         }),
       ).rejects.toThrow(InvalidBranchParamsError);
@@ -333,7 +348,7 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
           siteId: '00000000-0000-0000-0000-000000000000',
           name: 'orphan-branch',
           sourceBranchId: mainBranchId,
-          createdById: 'test-user-id',
+          createdById: TEST_USER_ID,
           createdByType: 'user',
         }),
       ).rejects.toThrow(SiteNotFoundError);
@@ -362,8 +377,8 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
       const branch1 = await createBranch({
         siteId: testSiteId,
         name: `pagination-test-${String(Date.now())}-1`,
-        sourceBranchId: (await getMainBranch(testSiteId))!.id,
-        createdById: 'test-user-id',
+        sourceBranchId: assertDefined(await getMainBranch(testSiteId)).id,
+        createdById: TEST_USER_ID,
         createdByType: 'user',
       });
       createdBranchIds.push(branch1.id);
@@ -371,8 +386,8 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
       const branch2 = await createBranch({
         siteId: testSiteId,
         name: `pagination-test-${String(Date.now())}-2`,
-        sourceBranchId: (await getMainBranch(testSiteId))!.id,
-        createdById: 'test-user-id',
+        sourceBranchId: assertDefined(await getMainBranch(testSiteId)).id,
+        createdById: TEST_USER_ID,
         createdByType: 'user',
       });
       createdBranchIds.push(branch2.id);
@@ -394,8 +409,8 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
       const branch = await createBranch({
         siteId: testSiteId,
         name: `update-test-${String(Date.now())}`,
-        sourceBranchId: (await getMainBranch(testSiteId))!.id,
-        createdById: 'test-user-id',
+        sourceBranchId: assertDefined(await getMainBranch(testSiteId)).id,
+        createdById: TEST_USER_ID,
         createdByType: 'user',
       });
       createdBranchIds.push(branch.id);
@@ -416,8 +431,8 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
         siteId: testSiteId,
         name: `desc-test-${String(Date.now())}`,
         description: 'Original description',
-        sourceBranchId: (await getMainBranch(testSiteId))!.id,
-        createdById: 'test-user-id',
+        sourceBranchId: assertDefined(await getMainBranch(testSiteId)).id,
+        createdById: TEST_USER_ID,
         createdByType: 'user',
       });
       createdBranchIds.push(branch.id);
@@ -438,8 +453,8 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
       const branch = await createBranch({
         siteId: testSiteId,
         name: `status-test-${String(Date.now())}`,
-        sourceBranchId: (await getMainBranch(testSiteId))!.id,
-        createdById: 'test-user-id',
+        sourceBranchId: assertDefined(await getMainBranch(testSiteId)).id,
+        createdById: TEST_USER_ID,
         createdByType: 'user',
       });
       createdBranchIds.push(branch.id);
@@ -454,8 +469,8 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
       const branch = await createBranch({
         siteId: testSiteId,
         name: `merge-test-${String(Date.now())}`,
-        sourceBranchId: (await getMainBranch(testSiteId))!.id,
-        createdById: 'test-user-id',
+        sourceBranchId: assertDefined(await getMainBranch(testSiteId)).id,
+        createdById: TEST_USER_ID,
         createdByType: 'user',
       });
       createdBranchIds.push(branch.id);
@@ -472,8 +487,8 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
       const branch = await createBranch({
         siteId: testSiteId,
         name: `archive-test-${String(Date.now())}`,
-        sourceBranchId: (await getMainBranch(testSiteId))!.id,
-        createdById: 'test-user-id',
+        sourceBranchId: assertDefined(await getMainBranch(testSiteId)).id,
+        createdById: TEST_USER_ID,
         createdByType: 'user',
       });
       createdBranchIds.push(branch.id);
@@ -486,8 +501,8 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
       const branch = await createBranch({
         siteId: testSiteId,
         name: `invalid-transition-${String(Date.now())}`,
-        sourceBranchId: (await getMainBranch(testSiteId))!.id,
-        createdById: 'test-user-id',
+        sourceBranchId: assertDefined(await getMainBranch(testSiteId)).id,
+        createdById: TEST_USER_ID,
         createdByType: 'user',
       });
       createdBranchIds.push(branch.id);
@@ -508,8 +523,8 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
       const branch = await createBranch({
         siteId: testSiteId,
         name: `delete-test-${String(Date.now())}`,
-        sourceBranchId: (await getMainBranch(testSiteId))!.id,
-        createdById: 'test-user-id',
+        sourceBranchId: assertDefined(await getMainBranch(testSiteId)).id,
+        createdById: TEST_USER_ID,
         createdByType: 'user',
       });
       // Don't add to createdBranchIds since we're deleting it
@@ -531,7 +546,7 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
       const mainBranch = await getMainBranch(testSiteId);
       expect(mainBranch).not.toBeNull();
 
-      await expect(deleteBranch(mainBranch!.id)).rejects.toThrow(MainBranchProtectionError);
+      await expect(deleteBranch(assertDefined(mainBranch).id)).rejects.toThrow(MainBranchProtectionError);
     });
   });
 
@@ -547,7 +562,7 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
       // Create main branch for site2
       const mainBranch2 = await createMainBranch({
         siteId: site2.id,
-        createdById: 'test-user-id',
+        createdById: TEST_USER_ID,
         createdByType: 'user',
       });
       createdBranchIds.push(mainBranch2.id);
@@ -557,7 +572,7 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
         siteId: site2.id,
         name: 'feature-login', // Same name as in testSiteId
         sourceBranchId: mainBranch2.id,
-        createdById: 'test-user-id',
+        createdById: TEST_USER_ID,
         createdByType: 'user',
       });
       createdBranchIds.push(branch.id);

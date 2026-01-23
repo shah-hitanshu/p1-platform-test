@@ -56,7 +56,7 @@ describe('Phase 3.2: Branch Service', () => {
   }
 
   // Helper to create a main branch row
-  function createMainBranchRow(siteId: string = 'site-uuid-456'): MockBranchRow {
+  function createMainBranchRow(siteId = 'site-uuid-456'): MockBranchRow {
     return createMockBranchRow({
       id: 'main-branch-uuid',
       site_id: siteId,

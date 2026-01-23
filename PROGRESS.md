@@ -231,6 +231,53 @@ This document tracks the implementation progress of the Collaborative JSON State
 }
 ```
 
+### Phase 3.2: Branch Operations
+
+**Status:** Complete
+**Commits:**
+- `bd57bd2` - Add Phase 3.2 TDD tests for Branch Service
+- `4262c9f` - Implement Phase 3.2: Branch Service
+
+#### Deliverables:
+- [x] Branch Service (`workers/src/services/branch-service.ts`)
+  - `createBranch()` - create branch from source branch
+  - `createMainBranch()` - create main branch for a site
+  - `getBranch()` - retrieve branch by ID
+  - `getBranchByName()` - retrieve branch by name within site
+  - `getMainBranch()` - retrieve main branch for site
+  - `listBranches()` - list branches with status filter and pagination
+  - `updateBranch()` - update branch name/description
+  - `updateBranchStatus()` - update status with transition validation
+  - `deleteBranch()` - delete branch (with main branch protection)
+  - `isValidStatusTransition()` - check if status transition is valid
+- [x] Error Classes
+  - `SiteNotFoundError` - site doesn't exist
+  - `BranchNotFoundError` - branch doesn't exist
+  - `DuplicateBranchNameError` - branch name already exists in site
+  - `InvalidBranchParamsError` - validation errors
+  - `MainBranchProtectionError` - cannot delete/archive main branch
+  - `InvalidBranchStatusTransitionError` - invalid status transition
+- [x] Status Transition Rules
+  - `active → review` (submit for review)
+  - `active → archived` (archive without merging)
+  - `review → active` (back to development)
+  - `review → merged` (complete merge)
+  - Terminal states: `merged`, `archived`
+- [x] Service exports (`workers/src/services/index.ts`)
+- [x] Test suite
+  - 63 unit tests for Branch Service
+  - 28 integration tests for Branch Service
+  - 91 tests total
+
+---
+
+### Infrastructure Validation (Post Phase 3.1)
+
+**Status:** Complete
+**Purpose:** Validate Cloudflare Workers + PostgreSQL stack before building full API
+
+(See Infrastructure Validation section above for details)
+
 #### Decision: Minimal Infrastructure Validation
 - **Date:** 2026-01-23
 - **Context:** Question arose whether to build full API endpoints alongside services or wait until Phase 7
@@ -278,12 +325,6 @@ This document tracks the implementation progress of the Collaborative JSON State
 ## Outstanding Work
 
 ### Phase 3: Document and Branch Management
-
-#### Phase 3.2: Branch Operations
-- [ ] Branch creation from source
-- [ ] Branch listing and filtering
-- [ ] Branch status management
-- [ ] Main branch protection
 
 #### Phase 3.3: Checkpoint System
 - [ ] Checkpoint creation
@@ -442,6 +483,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-23 | 3.2 | Branch Operations complete (63 unit + 28 integration tests) |
 | 2026-01-23 | Infra | Infrastructure validation: /health endpoint, real postgres connection, DO stubs |
 | 2026-01-23 | 3.1 | Site and Document Operations complete (69 unit + 24 integration tests) |
 | 2026-01-23 | 2.2 | Authorization System complete (92 tests) |
@@ -466,7 +508,8 @@ Template for future decisions:
 | Guest Access | 31 | - |
 | Site Service | 31 | 12 |
 | Document Service | 38 | 12 |
-| **Total** | **345** | **24** |
+| Branch Service | 63 | 28 |
+| **Total** | **408** | **52** |
 
 ---
 
