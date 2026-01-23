@@ -163,16 +163,43 @@ This document tracks the implementation progress of the Collaborative JSON State
 - [x] Test suite
   - 92 tests across 4 test files (roles, authorization, middleware, guest-access)
 
+### Phase 3.1: Site and Document Operations
+
+**Status:** Complete
+**Commits:** (pending)
+
+#### Deliverables:
+- [x] Site Service (`workers/src/services/site-service.ts`)
+  - `createSite()` - create site with workflow settings
+  - `getSite()` - retrieve site by ID
+  - `getSiteByPantheonId()` - retrieve site by Pantheon site ID
+  - `updateSite()` - update site name or workflow settings (with merge)
+  - `deleteSite()` - delete site
+  - `listSites()` - list sites with pagination
+  - `DuplicatePantheonSiteIdError` - unique constraint violation
+  - `InvalidSiteParamsError` - validation errors
+- [x] Document Service (`workers/src/services/document-service.ts`)
+  - `createDocument()` - create document at path
+  - `getDocument()` - retrieve document by ID
+  - `getDocumentByPath()` - retrieve document by path within site
+  - `updateDocumentPath()` - move document to new path
+  - `deleteDocument()` - delete document
+  - `listDocuments()` - list documents with pagination and pathPrefix filter
+  - `documentExists()` - check if document exists at path
+  - `SiteNotFoundError` - foreign key violation
+  - `DuplicateDocumentPathError` - unique constraint violation
+  - `InvalidDocumentPathError` - path format validation
+- [x] Service exports (`workers/src/services/index.ts`)
+- [x] Test suite
+  - 31 tests for Site Service
+  - 38 tests for Document Service
+  - 69 tests total
+
 ---
 
 ## Outstanding Work
 
 ### Phase 3: Document and Branch Management
-
-#### Phase 3.1: Site and Document Operations
-- [ ] Site CRUD operations
-- [ ] Document CRUD operations
-- [ ] Path-based document lookup
 
 #### Phase 3.2: Branch Operations
 - [ ] Branch creation from source
@@ -337,6 +364,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-23 | 3.1 | Site and Document Operations complete (69 tests) |
 | 2026-01-23 | 2.2 | Authorization System complete (92 tests) |
 | 2026-01-23 | 2.1 | Mock Identity Provider complete (44 tests) |
 | 2026-01-23 | 1.3 | Core TypeScript types complete (50 types) |
