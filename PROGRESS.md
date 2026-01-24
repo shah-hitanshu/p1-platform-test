@@ -565,7 +565,7 @@ This document tracks the implementation progress of the Collaborative JSON State
 **Status:** Complete
 **Commits:**
 - `f3dc473` - Add Phase 5.2c TDD tests for CRDT Merge Service
-- (pending) - Implement Phase 5.2c: CRDT Merge Service
+- `7a5a8dd` - Implement Phase 5.2c: CRDT Merge Service
 
 ##### Deliverables:
 - [x] CRDT Merge Service (`workers/src/services/crdt-merge-service.ts`)
@@ -582,10 +582,31 @@ This document tracks the implementation progress of the Collaborative JSON State
 - [x] Test suite: 14 tests
 
 #### Phase 5.3: Merge Execution Service
-**Status:** Pending
-- [ ] Full merge workflow orchestration
-- [ ] Merge request status updates
-- [ ] Post-merge checkpoint creation
+**Status:** Complete
+**Commits:**
+- `71e9340` - Add Phase 5.3 TDD tests for Merge Execution Service
+- `520989b` - Implement Phase 5.3: Merge Execution Service
+
+##### Deliverables:
+- [x] Merge Execution Service (`workers/src/services/merge-execution-service.ts`)
+  - `executeMerge()` - full merge workflow for approved requests
+  - `executeMergeWithResolution()` - merge with automatic conflict resolution
+  - `previewMerge()` - preview changes and conflicts before merge
+- [x] Merge Workflow
+  1. Validate merge request is approved
+  2. Detect conflicts
+  3. Copy source changes to target branch
+  4. Create post-merge checkpoint
+  5. Update merge request status to merged
+- [x] Resolution Strategies Support
+  - `take-source` via resolveAllConflicts
+  - `take-target` via resolveAllConflicts
+  - `merge-crdt` via resolveWithCrdtMerge
+- [x] Error Classes
+  - `MergeNotAllowedError` - merge request not in approved status
+  - `MergeConflictsError` - conflicts prevent merge
+  - `MergeExecutionError` - merge execution failed
+- [x] Test suite: 13 tests
 
 ---
 
@@ -708,6 +729,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 5.3 | Merge Execution Service complete (13 tests) |
 | 2026-01-24 | 5.2c | CRDT Merge Service complete (14 tests) |
 | 2026-01-24 | 5.2b | Conflict Resolution Service complete (15 tests) |
 | 2026-01-24 | 5.2a | Conflict Detection Service complete (13 tests) |
@@ -751,7 +773,8 @@ Template for future decisions:
 | Conflict Detection Service | 13 | - |
 | Conflict Resolution Service | 15 | - |
 | CRDT Merge Service | 14 | - |
-| **Total** | **652** | **52** |
+| Merge Execution Service | 13 | - |
+| **Total** | **665** | **52** |
 
 ---
 
