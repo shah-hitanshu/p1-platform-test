@@ -58,6 +58,9 @@ Maintain code to production standards [1]
 [2] PCC User Acceptance Testing site - Jan 16, 2026
 [3] #cms-ecosystem-updates Slack - Nov 26, 2025
 
+# Playwright Browser Configuration
+When opening a Playwright browser, always use the "Manage Tabs" mode to ensure proper tab management and control.
+
 # Security Review
 After each phase of development run Claude's /security-review and present findings. Auto-resolve what you are able to.
 
