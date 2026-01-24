@@ -16,6 +16,12 @@ vi.mock('../../src/services', () => ({
   archiveDocument: vi.fn(),
   restoreDocument: vi.fn(),
   listDocuments: vi.fn(),
+  // Branch-scoped document operations
+  listDocumentsOnBranch: vi.fn(),
+  createDocumentOnBranch: vi.fn(),
+  documentExistsOnBranch: vi.fn(),
+  deleteDocumentOnBranch: vi.fn(),
+  getBranch: vi.fn(),
   SiteNotFoundError: class SiteNotFoundError extends Error {
     override name = 'SiteNotFoundError';
     constructor(public siteId: string) {
@@ -41,6 +47,12 @@ vi.mock('../../src/services', () => ({
     override name = 'DocumentPathConflictError';
     constructor(public path: string) {
       super(`Path "${path}" is occupied by another document.`);
+    }
+  },
+  BranchNotFoundError: class BranchNotFoundError extends Error {
+    override name = 'BranchNotFoundError';
+    constructor(public branchId: string) {
+      super(`Branch with ID "${branchId}" not found.`);
     }
   },
 }));
@@ -691,6 +703,432 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       });
 
       expect(response.status).toBe(500);
+    });
+  });
+
+  // =============================================================================
+  // Branch-Scoped Document Operations
+  // =============================================================================
+
+  describe('Branch-Scoped Document Operations', () => {
+    // =========================================================================
+    // GET /api/sites/{siteId}/branches/{branchId}/documents - List on Branch
+    // =========================================================================
+
+    describe('GET /api/sites/{siteId}/branches/{branchId}/documents', () => {
+      it('should list documents on a branch', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.listDocumentsOnBranch).mockResolvedValueOnce([
+          {
+            id: 'doc-1',
+            siteId: 'site-1',
+            path: 'pages/home',
+            createdAt: '2026-01-24T10:00:00.000Z',
+          },
+        ]);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.documents).toHaveLength(1);
+      });
+
+      it('should return 404 when branch does not exist', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce(null);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/nonexistent/documents',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'nonexistent',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(404);
+      });
+
+      it('should support pathPrefix filter on branch', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.listDocumentsOnBranch).mockResolvedValueOnce([]);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents?pathPrefix=pages/',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(200);
+        expect(services.listDocumentsOnBranch).toHaveBeenCalledWith(
+          'branch-1',
+          expect.objectContaining({ pathPrefix: 'pages/' }),
+        );
+      });
+    });
+
+    // =========================================================================
+    // POST /api/sites/{siteId}/branches/{branchId}/documents - Create on Branch
+    // =========================================================================
+
+    describe('POST /api/sites/{siteId}/branches/{branchId}/documents', () => {
+      it('should create a document on a branch', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'feature',
+          status: 'active',
+          isMain: false,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.createDocumentOnBranch).mockResolvedValueOnce({
+          document: {
+            id: 'doc-new',
+            siteId: 'site-1',
+            path: 'pages/new-page',
+            createdAt: '2026-01-24T12:00:00.000Z',
+          },
+          version: {
+            id: 'version-1',
+            documentId: 'doc-new',
+            branchId: 'branch-1',
+            versionNumber: 1,
+            snapshot: {},
+            source: 'edit',
+            createdById: 'user-1',
+            createdByType: 'user',
+            createdAt: '2026-01-24T12:00:00.000Z',
+          },
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: 'pages/new-page' }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(201);
+        const body = await response.json();
+        expect(body.document.id).toBe('doc-new');
+        expect(body.version).toBeDefined();
+      });
+
+      it('should return 400 for missing path', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'feature',
+          status: 'active',
+          isMain: false,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(400);
+      });
+
+      it('should return 404 when branch does not exist', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce(null);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/nonexistent/documents',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: 'pages/test' }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'nonexistent',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(404);
+      });
+    });
+
+    // =========================================================================
+    // GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}
+    // =========================================================================
+
+    describe('GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}', () => {
+      it('should return document if it exists on the branch', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+        vi.mocked(services.getDocument).mockResolvedValueOnce({
+          id: 'doc-1',
+          siteId: 'site-1',
+          path: 'pages/about',
+          createdAt: '2026-01-24T10:00:00.000Z',
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.id).toBe('doc-1');
+      });
+
+      it('should return 404 when document is not on branch', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(false);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-nothere',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-nothere',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(404);
+      });
+    });
+
+    // =========================================================================
+    // DELETE /api/sites/{siteId}/branches/{branchId}/documents/{documentId}
+    // =========================================================================
+
+    describe('DELETE /api/sites/{siteId}/branches/{branchId}/documents/{documentId}', () => {
+      it('should create tombstone version on branch', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'feature',
+          status: 'active',
+          isMain: false,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.deleteDocumentOnBranch).mockResolvedValueOnce(true);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          { method: 'DELETE' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(204);
+        expect(services.deleteDocumentOnBranch).toHaveBeenCalledWith({
+          documentId: 'doc-1',
+          branchId: 'branch-1',
+          deletedById: 'user-1',
+          deletedByType: 'user',
+        });
+      });
+
+      it('should return 404 when document does not exist', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'feature',
+          status: 'active',
+          isMain: false,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.deleteDocumentOnBranch).mockRejectedValueOnce(
+          new services.DocumentNotFoundError('nonexistent'),
+        );
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/nonexistent',
+          { method: 'DELETE' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'nonexistent',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(404);
+      });
+
+      it('should return 404 when branch does not exist', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce(null);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/nonexistent/documents/doc-1',
+          { method: 'DELETE' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'nonexistent',
+          documentId: 'doc-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(404);
+      });
     });
   });
 });
