@@ -14,6 +14,7 @@ import {
   updateBranchStatus,
   deleteBranch,
   getLatestCheckpoint,
+  createCheckpoint,
   BranchNotFoundError,
   SiteNotFoundError,
   DuplicateBranchNameError,
@@ -113,10 +114,18 @@ async function handleCreateBranch(
     return errorResponse('Only branching from main is currently supported', 400);
   }
 
-  // Get latest checkpoint from source branch
-  const checkpoint = await getLatestCheckpoint(sourceBranch.id);
+  // Get latest checkpoint from source branch, or auto-create one if none exists
+  let checkpoint = await getLatestCheckpoint(sourceBranch.id);
   if (checkpoint === null) {
-    return errorResponse('No checkpoint found on source branch', 400);
+    // Auto-create a checkpoint on the source branch
+    const result = await createCheckpoint({
+      branchId: sourceBranch.id,
+      name: 'Auto-created for branching',
+      checkpointType: 'auto',
+      createdById: context.principal.id,
+      createdByType: context.principal.type,
+    });
+    checkpoint = result.checkpoint;
   }
 
   const branch = await createBranch({
