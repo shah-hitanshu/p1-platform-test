@@ -197,7 +197,7 @@ async function handleDeleteSite(context: SiteRouteContext): Promise<Response> {
   }
 
   // Check for non-archived branches
-  const branches = await listBranches({ siteId: context.siteId });
+  const branches = await listBranches(context.siteId);
   const nonArchivedBranches = branches.filter(
     (b) => b.status !== 'archived' && b.status !== 'merged',
   );

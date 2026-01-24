@@ -10,7 +10,7 @@ import { useApi } from '../hooks/useApi';
 import { getSite } from '../api/sites';
 import { getBranch } from '../api/branches';
 import { listCheckpoints, createCheckpoint } from '../api/checkpoints';
-import { listDocuments } from '../api/documents';
+import { listDocuments, createDocument } from '../api/documents';
 import { ApiResponse } from '../components/ApiResponse';
 import type { Site, Branch, Checkpoint, Document } from '../types';
 import './BranchDetailPage.css';
@@ -18,6 +18,10 @@ import './BranchDetailPage.css';
 interface CreateCheckpointParams {
   name?: string;
   type?: 'manual' | 'auto' | 'merge';
+}
+
+interface CreateDocumentParams {
+  path: string;
 }
 
 export function BranchDetailPage() {
@@ -32,9 +36,13 @@ export function BranchDetailPage() {
     useApi<Document[], [string]>(listDocuments);
   const { execute: createCheckpointRequest, isLoading: isCreatingCheckpoint, error: createCheckpointError } =
     useApi<Checkpoint, [string, string, CreateCheckpointParams?]>(createCheckpoint);
+  const { execute: createDocumentRequest, isLoading: isCreatingDocument, error: createDocumentError } =
+    useApi<Document, [string, CreateDocumentParams]>(createDocument);
 
   const [showCheckpointForm, setShowCheckpointForm] = useState(false);
   const [checkpointName, setCheckpointName] = useState('');
+  const [showDocumentForm, setShowDocumentForm] = useState(false);
+  const [documentPath, setDocumentPath] = useState('');
   const [activeTab, setActiveTab] = useState<'checkpoints' | 'documents'>('checkpoints');
 
   useEffect(() => {
@@ -60,6 +68,18 @@ export function BranchDetailPage() {
       setCheckpointName('');
       setShowCheckpointForm(false);
       fetchCheckpoints(siteId, branchId);
+    }
+  };
+
+  const handleCreateDocument = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!siteId || !documentPath.trim()) return;
+
+    const result = await createDocumentRequest(siteId, { path: documentPath.trim() });
+    if (result) {
+      setDocumentPath('');
+      setShowDocumentForm(false);
+      fetchDocuments(siteId);
     }
   };
 
@@ -269,7 +289,41 @@ export function BranchDetailPage() {
         <section className="content-section">
           <div className="section-header">
             <h2 className="section-title">Documents</h2>
+            <button
+              className="create-btn"
+              onClick={() => setShowDocumentForm(!showDocumentForm)}
+            >
+              {showDocumentForm ? 'Cancel' : '+ Create Document'}
+            </button>
           </div>
+
+          {showDocumentForm && (
+            <div className="create-form-container">
+              <form onSubmit={handleCreateDocument} className="create-form">
+                <input
+                  type="text"
+                  value={documentPath}
+                  onChange={(e) => setDocumentPath(e.target.value)}
+                  placeholder="Document path (e.g., pages/home)..."
+                  className="form-input"
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  className="submit-btn"
+                  disabled={isCreatingDocument || !documentPath.trim()}
+                >
+                  {isCreatingDocument ? 'Creating...' : 'Create'}
+                </button>
+              </form>
+              {createDocumentError && (
+                <div className="create-error">
+                  <span className="error-icon">!</span>
+                  <span className="error-text">{createDocumentError}</span>
+                </div>
+              )}
+            </div>
+          )}
 
           {documentsError && (
             <div className="error-banner">

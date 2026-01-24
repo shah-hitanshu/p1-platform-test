@@ -56,6 +56,19 @@ export interface Document {
   archivedAt?: string | null;
 }
 
+// Document Version types
+export interface DocumentVersion {
+  id: string;
+  documentId: string;
+  branchId: string;
+  versionNumber: number;
+  snapshot: Record<string, unknown>;
+  source: 'edit' | 'merge' | 'revert' | 'import';
+  createdById: string;
+  createdByType: 'user' | 'agent' | 'system';
+  createdAt: string;
+}
+
 // Checkpoint types
 export interface Checkpoint {
   id: string;

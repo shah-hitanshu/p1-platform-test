@@ -8,8 +8,9 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { getSite } from '../api/sites';
-import { listBranches, createBranch } from '../api/branches';
+import { listBranches, createBranch, deleteBranch as deleteBranchApi } from '../api/branches';
 import { ApiResponse } from '../components/ApiResponse';
+import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import type { Site, Branch } from '../types';
 import './SiteDetailPage.css';
 
@@ -27,10 +28,13 @@ export function SiteDetailPage() {
     useApi<Branch[], [string]>(listBranches);
   const { execute: createBranchRequest, isLoading: isCreating, error: createError } =
     useApi<Branch, [string, CreateBranchParams]>(createBranch);
+  const { execute: deleteBranchRequest, isLoading: isDeleting, error: deleteError } =
+    useApi<void, [string, string]>(deleteBranchApi);
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
   const [selectedParentBranch, setSelectedParentBranch] = useState<string>('');
+  const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null);
 
   useEffect(() => {
     if (siteId) {
@@ -55,6 +59,14 @@ export function SiteDetailPage() {
       setShowCreateForm(false);
       fetchBranches(siteId);
     }
+  };
+
+  const handleDeleteBranch = async () => {
+    if (!branchToDelete || !siteId) return;
+
+    await deleteBranchRequest(siteId, branchToDelete.id);
+    setBranchToDelete(null);
+    fetchBranches(siteId);
   };
 
   const getStatusBadgeClass = (status: Branch['status']) => {
@@ -222,6 +234,14 @@ export function SiteDetailPage() {
                       >
                         View
                       </Link>
+                      {!branch.name.includes('main') && (
+                        <button
+                          className="delete-link"
+                          onClick={() => setBranchToDelete(branch)}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -234,6 +254,16 @@ export function SiteDetailPage() {
           </div>
         )}
       </section>
+
+      <ConfirmDeleteModal
+        isOpen={branchToDelete !== null}
+        resourceType="branch"
+        resourceName={branchToDelete?.name ?? ''}
+        onConfirm={handleDeleteBranch}
+        onCancel={() => setBranchToDelete(null)}
+        isDeleting={isDeleting}
+        error={deleteError}
+      />
     </div>
   );
 }

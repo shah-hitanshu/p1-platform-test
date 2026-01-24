@@ -281,6 +281,23 @@
   color: #fff;
 }
 
+.delete-link {
+  margin-left: 8px;
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+  color: #dc3545;
+  background: none;
+  border: 1px solid #dc3545;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.delete-link:hover {
+  background-color: #dc3545;
+  color: #fff;
+}
+
 /* Status Badge */
 .status-badge {
   display: inline-block;

@@ -7,19 +7,22 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
-import { listSites, createSite as createSiteApi } from '../api/sites';
+import { listSites, createSite as createSiteApi, deleteSite as deleteSiteApi } from '../api/sites';
 import type { CreateSiteParams } from '../api/sites';
 import { ApiResponse } from '../components/ApiResponse';
+import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import type { Site } from '../types';
 import './SitesPage.css';
 
 export function SitesPage() {
   const { data: sites, isLoading, error, execute: fetchSites } = useApi<Site[], []>(listSites);
   const { execute: createSiteRequest, isLoading: isCreating, error: createError } = useApi<Site, [CreateSiteParams]>(createSiteApi);
+  const { execute: deleteSiteRequest, isLoading: isDeleting, error: deleteError } = useApi<void, [string]>(deleteSiteApi);
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newSiteName, setNewSiteName] = useState('');
   const [newPantheonSiteId, setNewPantheonSiteId] = useState('');
+  const [siteToDelete, setSiteToDelete] = useState<Site | null>(null);
 
   useEffect(() => {
     fetchSites();
@@ -39,6 +42,14 @@ export function SitesPage() {
       setShowCreateForm(false);
       fetchSites();
     }
+  };
+
+  const handleDeleteSite = async () => {
+    if (!siteToDelete) return;
+
+    await deleteSiteRequest(siteToDelete.id);
+    setSiteToDelete(null);
+    fetchSites();
   };
 
   return (
@@ -128,6 +139,12 @@ export function SitesPage() {
                     <Link to={`/sites/${site.id}`} className="view-link">
                       View
                     </Link>
+                    <button
+                      className="delete-link"
+                      onClick={() => setSiteToDelete(site)}
+                    >
+                      Delete
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -139,6 +156,16 @@ export function SitesPage() {
           <p>No sites found. Create your first site to get started.</p>
         </div>
       )}
+
+      <ConfirmDeleteModal
+        isOpen={siteToDelete !== null}
+        resourceType="site"
+        resourceName={siteToDelete?.name ?? ''}
+        onConfirm={handleDeleteSite}
+        onCancel={() => setSiteToDelete(null)}
+        isDeleting={isDeleting}
+        error={deleteError}
+      />
     </div>
   );
 }
