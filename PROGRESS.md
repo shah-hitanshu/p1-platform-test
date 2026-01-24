@@ -1743,10 +1743,42 @@ Template for future decisions:
 
 ---
 
+### Phase 9: PDS (Pantheon Design System) Migration
+
+**Status:** In Progress
+**Branch:** `feature/pds-migration`
+
+#### Phase 9.1: Foundation Setup
+**Status:** Complete
+**Commit:** `da551cf` - Phase 1: PDS Foundation Setup
+
+**Deliverables:**
+- [x] Import PDS global styles (`@pantheon-systems/design-toolkit-react/dist/index.css`)
+- [x] Update `index.css` to use PDS design tokens for fallback colors
+- [x] Fix TypeScript build error: add 'abandoned' to `BranchStatus` type
+- [x] Create comprehensive migration plan (`PDS-MIGRATION-PLAN.md`)
+  - 7 phases covering all UI components
+  - E2E test migration strategy with selector mappings
+  - Component-by-component migration checklist
+
+**Migration Plan Overview:**
+| Phase | Focus | Status |
+|-------|-------|--------|
+| 1 | Foundation Setup | Complete |
+| 2 | Core UI (buttons, inputs, modal) | Pending |
+| 3 | Data Display (tables, badges, cards) | Pending |
+| 4 | Navigation (breadcrumbs, tabs, sidebar) | Pending |
+| 5 | Feedback (loading, notifications, empty states) | Pending |
+| 6 | Specialized (code display, custom panels) | Pending |
+| 7 | E2E Test Finalization | Pending |
+
+---
+
 ## Change History
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 9.1 | PDS Foundation: import global styles, migration plan with E2E test strategy |
 | 2026-01-24 | 8.22 | Branch archive button, site deletion fix: archive UI for branches, site delete allowed with only main branch |
 | 2026-01-24 | 8.21 | Cascade delete fix: deleteBranch/deleteSite now clean up all related FK data |
 | 2026-01-24 | 8.20 | E2E test stability: wait for API responses, improved assertions, robust helper functions |
@@ -1846,4 +1878,4 @@ Template for future decisions:
 
 ---
 
-*Last updated: 2026-01-24 (Phase 8.22 - Branch Archive Button and Site Deletion Fix)*
+*Last updated: 2026-01-24 (Phase 9.1 - PDS Foundation Setup)*
