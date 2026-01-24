@@ -22,6 +22,10 @@ vi.mock('../../src/services', () => ({
   documentExistsOnBranch: vi.fn(),
   deleteDocumentOnBranch: vi.fn(),
   getBranch: vi.fn(),
+  // Document version operations
+  getLatestDocumentVersion: vi.fn(),
+  listDocumentVersions: vi.fn(),
+  createDocumentVersion: vi.fn(),
   SiteNotFoundError: class SiteNotFoundError extends Error {
     override name = 'SiteNotFoundError';
     constructor(public siteId: string) {
@@ -54,6 +58,9 @@ vi.mock('../../src/services', () => ({
     constructor(public branchId: string) {
       super(`Branch with ID "${branchId}" not found.`);
     }
+  },
+  InvalidDocumentVersionParamsError: class InvalidDocumentVersionParamsError extends Error {
+    override name = 'InvalidDocumentVersionParamsError';
   },
 }));
 
@@ -1128,6 +1135,475 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         });
 
         expect(response.status).toBe(404);
+      });
+    });
+
+    // =========================================================================
+    // Document Version Routes
+    // =========================================================================
+
+    // GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions
+    describe('GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions', () => {
+      it('should list document versions', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+        vi.mocked(services.listDocumentVersions).mockResolvedValueOnce([
+          {
+            id: 'version-2',
+            documentId: 'doc-1',
+            branchId: 'branch-1',
+            versionNumber: 2,
+            snapshot: { title: 'Updated' },
+            source: 'edit',
+            createdById: 'user-1',
+            createdByType: 'user',
+            createdAt: '2026-01-24T12:00:00.000Z',
+          },
+          {
+            id: 'version-1',
+            documentId: 'doc-1',
+            branchId: 'branch-1',
+            versionNumber: 1,
+            snapshot: { title: 'Initial' },
+            source: 'edit',
+            createdById: 'user-1',
+            createdByType: 'user',
+            createdAt: '2026-01-24T10:00:00.000Z',
+          },
+        ]);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          versionsPath: true,
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.versions).toHaveLength(2);
+        expect(body.versions[0].versionNumber).toBe(2);
+        expect(body.versions[1].versionNumber).toBe(1);
+      });
+
+      it('should return 404 when branch does not exist', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce(null);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/nonexistent/documents/doc-1/versions',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'nonexistent',
+          documentId: 'doc-1',
+          versionsPath: true,
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(404);
+      });
+
+      it('should return 404 when document does not exist on branch', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(false);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-nothere/versions',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-nothere',
+          versionsPath: true,
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(404);
+      });
+    });
+
+    // GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/latest
+    describe('GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/latest', () => {
+      it('should return the latest document version', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+        vi.mocked(services.getLatestDocumentVersion).mockResolvedValueOnce({
+          id: 'version-3',
+          documentId: 'doc-1',
+          branchId: 'branch-1',
+          versionNumber: 3,
+          snapshot: { content: [{ type: 'Heading', props: { title: 'Hello' } }], root: {} },
+          source: 'edit',
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T14:00:00.000Z',
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions/latest',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          versionsPath: true,
+          versionAction: 'latest',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.id).toBe('version-3');
+        expect(body.versionNumber).toBe(3);
+        expect(body.snapshot.content).toBeDefined();
+      });
+
+      it('should return 404 when no versions exist', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+        vi.mocked(services.getLatestDocumentVersion).mockResolvedValueOnce(null);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions/latest',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          versionsPath: true,
+          versionAction: 'latest',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(404);
+      });
+    });
+
+    // POST /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions
+    describe('POST /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions', () => {
+      it('should create a new document version', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+        vi.mocked(services.createDocumentVersion).mockResolvedValueOnce({
+          id: 'version-new',
+          documentId: 'doc-1',
+          branchId: 'branch-1',
+          versionNumber: 4,
+          snapshot: { content: [{ type: 'Text', props: { text: 'Hello World' } }] },
+          source: 'edit',
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T15:00:00.000Z',
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              snapshot: { content: [{ type: 'Text', props: { text: 'Hello World' } }] },
+            }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          versionsPath: true,
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(201);
+        const body = await response.json();
+        expect(body.id).toBe('version-new');
+        expect(body.versionNumber).toBe(4);
+        expect(body.source).toBe('edit');
+        expect(services.createDocumentVersion).toHaveBeenCalledWith({
+          documentId: 'doc-1',
+          branchId: 'branch-1',
+          snapshot: { content: [{ type: 'Text', props: { text: 'Hello World' } }] },
+          source: 'edit',
+          createdById: 'user-1',
+          createdByType: 'user',
+        });
+      });
+
+      it('should return 400 when snapshot is missing', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          versionsPath: true,
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(400);
+        const body = await response.json();
+        expect(body.error).toContain('snapshot');
+      });
+
+      it('should return 400 when snapshot is not an object', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ snapshot: 'not an object' }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          versionsPath: true,
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(400);
+        const body = await response.json();
+        expect(body.error).toContain('object');
+      });
+
+      it('should return 404 when document does not exist on branch', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(false);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-nothere/versions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ snapshot: { title: 'Test' } }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-nothere',
+          versionsPath: true,
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(404);
+      });
+
+      it('should accept any valid JSON object as snapshot (Puck-like structure)', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        const puckSnapshot = {
+          content: [
+            { type: 'HeadingBlock', props: { id: 'h1', title: 'Welcome' } },
+            { type: 'TextBlock', props: { id: 't1', text: 'Hello world' } },
+          ],
+          root: { props: { title: 'My Page' } },
+          zones: {},
+        };
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+        vi.mocked(services.createDocumentVersion).mockResolvedValueOnce({
+          id: 'version-puck',
+          documentId: 'doc-1',
+          branchId: 'branch-1',
+          versionNumber: 1,
+          snapshot: puckSnapshot,
+          source: 'edit',
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T15:00:00.000Z',
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ snapshot: puckSnapshot }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          versionsPath: true,
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(201);
+        const body = await response.json();
+        expect(body.snapshot).toEqual(puckSnapshot);
       });
     });
   });
