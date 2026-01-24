@@ -153,3 +153,15 @@ export type {
   CheckpointDocument as MergeBaseCheckpointDocument,
   BranchInLineage,
 } from './merge-base-service';
+
+// Conflict Detection Service
+export {
+  detectConflicts,
+  checkMergeability,
+  NoMergeBaseError,
+} from './conflict-detection-service';
+
+export type {
+  ConflictDetectionResult,
+  MergeabilityResult,
+} from './conflict-detection-service';
