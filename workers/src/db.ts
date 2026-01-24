@@ -5,8 +5,16 @@
  * This module is designed to work with Cloudflare Workers and the postgres package.
  *
  * IMPORTANT: Cloudflare Workers cannot share I/O objects (like database connections)
- * across request contexts. This module creates a fresh connection for each request
- * and provides a request-scoped database context.
+ * across request contexts. This module supports two connection modes:
+ *
+ * 1. **Hyperdrive (recommended for production)**: Uses Cloudflare Hyperdrive for
+ *    connection pooling. Hyperdrive handles connection lifecycle management properly
+ *    within Workers, avoiding cross-request I/O errors.
+ *    See: https://developers.cloudflare.com/hyperdrive/
+ *
+ * 2. **Direct connection (local development)**: Creates a fresh connection for each
+ *    request. Works for local development but may produce benign warnings about
+ *    cross-request I/O in some scenarios.
  *
  * @see collaborative-state-system-architecture-v2.2.md
  */
@@ -46,23 +54,46 @@ export interface DatabaseConnection {
 let currentConnection: DatabaseConnection | null = null;
 
 /**
+ * Options for creating a database connection.
+ */
+export interface ConnectionOptions {
+  /**
+   * Whether this connection is via Hyperdrive.
+   * Hyperdrive connections have different lifecycle management.
+   */
+  isHyperdrive?: boolean;
+}
+
+/**
  * Create a new database connection.
  * This should be called at the start of each request.
  *
- * @param connectionString - PostgreSQL connection string
+ * @param connectionString - PostgreSQL connection string (from Hyperdrive or direct)
+ * @param options - Connection options
  * @returns Database connection
  */
-export function createDatabaseConnection(connectionString: string): DatabaseConnection {
+export function createDatabaseConnection(
+  connectionString: string,
+  options: ConnectionOptions = {},
+): DatabaseConnection {
+  const { isHyperdrive = false } = options;
+
   // Create a new postgres connection for this request
+  // Hyperdrive connections use different settings than direct connections
   const sql = postgres(connectionString, {
     // Don't transform undefined to null - let postgres handle it
     transform: {
       undefined: null,
     },
-    // Connection pool settings for Workers - single connection per request
+    // Connection pool settings
+    // Hyperdrive manages pooling, so we use minimal settings
+    // Direct connections need more aggressive cleanup
     max: 1,
-    idle_timeout: 20,
+    idle_timeout: isHyperdrive ? 0 : 20, // Hyperdrive manages idle connections
     connect_timeout: 10,
+    // Hyperdrive requires prepare: false for connection pooling compatibility
+    // See: https://developers.cloudflare.com/hyperdrive/configuration/connect-to-postgres/
+    prepare: isHyperdrive ? false : true,
   });
 
   return {
@@ -88,7 +119,13 @@ export function createDatabaseConnection(connectionString: string): DatabaseConn
       };
     },
     async close(): Promise<void> {
-      await sql.end();
+      // For Hyperdrive connections, closing is optional as Hyperdrive manages lifecycle
+      // For direct connections, we still close but fire-and-forget to avoid cross-request issues
+      try {
+        await sql.end();
+      } catch {
+        // Ignore errors - connection may already be closed or in different request context
+      }
     },
   };
 }
@@ -98,8 +135,12 @@ export function createDatabaseConnection(connectionString: string): DatabaseConn
  * Creates a fresh connection that will be used for all queries in this request.
  *
  * @param connectionString - PostgreSQL connection string
+ * @param options - Connection options
  */
-export function initializeDatabaseFromConnectionString(connectionString: string): void {
+export function initializeDatabaseFromConnectionString(
+  connectionString: string,
+  options: ConnectionOptions = {},
+): void {
   // Close any existing connection (shouldn't happen in normal flow)
   if (currentConnection) {
     // Fire and forget - we're replacing it anyway
@@ -109,7 +150,17 @@ export function initializeDatabaseFromConnectionString(connectionString: string)
   }
 
   // Create a fresh connection for this request
-  currentConnection = createDatabaseConnection(connectionString);
+  currentConnection = createDatabaseConnection(connectionString, options);
+}
+
+/**
+ * Initialize the database from Hyperdrive binding.
+ * Hyperdrive provides managed connection pooling for Cloudflare Workers.
+ *
+ * @param hyperdrive - Hyperdrive binding from env
+ */
+export function initializeDatabaseFromHyperdrive(hyperdrive: Hyperdrive): void {
+  initializeDatabaseFromConnectionString(hyperdrive.connectionString, { isHyperdrive: true });
 }
 
 /**

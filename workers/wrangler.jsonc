@@ -82,9 +82,14 @@
       "kv_namespaces": [
         { "binding": "CONFIG_KV", "id": "REPLACE_WITH_SBX1_CONFIG_KV_ID" },
         { "binding": "SESSION_KV", "id": "REPLACE_WITH_SBX1_SESSION_KV_ID" }
+      ],
+      // Hyperdrive for PostgreSQL connection pooling
+      // Create with: npx wrangler hyperdrive create css-postgres-sbx1 --connection-string="<connection-string>"
+      "hyperdrive": [
+        { "binding": "HYPERDRIVE", "id": "REPLACE_WITH_SBX1_HYPERDRIVE_ID" }
       ]
     },
-    
+
     // Production environment
     "production": {
       "name": "collaborative-state-worker-prod",
@@ -96,6 +101,11 @@
       "kv_namespaces": [
         { "binding": "CONFIG_KV", "id": "REPLACE_WITH_PROD_CONFIG_KV_ID" },
         { "binding": "SESSION_KV", "id": "REPLACE_WITH_PROD_SESSION_KV_ID" }
+      ],
+      // Hyperdrive for PostgreSQL connection pooling
+      // Create with: npx wrangler hyperdrive create css-postgres-prod --connection-string="<connection-string>"
+      "hyperdrive": [
+        { "binding": "HYPERDRIVE", "id": "REPLACE_WITH_PROD_HYPERDRIVE_ID" }
       ]
     }
   }

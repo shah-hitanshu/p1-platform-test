@@ -5,7 +5,11 @@
  * Routes requests to appropriate handlers with CORS and authentication.
  */
 
-import { initializeDatabaseFromConnectionString, query } from './db';
+import {
+  initializeDatabaseFromConnectionString,
+  initializeDatabaseFromHyperdrive,
+  query,
+} from './db';
 import { MockIdentityProvider } from './auth/mock-identity-provider';
 import type { AuthenticatedPrincipal, MockIdentityConfig } from './types';
 
@@ -34,12 +38,16 @@ export interface Env {
   PRESENCE_TTL_SECONDS: string;
 
   // Secrets (from .dev.vars or Vault)
-  POSTGRES_CONNECTION_STRING: string;
+  POSTGRES_CONNECTION_STRING?: string; // Fallback for local dev without Hyperdrive
   FIRESTORE_PROJECT_ID: string;
   FIRESTORE_EMULATOR_HOST?: string;
 
   // Mock Identity Provider (local development only)
   MOCK_JWT_SECRET?: string;
+
+  // Hyperdrive binding (production/staging - handles connection pooling properly)
+  // See: https://developers.cloudflare.com/hyperdrive/
+  HYPERDRIVE?: Hyperdrive;
 
   // Durable Object bindings
   DOCUMENT_STATE: DurableObjectNamespace;
@@ -250,7 +258,18 @@ async function handleHealth(env: Env): Promise<Response> {
 
   // Test database connection
   try {
-    initializeDatabaseFromConnectionString(env.POSTGRES_CONNECTION_STRING);
+    // Prefer Hyperdrive (production) over direct connection (local dev)
+    if (env.HYPERDRIVE !== undefined) {
+      initializeDatabaseFromHyperdrive(env.HYPERDRIVE);
+    } else if (
+      env.POSTGRES_CONNECTION_STRING !== undefined &&
+      env.POSTGRES_CONNECTION_STRING !== ''
+    ) {
+      initializeDatabaseFromConnectionString(env.POSTGRES_CONNECTION_STRING);
+    } else {
+      throw new Error('No database connection configured (HYPERDRIVE or POSTGRES_CONNECTION_STRING)');
+    }
+
     const start = Date.now();
     const result = await query<{ now: string }>('SELECT NOW() as now');
     const latencyMs = Date.now() - start;
@@ -734,7 +753,20 @@ export default {
     const origin = request.headers.get('Origin');
 
     // Initialize database connection
-    initializeDatabaseFromConnectionString(env.POSTGRES_CONNECTION_STRING);
+    // Prefer Hyperdrive (production) over direct connection (local dev)
+    if (env.HYPERDRIVE !== undefined) {
+      initializeDatabaseFromHyperdrive(env.HYPERDRIVE);
+    } else if (
+      env.POSTGRES_CONNECTION_STRING !== undefined &&
+      env.POSTGRES_CONNECTION_STRING !== ''
+    ) {
+      initializeDatabaseFromConnectionString(env.POSTGRES_CONNECTION_STRING);
+    } else {
+      return new Response(
+        JSON.stringify({ error: 'No database connection configured' }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
 
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
