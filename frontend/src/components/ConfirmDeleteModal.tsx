@@ -10,7 +10,7 @@ import './ConfirmDeleteModal.css';
 
 interface ConfirmDeleteModalProps {
   isOpen: boolean;
-  resourceType: 'site' | 'branch' | 'document';
+  resourceType: 'site' | 'branch' | 'document' | 'merge request';
   resourceName: string;
   onConfirm: () => void;
   onCancel: () => void;

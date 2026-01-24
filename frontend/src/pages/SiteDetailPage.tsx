@@ -134,6 +134,9 @@ export function SiteDetailPage() {
             </span>
           </div>
         </div>
+        <Link to={`/sites/${siteId}/merge-requests`} className="merge-requests-link">
+          Merge Requests
+        </Link>
       </header>
 
       {/* Branches Section */}

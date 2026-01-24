@@ -35,11 +35,30 @@
 
 /* Site Header */
 .site-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   background-color: #fff;
   border-radius: 8px;
   padding: 24px;
   margin-bottom: 24px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.merge-requests-link {
+  padding: 10px 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #4a9eff;
+  text-decoration: none;
+  border: 1px solid #4a9eff;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.merge-requests-link:hover {
+  background-color: #4a9eff;
+  color: #fff;
 }
 
 .site-title {

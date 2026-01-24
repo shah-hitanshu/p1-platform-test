@@ -84,18 +84,53 @@ export interface Checkpoint {
 }
 
 // Merge Request types
+export type MergeRequestStatus = 'open' | 'approved' | 'merged' | 'closed' | 'conflicted';
+
+export type DocumentConflictType = 'both-modified' | 'deleted-in-source' | 'deleted-in-target';
+
+export interface DocumentConflict {
+  documentId: string;
+  documentPath: string;
+  conflictType: DocumentConflictType;
+  sourceVersion?: number;
+  targetVersion?: number;
+}
+
+export interface ConflictDetails {
+  documentConflicts: DocumentConflict[];
+  structureConflicts: unknown[];
+}
+
 export interface MergeRequest {
   id: string;
   siteId: string;
   sourceBranchId: string;
   targetBranchId: string;
   title: string;
-  description: string | null;
-  status: 'open' | 'merged' | 'closed' | 'conflict';
+  description?: string;
+  status: MergeRequestStatus;
+  hasConflicts: boolean;
+  conflictDetails?: ConflictDetails;
   createdById: string;
   createdByType: 'user' | 'agent';
   createdAt: string;
   updatedAt: string;
+  mergedAt?: string;
+  mergedById?: string;
+}
+
+export type ConflictResolutionStrategy = 'take-source' | 'take-target' | 'merge-crdt';
+
+export interface MergePreview {
+  canMerge: boolean;
+  hasConflicts: boolean;
+  conflicts: ConflictDetails;
+}
+
+export interface MergeExecuteResult {
+  success: boolean;
+  checkpointId?: string;
+  documentsUpdated: number;
 }
 
 // Health check types

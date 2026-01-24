@@ -1,0 +1,173 @@
+/* Merge Preview Panel Styles */
+
+.merge-preview-panel {
+  margin-top: 16px;
+  padding: 20px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.preview-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.preview-btn {
+  padding: 8px 16px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #fff;
+  background-color: #6c757d;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.preview-btn:hover:not(:disabled) {
+  background-color: #5a6268;
+}
+
+.preview-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.preview-info {
+  margin-bottom: 16px;
+}
+
+.preview-description {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #6c757d;
+}
+
+.preview-description code {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.8125rem;
+  background-color: #e9ecef;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Preview Error */
+.preview-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  border-radius: 6px;
+  color: #721c24;
+  font-size: 0.875rem;
+  margin-bottom: 16px;
+}
+
+.preview-error .error-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  background-color: #721c24;
+  color: #fff;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.preview-error .error-text {
+  flex: 1;
+}
+
+/* Preview Result */
+.preview-result {
+  background-color: #fff;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+  overflow: hidden;
+}
+
+.preview-summary {
+  padding: 16px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.merge-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.merge-status.can-merge {
+  color: #155724;
+}
+
+.merge-status.cannot-merge {
+  color: #721c24;
+}
+
+.merge-status .status-icon {
+  font-size: 1rem;
+}
+
+.conflicts-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background-color: #fff3cd;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: #856404;
+}
+
+.conflicts-warning .warning-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  background-color: #856404;
+  color: #fff;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.conflicts-warning .warning-text {
+  flex: 1;
+}
+
+/* Preview Conflicts */
+.preview-conflicts {
+  padding: 16px;
+}
+
+/* Clean Merge */
+.clean-merge {
+  padding: 16px;
+}
+
+.clean-merge p {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: #155724;
+}

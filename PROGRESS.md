@@ -1468,6 +1468,101 @@ Verified that Git-like branch isolation works correctly:
 - `frontend/src/pages/BranchDetailPage.tsx`
 - `frontend/src/pages/DocumentPage.tsx`
 
+#### Phase 8.16: Merge Request UI
+
+**Status:** Complete
+
+##### Deliverables:
+- [x] Types and API Module (`frontend/src/types/index.ts`, `frontend/src/api/merge-requests.ts`)
+  - Enhanced `MergeRequest` type with `MergeRequestStatus`, `DocumentConflict`, `ConflictDetails`
+  - Added `ConflictResolutionStrategy`, `MergePreview`, `MergeExecuteResult` types
+  - API functions: `listMergeRequests`, `getMergeRequest`, `createMergeRequest`, `updateMergeRequest`, `deleteMergeRequest`
+  - Merge operations: `checkMergeability`, `previewMerge`, `executeMerge`
+
+- [x] Merge Requests List Page (`frontend/src/pages/MergeRequestsPage.tsx`)
+  - Status filter tabs: All, Open, Approved, Conflicted, Merged, Closed
+  - Table view with Title, Source/Target Branch, Status, Created, Actions columns
+  - Status badges with color coding (open=blue, approved=green, conflicted=orange, merged=purple, closed=gray)
+  - Row click navigation to detail page
+  - "+ Create merge request" button
+
+- [x] Create Merge Request Page (`frontend/src/pages/CreateMergeRequestPage.tsx`)
+  - Form with Source Branch, Target Branch, Title, Description fields
+  - Client-side validation (different branches required, title required)
+  - Redirects to detail page on success
+
+- [x] Merge Request Detail Page (`frontend/src/pages/MergeRequestDetailPage.tsx`)
+  - Header with title, status badge, source → target branches
+  - Metadata section with created by, created at, merged at, updated at
+  - Description section
+  - Status-dependent action buttons:
+    - Open: Approve, Close, Delete
+    - Approved: Execute Merge, Close
+    - Conflicted: Resolve Conflicts, Close
+    - Merged: (read-only)
+    - Closed: Reopen, Delete
+  - Delete confirmation modal with name verification
+
+- [x] Conflict Display (`frontend/src/components/ConflictList.tsx`)
+  - Table showing document conflicts
+  - Conflict type badges: Both Modified, Deleted in Source, Deleted in Target
+  - Version information for source and target
+
+- [x] Merge Preview (`frontend/src/components/MergePreviewPanel.tsx`)
+  - "Preview Merge" button to check merge feasibility
+  - Displays canMerge status and conflict summary
+  - Shows conflicts if any exist
+
+- [x] Conflict Resolution (`frontend/src/components/ConflictResolutionPanel.tsx`)
+  - Per-conflict resolution options: Take Source, Take Target, CRDT Merge
+  - "Apply to All" bulk option for quick resolution
+  - "Apply Resolutions and Merge" button
+
+- [x] App Routes Updated (`frontend/src/App.tsx`)
+  - `/sites/:siteId/merge-requests` - List page
+  - `/sites/:siteId/merge-requests/new` - Create page
+  - `/sites/:siteId/merge-requests/:requestId` - Detail page
+
+- [x] Site Detail Page Link (`frontend/src/pages/SiteDetailPage.tsx`)
+  - "Merge Requests" button in header
+
+- [x] E2E Tests (`frontend/tests/merge-requests.spec.ts`)
+  - 20 test cases covering full merge request lifecycle:
+    - List merge requests with status filtering
+    - Create merge request with validation
+    - View merge request detail
+    - Approve, close, reopen status changes
+    - Delete with confirmation modal
+    - Merge preview panel
+    - List view navigation
+
+##### Files Created:
+| File | Purpose |
+|------|---------|
+| `frontend/src/api/merge-requests.ts` | API module for merge requests |
+| `frontend/src/pages/MergeRequestsPage.tsx` | List page |
+| `frontend/src/pages/MergeRequestsPage.css` | List styles |
+| `frontend/src/pages/CreateMergeRequestPage.tsx` | Create form page |
+| `frontend/src/pages/CreateMergeRequestPage.css` | Create form styles |
+| `frontend/src/pages/MergeRequestDetailPage.tsx` | Detail page |
+| `frontend/src/pages/MergeRequestDetailPage.css` | Detail styles |
+| `frontend/src/components/ConflictList.tsx` | Conflict display component |
+| `frontend/src/components/ConflictList.css` | Conflict display styles |
+| `frontend/src/components/MergePreviewPanel.tsx` | Preview panel |
+| `frontend/src/components/MergePreviewPanel.css` | Preview panel styles |
+| `frontend/src/components/ConflictResolutionPanel.tsx` | Resolution UI |
+| `frontend/src/components/ConflictResolutionPanel.css` | Resolution styles |
+| `frontend/tests/merge-requests.spec.ts` | E2E tests |
+
+##### Files Modified:
+| File | Changes |
+|------|---------|
+| `frontend/src/types/index.ts` | Enhanced MergeRequest type, added conflict types |
+| `frontend/src/App.tsx` | Added 3 merge request routes |
+| `frontend/src/pages/SiteDetailPage.tsx` | Added Merge Requests link |
+| `frontend/src/pages/SiteDetailPage.css` | Added link styles |
+| `frontend/src/components/ConfirmDeleteModal.tsx` | Added "merge request" resource type |
+
 #### Future Frontend Work
 
 The following features are candidates for future frontend development phases:
@@ -1475,8 +1570,8 @@ The following features are candidates for future frontend development phases:
 ##### Core Features
 - [x] **Document Version History** - Display version history with revert capability on DocumentPage (Phase 8.15)
 - [x] **Document Content Editing** - JSON editor for modifying document content (Phase 8.15)
-- [ ] **Merge Request UI** - Create, view, and manage merge requests between branches
-- [ ] **Conflict Resolution UI** - Visual interface for resolving merge conflicts
+- [x] **Merge Request UI** - Create, view, and manage merge requests between branches (Phase 8.16)
+- [x] **Conflict Resolution UI** - Visual interface for resolving merge conflicts (Phase 8.16)
 - [ ] **Structure Management** - Create and manage site structures (hierarchies/collections)
 - [ ] **Node Management** - Add, edit, move, and reorder structure nodes
 - [ ] **Document Metadata Editor** - View and edit document metadata within structures
@@ -1640,6 +1735,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 8.16 | Merge Request UI: list, create, detail pages; conflict display; preview panel; resolution UI; E2E tests |
 | 2026-01-24 | 8.15 | Document content editing: version API endpoints, frontend JSON editor, version history, SQL NULL fix |
 | 2026-01-24 | 8.14 | Cloudflare Hyperdrive integration for PostgreSQL connection pooling |
 | 2026-01-24 | 8.13 | Branch isolation E2E test, documented postgres.js Hyperdrive limitation |
@@ -1732,4 +1828,4 @@ Template for future decisions:
 
 ---
 
-*Last updated: 2026-01-24 (Phase 8.15 - Branch Creation Bug Fix)*
+*Last updated: 2026-01-24 (Phase 8.16 - Merge Request UI)*

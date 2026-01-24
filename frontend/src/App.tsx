@@ -13,6 +13,9 @@ import { SitesPage } from './pages/SitesPage';
 import { SiteDetailPage } from './pages/SiteDetailPage';
 import { BranchDetailPage } from './pages/BranchDetailPage';
 import { DocumentPage } from './pages/DocumentPage';
+import { MergeRequestsPage } from './pages/MergeRequestsPage';
+import { CreateMergeRequestPage } from './pages/CreateMergeRequestPage';
+import { MergeRequestDetailPage } from './pages/MergeRequestDetailPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -77,6 +80,9 @@ function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/sites" element={<SitesPage />} />
           <Route path="/sites/:siteId" element={<SiteDetailPage />} />
+          <Route path="/sites/:siteId/merge-requests" element={<MergeRequestsPage />} />
+          <Route path="/sites/:siteId/merge-requests/new" element={<CreateMergeRequestPage />} />
+          <Route path="/sites/:siteId/merge-requests/:requestId" element={<MergeRequestDetailPage />} />
           <Route path="/sites/:siteId/branches/:branchId" element={<BranchDetailPage />} />
           <Route path="/sites/:siteId/branches/:branchId/documents/:documentId" element={<DocumentPage />} />
           <Route path="/sites/:siteId/documents/:documentId" element={<DocumentPage />} />
