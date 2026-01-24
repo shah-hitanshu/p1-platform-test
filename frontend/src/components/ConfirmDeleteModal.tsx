@@ -6,6 +6,13 @@
  */
 
 import { useState } from 'react';
+import {
+  Modal,
+  ModalHeader,
+  ModalContent,
+  Button,
+  Alert,
+} from '@pantheon-systems/design-toolkit-react';
 import './ConfirmDeleteModal.css';
 
 interface ConfirmDeleteModalProps {
@@ -29,7 +36,7 @@ export function ConfirmDeleteModal({
 }: ConfirmDeleteModalProps) {
   const [confirmText, setConfirmText] = useState('');
 
-  if (!isOpen) return null;
+  // Confirmation text is reset in handleClose, which is called via onDismiss
 
   const isConfirmValid = confirmText === resourceName;
 
@@ -46,68 +53,68 @@ export function ConfirmDeleteModal({
   };
 
   return (
-    <div className="modal-overlay" onClick={handleClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2 className="modal-title">Delete {resourceType}?</h2>
-          <button className="modal-close" onClick={handleClose}>
-            &times;
-          </button>
-        </div>
+    <Modal
+      ariaLabel={`Delete ${resourceType} confirmation`}
+      isOpen={isOpen}
+      onDismiss={handleClose}
+      size="small"
+    >
+      <ModalHeader title={`Delete ${resourceType}?`} />
 
-        <div className="modal-body">
-          <div className="warning-banner">
-            <span className="warning-icon">!</span>
-            <div className="warning-text">
-              <strong>This action cannot be undone.</strong>
-              <p>
-                This will permanently delete the {resourceType}{' '}
-                <code>{resourceName}</code> and all associated data.
-              </p>
-            </div>
-          </div>
+      <ModalContent>
+        <Alert type="warning" className="delete-warning-alert">
+          <strong>This action cannot be undone.</strong>
+          <p>
+            This will permanently delete the {resourceType}{' '}
+            <code>{resourceName}</code> and all associated data.
+          </p>
+        </Alert>
 
-          <form onSubmit={handleSubmit}>
-            <label className="confirm-label">
+        <form onSubmit={handleSubmit} className="delete-confirm-form">
+          <div className="confirm-field">
+            <label htmlFor="confirm-input" className="confirm-label">
               Type <code>{resourceName}</code> to confirm:
             </label>
             <input
               type="text"
+              id="confirm-input"
+              className="pds-input"
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
-              className="confirm-input"
               placeholder={`Enter "${resourceName}" to confirm`}
-              autoFocus
               disabled={isDeleting}
+              data-testid="confirm-input"
             />
+          </div>
 
-            {error && (
-              <div className="modal-error">
-                <span className="error-icon">!</span>
-                <span className="error-text">{error}</span>
-              </div>
-            )}
+          {error && (
+            <Alert type="danger" className="delete-error-alert" data-testid="modal-error">
+              {error}
+            </Alert>
+          )}
 
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="cancel-btn"
-                onClick={handleClose}
-                disabled={isDeleting}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="delete-btn"
-                disabled={!isConfirmValid || isDeleting}
-              >
-                {isDeleting ? 'Deleting...' : `Delete ${resourceType}`}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
+          <div className="modal-actions">
+            <Button
+              type="secondary"
+              onClick={handleClose}
+              disabled={isDeleting}
+              data-testid="cancel-button"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="danger"
+              isSubmit
+              onClick={() => {}}
+              disabled={!isConfirmValid || isDeleting}
+              isLoading={isDeleting}
+              data-testid="delete-button"
+            >
+              {isDeleting ? 'Deleting...' : `Delete ${resourceType}`}
+            </Button>
+          </div>
+        </form>
+      </ModalContent>
+    </Modal>
   );
 }

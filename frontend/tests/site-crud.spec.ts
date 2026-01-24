@@ -123,9 +123,9 @@ test.describe('Site Deletion', () => {
     await expect(siteRow).toBeVisible();
     await siteRow.locator('.delete-link').click();
 
-    // Modal should be visible
-    await expect(page.locator('.modal-overlay')).toBeVisible();
-    await expect(page.locator('.modal-title')).toContainText('Delete site?');
+    // Modal should be visible (PDS Modal uses role="dialog" with aria label)
+    const dialog = page.getByRole('dialog', { name: /Delete site confirmation/i });
+    await expect(dialog).toBeVisible();
   });
 
   test('should require typing site name to confirm deletion', async ({ page }) => {
@@ -140,15 +140,15 @@ test.describe('Site Deletion', () => {
     await siteRow.locator('.delete-link').click();
 
     // Delete button should be disabled initially
-    const deleteBtn = page.locator('.modal-content .delete-btn');
+    const deleteBtn = page.getByTestId('delete-button');
     await expect(deleteBtn).toBeDisabled();
 
     // Type wrong name
-    await page.locator('.confirm-input').fill('wrong name');
+    await page.getByTestId('confirm-input').fill('wrong name');
     await expect(deleteBtn).toBeDisabled();
 
     // Type correct name
-    await page.locator('.confirm-input').fill(siteName);
+    await page.getByTestId('confirm-input').fill(siteName);
     await expect(deleteBtn).toBeEnabled();
   });
 
@@ -188,17 +188,17 @@ test.describe('Site Deletion', () => {
     // Try to delete (should fail because of non-main branch)
     const siteRow2 = page.locator(`tr:has-text("${siteName}")`);
     await siteRow2.locator('.delete-link').click();
-    await page.locator('.confirm-input').fill(siteName);
-    await page.locator('.modal-content .delete-btn').click();
+    await page.getByTestId('confirm-input').fill(siteName);
+    await page.getByTestId('delete-button').click();
 
     // Should show error in modal (site has branches)
-    await expect(page.locator('.modal-error')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('modal-error')).toBeVisible({ timeout: 10000 });
 
     // Modal should still be open
-    await expect(page.locator('.modal-overlay')).toBeVisible();
+    await expect(page.getByRole('dialog')).toBeVisible();
 
     // Site should still exist after closing modal
-    await page.locator('.cancel-btn').click();
+    await page.getByTestId('cancel-button').click();
     await expect(page.locator('.sites-table')).toContainText(siteName);
   });
 
@@ -242,16 +242,16 @@ test.describe('Site Deletion', () => {
     // Delete the site (should work now since branch is archived)
     const siteRow2 = page.locator(`tr:has-text("${siteName}")`);
     await siteRow2.locator('.delete-link').click();
-    await page.locator('.confirm-input').fill(siteName);
+    await page.getByTestId('confirm-input').fill(siteName);
 
     const deleteResponsePromise = page.waitForResponse(resp =>
       resp.url().includes('/api/sites/') && resp.request().method() === 'DELETE'
     );
-    await page.locator('.modal-content .delete-btn').click();
+    await page.getByTestId('delete-button').click();
     await deleteResponsePromise;
 
     // Modal should close
-    await expect(page.locator('.modal-overlay')).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 10000 });
 
     // Site should be removed from list
     await expect(page.locator('.sites-table')).not.toContainText(siteName);
@@ -267,13 +267,13 @@ test.describe('Site Deletion', () => {
     // Open delete modal
     const siteRow = page.locator(`tr:has-text("${siteName}")`);
     await siteRow.locator('.delete-link').click();
-    await expect(page.locator('.modal-overlay')).toBeVisible();
+    await expect(page.getByRole('dialog')).toBeVisible();
 
     // Click cancel
-    await page.locator('.cancel-btn').click();
+    await page.getByTestId('cancel-button').click();
 
     // Modal should close
-    await expect(page.locator('.modal-overlay')).not.toBeVisible();
+    await expect(page.getByRole('dialog')).not.toBeVisible();
 
     // Site should still exist
     await expect(page.locator('.sites-table')).toContainText(siteName);
@@ -289,13 +289,13 @@ test.describe('Site Deletion', () => {
     // Open delete modal
     const siteRow = page.locator(`tr:has-text("${siteName}")`);
     await siteRow.locator('.delete-link').click();
-    await expect(page.locator('.modal-overlay')).toBeVisible();
+    await expect(page.getByRole('dialog')).toBeVisible();
 
-    // Click overlay (not the modal content)
-    await page.locator('.modal-overlay').click({ position: { x: 10, y: 10 } });
+    // Click overlay (PDS Modal uses @reach/dialog overlay)
+    await page.locator('[data-reach-dialog-overlay]').click({ position: { x: 10, y: 10 } });
 
     // Modal should close
-    await expect(page.locator('.modal-overlay')).not.toBeVisible();
+    await expect(page.getByRole('dialog')).not.toBeVisible();
 
     // Site should still exist
     await expect(page.locator('.sites-table')).toContainText(siteName);

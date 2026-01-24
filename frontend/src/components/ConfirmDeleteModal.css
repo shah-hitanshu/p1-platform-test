@@ -1,114 +1,44 @@
 /**
  * Confirm Delete Modal Styles
+ *
+ * Minimal overrides for PDS Modal components.
+ * Most styling is provided by PDS.
  */
 
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal-content {
-  background: #fff;
-  border-radius: 8px;
-  max-width: 480px;
-  width: 90%;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-  animation: modalSlideIn 0.2s ease-out;
-}
-
-@keyframes modalSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.modal-title {
+/* Modal title styling */
+.pds-modal-title {
   margin: 0;
   font-size: 1.25rem;
   font-weight: 600;
-  color: #111827;
 }
 
-.modal-close {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  color: #6b7280;
-  cursor: pointer;
-  padding: 0.25rem;
-  line-height: 1;
-}
-
-.modal-close:hover {
-  color: #111827;
-}
-
-.modal-body {
-  padding: 1.5rem;
-}
-
-.warning-banner {
-  display: flex;
-  gap: 0.75rem;
-  padding: 1rem;
-  background: #fef3c7;
-  border: 1px solid #f59e0b;
-  border-radius: 6px;
+/* Alert styling for warning and error */
+.delete-warning-alert {
   margin-bottom: 1.5rem;
 }
 
-.warning-icon {
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f59e0b;
-  color: white;
-  border-radius: 50%;
-  font-weight: bold;
-  font-size: 0.875rem;
-}
-
-.warning-text strong {
-  display: block;
-  color: #92400e;
-  margin-bottom: 0.25rem;
-}
-
-.warning-text p {
-  margin: 0;
-  color: #92400e;
-  font-size: 0.875rem;
-}
-
-.warning-text code {
+.delete-warning-alert code {
   background: rgba(0, 0, 0, 0.1);
   padding: 0.125rem 0.375rem;
   border-radius: 3px;
   font-size: 0.875rem;
+}
+
+.delete-warning-alert p {
+  margin: 0.25rem 0 0;
+}
+
+.delete-error-alert {
+  margin-top: 1rem;
+}
+
+/* Form layout */
+.delete-confirm-form {
+  margin-top: 0;
+}
+
+.confirm-field {
+  margin-bottom: 0;
 }
 
 .confirm-label {
@@ -125,98 +55,33 @@
   font-weight: 600;
 }
 
-.confirm-input {
+/* Input styling using PDS design tokens */
+.pds-input {
   width: 100%;
-  padding: 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 1rem;
-  box-sizing: border-box;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  border: 1px solid var(--dt-color-gray-2, #d1d5db);
+  border-radius: 4px;
+  background-color: white;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
 }
 
-.confirm-input:focus {
+.pds-input:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: var(--dt-color-cyan-3, #02a9e0);
+  box-shadow: 0 0 0 2px rgba(2, 169, 224, 0.2);
 }
 
-.confirm-input:disabled {
-  background: #f9fafb;
+.pds-input:disabled {
+  background-color: var(--dt-color-gray-1, #f3f4f6);
   cursor: not-allowed;
 }
 
-.modal-error {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 1rem;
-  padding: 0.75rem;
-  background: #fef2f2;
-  border: 1px solid #ef4444;
-  border-radius: 6px;
-  color: #dc2626;
-  font-size: 0.875rem;
-}
-
-.modal-error .error-icon {
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #ef4444;
-  color: white;
-  border-radius: 50%;
-  font-weight: bold;
-  font-size: 0.75rem;
-}
-
+/* Action buttons layout */
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
   margin-top: 1.5rem;
-}
-
-.cancel-btn {
-  padding: 0.625rem 1.25rem;
-  background: #f3f4f6;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #374151;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.cancel-btn:hover:not(:disabled) {
-  background: #e5e7eb;
-}
-
-.cancel-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.delete-btn {
-  padding: 0.625rem 1.25rem;
-  background: #dc2626;
-  border: none;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: white;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.delete-btn:hover:not(:disabled) {
-  background: #b91c1c;
-}
-
-.delete-btn:disabled {
-  background: #fca5a5;
-  cursor: not-allowed;
 }

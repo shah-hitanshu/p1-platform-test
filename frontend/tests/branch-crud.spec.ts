@@ -202,9 +202,9 @@ test.describe('Branch Deletion', () => {
     await expect(branchRow).toBeVisible();
     await branchRow.locator('.delete-link').click();
 
-    // Modal should appear
-    await expect(page.locator('.modal-overlay')).toBeVisible();
-    await expect(page.locator('.modal-title')).toContainText('Delete branch?');
+    // Modal should appear (PDS Modal uses role="dialog" with aria label)
+    const dialog = page.getByRole('dialog', { name: /Delete branch confirmation/i });
+    await expect(dialog).toBeVisible();
   });
 
   test('should require typing branch name to confirm deletion', async ({ page }) => {
@@ -225,15 +225,15 @@ test.describe('Branch Deletion', () => {
     await branchRow.locator('.delete-link').click();
 
     // Delete button should be disabled
-    const deleteBtn = page.locator('.modal-content .delete-btn');
+    const deleteBtn = page.getByTestId('delete-button');
     await expect(deleteBtn).toBeDisabled();
 
     // Type wrong name
-    await page.locator('.confirm-input').fill('wrong-name');
+    await page.getByTestId('confirm-input').fill('wrong-name');
     await expect(deleteBtn).toBeDisabled();
 
     // Type correct name
-    await page.locator('.confirm-input').fill(branchName);
+    await page.getByTestId('confirm-input').fill(branchName);
     await expect(deleteBtn).toBeEnabled();
   });
 
@@ -258,11 +258,11 @@ test.describe('Branch Deletion', () => {
     await branchRow.locator('.delete-link').click();
 
     // Confirm deletion
-    await page.locator('.confirm-input').fill(branchName);
-    await page.locator('.modal-content .delete-btn').click();
+    await page.getByTestId('confirm-input').fill(branchName);
+    await page.getByTestId('delete-button').click();
 
     // Wait for modal to close
-    await expect(page.locator('.modal-overlay')).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 10000 });
 
     // Verify branch is removed
     await expect(page.locator('.branches-table')).not.toContainText(branchName);
@@ -284,13 +284,13 @@ test.describe('Branch Deletion', () => {
     // Open modal
     const branchRow = page.locator(`tr:has-text("${branchName}")`);
     await branchRow.locator('.delete-link').click();
-    await expect(page.locator('.modal-overlay')).toBeVisible();
+    await expect(page.getByRole('dialog')).toBeVisible();
 
     // Cancel
-    await page.locator('.cancel-btn').click();
+    await page.getByTestId('cancel-button').click();
 
     // Modal should close
-    await expect(page.locator('.modal-overlay')).not.toBeVisible();
+    await expect(page.getByRole('dialog')).not.toBeVisible();
 
     // Branch should still exist
     await expect(page.locator('.branches-table')).toContainText(branchName);

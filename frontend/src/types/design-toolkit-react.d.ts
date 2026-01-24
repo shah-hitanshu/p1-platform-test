@@ -46,7 +46,8 @@ declare module '@pantheon-systems/design-toolkit-react' {
   export const Modal: ComponentType<ModalProps>;
 
   export interface ModalHeaderProps {
-    children: ReactNode;
+    children?: ReactNode;
+    title?: string;
     className?: string;
   }
 

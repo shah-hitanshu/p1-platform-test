@@ -471,9 +471,9 @@ test.describe('Merge Request Deletion', () => {
     // Click Delete
     await page.locator('.action-delete').click();
 
-    // Modal should appear
-    await expect(page.locator('.modal-overlay')).toBeVisible();
-    await expect(page.locator('.modal-title')).toContainText('Delete merge request?');
+    // Modal should appear (PDS Modal uses role="dialog" with aria label)
+    const dialog = page.getByRole('dialog', { name: /Delete merge request confirmation/i });
+    await expect(dialog).toBeVisible();
   });
 
   test('should delete merge request when confirmation matches', async ({ page }) => {
@@ -497,8 +497,8 @@ test.describe('Merge Request Deletion', () => {
     await page.locator('.action-delete').click();
 
     // Confirm deletion
-    await page.locator('.confirm-input').fill(mrTitle);
-    await page.locator('.modal-content .delete-btn').click();
+    await page.getByTestId('confirm-input').fill(mrTitle);
+    await page.getByTestId('delete-button').click();
 
     // Should redirect to list
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+\/merge-requests$/, { timeout: 10000 });
