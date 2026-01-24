@@ -1213,6 +1213,27 @@ Implemented Git-like branch isolation with two key fixes:
 - **Initial version content** - Defaults to `{}` (empty JSON object)
 - **Document identity stays site-scoped** - Path changes are not branch-scoped
 
+#### Phase 8.11 Bug Fixes
+
+**Status:** Complete
+**Commit:** `7f28611` - Fix branch creation and document routing bugs
+
+##### Bug Fix 1: Branch Creation from Checkpoint Failed
+- **Issue:** Creating a branch failed with "column cd.snapshot does not exist"
+- **Root cause:** The `checkpoint_documents` table only stores `document_version_id` as a reference, not the actual `snapshot` and `crdt_state` columns. The query was incorrectly trying to select these directly.
+- **Fix:** Changed the query in `branch-service.ts` to join with `document_versions` table to retrieve the actual snapshot and crdt_state values.
+
+##### Bug Fix 2: Branch-Scoped Document Routes Returned 404
+- **Issue:** `GET /api/sites/{siteId}/branches/{branchId}/documents` returned 404 Not Found
+- **Root cause:** The branch-scoped document route pattern was missing from `parseApiRoute()` in `index.ts`
+- **Fix:** Added route pattern for branch-scoped documents and passed `branchId` to `handleDocumentRoutes`
+
+##### Verification:
+- Branch creation: ✅ Working
+- Document listing on branch: ✅ Working
+- Document creation on branch: ✅ Working
+- Branch isolation: ✅ Confirmed (documents on feature branch not visible on main)
+
 #### Future Frontend Work
 
 The following features are candidates for future frontend development phases:
@@ -1385,6 +1406,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 8.11 | Bug fixes: checkpoint-based branching query, branch-scoped document routing |
 | 2026-01-24 | 8.11 | Branch isolation: document version inheritance, branch-scoped CRUD APIs, security fix |
 | 2026-01-24 | 8.10 | Usability enhancements: delete confirmation modals, create document, JSON viewer |
 | 2026-01-24 | 8.9 | Enhancement: auto-create checkpoint when branching from branch without one |
