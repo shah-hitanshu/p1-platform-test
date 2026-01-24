@@ -80,6 +80,12 @@ coverage/
 .nyc_output/
 *.lcov
 
+# Playwright
+.playwright-mcp/
+playwright-report/
+test-results/
+playwright/.cache/
+
 # =============================================================================
 # Docker
 # =============================================================================
