@@ -37,7 +37,7 @@ export interface Site {
 }
 
 // Branch types
-export type BranchStatus = 'active' | 'review' | 'merged' | 'archived';
+export type BranchStatus = 'active' | 'review' | 'merged' | 'archived' | 'abandoned';
 
 export interface Branch {
   id: string;

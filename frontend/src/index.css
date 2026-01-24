@@ -1,23 +1,16 @@
-/* Base Styles */
+/**
+ * App-specific style overrides
+ *
+ * This file contains minimal overrides that work alongside the PDS styles.
+ * PDS styles are imported in main.tsx before this file.
+ *
+ * NOTE: During PDS migration, component-specific styles will be removed
+ * as components are converted to use PDS components.
+ */
 
+/* Essential resets that complement PDS */
 * {
   box-sizing: border-box;
-}
-
-:root {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light;
-  color: #333;
-  background-color: #f5f5f5;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
@@ -30,16 +23,7 @@ body {
   min-height: 100vh;
 }
 
-a {
-  color: #4a9eff;
-  text-decoration: none;
-}
-
-a:hover {
-  text-decoration: underline;
-}
-
-/* Loading screen */
+/* Loading screen - will be replaced with PDS Spinner component */
 .loading-screen {
   display: flex;
   flex-direction: column;
@@ -47,14 +31,14 @@ a:hover {
   justify-content: center;
   min-height: 100vh;
   gap: 16px;
-  color: #666;
+  color: var(--dt-color-gray-4, #666);
 }
 
 .loading-screen .loading-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid #ddd;
-  border-top-color: #4a9eff;
+  border: 3px solid var(--dt-color-gray-2, #ddd);
+  border-top-color: var(--dt-color-cyan-3, #02a9e0);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
