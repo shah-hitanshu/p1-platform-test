@@ -812,15 +812,15 @@ describe('Phase 3.2: Branch Service', () => {
   });
 
   describe('deleteBranch', () => {
-    it('should delete branch when found', async () => {
+    it('should delete branch and related data when found', async () => {
       const { deleteBranch } = await import('../../src/services/branch-service');
       const db = await import('../../src/db');
 
-      // First call to check if it's the main branch
+      // First call to check if it's the main branch, then cascade delete queries
       const branchRow = createMockBranchRow({ id: 'branch-123', is_main: false });
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [branchRow] }) // getBranch check
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 }); // DELETE
+        .mockResolvedValue({ rows: [], rowCount: 1 }); // all delete queries
 
       const result = await deleteBranch('branch-123');
 
@@ -848,21 +848,27 @@ describe('Phase 3.2: Branch Service', () => {
       await expect(deleteBranch('main-branch-uuid')).rejects.toThrow(MainBranchProtectionError);
     });
 
-    it('should execute DELETE query for non-main branch', async () => {
+    it('should cascade delete related data before deleting branch', async () => {
       const { deleteBranch } = await import('../../src/services/branch-service');
       const db = await import('../../src/db');
 
       const branchRow = createMockBranchRow({ id: 'branch-to-delete', is_main: false });
       vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [branchRow] })
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+        .mockResolvedValueOnce({ rows: [branchRow] }) // getBranch
+        .mockResolvedValue({ rows: [], rowCount: 1 }); // all delete queries
 
       await deleteBranch('branch-to-delete');
 
-      expect(db.query).toHaveBeenLastCalledWith(
-        expect.stringContaining('DELETE'),
-        expect.arrayContaining(['branch-to-delete']),
+      // Verify the final DELETE on branches table was called
+      const calls = vi.mocked(db.query).mock.calls;
+      const deleteCall = calls.find(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('DELETE') &&
+          call[0].includes('app.branches'),
       );
+      expect(deleteCall).toBeDefined();
+      expect(deleteCall?.[1]).toContain('branch-to-delete');
     });
   });
 

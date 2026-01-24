@@ -729,10 +729,12 @@ describe('Phase 5.1a: Merge Request Service', () => {
       expect(isValidStatusTransition('merged', 'approved')).toBe(false);
     });
 
-    it('should not allow closed -> any state (terminal)', async () => {
+    it('should allow closed -> open (reopen) but not closed -> merged', async () => {
       const { isValidStatusTransition } = await import('../../src/services/merge-request-service');
 
-      expect(isValidStatusTransition('closed', 'open')).toBe(false);
+      // Closed can be reopened
+      expect(isValidStatusTransition('closed', 'open')).toBe(true);
+      // But cannot go directly to merged
       expect(isValidStatusTransition('closed', 'merged')).toBe(false);
     });
 

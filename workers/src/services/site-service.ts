@@ -277,12 +277,98 @@ export async function updateSite(
 }
 
 /**
- * Deletes a site.
+ * Deletes a site and all related data.
+ *
+ * This cascades to delete all branches, documents, and associated data.
  *
  * @param siteId - The site ID
  * @returns True if deleted, false if not found
  */
 export async function deleteSite(siteId: string): Promise<boolean> {
+  // First check if site exists
+  const site = await getSite(siteId);
+  if (!site) {
+    return false;
+  }
+
+  // Get all branch IDs for this site
+  const branchResult = await query<{ id: string }>(
+    'SELECT id FROM app.branches WHERE site_id = $1',
+    [siteId],
+  );
+  const branchIds = branchResult.rows.map((r) => r.id);
+
+  if (branchIds.length > 0) {
+    // Delete merge requests referencing any of these branches
+    await query(
+      `DELETE FROM app.merge_requests
+       WHERE source_branch_id = ANY($1::uuid[]) OR target_branch_id = ANY($1::uuid[])`,
+      [branchIds],
+    );
+
+    // Delete branch document metadata
+    await query(
+      'DELETE FROM app.branch_document_metadata WHERE branch_id = ANY($1::uuid[])',
+      [branchIds],
+    );
+
+    // Delete branch structure state
+    await query(
+      'DELETE FROM app.branch_structure_state WHERE branch_id = ANY($1::uuid[])',
+      [branchIds],
+    );
+
+    // Delete checkpoint related data for checkpoints on these branches
+    await query(
+      `DELETE FROM app.checkpoint_documents
+       WHERE checkpoint_id IN (SELECT id FROM app.checkpoints WHERE branch_id = ANY($1::uuid[]))`,
+      [branchIds],
+    );
+
+    await query(
+      `DELETE FROM app.checkpoint_structures
+       WHERE checkpoint_id IN (SELECT id FROM app.checkpoints WHERE branch_id = ANY($1::uuid[]))`,
+      [branchIds],
+    );
+
+    await query(
+      `DELETE FROM app.checkpoint_document_metadata
+       WHERE checkpoint_id IN (SELECT id FROM app.checkpoints WHERE branch_id = ANY($1::uuid[]))`,
+      [branchIds],
+    );
+
+    // Delete checkpoints
+    await query(
+      'DELETE FROM app.checkpoints WHERE branch_id = ANY($1::uuid[])',
+      [branchIds],
+    );
+
+    // Delete document versions
+    await query(
+      'DELETE FROM app.document_versions WHERE branch_id = ANY($1::uuid[])',
+      [branchIds],
+    );
+
+    // Delete branches (branch_grants and guest_links have ON DELETE CASCADE)
+    await query(
+      'DELETE FROM app.branches WHERE site_id = $1',
+      [siteId],
+    );
+  }
+
+  // Delete documents
+  await query(
+    'DELETE FROM app.documents WHERE site_id = $1',
+    [siteId],
+  );
+
+  // Delete site structures
+  await query(
+    'DELETE FROM app.site_structures WHERE site_id = $1',
+    [siteId],
+  );
+
+  // Finally delete the site
   const result = await query(
     'DELETE FROM app.sites WHERE id = $1',
     [siteId],

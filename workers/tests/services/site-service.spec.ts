@@ -398,11 +398,16 @@ describe('Phase 3.1: Site Service', () => {
   });
 
   describe('deleteSite', () => {
-    it('should delete site when found', async () => {
+    it('should delete site and related data when found', async () => {
       const { deleteSite } = await import('../../src/services/site-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 });
+      // Mock getSite returns a site
+      const mockSiteRow = createMockSiteRow({ id: 'site-123' });
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [mockSiteRow] }) // getSite
+        .mockResolvedValueOnce({ rows: [{ id: 'branch-1' }] }) // get branch IDs
+        .mockResolvedValue({ rows: [], rowCount: 1 }); // all delete queries
 
       const result = await deleteSite('site-123');
 
@@ -413,25 +418,36 @@ describe('Phase 3.1: Site Service', () => {
       const { deleteSite } = await import('../../src/services/site-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
+      // Mock getSite returns no site
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       const result = await deleteSite('non-existent');
 
       expect(result).toBe(false);
     });
 
-    it('should execute DELETE query', async () => {
+    it('should cascade delete branches and related data', async () => {
       const { deleteSite } = await import('../../src/services/site-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 });
+      const mockSiteRow = createMockSiteRow({ id: 'site-to-delete' });
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [mockSiteRow] }) // getSite
+        .mockResolvedValueOnce({ rows: [{ id: 'branch-1' }, { id: 'branch-2' }] }) // get branch IDs
+        .mockResolvedValue({ rows: [], rowCount: 1 }); // all subsequent delete queries
 
       await deleteSite('site-to-delete');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('DELETE'),
-        expect.arrayContaining(['site-to-delete']),
+      // Verify final DELETE on sites table was called
+      const calls = vi.mocked(db.query).mock.calls;
+      const deleteCall = calls.find(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('DELETE') &&
+          call[0].includes('app.sites'),
       );
+      expect(deleteCall).toBeDefined();
+      expect(deleteCall?.[1]).toContain('site-to-delete');
     });
   });
 

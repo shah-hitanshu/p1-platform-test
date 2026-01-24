@@ -652,6 +652,61 @@ export async function deleteBranch(branchId: string): Promise<boolean> {
     throw new MainBranchProtectionError('delete');
   }
 
+  // Delete related data in order to avoid foreign key constraint violations
+  // Note: branch_grants and guest_links have ON DELETE CASCADE, so they are handled automatically
+
+  // 1. Delete merge requests where this branch is source or target
+  await query(
+    'DELETE FROM app.merge_requests WHERE source_branch_id = $1 OR target_branch_id = $1',
+    [branchId],
+  );
+
+  // 2. Delete branch document metadata
+  await query(
+    'DELETE FROM app.branch_document_metadata WHERE branch_id = $1',
+    [branchId],
+  );
+
+  // 3. Delete branch structure state
+  await query(
+    'DELETE FROM app.branch_structure_state WHERE branch_id = $1',
+    [branchId],
+  );
+
+  // 4. Delete checkpoint documents for checkpoints on this branch
+  await query(
+    `DELETE FROM app.checkpoint_documents
+     WHERE checkpoint_id IN (SELECT id FROM app.checkpoints WHERE branch_id = $1)`,
+    [branchId],
+  );
+
+  // 5. Delete checkpoint structures for checkpoints on this branch
+  await query(
+    `DELETE FROM app.checkpoint_structures
+     WHERE checkpoint_id IN (SELECT id FROM app.checkpoints WHERE branch_id = $1)`,
+    [branchId],
+  );
+
+  // 6. Delete checkpoint document metadata for checkpoints on this branch
+  await query(
+    `DELETE FROM app.checkpoint_document_metadata
+     WHERE checkpoint_id IN (SELECT id FROM app.checkpoints WHERE branch_id = $1)`,
+    [branchId],
+  );
+
+  // 7. Delete checkpoints
+  await query(
+    'DELETE FROM app.checkpoints WHERE branch_id = $1',
+    [branchId],
+  );
+
+  // 8. Delete document versions
+  await query(
+    'DELETE FROM app.document_versions WHERE branch_id = $1',
+    [branchId],
+  );
+
+  // 9. Finally, delete the branch
   const result = await query(
     'DELETE FROM app.branches WHERE id = $1',
     [branchId],

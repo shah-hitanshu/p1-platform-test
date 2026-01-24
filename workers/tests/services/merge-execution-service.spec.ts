@@ -135,7 +135,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
           id: 'checkpoint-merged',
           branchId: 'target-branch',
           name: 'Post-merge checkpoint',
-          type: 'post_merge',
+          checkpointType: 'post_merge',
           createdAt: '2026-01-20T11:00:00.000Z',
           createdById: 'user-1',
           createdByType: 'user',
@@ -379,7 +379,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
           id: 'checkpoint-merged',
           branchId: 'target-branch',
           name: 'Post-merge checkpoint',
-          type: 'post_merge',
+          checkpointType: 'post_merge',
           createdAt: '2026-01-20T11:00:00.000Z',
           createdById: 'user-1',
           createdByType: 'user',
@@ -453,7 +453,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
           id: 'checkpoint-merged',
           branchId: 'target-branch',
           name: 'Merge: Feature merge',
-          type: 'post_merge',
+          checkpointType: 'post_merge',
           createdAt: '2026-01-20T11:00:00.000Z',
           createdById: 'user-1',
           createdByType: 'user',
@@ -484,7 +484,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
       // Verify checkpoint was created with post_merge type
       expect(checkpointService.createCheckpoint).toHaveBeenCalledWith(
         expect.objectContaining({
-          type: 'post_merge',
+          checkpointType: 'post_merge',
         }),
       );
     });
@@ -604,7 +604,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
           id: 'checkpoint-merged',
           branchId: 'target-branch',
           name: 'Post-merge checkpoint',
-          type: 'post_merge',
+          checkpointType: 'post_merge',
           createdAt: '2026-01-20T11:00:00.000Z',
           createdById: 'user-1',
           createdByType: 'user',
@@ -716,7 +716,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
           id: 'checkpoint-merged',
           branchId: 'target-branch',
           name: 'Post-merge checkpoint',
-          type: 'post_merge',
+          checkpointType: 'post_merge',
           createdAt: '2026-01-20T11:00:00.000Z',
           createdById: 'user-1',
           createdByType: 'user',
