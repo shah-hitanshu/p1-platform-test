@@ -1,0 +1,64 @@
+/**
+ * Versions Endpoint
+ *
+ * API operations for document versions.
+ */
+
+import type { DocumentVersion, CreateDocumentVersionParams, PaginationOptions } from '../types.js';
+import type { BaseEndpoint } from './base.js';
+
+export class VersionsEndpoint {
+  constructor(private readonly base: BaseEndpoint) {}
+
+  /**
+   * Get the latest version of a document on a branch.
+   */
+  async getLatest(siteId: string, branchId: string, documentId: string): Promise<DocumentVersion> {
+    return this.base.request<DocumentVersion>(
+      `/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/versions/latest`,
+      { method: 'GET' }
+    );
+  }
+
+  /**
+   * List all versions of a document on a branch.
+   */
+  async list(
+    siteId: string,
+    branchId: string,
+    documentId: string,
+    options?: PaginationOptions
+  ): Promise<DocumentVersion[]> {
+    const params = new URLSearchParams();
+    if (options?.limit !== undefined) {
+      params.set('limit', String(options.limit));
+    }
+    if (options?.offset !== undefined) {
+      params.set('offset', String(options.offset));
+    }
+
+    const query = params.toString();
+    const path = query
+      ? `/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/versions?${query}`
+      : `/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/versions`;
+
+    const response = await this.base.request<{ versions: DocumentVersion[] }>(path, {
+      method: 'GET',
+    });
+
+    return response.versions;
+  }
+
+  /**
+   * Create a new version of a document.
+   */
+  async create(siteId: string, params: CreateDocumentVersionParams): Promise<DocumentVersion> {
+    return this.base.request<DocumentVersion>(
+      `/api/sites/${siteId}/branches/${params.branchId}/documents/${params.documentId}/versions`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ snapshot: params.snapshot }),
+      }
+    );
+  }
+}
