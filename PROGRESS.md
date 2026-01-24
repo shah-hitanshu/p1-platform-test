@@ -1747,6 +1747,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 8.21 | Cascade delete fix: deleteBranch/deleteSite now clean up all related FK data |
 | 2026-01-24 | 8.20 | E2E test stability: wait for API responses, improved assertions, robust helper functions |
 | 2026-01-24 | 8.19 | Preview Merge fix: fixed endpoint URL, previewMerge service params, auto-load UX on mount |
 | 2026-01-24 | 8.18 | Execute Merge fix: added /execute endpoint, fixed detectConflicts and checkpointType params |
@@ -1844,4 +1845,4 @@ Template for future decisions:
 
 ---
 
-*Last updated: 2026-01-24 (Phase 8.20 - E2E Test Stability)*
+*Last updated: 2026-01-24 (Phase 8.21 - Cascade Delete Fix)*
