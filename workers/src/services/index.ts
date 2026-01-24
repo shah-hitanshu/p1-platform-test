@@ -184,3 +184,18 @@ export type {
   ResolveDeletedConflictParams,
   DeletedConflictResolutionResult,
 } from './conflict-resolution-service';
+
+// CRDT Merge Service
+export {
+  mergeCrdtStates,
+  resolveWithCrdtMerge,
+  extractSnapshotFromYDoc,
+  InvalidCrdtStateError,
+  MissingCrdtStateError,
+} from './crdt-merge-service';
+
+export type {
+  MergeCrdtStatesParams,
+  MergeCrdtStatesResult,
+  ResolveWithCrdtMergeParams,
+} from './crdt-merge-service';

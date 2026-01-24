@@ -471,15 +471,121 @@ This document tracks the implementation progress of the Collaborative JSON State
 
 ### Phase 5: Merge and Conflict Resolution
 
-#### Phase 5.1: Merge Detection
-- [ ] Merge base calculation
-- [ ] Document-level conflict detection
-- [ ] Conflict details generation
+#### Phase 5.1a: Merge Request Service
+**Status:** Complete
+**Commits:**
+- `b7d4fd2` - Add Phase 5.1a TDD tests for Merge Request Service
+- `69dcef0` - Implement Phase 5.1a: Merge Request Service
 
-#### Phase 5.2: Merge Execution
-- [ ] Conflict resolution strategies (take-source, take-target, merge-crdt, manual)
-- [ ] CRDT merge implementation
-- [ ] Merge request workflow
+##### Deliverables:
+- [x] Merge Request Service (`workers/src/services/merge-request-service.ts`)
+  - `createMergeRequest()` - create merge request between branches
+  - `getMergeRequest()` - retrieve merge request by ID
+  - `listMergeRequests()` - list with status/branch filters and pagination
+  - `updateMergeRequest()` - update title/description
+  - `updateMergeRequestStatus()` - status transitions with validation
+  - `updateMergeRequestConflicts()` - update conflict details
+  - `deleteMergeRequest()` - delete (prevents deleting merged requests)
+  - `isValidStatusTransition()` - validate status transitions
+- [x] Status Transition Rules
+  - `open → approved, closed, conflicted`
+  - `approved → merged, closed, open`
+  - `conflicted → open, closed`
+  - Terminal states: `merged`, `closed`
+- [x] Error Classes
+  - `MergeRequestNotFoundError`
+  - `InvalidMergeRequestParamsError`
+  - `InvalidMergeRequestStatusTransitionError`
+  - `SourceBranchNotFoundError`
+  - `TargetBranchNotFoundError`
+  - `CannotDeleteMergedRequestError`
+- [x] Test suite: 51 tests
+
+#### Phase 5.1b: Merge Base Calculator
+**Status:** Complete
+**Commits:**
+- `da06a4c` - Add Phase 5.1b TDD tests for Merge Base Service
+- `371cd6d` - Implement Phase 5.1b: Merge Base Service
+
+##### Deliverables:
+- [x] Merge Base Service (`workers/src/services/merge-base-service.ts`)
+  - `findMergeBase()` - find common ancestor checkpoint using recursive CTE
+  - `getModifiedDocumentsSince()` - documents changed on branch since checkpoint
+  - `getDocumentsAtCheckpoint()` - all document versions at checkpoint
+  - `getBranchLineage()` - full ancestry from branch to root
+- [x] Recursive CTE for branch lineage traversal
+- [x] Error Classes
+  - `SourceBranchNotFoundError`
+  - `TargetBranchNotFoundError`
+- [x] Test suite: 18 tests
+
+#### Phase 5.2a: Conflict Detection Service
+**Status:** Complete
+**Commits:**
+- `3760a99` - Add Phase 5.2a TDD tests for Conflict Detection Service
+- `c215d95` - Implement Phase 5.2a: Conflict Detection Service
+
+##### Deliverables:
+- [x] Conflict Detection Service (`workers/src/services/conflict-detection-service.ts`)
+  - `detectConflicts()` - find merge base, compare changes, identify conflicts
+  - `checkMergeability()` - convenience check for merge readiness
+- [x] Conflict Types
+  - `both-modified` - same document modified on both branches
+  - `deleted-in-source` - deleted on source, modified on target
+  - `deleted-in-target` - deleted on target, modified on source
+- [x] Error Classes
+  - `NoMergeBaseError` - no common ancestor exists
+- [x] Test suite: 13 tests
+
+#### Phase 5.2b: Conflict Resolution (take-source/take-target)
+**Status:** Complete
+**Commits:**
+- `b40a2cc` - Add Phase 5.2b TDD tests for Conflict Resolution Service
+- `4b46cb7` - Implement Phase 5.2b: Conflict Resolution Service
+
+##### Deliverables:
+- [x] Conflict Resolution Service (`workers/src/services/conflict-resolution-service.ts`)
+  - `resolveConflict()` - resolve single conflict with strategy
+  - `resolveAllConflicts()` - batch resolution with error handling
+  - `resolveDeletedConflict()` - handle deletion conflict scenarios
+- [x] Strategies
+  - `take-source` - copy source version to target branch
+  - `take-target` - keep target version unchanged
+- [x] Deletion Handling
+  - `deleted-in-source + take-source` → delete on target
+  - `deleted-in-source + take-target` → keep target
+  - `deleted-in-target + take-source` → restore from source
+  - `deleted-in-target + take-target` → keep deleted
+- [x] Error Classes
+  - `VersionNotFoundError`
+  - `UnsupportedStrategyError`
+- [x] Test suite: 15 tests
+
+#### Phase 5.2c: Conflict Resolution (merge-crdt)
+**Status:** Complete
+**Commits:**
+- `f3dc473` - Add Phase 5.2c TDD tests for CRDT Merge Service
+- (pending) - Implement Phase 5.2c: CRDT Merge Service
+
+##### Deliverables:
+- [x] CRDT Merge Service (`workers/src/services/crdt-merge-service.ts`)
+  - `mergeCrdtStates()` - merge Yjs CRDT states from both branches
+  - `resolveWithCrdtMerge()` - full resolution workflow with version creation
+  - `extractSnapshotFromYDoc()` - convert Y.Doc to plain JavaScript object
+- [x] Yjs Integration
+  - Decode base64 CRDT states
+  - Apply updates to merged Y.Doc
+  - Extract merged snapshot and state
+- [x] Error Classes
+  - `InvalidCrdtStateError` - invalid/corrupt CRDT data
+  - `MissingCrdtStateError` - version lacks CRDT state
+- [x] Test suite: 14 tests
+
+#### Phase 5.3: Merge Execution Service
+**Status:** Pending
+- [ ] Full merge workflow orchestration
+- [ ] Merge request status updates
+- [ ] Post-merge checkpoint creation
 
 ---
 
@@ -602,6 +708,11 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 5.2c | CRDT Merge Service complete (14 tests) |
+| 2026-01-24 | 5.2b | Conflict Resolution Service complete (15 tests) |
+| 2026-01-24 | 5.2a | Conflict Detection Service complete (13 tests) |
+| 2026-01-24 | 5.1b | Merge Base Service complete (18 tests) |
+| 2026-01-24 | 5.1a | Merge Request Service complete (51 tests) |
 | 2026-01-24 | 4.2 | Real-Time API routes complete (39 tests, security hardening) |
 | 2026-01-24 | 4.1 | DocumentSession Durable Object complete (46 tests, security hardening) |
 | 2026-01-23 | 3.3 | Checkpoint System complete (18 + 30 = 48 unit tests) |
@@ -635,7 +746,12 @@ Template for future decisions:
 | Checkpoint Service | 30 | - |
 | DocumentSession Durable Object | 46 | - |
 | Real-Time API Routes | 39 | - |
-| **Total** | **541** | **52** |
+| Merge Request Service | 51 | - |
+| Merge Base Service | 18 | - |
+| Conflict Detection Service | 13 | - |
+| Conflict Resolution Service | 15 | - |
+| CRDT Merge Service | 14 | - |
+| **Total** | **652** | **52** |
 
 ---
 

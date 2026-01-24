@@ -28,7 +28,7 @@ function createYjsState(content: Record<string, unknown>): string {
   const doc = new Y.Doc();
   const root = doc.getMap('root');
 
-  function setNestedValue(map: Y.Map<unknown>, obj: Record<string, unknown>) {
+  function setNestedValue(map: Y.Map<unknown>, obj: Record<string, unknown>): void {
     for (const [key, value] of Object.entries(obj)) {
       if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
         const nestedMap = new Y.Map<unknown>();
@@ -63,7 +63,7 @@ describe('Phase 5.2c: CRDT Merge Service', () => {
       const targetState = createYjsState({ title: 'Hello', date: '2026-01-20' });
       const baseState = createYjsState({ title: 'Hello' });
 
-      const result = await mergeCrdtStates({
+      const result = mergeCrdtStates({
         sourceState,
         targetState,
         baseState,
@@ -83,7 +83,7 @@ describe('Phase 5.2c: CRDT Merge Service', () => {
       const targetState = createYjsState({ title: 'Target Title' });
       const baseState = createYjsState({ title: 'Original' });
 
-      const result = await mergeCrdtStates({
+      const result = mergeCrdtStates({
         sourceState,
         targetState,
         baseState,
@@ -101,15 +101,17 @@ describe('Phase 5.2c: CRDT Merge Service', () => {
       const sourceState = createYjsState({ content: 'Source content' });
       const targetState = createYjsState({ content: 'Target content' });
 
-      const result = await mergeCrdtStates({
+      const result = mergeCrdtStates({
         sourceState,
         targetState,
       });
 
       expect(result.success).toBe(true);
       expect(result.mergedState).toBeDefined();
-      // Should be valid base64
-      expect(() => Buffer.from(result.mergedState!, 'base64')).not.toThrow();
+      // Should be valid base64 - mergedState is guaranteed to be defined when success is true
+      if (result.mergedState !== undefined) {
+        expect(() => Buffer.from(result.mergedState, 'base64')).not.toThrow();
+      }
     });
 
     it('should handle empty base state (new document)', async () => {
@@ -118,7 +120,7 @@ describe('Phase 5.2c: CRDT Merge Service', () => {
       const sourceState = createYjsState({ title: 'New Doc' });
       const targetState = createYjsState({ content: 'Some content' });
 
-      const result = await mergeCrdtStates({
+      const result = mergeCrdtStates({
         sourceState,
         targetState,
         // No base state
@@ -132,12 +134,12 @@ describe('Phase 5.2c: CRDT Merge Service', () => {
         '../../src/services/crdt-merge-service'
       );
 
-      await expect(
+      expect(() =>
         mergeCrdtStates({
           sourceState: 'not-valid-base64!!!',
           targetState: createYjsState({ title: 'Valid' }),
         }),
-      ).rejects.toThrow(InvalidCrdtStateError);
+      ).toThrow(InvalidCrdtStateError);
     });
   });
 
