@@ -612,12 +612,42 @@ This document tracks the implementation progress of the Collaborative JSON State
 
 ### Phase 6: Site Structure
 
-#### Phase 6.1: Structure Management
-- [ ] Site structure CRUD
-- [ ] Structure node management
-- [ ] Hierarchy traversal
+#### Phase 6.1: Structure Service
+**Status:** Complete
+**Commits:**
+- `7eadf97` - Add Phase 6.1 TDD tests for Structure Service
+- `74e6137` - Implement Phase 6.1: Structure Service
+
+##### Deliverables:
+- [x] Structure Service (`workers/src/services/structure-service.ts`)
+  - `createStructure()` - create site structure with hierarchy/collection type
+  - `getStructure()` - retrieve structure by ID
+  - `getStructureBySlug()` - retrieve structure by site ID and slug
+  - `listStructures()` - list structures with optional type filter
+  - `updateStructure()` - update structure name/description
+  - `deleteStructure()` - delete structure
+  - `createNode()` - create node (section/document/external types)
+  - `getNode()` - retrieve node by ID
+  - `listNodes()` - list nodes with optional parent filter
+  - `updateNode()` - update node properties
+  - `deleteNode()` - delete node
+  - `moveNode()` - move node with circular reference detection
+  - `reorderNodes()` - reorder sibling nodes
+  - `buildNavigationTree()` - build hierarchical tree with document paths
+- [x] Circular Reference Detection
+  - Recursive CTE to check if node would become its own ancestor
+  - `CircularReferenceError` thrown when cycle detected
+- [x] Error Classes
+  - `SiteNotFoundError` - site doesn't exist
+  - `StructureNotFoundError` - structure doesn't exist
+  - `NodeNotFoundError` - node doesn't exist
+  - `DuplicateStructureSlugError` - slug already exists in site
+  - `DuplicateNodeSlugError` - slug already exists in structure
+  - `CircularReferenceError` - move would create cycle
+- [x] Test suite: 42 tests
 
 #### Phase 6.2: Metadata and Schema
+**Status:** Pending
 - [ ] Metadata schema definition
 - [ ] Schema validation
 - [ ] Document metadata management
@@ -729,6 +759,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 6.1 | Structure Service complete (42 tests) |
 | 2026-01-24 | 5.3 | Merge Execution Service complete (13 tests) |
 | 2026-01-24 | 5.2c | CRDT Merge Service complete (14 tests) |
 | 2026-01-24 | 5.2b | Conflict Resolution Service complete (15 tests) |
@@ -774,7 +805,8 @@ Template for future decisions:
 | Conflict Resolution Service | 15 | - |
 | CRDT Merge Service | 14 | - |
 | Merge Execution Service | 13 | - |
-| **Total** | **665** | **52** |
+| Structure Service | 42 | - |
+| **Total** | **707** | **52** |
 
 ---
 
