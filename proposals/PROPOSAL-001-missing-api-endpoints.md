@@ -2,8 +2,9 @@
 
 **Status:** Draft
 **Date:** 2026-01-23
+**Updated:** 2026-01-24
 **Author:** Claude (via collaborative session)
-**Affects:** Phase 7 API Layer, Architecture v2.2
+**Affects:** Phase 6 Schema, Phase 7 API Layer, Architecture v2.2
 
 ---
 
@@ -27,6 +28,227 @@ The API specification in `collaborative-state-system-architecture-v2.2.md` (Sect
 | Merge Services | Complete (Phase 5.x) | Defined |
 | Structure Service | Complete (Phase 6.1) | Interface only (no REST) |
 | Metadata Service | Complete (Phase 6.2) | Interface only (no REST) |
+
+---
+
+## Schema Changes Required
+
+### Decision: Branch-Scoped Structure Identity
+
+**Context:** The current architecture has structure identity (name, slug, structureType) at the site level, but structure state (tree, schema) at the branch level. This creates inconsistency—renaming a structure on a branch would immediately affect all branches.
+
+**Decision:** Move structure identity fields to be branch-scoped, matching how documents work. All changes on a branch are isolated until merged.
+
+**Example Scenario:**
+```
+1. Main branch has structure: name="blogs", slug="blogs"
+2. Create feature branch (structure state copied)
+3. On feature: rename to name="stuff-i-write", slug="stuff-i-write"
+4. On feature: reorder nodes in the structure
+5. Main still sees: name="blogs" with original node order
+6. Merge feature → main: both changes apply together
+7. Rollback main: restores "blogs" with original order
+```
+
+### Current Schema (Inconsistent)
+
+```sql
+-- Structure identity is site-scoped (shared across all branches)
+CREATE TABLE site_structures (
+    id UUID PRIMARY KEY,
+    site_id UUID NOT NULL REFERENCES sites(id),
+    name TEXT NOT NULL,           -- ❌ Shared
+    slug TEXT NOT NULL,           -- ❌ Shared
+    description TEXT,             -- ❌ Shared
+    structure_type TEXT NOT NULL, -- ❌ Shared
+    created_at TIMESTAMPTZ,
+    UNIQUE(site_id, slug)
+);
+
+-- Structure state is branch-scoped (isolated per branch)
+CREATE TABLE branch_structure_state (
+    branch_id UUID NOT NULL,
+    structure_id UUID NOT NULL,
+    structure_tree JSONB NOT NULL,      -- ✓ Isolated
+    metadata_schema JSONB NOT NULL,     -- ✓ Isolated
+    schema_enforcement TEXT NOT NULL,   -- ✓ Isolated
+    ...
+);
+
+-- Checkpoint captures state but not identity
+CREATE TABLE checkpoint_structures (
+    checkpoint_id UUID NOT NULL,
+    structure_id UUID NOT NULL,
+    structure_tree JSONB NOT NULL,
+    metadata_schema JSONB NOT NULL,
+    schema_enforcement TEXT NOT NULL
+    -- ❌ Missing: name, slug, description, structure_type
+);
+```
+
+### Proposed Schema (Consistent)
+
+```sql
+-- Structure identity is minimal (just existence)
+CREATE TABLE site_structures (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    site_id UUID NOT NULL REFERENCES sites(id),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+    -- Removed: name, slug, description, structure_type
+);
+
+-- All mutable fields are branch-scoped
+CREATE TABLE branch_structure_state (
+    branch_id UUID NOT NULL REFERENCES branches(id),
+    structure_id UUID NOT NULL REFERENCES site_structures(id),
+
+    -- Identity (moved from site_structures)
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    description TEXT,
+    structure_type TEXT NOT NULL DEFAULT 'hierarchy',
+
+    -- State (already here)
+    structure_tree JSONB NOT NULL DEFAULT '[]',
+    metadata_schema JSONB NOT NULL DEFAULT '{"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]}',
+    schema_enforcement TEXT NOT NULL DEFAULT 'warn',
+
+    has_changes_since_checkpoint BOOLEAN DEFAULT FALSE,
+    last_modified_at TIMESTAMPTZ,
+    last_modified_by UUID,
+
+    PRIMARY KEY (branch_id, structure_id),
+    UNIQUE(branch_id, slug)  -- Slug uniqueness is per-branch
+);
+
+-- Checkpoint captures full state for rollback
+CREATE TABLE checkpoint_structures (
+    checkpoint_id UUID NOT NULL REFERENCES checkpoints(id),
+    structure_id UUID NOT NULL REFERENCES site_structures(id),
+
+    -- Identity (added for rollback support)
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    description TEXT,
+    structure_type TEXT NOT NULL,
+
+    -- State
+    structure_tree JSONB NOT NULL,
+    metadata_schema JSONB NOT NULL,
+    schema_enforcement TEXT NOT NULL,
+
+    PRIMARY KEY (checkpoint_id, structure_id)
+);
+```
+
+### Migration Required
+
+```sql
+-- Migration: 007_branch_scoped_structures.sql
+
+-- Step 1: Add identity columns to branch_structure_state
+ALTER TABLE branch_structure_state
+    ADD COLUMN name TEXT,
+    ADD COLUMN slug TEXT,
+    ADD COLUMN description TEXT,
+    ADD COLUMN structure_type TEXT;
+
+-- Step 2: Copy existing data from site_structures
+UPDATE branch_structure_state bss
+SET
+    name = ss.name,
+    slug = ss.slug,
+    description = ss.description,
+    structure_type = ss.structure_type
+FROM site_structures ss
+WHERE bss.structure_id = ss.id;
+
+-- Step 3: Make columns NOT NULL after data migration
+ALTER TABLE branch_structure_state
+    ALTER COLUMN name SET NOT NULL,
+    ALTER COLUMN slug SET NOT NULL,
+    ALTER COLUMN structure_type SET NOT NULL,
+    ALTER COLUMN structure_type SET DEFAULT 'hierarchy';
+
+-- Step 4: Add unique constraint for slug per branch
+ALTER TABLE branch_structure_state
+    ADD CONSTRAINT unique_branch_slug UNIQUE(branch_id, slug);
+
+-- Step 5: Add identity columns to checkpoint_structures
+ALTER TABLE checkpoint_structures
+    ADD COLUMN name TEXT,
+    ADD COLUMN slug TEXT,
+    ADD COLUMN description TEXT,
+    ADD COLUMN structure_type TEXT;
+
+-- Step 6: Backfill checkpoint_structures from site_structures
+UPDATE checkpoint_structures cs
+SET
+    name = ss.name,
+    slug = ss.slug,
+    description = ss.description,
+    structure_type = ss.structure_type
+FROM site_structures ss
+WHERE cs.structure_id = ss.id;
+
+-- Step 7: Make checkpoint columns NOT NULL
+ALTER TABLE checkpoint_structures
+    ALTER COLUMN name SET NOT NULL,
+    ALTER COLUMN slug SET NOT NULL,
+    ALTER COLUMN structure_type SET NOT NULL;
+
+-- Step 8: Drop old columns from site_structures
+-- (Do this after verifying data migration)
+ALTER TABLE site_structures
+    DROP COLUMN name,
+    DROP COLUMN slug,
+    DROP COLUMN description,
+    DROP COLUMN structure_type;
+
+-- Step 9: Drop old unique constraint
+ALTER TABLE site_structures
+    DROP CONSTRAINT IF EXISTS site_structures_site_id_slug_key;
+```
+
+### Service Updates Required
+
+The following services need updates to work with the new schema:
+
+| Service | Changes Needed |
+|---------|----------------|
+| `structure-service.ts` | Read/write identity from `branch_structure_state` instead of `site_structures` |
+| `checkpoint-service.ts` | Capture/restore identity fields in checkpoint operations |
+| `merge-base-service.ts` | Include structure identity in merge base calculations |
+| `conflict-detection-service.ts` | Detect conflicts when both branches modify structure identity |
+
+### Branch Creation Behavior
+
+When creating a branch from a source branch:
+
+1. Copy all `branch_structure_state` rows from source branch
+2. New rows get the new `branch_id` but same `structure_id`
+3. Changes on new branch only affect its `branch_structure_state` rows
+
+```typescript
+async function copyStructureStateForNewBranch(
+    sourceBranchId: string,
+    newBranchId: string
+): Promise<void> {
+    await db.query(`
+        INSERT INTO branch_structure_state (
+            branch_id, structure_id,
+            name, slug, description, structure_type,
+            structure_tree, metadata_schema, schema_enforcement
+        )
+        SELECT
+            $2, structure_id,
+            name, slug, description, structure_type,
+            structure_tree, metadata_schema, schema_enforcement
+        FROM branch_structure_state
+        WHERE branch_id = $1
+    `, [sourceBranchId, newBranchId]);
+}
+```
 
 ---
 
@@ -312,12 +534,16 @@ Errors:
 
 ### 3. Structure API
 
-Site structure management endpoints based on the TypeScript interface defined in architecture lines 2225-2342.
+Structure management endpoints. **Structures are branch-scoped** for consistency with documents—changes on a branch are isolated until merged.
+
+> **Note:** This API reflects the schema changes in the "Schema Changes Required" section above. Structure identity (name, slug, etc.) is stored in `branch_structure_state`, not `site_structures`.
 
 #### Create Structure
 
+Creates a new structure on a specific branch. The structure only exists on that branch until merged.
+
 ```
-POST /api/sites/{siteId}/structures
+POST /api/sites/{siteId}/branches/{branchId}/structures
 
 Request:
 {
@@ -330,7 +556,7 @@ Request:
 Response: 201 Created
 {
     "id": "structure-uuid",
-    "siteId": "site-uuid",
+    "branchId": "branch-uuid",
     "name": "Main Navigation",
     "slug": "main-nav",
     "description": "Primary site navigation",
@@ -340,14 +566,16 @@ Response: 201 Created
 
 Errors:
 - 400 Bad Request: Invalid parameters
-- 404 Not Found: Site does not exist
-- 409 Conflict: Structure with slug already exists
+- 404 Not Found: Site or branch does not exist
+- 409 Conflict: Structure with slug already exists on this branch
 ```
 
 #### List Structures
 
+Lists structures visible on a specific branch.
+
 ```
-GET /api/sites/{siteId}/structures?type=hierarchy
+GET /api/sites/{siteId}/branches/{branchId}/structures?type=hierarchy
 
 Response: 200 OK
 {
@@ -356,8 +584,7 @@ Response: 200 OK
             "id": "structure-uuid",
             "name": "Main Navigation",
             "slug": "main-nav",
-            "structureType": "hierarchy",
-            "createdAt": "2026-01-23T10:00:00Z"
+            "structureType": "hierarchy"
         }
     ]
 }
@@ -368,50 +595,103 @@ Query Parameters:
 
 #### Get Structure
 
+Gets structure details as they exist on a specific branch.
+
 ```
-GET /api/sites/{siteId}/structures/{structureId}
+GET /api/sites/{siteId}/branches/{branchId}/structures/{structureId}
 
 Response: 200 OK
 {
     "id": "structure-uuid",
-    "siteId": "site-uuid",
+    "branchId": "branch-uuid",
     "name": "Main Navigation",
     "slug": "main-nav",
     "description": "Primary site navigation",
     "structureType": "hierarchy",
-    "createdAt": "2026-01-23T10:00:00Z"
+    "metadataSchema": { ... },
+    "schemaEnforcement": "warn"
 }
+
+Errors:
+- 404 Not Found: Structure does not exist on this branch
 ```
 
 #### Update Structure
 
+Updates structure identity on a specific branch. Changes are isolated to this branch.
+
 ```
-PATCH /api/sites/{siteId}/structures/{structureId}
+PATCH /api/sites/{siteId}/branches/{branchId}/structures/{structureId}
 
 Request:
 {
-    "name": "Primary Navigation",
-    "description": "Updated description"
+    "name": "stuff-i-write",
+    "slug": "stuff-i-write",
+    "description": "My blog posts and articles"
 }
 
 Response: 200 OK
 {
     "id": "structure-uuid",
-    "siteId": "site-uuid",
-    "name": "Primary Navigation",
-    "slug": "main-nav",
-    "description": "Updated description",
-    "structureType": "hierarchy",
-    "createdAt": "2026-01-23T10:00:00Z"
+    "branchId": "branch-uuid",
+    "name": "stuff-i-write",
+    "slug": "stuff-i-write",
+    "description": "My blog posts and articles",
+    "structureType": "hierarchy"
 }
+
+Notes:
+- Changes only affect this branch
+- Other branches (including main) still see the original name/slug
+- Changes are merged when this branch is merged to target
+
+Errors:
+- 400 Bad Request: Invalid parameters
+- 404 Not Found: Structure does not exist on this branch
+- 409 Conflict: Another structure with this slug exists on this branch
 ```
 
 #### Delete Structure
 
+Deletes a structure from a specific branch.
+
 ```
-DELETE /api/sites/{siteId}/structures/{structureId}
+DELETE /api/sites/{siteId}/branches/{branchId}/structures/{structureId}
 
 Response: 204 No Content
+
+Notes:
+- Only deletes from this branch
+- If structure exists on other branches, they are unaffected
+- Deleting from main (and merging that deletion) removes structure from future branches
+
+Errors:
+- 404 Not Found: Structure does not exist on this branch
+```
+
+#### Get Structure at Checkpoint
+
+Gets structure state as it was at a specific checkpoint (for viewing history or rollback preview).
+
+```
+GET /api/sites/{siteId}/checkpoints/{checkpointId}/structures/{structureId}
+
+Response: 200 OK
+{
+    "id": "structure-uuid",
+    "checkpointId": "checkpoint-uuid",
+    "name": "blogs",
+    "slug": "blogs",
+    "description": "Original blog structure",
+    "structureType": "hierarchy",
+    "structureTree": [ ... ],
+    "metadataSchema": { ... },
+    "schemaEnforcement": "warn"
+}
+
+Notes:
+- Returns the full structure state as captured at the checkpoint
+- Used for viewing history or previewing rollback
 ```
 
 ---
@@ -881,25 +1161,6 @@ workers/src/routes/
 
 ---
 
-## Proposed Phase
-
-**Phase 7.1.1: Resource Management APIs**
-
-After Phase 7.1 (REST API Endpoints) completes:
-
-1. Add TDD tests for Site API routes
-2. Implement Site API routes
-3. Add TDD tests for Document CRUD API routes
-4. Implement Document CRUD API routes
-5. Add TDD tests for Structure API routes
-6. Implement Structure API routes
-7. Add TDD tests for Metadata API routes
-8. Implement Metadata API routes
-9. Security review
-10. Update PROGRESS.md
-
----
-
 ## Open Questions
 
 1. **Site deletion protection:** Should we prevent deletion of sites with active (non-archived) branches?
@@ -909,9 +1170,48 @@ After Phase 7.1 (REST API Endpoints) completes:
    - Only allow deletion if no versions exist?
    - Soft-delete with archival?
 
-3. **Structure API scope:** Should structure definitions be branch-scoped or site-scoped? Current architecture suggests site-scoped with branch-scoped state.
+3. ~~**Structure API scope:** Should structure definitions be branch-scoped or site-scoped?~~
+   **RESOLVED:** Branch-scoped for consistency with documents. See "Schema Changes Required" section.
 
 4. **Bulk operations:** Should we add batch endpoints for creating/updating multiple nodes or metadata entries?
+
+---
+
+## Decisions Made
+
+| Decision | Date | Resolution |
+|----------|------|------------|
+| Structure API scope | 2026-01-24 | Branch-scoped. All structure changes (including name, slug) are isolated per-branch until merged. This matches document behavior and enables full version control of site refactoring. |
+
+---
+
+## Implementation Phases
+
+This proposal should be implemented in two sub-phases:
+
+### Phase 7.1.1a: Schema Migration
+
+**Prerequisite:** Must complete before API implementation.
+
+1. Create migration `007_branch_scoped_structures.sql`
+2. Update `structure-service.ts` to read/write from `branch_structure_state`
+3. Update `checkpoint-service.ts` to capture/restore structure identity
+4. Update `branch-service.ts` to copy structure state on branch creation
+5. Update conflict detection for structure identity changes
+6. Run tests, fix any regressions
+7. Security review
+
+### Phase 7.1.1b: Resource Management APIs
+
+**Depends on:** Phase 7.1.1a schema migration.
+
+1. Site API routes + tests
+2. Document CRUD API routes + tests
+3. Structure API routes + tests (using new branch-scoped schema)
+4. Node API routes + tests
+5. Metadata API routes + tests
+6. Security review
+7. Update PROGRESS.md
 
 ---
 
@@ -919,10 +1219,11 @@ After Phase 7.1 (REST API Endpoints) completes:
 
 Please review and confirm:
 
-1. Proceed with this proposal as Phase 7.1.1?
+1. Proceed with this proposal?
 2. Any endpoints to add/remove/modify?
-3. Answers to open questions above?
+3. Answers to remaining open questions (1, 2, 4)?
 
 ---
 
 *Prepared: 2026-01-23*
+*Updated: 2026-01-24 — Added branch-scoped structure schema changes*
