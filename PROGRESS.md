@@ -942,7 +942,7 @@ Deliverables:
 
 #### Phase 8.4: Core Resource Pages
 
-**Status:** In Progress
+**Status:** Complete
 
 ##### Deliverables:
 - [x] Layout Component (`frontend/src/components/Layout.tsx`)
@@ -974,10 +974,14 @@ Deliverables:
   - Branch info display (ID, parent, status, created date)
   - Tabs for Checkpoints and Documents
   - Checkpoints table with create checkpoint form
-  - Documents table listing site documents
+  - Documents table with clickable links
 - [x] Checkpoints API (`frontend/src/api/checkpoints.ts`)
   - listCheckpoints, getCheckpoint, createCheckpoint, deleteCheckpoint, revertToCheckpoint
-- [ ] Document Page - Document viewer/editor
+- [x] Document Page (`frontend/src/pages/DocumentPage.tsx`)
+  - **Commit:** `ada5c8c`
+  - Breadcrumb navigation (Sites / Site / Document)
+  - Document metadata display (path, ID, timestamps, status)
+  - Placeholder sections for version history and content viewer
 
 #### Phase 8.5: E2E Testing
 
