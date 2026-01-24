@@ -24,7 +24,7 @@ describe('Phase 5.1b: Merge Base Service', () => {
       const { findMergeBase } = await import('../../src/services/merge-base-service');
       const db = await import('../../src/db');
 
-      // Source branch was created from target branch at checkpoint-123
+      // Mock: source branch exists, target branch exists, then merge base query
       vi.mocked(db.query)
         .mockResolvedValueOnce({
           rows: [
@@ -38,9 +38,20 @@ describe('Phase 5.1b: Merge Base Service', () => {
         .mockResolvedValueOnce({
           rows: [
             {
-              id: 'checkpoint-123',
-              branch_id: 'target-branch',
+              id: 'target-branch',
+              source_branch_id: null,
+              source_checkpoint_id: null,
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              merge_base_checkpoint_id: 'checkpoint-123',
+              merge_base_branch_id: 'target-branch',
               created_at: '2026-01-20T10:00:00.000Z',
+              name: null,
+              message: null,
             },
           ],
         });
@@ -55,19 +66,25 @@ describe('Phase 5.1b: Merge Base Service', () => {
       const { findMergeBase } = await import('../../src/services/merge-base-service');
       const db = await import('../../src/db');
 
-      // Both branches were created from main at different checkpoints
-      // Branch A: created from main at checkpoint-1
-      // Branch B: created from main at checkpoint-2
-      // Merge base is checkpoint-1 (earlier one)
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            merge_base_checkpoint_id: 'checkpoint-1',
-            merge_base_branch_id: 'main-branch',
-            created_at: '2026-01-15T10:00:00.000Z',
-          },
-        ],
-      });
+      // Mock: source branch exists, target branch exists, then merge base query
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'branch-a', source_branch_id: 'main-branch', source_checkpoint_id: 'checkpoint-1' }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'branch-b', source_branch_id: 'main-branch', source_checkpoint_id: 'checkpoint-2' }],
+        })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              merge_base_checkpoint_id: 'checkpoint-1',
+              merge_base_branch_id: 'main-branch',
+              created_at: '2026-01-15T10:00:00.000Z',
+              name: null,
+              message: null,
+            },
+          ],
+        });
 
       const result = await findMergeBase('branch-a', 'branch-b');
 
@@ -79,8 +96,15 @@ describe('Phase 5.1b: Merge Base Service', () => {
       const { findMergeBase } = await import('../../src/services/merge-base-service');
       const db = await import('../../src/db');
 
-      // No common ancestor found
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      // Mock: source branch exists, target branch exists, then no common ancestor
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'branch-a', source_branch_id: null, source_checkpoint_id: null }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'branch-b', source_branch_id: null, source_checkpoint_id: null }],
+        })
+        .mockResolvedValueOnce({ rows: [] });
 
       const result = await findMergeBase('branch-a', 'branch-b');
 
@@ -131,17 +155,25 @@ describe('Phase 5.1b: Merge Base Service', () => {
       const { findMergeBase } = await import('../../src/services/merge-base-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            merge_base_checkpoint_id: 'checkpoint-123',
-            merge_base_branch_id: 'main-branch',
-            created_at: '2026-01-20T10:00:00.000Z',
-            name: 'Release v1.0',
-            message: 'Initial release checkpoint',
-          },
-        ],
-      });
+      // Mock: source branch exists, target branch exists, then merge base query
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'feature-branch', source_branch_id: 'main-branch', source_checkpoint_id: 'checkpoint-123' }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'main-branch', source_branch_id: null, source_checkpoint_id: null }],
+        })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              merge_base_checkpoint_id: 'checkpoint-123',
+              merge_base_branch_id: 'main-branch',
+              created_at: '2026-01-20T10:00:00.000Z',
+              name: 'Release v1.0',
+              message: 'Initial release checkpoint',
+            },
+          ],
+        });
 
       const result = await findMergeBase('feature-branch', 'main-branch');
 
@@ -346,17 +378,25 @@ describe('Phase 5.1b: Merge Base Service', () => {
       const { findMergeBase } = await import('../../src/services/merge-base-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            merge_base_checkpoint_id: 'cp-123',
-            merge_base_branch_id: 'branch-456',
-            created_at: '2026-01-20T10:00:00.000Z',
-            name: null,
-            message: null,
-          },
-        ],
-      });
+      // Mock: source branch exists, target branch exists, then merge base query
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'source', source_branch_id: 'target', source_checkpoint_id: 'cp-123' }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'target', source_branch_id: null, source_checkpoint_id: null }],
+        })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              merge_base_checkpoint_id: 'cp-123',
+              merge_base_branch_id: 'branch-456',
+              created_at: '2026-01-20T10:00:00.000Z',
+              name: null,
+              message: null,
+            },
+          ],
+        });
 
       const result = await findMergeBase('source', 'target');
 

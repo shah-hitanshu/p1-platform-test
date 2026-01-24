@@ -136,3 +136,20 @@ export type {
   ListMergeRequestsOptions,
   MergeMetadata,
 } from './merge-request-service';
+
+// Merge Base Service
+export {
+  findMergeBase,
+  getModifiedDocumentsSince,
+  getDocumentsAtCheckpoint as getMergeBaseDocumentsAtCheckpoint,
+  getBranchLineage,
+  SourceBranchNotFoundError as MergeBaseSourceBranchNotFoundError,
+  TargetBranchNotFoundError as MergeBaseTargetBranchNotFoundError,
+} from './merge-base-service';
+
+export type {
+  MergeBase,
+  ModifiedDocument,
+  CheckpointDocument as MergeBaseCheckpointDocument,
+  BranchInLineage,
+} from './merge-base-service';
