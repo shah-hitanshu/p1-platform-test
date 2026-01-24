@@ -21,11 +21,19 @@ async function createSiteAndNavigate(page: import('@playwright/test').Page, site
   await page.click('.nav-link >> text=Sites');
   await expect(page).toHaveURL('/sites');
 
-  // Create site
+  // Create site - wait for API response
   await page.click('.create-btn');
   await page.locator('.form-input').first().fill(siteName);
   await page.locator('.form-input').nth(1).fill(pantheonId);
+
+  // Wait for API response before clicking submit
+  const responsePromise = page.waitForResponse(resp =>
+    resp.url().includes('/api/sites') && resp.request().method() === 'POST'
+  );
   await page.click('.submit-btn');
+  await responsePromise;
+
+  // Wait for form to close
   await expect(page.locator('.create-form')).not.toBeVisible({ timeout: 10000 });
 
   // Navigate to site detail

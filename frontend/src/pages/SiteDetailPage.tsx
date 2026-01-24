@@ -64,9 +64,13 @@ export function SiteDetailPage() {
   const handleDeleteBranch = async () => {
     if (!branchToDelete || !siteId) return;
 
-    await deleteBranchRequest(siteId, branchToDelete.id);
-    setBranchToDelete(null);
-    fetchBranches(siteId);
+    const result = await deleteBranchRequest(siteId, branchToDelete.id);
+    // Only close modal and refresh if deletion succeeded
+    // For void functions: undefined = success, null = error
+    if (result !== null) {
+      setBranchToDelete(null);
+      fetchBranches(siteId);
+    }
   };
 
   const getStatusBadgeClass = (status: Branch['status']) => {

@@ -15,6 +15,23 @@ function uniqueName(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+// Helper to create a site and wait for API response
+async function createSite(page: import('@playwright/test').Page, siteName: string, pantheonId: string) {
+  await page.click('.create-btn');
+  await page.locator('.form-input').first().fill(siteName);
+  await page.locator('.form-input').nth(1).fill(pantheonId);
+
+  // Wait for API response
+  const responsePromise = page.waitForResponse(resp =>
+    resp.url().includes('/api/sites') && resp.request().method() === 'POST'
+  );
+  await page.click('.submit-btn');
+  await responsePromise;
+
+  // Wait for form to close
+  await expect(page.locator('.create-form')).not.toBeVisible({ timeout: 10000 });
+}
+
 test.describe('Site Creation', () => {
   test.beforeEach(async ({ page }) => {
     // Login before each test
@@ -98,14 +115,8 @@ test.describe('Site Deletion', () => {
     const siteName = uniqueName('Modal Test');
     const pantheonId = uniqueName('modal');
 
-    // First create a site to delete
-    await page.click('.create-btn');
-    await page.locator('.form-input').first().fill(siteName);
-    await page.locator('.form-input').nth(1).fill(pantheonId);
-    await page.click('.submit-btn');
-
-    // Wait for form to close
-    await expect(page.locator('.create-form')).not.toBeVisible({ timeout: 10000 });
+    // Create a site
+    await createSite(page, siteName, pantheonId);
 
     // Find and click the delete button for our site
     const siteRow = page.locator(`tr:has-text("${siteName}")`);
@@ -122,11 +133,7 @@ test.describe('Site Deletion', () => {
     const pantheonId = uniqueName('confirm');
 
     // Create a site
-    await page.click('.create-btn');
-    await page.locator('.form-input').first().fill(siteName);
-    await page.locator('.form-input').nth(1).fill(pantheonId);
-    await page.click('.submit-btn');
-    await expect(page.locator('.create-form')).not.toBeVisible({ timeout: 10000 });
+    await createSite(page, siteName, pantheonId);
 
     // Click delete
     const siteRow = page.locator(`tr:has-text("${siteName}")`);
@@ -150,11 +157,7 @@ test.describe('Site Deletion', () => {
     const pantheonId = uniqueName('deleteme');
 
     // Create a site
-    await page.click('.create-btn');
-    await page.locator('.form-input').first().fill(siteName);
-    await page.locator('.form-input').nth(1).fill(pantheonId);
-    await page.click('.submit-btn');
-    await expect(page.locator('.create-form')).not.toBeVisible({ timeout: 10000 });
+    await createSite(page, siteName, pantheonId);
 
     // Verify site exists
     await expect(page.locator('.sites-table')).toContainText(siteName);
@@ -166,8 +169,12 @@ test.describe('Site Deletion', () => {
     // Type confirmation
     await page.locator('.confirm-input').fill(siteName);
 
-    // Click delete
+    // Click delete - wait for API response
+    const deletePromise = page.waitForResponse(resp =>
+      resp.url().includes('/api/sites') && resp.request().method() === 'DELETE'
+    );
     await page.locator('.modal-content .delete-btn').click();
+    await deletePromise;
 
     // Wait for modal to close (indicates success)
     await expect(page.locator('.modal-overlay')).not.toBeVisible({ timeout: 10000 });
@@ -183,11 +190,7 @@ test.describe('Site Deletion', () => {
     const pantheonId = uniqueName('hasbranches');
 
     // Create a site (will have main branch)
-    await page.click('.create-btn');
-    await page.locator('.form-input').first().fill(siteName);
-    await page.locator('.form-input').nth(1).fill(pantheonId);
-    await page.click('.submit-btn');
-    await expect(page.locator('.create-form')).not.toBeVisible({ timeout: 10000 });
+    await createSite(page, siteName, pantheonId);
 
     // Try to delete (should fail because of main branch)
     const siteRow = page.locator(`tr:has-text("${siteName}")`);
@@ -211,11 +214,7 @@ test.describe('Site Deletion', () => {
     const pantheonId = uniqueName('cancel');
 
     // Create a site
-    await page.click('.create-btn');
-    await page.locator('.form-input').first().fill(siteName);
-    await page.locator('.form-input').nth(1).fill(pantheonId);
-    await page.click('.submit-btn');
-    await expect(page.locator('.create-form')).not.toBeVisible({ timeout: 10000 });
+    await createSite(page, siteName, pantheonId);
 
     // Open delete modal
     const siteRow = page.locator(`tr:has-text("${siteName}")`);
@@ -237,11 +236,7 @@ test.describe('Site Deletion', () => {
     const pantheonId = uniqueName('overlay');
 
     // Create a site
-    await page.click('.create-btn');
-    await page.locator('.form-input').first().fill(siteName);
-    await page.locator('.form-input').nth(1).fill(pantheonId);
-    await page.click('.submit-btn');
-    await expect(page.locator('.create-form')).not.toBeVisible({ timeout: 10000 });
+    await createSite(page, siteName, pantheonId);
 
     // Open delete modal
     const siteRow = page.locator(`tr:has-text("${siteName}")`);
@@ -274,11 +269,7 @@ test.describe('Site Navigation', () => {
     const pantheonId = uniqueName('view');
 
     // Create a site
-    await page.click('.create-btn');
-    await page.locator('.form-input').first().fill(siteName);
-    await page.locator('.form-input').nth(1).fill(pantheonId);
-    await page.click('.submit-btn');
-    await expect(page.locator('.create-form')).not.toBeVisible({ timeout: 10000 });
+    await createSite(page, siteName, pantheonId);
 
     // Click View link
     const siteRow = page.locator(`tr:has-text("${siteName}")`);

@@ -47,9 +47,13 @@ export function SitesPage() {
   const handleDeleteSite = async () => {
     if (!siteToDelete) return;
 
-    await deleteSiteRequest(siteToDelete.id);
-    setSiteToDelete(null);
-    fetchSites();
+    const result = await deleteSiteRequest(siteToDelete.id);
+    // Only close modal and refresh if deletion succeeded
+    // For void functions: undefined = success, null = error
+    if (result !== null) {
+      setSiteToDelete(null);
+      fetchSites();
+    }
   };
 
   return (
