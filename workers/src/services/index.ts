@@ -69,3 +69,45 @@ export type {
   UpdateBranchParams,
   ListBranchesOptions,
 } from './branch-service';
+
+// Document Version Service
+export {
+  createDocumentVersion,
+  getDocumentVersion,
+  getLatestDocumentVersion,
+  getLatestVersionsForBranch,
+  listDocumentVersions,
+  getDocumentVersionByNumber,
+  DocumentNotFoundError,
+  InvalidDocumentVersionParamsError,
+} from './document-version-service';
+
+export type {
+  CreateDocumentVersionParams,
+  ListDocumentVersionsOptions,
+} from './document-version-service';
+
+// Checkpoint Service
+export {
+  createCheckpoint,
+  getCheckpoint,
+  listCheckpoints,
+  getDocumentsAtCheckpoint,
+  getDocumentAtCheckpoint,
+  revertToCheckpoint,
+  deleteCheckpoint,
+  getLatestCheckpoint,
+  getCheckpointDocumentCount,
+  // Note: BranchNotFoundError is already exported from branch-service
+  CheckpointNotFoundError,
+  InvalidCheckpointParamsError,
+} from './checkpoint-service';
+
+export type {
+  CreateCheckpointParams,
+  CreateCheckpointResult,
+  ListCheckpointsOptions,
+  RevertToCheckpointParams,
+  RevertToCheckpointResult,
+  CheckpointDocumentVersion,
+} from './checkpoint-service';

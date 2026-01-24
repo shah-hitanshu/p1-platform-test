@@ -269,6 +269,52 @@ This document tracks the implementation progress of the Collaborative JSON State
   - 28 integration tests for Branch Service
   - 91 tests total
 
+### Phase 3.3: Checkpoint System
+
+**Status:** Complete
+**Commits:**
+- `71b175a` - Add Phase 3.3 TDD tests for Checkpoint System
+- `fe32fc5` - Implement Phase 3.3: Checkpoint System
+
+#### Deliverables:
+- [x] Document Version Service (`workers/src/services/document-version-service.ts`)
+  - `createDocumentVersion()` - create version with auto-incremented version number
+  - `getDocumentVersion()` - retrieve version by ID
+  - `getLatestDocumentVersion()` - get latest version of document on branch
+  - `getLatestVersionsForBranch()` - get all latest versions on a branch
+  - `listDocumentVersions()` - list version history with pagination
+  - `getDocumentVersionByNumber()` - retrieve specific version by number
+  - `DocumentNotFoundError` - document doesn't exist
+  - `InvalidDocumentVersionParamsError` - validation errors
+- [x] Checkpoint Service (`workers/src/services/checkpoint-service.ts`)
+  - `createCheckpoint()` - create checkpoint capturing current branch state
+  - `getCheckpoint()` - retrieve checkpoint by ID
+  - `listCheckpoints()` - list checkpoints with filtering and pagination
+  - `getDocumentsAtCheckpoint()` - get all document versions in checkpoint
+  - `getDocumentAtCheckpoint()` - get specific document at checkpoint by path
+  - `revertToCheckpoint()` - restore branch to checkpoint state
+  - `deleteCheckpoint()` - delete checkpoint and associations
+  - `getLatestCheckpoint()` - get most recent checkpoint for branch
+  - `getCheckpointDocumentCount()` - count documents in checkpoint
+  - `BranchNotFoundError` - branch doesn't exist
+  - `CheckpointNotFoundError` - checkpoint doesn't exist
+  - `InvalidCheckpointParamsError` - validation errors
+- [x] Transaction safety
+  - `createCheckpoint()` wrapped in BEGIN/COMMIT/ROLLBACK
+  - `deleteCheckpoint()` wrapped in BEGIN/COMMIT/ROLLBACK
+- [x] Service exports (`workers/src/services/index.ts`)
+- [x] Test suite
+  - 18 unit tests for Document Version Service
+  - 30 unit tests for Checkpoint Service
+  - 48 tests total
+
+#### Security Review (Phase 3.3):
+- **SQL Injection:** All queries use parameterized queries - SECURE
+- **Authorization:** Deferred to API layer (Phase 7) by design
+- **Transaction Safety:** Multi-step operations wrapped in transactions
+- **Input Validation:** Required fields validated, enums enforced by TypeScript
+- **Future Work:** Rate limiting, audit logging (Phase 7)
+
 ---
 
 ### Infrastructure Validation (Post Phase 3.1)
@@ -323,14 +369,6 @@ This document tracks the implementation progress of the Collaborative JSON State
 ---
 
 ## Outstanding Work
-
-### Phase 3: Document and Branch Management
-
-#### Phase 3.3: Checkpoint System
-- [ ] Checkpoint creation
-- [ ] Document version snapshots
-- [ ] Checkpoint listing and retrieval
-- [ ] Revert to checkpoint
 
 ---
 
@@ -483,6 +521,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-23 | 3.3 | Checkpoint System complete (18 + 30 = 48 unit tests) |
 | 2026-01-23 | 3.2 | Branch Operations complete (63 unit + 28 integration tests) |
 | 2026-01-23 | Infra | Infrastructure validation: /health endpoint, real postgres connection, DO stubs |
 | 2026-01-23 | 3.1 | Site and Document Operations complete (69 unit + 24 integration tests) |
@@ -509,7 +548,9 @@ Template for future decisions:
 | Site Service | 31 | 12 |
 | Document Service | 38 | 12 |
 | Branch Service | 63 | 28 |
-| **Total** | **408** | **52** |
+| Document Version Service | 18 | - |
+| Checkpoint Service | 30 | - |
+| **Total** | **456** | **52** |
 
 ---
 

@@ -80,7 +80,9 @@ describe('Phase 3.3: Checkpoint Service', () => {
   }
 
   // Helper to create a mock version with document info
-  function createMockVersionWithDocument(overrides: Partial<MockVersionWithDocumentRow> = {}): MockVersionWithDocumentRow {
+  function createMockVersionWithDocument(
+    overrides: Partial<MockVersionWithDocumentRow> = {},
+  ): MockVersionWithDocumentRow {
     return {
       id: 'version-uuid-789',
       document_id: 'doc-uuid-456',
@@ -108,12 +110,13 @@ describe('Phase 3.3: Checkpoint Service', () => {
         createMockCheckpointDocRow({ document_id: 'doc-2', document_version_id: 'v-2' }),
       ];
 
-      // First call: insert checkpoint
-      // Second call: get latest versions for branch
-      // Third+ calls: insert checkpoint_documents
+      // Transaction flow: BEGIN, insert checkpoint, get latest versions, insert docs, COMMIT
       vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [mockCheckpointRow] })
-        .mockResolvedValueOnce({ rows: mockCheckpointDocRows });
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint
+        .mockResolvedValueOnce({ rows: mockCheckpointDocRows }) // get latest versions
+        .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const result = await createCheckpoint({
         branchId: 'branch-uuid-789',
@@ -139,8 +142,10 @@ describe('Phase 3.3: Checkpoint Service', () => {
 
       const mockCheckpointRow = createMockCheckpointRow({ name: null, message: null });
       vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [mockCheckpointRow] })
-        .mockResolvedValueOnce({ rows: [] });
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint
+        .mockResolvedValueOnce({ rows: [] }) // get latest versions (empty)
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const result = await createCheckpoint({
         branchId: 'branch-uuid-789',
@@ -162,8 +167,10 @@ describe('Phase 3.3: Checkpoint Service', () => {
       for (const checkpointType of types) {
         const mockRow = createMockCheckpointRow({ checkpoint_type: checkpointType });
         vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [mockRow] })
-          .mockResolvedValueOnce({ rows: [] });
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [mockRow] }) // insert checkpoint
+          .mockResolvedValueOnce({ rows: [] }) // get latest versions (empty)
+          .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
         const result = await createCheckpoint({
           branchId: 'branch-uuid-789',
@@ -182,8 +189,10 @@ describe('Phase 3.3: Checkpoint Service', () => {
 
       const mockCheckpointRow = createMockCheckpointRow();
       vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [mockCheckpointRow] })
-        .mockResolvedValueOnce({ rows: [] }); // No documents on branch
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint
+        .mockResolvedValueOnce({ rows: [] }) // No documents on branch
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const result = await createCheckpoint({
         branchId: 'branch-uuid-789',
@@ -201,7 +210,10 @@ describe('Phase 3.3: Checkpoint Service', () => {
 
       const error = new Error('violates foreign key constraint');
       (error as NodeJS.ErrnoException).code = '23503';
-      vi.mocked(db.query).mockRejectedValue(error);
+      // BEGIN succeeds, then INSERT fails
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockRejectedValueOnce(error); // INSERT fails
 
       await expect(
         createCheckpoint({
@@ -461,8 +473,11 @@ describe('Phase 3.3: Checkpoint Service', () => {
         .mockResolvedValueOnce({ rows: mockVersionRows }) // Get documents at checkpoint
         .mockResolvedValueOnce({ rows: [{ id: 'new-version-1' }] }) // Create revert version 1
         .mockResolvedValueOnce({ rows: [{ id: 'new-version-2' }] }) // Create revert version 2
-        .mockResolvedValueOnce({ rows: [newCheckpointRow] }) // Create new checkpoint
-        .mockResolvedValueOnce({ rows: [] }); // Insert checkpoint_documents
+        // createCheckpoint transaction
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [newCheckpointRow] }) // Insert checkpoint
+        .mockResolvedValueOnce({ rows: [] }) // Get latest versions (empty after revert)
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const result = await revertToCheckpoint({
         checkpointId: 'checkpoint-uuid-123',
@@ -501,10 +516,13 @@ describe('Phase 3.3: Checkpoint Service', () => {
       });
 
       vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [mockCheckpointRow] })
-        .mockResolvedValueOnce({ rows: [] }) // No documents
-        .mockResolvedValueOnce({ rows: [newCheckpointRow] })
-        .mockResolvedValueOnce({ rows: [] });
+        .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
+        .mockResolvedValueOnce({ rows: [] }) // No documents at checkpoint
+        // createCheckpoint transaction
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [newCheckpointRow] }) // Insert checkpoint
+        .mockResolvedValueOnce({ rows: [] }) // Get latest versions
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const result = await revertToCheckpoint({
         checkpointId: 'checkpoint-uuid-123',
@@ -527,10 +545,13 @@ describe('Phase 3.3: Checkpoint Service', () => {
       });
 
       vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [mockCheckpointRow] })
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [newCheckpointRow] })
-        .mockResolvedValueOnce({ rows: [] });
+        .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
+        .mockResolvedValueOnce({ rows: [] }) // No documents at checkpoint
+        // createCheckpoint transaction
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [newCheckpointRow] }) // Insert checkpoint
+        .mockResolvedValueOnce({ rows: [] }) // Get latest versions
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const result = await revertToCheckpoint({
         checkpointId: 'checkpoint-uuid-123',
@@ -549,8 +570,10 @@ describe('Phase 3.3: Checkpoint Service', () => {
       const db = await import('../../src/db');
 
       vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
         .mockResolvedValueOnce({ rows: [], rowCount: 2 }) // Delete checkpoint_documents
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 }); // Delete checkpoint
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // Delete checkpoint
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const result = await deleteCheckpoint('checkpoint-uuid-123');
 
@@ -562,8 +585,10 @@ describe('Phase 3.3: Checkpoint Service', () => {
       const db = await import('../../src/db');
 
       vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
         .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // No checkpoint_documents deleted
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // No checkpoint deleted
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // No checkpoint deleted
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const result = await deleteCheckpoint('nonexistent-checkpoint');
 

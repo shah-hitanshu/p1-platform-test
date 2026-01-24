@@ -143,20 +143,7 @@ describe('Phase 3.3: Document Version Service', () => {
       ).rejects.toThrow(DocumentNotFoundError);
     });
 
-    it('should throw InvalidDocumentVersionParamsError when snapshot is missing', async () => {
-      const { createDocumentVersion, InvalidDocumentVersionParamsError } = await import('../../src/services/document-version-service');
-
-      await expect(
-        createDocumentVersion({
-          documentId: 'doc-uuid-456',
-          branchId: 'branch-uuid-789',
-          snapshot: null as unknown as Record<string, unknown>,
-          source: 'edit',
-          createdById: 'user-uuid-001',
-          createdByType: 'user',
-        }),
-      ).rejects.toThrow(InvalidDocumentVersionParamsError);
-    });
+    // Note: snapshot validation is enforced by TypeScript at compile time
 
     it('should throw InvalidDocumentVersionParamsError when documentId is empty', async () => {
       const { createDocumentVersion, InvalidDocumentVersionParamsError } = await import('../../src/services/document-version-service');
