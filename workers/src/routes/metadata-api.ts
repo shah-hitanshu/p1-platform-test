@@ -19,6 +19,7 @@ import {
   DocumentMetadataNotFoundError,
   SchemaValidationError,
 } from '../services';
+import { validateJsonSize, SIZE_LIMITS } from './validation';
 
 /**
  * Request context for metadata routes
@@ -103,6 +104,16 @@ async function handleUpdateSchema(
 ): Promise<Response> {
   const body = await parseJsonBody<UpdateSchemaBody>(request);
 
+  // Validate schema size
+  const schemaError = validateJsonSize(
+    body.schema,
+    SIZE_LIMITS.MAX_SCHEMA_SIZE_BYTES,
+    'schema',
+  );
+  if (schemaError !== undefined) {
+    return errorResponse(schemaError, 400);
+  }
+
   const updatedState = await updateBranchStructureState(context.branchId, context.structureId, {
     metadataSchema: body.schema,
     schemaEnforcement: body.enforcement as 'strict' | 'warn' | 'none' | undefined,
@@ -166,6 +177,16 @@ async function handleUpdateDocumentMetadata(
   }
 
   const metadata = await parseJsonBody<Record<string, unknown>>(request);
+
+  // Validate metadata size
+  const metadataError = validateJsonSize(
+    metadata,
+    SIZE_LIMITS.MAX_METADATA_SIZE_BYTES,
+    'metadata',
+  );
+  if (metadataError !== undefined) {
+    return errorResponse(metadataError, 400);
+  }
 
   const result = await setDocumentMetadata({
     branchId: context.branchId,

@@ -125,6 +125,28 @@ describe('Phase 3.1: Document Service', () => {
       ).rejects.toThrow(InvalidDocumentPathError);
     });
 
+    it('should throw InvalidDocumentPathError for path with traversal sequence', async () => {
+      const { createDocument, InvalidDocumentPathError } = await import('../../src/services/document-service');
+
+      await expect(
+        createDocument({
+          siteId: 'site-1',
+          path: 'pages/../etc/passwd',
+        }),
+      ).rejects.toThrow(InvalidDocumentPathError);
+    });
+
+    it('should throw InvalidDocumentPathError for path with double dots', async () => {
+      const { createDocument, InvalidDocumentPathError } = await import('../../src/services/document-service');
+
+      await expect(
+        createDocument({
+          siteId: 'site-1',
+          path: '..hidden',
+        }),
+      ).rejects.toThrow(InvalidDocumentPathError);
+    });
+
     it('should return created document with timestamp', async () => {
       const { createDocument } = await import('../../src/services/document-service');
       const db = await import('../../src/db');
@@ -443,8 +465,24 @@ describe('Phase 3.1: Document Service', () => {
       await listDocuments('site-1', { pathPrefix: 'pages/' });
 
       expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('LIKE'),
+        expect.stringContaining("ESCAPE '\\'"),
         expect.arrayContaining(['pages/%']),
+      );
+    });
+
+    it('should escape LIKE wildcards in pathPrefix', async () => {
+      const { listDocuments } = await import('../../src/services/document-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      // User input with SQL LIKE wildcards that should be escaped
+      await listDocuments('site-1', { pathPrefix: 'pages/100%_discount' });
+
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringContaining("ESCAPE '\\'"),
+        // % escaped to \%, _ escaped to \_
+        expect.arrayContaining(['pages/100\\%\\_discount%']),
       );
     });
 

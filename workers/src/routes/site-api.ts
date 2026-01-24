@@ -16,6 +16,7 @@ import {
   DuplicatePantheonSiteIdError,
   InvalidSiteParamsError,
 } from '../services';
+import { validatePagination } from './validation';
 
 /**
  * Request context for site routes
@@ -113,12 +114,15 @@ async function handleListSites(request: Request): Promise<Response> {
   const limitParam = url.searchParams.get('limit');
   const offsetParam = url.searchParams.get('offset');
 
-  const limit = limitParam !== null ? parseInt(limitParam, 10) : undefined;
-  const offset = offsetParam !== null ? parseInt(offsetParam, 10) : undefined;
+  // Validate pagination parameters
+  const pagination = validatePagination(limitParam, offsetParam);
+  if (!pagination.valid) {
+    return errorResponse(pagination.error ?? 'Invalid pagination parameters', 400);
+  }
 
   const sites = await listSites({
-    limit,
-    offset,
+    limit: pagination.limit,
+    offset: pagination.offset,
   });
 
   return jsonResponse({ sites });

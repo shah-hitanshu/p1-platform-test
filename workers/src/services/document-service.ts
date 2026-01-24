@@ -143,6 +143,7 @@ function mapRowToDocument(row: DocumentRow): DocumentWithArchive {
  * - Must not be empty
  * - Must not start with /
  * - Must not end with /
+ * - Must not contain path traversal sequences
  *
  * @throws InvalidDocumentPathError if path is invalid
  */
@@ -156,6 +157,18 @@ function validatePath(path: string): void {
   if (path.endsWith('/')) {
     throw new InvalidDocumentPathError('path cannot end with /');
   }
+  // Check for path traversal attempts
+  if (path.includes('..')) {
+    throw new InvalidDocumentPathError('path cannot contain traversal sequences');
+  }
+}
+
+/**
+ * Escapes LIKE pattern special characters (% and _) in a string.
+ * PostgreSQL LIKE treats % as wildcard (any chars) and _ as single char.
+ */
+function escapeLikePattern(input: string): string {
+  return input.replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
 /**
@@ -337,8 +350,9 @@ export async function listDocuments(
   }
 
   if (pathPrefix !== undefined && pathPrefix !== '') {
-    params.push(pathPrefix + '%');
-    sql += ' AND path LIKE $' + String(params.length);
+    // Escape LIKE wildcards to prevent injection, then add trailing % for prefix match
+    params.push(escapeLikePattern(pathPrefix) + '%');
+    sql += ' AND path LIKE $' + String(params.length) + " ESCAPE '\\'";
   }
 
   sql += ' ORDER BY path ASC';

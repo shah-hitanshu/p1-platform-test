@@ -17,6 +17,7 @@ import {
   DuplicateStructureSlugError,
   CheckpointNotFoundError,
 } from '../services';
+import { validatePagination, validateJsonSize, SIZE_LIMITS } from './validation';
 
 /**
  * Request context for structure routes
@@ -105,6 +106,16 @@ async function handleCreateStructure(
     return errorResponse('name is required', 400);
   }
 
+  // Validate schema size
+  const schemaError = validateJsonSize(
+    body.metadataSchema,
+    SIZE_LIMITS.MAX_SCHEMA_SIZE_BYTES,
+    'metadataSchema',
+  );
+  if (schemaError !== undefined) {
+    return errorResponse(schemaError, 400);
+  }
+
   const structure = await createStructure({
     siteId: context.siteId,
     name: body.name,
@@ -134,13 +145,16 @@ async function handleListStructures(
   const limitParam = url.searchParams.get('limit');
   const offsetParam = url.searchParams.get('offset');
 
-  const limit = limitParam !== null ? parseInt(limitParam, 10) : undefined;
-  const offset = offsetParam !== null ? parseInt(offsetParam, 10) : undefined;
+  // Validate pagination parameters
+  const pagination = validatePagination(limitParam, offsetParam);
+  if (!pagination.valid) {
+    return errorResponse(pagination.error ?? 'Invalid pagination parameters', 400);
+  }
 
   const structures = await listBranchStructures(context.branchId, {
     structureType: structureType as 'hierarchy' | 'collection' | undefined,
-    limit,
-    offset,
+    limit: pagination.limit,
+    offset: pagination.offset,
   });
 
   return jsonResponse({ structures });
@@ -206,6 +220,16 @@ async function handleUpdateStructure(
   }
 
   const body = await parseJsonBody<UpdateStructureBody>(request);
+
+  // Validate schema size
+  const schemaError = validateJsonSize(
+    body.metadataSchema,
+    SIZE_LIMITS.MAX_SCHEMA_SIZE_BYTES,
+    'metadataSchema',
+  );
+  if (schemaError !== undefined) {
+    return errorResponse(schemaError, 400);
+  }
 
   const updatedStructure = await updateBranchStructure(
     context.branchId,

@@ -19,6 +19,7 @@ import {
   DocumentNotFoundError,
   DocumentPathConflictError,
 } from '../services';
+import { validatePagination } from './validation';
 
 /**
  * Request context for document routes
@@ -119,13 +120,17 @@ async function handleListDocuments(
   const pathPrefix = url.searchParams.get('pathPrefix');
   const archivedParam = url.searchParams.get('archived');
 
-  const limit = limitParam !== null ? parseInt(limitParam, 10) : undefined;
-  const offset = offsetParam !== null ? parseInt(offsetParam, 10) : undefined;
+  // Validate pagination parameters
+  const pagination = validatePagination(limitParam, offsetParam);
+  if (!pagination.valid) {
+    return errorResponse(pagination.error ?? 'Invalid pagination parameters', 400);
+  }
+
   const archived = archivedParam === 'true' ? true : archivedParam === 'false' ? false : undefined;
 
   const documents = await listDocuments(context.siteId, {
-    limit,
-    offset,
+    limit: pagination.limit,
+    offset: pagination.offset,
     pathPrefix: pathPrefix ?? undefined,
     archived,
   });
