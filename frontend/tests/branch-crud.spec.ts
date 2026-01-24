@@ -297,6 +297,89 @@ test.describe('Branch Deletion', () => {
   });
 });
 
+test.describe('Branch Archive', () => {
+  test.beforeEach(async ({ page }) => {
+    // Login
+    await page.goto('/login');
+    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.click('.login-button');
+    await expect(page).toHaveURL('/');
+  });
+
+  test('should not show archive button for main branch', async ({ page }) => {
+    const siteName = uniqueName('No Archive Main');
+    const pantheonId = uniqueName('noarchivemain');
+
+    await createSiteAndNavigate(page, siteName, pantheonId);
+
+    // Find the main branch row
+    const mainRow = page.locator('tr:has-text("main")');
+    await expect(mainRow).toBeVisible();
+
+    // Main branch should NOT have an archive button
+    await expect(mainRow.locator('.archive-link')).not.toBeVisible();
+  });
+
+  test('should archive a non-main branch', async ({ page }) => {
+    const siteName = uniqueName('Archive Branch Test');
+    const pantheonId = uniqueName('archivebranch');
+    const branchName = uniqueName('archivable');
+
+    await createSiteAndNavigate(page, siteName, pantheonId);
+
+    // Create a branch
+    await page.locator('.branches-section .create-btn').click();
+    await page.locator('.branches-section .form-input').fill(branchName);
+    await page.locator('.branches-section .submit-btn').click();
+    await expect(page.locator('.branches-section .create-form')).not.toBeVisible({ timeout: 10000 });
+
+    // Find the branch row and click archive
+    const branchRow = page.locator(`tr:has-text("${branchName}")`);
+    await expect(branchRow).toBeVisible();
+
+    // Wait for API response when archiving
+    const responsePromise = page.waitForResponse(resp =>
+      resp.url().includes('/branches/') && resp.request().method() === 'PATCH'
+    );
+    await branchRow.locator('.archive-link').click();
+    await responsePromise;
+
+    // Status should change to archived
+    await expect(branchRow.locator('.status-badge')).toContainText('archived');
+
+    // Archive button should no longer be visible for this branch
+    await expect(branchRow.locator('.archive-link')).not.toBeVisible();
+  });
+
+  test('should still show delete button for archived branch', async ({ page }) => {
+    const siteName = uniqueName('Delete Archived Test');
+    const pantheonId = uniqueName('deletearchived');
+    const branchName = uniqueName('deletearchive');
+
+    await createSiteAndNavigate(page, siteName, pantheonId);
+
+    // Create a branch
+    await page.locator('.branches-section .create-btn').click();
+    await page.locator('.branches-section .form-input').fill(branchName);
+    await page.locator('.branches-section .submit-btn').click();
+    await expect(page.locator('.branches-section .create-form')).not.toBeVisible({ timeout: 10000 });
+
+    // Archive it
+    const branchRow = page.locator(`tr:has-text("${branchName}")`);
+    const responsePromise = page.waitForResponse(resp =>
+      resp.url().includes('/branches/') && resp.request().method() === 'PATCH'
+    );
+    await branchRow.locator('.archive-link').click();
+    await responsePromise;
+
+    // Status should be archived
+    await expect(branchRow.locator('.status-badge')).toContainText('archived');
+
+    // Delete button should still be visible
+    await expect(branchRow.locator('.delete-link')).toBeVisible();
+  });
+});
+
 test.describe('Branch Navigation', () => {
   test.beforeEach(async ({ page }) => {
     // Login

@@ -37,15 +37,19 @@ export interface Site {
 }
 
 // Branch types
+export type BranchStatus = 'active' | 'review' | 'merged' | 'archived';
+
 export interface Branch {
   id: string;
   siteId: string;
   name: string;
+  /** Whether this is the main branch for the site */
+  isMain: boolean;
   /** The branch this was created from (null for main branch) */
   sourceBranchId?: string;
   /** @deprecated Use sourceBranchId - kept for backwards compatibility */
   parentBranchId?: string;
-  status: 'active' | 'merged' | 'abandoned' | 'archived';
+  status: BranchStatus;
   createdAt: string;
   updatedAt: string;
 }

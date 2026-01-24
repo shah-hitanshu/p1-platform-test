@@ -152,22 +152,40 @@ test.describe('Site Deletion', () => {
     await expect(deleteBtn).toBeEnabled();
   });
 
-  // Note: Successful site deletion requires archiving all branches first.
-  // This is tested in the branch deletion tests. Here we test that the
-  // modal correctly shows errors and doesn't close prematurely.
+  // Note: Sites with only the main branch can be deleted.
+  // Sites with additional non-main branches must have those branches
+  // archived or deleted first.
 
-  test('should show error when deleting site with branches', async ({ page }) => {
-    // Sites with branches cannot be deleted (409 Conflict)
-    // Every new site gets a main branch auto-created
+  test('should show error when deleting site with non-main branches', async ({ page }) => {
+    // Sites with non-main branches cannot be deleted (409 Conflict)
     const siteName = uniqueName('Has Branches');
     const pantheonId = uniqueName('hasbranches');
 
     // Create a site (will have main branch)
     await createSite(page, siteName, pantheonId);
 
-    // Try to delete (should fail because of main branch)
+    // Navigate to site to create an additional branch
     const siteRow = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow.locator('.delete-link').click();
+    await siteRow.locator('.view-link').click();
+    await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+$/);
+
+    // Create a feature branch
+    await page.locator('.branches-section .create-btn').click();
+    await page.locator('.branches-section .form-input').fill('feature-branch');
+    const branchResponsePromise = page.waitForResponse(resp =>
+      resp.url().includes('/branches') && resp.request().method() === 'POST'
+    );
+    await page.locator('.branches-section .submit-btn').click();
+    await branchResponsePromise;
+    await expect(page.locator('tr:has-text("feature-branch")')).toBeVisible({ timeout: 10000 });
+
+    // Go back to sites list
+    await page.click('.nav-link >> text=Sites');
+    await expect(page).toHaveURL('/sites');
+
+    // Try to delete (should fail because of non-main branch)
+    const siteRow2 = page.locator(`tr:has-text("${siteName}")`);
+    await siteRow2.locator('.delete-link').click();
     await page.locator('.confirm-input').fill(siteName);
     await page.locator('.modal-content .delete-btn').click();
 

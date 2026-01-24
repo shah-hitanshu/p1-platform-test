@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { getSite } from '../api/sites';
-import { listBranches, createBranch, deleteBranch as deleteBranchApi } from '../api/branches';
+import { listBranches, createBranch, updateBranch, deleteBranch as deleteBranchApi } from '../api/branches';
 import { ApiResponse } from '../components/ApiResponse';
 import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import type { Site, Branch } from '../types';
@@ -30,11 +30,14 @@ export function SiteDetailPage() {
     useApi<Branch, [string, CreateBranchParams]>(createBranch);
   const { execute: deleteBranchRequest, isLoading: isDeleting, error: deleteError } =
     useApi<void, [string, string]>(deleteBranchApi);
+  const { execute: archiveBranchRequest, isLoading: isArchiving } =
+    useApi<Branch, [string, string, { status: Branch['status'] }]>(updateBranch);
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
   const [selectedParentBranch, setSelectedParentBranch] = useState<string>('');
   const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null);
+  const [archivingBranchId, setArchivingBranchId] = useState<string | null>(null);
 
   useEffect(() => {
     if (siteId) {
@@ -69,6 +72,18 @@ export function SiteDetailPage() {
     // For void functions: undefined = success, null = error
     if (result !== null) {
       setBranchToDelete(null);
+      fetchBranches(siteId);
+    }
+  };
+
+  const handleArchiveBranch = async (branch: Branch) => {
+    if (!siteId) return;
+
+    setArchivingBranchId(branch.id);
+    const result = await archiveBranchRequest(siteId, branch.id, { status: 'archived' });
+    setArchivingBranchId(null);
+
+    if (result) {
       fetchBranches(siteId);
     }
   };
@@ -241,7 +256,16 @@ export function SiteDetailPage() {
                       >
                         View
                       </Link>
-                      {!branch.name.includes('main') && (
+                      {!branch.isMain && branch.status !== 'archived' && (
+                        <button
+                          className="archive-link"
+                          onClick={() => handleArchiveBranch(branch)}
+                          disabled={isArchiving && archivingBranchId === branch.id}
+                        >
+                          {isArchiving && archivingBranchId === branch.id ? 'Archiving...' : 'Archive'}
+                        </button>
+                      )}
+                      {!branch.isMain && (
                         <button
                           className="delete-link"
                           onClick={() => setBranchToDelete(branch)}

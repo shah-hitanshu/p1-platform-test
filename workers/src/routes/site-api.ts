@@ -188,25 +188,28 @@ async function handleUpdateSite(
 /**
  * Handle DELETE /api/sites/{siteId} - Delete Site
  *
- * Site can only be deleted when all branches are archived.
- * Returns 409 if any non-archived branches exist.
+ * Site can be deleted when:
+ * - Only the main branch exists (no other non-archived branches), OR
+ * - All branches are archived/merged
+ *
+ * Returns 409 if non-main, non-archived branches exist.
  */
 async function handleDeleteSite(context: SiteRouteContext): Promise<Response> {
   if (context.siteId === undefined) {
     return errorResponse('Site ID is required', 400);
   }
 
-  // Check for non-archived branches
+  // Check for non-archived, non-main branches
   const branches = await listBranches(context.siteId);
-  const nonArchivedBranches = branches.filter(
-    (b) => b.status !== 'archived' && b.status !== 'merged',
+  const nonArchivedNonMainBranches = branches.filter(
+    (b) => b.status !== 'archived' && b.status !== 'merged' && !b.isMain,
   );
 
-  if (nonArchivedBranches.length > 0) {
+  if (nonArchivedNonMainBranches.length > 0) {
     return errorResponse(
-      'Cannot delete site with non-archived branches. Archive or delete all branches first.',
+      'Cannot delete site with active branches. Archive or delete all non-main branches first.',
       409,
-      { branchCount: nonArchivedBranches.length },
+      { branchCount: nonArchivedNonMainBranches.length },
     );
   }
 
