@@ -497,7 +497,7 @@ test.describe('Merge Request Preview', () => {
     await expect(page).toHaveURL('/');
   });
 
-  test('should display merge preview panel', async ({ page }) => {
+  test('should display merge preview panel with auto-loaded results', async ({ page }) => {
     const siteName = uniqueName('MR Preview');
     const pantheonId = uniqueName('mrpreview');
     const branchName = uniqueName('feature');
@@ -513,10 +513,15 @@ test.describe('Merge Request Preview', () => {
     await page.locator('#title').fill('Preview Test');
     await page.locator('.submit-btn').click();
 
-    // Should show merge preview panel
+    // Should show merge preview panel with auto-loaded results
     await expect(page.locator('.merge-preview-panel')).toBeVisible();
     await expect(page.locator('.preview-btn')).toBeVisible();
-    await expect(page.locator('.preview-btn')).toContainText('Preview Merge');
+
+    // Preview loads automatically - wait for results (or error if race condition in local dev)
+    await expect(page.locator('.preview-result, .preview-error')).toBeVisible({ timeout: 10000 });
+
+    // After loading, button should show "Refresh"
+    await expect(page.locator('.preview-btn')).toContainText('Refresh');
   });
 });
 

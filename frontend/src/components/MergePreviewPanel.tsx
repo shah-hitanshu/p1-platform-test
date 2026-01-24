@@ -2,9 +2,10 @@
  * Merge Preview Panel Component
  *
  * Shows a preview of what will happen when a merge is executed.
+ * Loads automatically when mounted.
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { previewMerge } from '../api/merge-requests';
 import { ConflictList } from './ConflictList';
 import type { MergePreview } from '../types';
@@ -28,9 +29,8 @@ export function MergePreviewPanel({
   const [preview, setPreview] = useState<MergePreview | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasLoaded, setHasLoaded] = useState(false);
 
-  const handlePreview = async () => {
+  const loadPreview = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -39,13 +39,17 @@ export function MergePreviewPanel({
         targetBranchId,
       });
       setPreview(result);
-      setHasLoaded(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load preview');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [siteId, sourceBranchId, targetBranchId]);
+
+  // Load preview automatically on mount
+  useEffect(() => {
+    loadPreview();
+  }, [loadPreview]);
 
   return (
     <div className="merge-preview-panel">
@@ -53,16 +57,16 @@ export function MergePreviewPanel({
         <h3 className="preview-title">Merge Preview</h3>
         <button
           className="preview-btn"
-          onClick={handlePreview}
+          onClick={loadPreview}
           disabled={isLoading}
         >
-          {isLoading ? 'Loading...' : hasLoaded ? 'Refresh Preview' : 'Preview Merge'}
+          {isLoading ? 'Loading...' : 'Refresh'}
         </button>
       </div>
 
       <div className="preview-info">
         <p className="preview-description">
-          Preview the merge from <code>{sourceBranchName}</code> into <code>{targetBranchName}</code>.
+          Merging from <code>{sourceBranchName}</code> into <code>{targetBranchName}</code>
         </p>
       </div>
 
@@ -73,7 +77,14 @@ export function MergePreviewPanel({
         </div>
       )}
 
-      {hasLoaded && preview && (
+      {isLoading && (
+        <div className="preview-loading">
+          <span className="loading-spinner"></span>
+          <span>Loading preview...</span>
+        </div>
+      )}
+
+      {!isLoading && preview && (
         <div className="preview-result">
           <div className="preview-summary">
             <div className={`merge-status ${preview.canMerge ? 'can-merge' : 'cannot-merge'}`}>

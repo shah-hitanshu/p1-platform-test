@@ -61,6 +61,31 @@
   border-radius: 4px;
 }
 
+/* Preview Loading */
+.preview-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  color: #6c757d;
+  font-size: 0.875rem;
+}
+
+.preview-loading .loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e9ecef;
+  border-top-color: #6c757d;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Preview Error */
 .preview-error {
   display: flex;

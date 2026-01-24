@@ -338,16 +338,12 @@ export async function executeMergeWithResolution(
  * Does not modify any data - just detects conflicts and changes.
  */
 export async function previewMerge(
-  mergeRequestId: string,
+  sourceBranchId: string,
+  targetBranchId: string,
 ): Promise<MergePreview> {
-  const mergeRequest = await getMergeRequest(mergeRequestId);
-  if (mergeRequest === null) {
-    throw new MergeRequestNotFoundError(mergeRequestId);
-  }
-
   const detectionResult = await detectConflicts(
-    mergeRequest.sourceBranchId,
-    mergeRequest.targetBranchId,
+    sourceBranchId,
+    targetBranchId,
   );
 
   return {

@@ -133,7 +133,7 @@ export async function previewMerge(
   params: MergePreviewParams
 ): Promise<MergePreview> {
   return apiPost<MergePreview>(
-    `/api/sites/${siteId}/merge-requests/preview`,
+    `/api/sites/${siteId}/merge/preview`,
     params
   );
 }
