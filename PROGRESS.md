@@ -779,6 +779,7 @@ Deliverables:
 - `122c63e` - Implement Phase 7.1.1b Node API Routes
 - `d9b355e` - Add Phase 7.1.1b TDD tests for Metadata API Routes
 - `ebb2aa8` - Implement Phase 7.1.1b Metadata API Routes
+- `b5a26e1` - Add security hardening for Phase 7.1.1b API routes
 
 Deliverables:
 - [x] Site API Routes (`workers/src/routes/site-api.ts`) - 16 tests
@@ -826,6 +827,22 @@ Deliverables:
 - **Site deletion:** Prevented when non-archived branches exist
 - **Document deletion:** Soft-delete with archive/restore capability
 - **Bulk operations:** Supported for nodes and metadata
+
+##### Security Hardening
+- [x] Validation Utilities (`workers/src/routes/validation.ts`) - 28 tests
+  - Pagination validation (max limit: 100, min: 1, offset >= 0)
+  - JSON size validation for schemas and metadata (64KB max)
+  - Reusable validation functions across all API routes
+- [x] Path Traversal Protection
+  - Document paths reject `..` sequences
+  - Prevents directory traversal attacks
+- [x] LIKE Query Wildcard Escaping
+  - Escapes `%` and `_` in pathPrefix filters
+  - Prevents SQL LIKE wildcard injection
+- [x] Error Message Sanitization
+  - Known validation errors return user-friendly messages
+  - Unknown errors return generic "Internal server error"
+  - Error details logged server-side only
 
 #### Phase 7.2: Audit Integration
 
@@ -965,6 +982,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 7.1.1b | Security hardening: pagination validation, path traversal, LIKE escaping, size limits (947 tests) |
 | 2026-01-24 | 7.1.1b | Resource Management APIs complete: Site, Document, Structure, Node, Metadata (916 tests) |
 | 2026-01-24 | 7.1.1a | Branch-scoped structure identity complete: migration, service updates (829 tests) |
 | 2026-01-24 | 7.1.1 | Proposal finalized: branch-scoped structures, soft-delete, bulk operations |
@@ -1005,7 +1023,7 @@ Template for future decisions:
 | Middleware | 18 | - |
 | Guest Access | 31 | - |
 | Site Service | 31 | 12 |
-| Document Service | 38 | 12 |
+| Document Service | 41 | 12 |
 | Branch Service | 63 | 28 |
 | Document Version Service | 18 | - |
 | Checkpoint Service | 30 | - |
@@ -1032,7 +1050,8 @@ Template for future decisions:
 | Structure API Routes | 17 | - |
 | Node API Routes | 19 | - |
 | Metadata API Routes | 13 | - |
-| **Total** | **916** | **52** |
+| Validation Utilities | 28 | - |
+| **Total** | **947** | **52** |
 
 ---
 
