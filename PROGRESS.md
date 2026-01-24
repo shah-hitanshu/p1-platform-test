@@ -1087,6 +1087,28 @@ Deliverables:
   - Verified DocumentPage renders with correct metadata
   - Verified navigation from BranchDetailPage documents list works
 
+#### Phase 8.8: Checkpoint Creation Bug Fixes
+
+**Status:** Complete
+**Commit:** `ffd5b81`
+
+##### Bug Fixes:
+- [x] Checkpoint Type Parameter Mismatch (`workers/src/routes/checkpoint-api.ts`)
+  - **Issue:** Creating checkpoint failed with "null value in column checkpoint_type"
+  - **Root cause:** Route passed `type` but service expected `checkpointType`
+  - **Fix:** Changed parameter from `type: body.type` to `checkpointType: body.type ?? 'manual'`
+- [x] Optional Checkpoint Name (`workers/src/routes/checkpoint-api.ts`)
+  - **Issue:** API required checkpoint name, but it should be optional
+  - **Fix:** Made name optional; empty/whitespace names treated as undefined
+- [x] Checkpoint Document Metadata SQL Columns (`workers/src/services/checkpoint-service.ts`)
+  - **Issue:** Checkpoint creation failed with "column node_id does not exist"
+  - **Root cause:** SQL queries referenced non-existent columns (`node_id`, `position`)
+  - **Fix:** Updated INSERT and SELECT queries to use actual schema columns (`structure_id`, `document_id`, `metadata`)
+- [x] Error Logging for Branch Creation (`workers/src/services/branch-service.ts`)
+  - Added `console.error` logging to `createMainBranch` for debugging
+- [x] Test Update (`workers/tests/routes/checkpoint-api.spec.ts`)
+  - Updated test to verify optional name behavior (201 with null name instead of 400)
+
 ---
 
 ## Architecture Reference
@@ -1208,6 +1230,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 8.8 | Bug fixes: checkpoint creation (checkpointType param, SQL columns), optional name |
 | 2026-01-24 | 8.7 | DocumentPage implementation and navigation fixes |
 | 2026-01-24 | 8.6 | Bug fixes: Cloudflare Workers DB I/O error, Create Site form missing field |
 | 2026-01-24 | 8.1-8.5 | Frontend API Explorer: project setup, API client, auth UI, dashboard/sites pages, E2E tests |
