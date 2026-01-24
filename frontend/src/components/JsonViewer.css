@@ -17,12 +17,14 @@
   border-bottom: 1px solid var(--dt-color-gray-3, #d1d5db);
 }
 
-.json-content {
+.json-viewer .json-content,
+pre.json-content {
   margin: 0;
   padding: 16px;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 0.8125rem;
   line-height: 1.5;
+  background-color: var(--dt-color-gray-1, #f3f4f6);
   color: var(--dt-color-gray-8, #1f2937);
   overflow-x: auto;
   white-space: pre-wrap;
