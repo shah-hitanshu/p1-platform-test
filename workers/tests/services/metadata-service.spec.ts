@@ -699,9 +699,9 @@ describe('Phase 6.2: Metadata Service', () => {
       );
 
       expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.message.includes('maxLength'))).toBe(
-        true,
-      );
+      expect(
+        result.errors.some((e) => e.message.includes('more than 10 characters')),
+      ).toBe(true);
     });
 
     it('should validate enum constraints', async () => {
@@ -720,7 +720,9 @@ describe('Phase 6.2: Metadata Service', () => {
       const result = validateMetadata({ status: 'invalid' }, schema);
 
       expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.message.includes('enum'))).toBe(true);
+      expect(
+        result.errors.some((e) => e.message.includes('allowed values')),
+      ).toBe(true);
     });
   });
 

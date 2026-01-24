@@ -252,3 +252,35 @@ export type {
   MoveNodeParams,
   NavigationTreeNode,
 } from './structure-service';
+
+// Metadata Service
+export {
+  getBranchStructureState,
+  createBranchStructureState,
+  updateBranchStructureState,
+  deleteBranchStructureState,
+  getDocumentMetadata,
+  setDocumentMetadata,
+  deleteDocumentMetadata,
+  listDocumentMetadata,
+  validateMetadata,
+  validateAllDocuments,
+  getSchemaValidationSummary,
+  BranchStructureStateNotFoundError,
+  DocumentMetadataNotFoundError,
+  SchemaValidationError,
+} from './metadata-service';
+
+export type {
+  BranchStructureState,
+  DocumentMetadata,
+  ValidationError,
+  MetadataValidationResult,
+  CreateBranchStructureStateParams,
+  UpdateBranchStructureStateParams,
+  SetDocumentMetadataParams,
+  ListDocumentMetadataOptions,
+  NonConformingDocument,
+  SchemaValidationResult,
+  SchemaValidationSummary,
+} from './metadata-service';
