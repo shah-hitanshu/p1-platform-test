@@ -72,13 +72,7 @@
   margin-right: 4px;
 }
 
-.meta-item code {
-  font-family: 'Monaco', 'Menlo', monospace;
-  font-size: 0.8125rem;
-  background-color: #f1f3f4;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
+/* Code styling inherits from global styles in index.css */
 
 .no-parent {
   color: #ced4da;
@@ -362,25 +356,15 @@
 }
 
 .doc-path code {
-  font-family: 'Monaco', 'Menlo', monospace;
-  font-size: 0.875rem;
-  color: #333;
   transition: color 0.2s;
 }
 
 .doc-id code {
-  font-family: 'Monaco', 'Menlo', monospace;
   font-size: 0.75rem;
-  color: #6c757d;
-  background-color: #f1f3f4;
-  padding: 2px 6px;
-  border-radius: 4px;
 }
 
 .created-by code {
-  font-family: 'Monaco', 'Menlo', monospace;
   font-size: 0.75rem;
-  color: #6c757d;
 }
 
 .date {

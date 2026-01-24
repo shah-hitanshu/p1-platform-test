@@ -64,12 +64,7 @@
 }
 
 .branch-tag {
-  font-family: 'Monaco', 'Menlo', monospace;
-  font-size: 0.875rem;
-  background-color: #f1f3f4;
   padding: 6px 12px;
-  border-radius: 4px;
-  color: #333;
 }
 
 .branch-arrow {

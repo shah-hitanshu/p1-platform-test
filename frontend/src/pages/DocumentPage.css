@@ -57,8 +57,6 @@
 }
 
 .document-title code {
-  font-family: 'Monaco', 'Menlo', monospace;
-  background-color: #f1f3f4;
   padding: 4px 12px;
   border-radius: 6px;
 }
@@ -80,11 +78,7 @@
 }
 
 .document-page .meta-item code {
-  font-family: 'Monaco', 'Menlo', monospace;
   font-size: 0.75rem;
-  background-color: #f1f3f4;
-  padding: 2px 6px;
-  border-radius: 4px;
 }
 
 /* Status Badge */
@@ -259,11 +253,7 @@
 }
 
 .detail-value code {
-  font-family: 'Monaco', 'Menlo', monospace;
-  font-size: 0.875rem;
-  background-color: #f1f3f4;
   padding: 4px 8px;
-  border-radius: 4px;
   word-break: break-all;
 }
 
@@ -407,11 +397,7 @@
 }
 
 .version-meta code {
-  font-family: 'Monaco', 'Menlo', monospace;
   font-size: 0.75rem;
-  background-color: #fff;
-  padding: 2px 6px;
-  border-radius: 4px;
 }
 
 /* Table Styles */
@@ -464,8 +450,6 @@
 }
 
 .version-number code {
-  font-family: 'Monaco', 'Menlo', monospace;
-  font-size: 0.875rem;
   font-weight: 600;
 }
 
@@ -487,11 +471,7 @@
 }
 
 .created-by code {
-  font-family: 'Monaco', 'Menlo', monospace;
   font-size: 0.75rem;
-  background-color: #f1f3f4;
-  padding: 2px 6px;
-  border-radius: 4px;
 }
 
 .creator-type {

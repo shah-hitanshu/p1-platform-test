@@ -23,6 +23,24 @@ body {
   min-height: 100vh;
 }
 
+/* Global code element styling for consistent contrast */
+code {
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 0.875em;
+  background-color: var(--dt-color-gray-1, #f3f4f6);
+  color: var(--dt-color-gray-8, #1f2937);
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  word-break: break-word;
+}
+
+/* Ensure code elements inside alerts have proper contrast */
+.pds-alert code,
+[class*="alert"] code {
+  background-color: rgba(0, 0, 0, 0.08);
+  color: inherit;
+}
+
 /* Loading screen - will be replaced with PDS Spinner component */
 .loading-screen {
   display: flex;
