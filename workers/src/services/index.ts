@@ -165,3 +165,22 @@ export type {
   ConflictDetectionResult,
   MergeabilityResult,
 } from './conflict-detection-service';
+
+// Conflict Resolution Service
+export {
+  resolveConflict,
+  resolveAllConflicts,
+  resolveDeletedConflict,
+  VersionNotFoundError,
+  UnsupportedStrategyError,
+} from './conflict-resolution-service';
+
+export type {
+  ResolveConflictParams,
+  ConflictResolutionResult,
+  ConflictWithVersions,
+  ResolveAllConflictsParams,
+  ResolveAllConflictsResult,
+  ResolveDeletedConflictParams,
+  DeletedConflictResolutionResult,
+} from './conflict-resolution-service';
