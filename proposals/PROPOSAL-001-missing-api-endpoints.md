@@ -389,9 +389,13 @@ DELETE /api/sites/{siteId}
 
 Response: 204 No Content
 
+Notes:
+- Site can only be deleted when all branches are archived or merged
+- Returns 409 if any non-archived branches exist
+
 Errors:
 - 404 Not Found: Site does not exist
-- 409 Conflict: Site has active branches (optional protection)
+- 409 Conflict: Site has non-archived branches
 ```
 
 ---
@@ -519,15 +523,59 @@ Errors:
 - 409 Conflict: Document already exists at new path
 ```
 
-#### Delete Document
+#### Delete Document (Soft Delete)
 
 ```
 DELETE /api/sites/{siteId}/documents/{documentId}
 
 Response: 204 No Content
 
+Notes:
+- Soft-delete: sets `archived_at` timestamp rather than hard-deleting
+- Preserves version history for audit and potential recovery
+- Archived documents are excluded from listings by default
+- Document path becomes available for reuse after archival
+
 Errors:
 - 404 Not Found: Document does not exist
+- 409 Conflict: Document has active references in structures (optional)
+```
+
+#### Restore Document
+
+```
+POST /api/sites/{siteId}/documents/{documentId}/restore
+
+Response: 200 OK
+{
+    "id": "doc-uuid",
+    "siteId": "site-uuid",
+    "path": "pages/about-us",
+    "createdAt": "2026-01-23T10:00:00Z",
+    "archivedAt": null
+}
+
+Notes:
+- Restores a soft-deleted document
+- Fails if original path is now occupied by another document
+
+Errors:
+- 404 Not Found: Document does not exist or is not archived
+- 409 Conflict: Path is now occupied by another document
+```
+
+#### List Documents (with archived filter)
+
+Update to List Documents endpoint:
+
+```
+GET /api/sites/{siteId}/documents?pathPrefix=pages/&archived=false&limit=20&offset=0
+
+Query Parameters:
+- pathPrefix: Filter documents by path prefix
+- archived: Include archived documents (default: false, use "true" or "only")
+- limit: Max results (default 20, max 100)
+- offset: Pagination offset
 ```
 
 ---
@@ -907,6 +955,154 @@ Query Parameters:
 - visibleOnly: Only include visible nodes (default: false)
 ```
 
+#### Bulk Create Nodes
+
+Create multiple nodes in a single request. Useful for importing or migrating structure content.
+
+```
+POST /api/sites/{siteId}/branches/{branchId}/structures/{structureId}/nodes/bulk
+
+Request:
+{
+    "nodes": [
+        {
+            "parentNodeId": null,
+            "name": "Section A",
+            "slug": "section-a",
+            "nodeType": "section",
+            "position": 0
+        },
+        {
+            "parentNodeId": null,
+            "name": "Section B",
+            "slug": "section-b",
+            "nodeType": "section",
+            "position": 1
+        },
+        {
+            "parentNodeId": null,
+            "name": "Home",
+            "slug": "home",
+            "nodeType": "document",
+            "documentId": "doc-uuid",
+            "position": 2
+        }
+    ]
+}
+
+Response: 201 Created
+{
+    "created": [
+        { "id": "node-uuid-1", "slug": "section-a" },
+        { "id": "node-uuid-2", "slug": "section-b" },
+        { "id": "node-uuid-3", "slug": "home" }
+    ],
+    "errors": []
+}
+
+Notes:
+- Nodes are created in order; later nodes can reference earlier nodes as parents
+- Use temporary IDs (e.g., "temp-1") in parentNodeId to reference nodes created in same batch
+- Atomic: all succeed or all fail
+
+Errors:
+- 400 Bad Request: Invalid node data
+- 409 Conflict: Slug conflicts
+```
+
+#### Bulk Update Nodes
+
+Update multiple nodes in a single request. Useful for batch reordering or renaming.
+
+```
+PATCH /api/sites/{siteId}/branches/{branchId}/structures/{structureId}/nodes/bulk
+
+Request:
+{
+    "updates": [
+        {
+            "nodeId": "node-uuid-1",
+            "position": 2
+        },
+        {
+            "nodeId": "node-uuid-2",
+            "position": 0
+        },
+        {
+            "nodeId": "node-uuid-3",
+            "name": "Updated Name",
+            "position": 1
+        }
+    ]
+}
+
+Response: 200 OK
+{
+    "updated": [
+        { "id": "node-uuid-1", "position": 2 },
+        { "id": "node-uuid-2", "position": 0 },
+        { "id": "node-uuid-3", "position": 1, "name": "Updated Name" }
+    ],
+    "errors": []
+}
+
+Notes:
+- Useful for complex reordering operations
+- Atomic: all succeed or all fail
+```
+
+#### Bulk Delete Nodes
+
+Delete multiple nodes in a single request.
+
+```
+DELETE /api/sites/{siteId}/branches/{branchId}/structures/{structureId}/nodes/bulk
+
+Request:
+{
+    "nodeIds": ["node-uuid-1", "node-uuid-2", "node-uuid-3"]
+}
+
+Response: 200 OK
+{
+    "deleted": ["node-uuid-1", "node-uuid-2", "node-uuid-3"],
+    "errors": []
+}
+
+Notes:
+- Deleting a section node also deletes all child nodes
+- Atomic: all succeed or all fail
+```
+
+#### Migrate Nodes Between Structures
+
+Move nodes from one structure to another on the same branch.
+
+```
+POST /api/sites/{siteId}/branches/{branchId}/structures/{structureId}/nodes/migrate
+
+Request:
+{
+    "sourceStructureId": "old-structure-uuid",
+    "nodeIds": ["node-uuid-1", "node-uuid-2"],
+    "targetParentId": null,
+    "startPosition": 0
+}
+
+Response: 200 OK
+{
+    "migrated": [
+        { "id": "node-uuid-1", "newPosition": 0 },
+        { "id": "node-uuid-2", "newPosition": 1 }
+    ]
+}
+
+Notes:
+- Moves nodes and their children to target structure
+- Document metadata is also migrated if schemas are compatible
+- Validates against target structure's metadata schema
+```
+
 ---
 
 ### 5. Metadata API
@@ -1094,6 +1290,80 @@ Query Parameters:
 - conforming: Filter by schema conformance (true, false, or omit for all)
 ```
 
+#### Bulk Update Metadata
+
+Update metadata for multiple documents in a single request.
+
+```
+PATCH /api/sites/{siteId}/branches/{branchId}/structures/{structureId}/metadata/bulk
+
+Request:
+{
+    "updates": [
+        {
+            "documentId": "doc-uuid-1",
+            "metadata": {
+                "title": "Updated Title 1",
+                "author": "New Author"
+            }
+        },
+        {
+            "documentId": "doc-uuid-2",
+            "metadata": {
+                "title": "Updated Title 2",
+                "author": "New Author"
+            }
+        }
+    ]
+}
+
+Response: 200 OK
+{
+    "updated": [
+        { "documentId": "doc-uuid-1", "conformsToSchema": true },
+        { "documentId": "doc-uuid-2", "conformsToSchema": true }
+    ],
+    "errors": []
+}
+
+Notes:
+- Useful for applying common metadata (e.g., author) to many documents
+- Validates each against schema; returns validation errors per document
+- In strict mode, entire batch fails if any document fails validation
+- In warn mode, updates proceed and errors are returned for review
+```
+
+#### Bulk Migrate Metadata
+
+Copy metadata from one structure to another, useful when restructuring content.
+
+```
+POST /api/sites/{siteId}/branches/{branchId}/structures/{structureId}/metadata/migrate
+
+Request:
+{
+    "sourceStructureId": "old-structure-uuid",
+    "documentIds": ["doc-uuid-1", "doc-uuid-2", "doc-uuid-3"],
+    "fieldMapping": {
+        "old_title": "title",
+        "old_author": "author"
+    }
+}
+
+Response: 200 OK
+{
+    "migrated": [
+        { "documentId": "doc-uuid-1", "conformsToSchema": true },
+        { "documentId": "doc-uuid-2", "conformsToSchema": false, "errors": [...] }
+    ]
+}
+
+Notes:
+- Copies and optionally transforms metadata between structures
+- fieldMapping allows renaming fields during migration
+- Validates against target structure's schema
+```
+
 ---
 
 ## Implementation Considerations
@@ -1161,27 +1431,14 @@ workers/src/routes/
 
 ---
 
-## Open Questions
-
-1. **Site deletion protection:** Should we prevent deletion of sites with active (non-archived) branches?
-
-2. **Document deletion cascade:** When a document is deleted, should we:
-   - Delete all versions across all branches?
-   - Only allow deletion if no versions exist?
-   - Soft-delete with archival?
-
-3. ~~**Structure API scope:** Should structure definitions be branch-scoped or site-scoped?~~
-   **RESOLVED:** Branch-scoped for consistency with documents. See "Schema Changes Required" section.
-
-4. **Bulk operations:** Should we add batch endpoints for creating/updating multiple nodes or metadata entries?
-
----
-
 ## Decisions Made
 
 | Decision | Date | Resolution |
 |----------|------|------------|
 | Structure API scope | 2026-01-24 | Branch-scoped. All structure changes (including name, slug) are isolated per-branch until merged. This matches document behavior and enables full version control of site refactoring. |
+| Site deletion protection | 2026-01-24 | Prevent deletion of sites with non-archived branches. Sites can only be deleted when all branches are archived or merged. |
+| Document deletion | 2026-01-24 | Soft-delete with archival. Documents are marked as archived rather than hard-deleted, preserving version history for audit and potential recovery. |
+| Bulk operations | 2026-01-24 | Yes, add batch endpoints. Useful for reordering nodes or migrating documents between structures. |
 
 ---
 
@@ -1215,15 +1472,18 @@ This proposal should be implemented in two sub-phases:
 
 ---
 
-## Decision Needed
+## Status
 
-Please review and confirm:
+**All open questions resolved.** This proposal is ready for implementation.
 
-1. Proceed with this proposal?
-2. Any endpoints to add/remove/modify?
-3. Answers to remaining open questions (1, 2, 4)?
+### Summary of Changes from Original Draft
+
+1. **Schema migration required** — Structure identity moved to `branch_structure_state` for branch-scoped versioning
+2. **Site deletion protection** — Prevents deletion when non-archived branches exist
+3. **Document soft-delete** — Archive rather than hard-delete, with restore endpoint
+4. **Bulk operations added** — Node bulk CRUD, migration, and metadata bulk update/migrate
 
 ---
 
 *Prepared: 2026-01-23*
-*Updated: 2026-01-24 — Added branch-scoped structure schema changes*
+*Updated: 2026-01-24 — Resolved all open questions, added schema migration and bulk operations*
