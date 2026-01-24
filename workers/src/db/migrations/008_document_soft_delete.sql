@@ -9,7 +9,7 @@ ALTER TABLE app.documents
 
 -- Update the unique constraint to only apply to non-archived documents
 -- This allows the path to be reused after archival
-DROP INDEX IF EXISTS app.documents_site_id_path_key;
+-- Drop constraint first (this also drops the associated index)
 ALTER TABLE app.documents DROP CONSTRAINT IF EXISTS documents_site_id_path_key;
 
 -- Create partial unique index for non-archived documents only

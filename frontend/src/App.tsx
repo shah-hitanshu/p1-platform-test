@@ -11,6 +11,7 @@ import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { SitesPage } from './pages/SitesPage';
 import { SiteDetailPage } from './pages/SiteDetailPage';
+import { BranchDetailPage } from './pages/BranchDetailPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -75,6 +76,7 @@ function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/sites" element={<SitesPage />} />
           <Route path="/sites/:siteId" element={<SiteDetailPage />} />
+          <Route path="/sites/:siteId/branches/:branchId" element={<BranchDetailPage />} />
         </Route>
 
         {/* Catch-all redirect */}

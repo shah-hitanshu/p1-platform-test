@@ -136,11 +136,13 @@ async function handleListCheckpoints(
   const limit = limitParam !== null ? parseInt(limitParam, 10) : undefined;
   const offset = offsetParam !== null ? parseInt(offsetParam, 10) : undefined;
 
-  const checkpoints = await listCheckpoints({
-    branchId: context.branchId,
-    ...(limit !== undefined ? { limit } : {}),
-    ...(offset !== undefined ? { offset } : {}),
-  });
+  const checkpoints = await listCheckpoints(
+    context.branchId ?? '',
+    {
+      ...(limit !== undefined ? { limit } : {}),
+      ...(offset !== undefined ? { offset } : {}),
+    },
+  );
 
   return jsonResponse({ checkpoints });
 }
