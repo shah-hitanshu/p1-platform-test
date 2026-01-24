@@ -1109,6 +1109,19 @@ Deliverables:
 - [x] Test Update (`workers/tests/routes/checkpoint-api.spec.ts`)
   - Updated test to verify optional name behavior (201 with null name instead of 400)
 
+#### Phase 8.9: Auto-Create Checkpoint for Branching
+
+**Status:** Complete
+**Commit:** `7895510`
+
+##### Enhancement:
+- [x] Auto-Create Checkpoint (`workers/src/routes/branch-api.ts`)
+  - **Issue:** Creating a branch required the source branch to have an existing checkpoint
+  - **User impact:** Users had to manually create a checkpoint before branching
+  - **Fix:** When source branch has no checkpoint, automatically create an 'auto' type checkpoint
+  - Checkpoint is named "Auto-created for branching" with type 'auto'
+  - Transparent to user - branching now works immediately on new sites
+
 ---
 
 ## Architecture Reference
@@ -1230,6 +1243,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 8.9 | Enhancement: auto-create checkpoint when branching from branch without one |
 | 2026-01-24 | 8.8 | Bug fixes: checkpoint creation (checkpointType param, SQL columns), optional name |
 | 2026-01-24 | 8.7 | DocumentPage implementation and navigation fixes |
 | 2026-01-24 | 8.6 | Bug fixes: Cloudflare Workers DB I/O error, Create Site form missing field |
