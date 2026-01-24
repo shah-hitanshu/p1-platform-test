@@ -33,6 +33,11 @@ export {
   documentExists,
   archiveDocument,
   restoreDocument,
+  // Branch-scoped document operations
+  listDocumentsOnBranch,
+  createDocumentOnBranch,
+  documentExistsOnBranch,
+  deleteDocumentOnBranch,
   SiteNotFoundError,
   DuplicateDocumentPathError,
   InvalidDocumentPathError,
@@ -44,6 +49,11 @@ export type {
   CreateDocumentParams,
   ListDocumentsOptions,
   DocumentWithArchive,
+  // Branch-scoped document types
+  ListDocumentsOnBranchOptions,
+  CreateDocumentOnBranchParams,
+  CreateDocumentOnBranchResult,
+  DeleteDocumentOnBranchParams,
 } from './document-service';
 
 // Branch Service
