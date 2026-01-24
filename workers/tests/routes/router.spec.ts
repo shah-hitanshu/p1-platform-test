@@ -19,7 +19,7 @@ vi.mock('../../src/routes/site-api', () => ({
     new Response(JSON.stringify({ mock: 'site-api' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    })
+    }),
   ),
 }));
 
@@ -28,7 +28,7 @@ vi.mock('../../src/routes/branch-api', () => ({
     new Response(JSON.stringify({ mock: 'branch-api' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    })
+    }),
   ),
 }));
 
@@ -37,7 +37,7 @@ vi.mock('../../src/routes/document-api', () => ({
     new Response(JSON.stringify({ mock: 'document-api' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    })
+    }),
   ),
 }));
 
@@ -46,7 +46,7 @@ vi.mock('../../src/routes/checkpoint-api', () => ({
     new Response(JSON.stringify({ mock: 'checkpoint-api' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    })
+    }),
   ),
 }));
 
@@ -55,7 +55,7 @@ vi.mock('../../src/routes/merge-api', () => ({
     new Response(JSON.stringify({ mock: 'merge-api' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    })
+    }),
   ),
 }));
 
@@ -64,7 +64,7 @@ vi.mock('../../src/routes/grant-api', () => ({
     new Response(JSON.stringify({ mock: 'grant-api' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    })
+    }),
   ),
 }));
 
@@ -73,7 +73,7 @@ vi.mock('../../src/routes/structure-api', () => ({
     new Response(JSON.stringify({ mock: 'structure-api' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    })
+    }),
   ),
 }));
 
@@ -82,7 +82,7 @@ vi.mock('../../src/routes/node-api', () => ({
     new Response(JSON.stringify({ mock: 'node-api' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    })
+    }),
   ),
 }));
 
@@ -91,7 +91,7 @@ vi.mock('../../src/routes/metadata-api', () => ({
     new Response(JSON.stringify({ mock: 'metadata-api' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    })
+    }),
   ),
 }));
 
@@ -100,7 +100,7 @@ vi.mock('../../src/routes/realtime-api', () => ({
     new Response(JSON.stringify({ mock: 'realtime-api' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    })
+    }),
   ),
 }));
 

@@ -83,7 +83,7 @@ export {
   getLatestVersionsForBranch,
   listDocumentVersions,
   getDocumentVersionByNumber,
-  DocumentNotFoundError,
+  // Note: DocumentNotFoundError already exported from document-service
   InvalidDocumentVersionParamsError,
 } from './document-version-service';
 
