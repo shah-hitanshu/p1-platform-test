@@ -231,10 +231,10 @@ async function handleListMergeRequests(
   const url = new URL(request.url);
   const statusParam = url.searchParams.get('status') as MergeRequestStatus | null;
 
-  const mergeRequests = await listMergeRequests({
-    siteId: context.siteId,
-    ...(statusParam !== null ? { status: statusParam } : {}),
-  });
+  const mergeRequests = await listMergeRequests(
+    context.siteId,
+    statusParam !== null ? { status: statusParam } : {},
+  );
 
   return jsonResponse({ mergeRequests });
 }

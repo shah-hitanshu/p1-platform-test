@@ -170,7 +170,7 @@ const VALID_STATUS_TRANSITIONS: Record<MergeRequestStatus, MergeRequestStatus[]>
   approved: ['merged', 'closed', 'open'], // can go back to open if approval revoked
   conflicted: ['open', 'closed'], // back to open after conflict resolution
   merged: [], // terminal state
-  closed: [], // terminal state
+  closed: ['open'], // can be reopened
 };
 
 /**

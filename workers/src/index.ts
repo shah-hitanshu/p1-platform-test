@@ -902,7 +902,9 @@ export default {
         case 'merge':
           response = await handleMergeRoutes(request, {
             siteId: route.params.siteId ?? '',
-            operation: route.params.action as 'check' | 'execute' | 'preview' | undefined,
+            operation: ['check', 'execute', 'preview'].includes(route.params.action ?? '')
+              ? (route.params.action as 'check' | 'execute' | 'preview')
+              : undefined,
             mergeRequests: route.params.action === 'requests',
             mergeRequestId: route.params.mergeRequestId,
             principal: principalContext,

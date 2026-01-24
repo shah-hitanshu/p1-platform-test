@@ -407,6 +407,9 @@ test.describe('Merge Request Status Changes', () => {
     await page.locator('.action-close').click();
     await expect(page.locator('.status-badge')).toContainText('closed', { timeout: 10000 });
 
+    // Wait for the reopen button to appear (indicates status change completed)
+    await expect(page.locator('.action-reopen')).toBeVisible({ timeout: 5000 });
+
     // Then reopen
     await page.locator('.action-reopen').click();
     await expect(page.locator('.status-badge')).toContainText('open', { timeout: 10000 });
@@ -472,8 +475,17 @@ test.describe('Merge Request Deletion', () => {
     // Should redirect to list
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+\/merge-requests$/, { timeout: 10000 });
 
-    // MR should not be in the list
-    await expect(page.locator('.merge-requests-table')).not.toContainText(mrTitle);
+    // MR should not be in the list - either empty state or table without MR
+    const table = page.locator('.merge-requests-table');
+    const emptyState = page.locator('.empty-state');
+
+    // Wait for either empty state or table to be visible
+    await expect(table.or(emptyState)).toBeVisible({ timeout: 5000 });
+
+    // If table exists, verify it doesn't contain our deleted MR
+    if (await table.count() > 0) {
+      await expect(table).not.toContainText(mrTitle);
+    }
   });
 });
 
