@@ -175,8 +175,8 @@ export function BranchDetailPage() {
             </span>
             <span className="meta-item">
               <strong>Parent:</strong>{' '}
-              {branch?.parentBranchId ? (
-                <code>{branch.parentBranchId.slice(0, 8)}...</code>
+              {branch?.sourceBranchId ? (
+                <code>{branch.sourceBranchId.slice(0, 8)}...</code>
               ) : (
                 <span className="no-parent">None (main branch)</span>
               )}

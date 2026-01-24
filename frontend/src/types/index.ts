@@ -41,7 +41,10 @@ export interface Branch {
   id: string;
   siteId: string;
   name: string;
-  parentBranchId: string | null;
+  /** The branch this was created from (null for main branch) */
+  sourceBranchId?: string;
+  /** @deprecated Use sourceBranchId - kept for backwards compatibility */
+  parentBranchId?: string;
   status: 'active' | 'merged' | 'abandoned' | 'archived';
   createdAt: string;
   updatedAt: string;

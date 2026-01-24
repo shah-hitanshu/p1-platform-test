@@ -218,8 +218,8 @@ export function SiteDetailPage() {
                       </span>
                     </td>
                     <td className="branch-parent">
-                      {branch.parentBranchId ? (
-                        <code>{branch.parentBranchId.slice(0, 8)}...</code>
+                      {branch.sourceBranchId ? (
+                        <code>{branch.sourceBranchId.slice(0, 8)}...</code>
                       ) : (
                         <span className="no-parent">-</span>
                       )}
