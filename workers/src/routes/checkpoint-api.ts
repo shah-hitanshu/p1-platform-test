@@ -102,15 +102,11 @@ async function handleCreateCheckpoint(
 
   const body = await parseJsonBody<CreateCheckpointBody>(request);
 
-  // Validate required fields
-  if (body.name === undefined || body.name.trim() === '') {
-    return errorResponse('Checkpoint name is required', 400);
-  }
-
+  const trimmedName = body.name?.trim();
   const result = await createCheckpoint({
     branchId: context.branchId,
-    name: body.name,
-    type: body.type ?? 'manual',
+    name: trimmedName !== undefined && trimmedName !== '' ? trimmedName : undefined,
+    checkpointType: body.type ?? 'manual',
     createdById: context.principal.id,
     createdByType: context.principal.type,
   });

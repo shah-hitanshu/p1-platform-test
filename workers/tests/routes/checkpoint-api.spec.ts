@@ -106,10 +106,35 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       expect(body.checkpoint.name).toBe('Feature complete');
     });
 
-    it('should return 400 for missing checkpoint name', async () => {
+    it('should create a checkpoint without a name (name is optional)', async () => {
       const { handleCheckpointRoutes } = await import(
         '../../src/routes/checkpoint-api'
       );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      vi.mocked(services.createCheckpoint).mockResolvedValueOnce({
+        checkpoint: {
+          id: 'checkpoint-1',
+          branchId: 'branch-1',
+          name: null,
+          type: 'manual',
+          createdAt: '2026-01-24T11:00:00.000Z',
+          createdById: 'user-1',
+          createdByType: 'user',
+        },
+        documentVersionIds: [],
+      });
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-1/checkpoints',
@@ -126,9 +151,10 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
         principal: { id: 'user-1', type: 'user' },
       });
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(201);
       const body = await response.json();
-      expect(body.error).toContain('name');
+      expect(body.checkpoint.id).toBe('checkpoint-1');
+      expect(body.checkpoint.name).toBeNull();
     });
 
     it('should return 404 for non-existent branch', async () => {

@@ -398,13 +398,14 @@ export async function createMainBranch(params: CreateMainBranchParams): Promise<
 
     return mapRowToBranch(getFirstRow(result.rows));
   } catch (error) {
+    console.error('createMainBranch error:', error);
     if (isUniqueConstraintViolation(error)) {
       throw new DuplicateBranchNameError(params.siteId, 'main');
     }
     if (isForeignKeyViolation(error)) {
       throw new SiteNotFoundError(params.siteId);
     }
-    throw new DatabaseError('Failed to create main branch', 'createMainBranch');
+    throw new DatabaseError(`Failed to create main branch: ${error instanceof Error ? error.message : String(error)}`, 'createMainBranch');
   }
 }
 
