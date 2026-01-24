@@ -969,9 +969,15 @@ Deliverables:
   - Site info display (ID, Pantheon ID, created date)
   - Branches list table with status badges
   - Create branch form with parent branch selector
-- [ ] Branch Detail Page - Branch with documents list
+- [x] Branch Detail Page (`frontend/src/pages/BranchDetailPage.tsx`)
+  - Breadcrumb navigation (Sites / Site / Branch)
+  - Branch info display (ID, parent, status, created date)
+  - Tabs for Checkpoints and Documents
+  - Checkpoints table with create checkpoint form
+  - Documents table listing site documents
+- [x] Checkpoints API (`frontend/src/api/checkpoints.ts`)
+  - listCheckpoints, getCheckpoint, createCheckpoint, deleteCheckpoint, revertToCheckpoint
 - [ ] Document Page - Document viewer/editor
-- [ ] Checkpoints Page - Checkpoints list
 
 #### Phase 8.5: E2E Testing
 
@@ -1024,6 +1030,16 @@ Deliverables:
   - **Issue:** Listing branches returned 500 Internal Server Error
   - **Root cause:** `listBranches` called with object instead of separate arguments
   - **Fix:** Changed to `listBranches(siteId, options)` format
+- [x] Checkpoint List API Fix (`workers/src/routes/checkpoint-api.ts`)
+  - **Commit:** `1267e41`
+  - **Issue:** Listing checkpoints returned 500 Internal Server Error
+  - **Root cause:** `listCheckpoints` called with object instead of separate arguments
+  - **Fix:** Changed to `listCheckpoints(branchId, options)` format
+- [x] Document Soft Delete Migration Fix (`workers/src/db/migrations/008_document_soft_delete.sql`)
+  - **Commit:** `1267e41`
+  - **Issue:** Migration failed with "cannot drop index" error
+  - **Root cause:** Tried to drop index before constraint that owned it
+  - **Fix:** Removed explicit index drop, rely on constraint drop to cascade
 
 ---
 
