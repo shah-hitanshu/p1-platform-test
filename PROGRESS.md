@@ -646,11 +646,35 @@ This document tracks the implementation progress of the Collaborative JSON State
   - `CircularReferenceError` - move would create cycle
 - [x] Test suite: 42 tests
 
-#### Phase 6.2: Metadata and Schema
-**Status:** Pending
-- [ ] Metadata schema definition
-- [ ] Schema validation
-- [ ] Document metadata management
+#### Phase 6.2: Metadata Service
+**Status:** Complete
+**Commits:**
+- `334ca66` - Add Phase 6.2 TDD tests for Metadata Service
+- `44df852` - Implement Phase 6.2: Metadata Service
+
+##### Deliverables:
+- [x] Metadata Service (`workers/src/services/metadata-service.ts`)
+  - `getBranchStructureState()` - get structure state for a branch
+  - `createBranchStructureState()` - create with default or custom schema
+  - `updateBranchStructureState()` - update schema or enforcement mode
+  - `deleteBranchStructureState()` - delete structure state
+  - `getDocumentMetadata()` - get metadata for a document
+  - `setDocumentMetadata()` - create/update with validation
+  - `deleteDocumentMetadata()` - delete metadata
+  - `listDocumentMetadata()` - list with optional conformance filter
+  - `validateMetadata()` - validate against JSON Schema
+  - `validateAllDocuments()` - batch validation of all documents
+  - `getSchemaValidationSummary()` - get conformance counts
+- [x] JSON Schema Validation with ajv library
+- [x] Enforcement Modes
+  - `strict` - reject non-conforming metadata on save
+  - `warn` - allow but flag non-conforming metadata
+  - `none` - skip validation entirely
+- [x] Error Classes
+  - `BranchStructureStateNotFoundError`
+  - `DocumentMetadataNotFoundError`
+  - `SchemaValidationError`
+- [x] Test suite: 29 tests
 
 ---
 
@@ -759,6 +783,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 6.2 | Metadata Service complete (29 tests) |
 | 2026-01-24 | 6.1 | Structure Service complete (42 tests) |
 | 2026-01-24 | 5.3 | Merge Execution Service complete (13 tests) |
 | 2026-01-24 | 5.2c | CRDT Merge Service complete (14 tests) |
@@ -806,7 +831,8 @@ Template for future decisions:
 | CRDT Merge Service | 14 | - |
 | Merge Execution Service | 13 | - |
 | Structure Service | 42 | - |
-| **Total** | **707** | **52** |
+| Metadata Service | 29 | - |
+| **Total** | **736** | **52** |
 
 ---
 
