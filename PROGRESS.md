@@ -1298,6 +1298,48 @@ npx playwright test branch-isolation.spec.ts
 ```
 When it passes (which it does intermittently), it validates branch isolation is working correctly.
 
+#### Phase 8.14: Cloudflare Hyperdrive Integration
+
+**Status:** Complete
+**Commit:** `978c6a8` - Add Cloudflare Hyperdrive support for PostgreSQL connection pooling
+
+##### Problem Addressed:
+The postgres.js library has an architectural incompatibility with Cloudflare Workers' request context isolation. Database connections persist internal state that can resolve after the original request completes, triggering cross-request I/O errors.
+
+##### Solution:
+Implemented Cloudflare Hyperdrive support as the recommended connection pooling solution. Hyperdrive is Cloudflare's managed service designed specifically to handle PostgreSQL connections in the Workers environment.
+
+##### Deliverables:
+- [x] Updated Env interface with optional `HYPERDRIVE` binding (`workers/src/index.ts`)
+- [x] New `initializeDatabaseFromHyperdrive()` function (`workers/src/db.ts`)
+- [x] Configured postgres.js with `prepare: false` for Hyperdrive compatibility
+- [x] Updated health check handler to prefer Hyperdrive over direct connection
+- [x] Updated main fetch handler to prefer Hyperdrive over direct connection
+- [x] Added Hyperdrive configuration placeholders for sbx1/production (`workers/wrangler.jsonc`)
+
+##### Connection Priority:
+1. **HYPERDRIVE** (production/staging) - Cloudflare's managed connection pooling
+2. **POSTGRES_CONNECTION_STRING** (local dev) - Direct postgres connection fallback
+
+##### To Enable in Production:
+```bash
+# Create Hyperdrive configuration
+npx wrangler hyperdrive create css-postgres --connection-string="postgresql://user:pass@host:5432/db"
+
+# Update wrangler.jsonc with the returned config ID
+# Replace REPLACE_WITH_*_HYPERDRIVE_ID with actual ID
+```
+
+##### Files Modified:
+- `workers/src/index.ts` - Added HYPERDRIVE to Env, updated initialization logic
+- `workers/src/db.ts` - Added Hyperdrive initialization function, updated connection options
+- `workers/wrangler.jsonc` - Added Hyperdrive bindings for sbx1/production environments
+
+##### Next Steps:
+- Set up Hyperdrive with actual PostgreSQL server (requires Cloudflare Workers Paid plan)
+- Re-enable branch isolation E2E test after Hyperdrive is configured
+- Monitor logs for absence of cross-request I/O warnings
+
 #### Phase 8.12: UX Writing Style Compliance
 
 **Status:** Complete
@@ -1506,6 +1548,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 8.14 | Cloudflare Hyperdrive integration for PostgreSQL connection pooling |
 | 2026-01-24 | 8.13 | Branch isolation E2E test, documented postgres.js Hyperdrive limitation |
 | 2026-01-24 | 8.12 | UX writing style compliance: sentence case, verb forms, error messages, tooltips |
 | 2026-01-24 | 8.11 | Bug fix: JSONB double-stringification in document snapshots, full isolation verified |
@@ -1595,4 +1638,4 @@ Template for future decisions:
 
 ---
 
-*Last updated: 2026-01-24 (Phase 8.13)*
+*Last updated: 2026-01-24 (Phase 8.14)*
