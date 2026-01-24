@@ -240,6 +240,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
 
       expect(response.status).toBe(200);
       expect(services.listCheckpoints).toHaveBeenCalledWith(
+        'branch-1',
         expect.objectContaining({ limit: 1, offset: 1 }),
       );
     });

@@ -326,9 +326,9 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
       // Copy document metadata from checkpoint
       await query(
         `INSERT INTO app.branch_document_metadata (
-          branch_id, document_id, structure_id, node_id, position, metadata
+          branch_id, structure_id, document_id, metadata
         )
-        SELECT $1, cdm.document_id, cdm.structure_id, cdm.node_id, cdm.position, cdm.metadata
+        SELECT $1, cdm.structure_id, cdm.document_id, cdm.metadata
         FROM app.checkpoint_document_metadata cdm
         WHERE cdm.checkpoint_id = $2`,
         [branch.id, params.sourceCheckpointId],
@@ -350,9 +350,9 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
       // Copy document metadata from source branch
       await query(
         `INSERT INTO app.branch_document_metadata (
-          branch_id, document_id, structure_id, node_id, position, metadata
+          branch_id, structure_id, document_id, metadata
         )
-        SELECT $1, bdm.document_id, bdm.structure_id, bdm.node_id, bdm.position, bdm.metadata
+        SELECT $1, bdm.structure_id, bdm.document_id, bdm.metadata
         FROM app.branch_document_metadata bdm
         WHERE bdm.branch_id = $2`,
         [branch.id, params.sourceBranchId],

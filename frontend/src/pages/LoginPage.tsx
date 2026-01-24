@@ -9,10 +9,11 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import './LoginPage.css';
 
+// User IDs must be valid UUIDs to match database schema for created_by_id columns
 const MOCK_USERS = [
-  { id: 'user-alice', name: 'Alice Developer', email: 'alice@example.com', role: 'admin' },
-  { id: 'user-bob', name: 'Bob Teammate', email: 'bob@example.com', role: 'team_member' },
-  { id: 'user-carol', name: 'Carol Coder', email: 'carol@example.com', role: 'developer' },
+  { id: '11111111-1111-1111-1111-111111111111', name: 'Alice Developer', email: 'alice@example.com', role: 'admin' },
+  { id: '22222222-2222-2222-2222-222222222222', name: 'Bob Teammate', email: 'bob@example.com', role: 'team_member' },
+  { id: '33333333-3333-3333-3333-333333333333', name: 'Carol Coder', email: 'carol@example.com', role: 'developer' },
 ];
 
 export function LoginPage() {

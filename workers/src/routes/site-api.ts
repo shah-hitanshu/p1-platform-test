@@ -13,6 +13,7 @@ import {
   deleteSite,
   listSites,
   listBranches,
+  createMainBranch,
   DuplicatePantheonSiteIdError,
   InvalidSiteParamsError,
 } from '../services';
@@ -84,8 +85,14 @@ function errorResponse(
 
 /**
  * Handle POST /api/sites - Create Site
+ *
+ * Creates a new site and automatically creates the main branch.
+ * The main branch represents the production state of the site.
  */
-async function handleCreateSite(request: Request): Promise<Response> {
+async function handleCreateSite(
+  request: Request,
+  context: SiteRouteContext,
+): Promise<Response> {
   const body = await parseJsonBody<CreateSiteBody>(request);
 
   // Validate required fields
@@ -101,6 +108,14 @@ async function handleCreateSite(request: Request): Promise<Response> {
     pantheonSiteId: body.pantheonSiteId,
     name: body.name,
     workflowSettings: body.workflowSettings,
+  });
+
+  // Automatically create the main branch for the new site
+  // The main branch represents the production state
+  await createMainBranch({
+    siteId: site.id,
+    createdById: context.principal.id,
+    createdByType: context.principal.type,
   });
 
   return jsonResponse(site, 201);
@@ -233,7 +248,7 @@ export async function handleSiteRoutes(
       case 'GET':
         return await handleListSites(request);
       case 'POST':
-        return await handleCreateSite(request);
+        return await handleCreateSite(request, context);
       default:
         return errorResponse('Method not allowed', 405);
     }

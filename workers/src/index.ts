@@ -76,24 +76,25 @@ interface Principal {
 
 /**
  * Default mock identity configuration for development.
+ * User/agent IDs must be valid UUIDs to match database schema.
  */
 const DEFAULT_MOCK_CONFIG: MockIdentityConfig = {
   tokenExpiry: '24h',
   users: [
     {
-      id: 'user-alice',
+      id: '11111111-1111-1111-1111-111111111111',
       email: 'alice@example.com',
       name: 'Alice Developer',
       siteRoles: { 'site-123': 'admin', 'site-456': 'developer' },
     },
     {
-      id: 'user-bob',
+      id: '22222222-2222-2222-2222-222222222222',
       email: 'bob@example.com',
       name: 'Bob Reviewer',
       siteRoles: { 'site-123': 'team_member' },
     },
     {
-      id: 'user-carol',
+      id: '33333333-3333-3333-3333-333333333333',
       email: 'carol@example.com',
       name: 'Carol Editor',
       siteRoles: { 'site-123': 'developer', 'site-456': 'admin' },
@@ -101,13 +102,13 @@ const DEFAULT_MOCK_CONFIG: MockIdentityConfig = {
   ],
   agents: [
     {
-      id: 'agent-zappy',
+      id: '44444444-4444-4444-4444-444444444444',
       name: 'Zappy AI Assistant',
       apiKey: 'test-agent-key-zappy',
       siteRoles: { 'site-123': 'editor' },
     },
     {
-      id: 'agent-helper',
+      id: '55555555-5555-5555-5555-555555555555',
       name: 'Helper Bot',
       apiKey: 'test-agent-key-helper',
       siteRoles: { 'site-123': 'viewer', 'site-456': 'editor' },

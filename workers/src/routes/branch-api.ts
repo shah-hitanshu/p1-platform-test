@@ -124,7 +124,7 @@ async function handleCreateBranch(
     name: body.name,
     description: body.description,
     sourceBranchId: sourceBranch.id,
-    createdFromCheckpointId: checkpoint.id,
+    sourceCheckpointId: checkpoint.id,
     createdById: context.principal.id,
     createdByType: context.principal.type,
   });

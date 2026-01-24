@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock the services
 vi.mock('../../src/services', () => ({
   createSite: vi.fn(),
+  createMainBranch: vi.fn(),
   getSite: vi.fn(),
   updateSite: vi.fn(),
   deleteSite: vi.fn(),
@@ -42,7 +43,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
   // ===========================================================================
 
   describe('POST /api/sites', () => {
-    it('should create a new site', async () => {
+    it('should create a new site with main branch', async () => {
       const { handleSiteRoutes } = await import('../../src/routes/site-api');
       const services = await import('../../src/services');
 
@@ -57,6 +58,20 @@ describe('Phase 7.1.1b: Site API Routes', () => {
           approverMode: 'both',
           approverMinRole: 'EDITOR',
         },
+        createdAt: '2026-01-24T10:00:00.000Z',
+        updatedAt: '2026-01-24T10:00:00.000Z',
+      });
+
+      // Mock main branch creation (now auto-created with site)
+      vi.mocked(services.createMainBranch).mockResolvedValueOnce({
+        id: 'branch-main-uuid',
+        siteId: 'site-uuid',
+        name: 'main',
+        description: 'Main branch',
+        status: 'active',
+        isMain: true,
+        createdById: 'user-1',
+        createdByType: 'user',
         createdAt: '2026-01-24T10:00:00.000Z',
         updatedAt: '2026-01-24T10:00:00.000Z',
       });

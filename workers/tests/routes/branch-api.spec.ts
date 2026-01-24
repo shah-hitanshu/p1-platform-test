@@ -279,6 +279,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
 
       expect(response.status).toBe(200);
       expect(services.listBranches).toHaveBeenCalledWith(
+        'site-1',
         expect.objectContaining({ status: 'active' }),
       );
     });
