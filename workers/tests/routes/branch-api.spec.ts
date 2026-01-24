@@ -16,6 +16,7 @@ vi.mock('../../src/services', () => ({
   updateBranchStatus: vi.fn(),
   deleteBranch: vi.fn(),
   getLatestCheckpoint: vi.fn(),
+  createCheckpoint: vi.fn(),
   BranchNotFoundError: class BranchNotFoundError extends Error {
     name = 'BranchNotFoundError';
     constructor(public branchId: string) {
@@ -144,6 +145,177 @@ describe('Phase 7.1a: Branch API Routes', () => {
       expect(response.status).toBe(400);
       const body = await response.json();
       expect(body.error).toContain('name');
+    });
+
+    it('should create a branch using parentBranchId instead of sourceBranch', async () => {
+      const { handleBranchRoutes } = await import(
+        '../../src/routes/branch-api'
+      );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      vi.mocked(services.getLatestCheckpoint).mockResolvedValueOnce({
+        id: 'checkpoint-1',
+        branchId: 'main-branch-id',
+        name: 'Latest',
+        type: 'manual',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      vi.mocked(services.createBranch).mockResolvedValueOnce({
+        id: 'new-branch-id',
+        siteId: 'site-1',
+        name: 'feature-branch',
+        isMain: false,
+        status: 'active',
+        parentBranchId: 'main-branch-id',
+        createdFromCheckpointId: 'checkpoint-1',
+        createdAt: '2026-01-24T11:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      // Send parentBranchId (UUID) instead of sourceBranch (name)
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'feature-branch',
+            parentBranchId: 'main-branch-id',
+          }),
+        },
+      );
+
+      const response = await handleBranchRoutes(request, {
+        siteId: 'site-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(201);
+      const body = await response.json();
+      expect(body.id).toBe('new-branch-id');
+      expect(services.createBranch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceBranchId: 'main-branch-id',
+        }),
+      );
+    });
+
+    it('should create a branch from a non-main branch using parentBranchId', async () => {
+      const { handleBranchRoutes } = await import(
+        '../../src/routes/branch-api'
+      );
+      const services = await import('../../src/services');
+
+      // Parent branch is a feature branch, not main
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'feature-branch-id',
+        siteId: 'site-1',
+        name: 'feature-1',
+        isMain: false,
+        status: 'active',
+        parentBranchId: 'main-branch-id',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      vi.mocked(services.getLatestCheckpoint).mockResolvedValueOnce({
+        id: 'checkpoint-2',
+        branchId: 'feature-branch-id',
+        name: 'Latest on feature',
+        type: 'manual',
+        createdAt: '2026-01-24T10:30:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      vi.mocked(services.createBranch).mockResolvedValueOnce({
+        id: 'sub-feature-id',
+        siteId: 'site-1',
+        name: 'sub-feature',
+        isMain: false,
+        status: 'active',
+        parentBranchId: 'feature-branch-id',
+        createdFromCheckpointId: 'checkpoint-2',
+        createdAt: '2026-01-24T11:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'sub-feature',
+            parentBranchId: 'feature-branch-id',
+          }),
+        },
+      );
+
+      const response = await handleBranchRoutes(request, {
+        siteId: 'site-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(201);
+      const body = await response.json();
+      expect(body.id).toBe('sub-feature-id');
+      expect(body.parentBranchId).toBe('feature-branch-id');
+      // Verify createBranch was called with the correct source branch ID
+      expect(services.createBranch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceBranchId: 'feature-branch-id',
+          sourceCheckpointId: 'checkpoint-2',
+        }),
+      );
+    });
+
+    it('should return 404 when parentBranchId does not exist', async () => {
+      const { handleBranchRoutes } = await import(
+        '../../src/routes/branch-api'
+      );
+      const services = await import('../../src/services');
+
+      // Parent branch not found
+      vi.mocked(services.getBranch).mockResolvedValueOnce(null);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'new-branch',
+            parentBranchId: 'nonexistent-branch-id',
+          }),
+        },
+      );
+
+      const response = await handleBranchRoutes(request, {
+        siteId: 'site-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(404);
+      const body = await response.json();
+      expect(body.error).toContain('Parent branch not found');
     });
 
     it('should return 409 for duplicate branch name', async () => {
