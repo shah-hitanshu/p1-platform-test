@@ -1234,6 +1234,32 @@ Implemented Git-like branch isolation with two key fixes:
 - Document creation on branch: ✅ Working
 - Branch isolation: ✅ Confirmed (documents on feature branch not visible on main)
 
+##### Bug Fix 3: JSONB Double-Stringification in Document Snapshots
+**Commit:** `e185646` - Fix JSONB double-stringification in document snapshots
+
+- **Issue:** Tombstone deletion via `deleteDocumentOnBranch` wasn't filtering documents properly. The query `dv.snapshot->>'_deleted' = 'true'` was returning null.
+- **Root cause:** Using `JSON.stringify({ _deleted: true })` before passing to PostgreSQL created a double-stringified value. The snapshot was stored as a JSON string `'"{\"_deleted\":true}"'` instead of a JSON object `'{"_deleted":true}'`. PostgreSQL's `->>` operator couldn't extract fields from the stringified value.
+- **Fix:** Pass JavaScript objects directly to PostgreSQL JSONB columns without calling `JSON.stringify()`. The postgres driver handles the conversion automatically.
+- **Files affected:**
+  - `document-service.ts`: `createDocumentOnBranch`, `deleteDocumentOnBranch`
+  - `document-version-service.ts`: `createDocumentVersion`
+  - `checkpoint-service.ts`: `revertToCheckpoint`
+  - `document-service.spec.ts`: Updated test to check for object parameter
+
+##### Full Branch Isolation Verification:
+Tested complete workflow on 2026-01-24:
+1. Created site "Branch Isolation Test"
+2. Created document "original-doc" on main branch
+3. Created "feature-branch" from main (document inherited)
+4. Created document "branch-doc" on feature-branch
+5. **feature-branch shows 2 documents** (original-doc + branch-doc)
+6. **main shows 1 document** (original-doc only - branch-doc NOT visible)
+7. Deleted original-doc from main
+8. **main shows 0 documents** (tombstone hides original-doc)
+9. **feature-branch still shows 2 documents** (deletion on main doesn't affect branch)
+
+All aspects of Git-like branch isolation now working correctly.
+
 #### Future Frontend Work
 
 The following features are candidates for future frontend development phases:
@@ -1406,6 +1432,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 8.11 | Bug fix: JSONB double-stringification in document snapshots, full isolation verified |
 | 2026-01-24 | 8.11 | Bug fixes: checkpoint-based branching query, branch-scoped document routing |
 | 2026-01-24 | 8.11 | Branch isolation: document version inheritance, branch-scoped CRUD APIs, security fix |
 | 2026-01-24 | 8.10 | Usability enhancements: delete confirmation modals, create document, JSON viewer |
