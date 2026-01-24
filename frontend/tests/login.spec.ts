@@ -6,6 +6,10 @@
 
 import { test, expect } from '@playwright/test';
 
+// User IDs from LoginPage.tsx (must be UUIDs to match database schema)
+const ALICE_USER_ID = '11111111-1111-1111-1111-111111111111';
+const BOB_USER_ID = '22222222-2222-2222-2222-222222222222';
+
 test.describe('Login Page', () => {
   test('should show login page for unauthenticated users', async ({ page }) => {
     await page.goto('/');
@@ -32,7 +36,7 @@ test.describe('Login Page', () => {
     await page.goto('/login');
 
     // Select Alice
-    await page.selectOption('#user-select', 'user-alice');
+    await page.selectOption('#user-select', ALICE_USER_ID);
 
     // Should show user preview
     await expect(page.locator('.user-preview')).toBeVisible();
@@ -51,7 +55,7 @@ test.describe('Login Page', () => {
     await page.goto('/login');
 
     // Select a user
-    await page.selectOption('#user-select', 'user-bob');
+    await page.selectOption('#user-select', BOB_USER_ID);
 
     // Login button should be enabled
     const loginButton = page.locator('.login-button');
@@ -64,7 +68,7 @@ test.describe('Authentication Flow', () => {
     await page.goto('/login');
 
     // Select user and login
-    await page.selectOption('#user-select', 'user-alice');
+    await page.selectOption('#user-select', ALICE_USER_ID);
     await page.click('.login-button');
 
     // Should redirect to dashboard
@@ -78,7 +82,7 @@ test.describe('Authentication Flow', () => {
     await page.goto('/login');
 
     // Login
-    await page.selectOption('#user-select', 'user-alice');
+    await page.selectOption('#user-select', ALICE_USER_ID);
     await page.click('.login-button');
     await expect(page).toHaveURL('/');
 
@@ -94,7 +98,7 @@ test.describe('Authentication Flow', () => {
     await page.goto('/login');
 
     // Login first
-    await page.selectOption('#user-select', 'user-alice');
+    await page.selectOption('#user-select', ALICE_USER_ID);
     await page.click('.login-button');
     await expect(page).toHaveURL('/');
 
@@ -109,7 +113,7 @@ test.describe('Authentication Flow', () => {
     await page.goto('/login');
 
     // Login
-    await page.selectOption('#user-select', 'user-alice');
+    await page.selectOption('#user-select', ALICE_USER_ID);
     await page.click('.login-button');
     await expect(page).toHaveURL('/');
 

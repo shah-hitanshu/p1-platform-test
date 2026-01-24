@@ -6,11 +6,14 @@
 
 import { test, expect } from '@playwright/test';
 
+// User IDs from LoginPage.tsx (must be UUIDs to match database schema)
+const ALICE_USER_ID = '11111111-1111-1111-1111-111111111111';
+
 test.describe('Sites Page', () => {
   test.beforeEach(async ({ page }) => {
     // Login before each test
     await page.goto('/login');
-    await page.selectOption('#user-select', 'user-alice');
+    await page.selectOption('#user-select', ALICE_USER_ID);
     await page.click('.login-button');
     await expect(page).toHaveURL('/');
 
@@ -27,7 +30,7 @@ test.describe('Sites Page', () => {
   test('should have create site button', async ({ page }) => {
     const createBtn = page.locator('.create-btn');
     await expect(createBtn).toBeVisible();
-    await expect(createBtn).toContainText('Create Site');
+    await expect(createBtn).toContainText('Create site');
   });
 
   test('should toggle create form on button click', async ({ page }) => {
@@ -55,11 +58,12 @@ test.describe('Sites Page', () => {
     await expect(submitBtn).toBeDisabled();
   });
 
-  test('should enable submit button when name entered', async ({ page }) => {
+  test('should enable submit button when both fields entered', async ({ page }) => {
     await page.click('.create-btn');
 
-    // Type site name
-    await page.fill('.form-input', 'Test Site');
+    // Type site name and Pantheon ID (both required)
+    await page.locator('.form-input').first().fill('Test Site');
+    await page.locator('.form-input').nth(1).fill('test-pantheon-id');
 
     const submitBtn = page.locator('.submit-btn');
     await expect(submitBtn).toBeEnabled();
@@ -70,7 +74,7 @@ test.describe('Sites Table', () => {
   test.beforeEach(async ({ page }) => {
     // Login before each test
     await page.goto('/login');
-    await page.selectOption('#user-select', 'user-alice');
+    await page.selectOption('#user-select', ALICE_USER_ID);
     await page.click('.login-button');
     await expect(page).toHaveURL('/');
 

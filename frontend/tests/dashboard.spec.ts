@@ -6,11 +6,14 @@
 
 import { test, expect } from '@playwright/test';
 
+// User IDs from LoginPage.tsx (must be UUIDs to match database schema)
+const ALICE_USER_ID = '11111111-1111-1111-1111-111111111111';
+
 test.describe('Dashboard Page', () => {
   test.beforeEach(async ({ page }) => {
     // Login before each test
     await page.goto('/login');
-    await page.selectOption('#user-select', 'user-alice');
+    await page.selectOption('#user-select', ALICE_USER_ID);
     await page.click('.login-button');
     await expect(page).toHaveURL('/');
   });
@@ -56,7 +59,7 @@ test.describe('Navigation', () => {
   test.beforeEach(async ({ page }) => {
     // Login before each test
     await page.goto('/login');
-    await page.selectOption('#user-select', 'user-alice');
+    await page.selectOption('#user-select', ALICE_USER_ID);
     await page.click('.login-button');
     await expect(page).toHaveURL('/');
   });
