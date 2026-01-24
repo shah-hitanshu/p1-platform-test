@@ -1040,6 +1040,26 @@ Deliverables:
   - **Issue:** Migration failed with "cannot drop index" error
   - **Root cause:** Tried to drop index before constraint that owned it
   - **Fix:** Removed explicit index drop, rely on constraint drop to cascade
+- [x] Main Branch Auto-Creation (`workers/src/routes/site-api.ts`)
+  - **Commit:** `c02695d`
+  - **Issue:** Creating a branch on a new site failed with "main branch not found"
+  - **Root cause:** Site creation did not automatically create main branch
+  - **Fix:** Site creation now calls `createMainBranch()` to create production branch
+- [x] UUID-Based Auth IDs (`workers/src/index.ts`, `frontend/src/pages/LoginPage.tsx`)
+  - **Commit:** `c02695d`
+  - **Issue:** Site/branch creation failed with "invalid input syntax for type uuid"
+  - **Root cause:** Mock user IDs like "user-alice" incompatible with UUID columns
+  - **Fix:** Changed mock user IDs to proper UUIDs (e.g., `11111111-1111-1111-1111-111111111111`)
+- [x] Branch Creation Parameter Name (`workers/src/routes/branch-api.ts`)
+  - **Commit:** `c02695d`
+  - **Issue:** Branch creation failed with database error
+  - **Root cause:** Route passed `createdFromCheckpointId` but service expected `sourceCheckpointId`
+  - **Fix:** Renamed parameter to match service interface
+- [x] Branch Document Metadata Schema Mismatch (`workers/src/services/branch-service.ts`)
+  - **Commit:** `c02695d`
+  - **Issue:** Branch creation failed with "column node_id does not exist"
+  - **Root cause:** Service code referenced non-existent columns (`node_id`, `position`)
+  - **Fix:** Updated SQL to use actual schema columns (`structure_id`, `document_id`, `metadata`)
 
 ---
 
