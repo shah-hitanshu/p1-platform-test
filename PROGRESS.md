@@ -1340,6 +1340,55 @@ npx wrangler hyperdrive create css-postgres --connection-string="postgresql://us
 - Re-enable branch isolation E2E test after Hyperdrive is configured
 - Monitor logs for absence of cross-request I/O warnings
 
+#### Phase 8.15: Document Content Editing
+
+**Status:** Complete
+**Commits:**
+- `940b1ce` - Add TDD tests for document version API endpoints
+- `b217e1a` - Implement document version API routes
+- `bb3f3ed` - Add frontend API functions for document versions
+- `a3c1d28` - Add branch-scoped document route to frontend
+- `c93a7de` - Implement Admin UI Document Editor with JSON viewer and version history
+
+##### Goal:
+Enable users to view and edit document content on specific branches, demonstrating Git-like branch isolation where edits on one branch don't affect other branches.
+
+##### Backend API Routes (`workers/src/routes/document-api.ts`):
+- [x] `GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions` - List version history
+- [x] `GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/latest` - Get latest version (content)
+- [x] `POST /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions` - Create new version (save)
+
+##### Frontend API Layer (`frontend/src/api/documents.ts`):
+- [x] `getLatestDocumentVersion(siteId, branchId, documentId)` - Get latest version
+- [x] `listDocumentVersions(siteId, branchId, documentId)` - List all versions
+- [x] `createDocumentVersion(siteId, branchId, documentId, { snapshot })` - Create new version
+
+##### Frontend Route Updates:
+- [x] Added route `/sites/:siteId/branches/:branchId/documents/:documentId` in App.tsx
+- [x] Updated document links in BranchDetailPage to use branch-scoped URL
+
+##### Admin UI Document Editor (`frontend/src/pages/DocumentPage.tsx`):
+- [x] JSON viewer displaying latest document version content
+- [x] Edit mode with textarea for raw JSON editing
+- [x] Real-time JSON validation during editing
+- [x] Save functionality creates new document version
+- [x] Version history tab showing all versions on the branch
+- [x] Branch context awareness (edit only available when viewed from branch)
+- [x] Notice banner when viewing document without branch context
+- [x] Breadcrumb navigation includes branch when in branch context
+
+##### Design Principle: Frontend-Agnostic API
+The document version API is designed to work with any editor:
+- Snapshot is opaque JSON - no schema validation at API level
+- No content-type assumptions - works with Puck, custom JSON, or any structure
+- Versioning is universal - every save creates a new version
+- Same endpoints for all clients - Puck will use the exact same POST endpoint
+
+##### Test Summary:
+- 8 new backend route tests for document version endpoints
+- All 43 document-api tests passing
+- Frontend linting passing
+
 #### Phase 8.12: UX Writing Style Compliance
 
 **Status:** Complete
@@ -1381,8 +1430,8 @@ npx wrangler hyperdrive create css-postgres --connection-string="postgresql://us
 The following features are candidates for future frontend development phases:
 
 ##### Core Features
-- [ ] **Document Version History** - Display version history with revert capability on DocumentPage
-- [ ] **Document Content Editing** - JSON editor for modifying document content (requires backend version API)
+- [x] **Document Version History** - Display version history with revert capability on DocumentPage (Phase 8.15)
+- [x] **Document Content Editing** - JSON editor for modifying document content (Phase 8.15)
 - [ ] **Merge Request UI** - Create, view, and manage merge requests between branches
 - [ ] **Conflict Resolution UI** - Visual interface for resolving merge conflicts
 - [ ] **Structure Management** - Create and manage site structures (hierarchies/collections)
@@ -1548,6 +1597,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 8.15 | Document content editing: version API endpoints, frontend JSON editor, version history |
 | 2026-01-24 | 8.14 | Cloudflare Hyperdrive integration for PostgreSQL connection pooling |
 | 2026-01-24 | 8.13 | Branch isolation E2E test, documented postgres.js Hyperdrive limitation |
 | 2026-01-24 | 8.12 | UX writing style compliance: sentence case, verb forms, error messages, tooltips |
@@ -1626,6 +1676,7 @@ Template for future decisions:
 | Audit Emitter | 9 | - |
 | Site API Routes | 16 | - |
 | Document CRUD API Routes | 22 | - |
+| Document Version API Routes | 8 | - |
 | Document Branch-Scoped API Routes | 11 | - |
 | Document Branch-Scoped Service | 20 | - |
 | Branch Version Inheritance | 6 | - |
@@ -1634,8 +1685,8 @@ Template for future decisions:
 | Metadata API Routes | 13 | - |
 | Validation Utilities | 28 | - |
 | Router Integration | 24 | - |
-| **Total** | **1008** | **52** |
+| **Total** | **1016** | **52** |
 
 ---
 
-*Last updated: 2026-01-24 (Phase 8.14)*
+*Last updated: 2026-01-24 (Phase 8.15)*
