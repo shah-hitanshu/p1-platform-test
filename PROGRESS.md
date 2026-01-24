@@ -734,17 +734,30 @@ This document tracks the implementation progress of the Collaborative JSON State
   - Error classes: `GrantNotFoundError`, `DuplicateGrantError`
 
 #### Phase 7.1.1: Resource Management APIs (Pending)
-**Status:** Proposal drafted
+**Status:** Proposal finalized, ready for implementation
 **Proposal:** `proposals/PROPOSAL-001-missing-api-endpoints.md`
 
-Gap identified: The architecture API specification (v2.2) omits REST endpoints for several implemented services. This phase will add:
-- [ ] Site API endpoints (CRUD)
-- [ ] Document CRUD API endpoints (separate from real-time API)
-- [ ] Structure API endpoints
-- [ ] Node API endpoints
-- [ ] Metadata API endpoints
+Gap identified: The architecture API specification (v2.2) omits REST endpoints for several implemented services.
 
-**Note:** To be implemented as needed.
+##### Phase 7.1.1a: Schema Migration (Prerequisite)
+- [ ] Migration `007_branch_scoped_structures.sql` — move structure identity to `branch_structure_state`
+- [ ] Update `structure-service.ts` for branch-scoped structures
+- [ ] Update `checkpoint-service.ts` to capture/restore structure identity
+- [ ] Update `branch-service.ts` to copy structure state on branch creation
+- [ ] Update conflict detection for structure identity changes
+
+##### Phase 7.1.1b: API Routes
+- [ ] Site API endpoints (CRUD with deletion protection)
+- [ ] Document CRUD API endpoints (soft-delete with restore)
+- [ ] Structure API endpoints (branch-scoped)
+- [ ] Node API endpoints (including bulk create/update/delete/migrate)
+- [ ] Metadata API endpoints (including bulk update/migrate)
+
+##### Key Decisions Made
+- **Structure scope:** Branch-scoped for consistency with documents
+- **Site deletion:** Prevented when non-archived branches exist
+- **Document deletion:** Soft-delete with archive/restore capability
+- **Bulk operations:** Supported for nodes and metadata
 
 #### Phase 7.2: Audit Integration
 
