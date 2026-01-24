@@ -430,10 +430,42 @@ This document tracks the implementation progress of the Collaborative JSON State
 | Missing Input Validation for Value Types | Low | Fixed (depth limit: 50) |
 
 #### Phase 4.2: Real-Time API
-- [ ] WebSocket endpoint for document collaboration
-- [ ] Snapshot endpoint
-- [ ] Apply operations endpoint
-- [ ] Presence awareness
+**Status:** Complete
+**Commits:**
+- `1bfa066` - Add Phase 4.2 TDD tests for Real-Time API routes
+- `<pending>` - Implement Phase 4.2: Real-Time API routes with security hardening
+
+##### Deliverables:
+- [x] Real-Time API route handler (`workers/src/routes/realtime-api.ts`)
+  - Route pattern matching for document endpoints
+  - URL parameter extraction (siteId, branchId, documentPath)
+  - Request forwarding to DocumentSession Durable Object
+- [x] GET `/api/sites/{siteId}/branches/{branchId}/documents/{documentPath}` → `/snapshot`
+- [x] POST `/api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/edits` → `/apply`
+- [x] WebSocket `/api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/connect` → `/connect`
+- [x] CORS handling with configurable allowed origins
+- [x] OPTIONS preflight handling
+- [x] Request body validation for edits endpoint
+- [x] Security hardening:
+  - Origin-based CORS validation (uses CORS_ORIGINS env var)
+  - Parameter length limits (siteId: 128, branchId: 128, documentPath: 512)
+  - WebSocket origin validation for connect endpoint
+  - Content-Type validation for POST requests
+  - Generic error messages (no information disclosure)
+- [x] Test suite (`workers/tests/routes/realtime-api.spec.ts`)
+  - 39 tests covering all functionality
+
+##### Security Review (Phase 4.2):
+| Finding | Severity | Status |
+|---------|----------|--------|
+| CORS Wildcard Configuration | High | Fixed (uses CORS_ORIGINS env) |
+| Missing Authentication/Authorization | High | Deferred to Phase 7 |
+| No Rate Limiting | Medium | Noted (implement later) |
+| URL Parameter Validation | Medium | Fixed (length limits) |
+| Predictable Session ID | Low | Acceptable (with auth) |
+| Error Message Disclosure | Low | Fixed |
+| Operations Content Validation | Low | Validated in DO |
+| WebSocket Origin Validation | Low | Fixed |
 
 ---
 
@@ -570,6 +602,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 4.2 | Real-Time API routes complete (39 tests, security hardening) |
 | 2026-01-24 | 4.1 | DocumentSession Durable Object complete (46 tests, security hardening) |
 | 2026-01-23 | 3.3 | Checkpoint System complete (18 + 30 = 48 unit tests) |
 | 2026-01-23 | 3.2 | Branch Operations complete (63 unit + 28 integration tests) |
@@ -601,7 +634,8 @@ Template for future decisions:
 | Document Version Service | 18 | - |
 | Checkpoint Service | 30 | - |
 | DocumentSession Durable Object | 46 | - |
-| **Total** | **502** | **52** |
+| Real-Time API Routes | 39 | - |
+| **Total** | **541** | **52** |
 
 ---
 
