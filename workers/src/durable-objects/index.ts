@@ -1,35 +1,17 @@
 /**
- * Durable Objects Stubs
+ * Durable Objects
  *
- * Placeholder implementations for Durable Objects required by wrangler.jsonc.
- * These will be fully implemented in later phases.
+ * Exports for Durable Objects required by wrangler.jsonc.
+ * DocumentState is the real implementation (aliased from DocumentSession for wrangler compatibility).
+ * PresenceManager and SessionManager are placeholders for future phases.
  */
 
 import type { DurableObjectState } from '@cloudflare/workers-types';
 
-/**
- * DocumentState - Manages collaborative document editing state.
- * Placeholder implementation for infrastructure validation.
- */
-export class DocumentState {
-  constructor(
-    private readonly state: DurableObjectState,
-    private readonly env: unknown,
-  ) {}
-
-  fetch(_request: Request): Response {
-    return new Response(
-      JSON.stringify({
-        error: 'Not Implemented',
-        message: 'DocumentState Durable Object is not yet implemented',
-      }),
-      {
-        status: 501,
-        headers: { 'Content-Type': 'application/json' },
-      },
-    );
-  }
-}
+// Re-export DocumentSession as DocumentState for wrangler.jsonc compatibility
+// The wrangler config expects class_name: "DocumentState"
+export { DocumentSession } from './document-session';
+export { DocumentSession as DocumentState } from './document-session';
 
 /**
  * PresenceManager - Tracks user presence and cursors.

@@ -375,10 +375,59 @@ This document tracks the implementation progress of the Collaborative JSON State
 ### Phase 4: Real-Time Collaboration
 
 #### Phase 4.1: Durable Object Implementation
-- [ ] DocumentSession Durable Object
-- [ ] CRDT state management with Yjs
-- [ ] WebSocket connection handling
-- [ ] State persistence
+**Status:** Complete
+**Commits:**
+- `8705adc` - Add Phase 4.1 TDD tests for DocumentSession Durable Object
+- (pending) - Implement Phase 4.1: DocumentSession Durable Object
+
+##### Deliverables:
+- [x] DocumentSession Durable Object (`workers/src/durable-objects/document-session.ts`)
+  - Session identifier format: `{siteId}:{documentId}:{branchId}`
+  - `getSessionInfo()` - parse session identifiers
+  - `getConnectionCount()` - current WebSocket connections
+  - `fetch()` - route to /snapshot, /apply, /connect
+- [x] CRDT state management with Yjs
+  - Y.Doc for document state
+  - State vector for synchronization
+  - Lazy initialization from storage
+  - Persists state as Yjs update (Uint8Array)
+- [x] Edit operations (`/apply` endpoint)
+  - `set` - set value at path
+  - `delete` - remove value at path
+  - `insert` - insert into array at index
+  - `move` - move array element
+  - `replace` - replace value at path
+- [x] WebSocket connection handling (`/connect` endpoint)
+  - Actor ID/Type header validation
+  - Connection metadata tracking
+  - Real-time broadcast to all clients
+- [x] State persistence
+  - Storage key: `ydoc`
+  - Auto-persist after each operation batch
+  - Graceful handling of invalid stored data
+- [x] Security hardening
+  - Actor ID format validation (alphanumeric, hyphens, underscores, max 128 chars)
+  - Operations limit per request (max 1000)
+  - WebSocket connection limit (max 100)
+  - WebSocket message size limit (max 1MB)
+  - Path depth validation (max 50 levels)
+  - Value nesting depth limit (max 50 levels)
+  - Sanitized error messages
+- [x] Test suite (`workers/tests/durable-objects/document-session.spec.ts`)
+  - 46 tests covering all functionality
+
+##### Security Review (Phase 4.1):
+| Finding | Severity | Status |
+|---------|----------|--------|
+| Missing Actor ID Format Validation | Medium | Fixed |
+| No Authentication/Authorization | Medium | Deferred to API layer (Phase 7) |
+| Unbounded Operations Array Size | Medium | Fixed (limit: 1000) |
+| Unbounded WebSocket Connections | Medium | Fixed (limit: 100) |
+| Path Traversal in Edit Operations | Low | Fixed (depth limit: 50) |
+| Missing Operation Field Validation | Low | Fixed |
+| Information Disclosure in Error Messages | Low | Partially fixed |
+| No WebSocket Message Size Limits | Low | Fixed (limit: 1MB) |
+| Missing Input Validation for Value Types | Low | Fixed (depth limit: 50) |
 
 #### Phase 4.2: Real-Time API
 - [ ] WebSocket endpoint for document collaboration
@@ -521,6 +570,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 4.1 | DocumentSession Durable Object complete (46 tests, security hardening) |
 | 2026-01-23 | 3.3 | Checkpoint System complete (18 + 30 = 48 unit tests) |
 | 2026-01-23 | 3.2 | Branch Operations complete (63 unit + 28 integration tests) |
 | 2026-01-23 | Infra | Infrastructure validation: /health endpoint, real postgres connection, DO stubs |
@@ -550,8 +600,9 @@ Template for future decisions:
 | Branch Service | 63 | 28 |
 | Document Version Service | 18 | - |
 | Checkpoint Service | 30 | - |
-| **Total** | **456** | **52** |
+| DocumentSession Durable Object | 46 | - |
+| **Total** | **502** | **52** |
 
 ---
 
-*Last updated: 2026-01-23*
+*Last updated: 2026-01-24*
