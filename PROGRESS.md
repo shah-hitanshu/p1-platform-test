@@ -378,7 +378,7 @@ This document tracks the implementation progress of the Collaborative JSON State
 **Status:** Complete
 **Commits:**
 - `8705adc` - Add Phase 4.1 TDD tests for DocumentSession Durable Object
-- (pending) - Implement Phase 4.1: DocumentSession Durable Object
+- `6863116` - Implement Phase 4.1: DocumentSession Durable Object
 
 ##### Deliverables:
 - [x] DocumentSession Durable Object (`workers/src/durable-objects/document-session.ts`)
