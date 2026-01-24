@@ -4,7 +4,7 @@
  * React context provider for CSS Puck integration.
  */
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type { Document, PuckData, Checkpoint, Branch } from '@pantheon/css-client';
 import type { CSSPuckConfig, CSSPuckContextValue, SaveStatus } from './types.js';
 import { CSSPuckContext } from './CSSPuckContext.js';
@@ -71,8 +71,14 @@ export function CSSPuckProvider({
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<Error | null>(null);
 
-  // Pending data for debounced save
-  const [pendingData, setPendingData] = useState<PuckData | null>(null);
+  // Pending data for debounced save - use ref to avoid recreating debounce
+  const pendingDataRef = useRef<PuckData | null>(null);
+  const currentDocumentRef = useRef<Document | null>(null);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    currentDocumentRef.current = currentDocument;
+  }, [currentDocument]);
 
   // Create client with user principal
   const userClient = useMemo(
@@ -97,9 +103,12 @@ export function CSSPuckProvider({
     void refreshBranches();
   }, [refreshBranches]);
 
-  // Perform save operation
+  // Perform save operation - uses refs to avoid dependency issues
   const performSave = useCallback(async () => {
-    if (!pendingData || !currentDocument) {
+    const dataToSave = pendingDataRef.current;
+    const doc = currentDocumentRef.current;
+
+    if (!dataToSave || !doc) {
       return;
     }
 
@@ -110,23 +119,23 @@ export function CSSPuckProvider({
       await withRetry(
         async () => {
           await userClient.versions.create(siteId, {
-            documentId: currentDocument.id,
+            documentId: doc.id,
             branchId,
-            snapshot: pendingData as unknown as Record<string, unknown>,
+            snapshot: dataToSave as unknown as Record<string, unknown>,
           });
         },
         { maxAttempts: maxRetries }
       );
 
-      setCurrentData(pendingData);
-      setPendingData(null);
+      setCurrentData(dataToSave);
+      pendingDataRef.current = null;
       setSaveStatus('saved');
       setLastSaved(new Date());
     } catch (error) {
       setSaveStatus('error');
       setSaveError(error instanceof Error ? error : new Error(String(error)));
     }
-  }, [userClient, siteId, branchId, currentDocument, pendingData, maxRetries]);
+  }, [userClient, siteId, branchId, maxRetries]);
 
   // Debounced save
   const debouncedSave = useMemo(
@@ -147,7 +156,7 @@ export function CSSPuckProvider({
   // Public save function (triggers debounce)
   const saveData = useCallback(
     (data: PuckData) => {
-      setPendingData(data);
+      pendingDataRef.current = data;
       debouncedSave();
     },
     [debouncedSave]
@@ -171,7 +180,7 @@ export function CSSPuckProvider({
         const version = await userClient.versions.getLatest(siteId, branchId, doc.id);
         const puckData = version.snapshot as unknown as PuckData;
         setCurrentData(puckData);
-        setPendingData(null);
+        pendingDataRef.current = null;
         setSaveStatus('idle');
         setSaveError(null);
       } catch (error) {
@@ -186,7 +195,7 @@ export function CSSPuckProvider({
   const createCheckpoint = useCallback(
     async (name?: string): Promise<Checkpoint> => {
       // Save any pending changes first
-      if (pendingData) {
+      if (pendingDataRef.current) {
         debouncedSave.cancel();
         await performSave();
       }
@@ -199,14 +208,14 @@ export function CSSPuckProvider({
 
       return checkpoint;
     },
-    [userClient, siteId, branchId, pendingData, debouncedSave, performSave]
+    [userClient, siteId, branchId, debouncedSave, performSave]
   );
 
   // Switch branch
   const switchBranch = useCallback(
     async (newBranchId: string) => {
       // Save any pending changes first
-      if (pendingData) {
+      if (pendingDataRef.current) {
         debouncedSave.cancel();
         await performSave();
       }
@@ -214,7 +223,7 @@ export function CSSPuckProvider({
       setBranchId(newBranchId);
       setCurrentDocument(null);
       setCurrentData(null);
-      setPendingData(null);
+      pendingDataRef.current = null;
       setSaveStatus('idle');
       setSaveError(null);
 
@@ -222,7 +231,7 @@ export function CSSPuckProvider({
       const branch = branches.find((b) => b.id === newBranchId);
       setCurrentBranch(branch ?? null);
     },
-    [branches, pendingData, debouncedSave, performSave]
+    [branches, debouncedSave, performSave]
   );
 
   // Context value

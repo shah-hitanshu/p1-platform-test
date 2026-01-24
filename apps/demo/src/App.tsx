@@ -2,9 +2,10 @@
  * Demo Application
  *
  * Demonstrates Puck editor integration with the Collaborative State System.
+ * Uses Puck's Plugin API and Overrides for proper integration.
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Puck } from '@measured/puck';
 import '@measured/puck/puck.css';
@@ -18,9 +19,8 @@ import {
   CSSPuckProvider,
   useCSSPuck,
   useDocuments,
-  SaveIndicator,
-  PublishButton,
-  BranchSelector,
+  createCSSPlugin,
+  createCSSOverrides,
 } from '@pantheon/puck-css';
 
 import { puckConfig } from './puck.config';
@@ -81,7 +81,8 @@ function PageList({ selectedPath, onSelect }: PageListProps) {
     e.preventDefault();
     if (!newPagePath.trim()) return;
 
-    const path = newPagePath.startsWith('/') ? newPagePath : `/${newPagePath}`;
+    // CSS API paths should not start with /
+    const path = newPagePath.startsWith('/') ? newPagePath.slice(1) : newPagePath;
     try {
       await create(path);
       setNewPagePath('');
@@ -182,7 +183,7 @@ function PageList({ selectedPath, onSelect }: PageListProps) {
 
 /**
  * Editor Component
- * Wrapper around Puck editor with auto-save integration
+ * Puck editor with CSS integration via plugins and overrides
  */
 interface EditorProps {
   documentPath: string;
@@ -235,6 +236,27 @@ function Editor({ documentPath }: EditorProps) {
     alert(`Publish failed: ${err.message}`);
   }, []);
 
+  // Create Puck plugin for CSS integration (branch selector in plugin rail)
+  const cssPlugin = useMemo(() => createCSSPlugin({
+    branches,
+    currentBranch,
+    onBranchSwitch: switchBranch,
+    hasUnsavedChanges: saveStatus === 'saving',
+  }), [branches, currentBranch, switchBranch, saveStatus]);
+
+  // Create Puck overrides for header actions (save indicator, publish button)
+  const cssOverrides = useMemo(() => createCSSOverrides({
+    saveStatus,
+    lastSaved,
+    saveError,
+    onRetrySave: saveNow,
+    onPublish: createCheckpoint,
+    onPublishSuccess: handlePublishSuccess,
+    onPublishError: handlePublishError,
+    showNamePrompt: true,
+    showDefaultPublish: false,
+  }), [saveStatus, lastSaved, saveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError]);
+
   if (loading) {
     return <div className="loading">Loading document...</div>;
   }
@@ -258,43 +280,14 @@ function Editor({ documentPath }: EditorProps) {
   }
 
   return (
-    <div className="editor-area">
-      <div className="editor-toolbar">
-        <div className="editor-toolbar-left">
-          <span style={{ fontWeight: 500 }}>{documentPath}</span>
-          <SaveIndicator
-            status={saveStatus}
-            lastSaved={lastSaved}
-            error={saveError}
-            onRetry={saveNow}
-          />
-        </div>
-        <div className="editor-toolbar-right">
-          <BranchSelector
-            branches={branches}
-            currentBranch={currentBranch}
-            onSwitch={switchBranch}
-            hasUnsavedChanges={saveStatus === 'saving'}
-          />
-          <PublishButton
-            onPublish={createCheckpoint}
-            showNamePrompt
-            onSuccess={handlePublishSuccess}
-            onError={handlePublishError}
-            className="btn css-puck-publish-button"
-          >
-            Publish
-          </PublishButton>
-        </div>
-      </div>
-
-      <div className="editor-content">
-        <Puck
-          config={puckConfig}
-          data={currentData}
-          onChange={handleChange}
-        />
-      </div>
+    <div className="editor-container">
+      <Puck
+        config={puckConfig}
+        data={currentData}
+        onChange={handleChange}
+        plugins={[cssPlugin]}
+        overrides={cssOverrides}
+      />
     </div>
   );
 }
@@ -330,19 +323,10 @@ function AppContent() {
     [setSearchParams]
   );
 
-  const { branches, currentBranch, switchBranch } = useCSSPuck();
-
   return (
     <div className="app">
       <header className="app-header">
         <h1>Puck + CSS Demo</h1>
-        <div className="header-controls">
-          <BranchSelector
-            branches={branches}
-            currentBranch={currentBranch}
-            onSwitch={switchBranch}
-          />
-        </div>
       </header>
 
       <main className="app-main">
@@ -350,7 +334,7 @@ function AppContent() {
           <PageList selectedPath={selectedPath} onSelect={handleSelectPage} />
         </aside>
 
-        <section className="editor-area">
+        <section className="editor-section">
           {selectedPath ? (
             <Editor documentPath={selectedPath} />
           ) : (

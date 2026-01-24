@@ -110,8 +110,9 @@ export class CSSClient {
       this.baseEndpoint = config.baseEndpoint;
     } else {
       // Create auth provider from API key if provided
+      // Use "ApiKey " prefix to signal X-API-Key header should be used
       const authProvider =
-        config.authProvider ?? (config.apiKey ? async () => `Bearer ${config.apiKey}` : undefined);
+        config.authProvider ?? (config.apiKey ? async () => `ApiKey ${config.apiKey}` : undefined);
 
       this.baseEndpoint = new BaseEndpoint({
         baseUrl: config.baseUrl,

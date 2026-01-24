@@ -12,12 +12,13 @@ export type AuthProvider = () => Promise<string>;
 
 /**
  * Creates an API key authentication provider.
+ * Uses X-API-Key header format for agent API keys.
  *
  * @param apiKey - The API key to use
  * @returns Auth provider function
  */
 export function createApiKeyAuth(apiKey: string): AuthProvider {
-  return async () => `Bearer ${apiKey}`;
+  return async () => `ApiKey ${apiKey}`;
 }
 
 /**

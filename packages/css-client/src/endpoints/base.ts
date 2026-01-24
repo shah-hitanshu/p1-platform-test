@@ -58,7 +58,13 @@ export class BaseEndpoint {
     // Add authentication header
     if (this.authProvider) {
       try {
-        headers['Authorization'] = await this.authProvider();
+        const authValue = await this.authProvider();
+        // Check if this is an API key (prefixed with "ApiKey ") or a Bearer token
+        if (authValue.startsWith('ApiKey ')) {
+          headers['X-API-Key'] = authValue.substring(7); // Remove "ApiKey " prefix
+        } else {
+          headers['Authorization'] = authValue;
+        }
       } catch (error) {
         throw new AuthenticationError(
           error instanceof Error ? error.message : 'Failed to get auth token'

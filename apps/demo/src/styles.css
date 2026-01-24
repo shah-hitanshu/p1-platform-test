@@ -126,7 +126,29 @@ body {
   color: #c00;
 }
 
-/* Editor area */
+/* Editor section */
+.editor-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Editor container - wraps Puck */
+.editor-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Make Puck fill the available space */
+.editor-container > div {
+  flex: 1;
+  height: 100%;
+}
+
+/* Editor area (legacy) */
 .editor-area {
   flex: 1;
   display: flex;
@@ -476,4 +498,69 @@ body {
 .version-item-date {
   font-size: 0.75rem;
   color: #666;
+}
+
+/* CSS Plugin Panel */
+.css-plugin-panel {
+  padding: 1rem;
+}
+
+.css-plugin-section {
+  margin-bottom: 1rem;
+}
+
+.css-plugin-section:last-child {
+  margin-bottom: 0;
+}
+
+.css-plugin-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 0.25rem;
+}
+
+.css-plugin-select {
+  width: 100%;
+  padding: 0.5rem;
+  font-size: 0.875rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.css-plugin-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.css-plugin-info-label {
+  color: #666;
+}
+
+.css-plugin-info-value {
+  font-weight: 500;
+}
+
+/* CSS Header publish button styling */
+.css-puck-header-publish {
+  background: #059669;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.css-puck-header-publish:hover:not(:disabled) {
+  background: #047857;
+}
+
+.css-puck-header-publish:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

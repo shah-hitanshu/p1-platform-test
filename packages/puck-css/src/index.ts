@@ -20,6 +20,15 @@ export { SaveIndicator } from './components/SaveIndicator.js';
 export { PublishButton } from './components/PublishButton.js';
 export { BranchSelector } from './components/BranchSelector.js';
 
+// Puck Plugin Integration
+export { createCSSPlugin, createCSSOverrides } from './plugin/index.js';
+export type {
+  CSSPluginOptions,
+  PuckPlugin,
+  CSSOverridesOptions,
+  PuckOverrides,
+} from './plugin/index.js';
+
 // Utilities
 export { debounce } from './utils/debounce.js';
 export { withRetry } from './utils/retry.js';
