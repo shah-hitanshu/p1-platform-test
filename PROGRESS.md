@@ -1159,6 +1159,41 @@ Deliverables:
   - **Root cause:** `listBranches` called with object `{ siteId }` instead of string `siteId`
   - **Fix:** Changed to `listBranches(context.siteId)` format
 
+#### Future Frontend Work
+
+The following features are candidates for future frontend development phases:
+
+##### Core Features
+- [ ] **Document Version History** - Display version history with revert capability on DocumentPage
+- [ ] **Document Content Editing** - JSON editor for modifying document content (requires backend version API)
+- [ ] **Merge Request UI** - Create, view, and manage merge requests between branches
+- [ ] **Conflict Resolution UI** - Visual interface for resolving merge conflicts
+- [ ] **Structure Management** - Create and manage site structures (hierarchies/collections)
+- [ ] **Node Management** - Add, edit, move, and reorder structure nodes
+- [ ] **Document Metadata Editor** - View and edit document metadata within structures
+
+##### Real-Time Features
+- [ ] **WebSocket Integration** - Connect to DocumentSession for real-time updates
+- [ ] **Presence Indicators** - Show who else is viewing/editing a document
+- [ ] **Live Collaboration** - Real-time CRDT-based document editing
+
+##### User Experience
+- [ ] **Branch Status Actions** - UI for changing branch status (review, archive, etc.)
+- [ ] **Checkpoint Management** - View checkpoint details, compare checkpoints, restore
+- [ ] **Search/Filter** - Search across sites, documents, and branches
+- [ ] **Bulk Operations** - Select multiple items for batch actions
+- [ ] **Breadcrumb Enhancement** - Clickable breadcrumb for all navigation levels
+
+##### Administrative
+- [ ] **Grant Management UI** - Manage branch-level permissions
+- [ ] **Guest Link Generation** - Create and manage guest access links
+- [ ] **Audit Log Viewer** - View audit events for compliance
+
+##### Backend Prerequisites
+- [ ] Branch deletion cascade (delete checkpoints before branch)
+- [ ] Document versions API endpoint for content retrieval
+- [ ] WebSocket authentication integration
+
 ---
 
 ## Architecture Reference
