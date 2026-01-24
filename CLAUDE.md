@@ -4,18 +4,28 @@ We are developing a complex system which is based on architectural documentation
 This service may provide the backend to a number of applications. The initial focus will be on providing a JSON backend to a [Puck Editor](https://puckeditor.com) interface which we will develop in a later stage. You may use Puck Editor's documentation for reference, but do not yet develop new code for the front-end. We will do that in a separate project.
 
 # Code development guidelines
-When creating code, you MUST follow the follow these guidelines
+When creating code, you MUST follow these guidelines:
+
 1. Divide components of the architecture into logical segments driven by the architectural design.
+
 2. Create an overall plan that you review with me for approval on each section of development before proceeding with any code creation.
-3. Work on one component at a time from this approved plan following a rigorous test-driven process
-    a. First write tests based on expected inputs and outputs
-    b. Run these tests an verify that they fail. These tests must fail initially because you should not write application code until I give the direction to proceed.
-    c. Review the tests with me, and after I approve, commit them to the repository.
-    d. Ask for permission to proceed before writing any code. 
-    e. Once I give permission, create application code only within the component we have chosen for development. Use subagents to write code appropriately following the guidance of the architectural documentation and any additional context I have provided. YOU MUST NOT modify any tests without my explicit permission. Also verify these tests with independent subagents to ensure you are not overfitting to the tests.
-    f. Perform linting to follow language standards
-    g. Review your work with me, and when I am satisfied with your result, commit the changes to the repo.
+
+3. Work on one component at a time from this approved plan following a streamlined test-driven process:
+    a. Write tests based on expected inputs and outputs, following established patterns from existing test files
+    b. Verify tests fail (red state) - include test output in your implementation review
+    c. Commit tests to the repository
+    d. Create application code only within the component we have chosen for development. Use subagents to write code appropriately following the guidance of the architectural documentation and any additional context I have provided. YOU MUST NOT modify any tests without my explicit permission.
+    e. Run linting (`pnpm lint`) and fix all issues to follow language standards
+    f. Verify all tests now pass (green state)
+    g. Present your complete work for review with:
+        - Test commit hash
+        - Test output summary (all passing)
+        - Linting output (0 errors)
+        - Implementation summary
+    h. After I approve, commit the implementation to the repo and update PROGRESS.md
+
 4. As each component is finished and tests pass, proceed to the next component with my permission and follow the instructions in section 3 above to develop the application.
+
 5. Ensure that you're designing systems in such a way that they interface with the infrastructure we have defined in the README.md file. 
 
 # Ask me for help and do not expand scope without permission
