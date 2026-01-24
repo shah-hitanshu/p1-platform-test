@@ -59,7 +59,7 @@ Maintain code to production standards [1]
 [3] #cms-ecosystem-updates Slack - Nov 26, 2025
 
 # Playwright Browser Configuration
-When opening a Playwright browser, always use the "Manage Tabs" mode to ensure proper tab management and control.
+When opening a Playwright browser, always use the "Manage Tabs" mode to ensure proper tab management and control. Assume there's no open tabs already.
 
 # Security Review
 After each phase of development run Claude's /security-review and present findings. Auto-resolve what you are able to.
@@ -68,3 +68,6 @@ If findings from the security review are remediated, be sure to commit the chang
 
 # Tracking progress
  When you finish a phase of development, update the PROGRESS.md file with what you've done, what remains, and any decisions that were made by me along the way that may have shifted the architecture or implementation
+
+# User interface language review
+Use the Pantheon Design System UI Writing skill to review major pieces of work progress.
