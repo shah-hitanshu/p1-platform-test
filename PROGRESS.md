@@ -848,6 +848,36 @@ Decisions made during implementation that may affect or refine the architecture.
 - **Rationale:** Structured data in readable JSON, secrets not committed to repo
 - **Impact:** Two configuration sources, but follows established patterns
 
+### Phase 7.1.1 Decisions
+
+#### Decision: Branch-Scoped Structure Identity
+- **Date:** 2026-01-24
+- **Context:** Architecture had structure identity (name, slug) at site level but state (tree, schema) at branch level, creating inconsistency where renaming a structure would immediately affect all branches
+- **Decision:** Move structure identity to `branch_structure_state` table, making all structure changes branch-scoped
+- **Rationale:** Consistency with document versioning model. Example: renaming "blogs" to "stuff-i-write" on a feature branch should not affect main until merged
+- **Impact:** Requires schema migration (`007_branch_scoped_structures.sql`), service updates, and changes to checkpoint capture/restore
+
+#### Decision: Site Deletion Protection
+- **Date:** 2026-01-24
+- **Context:** Need to determine behavior when deleting a site that has branches
+- **Decision:** Prevent deletion of sites with non-archived branches
+- **Rationale:** Protects against accidental data loss; forces explicit cleanup of branches before site removal
+- **Impact:** DELETE `/api/sites/{siteId}` returns 409 if non-archived branches exist
+
+#### Decision: Document Soft Delete
+- **Date:** 2026-01-24
+- **Context:** Need to determine behavior when deleting documents—hard delete vs soft delete
+- **Decision:** Soft-delete with archival; add `archived_at` timestamp and restore endpoint
+- **Rationale:** Preserves version history for audit and recovery; document paths become available for reuse after archival
+- **Impact:** Adds `archived_at` column, restore endpoint, and archive filter on list endpoint
+
+#### Decision: Bulk Operations Support
+- **Date:** 2026-01-24
+- **Context:** Structure management often requires batch operations (reordering, migration)
+- **Decision:** Add bulk endpoints for node and metadata operations
+- **Rationale:** Enables efficient reordering of nodes, migration between structures, and batch metadata updates
+- **Impact:** Adds 6 bulk endpoints: node bulk create/update/delete/migrate, metadata bulk update/migrate
+
 <!--
 Template for future decisions:
 
@@ -867,6 +897,9 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 7.1.1 | Proposal finalized: branch-scoped structures, soft-delete, bulk operations |
+| 2026-01-24 | 7.2 | Audit Integration complete (9 tests) |
+| 2026-01-24 | 7.1 | REST API Endpoints complete: Branch, Checkpoint, Merge, Grant APIs (49 tests) |
 | 2026-01-24 | 6.2 | Metadata Service complete (29 tests) |
 | 2026-01-24 | 6.1 | Structure Service complete (42 tests) |
 | 2026-01-24 | 5.3 | Merge Execution Service complete (13 tests) |
@@ -916,7 +949,12 @@ Template for future decisions:
 | Merge Execution Service | 13 | - |
 | Structure Service | 42 | - |
 | Metadata Service | 29 | - |
-| **Total** | **736** | **52** |
+| Branch API Routes | 13 | - |
+| Checkpoint API Routes | 13 | - |
+| Merge API Routes | 13 | - |
+| Grant API Routes | 10 | - |
+| Audit Emitter | 9 | - |
+| **Total** | **794** | **52** |
 
 ---
 
