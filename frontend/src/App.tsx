@@ -10,6 +10,7 @@ import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { SitesPage } from './pages/SitesPage';
+import { SiteDetailPage } from './pages/SiteDetailPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -73,6 +74,7 @@ function App() {
         >
           <Route path="/" element={<DashboardPage />} />
           <Route path="/sites" element={<SitesPage />} />
+          <Route path="/sites/:siteId" element={<SiteDetailPage />} />
         </Route>
 
         {/* Catch-all redirect */}

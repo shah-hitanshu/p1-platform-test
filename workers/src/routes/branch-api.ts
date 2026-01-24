@@ -143,10 +143,10 @@ async function handleListBranches(
   const statusParam = url.searchParams.get('status');
   const status = statusParam as BranchStatus | null;
 
-  const branches = await listBranches({
-    siteId: context.siteId,
-    ...(status !== null ? { status } : {}),
-  });
+  const branches = await listBranches(
+    context.siteId,
+    status !== null ? { status } : {},
+  );
 
   return jsonResponse({ branches });
 }
