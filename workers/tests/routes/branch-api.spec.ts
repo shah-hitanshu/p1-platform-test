@@ -153,7 +153,8 @@ describe('Phase 7.1a: Branch API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      // When parentBranchId is provided, getBranch is called (not getMainBranch)
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',

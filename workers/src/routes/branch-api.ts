@@ -46,6 +46,8 @@ async function parseJsonBody<T>(request: Request): Promise<T> {
 interface CreateBranchBody {
   name?: string;
   description?: string;
+  parentBranchId?: string;
+  /** @deprecated Use parentBranchId instead */
   sourceBranch?: string;
 }
 
@@ -100,18 +102,21 @@ async function handleCreateBranch(
     return errorResponse('Branch name is required', 400);
   }
 
-  // Get source branch (defaults to main)
-  const sourceBranchName = body.sourceBranch ?? 'main';
+  // Get source branch - supports parentBranchId (UUID) or falls back to main
   let sourceBranch;
 
-  if (sourceBranchName === 'main') {
+  if (body.parentBranchId !== undefined && body.parentBranchId !== '') {
+    // Look up parent branch by ID
+    sourceBranch = await getBranch(body.parentBranchId);
+    if (sourceBranch === null) {
+      return errorResponse('Parent branch not found', 404);
+    }
+  } else {
+    // Default to main branch
     sourceBranch = await getMainBranch(context.siteId);
     if (sourceBranch === null) {
       return errorResponse('Main branch not found', 404);
     }
-  } else {
-    // TODO: Implement getBranchByName lookup for non-main branches
-    return errorResponse('Only branching from main is currently supported', 400);
   }
 
   // Get latest checkpoint from source branch, or auto-create one if none exists
