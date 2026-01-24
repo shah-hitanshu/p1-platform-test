@@ -97,3 +97,87 @@ export async function restoreDocument(
     `/api/sites/${siteId}/documents/${documentId}/restore`
   );
 }
+
+// =============================================================================
+// Branch-Scoped Document Operations
+// =============================================================================
+
+interface DocumentVersion {
+  id: string;
+  documentId: string;
+  branchId: string;
+  versionNumber: number;
+  snapshot: Record<string, unknown>;
+  source: string;
+  createdById: string;
+  createdByType: 'user' | 'agent' | 'system';
+  createdAt: string;
+}
+
+interface CreateDocumentOnBranchResponse {
+  document: Document;
+  version: DocumentVersion;
+}
+
+/**
+ * List documents on a specific branch
+ */
+export async function listDocumentsOnBranch(
+  siteId: string,
+  branchId: string,
+  options?: { pathPrefix?: string }
+): Promise<Document[]> {
+  let url = `/api/sites/${siteId}/branches/${branchId}/documents`;
+  const params = new URLSearchParams();
+
+  if (options?.pathPrefix) {
+    params.set('pathPrefix', options.pathPrefix);
+  }
+
+  if (params.toString()) {
+    url += `?${params.toString()}`;
+  }
+
+  const response = await apiGet<DocumentsResponse>(url);
+  return response.documents;
+}
+
+/**
+ * Create a document on a specific branch
+ */
+export async function createDocumentOnBranch(
+  siteId: string,
+  branchId: string,
+  params: CreateDocumentParams
+): Promise<CreateDocumentOnBranchResponse> {
+  return apiPost<CreateDocumentOnBranchResponse>(
+    `/api/sites/${siteId}/branches/${branchId}/documents`,
+    params
+  );
+}
+
+/**
+ * Get a document from a specific branch
+ */
+export async function getDocumentOnBranch(
+  siteId: string,
+  branchId: string,
+  documentId: string
+): Promise<Document> {
+  return apiGet<Document>(
+    `/api/sites/${siteId}/branches/${branchId}/documents/${documentId}`
+  );
+}
+
+/**
+ * Delete a document from a specific branch (creates tombstone)
+ */
+export async function deleteDocumentOnBranch(
+  siteId: string,
+  branchId: string,
+  documentId: string
+): Promise<void> {
+  return apiDelete(
+    `/api/sites/${siteId}/branches/${branchId}/documents/${documentId}`
+  );
+}

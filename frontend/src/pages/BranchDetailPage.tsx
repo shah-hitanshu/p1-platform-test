@@ -10,7 +10,7 @@ import { useApi } from '../hooks/useApi';
 import { getSite } from '../api/sites';
 import { getBranch } from '../api/branches';
 import { listCheckpoints, createCheckpoint } from '../api/checkpoints';
-import { listDocuments, createDocument } from '../api/documents';
+import { listDocumentsOnBranch, createDocumentOnBranch, deleteDocumentOnBranch } from '../api/documents';
 import { ApiResponse } from '../components/ApiResponse';
 import type { Site, Branch, Checkpoint, Document } from '../types';
 import './BranchDetailPage.css';
@@ -33,11 +33,13 @@ export function BranchDetailPage() {
   const { data: checkpoints, isLoading: checkpointsLoading, error: checkpointsError, execute: fetchCheckpoints } =
     useApi<Checkpoint[], [string, string]>(listCheckpoints);
   const { data: documents, isLoading: documentsLoading, error: documentsError, execute: fetchDocuments } =
-    useApi<Document[], [string]>(listDocuments);
+    useApi<Document[], [string, string]>(listDocumentsOnBranch);
   const { execute: createCheckpointRequest, isLoading: isCreatingCheckpoint, error: createCheckpointError } =
     useApi<Checkpoint, [string, string, CreateCheckpointParams?]>(createCheckpoint);
   const { execute: createDocumentRequest, isLoading: isCreatingDocument, error: createDocumentError } =
-    useApi<Document, [string, CreateDocumentParams]>(createDocument);
+    useApi<{ document: Document; version: unknown }, [string, string, CreateDocumentParams]>(createDocumentOnBranch);
+  const { execute: deleteDocumentRequest, isLoading: isDeletingDocument } =
+    useApi<void, [string, string, string]>(deleteDocumentOnBranch);
 
   const [showCheckpointForm, setShowCheckpointForm] = useState(false);
   const [checkpointName, setCheckpointName] = useState('');
@@ -50,7 +52,7 @@ export function BranchDetailPage() {
       fetchSite(siteId);
       fetchBranch(siteId, branchId);
       fetchCheckpoints(siteId, branchId);
-      fetchDocuments(siteId);
+      fetchDocuments(siteId, branchId);
     }
   }, [siteId, branchId, fetchSite, fetchBranch, fetchCheckpoints, fetchDocuments]);
 
@@ -73,14 +75,27 @@ export function BranchDetailPage() {
 
   const handleCreateDocument = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!siteId || !documentPath.trim()) return;
+    if (!siteId || !branchId || !documentPath.trim()) return;
 
-    const result = await createDocumentRequest(siteId, { path: documentPath.trim() });
+    const result = await createDocumentRequest(siteId, branchId, { path: documentPath.trim() });
     if (result) {
       setDocumentPath('');
       setShowDocumentForm(false);
-      fetchDocuments(siteId);
+      fetchDocuments(siteId, branchId);
     }
+  };
+
+  const handleDeleteDocument = async (documentId: string) => {
+    if (!siteId || !branchId) return;
+
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this document from this branch? ' +
+      'The document will remain visible on other branches.'
+    );
+    if (!confirmed) return;
+
+    await deleteDocumentRequest(siteId, branchId, documentId);
+    fetchDocuments(siteId, branchId);
   };
 
   const getStatusBadgeClass = (status: Branch['status']) => {
@@ -343,6 +358,7 @@ export function BranchDetailPage() {
                     <th>Path</th>
                     <th>ID</th>
                     <th>Created</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -359,6 +375,16 @@ export function BranchDetailPage() {
                       <td className="date">
                         {new Date(doc.createdAt).toLocaleDateString()}
                       </td>
+                      <td className="actions">
+                        <button
+                          className="delete-btn"
+                          onClick={() => handleDeleteDocument(doc.id)}
+                          disabled={isDeletingDocument}
+                          title="Delete from this branch"
+                        >
+                          Delete
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -366,7 +392,7 @@ export function BranchDetailPage() {
             </div>
           ) : (
             <div className="empty-state">
-              <p>No documents found for this site.</p>
+              <p>No documents found on this branch.</p>
             </div>
           )}
         </section>
