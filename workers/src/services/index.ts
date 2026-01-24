@@ -111,3 +111,28 @@ export type {
   RevertToCheckpointResult,
   CheckpointDocumentVersion,
 } from './checkpoint-service';
+
+// Merge Request Service
+export {
+  createMergeRequest,
+  getMergeRequest,
+  listMergeRequests,
+  updateMergeRequest,
+  updateMergeRequestStatus,
+  updateMergeRequestConflicts,
+  deleteMergeRequest,
+  isValidStatusTransition as isValidMergeRequestStatusTransition,
+  MergeRequestNotFoundError,
+  InvalidMergeRequestParamsError,
+  InvalidMergeRequestStatusTransitionError,
+  SourceBranchNotFoundError,
+  TargetBranchNotFoundError,
+  CannotDeleteMergedRequestError,
+} from './merge-request-service';
+
+export type {
+  CreateMergeRequestParams,
+  UpdateMergeRequestParams,
+  ListMergeRequestsOptions,
+  MergeMetadata,
+} from './merge-request-service';
