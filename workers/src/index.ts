@@ -368,6 +368,20 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
     };
   }
 
+  // Branch-scoped document routes (must come before site-scoped document routes)
+  // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}?
+  const branchDocMatch = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents(?:\/([^/]+))?$/.exec(normalizedPath);
+  if (branchDocMatch) {
+    return {
+      handler: 'documents',
+      params: {
+        siteId: branchDocMatch[1],
+        branchId: branchDocMatch[2],
+        documentId: branchDocMatch[3],
+      },
+    };
+  }
+
   // Document routes
   // /api/sites/{siteId}/documents/{documentId}/restore
   const docRestoreMatch = /^\/api\/sites\/([^/]+)\/documents\/([^/]+)\/restore$/.exec(normalizedPath);
@@ -798,6 +812,7 @@ export default {
         case 'documents':
           response = await handleDocumentRoutes(request, {
             siteId: route.params.siteId ?? '',
+            branchId: route.params.branchId,
             documentId: route.params.documentId,
             documentPath: route.params.documentPath,
             action: route.params.action as 'restore' | undefined,

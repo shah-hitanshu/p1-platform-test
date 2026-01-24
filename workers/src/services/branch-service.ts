@@ -335,14 +335,16 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
       );
 
       // Copy document versions from checkpoint
+      // checkpoint_documents only stores document_version_id, so join with document_versions
       await query(
         `INSERT INTO app.document_versions (
           document_id, branch_id, version_number, snapshot, crdt_state,
           source, created_by_id, created_by_type
         )
-        SELECT cd.document_id, $1, 1, cd.snapshot, cd.crdt_state,
+        SELECT cd.document_id, $1, 1, dv.snapshot, dv.crdt_state,
                'branch', $2, $3
         FROM app.checkpoint_documents cd
+        INNER JOIN app.document_versions dv ON dv.id = cd.document_version_id
         WHERE cd.checkpoint_id = $4`,
         [branch.id, params.createdById, params.createdByType, params.sourceCheckpointId],
       );
@@ -392,13 +394,14 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
     return branch;
   } catch (error) {
     await query('ROLLBACK');
+    console.error('createBranch error:', error);
     if (isUniqueConstraintViolation(error)) {
       throw new DuplicateBranchNameError(params.siteId, params.name);
     }
     if (isForeignKeyViolation(error)) {
       throw new SiteNotFoundError(params.siteId);
     }
-    throw new DatabaseError('Failed to create branch', 'createBranch');
+    throw new DatabaseError(`Failed to create branch: ${error instanceof Error ? error.message : String(error)}`, 'createBranch');
   }
 }
 
