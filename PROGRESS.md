@@ -733,25 +733,47 @@ This document tracks the implementation progress of the Collaborative JSON State
   - `deleteGrant()` - delete a grant
   - Error classes: `GrantNotFoundError`, `DuplicateGrantError`
 
-#### Phase 7.1.1: Resource Management APIs (Pending)
-**Status:** Proposal finalized, ready for implementation
+#### Phase 7.1.1: Resource Management APIs
+**Status:** Phase 7.1.1a complete, Phase 7.1.1b pending
 **Proposal:** `proposals/PROPOSAL-001-missing-api-endpoints.md`
 
 Gap identified: The architecture API specification (v2.2) omits REST endpoints for several implemented services.
 
-##### Phase 7.1.1a: Schema Migration (Prerequisite)
-- [ ] Migration `007_branch_scoped_structures.sql` — move structure identity to `branch_structure_state`
-- [ ] Update `structure-service.ts` for branch-scoped structures
-- [ ] Update `checkpoint-service.ts` to capture/restore structure identity
-- [ ] Update `branch-service.ts` to copy structure state on branch creation
-- [ ] Update conflict detection for structure identity changes
+##### Phase 7.1.1a: Schema Migration and Service Updates
+**Status:** Complete
+**Commit:** `5a73674` - Implement Phase 7.1.1a: Branch-scoped structure identity
 
-##### Phase 7.1.1b: API Routes
+Deliverables:
+- [x] Migration `007_branch_scoped_structures.sql` — move structure identity to `branch_structure_state`
+  - Added `branch_structure_state` table with name, slug, description, structure_type columns
+  - Added `checkpoint_structures` table for capturing structure state in checkpoints
+  - Added `branch_document_metadata` table for per-branch document metadata
+  - Added `checkpoint_document_metadata` table for metadata in checkpoints
+- [x] Updated `structure-service.ts` for branch-scoped structures
+  - `createStructure(branchId, ...)` — atomic creation of site_structures + branch_structure_state
+  - `getBranchStructure(branchId, structureId)` — get structure from branch state
+  - `getBranchStructureBySlug(branchId, slug)` — get by slug on branch
+  - `listBranchStructures(branchId)` — list structures on branch
+  - `updateBranchStructure(branchId, structureId, updates)` — update name/slug/schema on branch
+  - `deleteBranchStructure(branchId, structureId)` — delete with cascade (removes definition if last reference)
+- [x] Updated `checkpoint-service.ts` to capture/restore structure identity
+  - `createCheckpoint()` now captures structure state and document metadata
+  - `getStructuresAtCheckpoint(checkpointId)` — get all structures at checkpoint
+  - `getStructureAtCheckpoint(checkpointId, structureId)` — get specific structure
+  - `revertToCheckpoint()` now restores structure state and document metadata
+- [x] Updated `branch-service.ts` to copy structure state on branch creation
+  - `createBranch()` uses transaction with structure/metadata copy
+  - Copies from source branch or from checkpoint if sourceCheckpointId provided
+- [x] Updated all tests for new branch-scoped API (42 structure service, 63 branch service, 30 checkpoint service tests)
+- [ ] Update conflict detection for structure identity changes (deferred to 7.1.1b)
+
+##### Phase 7.1.1b: API Routes (Pending)
 - [ ] Site API endpoints (CRUD with deletion protection)
 - [ ] Document CRUD API endpoints (soft-delete with restore)
 - [ ] Structure API endpoints (branch-scoped)
 - [ ] Node API endpoints (including bulk create/update/delete/migrate)
 - [ ] Metadata API endpoints (including bulk update/migrate)
+- [ ] Structure conflict detection integration
 
 ##### Key Decisions Made
 - **Structure scope:** Branch-scoped for consistency with documents
@@ -897,6 +919,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 7.1.1a | Branch-scoped structure identity complete: migration, service updates (829 tests) |
 | 2026-01-24 | 7.1.1 | Proposal finalized: branch-scoped structures, soft-delete, bulk operations |
 | 2026-01-24 | 7.2 | Audit Integration complete (9 tests) |
 | 2026-01-24 | 7.1 | REST API Endpoints complete: Branch, Checkpoint, Merge, Grant APIs (49 tests) |
@@ -948,13 +971,16 @@ Template for future decisions:
 | CRDT Merge Service | 14 | - |
 | Merge Execution Service | 13 | - |
 | Structure Service | 42 | - |
+| Structure Service Branch-Scoped | 17 | - |
+| Checkpoint Structure Capture | 11 | - |
+| Branch Structure Copy | 7 | - |
 | Metadata Service | 29 | - |
 | Branch API Routes | 13 | - |
 | Checkpoint API Routes | 13 | - |
 | Merge API Routes | 13 | - |
 | Grant API Routes | 10 | - |
 | Audit Emitter | 9 | - |
-| **Total** | **794** | **52** |
+| **Total** | **829** | **52** |
 
 ---
 
