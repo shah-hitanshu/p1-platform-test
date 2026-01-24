@@ -743,6 +743,19 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
     };
   }
 
+  // /api/sites/{siteId}/merge-requests/{requestId}/execute
+  const mergeRequestExecuteMatch = /^\/api\/sites\/([^/]+)\/merge-requests\/([^/]+)\/execute$/.exec(normalizedPath);
+  if (mergeRequestExecuteMatch) {
+    return {
+      handler: 'merge',
+      params: {
+        siteId: mergeRequestExecuteMatch[1],
+        mergeRequestId: mergeRequestExecuteMatch[2],
+        action: 'execute-request',
+      },
+    };
+  }
+
   // /api/sites/{siteId}/merge-requests/{requestId}?
   const mergeRequestMatch = /^\/api\/sites\/([^/]+)\/merge-requests(?:\/([^/]+))?$/.exec(normalizedPath);
   if (mergeRequestMatch) {
@@ -906,6 +919,7 @@ export default {
               ? (route.params.action as 'check' | 'execute' | 'preview')
               : undefined,
             mergeRequests: route.params.action === 'requests',
+            executeRequest: route.params.action === 'execute-request',
             mergeRequestId: route.params.mergeRequestId,
             principal: principalContext,
           });

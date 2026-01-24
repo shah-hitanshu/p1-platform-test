@@ -29,6 +29,7 @@ export interface MergeRouteContext {
   siteId: string;
   operation?: 'check' | 'execute' | 'preview';
   mergeRequests?: boolean;
+  executeRequest?: boolean;
   mergeRequestId?: string;
   principal: {
     id: string;
@@ -305,6 +306,73 @@ async function handleDeleteMergeRequest(
 }
 
 /**
+ * Request body for executing a merge request
+ */
+interface ExecuteMergeRequestBody {
+  resolutions?: {
+    documentId: string;
+    strategy: ConflictResolutionStrategy;
+  }[];
+}
+
+/**
+ * Handle POST /api/sites/{siteId}/merge-requests/{requestId}/execute - Execute Merge Request
+ */
+async function handleExecuteMergeRequest(
+  request: Request,
+  context: MergeRouteContext,
+): Promise<Response> {
+  if (context.mergeRequestId === undefined) {
+    return errorResponse('Merge request ID is required', 400);
+  }
+
+  // Get the merge request to validate it exists and check status
+  const mergeRequest = await getMergeRequest(context.mergeRequestId);
+  if (mergeRequest === null) {
+    return errorResponse('Merge request not found', 404);
+  }
+
+  // Check if merge request is in a valid state for execution
+  if (mergeRequest.status !== 'approved' && mergeRequest.status !== 'conflicted') {
+    return errorResponse(
+      `Cannot execute merge request with status '${mergeRequest.status}'. Must be 'approved' or 'conflicted'.`,
+      400,
+    );
+  }
+
+  // Parse optional resolutions from body
+  let resolutions: ExecuteMergeRequestBody['resolutions'];
+  try {
+    const body = await parseJsonBody<ExecuteMergeRequestBody>(request);
+    resolutions = body.resolutions;
+  } catch {
+    // Empty body is fine
+    resolutions = undefined;
+  }
+
+  // Execute the merge
+  let result;
+  if (resolutions !== undefined && resolutions.length > 0) {
+    result = await executeMergeWithResolution({
+      mergeRequestId: context.mergeRequestId,
+      resolutionStrategy: 'take-source', // Default strategy; individual resolutions override
+      mergedById: context.principal.id,
+      mergedByType: context.principal.type,
+    });
+  } else {
+    result = await executeMerge({
+      mergeRequestId: context.mergeRequestId,
+      mergedById: context.principal.id,
+      mergedByType: context.principal.type,
+    });
+  }
+
+  // Note: executeMerge already updates the merge request status to 'merged'
+
+  return jsonResponse(result);
+}
+
+/**
  * Main route handler for merge operations
  */
 export async function handleMergeRoutes(
@@ -330,6 +398,14 @@ export async function handleMergeRoutes(
         default:
           return errorResponse('Unknown operation', 400);
       }
+    }
+
+    // Handle execute merge request
+    if (context.executeRequest === true) {
+      if (method !== 'POST') {
+        return errorResponse('Method not allowed', 405);
+      }
+      return await handleExecuteMergeRequest(request, context);
     }
 
     // Handle merge requests CRUD

@@ -169,10 +169,10 @@ export async function executeMerge(
   }
 
   // 3. Detect conflicts
-  const detectionResult = await detectConflicts({
-    sourceBranchId: mergeRequest.sourceBranchId,
-    targetBranchId: mergeRequest.targetBranchId,
-  });
+  const detectionResult = await detectConflicts(
+    mergeRequest.sourceBranchId,
+    mergeRequest.targetBranchId,
+  );
 
   // 4. If conflicts exist, update merge request and throw error
   if (detectionResult.hasConflicts) {
@@ -199,7 +199,7 @@ export async function executeMerge(
   const checkpointResult = await createCheckpoint({
     branchId: mergeRequest.targetBranchId,
     name: `Merge: ${mergeRequest.title}`,
-    type: 'post_merge',
+    checkpointType: 'post_merge',
     createdById: mergedById,
     createdByType: mergedByType,
   });
@@ -247,10 +247,10 @@ export async function executeMergeWithResolution(
   }
 
   // 3. Detect conflicts
-  const detectionResult = await detectConflicts({
-    sourceBranchId: mergeRequest.sourceBranchId,
-    targetBranchId: mergeRequest.targetBranchId,
-  });
+  const detectionResult = await detectConflicts(
+    mergeRequest.sourceBranchId,
+    mergeRequest.targetBranchId,
+  );
 
   let conflictsResolved = 0;
 
@@ -311,7 +311,7 @@ export async function executeMergeWithResolution(
   const checkpointResult = await createCheckpoint({
     branchId: mergeRequest.targetBranchId,
     name: `Merge: ${mergeRequest.title}`,
-    type: 'post_merge',
+    checkpointType: 'post_merge',
     createdById: mergedById,
     createdByType: mergedByType,
   });
@@ -345,10 +345,10 @@ export async function previewMerge(
     throw new MergeRequestNotFoundError(mergeRequestId);
   }
 
-  const detectionResult = await detectConflicts({
-    sourceBranchId: mergeRequest.sourceBranchId,
-    targetBranchId: mergeRequest.targetBranchId,
-  });
+  const detectionResult = await detectConflicts(
+    mergeRequest.sourceBranchId,
+    mergeRequest.targetBranchId,
+  );
 
   return {
     canMerge: !detectionResult.hasConflicts,
