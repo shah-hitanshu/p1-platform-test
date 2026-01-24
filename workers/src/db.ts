@@ -4,6 +4,10 @@
  * Provides a lightweight abstraction over PostgreSQL queries.
  * This module is designed to work with Cloudflare Workers and the postgres package.
  *
+ * IMPORTANT: Cloudflare Workers cannot share I/O objects (like database connections)
+ * across request contexts. This module creates a fresh connection for each request
+ * and provides a request-scoped database context.
+ *
  * @see collaborative-state-system-architecture-v2.2.md
  */
 
@@ -25,17 +29,6 @@ export interface DatabaseConfig {
 }
 
 /**
- * Global database instance holder.
- * In production, this would be initialized with the connection string from environment.
- */
-let dbInstance: DatabaseConnection | null = null;
-
-/**
- * Cached postgres SQL instance for connection reuse.
- */
-let sqlInstance: postgres.Sql | null = null;
-
-/**
  * Database connection interface.
  */
 export interface DatabaseConnection {
@@ -43,54 +36,35 @@ export interface DatabaseConnection {
     sql: string,
     params?: unknown[]
   ): Promise<QueryResult<T>>;
+  close(): Promise<void>;
 }
 
 /**
- * Initialize the database connection from a connection string.
- * Creates a real postgres connection using the postgres package.
- * Safe to call multiple times - reuses existing connection.
+ * Request-scoped database context.
+ * Stores the current request's database connection.
+ */
+let currentConnection: DatabaseConnection | null = null;
+
+/**
+ * Create a new database connection.
+ * This should be called at the start of each request.
  *
  * @param connectionString - PostgreSQL connection string
+ * @returns Database connection
  */
-export function initializeDatabaseFromConnectionString(connectionString: string): void {
-  // Skip if already initialized with same connection string
-  if (dbInstance && sqlInstance) {
-    return;
-  }
-
-  // Create postgres connection
-  sqlInstance = postgres(connectionString, {
+export function createDatabaseConnection(connectionString: string): DatabaseConnection {
+  // Create a new postgres connection for this request
+  const sql = postgres(connectionString, {
     // Don't transform undefined to null - let postgres handle it
     transform: {
       undefined: null,
     },
-    // Connection pool settings for Workers
-    max: 1, // Workers are single-threaded
+    // Connection pool settings for Workers - single connection per request
+    max: 1,
     idle_timeout: 20,
     connect_timeout: 10,
   });
 
-  // Create the database connection adapter
-  dbInstance = createConnectionFromSql(sqlInstance);
-}
-
-/**
- * Initialize the database connection.
- * Should be called once during worker startup.
- *
- * @param config - Database configuration
- */
-export function initializeDatabase(config: DatabaseConfig): void {
-  initializeDatabaseFromConnectionString(config.connectionString);
-}
-
-/**
- * Create a database connection adapter from a postgres SQL instance.
- *
- * @param sql - Postgres SQL instance
- * @returns Database connection adapter
- */
-function createConnectionFromSql(sql: postgres.Sql): DatabaseConnection {
   return {
     async query<T = Record<string, unknown>>(
       sqlQuery: string,
@@ -113,7 +87,39 @@ function createConnectionFromSql(sql: postgres.Sql): DatabaseConnection {
         rowCount,
       };
     },
+    async close(): Promise<void> {
+      await sql.end();
+    },
   };
+}
+
+/**
+ * Initialize the database connection for the current request.
+ * Creates a fresh connection that will be used for all queries in this request.
+ *
+ * @param connectionString - PostgreSQL connection string
+ */
+export function initializeDatabaseFromConnectionString(connectionString: string): void {
+  // Close any existing connection (shouldn't happen in normal flow)
+  if (currentConnection) {
+    // Fire and forget - we're replacing it anyway
+    currentConnection.close().catch(() => {
+      // Ignore errors closing stale connection
+    });
+  }
+
+  // Create a fresh connection for this request
+  currentConnection = createDatabaseConnection(connectionString);
+}
+
+/**
+ * Initialize the database connection.
+ * Should be called once at the start of each request.
+ *
+ * @param config - Database configuration
+ */
+export function initializeDatabase(config: DatabaseConfig): void {
+  initializeDatabaseFromConnectionString(config.connectionString);
 }
 
 /**
@@ -136,10 +142,22 @@ export async function query<T = Record<string, unknown>>(
   sql: string,
   params?: unknown[],
 ): Promise<QueryResult<T>> {
-  if (!dbInstance) {
+  if (!currentConnection) {
     throw new Error('Database not initialized. Call initializeDatabase first.');
   }
-  return dbInstance.query<T>(sql, params);
+  return currentConnection.query<T>(sql, params);
+}
+
+/**
+ * Close the current database connection.
+ * Should be called at the end of each request for cleanup.
+ * Optional - connections will be cleaned up by the runtime eventually.
+ */
+export async function closeDatabaseConnection(): Promise<void> {
+  if (currentConnection) {
+    await currentConnection.close();
+    currentConnection = null;
+  }
 }
 
 /**
@@ -149,7 +167,7 @@ export async function query<T = Record<string, unknown>>(
  * @param connection - Database connection to use
  */
 export function setDatabaseInstance(connection: DatabaseConnection | null): void {
-  dbInstance = connection;
+  currentConnection = connection;
 }
 
 /**
@@ -157,5 +175,5 @@ export function setDatabaseInstance(connection: DatabaseConnection | null): void
  * Returns null if not initialized.
  */
 export function getDatabaseInstance(): DatabaseConnection | null {
-  return dbInstance;
+  return currentConnection;
 }
