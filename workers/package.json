@@ -27,6 +27,7 @@
     "cf:kv:list": "wrangler kv:key list --binding CONFIG_KV"
   },
   "dependencies": {
+    "ajv": "^8.17.1",
     "fast-json-patch": "^3.1.1",
     "jose": "^5.2.0",
     "object-hash": "^3.0.0",
