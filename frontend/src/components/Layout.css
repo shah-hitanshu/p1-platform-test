@@ -77,22 +77,9 @@
   color: #888;
 }
 
-.logout-btn {
+/* PDS Button is used for logout - custom styling for dark sidebar context */
+.user-panel .button-secondary {
   width: 100%;
-  padding: 8px;
-  background-color: transparent;
-  border: 1px solid #4a4a6a;
-  color: #ccc;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.875rem;
-  transition: all 0.2s;
-}
-
-.logout-btn:hover {
-  background-color: #2a2a4a;
-  border-color: #5a5a7a;
-  color: #fff;
 }
 
 .main-content {

@@ -83,7 +83,7 @@ test.describe('Navigation', () => {
   });
 
   test('should show user info in sidebar', async ({ page }) => {
-    await expect(page.locator('.user-name')).toContainText('Alice Developer');
+    await expect(page.getByTestId('user-name')).toContainText('Alice Developer');
     await expect(page.locator('.user-email')).toContainText('alice@example.com');
   });
 });

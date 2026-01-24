@@ -75,7 +75,7 @@ test.describe('Authentication Flow', () => {
     await expect(page).toHaveURL('/');
 
     // Should show user in sidebar
-    await expect(page.locator('.user-name')).toContainText('Alice Developer');
+    await expect(page.getByTestId('user-name')).toContainText('Alice Developer');
   });
 
   test('should persist login across page reload', async ({ page }) => {
@@ -91,7 +91,7 @@ test.describe('Authentication Flow', () => {
 
     // Should still be on dashboard (not redirected to login)
     await expect(page).toHaveURL('/');
-    await expect(page.locator('.user-name')).toContainText('Alice Developer');
+    await expect(page.getByTestId('user-name')).toContainText('Alice Developer');
   });
 
   test('should logout and redirect to login', async ({ page }) => {
@@ -103,7 +103,7 @@ test.describe('Authentication Flow', () => {
     await expect(page).toHaveURL('/');
 
     // Logout
-    await page.click('.logout-btn');
+    await page.getByTestId('logout-button').click();
 
     // Should be on login page
     await expect(page).toHaveURL('/login');
@@ -122,7 +122,7 @@ test.describe('Authentication Flow', () => {
     expect(tokenBefore).toBeTruthy();
 
     // Logout
-    await page.click('.logout-btn');
+    await page.getByTestId('logout-button').click();
 
     // Verify storage is cleared
     const tokenAfter = await page.evaluate(() => localStorage.getItem('css_auth_token'));

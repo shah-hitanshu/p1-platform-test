@@ -6,6 +6,7 @@
 
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { Button } from '@pantheon-systems/design-toolkit-react';
 import './Layout.css';
 
 export function Layout() {
@@ -43,12 +44,12 @@ export function Layout() {
         {user && (
           <div className="user-panel">
             <div className="user-info">
-              <span className="user-name">{user.name}</span>
+              <span className="user-name" data-testid="user-name">{user.name}</span>
               <span className="user-email">{user.email}</span>
             </div>
-            <button className="logout-btn" onClick={logout}>
+            <Button type="secondary" onClick={logout} data-testid="logout-button">
               Log out
-            </button>
+            </Button>
           </div>
         )}
       </nav>

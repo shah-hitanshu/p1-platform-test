@@ -4,6 +4,23 @@ import react from '@vitejs/plugin-react';
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  optimizeDeps: {
+    // Force pre-bundling of design-toolkit-react and its problematic dependencies
+    // This transforms JSX in .js files during the dependency optimization phase
+    include: ['@pantheon-systems/design-toolkit-react', 'react-csv'],
+    esbuildOptions: {
+      // Allow JSX in .js files for packages that don't properly transpile
+      loader: {
+        '.js': 'jsx',
+      },
+    },
+  },
+  build: {
+    rollupOptions: {
+      // Externalize react-csv as we don't use CSV export functionality
+      external: ['react-csv'],
+    },
+  },
   server: {
     port: 5173,
     proxy: {
