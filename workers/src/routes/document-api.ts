@@ -19,11 +19,16 @@ import {
   documentExistsOnBranch,
   deleteDocumentOnBranch,
   getBranch,
+  // Document version operations
+  getLatestDocumentVersion,
+  listDocumentVersions,
+  createDocumentVersion,
   SiteNotFoundError,
   DuplicateDocumentPathError,
   InvalidDocumentPathError,
   DocumentNotFoundError,
   DocumentPathConflictError,
+  InvalidDocumentVersionParamsError,
 } from '../services';
 import { validatePagination } from './validation';
 
@@ -36,6 +41,8 @@ export interface DocumentRouteContext {
   documentId?: string;
   documentPath?: string;
   action?: 'restore';
+  versionsPath?: boolean;
+  versionAction?: 'latest';
   principal: {
     id: string;
     type: 'user' | 'agent';
@@ -322,6 +329,112 @@ async function handleDeleteDocumentOnBranch(
   return new Response(null, { status: 204 });
 }
 
+// =============================================================================
+// Document Version Operations
+// =============================================================================
+
+/**
+ * Request body for creating a document version
+ */
+interface CreateVersionBody {
+  snapshot?: Record<string, unknown> | null;
+}
+
+/**
+ * Handle GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions
+ */
+async function handleListDocumentVersions(
+  documentId: string,
+  branchId: string,
+): Promise<Response> {
+  const versions = await listDocumentVersions(documentId, branchId);
+  return jsonResponse({ versions });
+}
+
+/**
+ * Handle GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/latest
+ */
+async function handleGetLatestDocumentVersion(
+  documentId: string,
+  branchId: string,
+): Promise<Response> {
+  const version = await getLatestDocumentVersion(documentId, branchId);
+  if (version === null) {
+    return errorResponse('No versions found for this document on this branch', 404);
+  }
+  return jsonResponse(version);
+}
+
+/**
+ * Handle POST /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions
+ */
+async function handleCreateDocumentVersion(
+  request: Request,
+  documentId: string,
+  branchId: string,
+  principal: { id: string; type: 'user' | 'agent' },
+): Promise<Response> {
+  const body = await parseJsonBody<CreateVersionBody>(request);
+
+  // Validate snapshot is present and is an object
+  if (body.snapshot === undefined) {
+    return errorResponse('snapshot is required', 400);
+  }
+
+  // Validate snapshot is a non-null, non-array object
+  if (typeof body.snapshot !== 'object' || body.snapshot === null || Array.isArray(body.snapshot)) {
+    return errorResponse('snapshot must be a JSON object', 400);
+  }
+
+  const version = await createDocumentVersion({
+    documentId,
+    branchId,
+    snapshot: body.snapshot,
+    source: 'edit',
+    createdById: principal.id,
+    createdByType: principal.type,
+  });
+
+  return jsonResponse(version, 201);
+}
+
+/**
+ * Handle document version routes within branch scope
+ */
+async function handleDocumentVersionRoutes(
+  request: Request,
+  documentId: string,
+  branchId: string,
+  context: DocumentRouteContext,
+): Promise<Response> {
+  const method = request.method;
+
+  // Check if document exists on branch first
+  const exists = await documentExistsOnBranch(documentId, branchId);
+  if (!exists) {
+    return errorResponse('Document not found on this branch', 404);
+  }
+
+  // GET /versions/latest
+  if (context.versionAction === 'latest') {
+    if (method !== 'GET') {
+      return errorResponse('Method not allowed', 405);
+    }
+    return await handleGetLatestDocumentVersion(documentId, branchId);
+  }
+
+  // GET /versions - list versions
+  // POST /versions - create version
+  switch (method) {
+    case 'GET':
+      return await handleListDocumentVersions(documentId, branchId);
+    case 'POST':
+      return await handleCreateDocumentVersion(request, documentId, branchId, context.principal);
+    default:
+      return errorResponse('Method not allowed', 405);
+  }
+}
+
 /**
  * Handle branch-scoped document routes
  */
@@ -340,6 +453,11 @@ async function handleBranchScopedDocumentRoutes(
   const branch = await getBranch(branchId);
   if (branch?.siteId !== context.siteId) {
     return errorResponse('Branch not found', 404);
+  }
+
+  // Handle document version routes
+  if (context.versionsPath === true && context.documentId !== undefined) {
+    return await handleDocumentVersionRoutes(request, context.documentId, branchId, context);
   }
 
   // Routes with documentId
@@ -435,6 +553,9 @@ export async function handleDocumentRoutes(
     }
     if (error instanceof DocumentPathConflictError) {
       return errorResponse('Path is now occupied by another document', 409);
+    }
+    if (error instanceof InvalidDocumentVersionParamsError) {
+      return errorResponse(error.message, 400);
     }
 
     // Log and return generic error for unknown errors

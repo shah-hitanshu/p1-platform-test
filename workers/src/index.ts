@@ -367,6 +367,8 @@ interface RouteParams {
   grantId?: string;
   mergeRequestId?: string;
   action?: string;
+  versionsPath?: string;
+  versionAction?: string;
 }
 
 function parseRoute(path: string): { handler: string; params: RouteParams } | null {
@@ -384,6 +386,38 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
     return {
       handler: 'sites',
       params: { siteId: siteMatch[1] },
+    };
+  }
+
+  // Document version routes (must come before branch-scoped document routes)
+  // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/latest
+  const versionLatestRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/([^/]+)\/versions\/latest$/;
+  const versionLatestMatch = versionLatestRe.exec(normalizedPath);
+  if (versionLatestMatch) {
+    return {
+      handler: 'documents',
+      params: {
+        siteId: versionLatestMatch[1],
+        branchId: versionLatestMatch[2],
+        documentId: versionLatestMatch[3],
+        versionsPath: 'true',
+        versionAction: 'latest',
+      },
+    };
+  }
+
+  // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions
+  const versionsRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/([^/]+)\/versions$/;
+  const versionsMatch = versionsRe.exec(normalizedPath);
+  if (versionsMatch) {
+    return {
+      handler: 'documents',
+      params: {
+        siteId: versionsMatch[1],
+        branchId: versionsMatch[2],
+        documentId: versionsMatch[3],
+        versionsPath: 'true',
+      },
     };
   }
 
@@ -848,6 +882,8 @@ export default {
             documentId: route.params.documentId,
             documentPath: route.params.documentPath,
             action: route.params.action as 'restore' | undefined,
+            versionsPath: route.params.versionsPath === 'true',
+            versionAction: route.params.versionAction as 'latest' | undefined,
             principal: principalContext,
           });
           break;
