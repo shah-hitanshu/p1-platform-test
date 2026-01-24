@@ -964,7 +964,11 @@ Deliverables:
 - [x] App Router (`frontend/src/App.tsx`)
   - Protected routes with auth check
   - Public login route
-- [ ] Site Detail Page - Single site with branches list
+- [x] Site Detail Page (`frontend/src/pages/SiteDetailPage.tsx`)
+  - Breadcrumb navigation
+  - Site info display (ID, Pantheon ID, created date)
+  - Branches list table with status badges
+  - Create branch form with parent branch selector
 - [ ] Branch Detail Page - Branch with documents list
 - [ ] Document Page - Document viewer/editor
 - [ ] Checkpoints Page - Checkpoints list
@@ -1015,6 +1019,11 @@ Deliverables:
   - **Issue:** Create Site button did not create site or show feedback
   - **Root cause:** Backend requires `pantheonSiteId` but form only sent `name`
   - **Fix:** Added `pantheonSiteId` input field and error display for create failures
+- [x] Branch List API Fix (`workers/src/routes/branch-api.ts`)
+  - **Commit:** `3b3686a`
+  - **Issue:** Listing branches returned 500 Internal Server Error
+  - **Root cause:** `listBranches` called with object instead of separate arguments
+  - **Fix:** Changed to `listBranches(siteId, options)` format
 
 ---
 
