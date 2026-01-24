@@ -1779,6 +1779,7 @@ Template for future decisions:
 | Date | Phase | Summary |
 |------|-------|---------|
 | 2026-01-24 | 8.23 | Site deletion FK fix: clear source_checkpoint_id and base_checkpoint_id before deleting checkpoints |
+| 2026-01-24 | 9.3 | PDS contrast fixes: global code styling, ApiResponse/Dashboard using PDS design tokens |
 | 2026-01-24 | 9.2 | PDS Migration: ConfirmDeleteModal to PDS components (Modal, Button, Alert), updated E2E tests |
 | 2026-01-24 | 9.1 | PDS Foundation: import global styles, migration plan with E2E test strategy |
 | 2026-01-24 | 8.22 | Branch archive button, site deletion fix: archive UI for branches, site delete allowed with only main branch |
@@ -1880,4 +1881,4 @@ Template for future decisions:
 
 ---
 
-*Last updated: 2026-01-24 (Phase 9.2 - PDS Migration ConfirmDeleteModal)*
+*Last updated: 2026-01-24 (Phase 9.3 - PDS Contrast Fixes)*
