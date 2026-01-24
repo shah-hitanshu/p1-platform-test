@@ -182,7 +182,7 @@ export async function createDocumentVersion(
       [
         params.documentId,
         params.branchId,
-        JSON.stringify(params.snapshot),
+        params.snapshot,
         crdtBuffer,
         params.source,
         params.createdById,

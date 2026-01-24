@@ -978,11 +978,13 @@ describe('Phase 3.1: Document Service', () => {
         );
         expect(insertCall).toBeDefined();
         if (insertCall && Array.isArray(insertCall[1])) {
-          // One of the params should be the JSON snapshot with _deleted
+          // One of the params should be the snapshot object with _deleted
           const hasDeletedSnapshot = insertCall[1].some(
             (param) =>
-              typeof param === 'string' &&
-              param.includes('_deleted'),
+              typeof param === 'object' &&
+              param !== null &&
+              '_deleted' in param &&
+              param._deleted === true,
           );
           expect(hasDeletedSnapshot).toBe(true);
         }

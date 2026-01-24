@@ -662,7 +662,7 @@ export async function createDocumentOnBranch(
       [
         document.id,
         params.branchId,
-        JSON.stringify({}),
+        {},
         'edit',
         params.createdById,
         params.createdByType,
@@ -738,7 +738,7 @@ export async function deleteDocumentOnBranch(
       [
         params.documentId,
         params.branchId,
-        JSON.stringify({ _deleted: true }),
+        { _deleted: true },
         'edit',
         params.deletedById,
         params.deletedByType,

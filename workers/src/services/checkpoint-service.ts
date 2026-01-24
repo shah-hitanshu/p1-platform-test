@@ -567,7 +567,7 @@ export async function revertToCheckpoint(
       [
         doc.documentId,
         checkpoint.branchId,
-        JSON.stringify(doc.snapshot),
+        doc.snapshot,
         doc.crdtState !== undefined && doc.crdtState !== '' ?
           Buffer.from(doc.crdtState, 'base64') : null,
         params.createdById,
