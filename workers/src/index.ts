@@ -188,7 +188,7 @@ function addCorsHeaders(
   headers.set('Access-Control-Allow-Origin', origin);
   headers.set('Access-Control-Allow-Credentials', 'true');
   headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key, X-Principal-Id, X-Principal-Type');
   headers.set('Access-Control-Max-Age', '86400');
 
   return new Response(response.body, {
@@ -213,7 +213,7 @@ function handlePreflight(request: Request, env: Env): Response {
     headers: {
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, X-Principal-Id, X-Principal-Type',
       'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Max-Age': '86400',
     },

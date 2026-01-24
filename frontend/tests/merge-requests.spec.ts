@@ -546,11 +546,11 @@ test.describe('Merge Request Preview', () => {
     await expect(page.locator('.preview-btn')).toBeVisible();
 
     // Preview loads automatically - wait for results (or error if race condition in local dev)
-    // First check loading starts
-    await expect(page.locator('.preview-loading, .preview-result, .preview-error')).toBeVisible({ timeout: 10000 });
+    // First check loading starts - use first() to avoid strict mode issues if multiple elements exist
+    await expect(page.locator('.preview-loading, .preview-result, .preview-error').first()).toBeVisible({ timeout: 10000 });
 
     // Then wait for loading to complete
-    await expect(page.locator('.preview-result, .preview-error')).toBeVisible({ timeout: 20000 });
+    await expect(page.locator('.preview-result, .preview-error').first()).toBeVisible({ timeout: 20000 });
 
     // After loading, button should show "Refresh"
     await expect(page.locator('.preview-btn')).toContainText('Refresh');
