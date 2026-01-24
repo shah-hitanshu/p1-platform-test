@@ -1409,17 +1409,28 @@ Verified that Git-like branch isolation works correctly:
 **Commits:**
 - `70cef8f` - Add tests for creating branches from non-main branches
 - `fac5d34` - Fix branch creation to support branching from any branch
+- `0979383` - Fix frontend to use sourceBranchId field from API response
 
 - **Issue:** When creating a branch and selecting a non-main parent branch in the UI, the new branch was always created from main instead of the selected parent.
 - **Root cause:** Two issues in `workers/src/routes/branch-api.ts`:
   1. Field name mismatch: Frontend sent `parentBranchId` (UUID), backend expected `sourceBranch` (name)
   2. Backend limitation: Only handled `'main'` case with TODO comment for non-main branches
-- **Fix:**
+- **Backend Fix:**
   1. Updated `CreateBranchBody` to accept `parentBranchId` (UUID)
   2. When `parentBranchId` provided, use `getBranch()` to look up by ID
   3. Removed "Only branching from main is currently supported" error
   4. Returns 404 "Parent branch not found" for invalid parentBranchId
   5. Falls back to main branch when no parentBranchId provided (backwards compatible)
+- **Frontend Fix:** (additional issue discovered during testing)
+  - Backend returns `sourceBranchId`, frontend expected `parentBranchId`
+  - Updated frontend Branch type to use `sourceBranchId`
+  - Updated BranchDetailPage and SiteDetailPage to display `sourceBranchId`
+
+##### Manual Verification: Branch from Non-Main
+1. Navigated to "Branch Isolation Demo" site
+2. Created new branch "sub-feature-test" with parent "feature-homepage-update"
+3. Verified branch detail page shows correct parent: `7cd0b887...` (feature-homepage-update)
+4. Verified branches table shows parent column correctly for all branches
 
 #### Phase 8.12: UX Writing Style Compliance
 
