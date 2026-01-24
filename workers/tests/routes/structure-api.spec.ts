@@ -351,7 +351,9 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.updateBranchStructure).mockResolvedValueOnce(null);
+      vi.mocked(services.updateBranchStructure).mockRejectedValueOnce(
+        new services.StructureNotFoundError('nonexistent'),
+      );
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-1/structures/nonexistent',
@@ -417,7 +419,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.deleteBranchStructure).mockResolvedValueOnce(true);
+      vi.mocked(services.deleteBranchStructure).mockResolvedValueOnce(undefined);
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-1/structures/struct-1',
@@ -440,7 +442,9 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.deleteBranchStructure).mockResolvedValueOnce(false);
+      vi.mocked(services.deleteBranchStructure).mockRejectedValueOnce(
+        new services.StructureNotFoundError('nonexistent'),
+      );
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-1/structures/nonexistent',

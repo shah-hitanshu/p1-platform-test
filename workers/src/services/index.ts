@@ -103,6 +103,7 @@ export {
   deleteCheckpoint,
   getLatestCheckpoint,
   getCheckpointDocumentCount,
+  getStructureAtCheckpoint,
   // Note: BranchNotFoundError is already exported from branch-service
   CheckpointNotFoundError,
   InvalidCheckpointParamsError,
@@ -115,6 +116,7 @@ export type {
   RevertToCheckpointParams,
   RevertToCheckpointResult,
   CheckpointDocumentVersion,
+  CheckpointStructure,
 } from './checkpoint-service';
 
 // Merge Request Service
@@ -231,6 +233,12 @@ export {
   listStructures,
   updateStructure,
   deleteStructure,
+  // Branch-scoped structure functions
+  getBranchStructure,
+  getBranchStructureBySlug,
+  listBranchStructures,
+  updateBranchStructure,
+  deleteBranchStructure,
   createNode,
   getNode,
   listNodes,
