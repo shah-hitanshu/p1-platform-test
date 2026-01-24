@@ -22,10 +22,7 @@ vi.mock('../../src/services', () => ({
     }
   },
   InvalidSiteParamsError: class InvalidSiteParamsError extends Error {
-    name = 'InvalidSiteParamsError';
-    constructor(message: string) {
-      super(message);
-    }
+    override name = 'InvalidSiteParamsError';
   },
 }));
 
