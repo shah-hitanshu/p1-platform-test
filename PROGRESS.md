@@ -1527,7 +1527,7 @@ Verified that Git-like branch isolation works correctly:
   - "Merge Requests" button in header
 
 - [x] E2E Tests (`frontend/tests/merge-requests.spec.ts`)
-  - 20 test cases covering full merge request lifecycle:
+  - 22 test cases covering full merge request lifecycle:
     - List merge requests with status filtering
     - Create merge request with validation
     - View merge request detail
@@ -1562,6 +1562,18 @@ Verified that Git-like branch isolation works correctly:
 | `frontend/src/pages/SiteDetailPage.tsx` | Added Merge Requests link |
 | `frontend/src/pages/SiteDetailPage.css` | Added link styles |
 | `frontend/src/components/ConfirmDeleteModal.tsx` | Added "merge request" resource type |
+
+##### Bug Fixes (Post-Implementation):
+- **Backend Route Fix**: Fixed operation parameter mapping in `workers/src/index.ts` to prevent 405 errors on merge-requests routes. The `operation` parameter was incorrectly being set to `'requests'` for merge-request CRUD routes.
+- **API Signature Fix**: Fixed `listMergeRequests` call signature in `workers/src/routes/merge-api.ts`. Function was being called with wrong parameter structure.
+- **Status Transition Fix**: Updated `workers/src/services/merge-request-service.ts` to allow reopening closed merge requests (closed → open transition).
+- **Delete Navigation Fix**: Fixed `handleDelete` in `MergeRequestDetailPage.tsx` to only navigate on successful deletion.
+- **Test Fixes**: Updated E2E tests to handle empty state after deletion and wait for reopen button visibility.
+
+**Commits:**
+- `c25417f` - Implement Merge Request UI with conflict resolution
+- `6c81cd5` - Fix merge request API routing and status transitions
+- `a1c1ed7` - Fix delete handler to only navigate on success
 
 #### Future Frontend Work
 
