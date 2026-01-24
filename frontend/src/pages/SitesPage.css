@@ -56,6 +56,13 @@
 .create-form {
   display: flex;
   gap: 12px;
+  align-items: flex-start;
+}
+
+.form-fields {
+  display: flex;
+  flex: 1;
+  gap: 12px;
 }
 
 .form-input {
@@ -92,6 +99,27 @@
 .submit-btn:disabled {
   background-color: #94d3a2;
   cursor: not-allowed;
+}
+
+.create-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  border-radius: 6px;
+  color: #721c24;
+  font-size: 0.875rem;
+}
+
+.create-error .error-icon {
+  font-size: 1rem;
+}
+
+.create-error .error-text {
+  flex: 1;
 }
 
 .error-banner {

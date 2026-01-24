@@ -15,10 +15,11 @@ import './SitesPage.css';
 
 export function SitesPage() {
   const { data: sites, isLoading, error, execute: fetchSites } = useApi<Site[], []>(listSites);
-  const { execute: createSiteRequest, isLoading: isCreating } = useApi<Site, [CreateSiteParams]>(createSiteApi);
+  const { execute: createSiteRequest, isLoading: isCreating, error: createError } = useApi<Site, [CreateSiteParams]>(createSiteApi);
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newSiteName, setNewSiteName] = useState('');
+  const [newPantheonSiteId, setNewPantheonSiteId] = useState('');
 
   useEffect(() => {
     fetchSites();
@@ -26,11 +27,15 @@ export function SitesPage() {
 
   const handleCreateSite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSiteName.trim()) return;
+    if (!newSiteName.trim() || !newPantheonSiteId.trim()) return;
 
-    const result = await createSiteRequest({ name: newSiteName.trim() });
+    const result = await createSiteRequest({
+      name: newSiteName.trim(),
+      pantheonSiteId: newPantheonSiteId.trim()
+    });
     if (result) {
       setNewSiteName('');
+      setNewPantheonSiteId('');
       setShowCreateForm(false);
       fetchSites();
     }
@@ -54,22 +59,37 @@ export function SitesPage() {
       {showCreateForm && (
         <div className="create-form-container">
           <form onSubmit={handleCreateSite} className="create-form">
-            <input
-              type="text"
-              value={newSiteName}
-              onChange={(e) => setNewSiteName(e.target.value)}
-              placeholder="Enter site name..."
-              className="form-input"
-              autoFocus
-            />
+            <div className="form-fields">
+              <input
+                type="text"
+                value={newSiteName}
+                onChange={(e) => setNewSiteName(e.target.value)}
+                placeholder="Enter site name..."
+                className="form-input"
+                autoFocus
+              />
+              <input
+                type="text"
+                value={newPantheonSiteId}
+                onChange={(e) => setNewPantheonSiteId(e.target.value)}
+                placeholder="Enter Pantheon Site ID..."
+                className="form-input"
+              />
+            </div>
             <button
               type="submit"
               className="submit-btn"
-              disabled={isCreating || !newSiteName.trim()}
+              disabled={isCreating || !newSiteName.trim() || !newPantheonSiteId.trim()}
             >
               {isCreating ? 'Creating...' : 'Create'}
             </button>
           </form>
+          {createError && (
+            <div className="create-error">
+              <span className="error-icon">⚠</span>
+              <span className="error-text">{createError}</span>
+            </div>
+          )}
         </div>
       )}
 
