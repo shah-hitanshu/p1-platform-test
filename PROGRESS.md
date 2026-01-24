@@ -681,16 +681,87 @@ This document tracks the implementation progress of the Collaborative JSON State
 ### Phase 7: API Layer
 
 #### Phase 7.1: REST API Endpoints
-- [ ] Branch operations endpoints
-- [ ] Document operations endpoints
-- [ ] Checkpoint endpoints
-- [ ] Merge endpoints
-- [ ] Grant management endpoints
+
+**Status:** Complete
+**Commits:**
+- `279848b` - Add Phase 7.1a TDD tests for Branch API Routes
+- `dbbb612` - Add Phase 7.1b TDD tests for Checkpoint API Routes
+- `625ed9d` - Add Phase 7.1c TDD tests for Merge API Routes
+- `3ece87f` - Add Phase 7.1d TDD tests for Grant API Routes
+- `7aa4c78` - Implement Phase 7.1 API Routes (Branch, Checkpoint, Merge, Grant)
+
+##### Deliverables:
+- [x] Branch API Routes (`workers/src/routes/branch-api.ts`)
+  - POST `/api/sites/{siteId}/branches` - Create branch
+  - GET `/api/sites/{siteId}/branches` - List branches with status filter
+  - GET `/api/sites/{siteId}/branches/{branchId}` - Get branch details
+  - PATCH `/api/sites/{siteId}/branches/{branchId}` - Update branch
+  - DELETE `/api/sites/{siteId}/branches/{branchId}` - Delete branch
+  - Test suite: 13 tests
+
+- [x] Checkpoint API Routes (`workers/src/routes/checkpoint-api.ts`)
+  - POST `/api/sites/{siteId}/branches/{branchId}/checkpoints` - Create checkpoint
+  - GET `/api/sites/{siteId}/branches/{branchId}/checkpoints` - List checkpoints
+  - GET `/api/sites/{siteId}/checkpoints/{checkpointId}` - Get checkpoint details
+  - GET `/api/sites/{siteId}/checkpoints/{checkpointId}/documents` - Get documents at checkpoint
+  - POST `/api/sites/{siteId}/branches/{branchId}/checkpoints/{checkpointId}/revert` - Revert to checkpoint
+  - DELETE `/api/sites/{siteId}/checkpoints/{checkpointId}` - Delete checkpoint
+  - Test suite: 13 tests
+
+- [x] Merge API Routes (`workers/src/routes/merge-api.ts`)
+  - POST `/api/sites/{siteId}/merge/check` - Check mergeability
+  - POST `/api/sites/{siteId}/merge/execute` - Execute merge
+  - POST `/api/sites/{siteId}/merge/preview` - Preview merge
+  - POST `/api/sites/{siteId}/merge-requests` - Create merge request
+  - GET `/api/sites/{siteId}/merge-requests` - List merge requests
+  - GET `/api/sites/{siteId}/merge-requests/{requestId}` - Get merge request
+  - PATCH `/api/sites/{siteId}/merge-requests/{requestId}` - Update merge request
+  - DELETE `/api/sites/{siteId}/merge-requests/{requestId}` - Delete merge request
+  - Test suite: 13 tests
+
+- [x] Grant API Routes (`workers/src/routes/grant-api.ts`)
+  - POST `/api/sites/{siteId}/branches/{branchId}/grants` - Create grant
+  - GET `/api/sites/{siteId}/branches/{branchId}/grants` - List grants
+  - GET `/api/sites/{siteId}/branches/{branchId}/grants/{grantId}` - Get grant
+  - DELETE `/api/sites/{siteId}/branches/{branchId}/grants/{grantId}` - Delete grant
+  - Test suite: 10 tests
+
+- [x] Grant Service (`workers/src/services/grant-service.ts`)
+  - `createGrant()` - create a branch grant
+  - `getGrant()` - get grant by ID
+  - `listGrants()` - list grants with filters
+  - `deleteGrant()` - delete a grant
+  - Error classes: `GrantNotFoundError`, `DuplicateGrantError`
+
+#### Phase 7.1.1: Resource Management APIs (Pending)
+**Status:** Proposal drafted
+**Proposal:** `proposals/PROPOSAL-001-missing-api-endpoints.md`
+
+Gap identified: The architecture API specification (v2.2) omits REST endpoints for several implemented services. This phase will add:
+- [ ] Site API endpoints (CRUD)
+- [ ] Document CRUD API endpoints (separate from real-time API)
+- [ ] Structure API endpoints
+- [ ] Node API endpoints
+- [ ] Metadata API endpoints
+
+**Note:** To be implemented as needed.
 
 #### Phase 7.2: Audit Integration
-- [ ] Audit event emission
-- [ ] Local development logging
-- [ ] Production audit service integration
+
+**Status:** Complete
+**Commits:**
+- `bcb79cd` - Add Phase 7.2 TDD tests for Audit Emitter
+- `081256f` - Implement Phase 7.2: Audit Integration
+
+##### Deliverables:
+- [x] Audit Emitter (`workers/src/audit/emitter.ts`)
+  - `AuditEvent` interface matching architecture spec
+  - `createAuditEvent()` helper with auto-generated fields
+  - `LocalAuditEmitter` for development (console logging)
+  - `PantheonAuditEmitter` stub for production
+  - `getAuditEmitter()` factory function
+  - `AuditActions` constants for common actions
+- [x] Test suite: 9 tests
 
 ---
 
