@@ -85,9 +85,12 @@ export function MergeRequestDetailPage() {
 
   const handleDelete = async () => {
     if (!siteId || !requestId) return;
-    await deleteMR(siteId, requestId);
-    setShowDeleteModal(false);
-    navigate(`/sites/${siteId}/merge-requests`);
+    const result = await deleteMR(siteId, requestId);
+    // For void functions: undefined = success, null = error
+    if (result !== null) {
+      setShowDeleteModal(false);
+      navigate(`/sites/${siteId}/merge-requests`);
+    }
   };
 
   const handleExecuteMerge = async () => {
