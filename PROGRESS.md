@@ -1065,6 +1065,28 @@ Deliverables:
   - **Root cause:** Service code referenced non-existent columns (`node_id`, `position`)
   - **Fix:** Updated SQL to use actual schema columns (`structure_id`, `document_id`, `metadata`)
 
+#### Phase 8.7: DocumentPage and Navigation Fixes
+
+**Status:** Complete
+**Commit:** `dfccd83`
+
+##### Deliverables:
+- [x] DocumentPage Implementation (`frontend/src/pages/DocumentPage.tsx`)
+  - Document detail view with breadcrumb navigation
+  - Document metadata display (path, ID, created date, status)
+  - Placeholder sections for Version History and Content Viewer
+  - Styled with `DocumentPage.css`
+- [x] Document Type Fix (`frontend/src/types/index.ts`)
+  - **Issue:** Documents table displayed "Invalid Date" in Updated column
+  - **Root cause:** Database `documents` table has no `updated_at` column
+  - **Fix:** Removed non-existent `updatedAt` field, made `archivedAt` optional
+- [x] BranchDetailPage Documents Table Fix (`frontend/src/pages/BranchDetailPage.tsx`)
+  - Removed "Updated" column that referenced non-existent data
+  - Verified document links navigate correctly to DocumentPage
+- [x] Browser Testing
+  - Verified DocumentPage renders with correct metadata
+  - Verified navigation from BranchDetailPage documents list works
+
 ---
 
 ## Architecture Reference
@@ -1186,6 +1208,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 8.7 | DocumentPage implementation and navigation fixes |
 | 2026-01-24 | 8.6 | Bug fixes: Cloudflare Workers DB I/O error, Create Site form missing field |
 | 2026-01-24 | 8.1-8.5 | Frontend API Explorer: project setup, API client, auth UI, dashboard/sites pages, E2E tests |
 | 2026-01-24 | 7.3 | Route wiring: all API routes wired with CORS and auth middleware (971 tests) |
