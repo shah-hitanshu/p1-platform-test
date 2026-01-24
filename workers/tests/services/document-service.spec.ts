@@ -615,4 +615,434 @@ describe('Phase 3.1: Document Service', () => {
       expect(error.message).toContain('path cannot be empty');
     });
   });
+
+  // =============================================================================
+  // Branch-Scoped Document Operations (Phase 1)
+  // =============================================================================
+
+  describe('Branch-Scoped Document Operations', () => {
+    // Mock document version row type (database format)
+    interface MockDocumentVersionRow {
+      id: string;
+      document_id: string;
+      branch_id: string;
+      version_number: number;
+      snapshot: Record<string, unknown>;
+      crdt_state: Buffer | null;
+      source: string;
+      created_by_id: string;
+      created_by_type: 'user' | 'agent' | 'system';
+      created_at: string;
+    }
+
+    // Helper to create a mock document version row
+    function createMockVersionRow(overrides: Partial<MockDocumentVersionRow> = {}): MockDocumentVersionRow {
+      return {
+        id: 'version-uuid-123',
+        document_id: 'doc-uuid-123',
+        branch_id: 'branch-uuid-456',
+        version_number: 1,
+        snapshot: {},
+        crdt_state: null,
+        source: 'edit',
+        created_by_id: 'user-uuid-789',
+        created_by_type: 'user',
+        created_at: '2026-01-23T10:00:00.000Z',
+        ...overrides,
+      };
+    }
+
+    describe('listDocumentsOnBranch', () => {
+      it('should return documents that have versions on the branch', async () => {
+        const { listDocumentsOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        const mockRows = [
+          createMockDocumentRow({ id: 'doc-1', path: 'pages/home' }),
+          createMockDocumentRow({ id: 'doc-2', path: 'pages/about' }),
+        ];
+        vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+
+        const result = await listDocumentsOnBranch('branch-uuid-456');
+
+        expect(result).toHaveLength(2);
+        expect(result[0].id).toBe('doc-1');
+        expect(result[1].id).toBe('doc-2');
+      });
+
+      it('should filter by branchId in the query', async () => {
+        const { listDocumentsOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listDocumentsOnBranch('branch-abc-123');
+
+        expect(db.query).toHaveBeenCalledWith(
+          expect.stringContaining('branch_id'),
+          expect.arrayContaining(['branch-abc-123']),
+        );
+      });
+
+      it('should join with document_versions table', async () => {
+        const { listDocumentsOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listDocumentsOnBranch('branch-uuid-456');
+
+        expect(db.query).toHaveBeenCalledWith(
+          expect.stringMatching(/JOIN.*document_versions|document_versions.*JOIN/i),
+          expect.any(Array),
+        );
+      });
+
+      it('should exclude tombstoned documents', async () => {
+        const { listDocumentsOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listDocumentsOnBranch('branch-uuid-456');
+
+        // Query should filter out documents with _deleted tombstone
+        expect(db.query).toHaveBeenCalledWith(
+          expect.stringMatching(/_deleted|tombstone/i),
+          expect.any(Array),
+        );
+      });
+
+      it('should return empty array when no documents on branch', async () => {
+        const { listDocumentsOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        const result = await listDocumentsOnBranch('empty-branch');
+
+        expect(result).toEqual([]);
+      });
+
+      it('should support pathPrefix option', async () => {
+        const { listDocumentsOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listDocumentsOnBranch('branch-uuid-456', { pathPrefix: 'pages/' });
+
+        expect(db.query).toHaveBeenCalledWith(
+          expect.stringContaining('LIKE'),
+          expect.arrayContaining(['pages/%']),
+        );
+      });
+    });
+
+    describe('createDocumentOnBranch', () => {
+      it('should create a document and its initial version', async () => {
+        const { createDocumentOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        const docRow = createMockDocumentRow({ id: 'new-doc-id', path: 'pages/new' });
+        const versionRow = createMockVersionRow({ document_id: 'new-doc-id' });
+
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [docRow] }) // INSERT document
+          .mockResolvedValueOnce({ rows: [versionRow] }) // INSERT version
+          .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+        const result = await createDocumentOnBranch({
+          siteId: 'site-uuid-456',
+          branchId: 'branch-uuid-456',
+          path: 'pages/new',
+          createdById: 'user-uuid-789',
+          createdByType: 'user',
+        });
+
+        expect(result.document).toBeDefined();
+        expect(result.document.id).toBe('new-doc-id');
+        expect(result.version).toBeDefined();
+      });
+
+      it('should create version with empty snapshot by default', async () => {
+        const { createDocumentOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        const docRow = createMockDocumentRow();
+        const versionRow = createMockVersionRow({ snapshot: {} });
+
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [docRow] }) // INSERT document
+          .mockResolvedValueOnce({ rows: [versionRow] }) // INSERT version
+          .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+        const result = await createDocumentOnBranch({
+          siteId: 'site-uuid-456',
+          branchId: 'branch-uuid-456',
+          path: 'pages/test',
+          createdById: 'user-uuid-789',
+          createdByType: 'user',
+        });
+
+        expect(result.version.snapshot).toEqual({});
+      });
+
+      it('should reuse existing document if path already exists', async () => {
+        const { createDocumentOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        const existingDocRow = createMockDocumentRow({ id: 'existing-doc-id', path: 'pages/existing' });
+        const versionRow = createMockVersionRow({ document_id: 'existing-doc-id' });
+
+        // Simulate unique constraint violation on document insert, then find existing
+        const uniqueError = new Error('duplicate key');
+        (uniqueError as NodeJS.ErrnoException).code = '23505';
+
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockRejectedValueOnce(uniqueError) // INSERT document fails
+          .mockResolvedValueOnce({ rows: [existingDocRow] }) // SELECT existing doc
+          .mockResolvedValueOnce({ rows: [versionRow] }) // INSERT version
+          .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+        const result = await createDocumentOnBranch({
+          siteId: 'site-uuid-456',
+          branchId: 'branch-uuid-456',
+          path: 'pages/existing',
+          createdById: 'user-uuid-789',
+          createdByType: 'user',
+        });
+
+        expect(result.document.id).toBe('existing-doc-id');
+      });
+
+      it('should throw SiteNotFoundError when site does not exist', async () => {
+        const { createDocumentOnBranch, SiteNotFoundError } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        // Simulate foreign key violation on document insert
+        const fkError = new Error('violates foreign key constraint');
+        (fkError as NodeJS.ErrnoException).code = '23503';
+
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockRejectedValueOnce(fkError); // INSERT document fails
+
+        await expect(
+          createDocumentOnBranch({
+            siteId: 'non-existent-site',
+            branchId: 'branch-uuid-456',
+            path: 'pages/test',
+            createdById: 'user-uuid-789',
+            createdByType: 'user',
+          }),
+        ).rejects.toThrow(SiteNotFoundError);
+      });
+
+      it('should throw InvalidDocumentPathError for invalid path', async () => {
+        const { createDocumentOnBranch, InvalidDocumentPathError } = await import('../../src/services/document-service');
+
+        await expect(
+          createDocumentOnBranch({
+            siteId: 'site-uuid-456',
+            branchId: 'branch-uuid-456',
+            path: '/invalid/path',
+            createdById: 'user-uuid-789',
+            createdByType: 'user',
+          }),
+        ).rejects.toThrow(InvalidDocumentPathError);
+      });
+
+      it('should set version source to edit', async () => {
+        const { createDocumentOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        const docRow = createMockDocumentRow();
+        const versionRow = createMockVersionRow({ source: 'edit' });
+
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [docRow] }) // INSERT document
+          .mockResolvedValueOnce({ rows: [versionRow] }) // INSERT version
+          .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+        const result = await createDocumentOnBranch({
+          siteId: 'site-uuid-456',
+          branchId: 'branch-uuid-456',
+          path: 'pages/test',
+          createdById: 'user-uuid-789',
+          createdByType: 'user',
+        });
+
+        expect(result.version.source).toBe('edit');
+      });
+    });
+
+    describe('documentExistsOnBranch', () => {
+      it('should return true when document has version on branch', async () => {
+        const { documentExistsOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [{ exists: true }] });
+
+        const result = await documentExistsOnBranch('doc-uuid-123', 'branch-uuid-456');
+
+        expect(result).toBe(true);
+      });
+
+      it('should return false when document has no version on branch', async () => {
+        const { documentExistsOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [{ exists: false }] });
+
+        const result = await documentExistsOnBranch('doc-uuid-123', 'branch-uuid-456');
+
+        expect(result).toBe(false);
+      });
+
+      it('should return false when document is tombstoned on branch', async () => {
+        const { documentExistsOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        // Query should check for non-tombstoned versions
+        vi.mocked(db.query).mockResolvedValue({ rows: [{ exists: false }] });
+
+        const result = await documentExistsOnBranch('tombstoned-doc', 'branch-uuid-456');
+
+        expect(result).toBe(false);
+        expect(db.query).toHaveBeenCalledWith(
+          expect.stringMatching(/_deleted/i),
+          expect.any(Array),
+        );
+      });
+
+      it('should check both documentId and branchId', async () => {
+        const { documentExistsOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [{ exists: false }] });
+
+        await documentExistsOnBranch('doc-xyz', 'branch-abc');
+
+        expect(db.query).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.arrayContaining(['doc-xyz', 'branch-abc']),
+        );
+      });
+    });
+
+    describe('deleteDocumentOnBranch', () => {
+      it('should create a tombstone version instead of deleting', async () => {
+        const { deleteDocumentOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        const tombstoneRow = createMockVersionRow({ snapshot: { _deleted: true } });
+        vi.mocked(db.query).mockResolvedValue({ rows: [tombstoneRow] });
+
+        await deleteDocumentOnBranch({
+          documentId: 'doc-uuid-123',
+          branchId: 'branch-uuid-456',
+          deletedById: 'user-uuid-789',
+          deletedByType: 'user',
+        });
+
+        expect(db.query).toHaveBeenCalledWith(
+          expect.stringContaining('INSERT INTO app.document_versions'),
+          expect.any(Array),
+        );
+      });
+
+      it('should set snapshot to { _deleted: true }', async () => {
+        const { deleteDocumentOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        const tombstoneRow = createMockVersionRow({ snapshot: { _deleted: true } });
+        vi.mocked(db.query).mockResolvedValue({ rows: [tombstoneRow] });
+
+        await deleteDocumentOnBranch({
+          documentId: 'doc-uuid-123',
+          branchId: 'branch-uuid-456',
+          deletedById: 'user-uuid-789',
+          deletedByType: 'user',
+        });
+
+        // Check that the INSERT includes the tombstone marker
+        const insertCall = vi.mocked(db.query).mock.calls.find(
+          (call) =>
+            typeof call[0] === 'string' &&
+            call[0].includes('INSERT INTO app.document_versions'),
+        );
+        expect(insertCall).toBeDefined();
+        if (insertCall && Array.isArray(insertCall[1])) {
+          // One of the params should be the JSON snapshot with _deleted
+          const hasDeletedSnapshot = insertCall[1].some(
+            (param) =>
+              typeof param === 'string' &&
+              param.includes('_deleted'),
+          );
+          expect(hasDeletedSnapshot).toBe(true);
+        }
+      });
+
+      it('should return true when tombstone created successfully', async () => {
+        const { deleteDocumentOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        const tombstoneRow = createMockVersionRow({ snapshot: { _deleted: true } });
+        vi.mocked(db.query).mockResolvedValue({ rows: [tombstoneRow] });
+
+        const result = await deleteDocumentOnBranch({
+          documentId: 'doc-uuid-123',
+          branchId: 'branch-uuid-456',
+          deletedById: 'user-uuid-789',
+          deletedByType: 'user',
+        });
+
+        expect(result).toBe(true);
+      });
+
+      it('should throw DocumentNotFoundError when document does not exist', async () => {
+        const { deleteDocumentOnBranch, DocumentNotFoundError } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        // Simulate foreign key violation (document doesn't exist)
+        const fkError = new Error('violates foreign key constraint');
+        (fkError as NodeJS.ErrnoException).code = '23503';
+        vi.mocked(db.query).mockRejectedValue(fkError);
+
+        await expect(
+          deleteDocumentOnBranch({
+            documentId: 'non-existent',
+            branchId: 'branch-uuid-456',
+            deletedById: 'user-uuid-789',
+            deletedByType: 'user',
+          }),
+        ).rejects.toThrow(DocumentNotFoundError);
+      });
+
+      it('should set source to edit for the tombstone version', async () => {
+        const { deleteDocumentOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        const tombstoneRow = createMockVersionRow({ source: 'edit' });
+        vi.mocked(db.query).mockResolvedValue({ rows: [tombstoneRow] });
+
+        await deleteDocumentOnBranch({
+          documentId: 'doc-uuid-123',
+          branchId: 'branch-uuid-456',
+          deletedById: 'user-uuid-789',
+          deletedByType: 'user',
+        });
+
+        expect(db.query).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.arrayContaining(['edit']),
+        );
+      });
+    });
+  });
 });
