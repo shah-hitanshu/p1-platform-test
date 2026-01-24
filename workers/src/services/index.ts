@@ -31,14 +31,19 @@ export {
   deleteDocument,
   listDocuments,
   documentExists,
+  archiveDocument,
+  restoreDocument,
   SiteNotFoundError,
   DuplicateDocumentPathError,
   InvalidDocumentPathError,
+  DocumentNotFoundError,
+  DocumentPathConflictError,
 } from './document-service';
 
 export type {
   CreateDocumentParams,
   ListDocumentsOptions,
+  DocumentWithArchive,
 } from './document-service';
 
 // Branch Service

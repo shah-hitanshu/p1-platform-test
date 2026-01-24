@@ -29,6 +29,8 @@ export interface ListDocumentsOptions {
   limit?: number;
   offset?: number;
   pathPrefix?: string;
+  /** Filter by archived status: true = only archived, false = only non-archived, undefined = non-archived (default) */
+  archived?: boolean;
 }
 
 /**
@@ -39,6 +41,7 @@ interface DocumentRow {
   site_id: string;
   path: string;
   created_at: string;
+  archived_at: string | null;
 }
 
 // =============================================================================
@@ -84,20 +87,55 @@ export class InvalidDocumentPathError extends Error {
   }
 }
 
+/**
+ * Error thrown when document is not found.
+ */
+export class DocumentNotFoundError extends Error {
+  public readonly name = 'DocumentNotFoundError';
+
+  constructor(public readonly documentId: string) {
+    super(`Document with ID "${documentId}" not found.`);
+    Object.setPrototypeOf(this, DocumentNotFoundError.prototype);
+  }
+}
+
+/**
+ * Error thrown when restoring a document but the path is occupied.
+ */
+export class DocumentPathConflictError extends Error {
+  public readonly name = 'DocumentPathConflictError';
+
+  constructor(public readonly path: string) {
+    super(`Path "${path}" is occupied by another document.`);
+    Object.setPrototypeOf(this, DocumentPathConflictError.prototype);
+  }
+}
+
 // =============================================================================
 // Helper Functions
 // =============================================================================
 
 /**
+ * Extended document type with archivedAt field.
+ */
+export interface DocumentWithArchive extends Document {
+  archivedAt?: string;
+}
+
+/**
  * Maps a database row to a Document domain object.
  */
-function mapRowToDocument(row: DocumentRow): Document {
-  return {
+function mapRowToDocument(row: DocumentRow): DocumentWithArchive {
+  const doc: DocumentWithArchive = {
     id: row.id,
     siteId: row.site_id,
     path: row.path,
     createdAt: row.created_at,
   };
+  if (row.archived_at !== null) {
+    doc.archivedAt = row.archived_at;
+  }
+  return doc;
 }
 
 /**
@@ -284,11 +322,19 @@ export async function deleteDocument(documentId: string): Promise<boolean> {
 export async function listDocuments(
   siteId: string,
   options: ListDocumentsOptions = {},
-): Promise<Document[]> {
-  const { limit, offset, pathPrefix } = options;
+): Promise<DocumentWithArchive[]> {
+  const { limit, offset, pathPrefix, archived } = options;
 
   let sql = 'SELECT * FROM app.documents WHERE site_id = $1';
   const params: unknown[] = [siteId];
+
+  // Filter by archived status
+  if (archived === true) {
+    sql += ' AND archived_at IS NOT NULL';
+  } else {
+    // Default: only non-archived documents (archived is false or undefined)
+    sql += ' AND archived_at IS NULL';
+  }
 
   if (pathPrefix !== undefined && pathPrefix !== '') {
     params.push(pathPrefix + '%');
@@ -325,10 +371,78 @@ export async function documentExists(
 ): Promise<boolean> {
   const result = await query<{ exists: boolean }>(
     `SELECT EXISTS(
-       SELECT 1 FROM app.documents WHERE site_id = $1 AND path = $2
+       SELECT 1 FROM app.documents WHERE site_id = $1 AND path = $2 AND archived_at IS NULL
      ) as exists`,
     [siteId, path],
   );
 
   return result.rows[0]?.exists ?? false;
+}
+
+/**
+ * Archives (soft-deletes) a document.
+ * The document path becomes available for reuse after archival.
+ *
+ * @param documentId - The document ID
+ * @returns True if archived, false if not found
+ */
+export async function archiveDocument(documentId: string): Promise<boolean> {
+  const result = await query(
+    `UPDATE app.documents
+     SET archived_at = NOW()
+     WHERE id = $1 AND archived_at IS NULL`,
+    [documentId],
+  );
+
+  return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * Restores an archived document.
+ *
+ * @param documentId - The document ID
+ * @returns The restored document
+ * @throws DocumentNotFoundError if document doesn't exist or isn't archived
+ * @throws DocumentPathConflictError if path is now occupied by another document
+ */
+export async function restoreDocument(documentId: string): Promise<DocumentWithArchive> {
+  // First, get the document to check if it exists and is archived
+  const docResult = await query<DocumentRow>(
+    'SELECT * FROM app.documents WHERE id = $1',
+    [documentId],
+  );
+
+  if (docResult.rows.length === 0) {
+    throw new DocumentNotFoundError(documentId);
+  }
+
+  const doc = docResult.rows[0];
+
+  if (doc.archived_at === null) {
+    throw new DocumentNotFoundError(documentId);
+  }
+
+  // Check if the path is now occupied by another non-archived document
+  const pathConflict = await query<{ exists: boolean }>(
+    `SELECT EXISTS(
+       SELECT 1 FROM app.documents
+       WHERE site_id = $1 AND path = $2 AND id != $3 AND archived_at IS NULL
+     ) as exists`,
+    [doc.site_id, doc.path, documentId],
+  );
+
+  if (pathConflict.rows[0]?.exists === true) {
+    throw new DocumentPathConflictError(doc.path);
+  }
+
+  // Restore the document
+  const result = await query<DocumentRow>(
+    `UPDATE app.documents
+     SET archived_at = NULL
+     WHERE id = $1
+     RETURNING *`,
+    [documentId],
+  );
+
+  return mapRowToDocument(result.rows[0]);
 }
