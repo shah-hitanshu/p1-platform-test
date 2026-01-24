@@ -333,6 +333,19 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
         WHERE cdm.checkpoint_id = $2`,
         [branch.id, params.sourceCheckpointId],
       );
+
+      // Copy document versions from checkpoint
+      await query(
+        `INSERT INTO app.document_versions (
+          document_id, branch_id, version_number, snapshot, crdt_state,
+          source, created_by_id, created_by_type
+        )
+        SELECT cd.document_id, $1, 1, cd.snapshot, cd.crdt_state,
+               'branch', $2, $3
+        FROM app.checkpoint_documents cd
+        WHERE cd.checkpoint_id = $4`,
+        [branch.id, params.createdById, params.createdByType, params.sourceCheckpointId],
+      );
     } else {
       // Copy from current branch state
       await query(
@@ -356,6 +369,21 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
         FROM app.branch_document_metadata bdm
         WHERE bdm.branch_id = $2`,
         [branch.id, params.sourceBranchId],
+      );
+
+      // Copy document versions from source branch (latest version of each document)
+      await query(
+        `INSERT INTO app.document_versions (
+          document_id, branch_id, version_number, snapshot, crdt_state,
+          source, created_by_id, created_by_type
+        )
+        SELECT DISTINCT ON (dv.document_id)
+          dv.document_id, $1, 1, dv.snapshot, dv.crdt_state,
+          'branch', $3, $4
+        FROM app.document_versions dv
+        WHERE dv.branch_id = $2
+        ORDER BY dv.document_id, dv.version_number DESC`,
+        [branch.id, params.sourceBranchId, params.createdById, params.createdByType],
       );
     }
 

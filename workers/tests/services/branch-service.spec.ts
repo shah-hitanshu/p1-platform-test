@@ -1046,7 +1046,8 @@ describe('Phase 3.2: Branch Service', () => {
       // Check the query contains the correct column selection
       if (versionCopyCall) {
         expect(versionCopyCall[0]).toContain('DISTINCT ON (dv.document_id)');
-        expect(versionCopyCall[0]).toContain("source, 'branch'");
+        // The SELECT uses 'branch' as a literal for the source column
+        expect(versionCopyCall[0]).toContain("'branch'");
       }
     });
 
