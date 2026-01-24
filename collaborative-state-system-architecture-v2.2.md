@@ -212,6 +212,70 @@ Checkpoints are optional—the system auto-saves continuously, and checkpoints m
 
 The current working state of documents on a branch, maintained via CRDT (Conflict-free Replicated Data Type) for real-time collaboration. Live state is always persisted; there is no "unsaved work."
 
+### Entity Relationships
+
+The following diagram illustrates how Sites, Documents, Branches, and Checkpoints relate to each other:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                   SITE                                      │
+│                        (corresponds to Pantheon website)                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+          │                                           │
+          │ has many                                  │ has many
+          ▼                                           ▼
+┌─────────────────────┐                    ┌─────────────────────────────────┐
+│      DOCUMENT       │                    │            BRANCH               │
+│  (identified by     │                    │  (line of work, e.g., main,    │
+│   path within site) │                    │   feature-branch)              │
+└─────────────────────┘                    └─────────────────────────────────┘
+          │                                    │              │
+          │                                    │              │ has many
+          │                                    │              ▼
+          │                                    │    ┌─────────────────────┐
+          │                                    │    │     CHECKPOINT      │
+          │                                    │    │  (named snapshot    │
+          │                                    │    │   of branch state)  │
+          │                                    │    └─────────────────────┘
+          │                                    │              │
+          │                                    │              │ captures
+          │                                    │              ▼
+          │         ┌──────────────────────────┴──────────────────────────┐
+          │         │                                                      │
+          └────────►│              DOCUMENT VERSION                        │
+                    │  (snapshot of document content on a specific branch) │
+                    │  - version_number                                    │
+                    │  - snapshot (JSON)                                   │
+                    │  - crdt_state (for merge support)                    │
+                    └──────────────────────────────────────────────────────┘
+
+Key Relationships:
+─────────────────
+• Site 1:N Documents      - A site contains many documents
+• Site 1:N Branches       - A site has many branches (exactly one is 'main')
+• Branch 1:N Checkpoints  - A branch accumulates checkpoints over time
+• Document + Branch → Document Versions - Each document can have versions on multiple branches
+• Checkpoint → Document Versions - A checkpoint captures specific versions of documents
+
+Branch Lineage:
+───────────────
+• Branches can be created from other branches (source_branch_id)
+• The starting point is a specific checkpoint (source_checkpoint_id)
+• This creates a tree structure for tracking merge bases
+
+┌──────────────┐     created from      ┌──────────────┐
+│    main      │◄─────────────────────│  feature-1   │
+│   branch     │    (at checkpoint X)  │   branch     │
+└──────────────┘                       └──────────────┘
+       ▲
+       │ created from
+       │ (at checkpoint Y)
+┌──────────────┐
+│  feature-2   │
+│   branch     │
+└──────────────┘
+```
+
 ---
 ## Key Design Decisions
 
