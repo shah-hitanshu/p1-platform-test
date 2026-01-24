@@ -348,10 +348,24 @@
 }
 
 /* Document specific */
+.clickable-row {
+  cursor: pointer;
+}
+
+.doc-link {
+  text-decoration: none;
+  color: inherit;
+}
+
+.doc-link:hover code {
+  color: #4a9eff;
+}
+
 .doc-path code {
   font-family: 'Monaco', 'Menlo', monospace;
   font-size: 0.875rem;
   color: #333;
+  transition: color 0.2s;
 }
 
 .doc-id code {

@@ -294,9 +294,11 @@ export function BranchDetailPage() {
                 </thead>
                 <tbody>
                   {documents.map((doc) => (
-                    <tr key={doc.id}>
+                    <tr key={doc.id} className="clickable-row">
                       <td className="doc-path">
-                        <code>{doc.path}</code>
+                        <Link to={`/sites/${siteId}/documents/${doc.id}`} className="doc-link">
+                          <code>{doc.path}</code>
+                        </Link>
                       </td>
                       <td className="doc-id">
                         <code>{doc.id.slice(0, 8)}...</code>
@@ -305,7 +307,7 @@ export function BranchDetailPage() {
                         {new Date(doc.createdAt).toLocaleDateString()}
                       </td>
                       <td className="date">
-                        {new Date(doc.updatedAt).toLocaleDateString()}
+                        {doc.updatedAt ? new Date(doc.updatedAt).toLocaleDateString() : '-'}
                       </td>
                     </tr>
                   ))}

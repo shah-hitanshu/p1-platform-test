@@ -1,0 +1,235 @@
+/* Document Page Styles */
+
+.document-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Breadcrumb */
+.document-page .breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  font-size: 0.875rem;
+  color: #6c757d;
+}
+
+.document-page .breadcrumb a {
+  color: #4a9eff;
+  text-decoration: none;
+}
+
+.document-page .breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.document-page .breadcrumb-separator {
+  color: #ced4da;
+}
+
+.document-page .breadcrumb-current {
+  color: #333;
+  font-weight: 500;
+}
+
+/* Document Header */
+.document-header {
+  background-color: #fff;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.document-title-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.document-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.document-title code {
+  font-family: 'Monaco', 'Menlo', monospace;
+  background-color: #f1f3f4;
+  padding: 4px 12px;
+  border-radius: 6px;
+}
+
+.document-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.document-page .meta-item {
+  font-size: 0.875rem;
+  color: #6c757d;
+}
+
+.document-page .meta-item strong {
+  color: #333;
+  margin-right: 4px;
+}
+
+.document-page .meta-item code {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.75rem;
+  background-color: #f1f3f4;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Status Badge */
+.document-page .status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-radius: 12px;
+}
+
+.document-page .status-archived {
+  background-color: #e2e3e5;
+  color: #383d41;
+}
+
+/* Content Section */
+.document-page .content-section {
+  background-color: #fff;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.document-page .section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.document-page .section-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+/* Details Grid */
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6c757d;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.detail-value {
+  font-size: 0.9375rem;
+  color: #333;
+}
+
+.detail-value code {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.875rem;
+  background-color: #f1f3f4;
+  padding: 4px 8px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+/* Status Indicators */
+.status-indicator {
+  font-weight: 500;
+}
+
+.status-active-text {
+  color: #28a745;
+}
+
+.status-archived-text {
+  color: #6c757d;
+}
+
+/* Coming Soon Sections */
+.coming-soon-section {
+  background-color: #f8f9fa;
+}
+
+.coming-soon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.coming-soon-icon {
+  margin-bottom: 16px;
+  color: #ced4da;
+}
+
+.coming-soon h3 {
+  margin: 0 0 8px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #6c757d;
+}
+
+.coming-soon p {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: #adb5bd;
+  max-width: 400px;
+}
+
+/* Loading & Error */
+.document-page .loading-container {
+  padding: 40px;
+  text-align: center;
+}
+
+.document-page .error-container {
+  padding: 40px;
+  text-align: center;
+}
+
+.document-page .back-link {
+  display: inline-block;
+  margin-top: 16px;
+  padding: 10px 20px;
+  font-size: 0.875rem;
+  color: #4a9eff;
+  text-decoration: none;
+  border: 1px solid #4a9eff;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.document-page .back-link:hover {
+  background-color: #4a9eff;
+  color: #fff;
+}
