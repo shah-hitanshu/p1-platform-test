@@ -1747,6 +1747,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 8.22 | Branch archive button, site deletion fix: archive UI for branches, site delete allowed with only main branch |
 | 2026-01-24 | 8.21 | Cascade delete fix: deleteBranch/deleteSite now clean up all related FK data |
 | 2026-01-24 | 8.20 | E2E test stability: wait for API responses, improved assertions, robust helper functions |
 | 2026-01-24 | 8.19 | Preview Merge fix: fixed endpoint URL, previewMerge service params, auto-load UX on mount |
@@ -1845,4 +1846,4 @@ Template for future decisions:
 
 ---
 
-*Last updated: 2026-01-24 (Phase 8.21 - Cascade Delete Fix)*
+*Last updated: 2026-01-24 (Phase 8.22 - Branch Archive Button and Site Deletion Fix)*
