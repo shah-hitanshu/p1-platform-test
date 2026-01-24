@@ -692,19 +692,20 @@ export async function documentExistsOnBranch(
   documentId: string,
   branchId: string,
 ): Promise<boolean> {
+  // Check if document has any version on this branch where:
+  // 1. The latest version is NOT a tombstone (snapshot->>'_deleted' != 'true')
+  // Note: We need COALESCE because NULL = 'true' returns NULL in SQL, not false
   const result = await query<{ exists: boolean }>(
     `SELECT EXISTS(
        SELECT 1 FROM app.document_versions dv
        WHERE dv.document_id = $1
          AND dv.branch_id = $2
-         AND NOT (
-           dv.snapshot->>'_deleted' = 'true'
-           AND dv.version_number = (
-             SELECT MAX(dv2.version_number)
-             FROM app.document_versions dv2
-             WHERE dv2.document_id = $1 AND dv2.branch_id = $2
-           )
+         AND dv.version_number = (
+           SELECT MAX(dv2.version_number)
+           FROM app.document_versions dv2
+           WHERE dv2.document_id = $1 AND dv2.branch_id = $2
          )
+         AND COALESCE(dv.snapshot->>'_deleted', '') != 'true'
      ) as exists`,
     [documentId, branchId],
   );
