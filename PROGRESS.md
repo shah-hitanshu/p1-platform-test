@@ -1260,6 +1260,42 @@ Tested complete workflow on 2026-01-24:
 
 All aspects of Git-like branch isolation now working correctly.
 
+#### Phase 8.12: UX Writing Style Compliance
+
+**Status:** Complete
+**Commit:** `2395d1b` - Fix frontend UX writing style for Pantheon guidelines compliance
+
+##### Deliverables:
+- [x] UX Writing Style Review against Pantheon guidelines
+- [x] Applied sentence case to all button labels
+  - "+ Create Site" → "+ Create site"
+  - "+ Create Branch" → "+ Create branch"
+  - "+ Create Checkpoint" → "+ Create checkpoint"
+  - "+ Create Document" → "+ Create document"
+- [x] Fixed verb form for authentication actions
+  - "Login" → "Log in" (button)
+  - "Logout" → "Log out" (button)
+- [x] Improved error messages with clear next steps
+  - "Please select a user" → "Select a user to continue."
+  - "Login failed" → "We couldn't log you in. Try again or select a different user."
+- [x] Fixed link text capitalization
+  - "Back to Sites" → "Back to sites"
+  - "Back to Site" → "Back to site"
+- [x] Updated confirmation dialog language
+  - "Are you sure you want to delete..." → "Delete this document from this branch?..."
+- [x] Added tooltip punctuation per guidelines
+  - `title="Delete from this branch"` → `title="Delete from this branch."`
+- [x] Fixed heading capitalization
+  - "Version History Coming Soon" → "Version history coming soon"
+
+##### Files Modified:
+- `frontend/src/components/Layout.tsx`
+- `frontend/src/pages/LoginPage.tsx`
+- `frontend/src/pages/SitesPage.tsx`
+- `frontend/src/pages/SiteDetailPage.tsx`
+- `frontend/src/pages/BranchDetailPage.tsx`
+- `frontend/src/pages/DocumentPage.tsx`
+
 #### Future Frontend Work
 
 The following features are candidates for future frontend development phases:
@@ -1432,6 +1468,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 8.12 | UX writing style compliance: sentence case, verb forms, error messages, tooltips |
 | 2026-01-24 | 8.11 | Bug fix: JSONB double-stringification in document snapshots, full isolation verified |
 | 2026-01-24 | 8.11 | Bug fixes: checkpoint-based branching query, branch-scoped document routing |
 | 2026-01-24 | 8.11 | Branch isolation: document version inheritance, branch-scoped CRUD APIs, security fix |
@@ -1519,4 +1556,4 @@ Template for future decisions:
 
 ---
 
-*Last updated: 2026-01-24*
+*Last updated: 2026-01-24 (Phase 8.12)*
