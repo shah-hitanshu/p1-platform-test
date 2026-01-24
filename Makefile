@@ -216,3 +216,49 @@ ci-validate: ## Validate all Terraform configurations
 		cd ../../..; \
 	done
 	@echo "$(GREEN)All configurations valid.$(NC)"
+
+##@ Frontend Development
+
+.PHONY: frontend-install
+frontend-install: ## Install frontend dependencies
+	@echo "$(GREEN)Installing frontend dependencies...$(NC)"
+	@cd frontend && pnpm install
+
+.PHONY: frontend-dev
+frontend-dev: ## Start frontend development server
+	@echo "$(GREEN)Starting frontend development server...$(NC)"
+	@echo "$(BLUE)Frontend will be available at http://localhost:5173$(NC)"
+	@cd frontend && pnpm dev
+
+.PHONY: frontend-build
+frontend-build: ## Build frontend for production
+	@echo "$(GREEN)Building frontend...$(NC)"
+	@cd frontend && pnpm build
+
+.PHONY: frontend-lint
+frontend-lint: ## Lint frontend code
+	@echo "$(GREEN)Linting frontend code...$(NC)"
+	@cd frontend && pnpm lint
+
+.PHONY: frontend-test
+frontend-test: ## Run frontend E2E tests
+	@echo "$(GREEN)Running frontend E2E tests...$(NC)"
+	@cd frontend && pnpm test:e2e
+
+##@ Full Stack Development
+
+.PHONY: dev-full
+dev-full: ## Start full stack (Docker + Worker + Frontend)
+	@echo "$(GREEN)Starting full stack development environment...$(NC)"
+	@$(MAKE) docker-up
+	@echo ""
+	@echo "$(GREEN)Starting backend worker...$(NC)"
+	@cd workers && pnpm dev &
+	@sleep 3
+	@echo ""
+	@echo "$(GREEN)Starting frontend...$(NC)"
+	@cd frontend && pnpm dev
+
+.PHONY: install-all
+install-all: worker-install frontend-install ## Install all dependencies
+	@echo "$(GREEN)All dependencies installed.$(NC)"

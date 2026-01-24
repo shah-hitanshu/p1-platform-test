@@ -861,6 +861,143 @@ Deliverables:
   - `AuditActions` constants for common actions
 - [x] Test suite: 9 tests
 
+#### Phase 7.3: Route Wiring
+
+**Status:** Complete
+
+##### Deliverables:
+- [x] Route wiring in `workers/src/index.ts`
+  - All API routes wired to main entry point
+  - CORS middleware with configurable origins (`CORS_ORIGINS` env var)
+  - Authentication middleware (JWT Bearer + API Key)
+  - Mock auth endpoints for frontend development
+- [x] Router integration tests (`workers/tests/routes/router.spec.ts`)
+  - 24 tests covering route matching, CORS, and auth middleware
+- [x] Test suite: 971 total backend tests
+
+---
+
+### Phase 8: Frontend API Explorer
+
+**Status:** In Progress
+
+#### Phase 8.1: Frontend Project Setup
+
+**Status:** Complete
+
+##### Deliverables:
+- [x] Vite React TypeScript project (`frontend/`)
+- [x] Dependencies installed:
+  - `@pantheon-systems/design-toolkit-react` - Pantheon Design System
+  - `react-router-dom` v6.25.1 - Routing
+  - React 18.2.0 - UI framework
+- [x] Vite configuration (`frontend/vite.config.ts`)
+  - Proxy configuration for `/api` and `/health` to backend
+  - Development server on port 5173
+- [x] Makefile targets added:
+  - `make frontend-install` - Install frontend dependencies
+  - `make frontend-dev` - Start development server
+  - `make frontend-build` - Build for production
+  - `make frontend-lint` - Lint frontend code
+  - `make frontend-test` - Run E2E tests
+  - `make dev-full` - Start full stack (Docker + Worker + Frontend)
+  - `make install-all` - Install all dependencies
+
+#### Phase 8.2: API Client Layer
+
+**Status:** Complete
+
+##### Deliverables:
+- [x] API Client (`frontend/src/api/client.ts`)
+  - `apiGet`, `apiPost`, `apiPatch`, `apiDelete` functions
+  - Automatic `Authorization: Bearer <token>` header injection
+  - Token storage in localStorage
+  - `ApiClientError` class for error handling
+- [x] Auth API (`frontend/src/api/auth.ts`)
+  - `loginAsUser()` - Login as mock user
+  - `listUsers()` - Get available mock users
+- [x] Sites API (`frontend/src/api/sites.ts`)
+  - `listSites()`, `getSite()`, `createSite()`, `updateSite()`, `deleteSite()`
+- [x] Branches API (`frontend/src/api/branches.ts`)
+  - `listBranches()`, `getBranch()`, `createBranch()`, `updateBranch()`, `deleteBranch()`
+- [x] Documents API (`frontend/src/api/documents.ts`)
+  - `listDocuments()`, `getDocument()`, `createDocumentVersion()`, `getDocumentVersions()`
+- [x] Type definitions (`frontend/src/types/index.ts`)
+  - Core types matching backend: User, Agent, Site, Branch, Document, Checkpoint, etc.
+
+#### Phase 8.3: Authentication UI
+
+**Status:** Complete
+
+##### Deliverables:
+- [x] Auth Context (`frontend/src/context/AuthContext.tsx`, `AuthContextType.ts`)
+  - `AuthProvider` component with login/logout state
+  - Persistence to localStorage
+- [x] useAuth Hook (`frontend/src/hooks/useAuth.ts`)
+  - Access to auth context from any component
+- [x] Login Page (`frontend/src/pages/LoginPage.tsx`)
+  - User selector dropdown (Alice, Bob, Carol)
+  - User role preview
+  - Login/logout functionality
+
+#### Phase 8.4: Core Resource Pages
+
+**Status:** In Progress
+
+##### Deliverables:
+- [x] Layout Component (`frontend/src/components/Layout.tsx`)
+  - Sidebar navigation with Dashboard and Sites links
+  - User panel with logout button
+  - Outlet for nested routes
+- [x] JSON Viewer (`frontend/src/components/JsonViewer.tsx`)
+  - Formatted JSON display
+- [x] API Response Component (`frontend/src/components/ApiResponse.tsx`)
+  - Loading, error, and success states
+- [x] Dashboard Page (`frontend/src/pages/DashboardPage.tsx`)
+  - Health check status display
+  - Quick actions to create/view sites
+  - API endpoints reference
+- [x] Sites Page (`frontend/src/pages/SitesPage.tsx`)
+  - Sites list table
+  - Create site form
+- [x] App Router (`frontend/src/App.tsx`)
+  - Protected routes with auth check
+  - Public login route
+- [ ] Site Detail Page (deferred)
+- [ ] Branch Detail Page (deferred)
+- [ ] Document Page (deferred)
+- [ ] Checkpoints Page (deferred)
+
+#### Phase 8.5: E2E Testing
+
+**Status:** Complete
+
+##### Deliverables:
+- [x] Playwright configuration (`frontend/playwright.config.ts`)
+  - Chromium browser setup
+  - Web server auto-start for tests
+  - HTML reporter configured
+- [x] Login flow E2E tests (`frontend/tests/login.spec.ts`)
+  - Login page rendering
+  - User selection dropdown
+  - Login/logout flow
+  - Persistent auth across page reload
+  - Storage clearing on logout
+- [x] Dashboard E2E tests (`frontend/tests/dashboard.spec.ts`)
+  - Dashboard page rendering
+  - Navigation sidebar
+  - Quick actions
+  - System health section
+- [x] Sites page E2E tests (`frontend/tests/sites.spec.ts`)
+  - Sites listing
+  - Create site form toggle
+  - Form validation
+- [x] Package.json scripts:
+  - `pnpm test:e2e` - Run E2E tests
+  - `pnpm test:e2e:ui` - Run with Playwright UI
+  - `pnpm test:e2e:headed` - Run in headed mode
+- [ ] CI integration (deferred)
+
 ---
 
 ## Architecture Reference
@@ -982,6 +1119,8 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 8.1-8.4 | Frontend API Explorer: project setup, API client, auth UI, dashboard/sites pages |
+| 2026-01-24 | 7.3 | Route wiring: all API routes wired with CORS and auth middleware (971 tests) |
 | 2026-01-24 | 7.1.1b | Security hardening: pagination validation, path traversal, LIKE escaping, size limits (947 tests) |
 | 2026-01-24 | 7.1.1b | Resource Management APIs complete: Site, Document, Structure, Node, Metadata (916 tests) |
 | 2026-01-24 | 7.1.1a | Branch-scoped structure identity complete: migration, service updates (829 tests) |
@@ -1051,7 +1190,8 @@ Template for future decisions:
 | Node API Routes | 19 | - |
 | Metadata API Routes | 13 | - |
 | Validation Utilities | 28 | - |
-| **Total** | **947** | **52** |
+| Router Integration | 24 | - |
+| **Total** | **971** | **52** |
 
 ---
 

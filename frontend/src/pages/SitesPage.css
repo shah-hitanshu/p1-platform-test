@@ -1,0 +1,196 @@
+/* Sites Page Styles */
+
+.sites-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.header-content {
+  flex: 1;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.page-subtitle {
+  margin: 8px 0 0;
+  font-size: 0.9375rem;
+  color: #6c757d;
+}
+
+.create-btn {
+  padding: 10px 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #fff;
+  background-color: #4a9eff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.create-btn:hover {
+  background-color: #3a8eef;
+}
+
+.create-form-container {
+  margin-bottom: 24px;
+  padding: 20px;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.create-form {
+  display: flex;
+  gap: 12px;
+}
+
+.form-input {
+  flex: 1;
+  padding: 12px;
+  font-size: 0.9375rem;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  transition: border-color 0.2s;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #4a9eff;
+  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.15);
+}
+
+.submit-btn {
+  padding: 12px 24px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #fff;
+  background-color: #28a745;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.submit-btn:hover:not(:disabled) {
+  background-color: #218838;
+}
+
+.submit-btn:disabled {
+  background-color: #94d3a2;
+  cursor: not-allowed;
+}
+
+.error-banner {
+  margin-bottom: 24px;
+}
+
+.loading-container {
+  padding: 40px;
+  text-align: center;
+}
+
+.sites-table-container {
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.sites-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.sites-table th,
+.sites-table td {
+  padding: 14px 20px;
+  text-align: left;
+}
+
+.sites-table th {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #6c757d;
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sites-table td {
+  font-size: 0.9375rem;
+  color: #333;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.sites-table tr:last-child td {
+  border-bottom: none;
+}
+
+.sites-table tr:hover td {
+  background-color: #f8f9fa;
+}
+
+.site-name {
+  font-weight: 500;
+}
+
+.site-id code {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.8125rem;
+  color: #6c757d;
+  background-color: #f1f3f4;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.site-date {
+  color: #6c757d;
+}
+
+.site-actions {
+  text-align: right;
+}
+
+.view-link {
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+  color: #4a9eff;
+  text-decoration: none;
+  border: 1px solid #4a9eff;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.view-link:hover {
+  background-color: #4a9eff;
+  color: #fff;
+}
+
+.empty-state {
+  padding: 60px 40px;
+  text-align: center;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 1rem;
+  color: #6c757d;
+}

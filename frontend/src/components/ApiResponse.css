@@ -1,0 +1,68 @@
+/* API Response Styles */
+
+.api-response {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.api-response-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+  background-color: #f0f0f0;
+  color: #666;
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #ddd;
+  border-top-color: #4a9eff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.api-response-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.error-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background-color: #b91c1c;
+  color: #fff;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.error-message {
+  font-size: 0.875rem;
+}
+
+.api-response-empty {
+  padding: 24px;
+  background-color: #f0f0f0;
+  color: #888;
+  text-align: center;
+  font-size: 0.875rem;
+}
+
+.api-response-success {
+  /* Success state just wraps JsonViewer */
+}
