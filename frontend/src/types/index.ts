@@ -53,8 +53,7 @@ export interface Document {
   siteId: string;
   path: string;
   createdAt: string;
-  updatedAt: string;
-  archivedAt: string | null;
+  archivedAt?: string | null;
 }
 
 // Checkpoint types

@@ -289,7 +289,6 @@ export function BranchDetailPage() {
                     <th>Path</th>
                     <th>ID</th>
                     <th>Created</th>
-                    <th>Updated</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -305,9 +304,6 @@ export function BranchDetailPage() {
                       </td>
                       <td className="date">
                         {new Date(doc.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="date">
-                        {doc.updatedAt ? new Date(doc.updatedAt).toLocaleDateString() : '-'}
                       </td>
                     </tr>
                   ))}
