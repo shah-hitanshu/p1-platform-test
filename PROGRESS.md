@@ -1159,6 +1159,60 @@ Deliverables:
   - **Root cause:** `listBranches` called with object `{ siteId }` instead of string `siteId`
   - **Fix:** Changed to `listBranches(context.siteId)` format
 
+#### Phase 8.11: Branch Isolation for Documents
+
+**Status:** Complete
+**Commits:**
+- `bf7a435` - Add tests for document version inheritance on branch creation
+- `ad808ed` - Implement document version inheritance on branch creation
+- `57ccbc9` - Add tests for branch-scoped document service functions
+- `d84fb3c` - Implement branch-scoped document service functions
+- `88a3c8e` - Add tests for branch-scoped document API routes
+- `9cfe40b` - Implement branch-scoped document API routes
+- `ddb4b78` - Update frontend to use branch-scoped document APIs
+- `0b5d6b2` - Fix authorization bypass in branch-scoped document routes
+
+##### Problem Addressed:
+Documents didn't follow Git-like branch isolation. Documents were created/queried at site-level only, with no integration with the `document_versions` table that provides branch isolation. Creating a document on one branch would make it visible on all branches.
+
+##### Solution:
+Implemented Git-like branch isolation with two key fixes:
+1. **Branch creation copies document versions** - New branches inherit documents from source
+2. **Branch-scoped document CRUD** - New endpoints that integrate `app.documents` (site-level identity) with `app.document_versions` (branch-scoped content)
+
+##### Backend Service Layer (`workers/src/services/document-service.ts`):
+- [x] `listDocumentsOnBranch(branchId, options)` - List documents with versions on branch (excludes tombstones)
+- [x] `createDocumentOnBranch(params)` - Create document + initial version atomically
+- [x] `documentExistsOnBranch(documentId, branchId)` - Check if document has versions on branch
+- [x] `deleteDocumentOnBranch(params)` - Create tombstone version with `{ _deleted: true }`
+
+##### Backend API Routes (`workers/src/routes/document-api.ts`):
+- [x] `POST /api/sites/{siteId}/branches/{branchId}/documents` - Create document on branch
+- [x] `GET /api/sites/{siteId}/branches/{branchId}/documents` - List documents on branch
+- [x] `GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}` - Get document on branch
+- [x] `DELETE /api/sites/{siteId}/branches/{branchId}/documents/{documentId}` - Delete from branch (tombstone)
+
+##### Branch Creation Enhancement (`workers/src/services/branch-service.ts`):
+- [x] Copy latest document version for each document from source branch
+- [x] Copy from checkpoint_documents when branching from checkpoint
+- [x] Uses `DISTINCT ON (document_id)` to get only latest version per document
+
+##### Frontend Updates:
+- [x] `frontend/src/api/documents.ts` - Added branch-scoped API functions
+- [x] `frontend/src/pages/BranchDetailPage.tsx` - Uses branch-scoped APIs for document operations
+- [x] Delete confirmation dialog for document deletion
+
+##### Security Review:
+| Finding | Severity | Status |
+|---------|----------|--------|
+| Authorization bypass (branch-site mismatch) | Medium | Fixed - Added validation that branch.siteId matches context.siteId |
+
+##### Design Decisions:
+- **Tombstone pattern for deletion** - Create version with `{ _deleted: true }` instead of separate table
+- **Keep existing site-scoped routes** - Useful for admin/debugging
+- **Initial version content** - Defaults to `{}` (empty JSON object)
+- **Document identity stays site-scoped** - Path changes are not branch-scoped
+
 #### Future Frontend Work
 
 The following features are candidates for future frontend development phases:
@@ -1296,6 +1350,22 @@ Decisions made during implementation that may affect or refine the architecture.
 - **Rationale:** Enables efficient reordering of nodes, migration between structures, and batch metadata updates
 - **Impact:** Adds 6 bulk endpoints: node bulk create/update/delete/migrate, metadata bulk update/migrate
 
+### Phase 8.11 Decisions
+
+#### Decision: Tombstone Pattern for Branch-Scoped Deletion
+- **Date:** 2026-01-24
+- **Context:** Need to implement branch-scoped document deletion without affecting other branches
+- **Decision:** Create version with `{ _deleted: true }` snapshot instead of separate deletion tracking table
+- **Rationale:** Simpler implementation using existing `document_versions` table; tombstones are filtered in listing queries
+- **Impact:** Deleted documents have a version record marking deletion; can be "undeleted" by creating new version
+
+#### Decision: Document Version Inheritance on Branch Creation
+- **Date:** 2026-01-24
+- **Context:** New branches need to inherit documents from source branch to achieve Git-like isolation
+- **Decision:** Copy latest version of each document from source branch when creating new branch
+- **Rationale:** Enables Git-like workflow where branches start with parent's state; uses `DISTINCT ON` for efficiency
+- **Impact:** Branch creation is slightly slower but documents are properly isolated between branches
+
 <!--
 Template for future decisions:
 
@@ -1315,6 +1385,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 8.11 | Branch isolation: document version inheritance, branch-scoped CRUD APIs, security fix |
 | 2026-01-24 | 8.10 | Usability enhancements: delete confirmation modals, create document, JSON viewer |
 | 2026-01-24 | 8.9 | Enhancement: auto-create checkpoint when branching from branch without one |
 | 2026-01-24 | 8.8 | Bug fixes: checkpoint creation (checkpointType param, SQL columns), optional name |
@@ -1387,12 +1458,15 @@ Template for future decisions:
 | Audit Emitter | 9 | - |
 | Site API Routes | 16 | - |
 | Document CRUD API Routes | 22 | - |
+| Document Branch-Scoped API Routes | 11 | - |
+| Document Branch-Scoped Service | 20 | - |
+| Branch Version Inheritance | 6 | - |
 | Structure API Routes | 17 | - |
 | Node API Routes | 19 | - |
 | Metadata API Routes | 13 | - |
 | Validation Utilities | 28 | - |
 | Router Integration | 24 | - |
-| **Total** | **971** | **52** |
+| **Total** | **1008** | **52** |
 
 ---
 
