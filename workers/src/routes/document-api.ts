@@ -336,9 +336,9 @@ async function handleBranchScopedDocumentRoutes(
     return errorResponse('Branch ID is required', 400);
   }
 
-  // Validate branch exists
+  // Validate branch exists and belongs to the correct site
   const branch = await getBranch(branchId);
-  if (branch === null) {
+  if (branch?.siteId !== context.siteId) {
     return errorResponse('Branch not found', 404);
   }
 
