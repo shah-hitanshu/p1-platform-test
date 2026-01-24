@@ -199,3 +199,21 @@ export type {
   MergeCrdtStatesResult,
   ResolveWithCrdtMergeParams,
 } from './crdt-merge-service';
+
+// Merge Execution Service
+export {
+  executeMerge,
+  executeMergeWithResolution,
+  previewMerge,
+  MergeNotAllowedError,
+  MergeConflictsError,
+  MergeExecutionError,
+} from './merge-execution-service';
+
+export type {
+  ExecuteMergeParams,
+  ExecuteMergeResult,
+  ExecuteMergeWithResolutionParams,
+  ExecuteMergeWithResolutionResult,
+  MergePreview,
+} from './merge-execution-service';

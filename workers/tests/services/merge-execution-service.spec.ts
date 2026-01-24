@@ -29,11 +29,15 @@ vi.mock('../../src/services/crdt-merge-service', () => ({
   resolveWithCrdtMerge: vi.fn(),
 }));
 
-vi.mock('../../src/services/merge-request-service', () => ({
-  getMergeRequest: vi.fn(),
-  updateMergeRequestStatus: vi.fn(),
-  updateMergeRequestConflicts: vi.fn(),
-}));
+vi.mock('../../src/services/merge-request-service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/services/merge-request-service')>();
+  return {
+    ...actual,
+    getMergeRequest: vi.fn(),
+    updateMergeRequestStatus: vi.fn(),
+    updateMergeRequestConflicts: vi.fn(),
+  };
+});
 
 vi.mock('../../src/services/document-version-service', () => ({
   createDocumentVersion: vi.fn(),
@@ -60,6 +64,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
       const conflictDetection = await import('../../src/services/conflict-detection-service');
       const mergeRequestService = await import('../../src/services/merge-request-service');
       const checkpointService = await import('../../src/services/checkpoint-service');
+      const docVersionService = await import('../../src/services/document-version-service');
 
       // Mock merge request
       vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
@@ -96,6 +101,32 @@ describe('Phase 5.3: Merge Execution Service', () => {
           },
         ],
         targetChanges: [],
+      });
+
+      // Mock getting source version
+      vi.mocked(docVersionService.getDocumentVersion).mockResolvedValueOnce({
+        id: 'v1',
+        documentId: 'doc-1',
+        branchId: 'source-branch',
+        versionNumber: 1,
+        snapshot: { title: 'New Page' },
+        createdAt: '2026-01-20T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+        source: 'edit',
+      });
+
+      // Mock creating version on target
+      vi.mocked(docVersionService.createDocumentVersion).mockResolvedValueOnce({
+        id: 'new-v1',
+        documentId: 'doc-1',
+        branchId: 'target-branch',
+        versionNumber: 1,
+        snapshot: { title: 'New Page' },
+        createdAt: '2026-01-20T11:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+        source: 'merge',
       });
 
       // Mock checkpoint creation
