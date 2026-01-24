@@ -13,6 +13,12 @@ import {
   archiveDocument,
   restoreDocument,
   listDocuments,
+  // Branch-scoped document operations
+  listDocumentsOnBranch,
+  createDocumentOnBranch,
+  documentExistsOnBranch,
+  deleteDocumentOnBranch,
+  getBranch,
   SiteNotFoundError,
   DuplicateDocumentPathError,
   InvalidDocumentPathError,
@@ -26,6 +32,7 @@ import { validatePagination } from './validation';
  */
 export interface DocumentRouteContext {
   siteId: string;
+  branchId?: string;
   documentId?: string;
   documentPath?: string;
   action?: 'restore';
@@ -228,6 +235,136 @@ async function handleRestoreDocument(context: DocumentRouteContext): Promise<Res
   return jsonResponse(document);
 }
 
+// =============================================================================
+// Branch-Scoped Document Operations
+// =============================================================================
+
+/**
+ * Handle GET /api/sites/{siteId}/branches/{branchId}/documents
+ */
+async function handleListDocumentsOnBranch(
+  request: Request,
+  branchId: string,
+): Promise<Response> {
+  const url = new URL(request.url);
+  const pathPrefix = url.searchParams.get('pathPrefix');
+
+  const documents = await listDocumentsOnBranch(branchId, {
+    pathPrefix: pathPrefix ?? undefined,
+  });
+
+  return jsonResponse({ documents });
+}
+
+/**
+ * Handle POST /api/sites/{siteId}/branches/{branchId}/documents
+ */
+async function handleCreateDocumentOnBranch(
+  request: Request,
+  siteId: string,
+  branchId: string,
+  principal: { id: string; type: 'user' | 'agent' },
+): Promise<Response> {
+  const body = await parseJsonBody<CreateDocumentBody>(request);
+
+  if (body.path === undefined || body.path.trim() === '') {
+    return errorResponse('path is required', 400);
+  }
+
+  const result = await createDocumentOnBranch({
+    siteId,
+    branchId,
+    path: body.path,
+    createdById: principal.id,
+    createdByType: principal.type,
+  });
+
+  return jsonResponse(result, 201);
+}
+
+/**
+ * Handle GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}
+ */
+async function handleGetDocumentOnBranch(
+  documentId: string,
+  branchId: string,
+): Promise<Response> {
+  // Check if document exists on this branch
+  const exists = await documentExistsOnBranch(documentId, branchId);
+  if (!exists) {
+    return errorResponse('Document not found on this branch', 404);
+  }
+
+  // Get the document details
+  const document = await getDocument(documentId);
+  if (document === null) {
+    return errorResponse('Document not found', 404);
+  }
+
+  return jsonResponse(document);
+}
+
+/**
+ * Handle DELETE /api/sites/{siteId}/branches/{branchId}/documents/{documentId}
+ */
+async function handleDeleteDocumentOnBranch(
+  documentId: string,
+  branchId: string,
+  principal: { id: string; type: 'user' | 'agent' },
+): Promise<Response> {
+  await deleteDocumentOnBranch({
+    documentId,
+    branchId,
+    deletedById: principal.id,
+    deletedByType: principal.type,
+  });
+
+  return new Response(null, { status: 204 });
+}
+
+/**
+ * Handle branch-scoped document routes
+ */
+async function handleBranchScopedDocumentRoutes(
+  request: Request,
+  context: DocumentRouteContext,
+): Promise<Response> {
+  const method = request.method;
+  const branchId = context.branchId;
+
+  if (branchId === undefined) {
+    return errorResponse('Branch ID is required', 400);
+  }
+
+  // Validate branch exists
+  const branch = await getBranch(branchId);
+  if (branch === null) {
+    return errorResponse('Branch not found', 404);
+  }
+
+  // Routes with documentId
+  if (context.documentId !== undefined) {
+    switch (method) {
+      case 'GET':
+        return await handleGetDocumentOnBranch(context.documentId, branchId);
+      case 'DELETE':
+        return await handleDeleteDocumentOnBranch(context.documentId, branchId, context.principal);
+      default:
+        return errorResponse('Method not allowed', 405);
+    }
+  }
+
+  // Collection routes
+  switch (method) {
+    case 'GET':
+      return await handleListDocumentsOnBranch(request, branchId);
+    case 'POST':
+      return await handleCreateDocumentOnBranch(request, context.siteId, branchId, context.principal);
+    default:
+      return errorResponse('Method not allowed', 405);
+  }
+}
+
 /**
  * Main route handler for document operations
  */
@@ -238,6 +375,11 @@ export async function handleDocumentRoutes(
   const method = request.method;
 
   try {
+    // Handle branch-scoped routes first
+    if (context.branchId !== undefined) {
+      return await handleBranchScopedDocumentRoutes(request, context);
+    }
+
     // Handle restore action
     if (context.action === 'restore') {
       if (method !== 'POST') {
