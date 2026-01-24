@@ -30,7 +30,7 @@ vi.mock('../../src/services', () => ({
       public branchId: string,
       public structureId: string,
     ) {
-      super(`Structure state not found for branch`);
+      super('Structure state not found for branch');
     }
   },
   DocumentMetadataNotFoundError: class DocumentMetadataNotFoundError extends Error {
@@ -40,13 +40,14 @@ vi.mock('../../src/services', () => ({
       public structureId: string,
       public documentId: string,
     ) {
-      super(`Document metadata not found`);
+      super('Document metadata not found');
     }
   },
   SchemaValidationError: class SchemaValidationError extends Error {
     override name = 'SchemaValidationError';
     constructor(
-      public errors: Array<{ field: string; message: string }>,
+      public documentId: string,
+      public validationErrors: { field: string; message: string }[],
     ) {
       super('Schema validation failed');
     }
@@ -358,7 +359,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
       const services = await import('../../src/services');
 
       vi.mocked(services.setDocumentMetadata).mockRejectedValueOnce(
-        new services.SchemaValidationError([
+        new services.SchemaValidationError('doc-1', [
           { field: 'author', message: 'Required field missing' },
         ]),
       );
