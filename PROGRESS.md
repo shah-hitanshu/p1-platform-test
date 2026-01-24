@@ -1405,6 +1405,22 @@ Verified that Git-like branch isolation works correctly:
 5. Edited same document on feature branch: `{"title": "Feature Branch Home Page", "content": "This is UPDATED content on the feature branch", "newField": "Only on feature branch"}`
 6. **Verification:** Main branch content unchanged; feature branch shows different content
 
+##### Bug Fix: Branch Creation from Non-Main Branches
+**Commits:**
+- `70cef8f` - Add tests for creating branches from non-main branches
+- `fac5d34` - Fix branch creation to support branching from any branch
+
+- **Issue:** When creating a branch and selecting a non-main parent branch in the UI, the new branch was always created from main instead of the selected parent.
+- **Root cause:** Two issues in `workers/src/routes/branch-api.ts`:
+  1. Field name mismatch: Frontend sent `parentBranchId` (UUID), backend expected `sourceBranch` (name)
+  2. Backend limitation: Only handled `'main'` case with TODO comment for non-main branches
+- **Fix:**
+  1. Updated `CreateBranchBody` to accept `parentBranchId` (UUID)
+  2. When `parentBranchId` provided, use `getBranch()` to look up by ID
+  3. Removed "Only branching from main is currently supported" error
+  4. Returns 404 "Parent branch not found" for invalid parentBranchId
+  5. Falls back to main branch when no parentBranchId provided (backwards compatible)
+
 #### Phase 8.12: UX Writing Style Compliance
 
 **Status:** Complete
@@ -1705,4 +1721,4 @@ Template for future decisions:
 
 ---
 
-*Last updated: 2026-01-24 (Phase 8.15)*
+*Last updated: 2026-01-24 (Phase 8.15 - Branch Creation Bug Fix)*
