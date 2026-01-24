@@ -89,8 +89,8 @@ export function BranchDetailPage() {
     if (!siteId || !branchId) return;
 
     const confirmed = window.confirm(
-      'Are you sure you want to delete this document from this branch? ' +
-      'The document will remain visible on other branches.'
+      'Delete this document from this branch? ' +
+      'It will remain visible on other branches.'
     );
     if (!confirmed) return;
 
@@ -141,7 +141,7 @@ export function BranchDetailPage() {
       <div className="branch-detail-page">
         <div className="error-container">
           <ApiResponse data={null} isLoading={false} error={branchError} />
-          <Link to={`/sites/${siteId}`} className="back-link">Back to Site</Link>
+          <Link to={`/sites/${siteId}`} className="back-link">Back to site</Link>
         </div>
       </div>
     );
@@ -216,7 +216,7 @@ export function BranchDetailPage() {
               className="create-btn"
               onClick={() => setShowCheckpointForm(!showCheckpointForm)}
             >
-              {showCheckpointForm ? 'Cancel' : '+ Create Checkpoint'}
+              {showCheckpointForm ? 'Cancel' : '+ Create checkpoint'}
             </button>
           </div>
 
@@ -308,7 +308,7 @@ export function BranchDetailPage() {
               className="create-btn"
               onClick={() => setShowDocumentForm(!showDocumentForm)}
             >
-              {showDocumentForm ? 'Cancel' : '+ Create Document'}
+              {showDocumentForm ? 'Cancel' : '+ Create document'}
             </button>
           </div>
 
@@ -380,7 +380,7 @@ export function BranchDetailPage() {
                           className="delete-btn"
                           onClick={() => handleDeleteDocument(doc.id)}
                           disabled={isDeletingDocument}
-                          title="Delete from this branch"
+                          title="Delete from this branch."
                         >
                           Delete
                         </button>

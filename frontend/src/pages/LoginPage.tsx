@@ -26,7 +26,7 @@ export function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUserId) {
-      setError('Please select a user');
+      setError('Select a user to continue.');
       return;
     }
 
@@ -37,7 +37,7 @@ export function LoginPage() {
       await login(selectedUserId);
       navigate('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : 'We couldn\'t log you in. Try again or select a different user.');
     } finally {
       setIsLoading(false);
     }
@@ -94,7 +94,7 @@ export function LoginPage() {
           {error && <div className="login-error">{error}</div>}
 
           <button type="submit" className="login-button" disabled={isLoading || !selectedUserId}>
-            {isLoading ? 'Logging in...' : 'Login'}
+            {isLoading ? 'Logging in...' : 'Log in'}
           </button>
         </form>
 

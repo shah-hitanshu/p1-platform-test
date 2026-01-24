@@ -52,7 +52,7 @@ export function DocumentPage() {
       <div className="document-page">
         <div className="error-container">
           <ApiResponse data={null} isLoading={false} error={error} />
-          <Link to={`/sites/${siteId}`} className="back-link">Back to Site</Link>
+          <Link to={`/sites/${siteId}`} className="back-link">Back to site</Link>
         </div>
       </div>
     );
@@ -153,7 +153,7 @@ export function DocumentPage() {
               <polyline points="12 6 12 12 16 14" />
             </svg>
           </div>
-          <h3>Version History Coming Soon</h3>
+          <h3>Version history coming soon</h3>
           <p>Track all changes made to this document across branches.</p>
         </div>
       </section>

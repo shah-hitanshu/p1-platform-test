@@ -47,7 +47,7 @@ export function Layout() {
               <span className="user-email">{user.email}</span>
             </div>
             <button className="logout-btn" onClick={logout}>
-              Logout
+              Log out
             </button>
           </div>
         )}

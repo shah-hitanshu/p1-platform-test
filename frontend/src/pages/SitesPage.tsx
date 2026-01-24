@@ -63,7 +63,7 @@ export function SitesPage() {
           className="create-btn"
           onClick={() => setShowCreateForm(!showCreateForm)}
         >
-          {showCreateForm ? 'Cancel' : '+ Create Site'}
+          {showCreateForm ? 'Cancel' : '+ Create site'}
         </button>
       </header>
 

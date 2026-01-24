@@ -99,7 +99,7 @@ export function SiteDetailPage() {
       <div className="site-detail-page">
         <div className="error-container">
           <ApiResponse data={null} isLoading={false} error={siteError} />
-          <Link to="/sites" className="back-link">Back to Sites</Link>
+          <Link to="/sites" className="back-link">Back to sites</Link>
         </div>
       </div>
     );
@@ -140,7 +140,7 @@ export function SiteDetailPage() {
             className="create-btn"
             onClick={() => setShowCreateForm(!showCreateForm)}
           >
-            {showCreateForm ? 'Cancel' : '+ Create Branch'}
+            {showCreateForm ? 'Cancel' : '+ Create branch'}
           </button>
         </div>
 
