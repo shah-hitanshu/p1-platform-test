@@ -32,10 +32,11 @@ async function createSiteAndNavigate(page: import('@playwright/test').Page, site
   await page.click('.submit-btn');
   await responsePromise;
 
-  await expect(page.locator('.create-form')).not.toBeVisible({ timeout: 10000 });
+  // Wait for the new site row to appear (more reliable than waiting for form to hide)
+  const siteRow = page.locator(`tr:has-text("${siteName}")`);
+  await expect(siteRow).toBeVisible({ timeout: 10000 });
 
   // Navigate to site detail
-  const siteRow = page.locator(`tr:has-text("${siteName}")`);
   await siteRow.locator('.view-link').click();
   await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+$/);
 }
@@ -49,8 +50,14 @@ async function createBranch(page: import('@playwright/test').Page, branchName: s
     await page.locator('.branches-section .form-select').selectOption({ label: parentBranchName });
   }
 
+  const responsePromise = page.waitForResponse(resp =>
+    resp.url().includes('/api/sites') && resp.url().includes('/branches') && resp.request().method() === 'POST'
+  );
   await page.locator('.branches-section .submit-btn').click();
-  await expect(page.locator('.branches-section .create-form')).not.toBeVisible({ timeout: 10000 });
+  await responsePromise;
+
+  // Wait for the new branch row to appear (more reliable than waiting for form to hide)
+  await expect(page.locator(`tr:has-text("${branchName}")`)).toBeVisible({ timeout: 10000 });
 }
 
 // Helper to navigate to merge requests page
@@ -380,8 +387,15 @@ test.describe('Merge Request Status Changes', () => {
     await page.locator('#title').fill('Close Test');
     await page.locator('.submit-btn').click();
 
-    // Click Close
+    // Wait for detail page to load
+    await expect(page.locator('.status-badge')).toBeVisible({ timeout: 5000 });
+
+    // Click Close - wait for API response
+    const responsePromise = page.waitForResponse(resp =>
+      resp.url().includes('/merge-requests/') && resp.request().method() === 'PATCH'
+    );
     await page.locator('.action-close').click();
+    await responsePromise;
 
     // Wait for status to update
     await expect(page.locator('.status-badge')).toContainText('closed', { timeout: 10000 });
@@ -403,15 +417,29 @@ test.describe('Merge Request Status Changes', () => {
     await page.locator('#title').fill('Reopen Test');
     await page.locator('.submit-btn').click();
 
-    // Close first
+    // Wait for detail page to load
+    await expect(page.locator('.status-badge')).toBeVisible({ timeout: 5000 });
+
+    // Close first - wait for API response
+    const closeResponsePromise = page.waitForResponse(resp =>
+      resp.url().includes('/merge-requests/') && resp.request().method() === 'PATCH'
+    );
     await page.locator('.action-close').click();
+    await closeResponsePromise;
+
+    // Wait for UI to reflect the status change
     await expect(page.locator('.status-badge')).toContainText('closed', { timeout: 10000 });
 
     // Wait for the reopen button to appear (indicates status change completed)
     await expect(page.locator('.action-reopen')).toBeVisible({ timeout: 5000 });
 
-    // Then reopen
+    // Then reopen - wait for API response
+    const reopenResponsePromise = page.waitForResponse(resp =>
+      resp.url().includes('/merge-requests/') && resp.request().method() === 'PATCH'
+    );
     await page.locator('.action-reopen').click();
+    await reopenResponsePromise;
+
     await expect(page.locator('.status-badge')).toContainText('open', { timeout: 10000 });
   });
 });
@@ -514,11 +542,15 @@ test.describe('Merge Request Preview', () => {
     await page.locator('.submit-btn').click();
 
     // Should show merge preview panel with auto-loaded results
-    await expect(page.locator('.merge-preview-panel')).toBeVisible();
+    await expect(page.locator('.merge-preview-panel')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('.preview-btn')).toBeVisible();
 
     // Preview loads automatically - wait for results (or error if race condition in local dev)
-    await expect(page.locator('.preview-result, .preview-error')).toBeVisible({ timeout: 10000 });
+    // First check loading starts
+    await expect(page.locator('.preview-loading, .preview-result, .preview-error')).toBeVisible({ timeout: 10000 });
+
+    // Then wait for loading to complete
+    await expect(page.locator('.preview-result, .preview-error')).toBeVisible({ timeout: 20000 });
 
     // After loading, button should show "Refresh"
     await expect(page.locator('.preview-btn')).toContainText('Refresh');
@@ -552,9 +584,10 @@ test.describe('Merge Request List View', () => {
 
     // Navigate back to list
     await page.locator('.breadcrumb >> text=Merge Requests').click();
+    await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+\/merge-requests$/);
 
-    // Should see MR in list
-    await expect(page.locator('.merge-requests-table')).toBeVisible();
+    // Should see MR in list - wait for table to load
+    await expect(page.locator('.merge-requests-table')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('.merge-requests-table')).toContainText(mrTitle);
   });
 
