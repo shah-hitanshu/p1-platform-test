@@ -1,24 +1,33 @@
 /**
- * Phase 6.1: Structure Service
+ * Phase 6.1 + 7.1.1a: Structure Service
  *
  * Manages site structures and structure nodes for hierarchical
  * document organization.
+ *
+ * Phase 7.1.1a Updates:
+ * - Structure identity (name, slug) is now branch-scoped
+ * - createStructure atomically creates definition + branch state
+ * - Added getBranchStructure, getBranchStructureBySlug, listBranchStructures
+ * - Added updateBranchStructure, deleteBranchStructure
+ * - Added copyStructureStateForBranch for branch creation
  *
  * Based on collaborative-state-system-architecture-v2.2.md
  */
 
 import { query } from '../db';
-import type { SiteStructure, StructureNode, StructureType, NodeType } from '../types';
+import type { StructureNode, StructureType, NodeType } from '../types';
 
 // =============================================================================
 // Types
 // =============================================================================
 
 /**
- * Parameters for creating a site structure.
+ * Parameters for creating a site structure (branch-scoped).
+ * Creates both the definition and branch state atomically.
  */
 export interface CreateStructureParams {
   siteId: string;
+  branchId: string;
   name: string;
   slug: string;
   description?: string;
@@ -26,18 +35,43 @@ export interface CreateStructureParams {
 }
 
 /**
- * Parameters for updating a site structure.
+ * Parameters for updating a branch structure.
  */
-export interface UpdateStructureParams {
+export interface UpdateBranchStructureParams {
   name?: string;
+  slug?: string;
   description?: string;
 }
 
 /**
- * Options for listing structures.
+ * Branch-scoped structure (with identity from branch_structure_state).
+ */
+export interface BranchStructure {
+  id: string;
+  siteId: string;
+  branchId: string;
+  name: string;
+  slug: string;
+  description?: string;
+  structureType: StructureType;
+  structureTree: Record<string, unknown>[];
+  metadataSchema: Record<string, unknown>;
+  schemaEnforcement: string;
+  createdAt: string;
+}
+
+/**
+ * Options for listing structures (site-level - deprecated).
  */
 export interface ListStructuresOptions {
   siteId: string;
+  structureType?: StructureType;
+}
+
+/**
+ * Options for listing branch structures.
+ */
+export interface ListBranchStructuresOptions {
   structureType?: StructureType;
 }
 
@@ -185,15 +219,32 @@ export class CircularReferenceError extends Error {
 // Database Row Types
 // =============================================================================
 
-interface StructureRow {
+/**
+ * Site structure definition (minimal after migration 007).
+ */
+interface StructureDefinitionRow {
   id: string;
   site_id: string;
+  created_at: string;
+}
+
+/**
+ * Branch structure state (includes identity after migration 007).
+ */
+interface BranchStructureRow {
+  structure_id: string;
+  site_id: string;
+  branch_id: string;
   name: string;
   slug: string;
   description?: string;
   structure_type: string;
+  structure_tree: Record<string, unknown>[];
+  metadata_schema: Record<string, unknown>;
+  schema_enforcement: string;
   created_at: string;
 }
+
 
 interface NodeRow {
   id: string;
@@ -212,14 +263,18 @@ interface NodeRow {
 // Mappers
 // =============================================================================
 
-function mapStructureRow(row: StructureRow): SiteStructure {
+function mapBranchStructureRow(row: BranchStructureRow): BranchStructure {
   return {
-    id: row.id,
+    id: row.structure_id,
     siteId: row.site_id,
+    branchId: row.branch_id,
     name: row.name,
     slug: row.slug,
     description: row.description,
     structureType: row.structure_type as StructureType,
+    structureTree: row.structure_tree,
+    metadataSchema: row.metadata_schema,
+    schemaEnforcement: row.schema_enforcement,
     createdAt: row.created_at,
   };
 }
@@ -249,24 +304,66 @@ function mapNodeRow(row: NodeRow): StructureNode {
 }
 
 // =============================================================================
-// Structure CRUD
+// Structure CRUD (Branch-Scoped - Phase 7.1.1a)
 // =============================================================================
 
 /**
- * Create a new site structure.
+ * Create a new site structure (atomic: definition + branch state).
+ * Creates both the site_structures definition and branch_structure_state entry.
  */
-export async function createStructure(params: CreateStructureParams): Promise<SiteStructure> {
-  const { siteId, name, slug, description, structureType } = params;
+export async function createStructure(params: CreateStructureParams): Promise<BranchStructure> {
+  const { siteId, branchId, name, slug, description, structureType } = params;
 
   try {
-    const result = await query<StructureRow>(
-      `INSERT INTO app.site_structures (site_id, name, slug, description, structure_type)
-       VALUES ($1, $2, $3, $4, $5)
+    // Step 1: Create the structure definition (minimal - just ID and site)
+    const defResult = await query<StructureDefinitionRow>(
+      `INSERT INTO app.site_structures (site_id)
+       VALUES ($1)
        RETURNING *`,
-      [siteId, name, slug, description ?? null, structureType],
+      [siteId],
     );
 
-    return mapStructureRow(result.rows[0]);
+    const structureId = defResult.rows[0].id;
+    const createdAt = defResult.rows[0].created_at;
+
+    // Step 2: Create the branch structure state (with identity)
+    const defaultSchema = JSON.stringify({
+      type: 'object',
+      properties: { title: { type: 'string' } },
+      required: ['title'],
+    });
+
+    const stateResult = await query<BranchStructureRow>(
+      `INSERT INTO app.branch_structure_state
+       (branch_id, structure_id, name, slug, description, structure_type,
+        structure_tree, metadata_schema, schema_enforcement)
+       VALUES ($1, $2, $3, $4, $5, $6, '[]'::jsonb, $9::jsonb, 'warn')
+       RETURNING
+         structure_id,
+         $7::uuid AS site_id,
+         branch_id,
+         name,
+         slug,
+         description,
+         structure_type,
+         structure_tree,
+         metadata_schema,
+         schema_enforcement,
+         $8::timestamptz AS created_at`,
+      [
+        branchId,
+        structureId,
+        name,
+        slug,
+        description ?? null,
+        structureType,
+        siteId,
+        createdAt,
+        defaultSchema,
+      ],
+    );
+
+    return mapBranchStructureRow(stateResult.rows[0]);
   } catch (error) {
     if (error instanceof Error && 'code' in error) {
       const pgError = error as Error & { code: string };
@@ -282,67 +379,116 @@ export async function createStructure(params: CreateStructureParams): Promise<Si
 }
 
 /**
- * Get a structure by ID.
+ * Get a branch structure by structure ID.
  */
-export async function getStructure(structureId: string): Promise<SiteStructure | null> {
-  const result = await query<StructureRow>(
-    'SELECT * FROM app.site_structures WHERE id = $1',
-    [structureId],
-  );
-
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  return mapStructureRow(result.rows[0]);
-}
-
-/**
- * Get a structure by site ID and slug.
- */
-export async function getStructureBySlug(
-  siteId: string,
-  slug: string,
-): Promise<SiteStructure | null> {
-  const result = await query<StructureRow>(
-    'SELECT * FROM app.site_structures WHERE site_id = $1 AND slug = $2',
-    [siteId, slug],
-  );
-
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  return mapStructureRow(result.rows[0]);
-}
-
-/**
- * List structures for a site.
- */
-export async function listStructures(options: ListStructuresOptions): Promise<SiteStructure[]> {
-  const { siteId, structureType } = options;
-
-  let sql = 'SELECT * FROM app.site_structures WHERE site_id = $1';
-  const params: (string | null)[] = [siteId];
-
-  if (structureType !== undefined) {
-    sql += ' AND structure_type = $2';
-    params.push(structureType);
-  }
-
-  sql += ' ORDER BY created_at ASC';
-
-  const result = await query<StructureRow>(sql, params);
-  return result.rows.map(mapStructureRow);
-}
-
-/**
- * Update a structure.
- */
-export async function updateStructure(
+export async function getBranchStructure(
+  branchId: string,
   structureId: string,
-  updates: UpdateStructureParams,
-): Promise<SiteStructure> {
+): Promise<BranchStructure | null> {
+  const result = await query<BranchStructureRow>(
+    `SELECT
+       bss.structure_id,
+       ss.site_id,
+       bss.branch_id,
+       bss.name,
+       bss.slug,
+       bss.description,
+       bss.structure_type,
+       bss.structure_tree,
+       bss.metadata_schema,
+       bss.schema_enforcement,
+       ss.created_at
+     FROM app.branch_structure_state bss
+     JOIN app.site_structures ss ON ss.id = bss.structure_id
+     WHERE bss.branch_id = $1 AND bss.structure_id = $2`,
+    [branchId, structureId],
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return mapBranchStructureRow(result.rows[0]);
+}
+
+/**
+ * Get a branch structure by slug.
+ */
+export async function getBranchStructureBySlug(
+  branchId: string,
+  slug: string,
+): Promise<BranchStructure | null> {
+  const result = await query<BranchStructureRow>(
+    `SELECT
+       bss.structure_id,
+       ss.site_id,
+       bss.branch_id,
+       bss.name,
+       bss.slug,
+       bss.description,
+       bss.structure_type,
+       bss.structure_tree,
+       bss.metadata_schema,
+       bss.schema_enforcement,
+       ss.created_at
+     FROM app.branch_structure_state bss
+     JOIN app.site_structures ss ON ss.id = bss.structure_id
+     WHERE bss.branch_id = $1 AND bss.slug = $2`,
+    [branchId, slug],
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return mapBranchStructureRow(result.rows[0]);
+}
+
+/**
+ * List structures on a branch.
+ */
+export async function listBranchStructures(
+  branchId: string,
+  options?: ListBranchStructuresOptions,
+): Promise<BranchStructure[]> {
+  let sql = `
+    SELECT
+      bss.structure_id,
+      ss.site_id,
+      bss.branch_id,
+      bss.name,
+      bss.slug,
+      bss.description,
+      bss.structure_type,
+      bss.structure_tree,
+      bss.metadata_schema,
+      bss.schema_enforcement,
+      ss.created_at
+    FROM app.branch_structure_state bss
+    JOIN app.site_structures ss ON ss.id = bss.structure_id
+    WHERE bss.branch_id = $1`;
+
+  const params: string[] = [branchId];
+
+  if (options?.structureType !== undefined) {
+    sql += ' AND bss.structure_type = $2';
+    params.push(options.structureType);
+  }
+
+  sql += ' ORDER BY ss.created_at ASC';
+
+  const result = await query<BranchStructureRow>(sql, params);
+  return result.rows.map(mapBranchStructureRow);
+}
+
+/**
+ * Update a branch structure.
+ */
+export async function updateBranchStructure(
+  branchId: string,
+  structureId: string,
+  updates: UpdateBranchStructureParams,
+): Promise<BranchStructure> {
   const setClauses: string[] = [];
   const params: (string | null)[] = [];
   let paramIndex = 1;
@@ -353,6 +499,12 @@ export async function updateStructure(
     paramIndex++;
   }
 
+  if (updates.slug !== undefined) {
+    setClauses.push(`slug = $${String(paramIndex)}`);
+    params.push(updates.slug);
+    paramIndex++;
+  }
+
   if (updates.description !== undefined) {
     setClauses.push(`description = $${String(paramIndex)}`);
     params.push(updates.description);
@@ -360,40 +512,124 @@ export async function updateStructure(
   }
 
   if (setClauses.length === 0) {
-    const existing = await getStructure(structureId);
+    const existing = await getBranchStructure(branchId, structureId);
     if (existing === null) {
       throw new StructureNotFoundError(structureId);
     }
     return existing;
   }
 
-  params.push(structureId);
+  params.push(branchId, structureId);
 
-  const result = await query<StructureRow>(
-    `UPDATE app.site_structures SET ${setClauses.join(', ')} WHERE id = $${String(paramIndex)} RETURNING *`,
-    params,
-  );
+  try {
+    const result = await query<{ structure_id: string }>(
+      `UPDATE app.branch_structure_state
+       SET ${setClauses.join(', ')}
+       WHERE branch_id = $${String(paramIndex)} AND structure_id = $${String(paramIndex + 1)}
+       RETURNING structure_id`,
+      params,
+    );
 
-  if (result.rows.length === 0) {
-    throw new StructureNotFoundError(structureId);
+    if (result.rows.length === 0) {
+      throw new StructureNotFoundError(structureId);
+    }
+
+    // Fetch the full updated structure
+    const updated = await getBranchStructure(branchId, structureId);
+    if (updated === null) {
+      throw new StructureNotFoundError(structureId);
+    }
+    return updated;
+  } catch (error) {
+    if (error instanceof Error && 'code' in error) {
+      const pgError = error as Error & { code: string };
+      if (pgError.code === '23505') {
+        throw new DuplicateStructureSlugError(branchId, updates.slug ?? '');
+      }
+    }
+    throw error;
   }
-
-  return mapStructureRow(result.rows[0]);
 }
 
 /**
- * Delete a structure.
+ * Delete a branch structure.
+ * If this is the last branch referencing the definition, cascade delete it.
  */
-export async function deleteStructure(structureId: string): Promise<void> {
-  const result = await query<{ id: string }>(
-    'DELETE FROM app.site_structures WHERE id = $1 RETURNING id',
+export async function deleteBranchStructure(
+  branchId: string,
+  structureId: string,
+): Promise<void> {
+  // Step 1: Delete from branch_structure_state
+  const deleteResult = await query<{ structure_id: string }>(
+    `DELETE FROM app.branch_structure_state
+     WHERE branch_id = $1 AND structure_id = $2
+     RETURNING structure_id`,
+    [branchId, structureId],
+  );
+
+  if (deleteResult.rows.length === 0) {
+    throw new StructureNotFoundError(structureId);
+  }
+
+  // Step 2: Check if any other branches reference this structure
+  const countResult = await query<{ count: string }>(
+    'SELECT COUNT(*) AS count FROM app.branch_structure_state WHERE structure_id = $1',
     [structureId],
   );
 
-  if (result.rows.length === 0) {
-    throw new StructureNotFoundError(structureId);
+  const remainingRefs = parseInt(countResult.rows[0].count, 10);
+
+  // Step 3: If no more references, cascade delete the definition
+  if (remainingRefs === 0) {
+    await query(
+      'DELETE FROM app.site_structures WHERE id = $1',
+      [structureId],
+    );
   }
 }
+
+/**
+ * Copy all structure state from source branch to new branch.
+ * Used during branch creation.
+ */
+export async function copyStructureStateForBranch(
+  sourceBranchId: string,
+  newBranchId: string,
+): Promise<void> {
+  await query(
+    `INSERT INTO app.branch_structure_state (
+       branch_id,
+       structure_id,
+       name,
+       slug,
+       description,
+       structure_type,
+       structure_tree,
+       metadata_schema,
+       schema_enforcement,
+       has_changes_since_checkpoint,
+       last_modified_at,
+       last_modified_by
+     )
+     SELECT
+       $2,
+       structure_id,
+       name,
+       slug,
+       description,
+       structure_type,
+       structure_tree,
+       metadata_schema,
+       schema_enforcement,
+       FALSE,
+       last_modified_at,
+       last_modified_by
+     FROM app.branch_structure_state
+     WHERE branch_id = $1`,
+    [sourceBranchId, newBranchId],
+  );
+}
+
 
 // =============================================================================
 // Node CRUD

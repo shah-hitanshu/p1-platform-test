@@ -20,30 +20,45 @@ describe('Phase 6.1: Structure Service', () => {
   });
 
   // ===========================================================================
-  // Site Structure CRUD
+  // Branch-Scoped Structure CRUD (Updated from Phase 6.1 to Phase 7.1.1a)
   // ===========================================================================
 
   describe('createStructure', () => {
-    it('should create a new site structure', async () => {
+    it('should create a new structure with branch-scoped identity', async () => {
       const { createStructure } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
+      // First query: insert into site_structures (definition only)
       vi.mocked(db.query).mockResolvedValueOnce({
         rows: [
           {
             id: 'struct-1',
             site_id: 'site-1',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
+
+      // Second query: insert into branch_structure_state (identity + state)
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            branch_id: 'branch-1',
+            structure_id: 'struct-1',
             name: 'Main Navigation',
             slug: 'main-nav',
             description: 'Primary site navigation',
             structure_type: 'hierarchy',
-            created_at: '2026-01-24T10:00:00.000Z',
+            structure_tree: [],
+            metadata_schema: { type: 'object', properties: {} },
+            schema_enforcement: 'warn',
           },
         ],
       });
 
       const structure = await createStructure({
         siteId: 'site-1',
+        branchId: 'branch-1',
         name: 'Main Navigation',
         slug: 'main-nav',
         description: 'Primary site navigation',
@@ -51,6 +66,7 @@ describe('Phase 6.1: Structure Service', () => {
       });
 
       expect(structure.id).toBe('struct-1');
+      expect(structure.branchId).toBe('branch-1');
       expect(structure.name).toBe('Main Navigation');
       expect(structure.slug).toBe('main-nav');
       expect(structure.structureType).toBe('hierarchy');
@@ -60,21 +76,28 @@ describe('Phase 6.1: Structure Service', () => {
       const { createStructure } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'struct-2',
-            site_id: 'site-1',
-            name: 'Blog Posts',
-            slug: 'blog',
-            structure_type: 'collection',
-            created_at: '2026-01-24T10:00:00.000Z',
-          },
-        ],
-      });
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'struct-2', site_id: 'site-1', created_at: '2026-01-24T10:00:00.000Z' }],
+        })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              branch_id: 'branch-1',
+              structure_id: 'struct-2',
+              name: 'Blog Posts',
+              slug: 'blog',
+              structure_type: 'collection',
+              structure_tree: [],
+              metadata_schema: {},
+              schema_enforcement: 'warn',
+            },
+          ],
+        });
 
       const structure = await createStructure({
         siteId: 'site-1',
+        branchId: 'branch-1',
         name: 'Blog Posts',
         slug: 'blog',
         structureType: 'collection',
@@ -83,19 +106,26 @@ describe('Phase 6.1: Structure Service', () => {
       expect(structure.structureType).toBe('collection');
     });
 
-    it('should throw DuplicateStructureSlugError when slug exists', async () => {
+    it('should throw DuplicateStructureSlugError when slug exists on same branch', async () => {
       const { createStructure, DuplicateStructureSlugError } = await import(
         '../../src/services/structure-service'
       );
       const db = await import('../../src/db');
 
-      const error = new Error('duplicate key value');
+      // First insert succeeds (site_structures)
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ id: 'struct-1', site_id: 'site-1', created_at: '2026-01-24T10:00:00.000Z' }],
+      });
+
+      // Second insert fails due to unique constraint on (branch_id, slug)
+      const error = new Error('duplicate key value violates unique constraint');
       (error as Error & { code: string }).code = '23505';
       vi.mocked(db.query).mockRejectedValueOnce(error);
 
       await expect(
         createStructure({
           siteId: 'site-1',
+          branchId: 'branch-1',
           name: 'Main Navigation',
           slug: 'main-nav',
           structureType: 'hierarchy',
@@ -116,6 +146,7 @@ describe('Phase 6.1: Structure Service', () => {
       await expect(
         createStructure({
           siteId: 'nonexistent',
+          branchId: 'branch-1',
           name: 'Main Navigation',
           slug: 'main-nav',
           structureType: 'hierarchy',
@@ -124,96 +155,114 @@ describe('Phase 6.1: Structure Service', () => {
     });
   });
 
-  describe('getStructure', () => {
-    it('should return structure by ID', async () => {
-      const { getStructure } = await import('../../src/services/structure-service');
+  describe('getBranchStructure', () => {
+    it('should return structure by branch ID and structure ID', async () => {
+      const { getBranchStructure } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValueOnce({
         rows: [
           {
-            id: 'struct-1',
+            structure_id: 'struct-1',
             site_id: 'site-1',
+            branch_id: 'branch-1',
             name: 'Main Navigation',
             slug: 'main-nav',
             description: 'Primary navigation',
             structure_type: 'hierarchy',
+            structure_tree: [],
+            metadata_schema: {},
+            schema_enforcement: 'warn',
             created_at: '2026-01-24T10:00:00.000Z',
           },
         ],
       });
 
-      const structure = await getStructure('struct-1');
+      const structure = await getBranchStructure('branch-1', 'struct-1');
 
       expect(structure).not.toBeNull();
       expect(structure?.id).toBe('struct-1');
+      expect(structure?.branchId).toBe('branch-1');
       expect(structure?.name).toBe('Main Navigation');
     });
 
-    it('should return null when structure does not exist', async () => {
-      const { getStructure } = await import('../../src/services/structure-service');
+    it('should return null when structure does not exist on branch', async () => {
+      const { getBranchStructure } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
-      const structure = await getStructure('nonexistent');
+      const structure = await getBranchStructure('branch-1', 'nonexistent');
 
       expect(structure).toBeNull();
     });
   });
 
-  describe('getStructureBySlug', () => {
-    it('should return structure by site ID and slug', async () => {
-      const { getStructureBySlug } = await import('../../src/services/structure-service');
+  describe('getBranchStructureBySlug', () => {
+    it('should return structure by branch ID and slug', async () => {
+      const { getBranchStructureBySlug } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValueOnce({
         rows: [
           {
-            id: 'struct-1',
+            structure_id: 'struct-1',
             site_id: 'site-1',
+            branch_id: 'branch-1',
             name: 'Main Navigation',
             slug: 'main-nav',
             structure_type: 'hierarchy',
+            structure_tree: [],
+            metadata_schema: {},
+            schema_enforcement: 'warn',
             created_at: '2026-01-24T10:00:00.000Z',
           },
         ],
       });
 
-      const structure = await getStructureBySlug('site-1', 'main-nav');
+      const structure = await getBranchStructureBySlug('branch-1', 'main-nav');
 
       expect(structure).not.toBeNull();
       expect(structure?.slug).toBe('main-nav');
+      expect(structure?.branchId).toBe('branch-1');
     });
   });
 
-  describe('listStructures', () => {
-    it('should list structures for a site', async () => {
-      const { listStructures } = await import('../../src/services/structure-service');
+  describe('listBranchStructures', () => {
+    it('should list structures for a branch', async () => {
+      const { listBranchStructures } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValueOnce({
         rows: [
           {
-            id: 'struct-1',
+            structure_id: 'struct-1',
             site_id: 'site-1',
+            branch_id: 'branch-1',
             name: 'Main Navigation',
             slug: 'main-nav',
             structure_type: 'hierarchy',
+            structure_tree: [],
+            metadata_schema: {},
+            schema_enforcement: 'warn',
             created_at: '2026-01-24T10:00:00.000Z',
           },
           {
-            id: 'struct-2',
+            structure_id: 'struct-2',
             site_id: 'site-1',
+            branch_id: 'branch-1',
             name: 'Blog',
             slug: 'blog',
             structure_type: 'collection',
+            structure_tree: [],
+            metadata_schema: {},
+            schema_enforcement: 'warn',
             created_at: '2026-01-24T11:00:00.000Z',
           },
         ],
       });
 
-      const structures = await listStructures({ siteId: 'site-1' });
+      const structures = await listBranchStructures('branch-1');
 
       expect(structures).toHaveLength(2);
       expect(structures[0].name).toBe('Main Navigation');
@@ -221,26 +270,27 @@ describe('Phase 6.1: Structure Service', () => {
     });
 
     it('should filter by structure type', async () => {
-      const { listStructures } = await import('../../src/services/structure-service');
+      const { listBranchStructures } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValueOnce({
         rows: [
           {
-            id: 'struct-1',
+            structure_id: 'struct-1',
             site_id: 'site-1',
+            branch_id: 'branch-1',
             name: 'Main Navigation',
             slug: 'main-nav',
             structure_type: 'hierarchy',
+            structure_tree: [],
+            metadata_schema: {},
+            schema_enforcement: 'warn',
             created_at: '2026-01-24T10:00:00.000Z',
           },
         ],
       });
 
-      const structures = await listStructures({
-        siteId: 'site-1',
-        structureType: 'hierarchy',
-      });
+      const structures = await listBranchStructures('branch-1', { structureType: 'hierarchy' });
 
       expect(structures).toHaveLength(1);
       expect(db.query).toHaveBeenCalledWith(
@@ -250,26 +300,36 @@ describe('Phase 6.1: Structure Service', () => {
     });
   });
 
-  describe('updateStructure', () => {
-    it('should update structure name and description', async () => {
-      const { updateStructure } = await import('../../src/services/structure-service');
+  describe('updateBranchStructure', () => {
+    it('should update structure name and description on branch', async () => {
+      const { updateBranchStructure } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
+      // First call: UPDATE query
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ structure_id: 'struct-1' }],
+      });
+
+      // Second call: getBranchStructure to fetch updated state
       vi.mocked(db.query).mockResolvedValueOnce({
         rows: [
           {
-            id: 'struct-1',
+            structure_id: 'struct-1',
             site_id: 'site-1',
+            branch_id: 'branch-1',
             name: 'Updated Navigation',
             slug: 'main-nav',
             description: 'Updated description',
             structure_type: 'hierarchy',
+            structure_tree: [],
+            metadata_schema: {},
+            schema_enforcement: 'warn',
             created_at: '2026-01-24T10:00:00.000Z',
           },
         ],
       });
 
-      const structure = await updateStructure('struct-1', {
+      const structure = await updateBranchStructure('branch-1', 'struct-1', {
         name: 'Updated Navigation',
         description: 'Updated description',
       });
@@ -278,8 +338,8 @@ describe('Phase 6.1: Structure Service', () => {
       expect(structure.description).toBe('Updated description');
     });
 
-    it('should throw StructureNotFoundError when structure does not exist', async () => {
-      const { updateStructure, StructureNotFoundError } = await import(
+    it('should throw StructureNotFoundError when structure does not exist on branch', async () => {
+      const { updateBranchStructure, StructureNotFoundError } = await import(
         '../../src/services/structure-service'
       );
       const db = await import('../../src/db');
@@ -287,35 +347,44 @@ describe('Phase 6.1: Structure Service', () => {
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
       await expect(
-        updateStructure('nonexistent', { name: 'Updated' }),
+        updateBranchStructure('branch-1', 'nonexistent', { name: 'Updated' }),
       ).rejects.toThrow(StructureNotFoundError);
     });
   });
 
-  describe('deleteStructure', () => {
-    it('should delete a structure', async () => {
-      const { deleteStructure } = await import('../../src/services/structure-service');
+  describe('deleteBranchStructure', () => {
+    it('should delete a structure from branch', async () => {
+      const { deleteBranchStructure } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ id: 'struct-1' }] });
+      // Delete from branch_structure_state
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ structure_id: 'struct-1' }] });
 
-      await deleteStructure('struct-1');
+      // Check remaining references
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
+
+      // Cascade delete from site_structures (no more references)
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await deleteBranchStructure('branch-1', 'struct-1');
 
       expect(db.query).toHaveBeenCalledWith(
         expect.stringContaining('DELETE'),
-        expect.arrayContaining(['struct-1']),
+        expect.arrayContaining(['branch-1', 'struct-1']),
       );
     });
 
-    it('should throw StructureNotFoundError when structure does not exist', async () => {
-      const { deleteStructure, StructureNotFoundError } = await import(
+    it('should throw StructureNotFoundError when structure does not exist on branch', async () => {
+      const { deleteBranchStructure, StructureNotFoundError } = await import(
         '../../src/services/structure-service'
       );
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
-      await expect(deleteStructure('nonexistent')).rejects.toThrow(StructureNotFoundError);
+      await expect(deleteBranchStructure('branch-1', 'nonexistent')).rejects.toThrow(
+        StructureNotFoundError,
+      );
     });
   });
 

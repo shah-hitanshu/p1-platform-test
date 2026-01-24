@@ -160,7 +160,7 @@ describe('Phase 7.1.1a: Branch-Scoped Structure Service', () => {
           name: 'Navigation',
           slug: 'nav',
           structureType: 'hierarchy',
-        })
+        }),
       ).rejects.toThrow(DuplicateStructureSlugError);
     });
   });
@@ -195,10 +195,10 @@ describe('Phase 7.1.1a: Branch-Scoped Structure Service', () => {
       const structure = await getBranchStructure('branch-1', 'struct-1');
 
       expect(structure).not.toBeNull();
-      expect(structure!.id).toBe('struct-1');
-      expect(structure!.branchId).toBe('branch-1');
-      expect(structure!.name).toBe('Main Navigation');
-      expect(structure!.slug).toBe('main-nav');
+      expect(structure?.id).toBe('struct-1');
+      expect(structure?.branchId).toBe('branch-1');
+      expect(structure?.name).toBe('Main Navigation');
+      expect(structure?.slug).toBe('main-nav');
     });
 
     it('should return null when structure does not exist on branch', async () => {
@@ -234,8 +234,8 @@ describe('Phase 7.1.1a: Branch-Scoped Structure Service', () => {
       const structure = await getBranchStructureBySlug('branch-1', 'blog');
 
       expect(structure).not.toBeNull();
-      expect(structure!.slug).toBe('blog');
-      expect(structure!.branchId).toBe('branch-1');
+      expect(structure?.slug).toBe('blog');
+      expect(structure?.branchId).toBe('branch-1');
     });
 
     it('should return null when slug does not exist on branch', async () => {
@@ -313,15 +313,26 @@ describe('Phase 7.1.1a: Branch-Scoped Structure Service', () => {
       const { updateBranchStructure } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
+      // First call: UPDATE query
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ structure_id: 'struct-1' }],
+      });
+
+      // Second call: getBranchStructure to fetch updated state
       vi.mocked(db.query).mockResolvedValueOnce({
         rows: [
           {
             structure_id: 'struct-1',
+            site_id: 'site-1',
             branch_id: 'branch-1',
             name: 'stuff-i-write',
             slug: 'stuff-i-write',
             description: 'My blog posts',
             structure_type: 'collection',
+            structure_tree: [],
+            metadata_schema: {},
+            schema_enforcement: 'warn',
+            created_at: '2026-01-24T10:00:00.000Z',
           },
         ],
       });
@@ -345,7 +356,7 @@ describe('Phase 7.1.1a: Branch-Scoped Structure Service', () => {
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
       await expect(
-        updateBranchStructure('branch-1', 'nonexistent', { name: 'New Name' })
+        updateBranchStructure('branch-1', 'nonexistent', { name: 'New Name' }),
       ).rejects.toThrow(StructureNotFoundError);
     });
 
@@ -360,7 +371,7 @@ describe('Phase 7.1.1a: Branch-Scoped Structure Service', () => {
       vi.mocked(db.query).mockRejectedValueOnce(error);
 
       await expect(
-        updateBranchStructure('branch-1', 'struct-1', { slug: 'existing-slug' })
+        updateBranchStructure('branch-1', 'struct-1', { slug: 'existing-slug' }),
       ).rejects.toThrow(DuplicateStructureSlugError);
     });
   });
@@ -414,7 +425,7 @@ describe('Phase 7.1.1a: Branch-Scoped Structure Service', () => {
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
       await expect(deleteBranchStructure('branch-1', 'nonexistent')).rejects.toThrow(
-        StructureNotFoundError
+        StructureNotFoundError,
       );
     });
   });
@@ -440,7 +451,7 @@ describe('Phase 7.1.1a: Branch-Scoped Structure Service', () => {
       // Verify INSERT...SELECT query was executed
       expect(db.query).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO'),
-        expect.arrayContaining(['source-branch', 'new-branch'])
+        expect.arrayContaining(['source-branch', 'new-branch']),
       );
     });
 

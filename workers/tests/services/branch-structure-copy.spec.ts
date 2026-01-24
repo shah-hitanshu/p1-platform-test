@@ -25,37 +25,40 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
   // ===========================================================================
 
   describe('createBranch with structure copy', () => {
+    /**
+     * Helper to set up mocks for createBranch.
+     * The function now uses a transaction with structure and metadata copy.
+     */
+    function setupBranchMocks(
+      db: { query: ReturnType<typeof vi.fn> },
+      branchRow: Record<string, unknown>,
+    ): void {
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [branchRow] }) // INSERT branch
+        .mockResolvedValueOnce({ rows: [] }) // structure copy
+        .mockResolvedValueOnce({ rows: [] }) // metadata copy
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    }
+
     it('should copy structure state from source branch', async () => {
       const { createBranch } = await import('../../src/services/branch-service');
       const db = await import('../../src/db');
 
-      // Mock branch creation
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'new-branch',
-            site_id: 'site-1',
-            name: 'feature-branch',
-            description: 'Feature work',
-            status: 'active',
-            source_branch_id: 'main-branch',
-            created_by_id: 'user-1',
-            created_by_type: 'user',
-            created_at: '2026-01-24T10:00:00.000Z',
-          },
-        ],
+      setupBranchMocks(db, {
+        id: 'new-branch',
+        site_id: 'site-1',
+        name: 'feature-branch',
+        description: 'Feature work',
+        status: 'active',
+        is_main: false,
+        source_branch_id: 'main-branch',
+        source_checkpoint_id: null,
+        created_by_id: 'user-1',
+        created_by_type: 'user',
+        created_at: '2026-01-24T10:00:00.000Z',
+        updated_at: '2026-01-24T10:00:00.000Z',
       });
-
-      // Mock structure state copy
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          { structure_id: 'struct-1', name: 'Navigation', slug: 'nav' },
-          { structure_id: 'struct-2', name: 'Blog', slug: 'blog' },
-        ],
-      });
-
-      // Mock document metadata copy
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
       const branch = await createBranch({
         siteId: 'site-1',
@@ -74,7 +77,7 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
           typeof call[0] === 'string' &&
           call[0].includes('branch_structure_state') &&
           call[0].includes('INSERT') &&
-          call[0].includes('SELECT')
+          call[0].includes('SELECT'),
       );
       expect(structureCopyCall).toBeDefined();
     });
@@ -83,21 +86,20 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
       const { createBranch } = await import('../../src/services/branch-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({
-          rows: [
-            {
-              id: 'new-branch',
-              site_id: 'site-1',
-              name: 'feature',
-              source_branch_id: 'main-branch',
-              created_by_id: 'user-1',
-              created_by_type: 'user',
-            },
-          ],
-        })
-        .mockResolvedValueOnce({ rows: [] }) // structure copy
-        .mockResolvedValueOnce({ rows: [] }); // metadata copy
+      setupBranchMocks(db, {
+        id: 'new-branch',
+        site_id: 'site-1',
+        name: 'feature',
+        description: null,
+        status: 'active',
+        is_main: false,
+        source_branch_id: 'main-branch',
+        source_checkpoint_id: null,
+        created_by_id: 'user-1',
+        created_by_type: 'user',
+        created_at: '2026-01-24T10:00:00.000Z',
+        updated_at: '2026-01-24T10:00:00.000Z',
+      });
 
       await createBranch({
         siteId: 'site-1',
@@ -113,7 +115,7 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
           typeof call[0] === 'string' &&
           call[0].includes('branch_structure_state') &&
           call[0].includes('name') &&
-          call[0].includes('slug')
+          call[0].includes('slug'),
       );
       expect(copyQuery).toBeDefined();
     });
@@ -122,21 +124,20 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
       const { createBranch } = await import('../../src/services/branch-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({
-          rows: [
-            {
-              id: 'new-branch',
-              site_id: 'site-1',
-              name: 'feature',
-              source_branch_id: 'main-branch',
-              created_by_id: 'user-1',
-              created_by_type: 'user',
-            },
-          ],
-        })
-        .mockResolvedValueOnce({ rows: [] }) // structure copy
-        .mockResolvedValueOnce({ rows: [] }); // metadata copy
+      setupBranchMocks(db, {
+        id: 'new-branch',
+        site_id: 'site-1',
+        name: 'feature',
+        description: null,
+        status: 'active',
+        is_main: false,
+        source_branch_id: 'main-branch',
+        source_checkpoint_id: null,
+        created_by_id: 'user-1',
+        created_by_type: 'user',
+        created_at: '2026-01-24T10:00:00.000Z',
+        updated_at: '2026-01-24T10:00:00.000Z',
+      });
 
       await createBranch({
         siteId: 'site-1',
@@ -151,7 +152,7 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
         (call) =>
           typeof call[0] === 'string' &&
           call[0].includes('branch_document_metadata') &&
-          call[0].includes('INSERT')
+          call[0].includes('INSERT'),
       );
       expect(metadataCopyCall).toBeDefined();
     });
@@ -166,10 +167,15 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
             id: 'main-branch',
             site_id: 'site-1',
             name: 'main',
+            description: 'Main branch',
             status: 'active',
             is_main: true,
+            source_branch_id: null,
+            source_checkpoint_id: null,
             created_by_id: 'system',
             created_by_type: 'system',
+            created_at: '2026-01-24T10:00:00.000Z',
+            updated_at: '2026-01-24T10:00:00.000Z',
           },
         ],
       });
@@ -192,38 +198,39 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
   // ===========================================================================
 
   describe('createBranch from checkpoint', () => {
+    /**
+     * Helper for checkpoint-based branch creation mocks.
+     */
+    function setupCheckpointBranchMocks(
+      db: { query: ReturnType<typeof vi.fn> },
+      branchRow: Record<string, unknown>,
+    ): void {
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [branchRow] }) // INSERT branch
+        .mockResolvedValueOnce({ rows: [] }) // structure copy from checkpoint
+        .mockResolvedValueOnce({ rows: [] }) // metadata copy from checkpoint
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    }
+
     it('should copy structure state from checkpoint instead of current branch state', async () => {
       const { createBranch } = await import('../../src/services/branch-service');
       const db = await import('../../src/db');
 
-      // Mock branch creation
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'new-branch',
-            site_id: 'site-1',
-            name: 'hotfix',
-            source_branch_id: 'main-branch',
-            source_checkpoint_id: 'checkpoint-1',
-            created_by_id: 'user-1',
-            created_by_type: 'user',
-          },
-        ],
+      setupCheckpointBranchMocks(db, {
+        id: 'new-branch',
+        site_id: 'site-1',
+        name: 'hotfix',
+        description: null,
+        status: 'active',
+        is_main: false,
+        source_branch_id: 'main-branch',
+        source_checkpoint_id: 'checkpoint-1',
+        created_by_id: 'user-1',
+        created_by_type: 'user',
+        created_at: '2026-01-24T10:00:00.000Z',
+        updated_at: '2026-01-24T10:00:00.000Z',
       });
-
-      // Mock structure copy from checkpoint (not current branch state)
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            structure_id: 'struct-1',
-            name: 'blogs', // Name at checkpoint time
-            slug: 'blogs',
-          },
-        ],
-      });
-
-      // Mock metadata copy from checkpoint
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
       await createBranch({
         siteId: 'site-1',
@@ -239,7 +246,7 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
         (call) =>
           typeof call[0] === 'string' &&
           call[0].includes('checkpoint_structures') &&
-          call[0].includes('SELECT')
+          call[0].includes('SELECT'),
       );
       expect(copyQuery).toBeDefined();
     });
@@ -248,22 +255,20 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
       const { createBranch } = await import('../../src/services/branch-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({
-          rows: [
-            {
-              id: 'new-branch',
-              site_id: 'site-1',
-              name: 'hotfix',
-              source_branch_id: 'main-branch',
-              source_checkpoint_id: 'checkpoint-1',
-              created_by_id: 'user-1',
-              created_by_type: 'user',
-            },
-          ],
-        })
-        .mockResolvedValueOnce({ rows: [] }) // structure copy
-        .mockResolvedValueOnce({ rows: [] }); // metadata copy
+      setupCheckpointBranchMocks(db, {
+        id: 'new-branch',
+        site_id: 'site-1',
+        name: 'hotfix',
+        description: null,
+        status: 'active',
+        is_main: false,
+        source_branch_id: 'main-branch',
+        source_checkpoint_id: 'checkpoint-1',
+        created_by_id: 'user-1',
+        created_by_type: 'user',
+        created_at: '2026-01-24T10:00:00.000Z',
+        updated_at: '2026-01-24T10:00:00.000Z',
+      });
 
       await createBranch({
         siteId: 'site-1',
@@ -279,7 +284,7 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
         (call) =>
           typeof call[0] === 'string' &&
           call[0].includes('checkpoint_document_metadata') &&
-          call[0].includes('SELECT')
+          call[0].includes('SELECT'),
       );
       expect(metadataCopyQuery).toBeDefined();
     });
@@ -297,22 +302,30 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
       const db = await import('../../src/db');
       const { createBranch } = await import('../../src/services/branch-service');
 
-      // Create branch
+      // Create branch with proper mocks
       vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
         .mockResolvedValueOnce({
           rows: [
             {
               id: 'feature-branch',
               site_id: 'site-1',
               name: 'feature',
+              description: null,
+              status: 'active',
+              is_main: false,
               source_branch_id: 'main-branch',
+              source_checkpoint_id: null,
               created_by_id: 'user-1',
               created_by_type: 'user',
+              created_at: '2026-01-24T10:00:00.000Z',
+              updated_at: '2026-01-24T10:00:00.000Z',
             },
           ],
         })
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [] });
+        .mockResolvedValueOnce({ rows: [] }) // structure copy
+        .mockResolvedValueOnce({ rows: [] }) // metadata copy
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       await createBranch({
         siteId: 'site-1',
@@ -328,12 +341,12 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
         (call) =>
           typeof call[0] === 'string' &&
           call[0].includes('INSERT') &&
-          call[0].includes('branch_structure_state')
+          call[0].includes('branch_structure_state'),
       );
 
       expect(copyCall).toBeDefined();
       // The query should substitute the new branch ID, not keep the source branch ID
-      expect(copyCall![1]).toContain('feature-branch');
+      expect(copyCall?.[1]).toContain('feature-branch');
     });
   });
 });

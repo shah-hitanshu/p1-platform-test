@@ -261,6 +261,7 @@ function isForeignKeyViolation(error: unknown): boolean {
 
 /**
  * Creates a new branch from a source branch.
+ * Copies structure state and document metadata from the source branch or checkpoint.
  *
  * @param params - Branch creation parameters
  * @returns The created branch
@@ -284,6 +285,8 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
   }
 
   try {
+    await query('BEGIN');
+
     const result = await query<BranchRow>(
       `INSERT INTO app.branches (
         site_id, name, description, status, is_main,
@@ -303,8 +306,64 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
       ],
     );
 
-    return mapRowToBranch(getFirstRow(result.rows));
+    const branch = mapRowToBranch(getFirstRow(result.rows));
+
+    // Copy structure state from source
+    if (params.sourceCheckpointId !== undefined) {
+      // Copy from checkpoint
+      await query(
+        `INSERT INTO app.branch_structure_state (
+          branch_id, structure_id, name, slug, description, structure_type,
+          structure_tree, metadata_schema, schema_enforcement
+        )
+        SELECT $1, cs.structure_id, cs.name, cs.slug, cs.description, cs.structure_type,
+               cs.structure_tree, cs.metadata_schema, cs.schema_enforcement
+        FROM app.checkpoint_structures cs
+        WHERE cs.checkpoint_id = $2`,
+        [branch.id, params.sourceCheckpointId],
+      );
+
+      // Copy document metadata from checkpoint
+      await query(
+        `INSERT INTO app.branch_document_metadata (
+          branch_id, document_id, structure_id, node_id, position, metadata
+        )
+        SELECT $1, cdm.document_id, cdm.structure_id, cdm.node_id, cdm.position, cdm.metadata
+        FROM app.checkpoint_document_metadata cdm
+        WHERE cdm.checkpoint_id = $2`,
+        [branch.id, params.sourceCheckpointId],
+      );
+    } else {
+      // Copy from current branch state
+      await query(
+        `INSERT INTO app.branch_structure_state (
+          branch_id, structure_id, name, slug, description, structure_type,
+          structure_tree, metadata_schema, schema_enforcement
+        )
+        SELECT $1, bss.structure_id, bss.name, bss.slug, bss.description, bss.structure_type,
+               bss.structure_tree, bss.metadata_schema, bss.schema_enforcement
+        FROM app.branch_structure_state bss
+        WHERE bss.branch_id = $2`,
+        [branch.id, params.sourceBranchId],
+      );
+
+      // Copy document metadata from source branch
+      await query(
+        `INSERT INTO app.branch_document_metadata (
+          branch_id, document_id, structure_id, node_id, position, metadata
+        )
+        SELECT $1, bdm.document_id, bdm.structure_id, bdm.node_id, bdm.position, bdm.metadata
+        FROM app.branch_document_metadata bdm
+        WHERE bdm.branch_id = $2`,
+        [branch.id, params.sourceBranchId],
+      );
+    }
+
+    await query('COMMIT');
+
+    return branch;
   } catch (error) {
+    await query('ROLLBACK');
     if (isUniqueConstraintViolation(error)) {
       throw new DuplicateBranchNameError(params.siteId, params.name);
     }

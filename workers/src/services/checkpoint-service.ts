@@ -99,6 +99,36 @@ interface VersionWithDocumentRow {
   document_path: string;
 }
 
+/**
+ * Database row for checkpoint structures.
+ */
+interface CheckpointStructureRow {
+  checkpoint_id: string;
+  structure_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  structure_type: string;
+  structure_tree: Record<string, unknown>[];
+  metadata_schema: Record<string, unknown>;
+  schema_enforcement: string;
+}
+
+/**
+ * Structure state captured in a checkpoint.
+ */
+export interface CheckpointStructure {
+  checkpointId: string;
+  structureId: string;
+  name: string;
+  slug: string;
+  description?: string;
+  structureType: string;
+  structureTree: Record<string, unknown>[];
+  metadataSchema: Record<string, unknown>;
+  schemaEnforcement: string;
+}
+
 // =============================================================================
 // Error Classes
 // =============================================================================
@@ -187,6 +217,23 @@ function mapRowToCheckpointDocumentVersion(row: VersionWithDocumentRow): Checkpo
     createdByType: row.created_by_type,
     createdAt: row.created_at,
     documentPath: row.document_path,
+  };
+}
+
+/**
+ * Maps a checkpoint structure row to CheckpointStructure domain object.
+ */
+function mapRowToCheckpointStructure(row: CheckpointStructureRow): CheckpointStructure {
+  return {
+    checkpointId: row.checkpoint_id,
+    structureId: row.structure_id,
+    name: row.name,
+    slug: row.slug,
+    description: row.description ?? undefined,
+    structureType: row.structure_type,
+    structureTree: row.structure_tree,
+    metadataSchema: row.metadata_schema,
+    schemaEnforcement: row.schema_enforcement,
   };
 }
 
@@ -287,6 +334,30 @@ export async function createCheckpoint(
         flatParams,
       );
     }
+
+    // Capture structure state from branch_structure_state
+    await query(
+      `INSERT INTO app.checkpoint_structures (
+        checkpoint_id, structure_id, name, slug, description, structure_type,
+        structure_tree, metadata_schema, schema_enforcement
+      )
+      SELECT $1, bss.structure_id, bss.name, bss.slug, bss.description, bss.structure_type,
+             bss.structure_tree, bss.metadata_schema, bss.schema_enforcement
+      FROM app.branch_structure_state bss
+      WHERE bss.branch_id = $2`,
+      [checkpoint.id, params.branchId],
+    );
+
+    // Capture document metadata from branch_document_metadata
+    await query(
+      `INSERT INTO app.checkpoint_document_metadata (
+        checkpoint_id, document_id, structure_id, node_id, position, metadata
+      )
+      SELECT $1, bdm.document_id, bdm.structure_id, bdm.node_id, bdm.position, bdm.metadata
+      FROM app.branch_document_metadata bdm
+      WHERE bdm.branch_id = $2`,
+      [checkpoint.id, params.branchId],
+    );
 
     await query('COMMIT');
 
@@ -413,6 +484,49 @@ export async function getDocumentAtCheckpoint(
 }
 
 /**
+ * Gets all structures captured in a checkpoint.
+ *
+ * @param checkpointId - The checkpoint ID
+ * @returns Array of checkpoint structures
+ */
+export async function getStructuresAtCheckpoint(
+  checkpointId: string,
+): Promise<CheckpointStructure[]> {
+  const result = await query<CheckpointStructureRow>(
+    `SELECT * FROM app.checkpoint_structures
+     WHERE checkpoint_id = $1
+     ORDER BY name`,
+    [checkpointId],
+  );
+
+  return result.rows.map(mapRowToCheckpointStructure);
+}
+
+/**
+ * Gets a specific structure's state at a checkpoint.
+ *
+ * @param checkpointId - The checkpoint ID
+ * @param structureId - The structure ID
+ * @returns The structure state or null if not found
+ */
+export async function getStructureAtCheckpoint(
+  checkpointId: string,
+  structureId: string,
+): Promise<CheckpointStructure | null> {
+  const result = await query<CheckpointStructureRow>(
+    `SELECT * FROM app.checkpoint_structures
+     WHERE checkpoint_id = $1 AND structure_id = $2`,
+    [checkpointId, structureId],
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return mapRowToCheckpointStructure(getFirstRow(result.rows));
+}
+
+/**
  * Reverts a branch to a checkpoint's state.
  * Creates new document versions with source='revert' and a new checkpoint.
  *
@@ -423,6 +537,11 @@ export async function getDocumentAtCheckpoint(
 export async function revertToCheckpoint(
   params: RevertToCheckpointParams,
 ): Promise<RevertToCheckpointResult> {
+  // Validate required fields
+  if (!params.createdById || params.createdById.trim() === '') {
+    throw new InvalidCheckpointParamsError('Created by ID is required');
+  }
+
   // Get the checkpoint
   const checkpoint = await getCheckpoint(params.checkpointId);
   if (!checkpoint) {
@@ -448,12 +567,52 @@ export async function revertToCheckpoint(
         doc.documentId,
         checkpoint.branchId,
         JSON.stringify(doc.snapshot),
-        doc.crdtState !== undefined && doc.crdtState !== '' ? Buffer.from(doc.crdtState, 'base64') : null,
+        doc.crdtState !== undefined && doc.crdtState !== '' ?
+          Buffer.from(doc.crdtState, 'base64') : null,
         params.createdById,
         params.createdByType,
       ],
     );
   }
+
+  // Get structures at the checkpoint
+  await getStructuresAtCheckpoint(params.checkpointId);
+
+  // Delete current structure state for the branch
+  await query(
+    'DELETE FROM app.branch_structure_state WHERE branch_id = $1',
+    [checkpoint.branchId],
+  );
+
+  // Restore structure state from checkpoint
+  await query(
+    `INSERT INTO app.branch_structure_state (
+      branch_id, structure_id, name, slug, description, structure_type,
+      structure_tree, metadata_schema, schema_enforcement
+    )
+    SELECT $1, cs.structure_id, cs.name, cs.slug, cs.description, cs.structure_type,
+           cs.structure_tree, cs.metadata_schema, cs.schema_enforcement
+    FROM app.checkpoint_structures cs
+    WHERE cs.checkpoint_id = $2`,
+    [checkpoint.branchId, params.checkpointId],
+  );
+
+  // Delete current document metadata for the branch
+  await query(
+    'DELETE FROM app.branch_document_metadata WHERE branch_id = $1',
+    [checkpoint.branchId],
+  );
+
+  // Restore document metadata from checkpoint
+  await query(
+    `INSERT INTO app.branch_document_metadata (
+      branch_id, document_id, structure_id, node_id, position, metadata
+    )
+    SELECT $1, cdm.document_id, cdm.structure_id, cdm.node_id, cdm.position, cdm.metadata
+    FROM app.checkpoint_document_metadata cdm
+    WHERE cdm.checkpoint_id = $2`,
+    [checkpoint.branchId, params.checkpointId],
+  );
 
   // Create a checkpoint documenting the revert
   const revertMessage = params.message ??

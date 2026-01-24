@@ -28,40 +28,27 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
       const { createCheckpoint } = await import('../../src/services/checkpoint-service');
       const db = await import('../../src/db');
 
-      // Mock checkpoint creation
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'checkpoint-1',
-            branch_id: 'branch-1',
-            name: 'v1.0',
-            checkpoint_type: 'manual',
-            created_by_id: 'user-1',
-            created_by_type: 'user',
-            created_at: '2026-01-24T10:00:00.000Z',
-          },
-        ],
-      });
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'checkpoint-1',
+              branch_id: 'branch-1',
+              name: 'v1.0',
+              checkpoint_type: 'manual',
+              created_by_id: 'user-1',
+              created_by_type: 'user',
+              created_at: '2026-01-24T10:00:00.000Z',
+            },
+          ],
+        })
+        .mockResolvedValueOnce({ rows: [] }) // document versions
+        .mockResolvedValueOnce({ rows: [] }) // structure capture
+        .mockResolvedValueOnce({ rows: [] }) // document metadata capture
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
-      // Mock document version capture (existing behavior)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
-      // Mock structure state capture
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            structure_id: 'struct-1',
-            name: 'Navigation',
-            slug: 'nav',
-            structure_type: 'hierarchy',
-            structure_tree: [{ id: 'node-1', name: 'Home' }],
-            metadata_schema: { type: 'object' },
-            schema_enforcement: 'warn',
-          },
-        ],
-      });
-
-      const checkpoint = await createCheckpoint({
+      const result = await createCheckpoint({
         branchId: 'branch-1',
         name: 'v1.0',
         message: 'Release checkpoint',
@@ -70,7 +57,7 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
         createdByType: 'user',
       });
 
-      expect(checkpoint.id).toBe('checkpoint-1');
+      expect(result.checkpoint.id).toBe('checkpoint-1');
 
       // Verify structure capture query was called
       const calls = vi.mocked(db.query).mock.calls;
@@ -78,7 +65,7 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
         (call) =>
           typeof call[0] === 'string' &&
           call[0].includes('checkpoint_structures') &&
-          call[0].includes('INSERT')
+          call[0].includes('INSERT'),
       );
       expect(structureCaptureCall).toBeDefined();
     });
@@ -87,8 +74,8 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
       const { createCheckpoint } = await import('../../src/services/checkpoint-service');
       const db = await import('../../src/db');
 
-      // Setup mocks
       vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
         .mockResolvedValueOnce({
           rows: [
             {
@@ -102,7 +89,9 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
           ],
         })
         .mockResolvedValueOnce({ rows: [] }) // document versions
-        .mockResolvedValueOnce({ rows: [] }); // structure capture
+        .mockResolvedValueOnce({ rows: [] }) // structure capture
+        .mockResolvedValueOnce({ rows: [] }) // document metadata capture
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       await createCheckpoint({
         branchId: 'branch-1',
@@ -117,7 +106,7 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
           typeof call[0] === 'string' &&
           call[0].includes('checkpoint_structures') &&
           call[0].includes('name') &&
-          call[0].includes('slug')
+          call[0].includes('slug'),
       );
       expect(insertCall).toBeDefined();
     });
@@ -204,9 +193,9 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
       const structure = await getStructureAtCheckpoint('checkpoint-1', 'struct-1');
 
       expect(structure).not.toBeNull();
-      expect(structure!.name).toBe('blogs');
-      expect(structure!.slug).toBe('blogs');
-      expect(structure!.structureTree).toHaveLength(2);
+      expect(structure?.name).toBe('blogs');
+      expect(structure?.slug).toBe('blogs');
+      expect(structure?.structureTree).toHaveLength(2);
     });
 
     it('should return null when structure not in checkpoint', async () => {
@@ -226,49 +215,76 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
   // ===========================================================================
 
   describe('revertToCheckpoint with structure restore', () => {
+    /**
+     * Helper to set up mocks for revertToCheckpoint.
+     * The function calls many queries in sequence.
+     */
+    function setupRevertMocks(db: { query: ReturnType<typeof vi.fn> }): void {
+      vi.mocked(db.query)
+        // getCheckpoint
+        .mockResolvedValueOnce({
+          rows: [{ id: 'checkpoint-1', branch_id: 'branch-1', checkpoint_type: 'manual' }],
+        })
+        // getDocumentsAtCheckpoint
+        .mockResolvedValueOnce({ rows: [] })
+        // getStructuresAtCheckpoint
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              checkpoint_id: 'checkpoint-1',
+              structure_id: 'struct-1',
+              name: 'blogs',
+              slug: 'blogs',
+              structure_type: 'collection',
+              structure_tree: [{ id: 'node-1' }],
+              metadata_schema: {},
+              schema_enforcement: 'warn',
+            },
+          ],
+        })
+        // delete current structures
+        .mockResolvedValueOnce({ rows: [] })
+        // restore structures
+        .mockResolvedValueOnce({ rows: [] })
+        // delete current metadata
+        .mockResolvedValueOnce({ rows: [] })
+        // restore metadata
+        .mockResolvedValueOnce({ rows: [] })
+        // createCheckpoint: BEGIN
+        .mockResolvedValueOnce({ rows: [] })
+        // createCheckpoint: INSERT checkpoint
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'revert-checkpoint',
+              branch_id: 'branch-1',
+              checkpoint_type: 'manual',
+              created_by_id: 'user-1',
+              created_by_type: 'user',
+              created_at: '2026-01-24T10:00:00.000Z',
+            },
+          ],
+        })
+        // createCheckpoint: SELECT document versions
+        .mockResolvedValueOnce({ rows: [] })
+        // createCheckpoint: structure capture
+        .mockResolvedValueOnce({ rows: [] })
+        // createCheckpoint: metadata capture
+        .mockResolvedValueOnce({ rows: [] })
+        // createCheckpoint: COMMIT
+        .mockResolvedValueOnce({ rows: [] });
+    }
+
     it('should restore structure identity from checkpoint', async () => {
       const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
       const db = await import('../../src/db');
 
-      // Mock getting checkpoint
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'checkpoint-1',
-            branch_id: 'branch-1',
-            checkpoint_type: 'manual',
-          },
-        ],
-      });
-
-      // Mock getting documents at checkpoint
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
-      // Mock getting structures at checkpoint
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            structure_id: 'struct-1',
-            name: 'blogs',
-            slug: 'blogs',
-            structure_type: 'collection',
-            structure_tree: [{ id: 'node-1' }],
-            metadata_schema: {},
-            schema_enforcement: 'warn',
-          },
-        ],
-      });
-
-      // Mock delete current structure state
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
-      // Mock restore structure state
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      setupRevertMocks(db);
 
       await revertToCheckpoint({
         checkpointId: 'checkpoint-1',
-        actorId: 'user-1',
-        actorType: 'user',
+        createdById: 'user-1',
+        createdByType: 'user',
       });
 
       // Verify structure restore query was called
@@ -277,7 +293,7 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
         (call) =>
           typeof call[0] === 'string' &&
           call[0].includes('branch_structure_state') &&
-          call[0].includes('INSERT')
+          call[0].includes('INSERT'),
       );
       expect(restoreCall).toBeDefined();
     });
@@ -290,31 +306,12 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
       // Checkpoint state: structure was named "blogs"
       // After revert: structure should be "blogs" again
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({
-          rows: [{ id: 'checkpoint-1', branch_id: 'branch-1', checkpoint_type: 'manual' }],
-        })
-        .mockResolvedValueOnce({ rows: [] }) // documents
-        .mockResolvedValueOnce({
-          rows: [
-            {
-              structure_id: 'struct-1',
-              name: 'blogs', // Original name at checkpoint
-              slug: 'blogs',
-              structure_type: 'collection',
-              structure_tree: [],
-              metadata_schema: {},
-              schema_enforcement: 'warn',
-            },
-          ],
-        })
-        .mockResolvedValueOnce({ rows: [] }) // delete current
-        .mockResolvedValueOnce({ rows: [] }); // insert from checkpoint
+      setupRevertMocks(db);
 
       await revertToCheckpoint({
         checkpointId: 'checkpoint-1',
-        actorId: 'user-1',
-        actorType: 'user',
+        createdById: 'user-1',
+        createdByType: 'user',
       });
 
       // The INSERT should include the checkpoint's name/slug values
@@ -322,7 +319,7 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
         (call) =>
           typeof call[0] === 'string' &&
           call[0].includes('INSERT') &&
-          call[0].includes('branch_structure_state')
+          call[0].includes('branch_structure_state'),
       );
       expect(insertCall).toBeDefined();
     });
@@ -331,21 +328,12 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
       const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({
-          rows: [{ id: 'checkpoint-1', branch_id: 'branch-1', checkpoint_type: 'manual' }],
-        })
-        .mockResolvedValueOnce({ rows: [] }) // documents
-        .mockResolvedValueOnce({
-          rows: [{ structure_id: 'struct-1', name: 'Nav', slug: 'nav' }],
-        })
-        .mockResolvedValueOnce({ rows: [] }) // DELETE
-        .mockResolvedValueOnce({ rows: [] }); // INSERT
+      setupRevertMocks(db);
 
       await revertToCheckpoint({
         checkpointId: 'checkpoint-1',
-        actorId: 'user-1',
-        actorType: 'user',
+        createdById: 'user-1',
+        createdByType: 'user',
       });
 
       // Verify DELETE was called before INSERT
@@ -354,13 +342,13 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
         (call) =>
           typeof call[0] === 'string' &&
           call[0].includes('DELETE') &&
-          call[0].includes('branch_structure_state')
+          call[0].includes('branch_structure_state'),
       );
       const insertIndex = calls.findIndex(
         (call) =>
           typeof call[0] === 'string' &&
           call[0].includes('INSERT') &&
-          call[0].includes('branch_structure_state')
+          call[0].includes('branch_structure_state'),
       );
 
       expect(deleteIndex).toBeLessThan(insertIndex);
@@ -377,6 +365,7 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
       const db = await import('../../src/db');
 
       vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
         .mockResolvedValueOnce({
           rows: [
             {
@@ -385,12 +374,14 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
               checkpoint_type: 'manual',
               created_by_id: 'user-1',
               created_by_type: 'user',
+              created_at: '2026-01-24T10:00:00.000Z',
             },
           ],
         })
         .mockResolvedValueOnce({ rows: [] }) // document versions
         .mockResolvedValueOnce({ rows: [] }) // structure state
-        .mockResolvedValueOnce({ rows: [] }); // document metadata
+        .mockResolvedValueOnce({ rows: [] }) // document metadata
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       await createCheckpoint({
         branchId: 'branch-1',
@@ -404,7 +395,7 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
         (call) =>
           typeof call[0] === 'string' &&
           call[0].includes('checkpoint_document_metadata') &&
-          call[0].includes('INSERT')
+          call[0].includes('INSERT'),
       );
       expect(metadataCall).toBeDefined();
     });
@@ -414,20 +405,50 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
       const db = await import('../../src/db');
 
       vi.mocked(db.query)
+        // getCheckpoint
         .mockResolvedValueOnce({
           rows: [{ id: 'checkpoint-1', branch_id: 'branch-1', checkpoint_type: 'manual' }],
         })
-        .mockResolvedValueOnce({ rows: [] }) // documents
-        .mockResolvedValueOnce({ rows: [] }) // structures
-        .mockResolvedValueOnce({ rows: [] }) // delete current structures
-        .mockResolvedValueOnce({ rows: [] }) // restore structures
-        .mockResolvedValueOnce({ rows: [] }) // delete current metadata
-        .mockResolvedValueOnce({ rows: [] }); // restore metadata
+        // getDocumentsAtCheckpoint
+        .mockResolvedValueOnce({ rows: [] })
+        // getStructuresAtCheckpoint
+        .mockResolvedValueOnce({ rows: [] })
+        // delete current structures
+        .mockResolvedValueOnce({ rows: [] })
+        // restore structures
+        .mockResolvedValueOnce({ rows: [] })
+        // delete current metadata
+        .mockResolvedValueOnce({ rows: [] })
+        // restore metadata
+        .mockResolvedValueOnce({ rows: [] })
+        // createCheckpoint: BEGIN
+        .mockResolvedValueOnce({ rows: [] })
+        // createCheckpoint: INSERT checkpoint
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'revert-checkpoint',
+              branch_id: 'branch-1',
+              checkpoint_type: 'manual',
+              created_by_id: 'user-1',
+              created_by_type: 'user',
+              created_at: '2026-01-24T10:00:00.000Z',
+            },
+          ],
+        })
+        // createCheckpoint: SELECT document versions
+        .mockResolvedValueOnce({ rows: [] })
+        // createCheckpoint: structure capture
+        .mockResolvedValueOnce({ rows: [] })
+        // createCheckpoint: metadata capture
+        .mockResolvedValueOnce({ rows: [] })
+        // createCheckpoint: COMMIT
+        .mockResolvedValueOnce({ rows: [] });
 
       await revertToCheckpoint({
         checkpointId: 'checkpoint-1',
-        actorId: 'user-1',
-        actorType: 'user',
+        createdById: 'user-1',
+        createdByType: 'user',
       });
 
       // Verify metadata restore
@@ -435,7 +456,7 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
         (call) =>
           typeof call[0] === 'string' &&
           call[0].includes('branch_document_metadata') &&
-          call[0].includes('INSERT')
+          call[0].includes('INSERT'),
       );
       expect(metadataRestoreCall).toBeDefined();
     });

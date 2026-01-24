@@ -69,12 +69,28 @@ describe('Phase 3.2: Branch Service', () => {
   }
 
   describe('createBranch', () => {
+    /**
+     * Helper to set up mocks for createBranch with transaction.
+     * The function uses BEGIN/COMMIT with structure and metadata copy.
+     */
+    function setupCreateBranchMocks(
+      db: { query: ReturnType<typeof vi.fn> },
+      branchRow: MockBranchRow,
+    ): void {
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [branchRow] }) // INSERT branch
+        .mockResolvedValueOnce({ rows: [] }) // structure copy
+        .mockResolvedValueOnce({ rows: [] }) // metadata copy
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    }
+
     it('should create a branch from a source branch', async () => {
       const { createBranch } = await import('../../src/services/branch-service');
       const db = await import('../../src/db');
 
       const mockRow = createMockBranchRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      setupCreateBranchMocks(db, mockRow);
 
       const result = await createBranch({
         siteId: 'site-uuid-456',
@@ -104,7 +120,7 @@ describe('Phase 3.2: Branch Service', () => {
       const mockRow = createMockBranchRow({
         source_checkpoint_id: 'checkpoint-uuid-123',
       });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      setupCreateBranchMocks(db, mockRow);
 
       const result = await createBranch({
         siteId: 'site-uuid-456',
@@ -122,10 +138,12 @@ describe('Phase 3.2: Branch Service', () => {
       const { createBranch, DuplicateBranchNameError } = await import('../../src/services/branch-service');
       const db = await import('../../src/db');
 
-      // Simulate unique constraint violation
+      // Simulate unique constraint violation during INSERT
       const error = new Error('duplicate key value violates unique constraint');
       (error as NodeJS.ErrnoException).code = '23505';
-      vi.mocked(db.query).mockRejectedValue(error);
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockRejectedValueOnce(error); // INSERT fails
 
       await expect(
         createBranch({
@@ -142,10 +160,12 @@ describe('Phase 3.2: Branch Service', () => {
       const { createBranch, SiteNotFoundError } = await import('../../src/services/branch-service');
       const db = await import('../../src/db');
 
-      // Simulate foreign key constraint violation
+      // Simulate foreign key constraint violation during INSERT
       const error = new Error('insert or update on table "branches" violates foreign key constraint');
       (error as NodeJS.ErrnoException).code = '23503';
-      vi.mocked(db.query).mockRejectedValue(error);
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockRejectedValueOnce(error); // INSERT fails
 
       await expect(
         createBranch({
@@ -205,7 +225,7 @@ describe('Phase 3.2: Branch Service', () => {
       const db = await import('../../src/db');
 
       const mockRow = createMockBranchRow({ status: 'active' });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      setupCreateBranchMocks(db, mockRow);
 
       const result = await createBranch({
         siteId: 'site-uuid-456',
@@ -223,7 +243,7 @@ describe('Phase 3.2: Branch Service', () => {
       const db = await import('../../src/db');
 
       const mockRow = createMockBranchRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      setupCreateBranchMocks(db, mockRow);
 
       await createBranch({
         siteId: 'site-uuid-456',
@@ -247,7 +267,7 @@ describe('Phase 3.2: Branch Service', () => {
         created_by_id: 'agent-uuid-123',
         created_by_type: 'agent',
       });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      setupCreateBranchMocks(db, mockRow);
 
       const result = await createBranch({
         siteId: 'site-uuid-456',
