@@ -177,6 +177,8 @@ test.describe('Site Deletion', () => {
     );
     await page.locator('.branches-section .submit-btn').click();
     await branchResponsePromise;
+    // Wait for form to close and branch to appear
+    await expect(page.locator('.branches-section .create-form')).not.toBeVisible({ timeout: 10000 });
     await expect(page.locator('tr:has-text("feature-branch")')).toBeVisible({ timeout: 10000 });
 
     // Go back to sites list
@@ -198,6 +200,61 @@ test.describe('Site Deletion', () => {
     // Site should still exist after closing modal
     await page.locator('.cancel-btn').click();
     await expect(page.locator('.sites-table')).toContainText(siteName);
+  });
+
+  test('should successfully delete site after archiving non-main branches', async ({ page }) => {
+    const siteName = uniqueName('Archive Delete');
+    const pantheonId = uniqueName('archivedelete');
+
+    // Create a site
+    await createSite(page, siteName, pantheonId);
+
+    // Navigate to site to create an additional branch
+    const siteRow = page.locator(`tr:has-text("${siteName}")`);
+    await siteRow.locator('.view-link').click();
+    await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+$/);
+
+    // Create a feature branch
+    await page.locator('.branches-section .create-btn').click();
+    await page.locator('.branches-section .form-input').fill('feature-branch');
+    const branchResponsePromise = page.waitForResponse(resp =>
+      resp.url().includes('/branches') && resp.request().method() === 'POST'
+    );
+    await page.locator('.branches-section .submit-btn').click();
+    await branchResponsePromise;
+    await expect(page.locator('tr:has-text("feature-branch")')).toBeVisible({ timeout: 10000 });
+
+    // Archive the feature branch
+    const featureRow = page.locator('tr:has-text("feature-branch")');
+    const archiveResponsePromise = page.waitForResponse(resp =>
+      resp.url().includes('/branches/') && resp.request().method() === 'PATCH'
+    );
+    await featureRow.locator('.archive-link').click();
+    await archiveResponsePromise;
+
+    // Verify branch is now archived
+    await expect(featureRow.locator('.status-badge')).toContainText('archived');
+
+    // Go back to sites list
+    await page.click('.nav-link >> text=Sites');
+    await expect(page).toHaveURL('/sites');
+
+    // Delete the site (should work now since branch is archived)
+    const siteRow2 = page.locator(`tr:has-text("${siteName}")`);
+    await siteRow2.locator('.delete-link').click();
+    await page.locator('.confirm-input').fill(siteName);
+
+    const deleteResponsePromise = page.waitForResponse(resp =>
+      resp.url().includes('/api/sites/') && resp.request().method() === 'DELETE'
+    );
+    await page.locator('.modal-content .delete-btn').click();
+    await deleteResponsePromise;
+
+    // Modal should close
+    await expect(page.locator('.modal-overlay')).not.toBeVisible({ timeout: 10000 });
+
+    // Site should be removed from list
+    await expect(page.locator('.sites-table')).not.toContainText(siteName);
   });
 
   test('should close modal when clicking cancel', async ({ page }) => {

@@ -318,6 +318,20 @@ export async function deleteSite(siteId: string): Promise<boolean> {
       [branchIds],
     );
 
+    // Clear source_checkpoint_id on branches before deleting checkpoints
+    // (branches.source_checkpoint_id references checkpoints)
+    await query(
+      'UPDATE app.branches SET source_checkpoint_id = NULL WHERE site_id = $1',
+      [siteId],
+    );
+
+    // Clear base_checkpoint_id on merge_requests before deleting checkpoints
+    // (merge_requests.base_checkpoint_id references checkpoints)
+    await query(
+      'UPDATE app.merge_requests SET base_checkpoint_id = NULL WHERE site_id = $1',
+      [siteId],
+    );
+
     // Delete checkpoint related data for checkpoints on these branches
     await query(
       `DELETE FROM app.checkpoint_documents
@@ -356,15 +370,30 @@ export async function deleteSite(siteId: string): Promise<boolean> {
     );
   }
 
-  // Delete documents
-  await query(
-    'DELETE FROM app.documents WHERE site_id = $1',
+  // Get all structure IDs for this site
+  const structureResult = await query<{ id: string }>(
+    'SELECT id FROM app.site_structures WHERE site_id = $1',
     [siteId],
   );
+  const structureIds = structureResult.rows.map((r) => r.id);
+
+  if (structureIds.length > 0) {
+    // Delete structure nodes (they reference both site_structures and documents)
+    await query(
+      'DELETE FROM app.structure_nodes WHERE structure_id = ANY($1::uuid[])',
+      [structureIds],
+    );
+  }
 
   // Delete site structures
   await query(
     'DELETE FROM app.site_structures WHERE site_id = $1',
+    [siteId],
+  );
+
+  // Delete documents
+  await query(
+    'DELETE FROM app.documents WHERE site_id = $1',
     [siteId],
   );
 
