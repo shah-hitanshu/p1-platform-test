@@ -1396,6 +1396,15 @@ The document version API is designed to work with any editor:
 - **Root cause:** SQL query used `NOT (snapshot->>'_deleted' = 'true' AND ...)`. When `snapshot->>'_deleted'` is NULL (normal for non-tombstoned documents), `NULL = 'true'` evaluates to NULL in SQL, making `NOT (NULL AND true)` also NULL, causing EXISTS to find no rows.
 - **Fix:** Simplified logic to check only the latest version and use `COALESCE(snapshot->>'_deleted', '') != 'true'` to handle NULL properly.
 
+##### Manual Verification: Branch Isolation
+Verified that Git-like branch isolation works correctly:
+1. Created site "Branch Isolation Demo" with main branch
+2. Created document `pages/home` on main branch
+3. Edited document content: `{"title": "Main Branch Home Page", "content": "This is the original content on main branch"}`
+4. Created feature branch `feature-homepage-update` from main
+5. Edited same document on feature branch: `{"title": "Feature Branch Home Page", "content": "This is UPDATED content on the feature branch", "newField": "Only on feature branch"}`
+6. **Verification:** Main branch content unchanged; feature branch shows different content
+
 #### Phase 8.12: UX Writing Style Compliance
 
 **Status:** Complete
