@@ -1735,6 +1735,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 8.17 | E2E test fixes: UUID-based user IDs, delete modal bug fix, site/branch CRUD tests |
 | 2026-01-24 | 8.16 | Merge Request UI: list, create, detail pages; conflict display; preview panel; resolution UI; E2E tests |
 | 2026-01-24 | 8.15 | Document content editing: version API endpoints, frontend JSON editor, version history, SQL NULL fix |
 | 2026-01-24 | 8.14 | Cloudflare Hyperdrive integration for PostgreSQL connection pooling |
@@ -1828,4 +1829,4 @@ Template for future decisions:
 
 ---
 
-*Last updated: 2026-01-24 (Phase 8.16 - Merge Request UI)*
+*Last updated: 2026-01-24 (Phase 8.17 - E2E Test Fixes)*
