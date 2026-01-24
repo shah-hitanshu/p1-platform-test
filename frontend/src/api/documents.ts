@@ -181,3 +181,62 @@ export async function deleteDocumentOnBranch(
     `/api/sites/${siteId}/branches/${branchId}/documents/${documentId}`
   );
 }
+
+// =============================================================================
+// Document Version Operations
+// =============================================================================
+
+interface DocumentVersionsResponse {
+  versions: DocumentVersion[];
+}
+
+interface CreateDocumentVersionParams {
+  snapshot: Record<string, unknown>;
+}
+
+/**
+ * Export DocumentVersion type for use in other components
+ */
+export type { DocumentVersion };
+
+/**
+ * Get the latest version of a document on a branch
+ */
+export async function getLatestDocumentVersion(
+  siteId: string,
+  branchId: string,
+  documentId: string
+): Promise<DocumentVersion> {
+  return apiGet<DocumentVersion>(
+    `/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/versions/latest`
+  );
+}
+
+/**
+ * List all versions of a document on a branch
+ */
+export async function listDocumentVersions(
+  siteId: string,
+  branchId: string,
+  documentId: string
+): Promise<DocumentVersion[]> {
+  const response = await apiGet<DocumentVersionsResponse>(
+    `/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/versions`
+  );
+  return response.versions;
+}
+
+/**
+ * Create a new version of a document on a branch
+ */
+export async function createDocumentVersion(
+  siteId: string,
+  branchId: string,
+  documentId: string,
+  params: CreateDocumentVersionParams
+): Promise<DocumentVersion> {
+  return apiPost<DocumentVersion>(
+    `/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/versions`,
+    params
+  );
+}
