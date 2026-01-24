@@ -365,7 +365,7 @@ export function BranchDetailPage() {
                   {documents.map((doc) => (
                     <tr key={doc.id} className="clickable-row">
                       <td className="doc-path">
-                        <Link to={`/sites/${siteId}/documents/${doc.id}`} className="doc-link">
+                        <Link to={`/sites/${siteId}/branches/${branchId}/documents/${doc.id}`} className="doc-link">
                           <code>{doc.path}</code>
                         </Link>
                       </td>

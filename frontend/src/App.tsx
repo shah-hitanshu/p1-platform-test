@@ -78,6 +78,7 @@ function App() {
           <Route path="/sites" element={<SitesPage />} />
           <Route path="/sites/:siteId" element={<SiteDetailPage />} />
           <Route path="/sites/:siteId/branches/:branchId" element={<BranchDetailPage />} />
+          <Route path="/sites/:siteId/branches/:branchId/documents/:documentId" element={<DocumentPage />} />
           <Route path="/sites/:siteId/documents/:documentId" element={<DocumentPage />} />
         </Route>
 
