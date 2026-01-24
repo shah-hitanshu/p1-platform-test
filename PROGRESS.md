@@ -959,14 +959,15 @@ Deliverables:
   - API endpoints reference
 - [x] Sites Page (`frontend/src/pages/SitesPage.tsx`)
   - Sites list table
-  - Create site form
+  - Create site form with name and pantheonSiteId fields
+  - Error feedback display for create failures
 - [x] App Router (`frontend/src/App.tsx`)
   - Protected routes with auth check
   - Public login route
-- [ ] Site Detail Page (deferred)
-- [ ] Branch Detail Page (deferred)
-- [ ] Document Page (deferred)
-- [ ] Checkpoints Page (deferred)
+- [ ] Site Detail Page - Single site with branches list
+- [ ] Branch Detail Page - Branch with documents list
+- [ ] Document Page - Document viewer/editor
+- [ ] Checkpoints Page - Checkpoints list
 
 #### Phase 8.5: E2E Testing
 
@@ -997,6 +998,23 @@ Deliverables:
   - `pnpm test:e2e:ui` - Run with Playwright UI
   - `pnpm test:e2e:headed` - Run in headed mode
 - [ ] CI integration (deferred)
+
+#### Phase 8.6: Bug Fixes
+
+**Status:** Complete
+
+##### Deliverables:
+- [x] Cloudflare Workers Database I/O Fix (`workers/src/db.ts`)
+  - **Commit:** `36f4e3b`
+  - **Issue:** "Cannot perform I/O on behalf of a different request" error
+  - **Root cause:** Global connection caching violated Workers' request isolation model
+  - **Fix:** Create fresh database connection per request instead of global caching
+  - Connection settings optimized for Workers: `max: 1`, `idle_timeout: 20`, `connect_timeout: 10`
+- [x] Create Site Form Fix (`frontend/src/pages/SitesPage.tsx`)
+  - **Commit:** `be5198e`
+  - **Issue:** Create Site button did not create site or show feedback
+  - **Root cause:** Backend requires `pantheonSiteId` but form only sent `name`
+  - **Fix:** Added `pantheonSiteId` input field and error display for create failures
 
 ---
 
@@ -1119,7 +1137,8 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
-| 2026-01-24 | 8.1-8.4 | Frontend API Explorer: project setup, API client, auth UI, dashboard/sites pages |
+| 2026-01-24 | 8.6 | Bug fixes: Cloudflare Workers DB I/O error, Create Site form missing field |
+| 2026-01-24 | 8.1-8.5 | Frontend API Explorer: project setup, API client, auth UI, dashboard/sites pages, E2E tests |
 | 2026-01-24 | 7.3 | Route wiring: all API routes wired with CORS and auth middleware (971 tests) |
 | 2026-01-24 | 7.1.1b | Security hardening: pagination validation, path traversal, LIKE escaping, size limits (947 tests) |
 | 2026-01-24 | 7.1.1b | Resource Management APIs complete: Site, Document, Structure, Node, Metadata (916 tests) |
