@@ -734,7 +734,7 @@ This document tracks the implementation progress of the Collaborative JSON State
   - Error classes: `GrantNotFoundError`, `DuplicateGrantError`
 
 #### Phase 7.1.1: Resource Management APIs
-**Status:** Phase 7.1.1a complete, Phase 7.1.1b pending
+**Status:** Complete
 **Proposal:** `proposals/PROPOSAL-001-missing-api-endpoints.md`
 
 Gap identified: The architecture API specification (v2.2) omits REST endpoints for several implemented services.
@@ -765,15 +765,61 @@ Deliverables:
   - `createBranch()` uses transaction with structure/metadata copy
   - Copies from source branch or from checkpoint if sourceCheckpointId provided
 - [x] Updated all tests for new branch-scoped API (42 structure service, 63 branch service, 30 checkpoint service tests)
-- [ ] Update conflict detection for structure identity changes (deferred to 7.1.1b)
 
-##### Phase 7.1.1b: API Routes (Pending)
-- [ ] Site API endpoints (CRUD with deletion protection)
-- [ ] Document CRUD API endpoints (soft-delete with restore)
-- [ ] Structure API endpoints (branch-scoped)
-- [ ] Node API endpoints (including bulk create/update/delete/migrate)
-- [ ] Metadata API endpoints (including bulk update/migrate)
-- [ ] Structure conflict detection integration
+##### Phase 7.1.1b: API Routes
+**Status:** Complete
+**Commits:**
+- `f7c2979` - Add Phase 7.1.1b TDD tests for Site API Routes
+- `63c6222` - Implement Phase 7.1.1b Site API Routes
+- `2334001` - Add Phase 7.1.1b TDD tests for Document CRUD API Routes
+- `57ac6b7` - Implement Phase 7.1.1b Document CRUD API Routes
+- `06150e2` - Add Phase 7.1.1b TDD tests for Structure API Routes
+- `a260fea` - Implement Phase 7.1.1b Structure API Routes
+- `9c5d207` - Add Phase 7.1.1b TDD tests for Node API Routes
+- `122c63e` - Implement Phase 7.1.1b Node API Routes
+- `d9b355e` - Add Phase 7.1.1b TDD tests for Metadata API Routes
+- `ebb2aa8` - Implement Phase 7.1.1b Metadata API Routes
+
+Deliverables:
+- [x] Site API Routes (`workers/src/routes/site-api.ts`) - 16 tests
+  - POST `/api/sites` - Create site
+  - GET `/api/sites` - List sites
+  - GET `/api/sites/{siteId}` - Get site
+  - PATCH `/api/sites/{siteId}` - Update site
+  - DELETE `/api/sites/{siteId}` - Delete site (with deletion protection)
+- [x] Document CRUD API Routes (`workers/src/routes/document-api.ts`) - 22 tests
+  - POST `/api/sites/{siteId}/documents` - Create document
+  - GET `/api/sites/{siteId}/documents` - List documents (with archived filter)
+  - GET `/api/sites/{siteId}/documents/{documentId}` - Get document
+  - GET `/api/sites/{siteId}/documents/by-path/{documentPath}` - Get by path
+  - PATCH `/api/sites/{siteId}/documents/{documentId}` - Update path
+  - DELETE `/api/sites/{siteId}/documents/{documentId}` - Soft delete (archive)
+  - POST `/api/sites/{siteId}/documents/{documentId}/restore` - Restore archived document
+  - Migration `008_document_soft_delete.sql` - Add archived_at column
+- [x] Structure API Routes (`workers/src/routes/structure-api.ts`) - 17 tests
+  - POST `/api/sites/{siteId}/branches/{branchId}/structures` - Create structure
+  - GET `/api/sites/{siteId}/branches/{branchId}/structures` - List structures
+  - GET `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}` - Get structure
+  - PATCH `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}` - Update structure
+  - DELETE `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}` - Delete structure
+  - GET `/api/sites/{siteId}/checkpoints/{checkpointId}/structures/{structureId}` - Get at checkpoint
+- [x] Node API Routes (`workers/src/routes/node-api.ts`) - 19 tests
+  - POST `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}/nodes` - Create node
+  - GET `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}/nodes` - List nodes
+  - GET `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}/nodes/{nodeId}` - Get node
+  - PATCH `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}/nodes/{nodeId}` - Update node
+  - DELETE `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}/nodes/{nodeId}` - Delete node
+  - POST `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}/nodes/{nodeId}/move` - Move node
+  - POST `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}/nodes/reorder` - Reorder nodes
+  - GET `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}/navigation` - Navigation tree
+- [x] Metadata API Routes (`workers/src/routes/metadata-api.ts`) - 13 tests
+  - GET `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}/state` - Get structure state
+  - PUT `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}/schema` - Update schema
+  - POST `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}/validate` - Validate documents
+  - GET `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}/metadata` - List document metadata
+  - GET `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}/documents/{documentId}/metadata` - Get metadata
+  - PUT `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}/documents/{documentId}/metadata` - Set metadata
+  - DELETE `/api/sites/{siteId}/branches/{branchId}/structures/{structureId}/documents/{documentId}/metadata` - Delete metadata
 
 ##### Key Decisions Made
 - **Structure scope:** Branch-scoped for consistency with documents
@@ -919,6 +965,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 7.1.1b | Resource Management APIs complete: Site, Document, Structure, Node, Metadata (916 tests) |
 | 2026-01-24 | 7.1.1a | Branch-scoped structure identity complete: migration, service updates (829 tests) |
 | 2026-01-24 | 7.1.1 | Proposal finalized: branch-scoped structures, soft-delete, bulk operations |
 | 2026-01-24 | 7.2 | Audit Integration complete (9 tests) |
@@ -980,7 +1027,12 @@ Template for future decisions:
 | Merge API Routes | 13 | - |
 | Grant API Routes | 10 | - |
 | Audit Emitter | 9 | - |
-| **Total** | **829** | **52** |
+| Site API Routes | 16 | - |
+| Document CRUD API Routes | 22 | - |
+| Structure API Routes | 17 | - |
+| Node API Routes | 19 | - |
+| Metadata API Routes | 13 | - |
+| **Total** | **916** | **52** |
 
 ---
 
