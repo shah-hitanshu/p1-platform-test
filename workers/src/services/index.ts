@@ -217,3 +217,38 @@ export type {
   ExecuteMergeWithResolutionResult,
   MergePreview,
 } from './merge-execution-service';
+
+// Structure Service
+export {
+  createStructure,
+  getStructure,
+  getStructureBySlug,
+  listStructures,
+  updateStructure,
+  deleteStructure,
+  createNode,
+  getNode,
+  listNodes,
+  updateNode,
+  deleteNode,
+  moveNode,
+  reorderNodes,
+  buildNavigationTree,
+  // Note: SiteNotFoundError is already exported from document-service
+  StructureNotFoundError,
+  NodeNotFoundError,
+  DuplicateStructureSlugError,
+  DuplicateNodeSlugError,
+  CircularReferenceError,
+} from './structure-service';
+
+export type {
+  CreateStructureParams,
+  UpdateStructureParams,
+  ListStructuresOptions,
+  CreateNodeParams,
+  UpdateNodeParams,
+  ListNodesOptions,
+  MoveNodeParams,
+  NavigationTreeNode,
+} from './structure-service';

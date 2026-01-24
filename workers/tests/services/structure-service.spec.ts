@@ -28,17 +28,19 @@ describe('Phase 6.1: Structure Service', () => {
       const { createStructure } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'struct-1',
-          site_id: 'site-1',
-          name: 'Main Navigation',
-          slug: 'main-nav',
-          description: 'Primary site navigation',
-          structure_type: 'hierarchy',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'struct-1',
+            site_id: 'site-1',
+            name: 'Main Navigation',
+            slug: 'main-nav',
+            description: 'Primary site navigation',
+            structure_type: 'hierarchy',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const structure = await createStructure({
         siteId: 'site-1',
@@ -58,16 +60,18 @@ describe('Phase 6.1: Structure Service', () => {
       const { createStructure } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'struct-2',
-          site_id: 'site-1',
-          name: 'Blog Posts',
-          slug: 'blog',
-          structure_type: 'collection',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'struct-2',
+            site_id: 'site-1',
+            name: 'Blog Posts',
+            slug: 'blog',
+            structure_type: 'collection',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const structure = await createStructure({
         siteId: 'site-1',
@@ -125,17 +129,19 @@ describe('Phase 6.1: Structure Service', () => {
       const { getStructure } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'struct-1',
-          site_id: 'site-1',
-          name: 'Main Navigation',
-          slug: 'main-nav',
-          description: 'Primary navigation',
-          structure_type: 'hierarchy',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'struct-1',
+            site_id: 'site-1',
+            name: 'Main Navigation',
+            slug: 'main-nav',
+            description: 'Primary navigation',
+            structure_type: 'hierarchy',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const structure = await getStructure('struct-1');
 
@@ -148,7 +154,7 @@ describe('Phase 6.1: Structure Service', () => {
       const { getStructure } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([]);
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
       const structure = await getStructure('nonexistent');
 
@@ -161,16 +167,18 @@ describe('Phase 6.1: Structure Service', () => {
       const { getStructureBySlug } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'struct-1',
-          site_id: 'site-1',
-          name: 'Main Navigation',
-          slug: 'main-nav',
-          structure_type: 'hierarchy',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'struct-1',
+            site_id: 'site-1',
+            name: 'Main Navigation',
+            slug: 'main-nav',
+            structure_type: 'hierarchy',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const structure = await getStructureBySlug('site-1', 'main-nav');
 
@@ -184,24 +192,26 @@ describe('Phase 6.1: Structure Service', () => {
       const { listStructures } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'struct-1',
-          site_id: 'site-1',
-          name: 'Main Navigation',
-          slug: 'main-nav',
-          structure_type: 'hierarchy',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-        {
-          id: 'struct-2',
-          site_id: 'site-1',
-          name: 'Blog',
-          slug: 'blog',
-          structure_type: 'collection',
-          created_at: '2026-01-24T11:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'struct-1',
+            site_id: 'site-1',
+            name: 'Main Navigation',
+            slug: 'main-nav',
+            structure_type: 'hierarchy',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+          {
+            id: 'struct-2',
+            site_id: 'site-1',
+            name: 'Blog',
+            slug: 'blog',
+            structure_type: 'collection',
+            created_at: '2026-01-24T11:00:00.000Z',
+          },
+        ],
+      });
 
       const structures = await listStructures({ siteId: 'site-1' });
 
@@ -214,16 +224,18 @@ describe('Phase 6.1: Structure Service', () => {
       const { listStructures } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'struct-1',
-          site_id: 'site-1',
-          name: 'Main Navigation',
-          slug: 'main-nav',
-          structure_type: 'hierarchy',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'struct-1',
+            site_id: 'site-1',
+            name: 'Main Navigation',
+            slug: 'main-nav',
+            structure_type: 'hierarchy',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const structures = await listStructures({
         siteId: 'site-1',
@@ -243,17 +255,19 @@ describe('Phase 6.1: Structure Service', () => {
       const { updateStructure } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'struct-1',
-          site_id: 'site-1',
-          name: 'Updated Navigation',
-          slug: 'main-nav',
-          description: 'Updated description',
-          structure_type: 'hierarchy',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'struct-1',
+            site_id: 'site-1',
+            name: 'Updated Navigation',
+            slug: 'main-nav',
+            description: 'Updated description',
+            structure_type: 'hierarchy',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const structure = await updateStructure('struct-1', {
         name: 'Updated Navigation',
@@ -270,7 +284,7 @@ describe('Phase 6.1: Structure Service', () => {
       );
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([]);
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
       await expect(
         updateStructure('nonexistent', { name: 'Updated' }),
@@ -283,7 +297,7 @@ describe('Phase 6.1: Structure Service', () => {
       const { deleteStructure } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([{ id: 'struct-1' }]);
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ id: 'struct-1' }] });
 
       await deleteStructure('struct-1');
 
@@ -299,7 +313,7 @@ describe('Phase 6.1: Structure Service', () => {
       );
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([]);
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
       await expect(deleteStructure('nonexistent')).rejects.toThrow(StructureNotFoundError);
     });
@@ -314,20 +328,22 @@ describe('Phase 6.1: Structure Service', () => {
       const { createNode } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'node-1',
-          structure_id: 'struct-1',
-          parent_node_id: null,
-          position: 0,
-          name: 'Products',
-          slug: 'products',
-          node_type: 'section',
-          document_id: null,
-          external_url: null,
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-1',
+            structure_id: 'struct-1',
+            parent_node_id: null,
+            position: 0,
+            name: 'Products',
+            slug: 'products',
+            node_type: 'section',
+            document_id: null,
+            external_url: null,
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const node = await createNode({
         structureId: 'struct-1',
@@ -346,20 +362,22 @@ describe('Phase 6.1: Structure Service', () => {
       const { createNode } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'node-2',
-          structure_id: 'struct-1',
-          parent_node_id: 'node-1',
-          position: 0,
-          name: 'Product Overview',
-          slug: 'overview',
-          node_type: 'document',
-          document_id: 'doc-1',
-          external_url: null,
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-2',
+            structure_id: 'struct-1',
+            parent_node_id: 'node-1',
+            position: 0,
+            name: 'Product Overview',
+            slug: 'overview',
+            node_type: 'document',
+            document_id: 'doc-1',
+            external_url: null,
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const node = await createNode({
         structureId: 'struct-1',
@@ -380,20 +398,22 @@ describe('Phase 6.1: Structure Service', () => {
       const { createNode } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'node-3',
-          structure_id: 'struct-1',
-          parent_node_id: null,
-          position: 1,
-          name: 'External Resources',
-          slug: 'external',
-          node_type: 'external',
-          document_id: null,
-          external_url: 'https://example.com',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-3',
+            structure_id: 'struct-1',
+            parent_node_id: null,
+            position: 1,
+            name: 'External Resources',
+            slug: 'external',
+            node_type: 'external',
+            document_id: null,
+            external_url: 'https://example.com',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const node = await createNode({
         structureId: 'struct-1',
@@ -456,20 +476,22 @@ describe('Phase 6.1: Structure Service', () => {
       const { getNode } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'node-1',
-          structure_id: 'struct-1',
-          parent_node_id: null,
-          position: 0,
-          name: 'Products',
-          slug: 'products',
-          node_type: 'section',
-          document_id: null,
-          external_url: null,
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-1',
+            structure_id: 'struct-1',
+            parent_node_id: null,
+            position: 0,
+            name: 'Products',
+            slug: 'products',
+            node_type: 'section',
+            document_id: null,
+            external_url: null,
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const node = await getNode('node-1');
 
@@ -482,7 +504,7 @@ describe('Phase 6.1: Structure Service', () => {
       const { getNode } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([]);
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
       const node = await getNode('nonexistent');
 
@@ -495,29 +517,31 @@ describe('Phase 6.1: Structure Service', () => {
       const { listNodes } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'node-1',
-          structure_id: 'struct-1',
-          parent_node_id: null,
-          position: 0,
-          name: 'Products',
-          slug: 'products',
-          node_type: 'section',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-        {
-          id: 'node-2',
-          structure_id: 'struct-1',
-          parent_node_id: 'node-1',
-          position: 0,
-          name: 'Overview',
-          slug: 'overview',
-          node_type: 'document',
-          document_id: 'doc-1',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-1',
+            structure_id: 'struct-1',
+            parent_node_id: null,
+            position: 0,
+            name: 'Products',
+            slug: 'products',
+            node_type: 'section',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+          {
+            id: 'node-2',
+            structure_id: 'struct-1',
+            parent_node_id: 'node-1',
+            position: 0,
+            name: 'Overview',
+            slug: 'overview',
+            node_type: 'document',
+            document_id: 'doc-1',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const nodes = await listNodes({ structureId: 'struct-1' });
 
@@ -528,18 +552,20 @@ describe('Phase 6.1: Structure Service', () => {
       const { listNodes } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'node-2',
-          structure_id: 'struct-1',
-          parent_node_id: 'node-1',
-          position: 0,
-          name: 'Overview',
-          slug: 'overview',
-          node_type: 'document',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-2',
+            structure_id: 'struct-1',
+            parent_node_id: 'node-1',
+            position: 0,
+            name: 'Overview',
+            slug: 'overview',
+            node_type: 'document',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const nodes = await listNodes({
         structureId: 'struct-1',
@@ -554,18 +580,20 @@ describe('Phase 6.1: Structure Service', () => {
       const { listNodes } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'node-1',
-          structure_id: 'struct-1',
-          parent_node_id: null,
-          position: 0,
-          name: 'Products',
-          slug: 'products',
-          node_type: 'section',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-1',
+            structure_id: 'struct-1',
+            parent_node_id: null,
+            position: 0,
+            name: 'Products',
+            slug: 'products',
+            node_type: 'section',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const nodes = await listNodes({
         structureId: 'struct-1',
@@ -582,18 +610,20 @@ describe('Phase 6.1: Structure Service', () => {
       const { updateNode } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'node-1',
-          structure_id: 'struct-1',
-          parent_node_id: null,
-          position: 0,
-          name: 'Updated Products',
-          slug: 'updated-products',
-          node_type: 'section',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-1',
+            structure_id: 'struct-1',
+            parent_node_id: null,
+            position: 0,
+            name: 'Updated Products',
+            slug: 'updated-products',
+            node_type: 'section',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const node = await updateNode('node-1', {
         name: 'Updated Products',
@@ -608,19 +638,21 @@ describe('Phase 6.1: Structure Service', () => {
       const { updateNode } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'node-2',
-          structure_id: 'struct-1',
-          parent_node_id: null,
-          position: 0,
-          name: 'Document Node',
-          slug: 'doc-node',
-          node_type: 'document',
-          document_id: 'doc-2',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-2',
+            structure_id: 'struct-1',
+            parent_node_id: null,
+            position: 0,
+            name: 'Document Node',
+            slug: 'doc-node',
+            node_type: 'document',
+            document_id: 'doc-2',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const node = await updateNode('node-2', {
         documentId: 'doc-2',
@@ -635,7 +667,7 @@ describe('Phase 6.1: Structure Service', () => {
       );
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([]);
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
       await expect(
         updateNode('nonexistent', { name: 'Updated' }),
@@ -648,7 +680,7 @@ describe('Phase 6.1: Structure Service', () => {
       const { deleteNode } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([{ id: 'node-1' }]);
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ id: 'node-1' }] });
 
       await deleteNode('node-1');
 
@@ -664,7 +696,7 @@ describe('Phase 6.1: Structure Service', () => {
       );
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([]);
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
       await expect(deleteNode('nonexistent')).rejects.toThrow(NodeNotFoundError);
     });
@@ -679,18 +711,40 @@ describe('Phase 6.1: Structure Service', () => {
       const { moveNode } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'node-2',
-          structure_id: 'struct-1',
-          parent_node_id: 'node-3',
-          position: 0,
-          name: 'Moved Node',
-          slug: 'moved',
-          node_type: 'section',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      // First query: getNode to check existence
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-2',
+            structure_id: 'struct-1',
+            parent_node_id: 'node-1',
+            position: 0,
+            name: 'Moved Node',
+            slug: 'moved',
+            node_type: 'section',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
+
+      // Second query: ancestry check (no cycle found)
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      // Third query: update node
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-2',
+            structure_id: 'struct-1',
+            parent_node_id: 'node-3',
+            position: 0,
+            name: 'Moved Node',
+            slug: 'moved',
+            node_type: 'section',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const node = await moveNode('node-2', {
         newParentId: 'node-3',
@@ -705,18 +759,37 @@ describe('Phase 6.1: Structure Service', () => {
       const { moveNode } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'node-2',
-          structure_id: 'struct-1',
-          parent_node_id: null,
-          position: 1,
-          name: 'Moved Node',
-          slug: 'moved',
-          node_type: 'section',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      // First query: getNode to check existence
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-2',
+            structure_id: 'struct-1',
+            parent_node_id: 'node-1',
+            position: 0,
+            name: 'Moved Node',
+            slug: 'moved',
+            node_type: 'section',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
+
+      // Second query: update node (no ancestry check since newParentId is null)
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-2',
+            structure_id: 'struct-1',
+            parent_node_id: null,
+            position: 1,
+            name: 'Moved Node',
+            slug: 'moved',
+            node_type: 'section',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const node = await moveNode('node-2', {
         newParentId: null,
@@ -733,7 +806,7 @@ describe('Phase 6.1: Structure Service', () => {
       );
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([]);
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
       await expect(
         moveNode('nonexistent', { newParentId: 'node-1', newPosition: 0 }),
@@ -747,22 +820,24 @@ describe('Phase 6.1: Structure Service', () => {
       const db = await import('../../src/db');
 
       // First query returns the node being moved
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'node-1',
-          structure_id: 'struct-1',
-          parent_node_id: null,
-          position: 0,
-          name: 'Parent',
-          slug: 'parent',
-          node_type: 'section',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-1',
+            structure_id: 'struct-1',
+            parent_node_id: null,
+            position: 0,
+            name: 'Parent',
+            slug: 'parent',
+            node_type: 'section',
+          },
+        ],
+      });
 
       // Second query checks ancestry - returns the node itself as ancestor
-      vi.mocked(db.query).mockResolvedValueOnce([
-        { id: 'node-1' }, // Would create cycle
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ id: 'node-1' }], // Would create cycle
+      });
 
       await expect(
         moveNode('node-1', { newParentId: 'node-2', newPosition: 0 }),
@@ -777,9 +852,9 @@ describe('Phase 6.1: Structure Service', () => {
 
       // Mock multiple update calls
       vi.mocked(db.query)
-        .mockResolvedValueOnce([{ id: 'node-1' }])
-        .mockResolvedValueOnce([{ id: 'node-2' }])
-        .mockResolvedValueOnce([{ id: 'node-3' }]);
+        .mockResolvedValueOnce({ rows: [{ id: 'node-1' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'node-2' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'node-3' }] });
 
       await reorderNodes('struct-1', null, ['node-2', 'node-1', 'node-3']);
 
@@ -796,59 +871,71 @@ describe('Phase 6.1: Structure Service', () => {
       const { buildNavigationTree } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'node-1',
-          structure_id: 'struct-1',
-          parent_node_id: null,
-          position: 0,
-          name: 'Products',
-          slug: 'products',
-          node_type: 'section',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-        {
-          id: 'node-2',
-          structure_id: 'struct-1',
-          parent_node_id: 'node-1',
-          position: 0,
-          name: 'Overview',
-          slug: 'overview',
-          node_type: 'document',
-          document_id: 'doc-1',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-        {
-          id: 'node-3',
-          structure_id: 'struct-1',
-          parent_node_id: 'node-1',
-          position: 1,
-          name: 'Features',
-          slug: 'features',
-          node_type: 'document',
-          document_id: 'doc-2',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-        {
-          id: 'node-4',
-          structure_id: 'struct-1',
-          parent_node_id: null,
-          position: 1,
-          name: 'About',
-          slug: 'about',
-          node_type: 'document',
-          document_id: 'doc-3',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      // First query: get all nodes
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-1',
+            structure_id: 'struct-1',
+            parent_node_id: null,
+            position: 0,
+            name: 'Products',
+            slug: 'products',
+            node_type: 'section',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+          {
+            id: 'node-2',
+            structure_id: 'struct-1',
+            parent_node_id: 'node-1',
+            position: 0,
+            name: 'Overview',
+            slug: 'overview',
+            node_type: 'document',
+            document_id: 'doc-1',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+          {
+            id: 'node-3',
+            structure_id: 'struct-1',
+            parent_node_id: 'node-1',
+            position: 1,
+            name: 'Features',
+            slug: 'features',
+            node_type: 'document',
+            document_id: 'doc-2',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+          {
+            id: 'node-4',
+            structure_id: 'struct-1',
+            parent_node_id: null,
+            position: 1,
+            name: 'About',
+            slug: 'about',
+            node_type: 'document',
+            document_id: 'doc-3',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
+
+      // Second query: get document paths
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          { id: 'doc-1', path: 'pages/overview' },
+          { id: 'doc-2', path: 'pages/features' },
+          { id: 'doc-3', path: 'pages/about' },
+        ],
+      });
 
       const tree = await buildNavigationTree('struct-1');
 
       expect(tree).toHaveLength(2); // Two root nodes
       expect(tree[0].name).toBe('Products');
       expect(tree[0].children).toHaveLength(2); // Two children
-      expect(tree[0].children?.[0].name).toBe('Overview');
-      expect(tree[0].children?.[1].name).toBe('Features');
+      expect(tree[0].children[0].name).toBe('Overview');
+      expect(tree[0].children[1].name).toBe('Features');
       expect(tree[1].name).toBe('About');
       expect(tree[1].children).toHaveLength(0);
     });
@@ -857,28 +944,32 @@ describe('Phase 6.1: Structure Service', () => {
       const { buildNavigationTree } = await import('../../src/services/structure-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'node-2',
-          structure_id: 'struct-1',
-          parent_node_id: null,
-          position: 1,
-          name: 'Second',
-          slug: 'second',
-          node_type: 'section',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-        {
-          id: 'node-1',
-          structure_id: 'struct-1',
-          parent_node_id: null,
-          position: 0,
-          name: 'First',
-          slug: 'first',
-          node_type: 'section',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-2',
+            structure_id: 'struct-1',
+            parent_node_id: null,
+            position: 1,
+            name: 'Second',
+            slug: 'second',
+            node_type: 'section',
+            document_id: null,
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+          {
+            id: 'node-1',
+            structure_id: 'struct-1',
+            parent_node_id: null,
+            position: 0,
+            name: 'First',
+            slug: 'first',
+            node_type: 'section',
+            document_id: null,
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       const tree = await buildNavigationTree('struct-1');
 
@@ -891,27 +982,31 @@ describe('Phase 6.1: Structure Service', () => {
       const db = await import('../../src/db');
 
       // First query gets nodes
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'node-1',
-          structure_id: 'struct-1',
-          parent_node_id: null,
-          position: 0,
-          name: 'Page',
-          slug: 'page',
-          node_type: 'document',
-          document_id: 'doc-1',
-          created_at: '2026-01-24T10:00:00.000Z',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-1',
+            structure_id: 'struct-1',
+            parent_node_id: null,
+            position: 0,
+            name: 'Page',
+            slug: 'page',
+            node_type: 'document',
+            document_id: 'doc-1',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
 
       // Second query gets documents
-      vi.mocked(db.query).mockResolvedValueOnce([
-        {
-          id: 'doc-1',
-          path: 'pages/home',
-        },
-      ]);
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'doc-1',
+            path: 'pages/home',
+          },
+        ],
+      });
 
       const tree = await buildNavigationTree('struct-1');
 
