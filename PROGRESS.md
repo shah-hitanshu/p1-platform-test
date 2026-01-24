@@ -1122,6 +1122,43 @@ Deliverables:
   - Checkpoint is named "Auto-created for branching" with type 'auto'
   - Transparent to user - branching now works immediately on new sites
 
+#### Phase 8.10: Usability Enhancements
+
+**Status:** Complete
+**Commit:** `79049d3`
+
+##### Deliverables:
+- [x] Delete Confirmation Modal (`frontend/src/components/ConfirmDeleteModal.tsx`)
+  - Reusable modal component for destructive operations
+  - Requires user to type resource name to confirm deletion
+  - Displays loading state and error messages
+  - Styled with `ConfirmDeleteModal.css`
+- [x] Site Deletion with Confirmation (`frontend/src/pages/SitesPage.tsx`)
+  - Delete button in sites table actions column
+  - Confirmation modal with name verification
+  - API integration with error handling
+- [x] Branch Deletion with Confirmation (`frontend/src/pages/SiteDetailPage.tsx`)
+  - Delete button for non-main branches only
+  - Confirmation modal with name verification
+  - API integration with error handling
+- [x] Create Document Button (`frontend/src/pages/BranchDetailPage.tsx`)
+  - "+ Create Document" button in Documents tab
+  - Form with document path input
+  - API integration with list refresh on success
+- [x] Document Content JSON Viewer (`frontend/src/pages/DocumentPage.tsx`)
+  - "Document Content" section replacing placeholder
+  - JSON viewer with formatted output
+  - Placeholder content with API coming soon message
+  - Styled with `DocumentPage.css`
+- [x] DocumentVersion Type (`frontend/src/types/index.ts`)
+  - Added DocumentVersion interface for future content API
+
+##### Bug Fix:
+- [x] Site Delete API Fix (`workers/src/routes/site-api.ts`)
+  - **Issue:** Delete site returned 500 "invalid input syntax for type uuid"
+  - **Root cause:** `listBranches` called with object `{ siteId }` instead of string `siteId`
+  - **Fix:** Changed to `listBranches(context.siteId)` format
+
 ---
 
 ## Architecture Reference
@@ -1243,6 +1280,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-24 | 8.10 | Usability enhancements: delete confirmation modals, create document, JSON viewer |
 | 2026-01-24 | 8.9 | Enhancement: auto-create checkpoint when branching from branch without one |
 | 2026-01-24 | 8.8 | Bug fixes: checkpoint creation (checkpointType param, SQL columns), optional name |
 | 2026-01-24 | 8.7 | DocumentPage implementation and navigation fixes |
