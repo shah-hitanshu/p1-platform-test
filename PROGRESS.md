@@ -1389,6 +1389,13 @@ The document version API is designed to work with any editor:
 - All 43 document-api tests passing
 - Frontend linting passing
 
+##### Bug Fix: SQL NULL Handling in documentExistsOnBranch
+**Commit:** `ec06b72`
+
+- **Issue:** Document editor showed "Document not found on this branch" even though document existed
+- **Root cause:** SQL query used `NOT (snapshot->>'_deleted' = 'true' AND ...)`. When `snapshot->>'_deleted'` is NULL (normal for non-tombstoned documents), `NULL = 'true'` evaluates to NULL in SQL, making `NOT (NULL AND true)` also NULL, causing EXISTS to find no rows.
+- **Fix:** Simplified logic to check only the latest version and use `COALESCE(snapshot->>'_deleted', '') != 'true'` to handle NULL properly.
+
 #### Phase 8.12: UX Writing Style Compliance
 
 **Status:** Complete
@@ -1597,7 +1604,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
-| 2026-01-24 | 8.15 | Document content editing: version API endpoints, frontend JSON editor, version history |
+| 2026-01-24 | 8.15 | Document content editing: version API endpoints, frontend JSON editor, version history, SQL NULL fix |
 | 2026-01-24 | 8.14 | Cloudflare Hyperdrive integration for PostgreSQL connection pooling |
 | 2026-01-24 | 8.13 | Branch isolation E2E test, documented postgres.js Hyperdrive limitation |
 | 2026-01-24 | 8.12 | UX writing style compliance: sentence case, verb forms, error messages, tooltips |
