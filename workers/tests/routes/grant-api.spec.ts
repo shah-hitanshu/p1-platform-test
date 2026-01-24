@@ -31,7 +31,7 @@ vi.mock('../../src/services', () => ({
       public branchId: string,
       public actorId: string,
     ) {
-      super(`Grant already exists for actor on branch`);
+      super('Grant already exists for actor on branch');
     }
   },
 }));

@@ -45,7 +45,10 @@ vi.mock('../../src/services', () => ({
   },
   MergeConflictsError: class MergeConflictsError extends Error {
     name = 'MergeConflictsError';
-    constructor(public conflicts: unknown[]) {
+    constructor(
+      public mergeRequestId: string,
+      public conflictCount: number,
+    ) {
       super('Merge has unresolved conflicts');
     }
   },
@@ -270,7 +273,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const services = await import('../../src/services');
 
       vi.mocked(services.executeMerge).mockRejectedValueOnce(
-        new services.MergeConflictsError([{ documentId: 'doc-1' }]),
+        new services.MergeConflictsError('mr-1', 1),
       );
 
       const request = new Request(

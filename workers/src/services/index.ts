@@ -284,3 +284,19 @@ export type {
   SchemaValidationResult,
   SchemaValidationSummary,
 } from './metadata-service';
+
+// Grant Service
+export {
+  createGrant,
+  getGrant,
+  listGrants,
+  deleteGrant,
+  GrantNotFoundError,
+  DuplicateGrantError,
+} from './grant-service';
+
+export type {
+  Grant,
+  CreateGrantParams,
+  ListGrantsOptions,
+} from './grant-service';
