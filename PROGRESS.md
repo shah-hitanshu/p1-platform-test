@@ -62,6 +62,26 @@ This document tracks the implementation progress of the Collaborative JSON State
 **Files Changed:**
 - `workers/src/services/document-service.ts` - Updated `getDocumentByPath` query
 
+### GitHub Advanced Security Alerts (Fixed 2026-01-25)
+
+**Issue:** GitHub Advanced Security identified 3 code scanning alerts:
+1. **High severity** (2 alerts): Incomplete string escaping in `escapeLikePattern` function (js/incomplete-sanitization)
+2. **Medium severity** (1 alert): Log injection vulnerability in metrics receiver (js/log-injection)
+
+**Root Causes:**
+- The `escapeLikePattern` function escaped `%` and `_` for PostgreSQL LIKE queries but failed to escape backslashes first. Input containing `\` could bypass the sanitization.
+- The `logMetric` function logged metric names, values, and labels directly without sanitizing control characters, allowing potential log forging via newlines or other control chars.
+
+**Solutions:**
+1. Modified `escapeLikePattern` to escape backslashes first (`\\` → `\\\\`) before escaping `%` and `_`
+2. Added `sanitizeForLog` function that strips control characters (0x00-0x1F and 0x7F) from strings before logging
+
+**Files Changed:**
+- `workers/src/services/document-service.ts` - Fixed `escapeLikePattern` to escape backslashes first
+- `scripts/local-metrics-receiver.js` - Added `sanitizeForLog` function and applied to all logged values
+
+**Commit:** `34ddecb`
+
 ---
 
 ## Known Issues / Future Work
