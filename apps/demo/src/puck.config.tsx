@@ -4,7 +4,7 @@
  * Defines the components available in the Puck editor.
  */
 
-import type { Config } from '@measured/puck';
+import type { Config } from '@puckeditor/core';
 import React from 'react';
 
 // Component props types

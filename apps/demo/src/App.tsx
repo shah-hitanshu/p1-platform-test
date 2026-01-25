@@ -8,8 +8,8 @@
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Puck } from '@measured/puck';
-import '@measured/puck/puck.css';
+import { Puck } from '@puckeditor/core';
+import '@puckeditor/core/puck.css';
 
 import {
   CSSClient,

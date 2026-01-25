@@ -88,7 +88,7 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
 
   return {
     headerActions: ({ children }) => (
-      <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <SaveIndicator
           status={saveStatus}
           lastSaved={lastSaved}
@@ -105,7 +105,7 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
           Publish
         </PublishButton>
         {showDefaultPublish && children}
-      </>
+      </div>
     ),
   };
 }
