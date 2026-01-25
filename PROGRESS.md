@@ -1810,6 +1810,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-25 | 10.3-10.6 | Merge Diff Visualization: JsonDiffViewer component, ExpandableConflictRow with expand/collapse, previewMerge includeContent option, ConflictResolutionPanel integration, E2E tests, security fix for status param validation |
 | 2026-01-24 | 8.23 | Site deletion FK fix: clear source_checkpoint_id and base_checkpoint_id before deleting checkpoints |
 | 2026-01-25 | 9.11 | Test data cleanup script: db:cleanup command to delete E2E test entries by naming pattern; handles FK constraints for 16 tables |
 | 2026-01-25 | 9.10 | PDS Migration Phase 7: E2E Test Finalization; added data-testid to Layout, Login, Dashboard, Sites, SiteDetail, BranchDetail, MergeRequests, MergeRequestDetail, MergePreviewPanel; updated all E2E tests to use robust selectors (getByTestId) instead of CSS class selectors |
@@ -1925,4 +1926,4 @@ Template for future decisions:
 
 ---
 
-*Last updated: 2026-01-25 (Phase 10.2 - MetricsService Complete)*
+*Last updated: 2026-01-25 (Phase 10.6 - Merge Diff Visualization Complete)*
