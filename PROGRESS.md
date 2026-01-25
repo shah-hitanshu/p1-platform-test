@@ -1797,6 +1797,7 @@ Template for future decisions:
 | Date | Phase | Summary |
 |------|-------|---------|
 | 2026-01-24 | 8.23 | Site deletion FK fix: clear source_checkpoint_id and base_checkpoint_id before deleting checkpoints |
+| 2026-01-25 | 9.9 | PDS Migration Phase 6: ConflictResolutionPanel uses PDS Button; JsonViewer kept custom (simple, working); ConflictList already using PDS Tag |
 | 2026-01-25 | 9.8 | PDS Migration Phase 5: ApiResponse uses PDS Alert for errors; MergePreviewPanel uses PDS Button and Alert; CSS cleanup for removed custom styles; E2E tests updated |
 | 2026-01-25 | 9.7 | PDS Migration Phase 4: Tabs migrated to PDS Tabs/TabList/Tab/TabPanels/TabPanel in BranchDetailPage and DocumentPage; Breadcrumbs kept custom (PDS requires context-based pattern); 55/75 tests pass (failures are infrastructure flakiness) |
 | 2026-01-25 | 9.6 | PDS Migration Phase 3: All status badges migrated to PDS Tag component; E2E tests updated (.status-badge → .tag selectors); 60/75 tests pass (failures are infrastructure flakiness) |
@@ -1904,4 +1905,4 @@ Template for future decisions:
 
 ---
 
-*Last updated: 2026-01-25 (Phase 9.8 - PDS Migration Phase 5 Complete)*
+*Last updated: 2026-01-25 (Phase 9.9 - PDS Migration Phase 6 Complete)*

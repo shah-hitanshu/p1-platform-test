@@ -5,6 +5,7 @@
  */
 
 import { useState } from 'react';
+import { Button } from '@pantheon-systems/design-toolkit-react';
 import type { DocumentConflict, DocumentConflictType, ConflictResolutionStrategy } from '../types';
 import type { ConflictResolution } from '../api/merge-requests';
 import './ConflictResolutionPanel.css';
@@ -108,14 +109,15 @@ export function ConflictResolutionPanel({
         <span className="apply-all-label">Apply to all:</span>
         <div className="apply-all-buttons">
           {RESOLUTION_OPTIONS.map((strategy) => (
-            <button
+            <Button
               key={strategy}
-              className="apply-all-btn"
+              type="secondary"
               onClick={() => handleApplyToAll(strategy)}
               disabled={isResolving}
+              data-testid={`apply-all-${strategy}`}
             >
               {getResolutionLabel(strategy)}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -147,13 +149,15 @@ export function ConflictResolutionPanel({
       </div>
 
       <div className="resolution-actions">
-        <button
-          className="resolve-btn"
+        <Button
+          type="primary"
           onClick={handleSubmit}
           disabled={!allResolved || isResolving}
+          isLoading={isResolving}
+          data-testid="apply-resolutions-btn"
         >
           {isResolving ? 'Resolving...' : 'Apply Resolutions and Merge'}
-        </button>
+        </Button>
       </div>
     </div>
   );
