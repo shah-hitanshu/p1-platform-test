@@ -169,6 +169,19 @@ function processMetrics(metrics) {
   checkWsDrops();
 }
 
+/**
+ * Sanitizes a string for safe logging by removing control characters.
+ * Prevents log injection attacks via newlines and other control chars.
+ */
+function sanitizeForLog(input) {
+  if (typeof input !== 'string') {
+    input = String(input);
+  }
+  // Remove control characters (0x00-0x1F and 0x7F) except space
+  // eslint-disable-next-line no-control-regex
+  return input.replace(/[\x00-\x1F\x7F]/g, '');
+}
+
 function logMetric(metric) {
   const typeIcon = {
     counter: '+',
@@ -179,16 +192,18 @@ function logMetric(metric) {
   const labels = metric.labels
     ? Object.entries(metric.labels)
         .filter(([k]) => !['environment', 'version'].includes(k))
-        .map(([k, v]) => `${k}=${v}`)
+        .map(([k, v]) => `${sanitizeForLog(k)}=${sanitizeForLog(v)}`)
         .join(' ')
     : '';
 
   const value = typeof metric.value === 'number'
     ? metric.value.toFixed(2).padStart(10)
-    : String(metric.value).padStart(10);
+    : sanitizeForLog(String(metric.value)).padStart(10);
+
+  const safeName = sanitizeForLog(metric.name);
 
   console.log(
-    `${typeIcon} ${metric.name.padEnd(35)} ${value}  ${labels}`
+    `${typeIcon} ${safeName.padEnd(35)} ${value}  ${labels}`
   );
 }
 

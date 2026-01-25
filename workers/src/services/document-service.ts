@@ -164,11 +164,15 @@ function validatePath(path: string): void {
 }
 
 /**
- * Escapes LIKE pattern special characters (% and _) in a string.
+ * Escapes LIKE pattern special characters in a string.
  * PostgreSQL LIKE treats % as wildcard (any chars) and _ as single char.
+ * Backslashes must be escaped first to avoid double-escaping.
  */
 function escapeLikePattern(input: string): string {
-  return input.replace(/%/g, '\\%').replace(/_/g, '\\_');
+  return input
+    .replace(/\\/g, '\\\\')
+    .replace(/%/g, '\\%')
+    .replace(/_/g, '\\_');
 }
 
 /**
