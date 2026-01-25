@@ -108,6 +108,181 @@ function YourEditor() {
 }
 ```
 
+## Version Comparison Integration
+
+To enable visual version comparison in your editor, you need to:
+
+1. Use the `useVersions` hook to manage version state
+2. Pass version props to `createCSSPlugin` for the sidebar UI
+3. Render `VisualVersionCompare` when comparison is active
+
+### Complete Example
+
+```tsx
+import { useState, useCallback, useMemo } from 'react';
+import { Puck } from '@puckeditor/core';
+import type { Data } from '@puckeditor/core';
+import {
+  CSSPuckProvider,
+  useCSSPuck,
+  useDocuments,
+  useVersions,
+  createCSSPlugin,
+  VisualVersionCompare,
+} from '@pantheon/puck-css';
+import config from './puck.config'; // Your Puck component config
+
+function EditorWithVersionComparison({ documentPath }: { documentPath: string }) {
+  const {
+    client,
+    siteId,
+    branchId,
+    currentDocument,
+    currentData,
+    saveData,
+    branches,
+    currentBranch,
+    switchBranch,
+    saveStatus,
+  } = useCSSPuck();
+
+  // Document management
+  const { documents, loading: documentsLoading } = useDocuments({
+    client,
+    siteId,
+    branchId,
+  });
+
+  // Version management
+  const {
+    versions,
+    loading: versionsLoading,
+    selectedVersion,
+    setSelectedVersion,
+    compareVersions,
+    comparisonDiffs,
+  } = useVersions({
+    client,
+    siteId,
+    branchId,
+    documentId: currentDocument?.id ?? null,
+  });
+
+  // Comparison state
+  const [showComparison, setShowComparison] = useState(false);
+  const [comparisonVersions, setComparisonVersions] = useState<{
+    before: number;
+    after: number;
+  } | null>(null);
+  const [comparisonData, setComparisonData] = useState<{
+    beforeData: Data;
+    afterData: Data;
+  } | null>(null);
+
+  // Handle version selection in sidebar
+  const handleVersionSelect = useCallback(
+    (version: { id: string; versionNumber: number; createdAt: string }) => {
+      const found = versions.find((v) => v.id === version.id);
+      setSelectedVersion(found ?? null);
+    },
+    [versions, setSelectedVersion]
+  );
+
+  // Handle compare button click
+  const handleCompare = useCallback(
+    async (beforeVersionId: string, afterVersionId: string) => {
+      const beforeVersion = versions.find((v) => v.id === beforeVersionId);
+      const afterVersion = versions.find((v) => v.id === afterVersionId);
+
+      if (beforeVersion && afterVersion) {
+        await compareVersions(beforeVersionId, afterVersionId);
+        setComparisonVersions({
+          before: beforeVersion.versionNumber,
+          after: afterVersion.versionNumber,
+        });
+        setComparisonData({
+          beforeData: beforeVersion.snapshot as unknown as Data,
+          afterData: afterVersion.snapshot as unknown as Data,
+        });
+        setShowComparison(true);
+      }
+    },
+    [versions, compareVersions]
+  );
+
+  // Handle closing comparison view
+  const handleCloseComparison = useCallback(() => {
+    setShowComparison(false);
+    setComparisonVersions(null);
+    setComparisonData(null);
+    setSelectedVersion(null);
+  }, [setSelectedVersion]);
+
+  // Create CSS plugin with version props
+  const cssPlugin = useMemo(
+    () =>
+      createCSSPlugin({
+        branches,
+        currentBranch,
+        onBranchSwitch: switchBranch,
+        hasUnsavedChanges: saveStatus === 'saving',
+        documents,
+        selectedDocumentPath: documentPath,
+        documentsLoading,
+        // Version comparison props
+        versions,
+        versionsLoading,
+        selectedVersionId: selectedVersion?.id,
+        onVersionSelect: handleVersionSelect,
+        onCompare: handleCompare,
+      }),
+    [
+      branches, currentBranch, switchBranch, saveStatus,
+      documents, documentPath, documentsLoading,
+      versions, versionsLoading, selectedVersion,
+      handleVersionSelect, handleCompare,
+    ]
+  );
+
+  // Show comparison view when active
+  if (showComparison && comparisonDiffs && comparisonVersions && comparisonData) {
+    return (
+      <VisualVersionCompare
+        beforeVersion={comparisonVersions.before}
+        afterVersion={comparisonVersions.after}
+        beforeData={comparisonData.beforeData}
+        afterData={comparisonData.afterData}
+        config={config}
+        diffs={comparisonDiffs}
+        onClose={handleCloseComparison}
+      />
+    );
+  }
+
+  // Normal editor view
+  return (
+    <Puck
+      config={config}
+      data={currentData as Data}
+      plugins={[cssPlugin]}
+      onChange={saveData}
+    />
+  );
+}
+```
+
+### How It Works
+
+1. **Version List in Sidebar**: The CSS plugin sidebar shows a "Version History" section with all document versions
+2. **Select a Version**: Click on an older version to select it for comparison
+3. **Compare Button**: A "Compare with current" button appears when a non-current version is selected
+4. **Visual Comparison**: Clicking compare shows a side-by-side view with:
+   - Both versions rendered using your Puck config
+   - Added components highlighted in green
+   - Removed components highlighted in red
+   - Modified components highlighted in yellow
+5. **Close**: Click the close button to return to the normal editor
+
 ## API Reference
 
 ### CSS Client (`@pantheon/css-client`)
@@ -227,6 +402,26 @@ const {
 } = useDocuments({ client, siteId, branchId });
 ```
 
+#### useVersions Hook
+
+Manage document versions and comparisons.
+
+```typescript
+const {
+  versions,          // DocumentVersion[]
+  loading,           // boolean
+  error,             // Error | null
+  refresh,           // () => Promise<void>
+  latestVersion,     // DocumentVersion | null
+  compareVersions,   // (beforeId: string, afterId: string) => Promise<ComponentDiff[]>
+  getVersion,        // (versionId: string) => DocumentVersion | undefined
+  selectedVersion,   // DocumentVersion | null
+  setSelectedVersion,// (version: DocumentVersion | null) => void
+  comparisonDiffs,   // ComponentDiff[] | null
+  isComparing,       // boolean
+} = useVersions({ client, siteId, branchId, documentId });
+```
+
 #### Components
 
 **SaveIndicator** - Displays current save status
@@ -265,6 +460,21 @@ const {
   onSwitch={switchBranch}          // Required: (branchId: string) => Promise<void>
   disabled={boolean}               // Optional: Disable the selector
   hasUnsavedChanges={boolean}      // Optional: Show warning before switching
+  className={string}               // Optional: Additional CSS class
+/>
+```
+
+**VisualVersionCompare** - Side-by-side visual comparison of two versions
+
+```tsx
+<VisualVersionCompare
+  beforeVersion={number}           // Required: Before version number
+  afterVersion={number}            // Required: After version number
+  beforeData={PuckData}            // Required: Puck data from before version
+  afterData={PuckData}             // Required: Puck data from after version
+  config={PuckConfig}              // Required: Your Puck component config
+  diffs={ComponentDiff[]}          // Required: Diff array from compareVersions
+  onClose={() => void}             // Required: Close callback
   className={string}               // Optional: Additional CSS class
 />
 ```
