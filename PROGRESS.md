@@ -1817,6 +1817,8 @@ Template for future decisions:
 | 2026-01-25 | 9.8 | PDS Migration Phase 5: ApiResponse uses PDS Alert for errors; MergePreviewPanel uses PDS Button and Alert; CSS cleanup for removed custom styles; E2E tests updated |
 | 2026-01-25 | 9.7 | PDS Migration Phase 4: Tabs migrated to PDS Tabs/TabList/Tab/TabPanels/TabPanel in BranchDetailPage and DocumentPage; Breadcrumbs kept custom (PDS requires context-based pattern); 55/75 tests pass (failures are infrastructure flakiness) |
 | 2026-01-25 | 9.6 | PDS Migration Phase 3: All status badges migrated to PDS Tag component; E2E tests updated (.status-badge → .tag selectors); 60/75 tests pass (failures are infrastructure flakiness) |
+| 2026-01-25 | 10.2 | MetricsService: request-scoped buffering, 8 metrics (HTTP, DB, WS), HTTPS/API key validation, buffer limits, security hardening |
+| 2026-01-25 | 10.1 | DocumentDiffService: JSON diffing for merge visualization (18 tests) |
 | 2026-01-25 | 9.5 | PDS Migration Phase 2: All pages use PDS Button/RouterLinkButton/Alert components; form inputs use pds-input/pds-select classes; E2E tests updated for data-testid selectors (73/75 tests pass) |
 | 2026-01-24 | 9.4 | PDS JsonViewer fix: override PDS global pre element dark theme with light theme |
 | 2026-01-24 | 9.3 | PDS contrast fixes: global code styling, ApiResponse/Dashboard using PDS design tokens |
@@ -1917,8 +1919,10 @@ Template for future decisions:
 | Metadata API Routes | 13 | - |
 | Validation Utilities | 28 | - |
 | Router Integration | 24 | - |
-| **Total** | **1016** | **52** |
+| Document Diff Service | 18 | - |
+| Metrics Service | 36 | - |
+| **Total** | **1070** | **52** |
 
 ---
 
-*Last updated: 2026-01-25 (Phase 9.10 - PDS Migration Phase 7 Complete)*
+*Last updated: 2026-01-25 (Phase 10.2 - MetricsService Complete)*
