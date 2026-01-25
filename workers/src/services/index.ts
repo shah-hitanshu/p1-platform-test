@@ -323,3 +323,17 @@ export type {
   CreateGrantParams,
   ListGrantsOptions,
 } from './grant-service';
+
+// Document Diff Service
+export {
+  computeJsonDiff,
+  computeDocumentDiff,
+  computeDocumentDiffs,
+  DocumentVersionNotFoundError,
+} from './document-diff-service';
+
+export type {
+  DiffOperation,
+  DocumentDiff,
+  ComputedDiff,
+} from './document-diff-service';

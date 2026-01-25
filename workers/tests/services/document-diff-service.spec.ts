@@ -236,7 +236,7 @@ describe('Phase 10.1: Document Diff Service', () => {
       vi.mocked(getDocumentVersion).mockResolvedValueOnce(null);
 
       await expect(computeDocumentDiff('missing-id', 'target-id')).rejects.toThrow(
-        DocumentVersionNotFoundError
+        DocumentVersionNotFoundError,
       );
     });
 
@@ -261,7 +261,7 @@ describe('Phase 10.1: Document Diff Service', () => {
         .mockResolvedValueOnce(null);
 
       await expect(computeDocumentDiff('source-id', 'missing-id')).rejects.toThrow(
-        DocumentVersionNotFoundError
+        DocumentVersionNotFoundError,
       );
     });
   });
