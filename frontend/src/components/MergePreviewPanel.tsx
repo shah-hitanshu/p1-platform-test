@@ -30,31 +30,57 @@ export function MergePreviewPanel({
   const [preview, setPreview] = useState<MergePreview | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshCounter, setRefreshCounter] = useState(0);
 
-  const loadPreview = useCallback(async () => {
+  // Load preview automatically on mount, when branch IDs change, or on manual refresh
+  useEffect(() => {
     // Guard against invalid IDs to prevent API errors
     if (!siteId || !sourceBranchId || !targetBranchId) {
       return;
     }
-    setIsLoading(true);
-    setError(null);
-    try {
-      const result = await previewMerge(siteId, {
-        sourceBranchId,
-        targetBranchId,
-      });
-      setPreview(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load preview');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [siteId, sourceBranchId, targetBranchId]);
 
-  // Load preview automatically on mount
-  useEffect(() => {
-    loadPreview();
-  }, [loadPreview]);
+    let isCancelled = false;
+
+    const fetchPreview = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const result = await previewMerge(siteId, {
+          sourceBranchId,
+          targetBranchId,
+        });
+
+        if (!isCancelled) {
+          setPreview(result);
+          setIsLoading(false);
+        }
+      } catch (err) {
+        if (!isCancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load preview');
+          setIsLoading(false);
+        }
+      }
+    };
+
+    // Delay initial load slightly to avoid racing with other page load requests
+    // This helps prevent database connection conflicts in the backend
+    const isInitialLoad = refreshCounter === 0;
+    const timeoutId = setTimeout(
+      fetchPreview,
+      isInitialLoad ? 100 : 0
+    );
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [siteId, sourceBranchId, targetBranchId, refreshCounter]);
+
+  // Manual refresh handler - triggers useEffect by incrementing counter
+  const handleRefresh = useCallback(() => {
+    setRefreshCounter((c) => c + 1);
+  }, []);
 
   return (
     <div className="merge-preview-panel" data-testid="merge-preview-panel">
@@ -62,7 +88,7 @@ export function MergePreviewPanel({
         <h3 className="preview-title">Merge Preview</h3>
         <Button
           type="secondary"
-          onClick={loadPreview}
+          onClick={handleRefresh}
           disabled={isLoading}
           isLoading={isLoading}
           data-testid="refresh-preview-btn"

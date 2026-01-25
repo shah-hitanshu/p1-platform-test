@@ -128,16 +128,38 @@ export async function checkMergeability(
 }
 
 /**
+ * Request deduplication cache for merge preview
+ * Prevents duplicate requests when React Strict Mode causes double-mounting
+ */
+const pendingPreviews = new Map<string, Promise<MergePreview>>();
+
+/**
  * Preview merge changes between branches
+ * Deduplicates simultaneous requests with the same parameters
  */
 export async function previewMerge(
   siteId: string,
   params: MergePreviewParams
 ): Promise<MergePreview> {
-  return apiPost<MergePreview>(
+  const cacheKey = `${siteId}:${params.sourceBranchId}:${params.targetBranchId}:${params.includeContent ?? false}`;
+
+  // If there's already a pending request for these params, return that promise
+  const pending = pendingPreviews.get(cacheKey);
+  if (pending) {
+    return pending;
+  }
+
+  // Create new request and cache the promise
+  const requestPromise = apiPost<MergePreview>(
     `/api/sites/${siteId}/merge/preview`,
     params
-  );
+  ).finally(() => {
+    // Remove from cache when request completes (success or error)
+    pendingPreviews.delete(cacheKey);
+  });
+
+  pendingPreviews.set(cacheKey, requestPromise);
+  return requestPromise;
 }
 
 /**

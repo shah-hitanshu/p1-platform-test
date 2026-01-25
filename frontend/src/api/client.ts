@@ -76,13 +76,26 @@ async function fetchWithAuth(
 }
 
 /**
+ * Parse error response body, handling both JSON and plain text
+ */
+async function parseErrorResponse(response: Response): Promise<ApiError> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as ApiError;
+  } catch {
+    // If not JSON, wrap the text in an error object
+    return { error: text || 'Request failed' };
+  }
+}
+
+/**
  * Generic API GET request
  */
 export async function apiGet<T>(url: string): Promise<T> {
   const response = await fetchWithAuth(url);
 
   if (!response.ok) {
-    const error = (await response.json()) as ApiError;
+    const error = await parseErrorResponse(response);
     throw new ApiClientError(
       error.error || 'Request failed',
       response.status,
@@ -103,7 +116,7 @@ export async function apiPost<T>(url: string, body?: unknown): Promise<T> {
   });
 
   if (!response.ok) {
-    const error = (await response.json()) as ApiError;
+    const error = await parseErrorResponse(response);
     throw new ApiClientError(
       error.error || 'Request failed',
       response.status,
@@ -129,7 +142,7 @@ export async function apiPatch<T>(url: string, body: unknown): Promise<T> {
   });
 
   if (!response.ok) {
-    const error = (await response.json()) as ApiError;
+    const error = await parseErrorResponse(response);
     throw new ApiClientError(
       error.error || 'Request failed',
       response.status,
@@ -149,7 +162,7 @@ export async function apiDelete(url: string): Promise<void> {
   });
 
   if (!response.ok) {
-    const error = (await response.json()) as ApiError;
+    const error = await parseErrorResponse(response);
     throw new ApiClientError(
       error.error || 'Request failed',
       response.status,
