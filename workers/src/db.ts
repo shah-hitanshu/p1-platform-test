@@ -20,6 +20,7 @@
  */
 
 import postgres from 'postgres';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 /**
  * Result of a database query.
@@ -48,15 +49,36 @@ export interface DatabaseConnection {
 }
 
 /**
- * Request-scoped database context.
- * Stores the current request's database connection.
+ * Request-scoped database context using AsyncLocalStorage.
+ * Each request gets its own isolated connection that cannot interfere with
+ * concurrent requests in the same isolate.
  *
- * IMPORTANT: In Cloudflare Workers, each request should create and close its own
- * connection. The global variable here is per-isolate, and concurrent requests
- * may share the same isolate. Always call closeDatabaseConnection() at the end
- * of each request to prevent connection leaks.
+ * IMPORTANT: Always wrap request handlers with runWithConnection() to ensure
+ * proper connection lifecycle management.
  */
-let currentConnection: DatabaseConnection | null = null;
+const connectionStorage = new AsyncLocalStorage<DatabaseConnection>();
+
+/**
+ * Run a function with a request-scoped database connection.
+ * This ensures each concurrent request has its own isolated connection.
+ *
+ * @param connectionString - PostgreSQL connection string
+ * @param options - Connection options
+ * @param fn - Function to run with the connection
+ * @returns Result of the function
+ */
+export async function runWithConnection<T>(
+  connectionString: string,
+  options: ConnectionOptions,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const connection = createDatabaseConnection(connectionString, options);
+  try {
+    return await connectionStorage.run(connection, fn);
+  } finally {
+    await connection.close();
+  }
+}
 
 /**
  * Options for creating a database connection.
@@ -136,56 +158,15 @@ export function createDatabaseConnection(
 }
 
 /**
- * Initialize the database connection for the current request.
- * Creates a fresh connection that will be used for all queries in this request.
- *
- * IMPORTANT: Always call closeDatabaseConnection() at the end of each request
- * to prevent connection leaks.
- *
- * @param connectionString - PostgreSQL connection string
- * @param options - Connection options
+ * Test-only connection storage.
+ * Used by setDatabaseInstance for test mocking.
  */
-export async function initializeDatabaseFromConnectionString(
-  connectionString: string,
-  options: ConnectionOptions = {},
-): Promise<void> {
-  // Close any existing connection before creating a new one
-  // Use fire-and-forget to avoid blocking on slow closes
-  if (currentConnection) {
-    const oldConnection = currentConnection;
-    currentConnection = null;
-    oldConnection.close().catch(() => {
-      // Ignore errors closing stale connection
-    });
-  }
-
-  // Create a fresh connection for this request
-  currentConnection = createDatabaseConnection(connectionString, options);
-}
-
-/**
- * Initialize the database from Hyperdrive binding.
- * Hyperdrive provides managed connection pooling for Cloudflare Workers.
- *
- * @param hyperdrive - Hyperdrive binding from env
- */
-export async function initializeDatabaseFromHyperdrive(hyperdrive: Hyperdrive): Promise<void> {
-  await initializeDatabaseFromConnectionString(hyperdrive.connectionString, { isHyperdrive: true });
-}
-
-/**
- * Initialize the database connection.
- * Should be called once at the start of each request.
- *
- * @param config - Database configuration
- */
-export async function initializeDatabase(config: DatabaseConfig): Promise<void> {
-  await initializeDatabaseFromConnectionString(config.connectionString);
-}
+let testConnection: DatabaseConnection | null = null;
 
 /**
  * Execute a SQL query with parameters.
  * Uses parameterized queries to prevent SQL injection.
+ * Gets connection from AsyncLocalStorage (production) or test connection (testing).
  *
  * @param sql - SQL query string with $1, $2, etc. placeholders
  * @param params - Array of parameter values
@@ -203,26 +184,17 @@ export async function query<T = Record<string, unknown>>(
   sql: string,
   params?: unknown[],
 ): Promise<QueryResult<T>> {
-  if (!currentConnection) {
-    throw new Error('Database not initialized. Call initializeDatabase first.');
+  // Check test connection first (for unit tests)
+  if (testConnection) {
+    return testConnection.query<T>(sql, params);
   }
-  return currentConnection.query<T>(sql, params);
-}
 
-/**
- * Close the current database connection.
- * Should be called at the end of each request for cleanup to prevent connection leaks.
- */
-export async function closeDatabaseConnection(): Promise<void> {
-  if (currentConnection) {
-    const connectionToClose = currentConnection;
-    currentConnection = null;
-    try {
-      await connectionToClose.close();
-    } catch {
-      // Ignore close errors - connection may already be closed
-    }
+  // Get connection from AsyncLocalStorage (production)
+  const connection = connectionStorage.getStore();
+  if (!connection) {
+    throw new Error('Database not initialized. Wrap request handler with runWithConnection().');
   }
+  return connection.query<T>(sql, params);
 }
 
 /**
@@ -232,13 +204,49 @@ export async function closeDatabaseConnection(): Promise<void> {
  * @param connection - Database connection to use
  */
 export function setDatabaseInstance(connection: DatabaseConnection | null): void {
-  currentConnection = connection;
+  testConnection = connection;
 }
 
 /**
  * Get the current database instance.
- * Returns null if not initialized.
+ * Returns connection from AsyncLocalStorage or test connection.
  */
 export function getDatabaseInstance(): DatabaseConnection | null {
-  return currentConnection;
+  return testConnection ?? connectionStorage.getStore() ?? null;
+}
+
+// =============================================================================
+// Deprecated functions - kept for backward compatibility during migration
+// These are no longer needed when using runWithConnection()
+// =============================================================================
+
+/**
+ * @deprecated Use runWithConnection() instead. This function is a no-op.
+ */
+export async function initializeDatabaseFromConnectionString(
+  _connectionString: string,
+  _options: ConnectionOptions = {},
+): Promise<void> {
+  // No-op - connection is now managed by runWithConnection()
+}
+
+/**
+ * @deprecated Use runWithConnection() instead. This function is a no-op.
+ */
+export async function initializeDatabaseFromHyperdrive(_hyperdrive: Hyperdrive): Promise<void> {
+  // No-op - connection is now managed by runWithConnection()
+}
+
+/**
+ * @deprecated Use runWithConnection() instead. This function is a no-op.
+ */
+export async function initializeDatabase(_config: DatabaseConfig): Promise<void> {
+  // No-op - connection is now managed by runWithConnection()
+}
+
+/**
+ * @deprecated Use runWithConnection() instead. This function is a no-op.
+ */
+export async function closeDatabaseConnection(): Promise<void> {
+  // No-op - connection is now managed by runWithConnection()
 }

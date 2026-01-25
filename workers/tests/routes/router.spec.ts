@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock the database
 vi.mock('../../src/db', () => ({
   initializeDatabaseFromConnectionString: vi.fn(),
+  runWithConnection: vi.fn().mockImplementation(async (_connStr, _opts, fn) => fn()),
   query: vi.fn().mockResolvedValue({ rows: [{ now: new Date().toISOString() }] }),
 }));
 

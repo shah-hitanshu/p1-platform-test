@@ -6,6 +6,27 @@ This document tracks the implementation progress of the Collaborative JSON State
 
 ---
 
+## Recently Fixed Issues
+
+### Database Connection Race Condition (Fixed 2026-01-25)
+
+**Issue:** Document pages in the frontend would intermittently fail to load, showing "Internal server error" for document version endpoints. The `/versions/latest` and `/versions` API calls returned 500 errors.
+
+**Root Cause:** The database module (`workers/src/db.ts`) used a global `currentConnection` variable shared across all concurrent requests. When the frontend made 5 parallel API calls to load a document page, each request would initialize a new connection, overwriting and closing the previous one. This caused some requests to fail when their connection was closed by another concurrent request.
+
+**Solution:** Implemented request-scoped database connections using Node.js `AsyncLocalStorage`:
+- Added `runWithConnection()` function that wraps request handlers in isolated AsyncLocalStorage context
+- Each concurrent request now gets its own database connection that cannot interfere with others
+- Updated `index.ts` to use the new pattern
+- Deprecated the old `initializeDatabaseFromConnectionString()` and `closeDatabaseConnection()` functions
+
+**Files Changed:**
+- `workers/src/db.ts` - Added AsyncLocalStorage-based connection management
+- `workers/src/index.ts` - Updated to use `runWithConnection()`
+- `workers/tests/routes/router.spec.ts` - Updated mock to include new export
+
+---
+
 ## Known Issues / Future Work
 
 ### CORS Configuration for Multi-Tenant Frontends

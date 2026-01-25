@@ -6,9 +6,7 @@
  */
 
 import {
-  initializeDatabaseFromConnectionString,
-  initializeDatabaseFromHyperdrive,
-  closeDatabaseConnection,
+  runWithConnection,
   query,
 } from './db';
 import { MockIdentityProvider } from './auth/mock-identity-provider';
@@ -275,20 +273,8 @@ async function handleHealth(env: Env): Promise<Response> {
     timestamp: new Date().toISOString(),
   };
 
-  // Test database connection
+  // Test database connection (connection is already established via runWithConnection)
   try {
-    // Prefer Hyperdrive (production) over direct connection (local dev)
-    if (env.HYPERDRIVE !== undefined) {
-      await initializeDatabaseFromHyperdrive(env.HYPERDRIVE);
-    } else if (
-      env.POSTGRES_CONNECTION_STRING !== undefined &&
-      env.POSTGRES_CONNECTION_STRING !== ''
-    ) {
-      await initializeDatabaseFromConnectionString(env.POSTGRES_CONNECTION_STRING);
-    } else {
-      throw new Error('No database connection configured (HYPERDRIVE or POSTGRES_CONNECTION_STRING)');
-    }
-
     const start = Date.now();
     const result = await query<{ now: string }>('SELECT NOW() as now');
     const latencyMs = Date.now() - start;
@@ -871,42 +857,54 @@ export default {
       return handlePreflight(request, env);
     }
 
-    // Initialize database connection
+    // Determine connection string and options
     // Prefer Hyperdrive (production) over direct connection (local dev)
-    // IMPORTANT: Always close connection in finally block to prevent leaks
-    let response: Response;
+    let connectionString: string;
+    let isHyperdrive = false;
+
+    if (env.HYPERDRIVE !== undefined) {
+      connectionString = env.HYPERDRIVE.connectionString;
+      isHyperdrive = true;
+    } else if (
+      env.POSTGRES_CONNECTION_STRING !== undefined &&
+      env.POSTGRES_CONNECTION_STRING !== ''
+    ) {
+      connectionString = env.POSTGRES_CONNECTION_STRING;
+    } else {
+      return new Response(
+        JSON.stringify({ error: 'No database connection configured' }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    // Run request with isolated database connection using AsyncLocalStorage
+    // This ensures concurrent requests don't interfere with each other's connections
     try {
-      if (env.HYPERDRIVE !== undefined) {
-        await initializeDatabaseFromHyperdrive(env.HYPERDRIVE);
-      } else if (
-        env.POSTGRES_CONNECTION_STRING !== undefined &&
-        env.POSTGRES_CONNECTION_STRING !== ''
-      ) {
-        await initializeDatabaseFromConnectionString(env.POSTGRES_CONNECTION_STRING);
-      } else {
-        return new Response(
-          JSON.stringify({ error: 'No database connection configured' }),
-          { status: 503, headers: { 'Content-Type': 'application/json' } },
-        );
-      }
+      const response = await runWithConnection(
+        connectionString,
+        { isHyperdrive },
+        async () => {
+          const resp = await handleRequest(request, env, path, origin);
 
-      response = await handleRequest(request, env, path, origin);
+          // Record successful request metrics
+          const durationMs = Date.now() - requestStart;
+          const pathPattern = normalizePathPattern(path);
+          const statusClass = getStatusClass(resp.status);
 
-      // Record successful request metrics
-      const durationMs = Date.now() - requestStart;
-      const pathPattern = normalizePathPattern(path);
-      const statusClass = getStatusClass(response.status);
+          incrementCounter('css_http_request_total', {
+            method: request.method,
+            path_pattern: pathPattern,
+            status_class: statusClass,
+          });
+          recordTiming('css_http_request_duration_ms', durationMs, {
+            method: request.method,
+            path_pattern: pathPattern,
+            status_class: statusClass,
+          });
 
-      incrementCounter('css_http_request_total', {
-        method: request.method,
-        path_pattern: pathPattern,
-        status_class: statusClass,
-      });
-      recordTiming('css_http_request_duration_ms', durationMs, {
-        method: request.method,
-        path_pattern: pathPattern,
-        status_class: statusClass,
-      });
+          return resp;
+        },
+      );
 
       return response;
     } catch (error) {
@@ -916,10 +914,6 @@ export default {
       });
       throw error;
     } finally {
-      // Always close database connection to prevent connection leaks
-      // This is critical for preventing the kqueue event accumulation issue
-      await closeDatabaseConnection();
-
       // Flush metrics (fire-and-forget)
       await flushMetrics();
     }
