@@ -42,6 +42,8 @@ interface MergeabilityParams {
 interface MergePreviewParams {
   sourceBranchId: string;
   targetBranchId: string;
+  /** When true, includes full document snapshots and diff operations */
+  includeContent?: boolean;
 }
 
 interface ConflictResolution {

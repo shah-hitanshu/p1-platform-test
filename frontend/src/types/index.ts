@@ -125,10 +125,33 @@ export interface MergeRequest {
 
 export type ConflictResolutionStrategy = 'take-source' | 'take-target' | 'merge-crdt';
 
+/**
+ * RFC 6902 JSON Patch operation.
+ */
+export interface DiffOperation {
+  op: 'add' | 'remove' | 'replace' | 'move' | 'copy';
+  path: string;
+  value?: unknown;
+  from?: string;
+}
+
+/**
+ * Diff result for a single document, including snapshots and operations.
+ */
+export interface DocumentDiff {
+  documentId: string;
+  documentPath: string;
+  sourceSnapshot: Record<string, unknown> | null;
+  targetSnapshot: Record<string, unknown> | null;
+  diffOperations: DiffOperation[];
+}
+
 export interface MergePreview {
   canMerge: boolean;
   hasConflicts: boolean;
   conflicts: ConflictDetails;
+  /** Document diffs with snapshots and operations. Only included when includeContent=true. */
+  documentDiffs?: DocumentDiff[];
 }
 
 export interface MergeExecuteResult {
