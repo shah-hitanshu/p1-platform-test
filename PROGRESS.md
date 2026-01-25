@@ -1790,6 +1790,20 @@ Template for future decisions:
 | 6 | Specialized (code display, custom panels) | Pending |
 | 7 | E2E Test Finalization | Pending |
 
+#### Phase 9.11: Test Data Cleanup Script
+**Status:** Complete
+
+**Deliverables:**
+- [x] Database cleanup script (`workers/src/db/cleanup-test-data.ts`)
+  - Identifies test entries by naming pattern: `{prefix}-{13-digit-timestamp}(-{suffix})?`
+  - Handles FK constraints across 16 tables in correct deletion order
+  - Nulls out `source_checkpoint_id` and `source_branch_id` before deletion
+  - Dry-run mode shows what would be deleted without executing
+- [x] npm scripts for cleanup
+  - `pnpm db:cleanup` - Dry run to preview deletions
+  - `pnpm db:cleanup:execute` - Execute actual cleanup
+  - `pnpm db:cleanup:execute --all` - Delete all data (full reset)
+
 ---
 
 ## Change History
@@ -1797,6 +1811,7 @@ Template for future decisions:
 | Date | Phase | Summary |
 |------|-------|---------|
 | 2026-01-24 | 8.23 | Site deletion FK fix: clear source_checkpoint_id and base_checkpoint_id before deleting checkpoints |
+| 2026-01-25 | 9.11 | Test data cleanup script: db:cleanup command to delete E2E test entries by naming pattern; handles FK constraints for 16 tables |
 | 2026-01-25 | 9.10 | PDS Migration Phase 7: E2E Test Finalization; added data-testid to Layout, Login, Dashboard, Sites, SiteDetail, BranchDetail, MergeRequests, MergeRequestDetail, MergePreviewPanel; updated all E2E tests to use robust selectors (getByTestId) instead of CSS class selectors |
 | 2026-01-25 | 9.9 | PDS Migration Phase 6: ConflictResolutionPanel uses PDS Button; JsonViewer kept custom (simple, working); ConflictList already using PDS Tag |
 | 2026-01-25 | 9.8 | PDS Migration Phase 5: ApiResponse uses PDS Alert for errors; MergePreviewPanel uses PDS Button and Alert; CSS cleanup for removed custom styles; E2E tests updated |

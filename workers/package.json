@@ -21,6 +21,8 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:migrate:status": "tsx src/db/migrate.ts --status",
     "db:migrate:reset": "tsx src/db/migrate.ts --reset",
+    "db:cleanup": "tsx src/db/cleanup-test-data.ts",
+    "db:cleanup:execute": "tsx src/db/cleanup-test-data.ts --execute",
     "cf:login": "wrangler login",
     "cf:whoami": "wrangler whoami",
     "cf:tail": "wrangler tail",
