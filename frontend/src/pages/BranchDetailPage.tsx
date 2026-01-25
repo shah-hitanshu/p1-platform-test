@@ -207,111 +207,14 @@ export function BranchDetailPage() {
       {/* Tabs */}
       <Tabs index={activeTabIndex} onChange={setActiveTabIndex}>
         <TabList>
-          <Tab data-testid="checkpoints-tab">
-            Checkpoints {checkpoints ? `(${checkpoints.length})` : ''}
-          </Tab>
           <Tab data-testid="documents-tab">
             Documents {documents ? `(${documents.length})` : ''}
           </Tab>
+          <Tab data-testid="checkpoints-tab">
+            Checkpoints {checkpoints ? `(${checkpoints.length})` : ''}
+          </Tab>
         </TabList>
         <TabPanels>
-          {/* Checkpoints Tab */}
-          <TabPanel>
-            <section className="content-section">
-          <div className="section-header">
-            <h2 className="section-title" data-testid="section-title-checkpoints">Checkpoints</h2>
-            <Button
-              type={showCheckpointForm ? 'secondary' : 'primary'}
-              onClick={() => setShowCheckpointForm(!showCheckpointForm)}
-              data-testid="create-checkpoint-btn"
-            >
-              {showCheckpointForm ? 'Cancel' : '+ Create checkpoint'}
-            </Button>
-          </div>
-
-          {showCheckpointForm && (
-            <div className="create-form-container" data-testid="checkpoint-form">
-              <form onSubmit={handleCreateCheckpoint} className="create-form">
-                <input
-                  type="text"
-                  value={checkpointName}
-                  onChange={(e) => setCheckpointName(e.target.value)}
-                  placeholder="Checkpoint name (optional)..."
-                  className="pds-input"
-                  autoFocus
-                  aria-label="Checkpoint name"
-                  data-testid="checkpoint-name-input"
-                />
-                <Button
-                  type="primary"
-                  isSubmit
-                  onClick={() => {}}
-                  disabled={isCreatingCheckpoint}
-                  isLoading={isCreatingCheckpoint}
-                  data-testid="submit-checkpoint-btn"
-                >
-                  {isCreatingCheckpoint ? 'Creating...' : 'Create'}
-                </Button>
-              </form>
-              {createCheckpointError && (
-                <Alert type="danger" className="create-error-alert" data-testid="checkpoint-error">
-                  {createCheckpointError}
-                </Alert>
-              )}
-            </div>
-          )}
-
-          {checkpointsError && (
-            <div className="error-banner">
-              <ApiResponse data={null} isLoading={false} error={checkpointsError} />
-            </div>
-          )}
-
-          {checkpointsLoading ? (
-            <div className="loading-container">
-              <ApiResponse data={null} isLoading={true} error={null} />
-            </div>
-          ) : checkpoints && checkpoints.length > 0 ? (
-            <div className="table-container">
-              <table className="data-table" data-testid="checkpoints-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>Created By</th>
-                    <th>Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {checkpoints.map((checkpoint) => (
-                    <tr key={checkpoint.id}>
-                      <td className="checkpoint-name">
-                        {checkpoint.name || <span className="unnamed">(unnamed)</span>}
-                      </td>
-                      <td>
-                        <Tag type={getCheckpointTypeTagType(checkpoint.type)}>
-                          {checkpoint.type}
-                        </Tag>
-                      </td>
-                      <td className="created-by">
-                        <code>{checkpoint.createdById.slice(0, 12)}...</code>
-                      </td>
-                      <td className="date">
-                        {new Date(checkpoint.createdAt).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="empty-state" data-testid="checkpoints-empty">
-              <p>No checkpoints found. Create a checkpoint to save the current state.</p>
-            </div>
-          )}
-            </section>
-          </TabPanel>
-
           {/* Documents Tab */}
           <TabPanel>
             <section className="content-section">
@@ -411,6 +314,103 @@ export function BranchDetailPage() {
           ) : (
             <div className="empty-state" data-testid="documents-empty">
               <p>No documents found on this branch.</p>
+            </div>
+          )}
+            </section>
+          </TabPanel>
+
+          {/* Checkpoints Tab */}
+          <TabPanel>
+            <section className="content-section">
+          <div className="section-header">
+            <h2 className="section-title" data-testid="section-title-checkpoints">Checkpoints</h2>
+            <Button
+              type={showCheckpointForm ? 'secondary' : 'primary'}
+              onClick={() => setShowCheckpointForm(!showCheckpointForm)}
+              data-testid="create-checkpoint-btn"
+            >
+              {showCheckpointForm ? 'Cancel' : '+ Create checkpoint'}
+            </Button>
+          </div>
+
+          {showCheckpointForm && (
+            <div className="create-form-container" data-testid="checkpoint-form">
+              <form onSubmit={handleCreateCheckpoint} className="create-form">
+                <input
+                  type="text"
+                  value={checkpointName}
+                  onChange={(e) => setCheckpointName(e.target.value)}
+                  placeholder="Checkpoint name (optional)..."
+                  className="pds-input"
+                  autoFocus
+                  aria-label="Checkpoint name"
+                  data-testid="checkpoint-name-input"
+                />
+                <Button
+                  type="primary"
+                  isSubmit
+                  onClick={() => {}}
+                  disabled={isCreatingCheckpoint}
+                  isLoading={isCreatingCheckpoint}
+                  data-testid="submit-checkpoint-btn"
+                >
+                  {isCreatingCheckpoint ? 'Creating...' : 'Create'}
+                </Button>
+              </form>
+              {createCheckpointError && (
+                <Alert type="danger" className="create-error-alert" data-testid="checkpoint-error">
+                  {createCheckpointError}
+                </Alert>
+              )}
+            </div>
+          )}
+
+          {checkpointsError && (
+            <div className="error-banner">
+              <ApiResponse data={null} isLoading={false} error={checkpointsError} />
+            </div>
+          )}
+
+          {checkpointsLoading ? (
+            <div className="loading-container">
+              <ApiResponse data={null} isLoading={true} error={null} />
+            </div>
+          ) : checkpoints && checkpoints.length > 0 ? (
+            <div className="table-container">
+              <table className="data-table" data-testid="checkpoints-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Created By</th>
+                    <th>Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {checkpoints.map((checkpoint) => (
+                    <tr key={checkpoint.id}>
+                      <td className="checkpoint-name">
+                        {checkpoint.name || <span className="unnamed">(unnamed)</span>}
+                      </td>
+                      <td>
+                        <Tag type={getCheckpointTypeTagType(checkpoint.type)}>
+                          {checkpoint.type}
+                        </Tag>
+                      </td>
+                      <td className="created-by">
+                        <code>{checkpoint.createdById.slice(0, 12)}...</code>
+                      </td>
+                      <td className="date">
+                        {new Date(checkpoint.createdAt).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="empty-state" data-testid="checkpoints-empty">
+              <p>No checkpoints found. Create a checkpoint to save the current state.</p>
             </div>
           )}
             </section>
