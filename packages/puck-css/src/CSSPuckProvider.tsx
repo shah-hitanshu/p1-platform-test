@@ -57,10 +57,11 @@ export function CSSPuckProvider({
   maxRetries = 3,
   children,
 }: CSSPuckProviderProps): React.ReactElement {
-  // Branch state
-  const [branchId, setBranchId] = useState(initialBranchId);
+  // Branch state - start with initialBranchId or empty (will be set to main)
+  const [branchId, setBranchId] = useState(initialBranchId ?? '');
   const [branches, setBranches] = useState<Branch[]>([]);
   const [currentBranch, setCurrentBranch] = useState<Branch | null>(null);
+  const [branchesLoading, setBranchesLoading] = useState(!initialBranchId);
 
   // Document state
   const [currentDocument, setCurrentDocument] = useState<Document | null>(null);
@@ -89,12 +90,26 @@ export function CSSPuckProvider({
   // Load branches
   const refreshBranches = useCallback(async () => {
     try {
+      setBranchesLoading(true);
       const branchList = await userClient.branches.list(siteId);
       setBranches(branchList);
-      const current = branchList.find((b) => b.id === branchId);
+
+      // If no branchId set, default to main branch
+      let effectiveBranchId = branchId;
+      if (!effectiveBranchId) {
+        const mainBranch = branchList.find((b) => b.isMain);
+        if (mainBranch) {
+          effectiveBranchId = mainBranch.id;
+          setBranchId(mainBranch.id);
+        }
+      }
+
+      const current = branchList.find((b) => b.id === effectiveBranchId);
       setCurrentBranch(current ?? null);
     } catch (error) {
       console.error('Failed to load branches:', error);
+    } finally {
+      setBranchesLoading(false);
     }
   }, [userClient, siteId, branchId]);
 
@@ -254,6 +269,7 @@ export function CSSPuckProvider({
       branches,
       currentBranch,
       refreshBranches,
+      branchesLoading,
     }),
     [
       userClient,
@@ -273,6 +289,7 @@ export function CSSPuckProvider({
       branches,
       currentBranch,
       refreshBranches,
+      branchesLoading,
     ]
   );
 

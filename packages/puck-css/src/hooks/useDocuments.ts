@@ -104,10 +104,12 @@ export function useDocuments({
     }
   }, [client, siteId, branchId]);
 
-  // Initial fetch
+  // Initial fetch - only when branchId is set
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (branchId) {
+      void refresh();
+    }
+  }, [refresh, branchId]);
 
   // Create a new document
   const create = useCallback(

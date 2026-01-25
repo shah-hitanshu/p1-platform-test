@@ -31,7 +31,7 @@ const config = {
   baseUrl: import.meta.env.VITE_CSS_BASE_URL || 'http://localhost:8787',
   apiKey: import.meta.env.VITE_CSS_API_KEY || '',
   siteId: import.meta.env.VITE_CSS_SITE_ID || '',
-  branchId: import.meta.env.VITE_CSS_BRANCH_ID || '',
+  branchId: import.meta.env.VITE_CSS_BRANCH_ID as string | undefined, // Optional - defaults to main
   userId: import.meta.env.VITE_CSS_USER_ID || 'demo-user',
 };
 
@@ -45,8 +45,10 @@ function ConfigWarning() {
 {`VITE_CSS_BASE_URL=http://localhost:8787
 VITE_CSS_API_KEY=your-api-key-here
 VITE_CSS_SITE_ID=your-site-id
-VITE_CSS_BRANCH_ID=your-branch-id
-VITE_CSS_USER_ID=demo-user-id`}
+VITE_CSS_USER_ID=demo-user-id
+
+# Optional - defaults to main branch if not set:
+# VITE_CSS_BRANCH_ID=your-branch-id`}
       </pre>
     </div>
   );
@@ -259,8 +261,8 @@ function AppContent() {
  * Main entry point with provider setup
  */
 export function App() {
-  // Check for required configuration
-  if (!config.apiKey || !config.siteId || !config.branchId) {
+  // Check for required configuration (branchId is optional - defaults to main)
+  if (!config.apiKey || !config.siteId) {
     return <ConfigWarning />;
   }
 

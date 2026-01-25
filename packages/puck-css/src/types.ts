@@ -24,9 +24,9 @@ export interface CSSPuckConfig {
   siteId: string;
 
   /**
-   * Initial branch ID.
+   * Initial branch ID. If not provided, defaults to the main branch.
    */
-  branchId: string;
+  branchId?: string;
 
   /**
    * User ID for attribution.
@@ -134,6 +134,11 @@ export interface CSSPuckContextValue {
    * Refresh branches list.
    */
   refreshBranches: () => Promise<void>;
+
+  /**
+   * Whether branches are still loading (for initial main branch detection).
+   */
+  branchesLoading: boolean;
 }
 
 /**
