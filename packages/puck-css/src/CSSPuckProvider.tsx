@@ -296,11 +296,12 @@ function CSSPuckProviderInner({
           }
         }
 
-        const puckData = versionToUse.snapshot as unknown as PuckData;
+        let puckData = versionToUse.snapshot as unknown as PuckData;
 
-        // Validate that we have actual data to display
+        // If snapshot is empty or invalid, use blank Puck data
+        // This is expected for version 1 which represents the initial blank state
         if (!puckData || (!puckData.content && !puckData.root)) {
-          throw new Error('Version snapshot is empty or invalid');
+          puckData = { content: [], root: { props: {} } };
         }
 
         setCurrentData(puckData);
