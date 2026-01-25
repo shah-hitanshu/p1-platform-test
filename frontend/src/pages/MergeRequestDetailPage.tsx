@@ -4,7 +4,7 @@
  * Displays merge request details and provides actions based on status.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { getSite } from '../api/sites';
@@ -14,6 +14,7 @@ import {
   updateMergeRequest,
   deleteMergeRequest,
   executeMerge,
+  previewMerge,
 } from '../api/merge-requests';
 import type { UpdateMergeRequestParams, ExecuteMergeParams } from '../api/merge-requests';
 import { ApiResponse } from '../components/ApiResponse';
@@ -22,7 +23,7 @@ import { ConflictList } from '../components/ConflictList';
 import { MergePreviewPanel } from '../components/MergePreviewPanel';
 import { ConflictResolutionPanel } from '../components/ConflictResolutionPanel';
 import type { ConflictResolution } from '../api/merge-requests';
-import type { Site, Branch, MergeRequest, MergeRequestStatus, MergeExecuteResult } from '../types';
+import type { Site, Branch, MergeRequest, MergeRequestStatus, MergeExecuteResult, DocumentDiff } from '../types';
 import {
   Button,
   RouterLinkButton,
@@ -37,6 +38,9 @@ export function MergeRequestDetailPage() {
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showResolutionPanel, setShowResolutionPanel] = useState(false);
+  const [documentDiffs, setDocumentDiffs] = useState<DocumentDiff[] | undefined>(undefined);
+  const [diffsLoading, setDiffsLoading] = useState(false);
+  const diffsLoadedRef = useRef(false);
 
   const { data: site, isLoading: siteLoading, error: siteError, execute: fetchSite } =
     useApi<Site, [string]>(getSite);
@@ -58,6 +62,35 @@ export function MergeRequestDetailPage() {
       fetchBranches(siteId);
     }
   }, [siteId, requestId, fetchSite, fetchMergeRequest, fetchBranches]);
+
+  // Fetch document diffs callback
+  const fetchDocumentDiffs = useCallback(async () => {
+    if (siteId == null || mergeRequest == null || diffsLoadedRef.current) {
+      return;
+    }
+    diffsLoadedRef.current = true;
+    setDiffsLoading(true);
+    try {
+      const preview = await previewMerge(siteId, {
+        sourceBranchId: mergeRequest.sourceBranchId,
+        targetBranchId: mergeRequest.targetBranchId,
+        includeContent: true,
+      });
+      setDocumentDiffs(preview.documentDiffs ?? []);
+    } catch {
+      // Silently fail - diffs are optional enhancement
+      setDocumentDiffs([]);
+    } finally {
+      setDiffsLoading(false);
+    }
+  }, [siteId, mergeRequest]);
+
+  // Fetch document diffs when resolution panel is shown
+  useEffect(() => {
+    if (showResolutionPanel && documentDiffs === undefined && !diffsLoadedRef.current) {
+      fetchDocumentDiffs();
+    }
+  }, [showResolutionPanel, documentDiffs, fetchDocumentDiffs]);
 
   const getBranchName = (branchId: string): string => {
     const branch = branches?.find((b) => b.id === branchId);
@@ -369,8 +402,9 @@ export function MergeRequestDetailPage() {
           {showResolutionPanel && (
             <ConflictResolutionPanel
               conflicts={mergeRequest.conflictDetails.documentConflicts}
+              documentDiffs={documentDiffs}
               onResolve={handleResolveConflicts}
-              isResolving={isMerging}
+              isResolving={isMerging || diffsLoading}
             />
           )}
         </section>

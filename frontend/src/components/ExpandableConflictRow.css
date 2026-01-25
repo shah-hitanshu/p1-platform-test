@@ -1,0 +1,121 @@
+/* Expandable Conflict Row Styles */
+
+.expandable-conflict-row {
+  padding: 16px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+  transition: border-color 0.2s ease;
+}
+
+.expandable-conflict-row.expanded {
+  border-color: #fd7e14;
+}
+
+/* Header Section */
+.conflict-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  gap: 16px;
+}
+
+.conflict-row-header:focus {
+  outline: 2px solid #0066cc;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.conflict-row-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.conflict-row-path {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.8125rem;
+  color: #333;
+  background-color: #e9ecef;
+  padding: 4px 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conflict-row-type {
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: #856404;
+  background-color: #fff3cd;
+  padding: 4px 8px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+/* Diff Section */
+.conflict-row-diff {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e9ecef;
+}
+
+.conflict-row-no-diff {
+  margin-top: 16px;
+  padding: 24px;
+  text-align: center;
+  color: #6c757d;
+  font-style: italic;
+  background-color: #e9ecef;
+  border-radius: 4px;
+}
+
+/* Resolution Section */
+.conflict-row-resolution {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e9ecef;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.resolution-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.resolution-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.resolution-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.resolution-option input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.resolution-option input[type="radio"]:disabled {
+  cursor: not-allowed;
+}
+
+.option-label {
+  font-size: 0.875rem;
+  color: #333;
+}

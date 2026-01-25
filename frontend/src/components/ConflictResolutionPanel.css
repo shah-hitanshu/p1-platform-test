@@ -49,6 +49,13 @@
 
 /* Apply all buttons now use PDS Button component */
 
+/* Expand/Collapse Controls */
+.expand-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
 /* Conflict Resolutions List */
 .conflict-resolutions {
   display: flex;

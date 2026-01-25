@@ -6,12 +6,14 @@
 
 import { useState } from 'react';
 import { Button } from '@pantheon-systems/design-toolkit-react';
-import type { DocumentConflict, DocumentConflictType, ConflictResolutionStrategy } from '../types';
+import type { DocumentConflict, ConflictResolutionStrategy, DocumentDiff } from '../types';
 import type { ConflictResolution } from '../api/merge-requests';
+import { ExpandableConflictRow } from './ExpandableConflictRow';
 import './ConflictResolutionPanel.css';
 
 interface ConflictResolutionPanelProps {
   conflicts: DocumentConflict[];
+  documentDiffs?: DocumentDiff[];
   onResolve: (resolutions: ConflictResolution[]) => void;
   isResolving: boolean;
 }
@@ -20,17 +22,8 @@ interface ResolutionState {
   [documentId: string]: ConflictResolutionStrategy;
 }
 
-function getConflictTypeLabel(type: DocumentConflictType): string {
-  switch (type) {
-    case 'both-modified':
-      return 'Both Modified';
-    case 'deleted-in-source':
-      return 'Deleted in Source';
-    case 'deleted-in-target':
-      return 'Deleted in Target';
-    default:
-      return type;
-  }
+interface ExpandedState {
+  [documentId: string]: boolean;
 }
 
 function getResolutionLabel(strategy: ConflictResolutionStrategy): string {
@@ -50,6 +43,7 @@ const RESOLUTION_OPTIONS: ConflictResolutionStrategy[] = ['take-source', 'take-t
 
 export function ConflictResolutionPanel({
   conflicts,
+  documentDiffs,
   onResolve,
   isResolving,
 }: ConflictResolutionPanelProps) {
@@ -61,6 +55,16 @@ export function ConflictResolutionPanel({
     });
     return initial;
   });
+
+  const [expanded, setExpanded] = useState<ExpandedState>({});
+
+  // Build a map for quick diff lookup
+  const diffMap = new Map<string, DocumentDiff>();
+  if (documentDiffs != null) {
+    for (const diff of documentDiffs) {
+      diffMap.set(diff.documentId, diff);
+    }
+  }
 
   const handleResolutionChange = (documentId: string, strategy: ConflictResolutionStrategy) => {
     setResolutions((prev) => ({
@@ -76,6 +80,29 @@ export function ConflictResolutionPanel({
     });
     setResolutions(newResolutions);
   };
+
+  const handleToggleExpanded = (documentId: string) => {
+    setExpanded((prev) => ({
+      ...prev,
+      [documentId]: !prev[documentId],
+    }));
+  };
+
+  const handleExpandAll = () => {
+    const newExpanded: ExpandedState = {};
+    conflicts.forEach((conflict) => {
+      newExpanded[conflict.documentId] = true;
+    });
+    setExpanded(newExpanded);
+  };
+
+  const handleCollapseAll = () => {
+    setExpanded({});
+  };
+
+  const hasAnyExpanded = Object.values(expanded).some(Boolean);
+  const hasAllExpanded = conflicts.every((c) => expanded[c.documentId]);
+  const hasDiffs = documentDiffs != null && documentDiffs.length > 0;
 
   const handleSubmit = () => {
     const resolutionList: ConflictResolution[] = Object.entries(resolutions).map(
@@ -122,29 +149,39 @@ export function ConflictResolutionPanel({
         </div>
       </div>
 
+      {hasDiffs && (
+        <div className="expand-controls">
+          <Button
+            type="tertiary"
+            onClick={handleExpandAll}
+            disabled={hasAllExpanded}
+            data-testid="expand-all-btn"
+          >
+            Expand All
+          </Button>
+          <Button
+            type="tertiary"
+            onClick={handleCollapseAll}
+            disabled={!hasAnyExpanded}
+            data-testid="collapse-all-btn"
+          >
+            Collapse All
+          </Button>
+        </div>
+      )}
+
       <div className="conflict-resolutions">
         {conflicts.map((conflict) => (
-          <div key={conflict.documentId} className="resolution-item">
-            <div className="resolution-item-header">
-              <code className="resolution-path">{conflict.documentPath}</code>
-              <span className="resolution-type">{getConflictTypeLabel(conflict.conflictType)}</span>
-            </div>
-            <div className="resolution-options">
-              {RESOLUTION_OPTIONS.map((strategy) => (
-                <label key={strategy} className="resolution-option">
-                  <input
-                    type="radio"
-                    name={`resolution-${conflict.documentId}`}
-                    value={strategy}
-                    checked={resolutions[conflict.documentId] === strategy}
-                    onChange={() => handleResolutionChange(conflict.documentId, strategy)}
-                    disabled={isResolving}
-                  />
-                  <span className="option-label">{getResolutionLabel(strategy)}</span>
-                </label>
-              ))}
-            </div>
-          </div>
+          <ExpandableConflictRow
+            key={conflict.documentId}
+            conflict={conflict}
+            diff={diffMap.get(conflict.documentId)}
+            isExpanded={expanded[conflict.documentId] ?? false}
+            onToggle={() => handleToggleExpanded(conflict.documentId)}
+            resolution={resolutions[conflict.documentId]}
+            onResolutionChange={(strategy) => handleResolutionChange(conflict.documentId, strategy)}
+            disabled={isResolving}
+          />
         ))}
       </div>
 
