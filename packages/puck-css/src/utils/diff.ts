@@ -5,7 +5,7 @@
  */
 
 import type { PuckData, PuckComponentData } from '@pantheon/css-client';
-import type { ComponentDiff } from '../types.js';
+import type { ComponentDiff, ComponentDiffWithPosition, PropDiff } from '../types.js';
 
 /**
  * Generates a unique key for a component based on its ID and path.
@@ -171,4 +171,191 @@ export function countChanges(diffs: ComponentDiff[]): {
  */
 export function hasRootChanged(before: PuckData, after: PuckData): boolean {
   return !deepEqual(before.root, after.root);
+}
+
+/**
+ * Flattens components with their indices for position tracking.
+ */
+function flattenComponentsWithIndex(
+  data: PuckData
+): Map<string, { component: PuckComponentData; path: string[]; index: number }> {
+  const result = new Map<string, { component: PuckComponentData; path: string[]; index: number }>();
+
+  // Process main content
+  data.content.forEach((component, index) => {
+    const path = ['content'];
+    const key = `${component.props.id}`;
+    result.set(key, { component, path, index });
+  });
+
+  // Process zones
+  if (data.zones) {
+    for (const [zoneName, components] of Object.entries(data.zones)) {
+      components.forEach((component, index) => {
+        const path = ['zones', zoneName];
+        const key = `${zoneName}/${component.props.id}`;
+        result.set(key, { component, path, index });
+      });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Compares two Puck data structures with position tracking and reorder detection.
+ *
+ * @param before - The original Puck data
+ * @param after - The modified Puck data
+ * @returns Array of component differences with position info
+ */
+export function diffPuckDataWithPositions(
+  before: PuckData,
+  after: PuckData
+): ComponentDiffWithPosition[] {
+  const diffs: ComponentDiffWithPosition[] = [];
+
+  const beforeComponents = flattenComponentsWithIndex(before);
+  const afterComponents = flattenComponentsWithIndex(after);
+
+  // Find removed, modified, reordered, and unchanged components
+  for (const [key, { component, path, index: beforeIndex }] of beforeComponents) {
+    const afterEntry = afterComponents.get(key);
+
+    if (!afterEntry) {
+      // Component was removed
+      diffs.push({
+        type: 'removed',
+        componentId: component.props.id,
+        componentType: component.type,
+        path,
+        before: component,
+        beforeIndex,
+        afterIndex: undefined,
+      });
+    } else {
+      const isModified = !deepEqual(component, afterEntry.component);
+      const isReordered = beforeIndex !== afterEntry.index;
+
+      if (isModified) {
+        // Component was modified (might also be reordered)
+        diffs.push({
+          type: 'modified',
+          componentId: component.props.id,
+          componentType: component.type,
+          path,
+          before: component,
+          after: afterEntry.component,
+          beforeIndex,
+          afterIndex: afterEntry.index,
+          reordered: isReordered,
+        });
+      } else if (isReordered) {
+        // Component was only reordered
+        diffs.push({
+          type: 'reordered',
+          componentId: component.props.id,
+          componentType: component.type,
+          path,
+          before: component,
+          after: afterEntry.component,
+          beforeIndex,
+          afterIndex: afterEntry.index,
+        });
+      } else {
+        // Component is unchanged
+        diffs.push({
+          type: 'unchanged',
+          componentId: component.props.id,
+          componentType: component.type,
+          path,
+          before: component,
+          after: afterEntry.component,
+          beforeIndex,
+          afterIndex: afterEntry.index,
+        });
+      }
+    }
+  }
+
+  // Find added components
+  for (const [key, { component, path, index: afterIndex }] of afterComponents) {
+    if (!beforeComponents.has(key)) {
+      diffs.push({
+        type: 'added',
+        componentId: component.props.id,
+        componentType: component.type,
+        path,
+        after: component,
+        beforeIndex: undefined,
+        afterIndex,
+      });
+    }
+  }
+
+  return diffs;
+}
+
+/**
+ * Compares two prop objects and returns detailed prop-level differences.
+ *
+ * @param before - Props before change
+ * @param after - Props after change
+ * @returns Array of prop differences
+ */
+export function diffProps(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>
+): PropDiff[] {
+  const diffs: PropDiff[] = [];
+  const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
+
+  for (const key of allKeys) {
+    // Skip the 'id' prop as it's an identifier, not content
+    if (key === 'id') continue;
+
+    const beforeValue = before[key];
+    const afterValue = after[key];
+    const beforeHas = key in before;
+    const afterHas = key in after;
+
+    if (!beforeHas && afterHas) {
+      // Prop was added
+      diffs.push({
+        propName: key,
+        type: 'added',
+        before: undefined,
+        after: afterValue,
+      });
+    } else if (beforeHas && !afterHas) {
+      // Prop was removed
+      diffs.push({
+        propName: key,
+        type: 'removed',
+        before: beforeValue,
+        after: undefined,
+      });
+    } else if (!deepEqual(beforeValue, afterValue)) {
+      // Prop was modified
+      diffs.push({
+        propName: key,
+        type: 'modified',
+        before: beforeValue,
+        after: afterValue,
+      });
+    }
+  }
+
+  return diffs;
+}
+
+/**
+ * Filters diffs to only include reordered components.
+ */
+export function getReorderedComponents(
+  diffs: ComponentDiffWithPosition[]
+): ComponentDiffWithPosition[] {
+  return diffs.filter(
+    (diff) => diff.type === 'reordered' || (diff.reordered === true)
+  );
 }

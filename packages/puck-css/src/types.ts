@@ -295,6 +295,56 @@ export interface ComponentDiff {
 }
 
 /**
+ * Extended component diff with position information.
+ */
+export interface ComponentDiffWithPosition extends Omit<ComponentDiff, 'type'> {
+  /**
+   * Type of change (includes 'reordered').
+   */
+  type: 'added' | 'removed' | 'modified' | 'unchanged' | 'reordered';
+
+  /**
+   * Index in the before version (undefined if added).
+   */
+  beforeIndex?: number;
+
+  /**
+   * Index in the after version (undefined if removed).
+   */
+  afterIndex?: number;
+
+  /**
+   * Whether the component was reordered (can be true even for modified).
+   */
+  reordered?: boolean;
+}
+
+/**
+ * Prop-level diff result.
+ */
+export interface PropDiff {
+  /**
+   * Name of the prop that changed.
+   */
+  propName: string;
+
+  /**
+   * Type of change.
+   */
+  type: 'added' | 'removed' | 'modified';
+
+  /**
+   * Value before change (undefined if added).
+   */
+  before?: unknown;
+
+  /**
+   * Value after change (undefined if removed).
+   */
+  after?: unknown;
+}
+
+/**
  * Options for version comparison.
  */
 export interface VersionCompareOptions {
