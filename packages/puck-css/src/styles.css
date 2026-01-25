@@ -945,3 +945,339 @@
   color: var(--puck-css-diff-added);
   border-radius: 3px;
 }
+
+/* ============================================
+   Toast Notifications
+   ============================================ */
+.css-puck-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  background: var(--puck-css-bg);
+  border: 1px solid var(--puck-css-border);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 300px;
+  max-width: 400px;
+  position: relative;
+  overflow: hidden;
+  animation: css-puck-toast-enter 0.2s ease-out;
+}
+
+@keyframes css-puck-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.css-puck-toast--exiting {
+  animation: css-puck-toast-exit 0.2s ease-in forwards;
+}
+
+@keyframes css-puck-toast-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+/* Severity variants */
+.css-puck-toast--success {
+  border-left: 4px solid var(--puck-css-diff-added);
+}
+
+.css-puck-toast--error {
+  border-left: 4px solid var(--puck-css-diff-removed);
+}
+
+.css-puck-toast--warning {
+  border-left: 4px solid var(--puck-css-diff-modified);
+}
+
+.css-puck-toast--info {
+  border-left: 4px solid var(--puck-css-primary);
+}
+
+/* Icon */
+.css-puck-toast__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: 50%;
+}
+
+.css-puck-toast__icon--success {
+  background: var(--puck-css-diff-added-bg);
+  color: var(--puck-css-diff-added);
+}
+
+.css-puck-toast__icon--error {
+  background: var(--puck-css-diff-removed-bg);
+  color: var(--puck-css-diff-removed);
+}
+
+.css-puck-toast__icon--warning {
+  background: var(--puck-css-diff-modified-bg);
+  color: var(--puck-css-diff-modified);
+}
+
+.css-puck-toast__icon--info {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--puck-css-primary);
+}
+
+/* Content */
+.css-puck-toast__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.css-puck-toast__title {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--puck-css-text);
+  margin-bottom: 0.25rem;
+}
+
+.css-puck-toast__message {
+  font-size: 0.8125rem;
+  color: var(--puck-css-text-secondary);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* Actions */
+.css-puck-toast__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.css-puck-toast__action {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--puck-css-primary);
+  background: transparent;
+  border: 1px solid var(--puck-css-primary);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.css-puck-toast__action:hover {
+  background: var(--puck-css-primary);
+  color: white;
+}
+
+.css-puck-toast__action:focus {
+  outline: 2px solid var(--puck-css-primary);
+  outline-offset: 2px;
+}
+
+/* Dismiss button */
+.css-puck-toast__dismiss {
+  flex-shrink: 0;
+  padding: 0.25rem;
+  font-size: 0.875rem;
+  line-height: 1;
+  color: var(--puck-css-text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 0.25rem;
+  transition: all 0.15s ease;
+}
+
+.css-puck-toast__dismiss:hover {
+  background: var(--puck-css-bg-secondary);
+  color: var(--puck-css-text);
+}
+
+/* Progress bar */
+.css-puck-toast__progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: var(--puck-css-primary);
+  transition: width 0.05s linear;
+  border-radius: 0 0 0 0.5rem;
+}
+
+.css-puck-toast--success .css-puck-toast__progress {
+  background: var(--puck-css-diff-added);
+}
+
+.css-puck-toast--error .css-puck-toast__progress {
+  background: var(--puck-css-diff-removed);
+}
+
+.css-puck-toast--warning .css-puck-toast__progress {
+  background: var(--puck-css-diff-modified);
+}
+
+/* ============================================
+   Notification Container
+   ============================================ */
+.css-puck-notification-container {
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.css-puck-notification-container > * {
+  pointer-events: auto;
+}
+
+/* Position variants */
+.css-puck-notification-container--top-right {
+  top: 1rem;
+  right: 1rem;
+}
+
+.css-puck-notification-container--top-left {
+  top: 1rem;
+  left: 1rem;
+}
+
+.css-puck-notification-container--top-center {
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.css-puck-notification-container--bottom-right {
+  bottom: 1rem;
+  right: 1rem;
+}
+
+.css-puck-notification-container--bottom-left {
+  bottom: 1rem;
+  left: 1rem;
+}
+
+.css-puck-notification-container--bottom-center {
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Bottom positions should stack upward */
+.css-puck-notification-container--bottom-right,
+.css-puck-notification-container--bottom-left,
+.css-puck-notification-container--bottom-center {
+  flex-direction: column-reverse;
+}
+
+/* Adjust animation direction for left-positioned containers */
+.css-puck-notification-container--top-left .css-puck-toast,
+.css-puck-notification-container--bottom-left .css-puck-toast {
+  animation-name: css-puck-toast-enter-left;
+}
+
+@keyframes css-puck-toast-enter-left {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.css-puck-notification-container--top-left .css-puck-toast--exiting,
+.css-puck-notification-container--bottom-left .css-puck-toast--exiting {
+  animation-name: css-puck-toast-exit-left;
+}
+
+@keyframes css-puck-toast-exit-left {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+}
+
+/* Center positions use vertical animation */
+.css-puck-notification-container--top-center .css-puck-toast {
+  animation-name: css-puck-toast-enter-top;
+}
+
+@keyframes css-puck-toast-enter-top {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.css-puck-notification-container--top-center .css-puck-toast--exiting {
+  animation-name: css-puck-toast-exit-top;
+}
+
+@keyframes css-puck-toast-exit-top {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+}
+
+.css-puck-notification-container--bottom-center .css-puck-toast {
+  animation-name: css-puck-toast-enter-bottom;
+}
+
+@keyframes css-puck-toast-enter-bottom {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.css-puck-notification-container--bottom-center .css-puck-toast--exiting {
+  animation-name: css-puck-toast-exit-bottom;
+}
+
+@keyframes css-puck-toast-exit-bottom {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}

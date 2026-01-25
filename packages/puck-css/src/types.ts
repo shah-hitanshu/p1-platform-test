@@ -56,6 +56,11 @@ export interface CSSPuckContextValue {
   client: CSSClient;
 
   /**
+   * Notification methods for displaying toast notifications.
+   */
+  notifications: NotificationContextValue;
+
+  /**
    * Current site ID.
    */
   siteId: string;
@@ -382,4 +387,148 @@ export interface VersionCompareOptions {
    * Version ID of the "after" version (defaults to current).
    */
   afterVersionId?: string;
+}
+
+/**
+ * Severity level for notifications.
+ */
+export type NotificationSeverity = 'error' | 'warning' | 'info' | 'success';
+
+/**
+ * Action that can be performed on a notification.
+ */
+export interface NotificationAction {
+  /**
+   * Button label.
+   */
+  label: string;
+
+  /**
+   * Callback when action is clicked.
+   */
+  onClick: () => void;
+}
+
+/**
+ * A notification to display to the user.
+ */
+export interface Notification {
+  /**
+   * Unique identifier for the notification.
+   */
+  id: string;
+
+  /**
+   * Notification message.
+   */
+  message: string;
+
+  /**
+   * Severity level.
+   */
+  severity: NotificationSeverity;
+
+  /**
+   * Optional title for the notification.
+   */
+  title?: string;
+
+  /**
+   * Optional actions (e.g., retry button).
+   */
+  actions?: NotificationAction[];
+
+  /**
+   * Auto-dismiss after this many milliseconds. Set to 0 to disable auto-dismiss.
+   * @default 5000 for success/info, 0 for error/warning
+   */
+  autoDismissMs?: number;
+
+  /**
+   * Timestamp when the notification was created.
+   */
+  createdAt: Date;
+}
+
+/**
+ * Options for adding a notification.
+ */
+export interface AddNotificationOptions {
+  /**
+   * Notification message.
+   */
+  message: string;
+
+  /**
+   * Severity level.
+   * @default 'info'
+   */
+  severity?: NotificationSeverity;
+
+  /**
+   * Optional title for the notification.
+   */
+  title?: string;
+
+  /**
+   * Optional actions (e.g., retry button).
+   */
+  actions?: NotificationAction[];
+
+  /**
+   * Auto-dismiss after this many milliseconds.
+   * Set to 0 to disable auto-dismiss.
+   * Defaults: 5000 for success/info, 0 for error/warning.
+   */
+  autoDismissMs?: number;
+}
+
+/**
+ * Context value for notification management.
+ */
+export interface NotificationContextValue {
+  /**
+   * Currently active notifications.
+   */
+  notifications: Notification[];
+
+  /**
+   * Add a notification.
+   * @returns The notification ID.
+   */
+  addNotification: (options: AddNotificationOptions) => string;
+
+  /**
+   * Remove a notification by ID.
+   */
+  removeNotification: (id: string) => void;
+
+  /**
+   * Remove all notifications.
+   */
+  clearNotifications: () => void;
+
+  /**
+   * Add an error notification with optional retry action.
+   * @returns The notification ID.
+   */
+  addError: (message: string, onRetry?: () => void) => string;
+
+  /**
+   * Add a success notification.
+   * @returns The notification ID.
+   */
+  addSuccess: (message: string) => string;
+
+  /**
+   * Add a warning notification.
+   * @returns The notification ID.
+   */
+  addWarning: (message: string) => string;
+
+  /**
+   * Add an info notification.
+   * @returns The notification ID.
+   */
+  addInfo: (message: string) => string;
 }

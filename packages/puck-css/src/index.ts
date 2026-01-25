@@ -7,6 +7,7 @@
 // Provider and Context
 export { CSSPuckProvider } from './CSSPuckProvider.js';
 export { CSSPuckContext, useCSSPuck } from './CSSPuckContext.js';
+export { NotificationProvider, NotificationContext, useNotifications } from './NotificationContext.js';
 
 // Hooks
 export { useAutoSave } from './hooks/useAutoSave.js';
@@ -23,6 +24,8 @@ export { HistoricalVersionBanner } from './components/HistoricalVersionBanner.js
 export type { HistoricalVersionBannerProps } from './components/HistoricalVersionBanner.js';
 export { PuckDataSynchronizer } from './components/PuckDataSynchronizer.js';
 export type { PuckDataSynchronizerProps } from './components/PuckDataSynchronizer.js';
+export { Toast } from './components/Toast.js';
+export { NotificationContainer } from './components/NotificationContainer.js';
 
 // Version Comparison Components
 export {
@@ -86,6 +89,12 @@ export type {
   ComponentDiffWithPosition,
   PropDiff,
   VersionCompareOptions,
+  // Notification types
+  NotificationSeverity,
+  NotificationAction,
+  Notification,
+  AddNotificationOptions,
+  NotificationContextValue,
 } from './types.js';
 
 // Re-export commonly used types from css-client

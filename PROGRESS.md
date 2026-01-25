@@ -196,13 +196,47 @@ puck-css-integration/
 - Demo app updated to pass sync props to `createCSSPlugin` instead of `createCSSOverrides`
 - Verified working in both React 18 (demo) and React 19 (my-app) environments
 
+### Phase 6: Error Notification Component ✅
+- Implemented toast-style notification system for errors and other messages
+- New types in `types.ts`:
+  - `NotificationSeverity` - 'error' | 'warning' | 'info' | 'success'
+  - `NotificationAction` - Action buttons with label and onClick
+  - `Notification` - Full notification object with id, message, severity, title, actions, autoDismissMs
+  - `AddNotificationOptions` - Options for adding notifications
+  - `NotificationContextValue` - Context value with notification methods
+- New React context (`NotificationContext.tsx`):
+  - `NotificationProvider` - Wraps app to provide notification state
+  - `useNotifications` - Hook to access notification methods
+  - Convenience methods: `addError`, `addSuccess`, `addWarning`, `addInfo`
+  - Auto-dismiss timers (5s for success/info, manual dismiss for errors/warnings)
+  - Max notifications limit (default 5)
+- New components:
+  - `Toast` - Single notification with icon, message, actions, dismiss button, progress bar
+  - `NotificationContainer` - Fixed-position container for all notifications
+    - 6 position options: top-right, top-left, top-center, bottom-right, bottom-left, bottom-center
+    - Proper stacking and animations per position
+- CSS styles added to `styles.css`:
+  - Toast styling with severity-based colors and icons
+  - Enter/exit animations with position-aware slide directions
+  - Progress bar for auto-dismiss countdown
+  - Accessibility-friendly with proper ARIA attributes
+- Integration with `CSSPuckProvider`:
+  - Now wraps children with `NotificationProvider`
+  - Automatically shows error notifications on save failures with retry action
+  - Exposes `notifications` object in context for manual notification control
+  - Optional `showErrorNotifications` prop (default true)
+- 38 new tests covering:
+  - NotificationContext (13 tests) - adding, removing, auto-dismiss behavior
+  - Toast component (16 tests) - rendering, actions, accessibility
+  - NotificationContainer (9 tests) - positioning, multiple notifications
+
 ## Test Summary
 
 | Package | Tests | Status |
 |---------|-------|--------|
 | @pantheon/css-client | 18 | ✅ Passing |
-| @pantheon/puck-css | 141 | ✅ Passing |
-| **Total** | **159** | ✅ **All Passing** |
+| @pantheon/puck-css | 179 | ✅ Passing |
+| **Total** | **197** | ✅ **All Passing** |
 
 ## Key Decisions
 
@@ -216,10 +250,6 @@ puck-css-integration/
 8. **Optional Configuration**: Only baseUrl, apiKey, siteId, and userId are required; branchId is optional
 
 ## Remaining Work
-
-### Phase 6: Error Notification Component
-- Toast-style error notifications
-- Auto-dismiss with retry option
 
 ### Phase 7: E2E Tests
 - Playwright tests for full user flows

@@ -8,11 +8,17 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import type { Document, PuckData, Checkpoint, Branch, DocumentVersion } from '@pantheon/css-client';
 import type { CSSPuckConfig, CSSPuckContextValue, SaveStatus } from './types.js';
 import { CSSPuckContext } from './CSSPuckContext.js';
+import { NotificationProvider, useNotifications } from './NotificationContext.js';
 import { debounce } from './utils/debounce.js';
 import { withRetry } from './utils/retry.js';
 
 interface CSSPuckProviderProps extends CSSPuckConfig {
   children: React.ReactNode;
+  /**
+   * Whether to show error notifications automatically.
+   * @default true
+   */
+  showErrorNotifications?: boolean;
 }
 
 /**
@@ -23,6 +29,7 @@ interface CSSPuckProviderProps extends CSSPuckConfig {
  * - Document loading
  * - Checkpoint (publish) creation
  * - Branch switching
+ * - Toast notifications for errors and success
  *
  * @example
  * ```tsx
@@ -48,15 +55,29 @@ interface CSSPuckProviderProps extends CSSPuckConfig {
  * }
  * ```
  */
-export function CSSPuckProvider({
+export function CSSPuckProvider(props: CSSPuckProviderProps): React.ReactElement {
+  return (
+    <NotificationProvider>
+      <CSSPuckProviderInner {...props} />
+    </NotificationProvider>
+  );
+}
+
+/**
+ * Inner provider component that has access to notification context.
+ */
+function CSSPuckProviderInner({
   client,
   siteId,
   branchId: initialBranchId,
   userId,
   autoSaveDelay = 3000,
   maxRetries = 3,
+  showErrorNotifications = true,
   children,
 }: CSSPuckProviderProps): React.ReactElement {
+  // Access notification context
+  const notificationContext = useNotifications();
   // Branch state - start with initialBranchId or empty (will be set to main)
   const [branchId, setBranchId] = useState(initialBranchId ?? '');
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -164,9 +185,18 @@ export function CSSPuckProvider({
       setLastSaved(new Date());
     } catch (error) {
       setSaveStatus('error');
-      setSaveError(error instanceof Error ? error : new Error(String(error)));
+      const saveErr = error instanceof Error ? error : new Error(String(error));
+      setSaveError(saveErr);
+
+      // Show error notification with retry action
+      if (showErrorNotifications) {
+        notificationContext.addError(
+          `Failed to save changes: ${saveErr.message}`,
+          () => void performSave()
+        );
+      }
     }
-  }, [userClient, siteId, branchId, maxRetries]);
+  }, [userClient, siteId, branchId, maxRetries, showErrorNotifications, notificationContext]);
 
   // Debounced save
   const debouncedSave = useMemo(
@@ -351,6 +381,7 @@ export function CSSPuckProvider({
   const contextValue: CSSPuckContextValue = useMemo(
     () => ({
       client: userClient,
+      notifications: notificationContext,
       siteId,
       branchId,
       userId,
@@ -379,6 +410,7 @@ export function CSSPuckProvider({
     }),
     [
       userClient,
+      notificationContext,
       siteId,
       branchId,
       userId,
