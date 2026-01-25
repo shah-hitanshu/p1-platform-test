@@ -23,11 +23,14 @@ import {
   useVersions,
   createCSSPlugin,
   createCSSOverrides,
-  VersionComparePage,
+  VisualVersionCompare,
   diffPuckDataWithPositions,
 } from '@pantheon/puck-css';
 import type { DocumentVersion, PuckData } from '@pantheon/css-client';
 import type { ComponentDiffWithPosition } from '@pantheon/puck-css';
+
+// Import puck-css styles for visual comparison
+import '@pantheon/puck-css/styles.css';
 
 import { puckConfig } from './puck.config';
 
@@ -119,6 +122,8 @@ function AppContent() {
   const [comparisonData, setComparisonData] = useState<{
     beforeVersion: number;
     afterVersion: number;
+    beforeData: PuckData;
+    afterData: PuckData;
     diffs: ComponentDiffWithPosition[];
   } | null>(null);
 
@@ -195,22 +200,24 @@ function AppContent() {
 
   // Handle version comparison
   const handleCompare = useCallback((beforeVersionId: string, afterVersionId: string) => {
-    const beforeVersion = versions.find((v) => v.id === beforeVersionId);
-    const afterVersion = versions.find((v) => v.id === afterVersionId);
+    const beforeVersionObj = versions.find((v) => v.id === beforeVersionId);
+    const afterVersionObj = versions.find((v) => v.id === afterVersionId);
 
-    if (!beforeVersion || !afterVersion) {
+    if (!beforeVersionObj || !afterVersionObj) {
       console.error('Version not found for comparison');
       return;
     }
 
-    const beforeData = beforeVersion.snapshot as unknown as PuckData;
-    const afterData = afterVersion.snapshot as unknown as PuckData;
+    const beforeData = beforeVersionObj.snapshot as unknown as PuckData;
+    const afterData = afterVersionObj.snapshot as unknown as PuckData;
 
     const diffs = diffPuckDataWithPositions(beforeData, afterData);
 
     setComparisonData({
-      beforeVersion: beforeVersion.versionNumber,
-      afterVersion: afterVersion.versionNumber,
+      beforeVersion: beforeVersionObj.versionNumber,
+      afterVersion: afterVersionObj.versionNumber,
+      beforeData,
+      afterData,
       diffs,
     });
   }, [versions]);
@@ -323,9 +330,12 @@ function AppContent() {
   if (comparisonData) {
     return (
       <div className="app app--fullscreen">
-        <VersionComparePage
+        <VisualVersionCompare
           beforeVersion={comparisonData.beforeVersion}
           afterVersion={comparisonData.afterVersion}
+          beforeData={comparisonData.beforeData}
+          afterData={comparisonData.afterData}
+          config={puckConfig}
           diffs={comparisonData.diffs}
           onClose={handleCloseComparison}
         />
