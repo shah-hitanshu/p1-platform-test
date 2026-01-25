@@ -1,0 +1,478 @@
+/**
+ * Puck CSS Integration Styles
+ *
+ * Styles for version comparison and other UI components.
+ */
+
+/* ============================================
+   CSS Variables
+   ============================================ */
+:root {
+  /* Diff colors */
+  --puck-css-diff-added: #22c55e;
+  --puck-css-diff-added-bg: #dcfce7;
+  --puck-css-diff-removed: #ef4444;
+  --puck-css-diff-removed-bg: #fee2e2;
+  --puck-css-diff-modified: #f59e0b;
+  --puck-css-diff-modified-bg: #fef3c7;
+  --puck-css-diff-reordered: #8b5cf6;
+  --puck-css-diff-reordered-bg: #ede9fe;
+  --puck-css-diff-unchanged: #6b7280;
+  --puck-css-diff-unchanged-bg: #f3f4f6;
+
+  /* General colors */
+  --puck-css-border: #e5e7eb;
+  --puck-css-bg: #ffffff;
+  --puck-css-bg-secondary: #f9fafb;
+  --puck-css-text: #111827;
+  --puck-css-text-secondary: #6b7280;
+  --puck-css-primary: #3b82f6;
+  --puck-css-primary-hover: #2563eb;
+}
+
+/* ============================================
+   DiffHeader
+   ============================================ */
+.diff-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--puck-css-bg);
+  border-bottom: 1px solid var(--puck-css-border);
+}
+
+.diff-header__versions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.diff-header__version {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.diff-header__version--before {
+  background: var(--puck-css-diff-removed-bg);
+  color: var(--puck-css-diff-removed);
+}
+
+.diff-header__version--after {
+  background: var(--puck-css-diff-added-bg);
+  color: var(--puck-css-diff-added);
+}
+
+.diff-header__arrow {
+  color: var(--puck-css-text-secondary);
+}
+
+.diff-header__summary {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.diff-header__stat {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.diff-header__stat--added {
+  background: var(--puck-css-diff-added-bg);
+  color: var(--puck-css-diff-added);
+}
+
+.diff-header__stat--removed {
+  background: var(--puck-css-diff-removed-bg);
+  color: var(--puck-css-diff-removed);
+}
+
+.diff-header__stat--modified {
+  background: var(--puck-css-diff-modified-bg);
+  color: var(--puck-css-diff-modified);
+}
+
+.diff-header__stat--reordered {
+  background: var(--puck-css-diff-reordered-bg);
+  color: var(--puck-css-diff-reordered);
+}
+
+.diff-header__close {
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: transparent;
+  font-size: 1.25rem;
+  color: var(--puck-css-text-secondary);
+  cursor: pointer;
+  border-radius: 0.25rem;
+  line-height: 1;
+}
+
+.diff-header__close:hover {
+  background: var(--puck-css-bg-secondary);
+  color: var(--puck-css-text);
+}
+
+/* ============================================
+   VersionComparePage
+   ============================================ */
+.version-compare-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--puck-css-bg-secondary);
+}
+
+.version-compare-page__content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.version-compare-page__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--puck-css-text-secondary);
+  font-size: 1rem;
+}
+
+.version-compare-page__trees {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  padding: 1rem;
+  flex: 1;
+  overflow: auto;
+}
+
+.version-compare-page__detail {
+  border-top: 1px solid var(--puck-css-border);
+  padding: 1rem;
+  background: var(--puck-css-bg);
+  max-height: 40%;
+  overflow: auto;
+}
+
+/* ============================================
+   ComponentTree
+   ============================================ */
+.component-tree {
+  background: var(--puck-css-bg);
+  border: 1px solid var(--puck-css-border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.component-tree__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--puck-css-bg-secondary);
+  border-bottom: 1px solid var(--puck-css-border);
+}
+
+.component-tree__title {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.component-tree__count {
+  font-size: 0.75rem;
+  color: var(--puck-css-text-secondary);
+}
+
+.component-tree__content {
+  flex: 1;
+  overflow: auto;
+  padding: 0.5rem;
+}
+
+.component-tree__nodes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.component-tree__empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--puck-css-text-secondary);
+  font-size: 0.875rem;
+}
+
+/* ============================================
+   ComponentNode
+   ============================================ */
+.component-node {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 0.375rem;
+  background: transparent;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.875rem;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.component-node:hover {
+  background: var(--puck-css-bg-secondary);
+}
+
+.component-node--selected {
+  border-color: var(--puck-css-primary);
+  background: var(--puck-css-bg-secondary);
+}
+
+.component-node--added {
+  background: var(--puck-css-diff-added-bg);
+}
+
+.component-node--added:hover {
+  background: var(--puck-css-diff-added-bg);
+  filter: brightness(0.95);
+}
+
+.component-node--removed {
+  background: var(--puck-css-diff-removed-bg);
+}
+
+.component-node--removed:hover {
+  background: var(--puck-css-diff-removed-bg);
+  filter: brightness(0.95);
+}
+
+.component-node--modified {
+  background: var(--puck-css-diff-modified-bg);
+}
+
+.component-node--modified:hover {
+  background: var(--puck-css-diff-modified-bg);
+  filter: brightness(0.95);
+}
+
+.component-node--reordered {
+  background: var(--puck-css-diff-reordered-bg);
+}
+
+.component-node--reordered:hover {
+  background: var(--puck-css-diff-reordered-bg);
+  filter: brightness(0.95);
+}
+
+.component-node__icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.component-node--added .component-node__icon {
+  color: var(--puck-css-diff-added);
+}
+
+.component-node--removed .component-node__icon {
+  color: var(--puck-css-diff-removed);
+}
+
+.component-node--modified .component-node__icon {
+  color: var(--puck-css-diff-modified);
+}
+
+.component-node--reordered .component-node__icon {
+  color: var(--puck-css-diff-reordered);
+}
+
+.component-node--unchanged .component-node__icon {
+  color: var(--puck-css-diff-unchanged);
+}
+
+.component-node__type {
+  flex: 1;
+  font-weight: 500;
+}
+
+.component-node__position {
+  font-size: 0.75rem;
+  color: var(--puck-css-text-secondary);
+}
+
+.component-node__move-info {
+  font-size: 0.75rem;
+  color: var(--puck-css-diff-reordered);
+  font-style: italic;
+}
+
+/* ============================================
+   PropDiffPanel
+   ============================================ */
+.prop-diff-panel {
+  background: var(--puck-css-bg);
+  border-radius: 0.5rem;
+}
+
+.prop-diff-panel__header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.prop-diff-panel__type {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.prop-diff-panel__id {
+  font-size: 0.75rem;
+  color: var(--puck-css-text-secondary);
+}
+
+.prop-diff-panel__summary {
+  font-size: 0.875rem;
+  color: var(--puck-css-text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.prop-diff-panel__content {
+  display: flex;
+  flex-direction: column;
+}
+
+.prop-diff-panel__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.prop-diff-panel__empty {
+  padding: 1rem;
+  text-align: center;
+  color: var(--puck-css-text-secondary);
+  font-size: 0.875rem;
+}
+
+/* ============================================
+   PropDiffRow
+   ============================================ */
+.prop-diff-row {
+  display: grid;
+  grid-template-columns: 8rem 1fr 1.5rem 1fr;
+  gap: 0.5rem;
+  align-items: start;
+  padding: 0.5rem;
+  border-radius: 0.375rem;
+  background: var(--puck-css-bg-secondary);
+}
+
+.prop-diff-row--added {
+  background: var(--puck-css-diff-added-bg);
+}
+
+.prop-diff-row--removed {
+  background: var(--puck-css-diff-removed-bg);
+}
+
+.prop-diff-row--modified {
+  background: var(--puck-css-diff-modified-bg);
+}
+
+.prop-diff-row__name {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--puck-css-text);
+}
+
+.prop-diff-row__before,
+.prop-diff-row__after {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8125rem;
+  word-break: break-word;
+}
+
+.prop-diff-row__arrow {
+  text-align: center;
+  color: var(--puck-css-text-secondary);
+}
+
+/* ============================================
+   PropValueDisplay
+   ============================================ */
+.prop-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.prop-value--added {
+  color: var(--puck-css-diff-added);
+}
+
+.prop-value--removed {
+  color: var(--puck-css-diff-removed);
+  text-decoration: line-through;
+}
+
+.prop-value__color-swatch {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--puck-css-border);
+}
+
+.prop-value__null {
+  color: var(--puck-css-text-secondary);
+  font-style: italic;
+}
+
+.prop-value__undefined {
+  color: var(--puck-css-text-secondary);
+  font-style: italic;
+}
+
+.prop-value__boolean {
+  font-weight: 600;
+}
+
+.prop-value__boolean--true {
+  color: var(--puck-css-diff-added);
+}
+
+.prop-value__boolean--false {
+  color: var(--puck-css-diff-removed);
+}
+
+.prop-value__number {
+  color: var(--puck-css-primary);
+}
+
+.prop-value__string {
+  color: var(--puck-css-text);
+}
+
+.prop-value__array {
+  color: var(--puck-css-text-secondary);
+}
+
+.prop-value__object {
+  color: var(--puck-css-text-secondary);
+}

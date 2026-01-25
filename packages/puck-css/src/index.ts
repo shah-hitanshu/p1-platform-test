@@ -20,6 +20,26 @@ export { SaveIndicator } from './components/SaveIndicator.js';
 export { PublishButton } from './components/PublishButton.js';
 export { BranchSelector } from './components/BranchSelector.js';
 
+// Version Comparison Components
+export {
+  PropValueDisplay,
+  PropDiffRow,
+  PropDiffPanel,
+  ComponentNode,
+  ComponentTree,
+  DiffHeader,
+  VersionComparePage,
+} from './components/version-compare/index.js';
+export type {
+  PropValueDisplayProps,
+  PropDiffRowProps,
+  PropDiffPanelProps,
+  ComponentNodeProps,
+  ComponentTreeProps,
+  DiffHeaderProps,
+  VersionComparePageProps,
+} from './components/version-compare/index.js';
+
 // Puck Plugin Integration
 export { createCSSPlugin, createCSSOverrides } from './plugin/index.js';
 export type {
@@ -32,7 +52,15 @@ export type {
 // Utilities
 export { debounce } from './utils/debounce.js';
 export { withRetry } from './utils/retry.js';
-export { diffPuckData, getChangedComponents, countChanges, hasRootChanged } from './utils/diff.js';
+export {
+  diffPuckData,
+  getChangedComponents,
+  countChanges,
+  hasRootChanged,
+  diffPuckDataWithPositions,
+  diffProps,
+  getReorderedComponents,
+} from './utils/diff.js';
 
 // Types
 export type {
@@ -43,6 +71,8 @@ export type {
   UseAutoSaveOptions,
   UseAutoSaveReturn,
   ComponentDiff,
+  ComponentDiffWithPosition,
+  PropDiff,
   VersionCompareOptions,
 } from './types.js';
 
