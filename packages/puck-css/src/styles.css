@@ -650,3 +650,76 @@
 .visual-diff-badge--reordered {
   background: var(--puck-css-diff-reordered);
 }
+
+/* ============================================
+   HistoricalVersionBanner
+   ============================================ */
+.historical-version-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: var(--puck-css-diff-modified-bg);
+  border: 1px solid var(--puck-css-diff-modified);
+  border-radius: 0.375rem;
+  color: var(--puck-css-text);
+  font-size: 0.875rem;
+}
+
+.historical-version-banner__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--puck-css-diff-modified);
+  flex-shrink: 0;
+}
+
+.historical-version-banner__content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.historical-version-banner__text {
+  font-weight: 600;
+}
+
+.historical-version-banner__date {
+  color: var(--puck-css-text-secondary);
+  font-size: 0.75rem;
+}
+
+.historical-version-banner__locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  background: var(--puck-css-diff-removed-bg);
+  color: var(--puck-css-diff-removed);
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.historical-version-banner__button {
+  padding: 0.375rem 0.75rem;
+  background: var(--puck-css-primary);
+  color: white;
+  border: none;
+  border-radius: 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s;
+}
+
+.historical-version-banner__button:hover {
+  background: var(--puck-css-primary-hover);
+}
+
+.historical-version-banner__button:focus {
+  outline: 2px solid var(--puck-css-primary);
+  outline-offset: 2px;
+}

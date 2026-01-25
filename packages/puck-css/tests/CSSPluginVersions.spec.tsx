@@ -128,43 +128,6 @@ describe('CSSPlugin Version History', () => {
     expect(v2Item).toHaveClass('css-plugin-version-item--selected');
   });
 
-  it('should show compare button when version is selected', () => {
-    const plugin = createCSSPlugin({
-      ...baseOptions,
-      versions: mockVersions,
-      selectedVersionId: 'v2',
-      onCompare: vi.fn(),
-    });
-    render(plugin.render());
-
-    expect(screen.getByRole('button', { name: /compare/i })).toBeInTheDocument();
-  });
-
-  it('should call onCompare when compare button is clicked', () => {
-    const onCompare = vi.fn();
-    const plugin = createCSSPlugin({
-      ...baseOptions,
-      versions: mockVersions,
-      selectedVersionId: 'v2',
-      onCompare,
-    });
-    render(plugin.render());
-
-    fireEvent.click(screen.getByRole('button', { name: /compare/i }));
-    expect(onCompare).toHaveBeenCalledWith('v2', 'v3'); // Compare selected with latest
-  });
-
-  it('should not show compare button for latest version', () => {
-    const plugin = createCSSPlugin({
-      ...baseOptions,
-      versions: mockVersions,
-      selectedVersionId: 'v3', // Latest version selected
-    });
-    render(plugin.render());
-
-    expect(screen.queryByRole('button', { name: /compare/i })).not.toBeInTheDocument();
-  });
-
   it('should show current badge on latest version', () => {
     const plugin = createCSSPlugin({
       ...baseOptions,

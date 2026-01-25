@@ -21,6 +21,16 @@ export class VersionsEndpoint {
   }
 
   /**
+   * Get a specific version by ID.
+   */
+  async get(siteId: string, branchId: string, documentId: string, versionId: string): Promise<DocumentVersion> {
+    return this.base.request<DocumentVersion>(
+      `/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/versions/${versionId}`,
+      { method: 'GET' }
+    );
+  }
+
+  /**
    * List all versions of a document on a branch.
    */
   async list(

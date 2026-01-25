@@ -23,10 +23,10 @@ import {
   useVersions,
   createCSSPlugin,
   createCSSOverrides,
-  VisualVersionCompare,
   diffPuckDataWithPositions,
+  createHistoricalVersionConfig,
 } from '@pantheon/puck-css';
-import type { DocumentVersion, PuckData } from '@pantheon/css-client';
+import type { DocumentVersion } from '@pantheon/css-client';
 import type { ComponentDiffWithPosition } from '@pantheon/puck-css';
 
 // Import puck-css styles for visual comparison
@@ -93,6 +93,11 @@ function AppContent() {
     currentBranch,
     switchBranch,
     pauseAutoSave,
+    isViewingHistoricalVersion,
+    viewingVersion,
+    latestVersionData,
+    loadVersion,
+    returnToLatest,
   } = useCSSPuck();
 
   // Document management via useDocuments hook
@@ -117,15 +122,44 @@ function AppContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  // Version comparison state
-  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
-  const [comparisonData, setComparisonData] = useState<{
-    beforeVersion: number;
-    afterVersion: number;
-    beforeData: PuckData;
-    afterData: PuckData;
-    diffs: ComponentDiffWithPosition[];
-  } | null>(null);
+  // Compute diffs when viewing a historical version
+  const historicalDiffs = useMemo((): ComponentDiffWithPosition[] => {
+    if (!isViewingHistoricalVersion || !currentData || !latestVersionData) {
+      return [];
+    }
+    // Compare historical version (before) with latest (after)
+    return diffPuckDataWithPositions(currentData, latestVersionData);
+  }, [isViewingHistoricalVersion, currentData, latestVersionData]);
+
+  // Create highlighted config when viewing historical version
+  const effectiveConfig = useMemo(() => {
+    if (isViewingHistoricalVersion && historicalDiffs.length > 0) {
+      // Type assertion needed because createHistoricalVersionConfig returns a wrapped config
+      return createHistoricalVersionConfig(puckConfig, historicalDiffs) as typeof puckConfig;
+    }
+    return puckConfig;
+  }, [isViewingHistoricalVersion, historicalDiffs]);
+
+  // Puck permissions - read-only when viewing historical version
+  const puckPermissions = useMemo(() => {
+    if (isViewingHistoricalVersion) {
+      return {
+        delete: false,
+        drag: false,
+        duplicate: false,
+        edit: false,
+        insert: false,
+      };
+    }
+    // Explicitly enable all permissions when not viewing historical version
+    return {
+      delete: true,
+      drag: true,
+      duplicate: true,
+      edit: true,
+      insert: true,
+    };
+  }, [isViewingHistoricalVersion]);
 
   // Handle document selection
   const handleDocumentSelect = useCallback(
@@ -193,40 +227,18 @@ function AppContent() {
     alert(`Publish failed: ${err.message}`);
   }, []);
 
-  // Handle version selection
+  // Handle version selection - loads the selected version into the editor
   const handleVersionSelect = useCallback((version: DocumentVersion) => {
-    setSelectedVersionId(version.id);
-  }, []);
-
-  // Handle version comparison
-  const handleCompare = useCallback((beforeVersionId: string, afterVersionId: string) => {
-    const beforeVersionObj = versions.find((v) => v.id === beforeVersionId);
-    const afterVersionObj = versions.find((v) => v.id === afterVersionId);
-
-    if (!beforeVersionObj || !afterVersionObj) {
-      console.error('Version not found for comparison');
-      return;
+    // Check if this is the latest version (first in the sorted list)
+    const latestVersion = versions[0];
+    if (latestVersion && version.id === latestVersion.id) {
+      // If selecting the latest version, return to it
+      void returnToLatest();
+    } else {
+      // Load the historical version
+      void loadVersion(version);
     }
-
-    const beforeData = beforeVersionObj.snapshot as unknown as PuckData;
-    const afterData = afterVersionObj.snapshot as unknown as PuckData;
-
-    const diffs = diffPuckDataWithPositions(beforeData, afterData);
-
-    setComparisonData({
-      beforeVersion: beforeVersionObj.versionNumber,
-      afterVersion: afterVersionObj.versionNumber,
-      beforeData,
-      afterData,
-      diffs,
-    });
-  }, [versions]);
-
-  // Close comparison view
-  const handleCloseComparison = useCallback(() => {
-    setComparisonData(null);
-    setSelectedVersionId(null);
-  }, []);
+  }, [versions, loadVersion, returnToLatest]);
 
   // Refresh versions when document changes or after save
   useEffect(() => {
@@ -249,9 +261,8 @@ function AppContent() {
     documentsLoading,
     versions,
     versionsLoading,
-    selectedVersionId: selectedVersionId ?? undefined,
+    selectedVersionId: viewingVersion?.id ?? undefined,
     onVersionSelect: handleVersionSelect,
-    onCompare: handleCompare,
   }), [
     branches,
     currentBranch,
@@ -265,12 +276,11 @@ function AppContent() {
     documentsLoading,
     versions,
     versionsLoading,
-    selectedVersionId,
+    viewingVersion,
     handleVersionSelect,
-    handleCompare,
   ]);
 
-  // Create Puck overrides for header actions (save indicator, publish button)
+  // Create Puck overrides for header actions (save indicator, publish button, version banner)
   const cssOverrides = useMemo(() => createCSSOverrides({
     saveStatus,
     lastSaved,
@@ -282,7 +292,10 @@ function AppContent() {
     showNamePrompt: true,
     showDefaultPublish: false,
     onPauseAutoSave: pauseAutoSave,
-  }), [saveStatus, lastSaved, saveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError, pauseAutoSave]);
+    isViewingHistoricalVersion,
+    viewingVersion,
+    onReturnToLatest: returnToLatest,
+  }), [saveStatus, lastSaved, saveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError, pauseAutoSave, isViewingHistoricalVersion, viewingVersion, returnToLatest]);
 
   // Loading state
   if (loading) {
@@ -326,32 +339,21 @@ function AppContent() {
     );
   }
 
-  // Show comparison view if comparing versions
-  if (comparisonData) {
-    return (
-      <div className="app app--fullscreen">
-        <VisualVersionCompare
-          beforeVersion={comparisonData.beforeVersion}
-          afterVersion={comparisonData.afterVersion}
-          beforeData={comparisonData.beforeData}
-          afterData={comparisonData.afterData}
-          config={puckConfig}
-          diffs={comparisonData.diffs}
-          onClose={handleCloseComparison}
-        />
-      </div>
-    );
-  }
-
   // Document loaded - show Puck editor
+  // When viewing historical version, editor is read-only with diff highlighting
+  // Key includes version ID to force Puck to remount when switching versions
+  const puckKey = viewingVersion ? `historical-${viewingVersion.id}` : `current-${currentDocument.id}`;
+
   return (
     <div className="app app--fullscreen">
       <Puck
-        config={puckConfig}
+        key={puckKey}
+        config={effectiveConfig}
         data={currentData}
-        onChange={handleChange}
+        onChange={isViewingHistoricalVersion ? () => {} : handleChange}
         plugins={puckPlugins}
         overrides={puckOverrides}
+        permissions={puckPermissions}
       />
     </div>
   );

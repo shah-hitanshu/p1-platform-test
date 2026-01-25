@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import type { Document, PuckData, Checkpoint, Branch } from '@pantheon/css-client';
+import type { Document, PuckData, Checkpoint, Branch, DocumentVersion } from '@pantheon/css-client';
 import type { CSSPuckConfig, CSSPuckContextValue, SaveStatus } from './types.js';
 import { CSSPuckContext } from './CSSPuckContext.js';
 import { debounce } from './utils/debounce.js';
@@ -79,6 +79,10 @@ export function CSSPuckProvider({
 
   // Auto-save pause state
   const [autoSavePaused, setAutoSavePaused] = useState(false);
+
+  // Version viewing state
+  const [viewingVersion, setViewingVersion] = useState<DocumentVersion | null>(null);
+  const [latestVersionData, setLatestVersionData] = useState<PuckData | null>(null);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -228,6 +232,8 @@ export function CSSPuckProvider({
         const version = await userClient.versions.getLatest(siteId, branchId, doc.id);
         const puckData = version.snapshot as unknown as PuckData;
         setCurrentData(puckData);
+        setLatestVersionData(puckData);
+        setViewingVersion(null);
         pendingDataRef.current = null;
         setSaveStatus('idle');
         setSaveError(null);
@@ -238,6 +244,65 @@ export function CSSPuckProvider({
     },
     [userClient, siteId, branchId]
   );
+
+  // Load a specific version into the editor
+  const loadVersion = useCallback(
+    async (version: DocumentVersion) => {
+      try {
+        const doc = currentDocumentRef.current;
+        if (!doc) {
+          throw new Error('No document loaded');
+        }
+
+        let versionToUse = version;
+
+        // If the version doesn't have snapshot data, try fetching it from the API
+        if (!version.snapshot || Object.keys(version.snapshot).length === 0) {
+          try {
+            versionToUse = await userClient.versions.get(siteId, branchId, doc.id, version.id);
+          } catch (fetchError) {
+            // If fetching fails, log a warning and use the version as-is
+            console.warn('Could not fetch full version data, using version from list:', fetchError);
+          }
+        }
+
+        const puckData = versionToUse.snapshot as unknown as PuckData;
+
+        // Validate that we have actual data to display
+        if (!puckData || (!puckData.content && !puckData.root)) {
+          throw new Error('Version snapshot is empty or invalid');
+        }
+
+        setCurrentData(puckData);
+        setViewingVersion(versionToUse);
+        // Pause auto-save when viewing historical version
+        debouncedSave.pause();
+        setAutoSavePaused(true);
+        pendingDataRef.current = null;
+        setSaveStatus('idle');
+      } catch (error) {
+        console.error('Failed to load version:', error);
+        throw error;
+      }
+    },
+    [userClient, siteId, branchId, debouncedSave]
+  );
+
+  // Return to the latest version
+  const returnToLatest = useCallback(async () => {
+    if (latestVersionData) {
+      setCurrentData(latestVersionData);
+      setViewingVersion(null);
+      // Resume auto-save
+      debouncedSave.resume();
+      setAutoSavePaused(false);
+      pendingDataRef.current = null;
+      setSaveStatus('idle');
+    }
+  }, [latestVersionData, debouncedSave]);
+
+  // Computed property for whether viewing historical version
+  const isViewingHistoricalVersion = viewingVersion !== null;
 
   // Create checkpoint
   const createCheckpoint = useCallback(
@@ -306,6 +371,11 @@ export function CSSPuckProvider({
       autoSavePaused,
       pauseAutoSave,
       resumeAutoSave,
+      viewingVersion,
+      latestVersionData,
+      isViewingHistoricalVersion,
+      loadVersion,
+      returnToLatest,
     }),
     [
       userClient,
@@ -329,6 +399,11 @@ export function CSSPuckProvider({
       autoSavePaused,
       pauseAutoSave,
       resumeAutoSave,
+      viewingVersion,
+      latestVersionData,
+      isViewingHistoricalVersion,
+      loadVersion,
+      returnToLatest,
     ]
   );
 

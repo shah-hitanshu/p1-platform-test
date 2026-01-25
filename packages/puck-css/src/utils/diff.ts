@@ -22,16 +22,17 @@ function flattenComponents(
 ): Map<string, { component: PuckComponentData; path: string[] }> {
   const result = new Map<string, { component: PuckComponentData; path: string[] }>();
 
-  // Process main content
-  for (const component of data.content) {
+  // Process main content (handle undefined/null content)
+  const content = data?.content ?? [];
+  for (const component of content) {
     const path = ['content'];
     result.set(getComponentKey(component, path), { component, path });
   }
 
   // Process zones
-  if (data.zones) {
+  if (data?.zones) {
     for (const [zoneName, components] of Object.entries(data.zones)) {
-      for (const component of components) {
+      for (const component of components ?? []) {
         const path = ['zones', zoneName];
         result.set(getComponentKey(component, path), { component, path });
       }
@@ -181,17 +182,18 @@ function flattenComponentsWithIndex(
 ): Map<string, { component: PuckComponentData; path: string[]; index: number }> {
   const result = new Map<string, { component: PuckComponentData; path: string[]; index: number }>();
 
-  // Process main content
-  data.content.forEach((component, index) => {
+  // Process main content (handle undefined/null content)
+  const content = data?.content ?? [];
+  content.forEach((component, index) => {
     const path = ['content'];
     const key = `${component.props.id}`;
     result.set(key, { component, path, index });
   });
 
   // Process zones
-  if (data.zones) {
+  if (data?.zones) {
     for (const [zoneName, components] of Object.entries(data.zones)) {
-      components.forEach((component, index) => {
+      (components ?? []).forEach((component, index) => {
         const path = ['zones', zoneName];
         const key = `${zoneName}/${component.props.id}`;
         result.set(key, { component, path, index });

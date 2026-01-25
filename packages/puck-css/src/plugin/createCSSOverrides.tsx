@@ -6,10 +6,11 @@
  */
 
 import React from 'react';
-import type { Checkpoint } from '@pantheon/css-client';
+import type { Checkpoint, DocumentVersion } from '@pantheon/css-client';
 import type { SaveStatus } from '../types.js';
 import { SaveIndicator } from '../components/SaveIndicator.js';
 import { PublishButton } from '../components/PublishButton.js';
+import { HistoricalVersionBanner } from '../components/HistoricalVersionBanner.js';
 
 /**
  * Options for creating CSS overrides
@@ -39,6 +40,18 @@ export interface CSSOverridesOptions {
    * while typing the checkpoint name.
    */
   onPauseAutoSave?: () => void;
+  /**
+   * Whether currently viewing a historical version (not the latest).
+   */
+  isViewingHistoricalVersion?: boolean;
+  /**
+   * The historical version being viewed.
+   */
+  viewingVersion?: DocumentVersion | null;
+  /**
+   * Callback to return to the latest version.
+   */
+  onReturnToLatest?: () => void;
 }
 
 /**
@@ -91,27 +104,39 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
     showNamePrompt = true,
     showDefaultPublish = false,
     onPauseAutoSave,
+    isViewingHistoricalVersion = false,
+    viewingVersion,
+    onReturnToLatest,
   } = options;
 
   return {
     headerActions: ({ children }) => (
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <SaveIndicator
-          status={saveStatus}
-          lastSaved={lastSaved}
-          error={saveError}
-          onRetry={onRetrySave}
-        />
-        <PublishButton
-          onPublish={onPublish}
-          showNamePrompt={showNamePrompt}
-          onSuccess={onPublishSuccess}
-          onError={onPublishError}
-          onPromptShow={onPauseAutoSave}
-          className="css-puck-header-publish"
-        >
-          Publish
-        </PublishButton>
+        {isViewingHistoricalVersion && viewingVersion && onReturnToLatest ? (
+          <HistoricalVersionBanner
+            version={viewingVersion}
+            onReturnToLatest={onReturnToLatest}
+          />
+        ) : (
+          <>
+            <SaveIndicator
+              status={saveStatus}
+              lastSaved={lastSaved}
+              error={saveError}
+              onRetry={onRetrySave}
+            />
+            <PublishButton
+              onPublish={onPublish}
+              showNamePrompt={showNamePrompt}
+              onSuccess={onPublishSuccess}
+              onError={onPublishError}
+              onPromptShow={onPauseAutoSave}
+              className="css-puck-header-publish"
+            >
+              Publish
+            </PublishButton>
+          </>
+        )}
         {showDefaultPublish && children}
       </div>
     ),

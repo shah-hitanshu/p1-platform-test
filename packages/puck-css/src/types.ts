@@ -2,7 +2,7 @@
  * Puck CSS Integration Types
  */
 
-import type { CSSClient, PuckData, Document, Branch, Checkpoint } from '@pantheon/css-client';
+import type { CSSClient, PuckData, Document, Branch, Checkpoint, DocumentVersion } from '@pantheon/css-client';
 
 /**
  * Save status for auto-save functionality.
@@ -155,6 +155,31 @@ export interface CSSPuckContextValue {
    * Resume auto-save. Called automatically on next saveData() call.
    */
   resumeAutoSave: () => void;
+
+  /**
+   * The version currently being viewed. Null if viewing the latest version.
+   */
+  viewingVersion: DocumentVersion | null;
+
+  /**
+   * The latest version data (for diff comparison when viewing historical versions).
+   */
+  latestVersionData: PuckData | null;
+
+  /**
+   * Whether currently viewing a historical (non-latest) version.
+   */
+  isViewingHistoricalVersion: boolean;
+
+  /**
+   * Load a specific version by ID into the editor.
+   */
+  loadVersion: (version: DocumentVersion) => Promise<void>;
+
+  /**
+   * Return to the latest version after viewing a historical version.
+   */
+  returnToLatest: () => Promise<void>;
 }
 
 /**

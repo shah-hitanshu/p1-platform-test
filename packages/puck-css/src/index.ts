@@ -19,6 +19,8 @@ export { useVersions } from './hooks/useVersions.js';
 export { SaveIndicator } from './components/SaveIndicator.js';
 export { PublishButton } from './components/PublishButton.js';
 export { BranchSelector } from './components/BranchSelector.js';
+export { HistoricalVersionBanner } from './components/HistoricalVersionBanner.js';
+export type { HistoricalVersionBannerProps } from './components/HistoricalVersionBanner.js';
 
 // Version Comparison Components
 export {
@@ -63,6 +65,12 @@ export {
   diffProps,
   getReorderedComponents,
 } from './utils/diff.js';
+export {
+  createDiffMap,
+  createHighlightedConfig,
+  createHistoricalVersionConfig,
+} from './utils/highlightConfig.js';
+export type { PuckConfig } from './utils/highlightConfig.js';
 
 // Types
 export type {

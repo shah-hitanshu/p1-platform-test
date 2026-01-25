@@ -40,8 +40,6 @@ interface CSSPluginPanelProps {
   selectedVersionId?: string;
   /** Callback when a version is selected */
   onVersionSelect?: (version: DocumentVersion) => void;
-  /** Callback when compare is triggered */
-  onCompare?: (beforeVersionId: string, afterVersionId: string) => void;
 }
 
 /**
@@ -75,7 +73,6 @@ function CSSPluginPanel({
   versionsLoading = false,
   selectedVersionId,
   onVersionSelect,
-  onCompare,
 }: CSSPluginPanelProps): React.ReactElement {
   const [isCreating, setIsCreating] = useState(false);
   const [newDocPath, setNewDocPath] = useState('');
@@ -244,22 +241,6 @@ function CSSPluginPanel({
                   );
                 })}
               </ul>
-
-              {(() => {
-                const latestVersion = versions[0];
-                if (selectedVersionId && latestVersion && selectedVersionId !== latestVersion.id && onCompare) {
-                  return (
-                    <button
-                      type="button"
-                      className="css-plugin-btn css-plugin-btn-primary"
-                      onClick={() => onCompare(selectedVersionId, latestVersion.id)}
-                    >
-                      Compare with current
-                    </button>
-                  );
-                }
-                return null;
-              })()}
             </>
           )}
         </div>
@@ -322,8 +303,6 @@ export interface CSSPluginOptions {
   selectedVersionId?: string;
   /** Callback when a version is selected */
   onVersionSelect?: (version: DocumentVersion) => void;
-  /** Callback when compare is triggered */
-  onCompare?: (beforeVersionId: string, afterVersionId: string) => void;
 }
 
 /**
@@ -379,7 +358,6 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
         versionsLoading={options.versionsLoading}
         selectedVersionId={options.selectedVersionId}
         onVersionSelect={options.onVersionSelect}
-        onCompare={options.onCompare}
       />
     ),
     overrides: {},
