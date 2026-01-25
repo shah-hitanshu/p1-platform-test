@@ -54,6 +54,16 @@ interface MergeCheckBody {
 }
 
 /**
+ * Request body for merge preview
+ */
+interface MergePreviewBody {
+  sourceBranchId?: string;
+  targetBranchId?: string;
+  /** When true, includes full document snapshots and diff operations */
+  includeContent?: boolean;
+}
+
+/**
  * Request body for merge execute
  */
 interface MergeExecuteBody {
@@ -178,7 +188,7 @@ async function handleExecuteMerge(
 async function handlePreviewMerge(
   request: Request,
 ): Promise<Response> {
-  const body = await parseJsonBody<MergeCheckBody>(request);
+  const body = await parseJsonBody<MergePreviewBody>(request);
 
   if (body.sourceBranchId === undefined || body.targetBranchId === undefined) {
     return errorResponse('Both sourceBranchId and targetBranchId are required', 400);
@@ -187,6 +197,7 @@ async function handlePreviewMerge(
   const result = await previewMerge(
     body.sourceBranchId,
     body.targetBranchId,
+    { includeContent: body.includeContent },
   );
 
   return jsonResponse(result);

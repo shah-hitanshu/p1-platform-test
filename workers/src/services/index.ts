@@ -233,6 +233,7 @@ export type {
   ExecuteMergeWithResolutionParams,
   ExecuteMergeWithResolutionResult,
   MergePreview,
+  PreviewMergeOptions,
 } from './merge-execution-service';
 
 // Structure Service

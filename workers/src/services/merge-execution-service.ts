@@ -21,6 +21,8 @@ import {
   updateMergeRequestConflicts,
   MergeRequestNotFoundError,
 } from './merge-request-service';
+import { computeDocumentDiffs } from './document-diff-service';
+import type { DocumentDiff } from './document-diff-service';
 import type { MergeRequest } from '../types';
 import {
   createDocumentVersion,
@@ -70,6 +72,17 @@ export interface ExecuteMergeWithResolutionResult extends ExecuteMergeResult {
 }
 
 /**
+ * Options for merge preview.
+ */
+export interface PreviewMergeOptions {
+  /**
+   * When true, includes full document snapshots and diff operations
+   * for each conflicting document.
+   */
+  includeContent?: boolean;
+}
+
+/**
  * Merge preview showing what would happen.
  */
 export interface MergePreview {
@@ -79,6 +92,11 @@ export interface MergePreview {
   sourceChanges: ConflictDetectionResult['sourceChanges'];
   targetChanges: ConflictDetectionResult['targetChanges'];
   mergeBase: ConflictDetectionResult['mergeBase'];
+  /**
+   * Document diffs with snapshots and operations.
+   * Only included when options.includeContent is true.
+   */
+  documentDiffs?: DocumentDiff[];
 }
 
 // =============================================================================
@@ -340,13 +358,14 @@ export async function executeMergeWithResolution(
 export async function previewMerge(
   sourceBranchId: string,
   targetBranchId: string,
+  options?: PreviewMergeOptions,
 ): Promise<MergePreview> {
   const detectionResult = await detectConflicts(
     sourceBranchId,
     targetBranchId,
   );
 
-  return {
+  const preview: MergePreview = {
     canMerge: !detectionResult.hasConflicts,
     hasConflicts: detectionResult.hasConflicts,
     conflicts: detectionResult.conflicts,
@@ -354,6 +373,17 @@ export async function previewMerge(
     targetChanges: detectionResult.targetChanges,
     mergeBase: detectionResult.mergeBase,
   };
+
+  // Include document diffs if requested
+  if (options?.includeContent === true) {
+    preview.documentDiffs = await computeDocumentDiffs(
+      detectionResult.conflicts.documentConflicts,
+      detectionResult.sourceChanges,
+      detectionResult.targetChanges,
+    );
+  }
+
+  return preview;
 }
 
 // =============================================================================

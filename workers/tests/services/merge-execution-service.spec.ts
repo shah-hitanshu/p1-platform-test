@@ -48,6 +48,10 @@ vi.mock('../../src/services/checkpoint-service', () => ({
   createCheckpoint: vi.fn(),
 }));
 
+vi.mock('../../src/services/document-diff-service', () => ({
+  computeDocumentDiffs: vi.fn(),
+}));
+
 vi.mock('../../src/services/branch-service', () => ({
   getBranch: vi.fn(),
   updateBranchStatus: vi.fn(),
@@ -864,6 +868,140 @@ describe('Phase 5.3: Merge Execution Service', () => {
 
       expect(preview.canMerge).toBe(true);
       expect(preview.hasConflicts).toBe(false);
+    });
+
+    it('should include document diffs when includeContent option is true', async () => {
+      const { previewMerge } = await import('../../src/services/merge-execution-service');
+      const conflictDetection = await import('../../src/services/conflict-detection-service');
+      const documentDiffService = await import('../../src/services/document-diff-service');
+
+      vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
+        hasConflicts: true,
+        conflicts: {
+          documentConflicts: [
+            {
+              documentId: 'doc-1',
+              documentPath: 'pages/home',
+              conflictType: 'both-modified',
+              sourceVersion: 3,
+              targetVersion: 2,
+            },
+          ],
+          structureConflicts: [],
+        },
+        mergeBase: {
+          checkpointId: 'checkpoint-base',
+          branchId: 'target-branch',
+          createdAt: '2026-01-15T10:00:00.000Z',
+        },
+        sourceChanges: [
+          {
+            documentId: 'doc-1',
+            documentPath: 'pages/home',
+            latestVersionId: 'v1-source',
+            latestVersionNumber: 3,
+            baseVersionId: 'v0',
+            baseVersionNumber: 1,
+          },
+        ],
+        targetChanges: [
+          {
+            documentId: 'doc-1',
+            documentPath: 'pages/home',
+            latestVersionId: 'v1-target',
+            latestVersionNumber: 2,
+            baseVersionId: 'v0',
+            baseVersionNumber: 1,
+          },
+        ],
+      });
+
+      vi.mocked(documentDiffService.computeDocumentDiffs).mockResolvedValueOnce([
+        {
+          documentId: 'doc-1',
+          documentPath: 'pages/home',
+          sourceSnapshot: { title: 'Source Title' },
+          targetSnapshot: { title: 'Target Title' },
+          diffOperations: [
+            { op: 'replace', path: '/title', value: 'Target Title' },
+          ],
+        },
+      ]);
+
+      const preview = await previewMerge('source-branch', 'target-branch', {
+        includeContent: true,
+      });
+
+      expect(preview.hasConflicts).toBe(true);
+      expect(preview.documentDiffs).toBeDefined();
+      expect(preview.documentDiffs).toHaveLength(1);
+      expect(preview.documentDiffs?.[0].sourceSnapshot).toEqual({ title: 'Source Title' });
+      expect(preview.documentDiffs?.[0].targetSnapshot).toEqual({ title: 'Target Title' });
+      expect(preview.documentDiffs?.[0].diffOperations).toHaveLength(1);
+      expect(documentDiffService.computeDocumentDiffs).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.any(Array),
+        expect.any(Array),
+      );
+    });
+
+    it('should not include document diffs when includeContent option is false', async () => {
+      const { previewMerge } = await import('../../src/services/merge-execution-service');
+      const conflictDetection = await import('../../src/services/conflict-detection-service');
+      const documentDiffService = await import('../../src/services/document-diff-service');
+
+      vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
+        hasConflicts: true,
+        conflicts: {
+          documentConflicts: [
+            {
+              documentId: 'doc-1',
+              documentPath: 'pages/home',
+              conflictType: 'both-modified',
+              sourceVersion: 3,
+              targetVersion: 2,
+            },
+          ],
+          structureConflicts: [],
+        },
+        mergeBase: {
+          checkpointId: 'checkpoint-base',
+          branchId: 'target-branch',
+          createdAt: '2026-01-15T10:00:00.000Z',
+        },
+        sourceChanges: [],
+        targetChanges: [],
+      });
+
+      const preview = await previewMerge('source-branch', 'target-branch', {
+        includeContent: false,
+      });
+
+      expect(preview.documentDiffs).toBeUndefined();
+      expect(documentDiffService.computeDocumentDiffs).not.toHaveBeenCalled();
+    });
+
+    it('should not include document diffs when includeContent option is omitted', async () => {
+      const { previewMerge } = await import('../../src/services/merge-execution-service');
+      const conflictDetection = await import('../../src/services/conflict-detection-service');
+      const documentDiffService = await import('../../src/services/document-diff-service');
+
+      vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
+        hasConflicts: false,
+        conflicts: { documentConflicts: [], structureConflicts: [] },
+        mergeBase: {
+          checkpointId: 'checkpoint-base',
+          branchId: 'target-branch',
+          createdAt: '2026-01-15T10:00:00.000Z',
+        },
+        sourceChanges: [],
+        targetChanges: [],
+      });
+
+      const preview = await previewMerge('source-branch', 'target-branch');
+
+      expect(preview.documentDiffs).toBeUndefined();
+      expect(documentDiffService.computeDocumentDiffs).not.toHaveBeenCalled();
     });
   });
 
