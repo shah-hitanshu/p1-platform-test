@@ -55,7 +55,10 @@
     // Production environments set this in their respective env config below
     "WEBSOCKET_HEARTBEAT_INTERVAL": "30000",
     "DOCUMENT_SYNC_BATCH_SIZE": "50",
-    "PRESENCE_TTL_SECONDS": "120"
+    "PRESENCE_TTL_SECONDS": "120",
+    // Metrics configuration (disabled by default for local dev)
+    "METRICS_ENABLED": "false",
+    "APP_VERSION": "dev"
   },
   
   // ==========================================================================
@@ -78,7 +81,8 @@
       "vars": {
         "ENVIRONMENT": "sbx1",
         "LOG_LEVEL": "info",
-        "CORS_ORIGINS": "https://sbx1.pantheon.io"
+        "CORS_ORIGINS": "https://sbx1.pantheon.io",
+        "METRICS_ENABLED": "true"
       },
       "kv_namespaces": [
         { "binding": "CONFIG_KV", "id": "REPLACE_WITH_SBX1_CONFIG_KV_ID" },
@@ -97,7 +101,8 @@
       "vars": {
         "ENVIRONMENT": "production",
         "LOG_LEVEL": "warn",
-        "CORS_ORIGINS": "https://pantheon.io,https://app.pantheon.io"
+        "CORS_ORIGINS": "https://pantheon.io,https://app.pantheon.io",
+        "METRICS_ENABLED": "true"
       },
       "kv_namespaces": [
         { "binding": "CONFIG_KV", "id": "REPLACE_WITH_PROD_CONFIG_KV_ID" },

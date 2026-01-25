@@ -26,6 +26,18 @@ import { handleNodeRoutes } from './routes/node-api';
 import { handleMetadataRoutes } from './routes/metadata-api';
 import { handleRealtimeRoutes } from './routes/realtime-api';
 
+// Metrics
+import {
+  initializeMetrics,
+  incrementCounter,
+  recordTiming,
+  setGauge,
+  flushMetrics,
+  normalizePathPattern,
+  classifyError,
+  getStatusClass,
+} from './services/metrics-service';
+
 // Export Durable Objects for wrangler
 export { DocumentState, PresenceManager, SessionManager } from './durable-objects';
 
@@ -37,6 +49,12 @@ export interface Env {
   WEBSOCKET_HEARTBEAT_INTERVAL: string;
   DOCUMENT_SYNC_BATCH_SIZE: string;
   PRESENCE_TTL_SECONDS: string;
+
+  // Metrics configuration
+  METRICS_ENABLED?: string;
+  METRICS_PUSH_ENDPOINT?: string;
+  METRICS_API_KEY?: string;
+  APP_VERSION?: string;
 
   // Secrets (from .dev.vars or Vault)
   POSTGRES_CONNECTION_STRING?: string; // Fallback for local dev without Hyperdrive
@@ -284,13 +302,26 @@ async function handleHealth(env: Env): Promise<Response> {
     if (result.rows.length === 0) {
       throw new Error('No result from database');
     }
+
+    // Record database health metrics
+    setGauge('css_db_health_status', 1);
+    recordTiming('css_db_health_latency_ms', latencyMs);
   } catch (error) {
     health.status = 'unhealthy';
     health.database = {
       connected: false,
       error: error instanceof Error ? error.message : 'Unknown error',
     };
+
+    // Record unhealthy database status
+    setGauge('css_db_health_status', 0);
   }
+
+  // Record worker info gauge
+  setGauge('css_worker_info', 1, {
+    version: env.APP_VERSION ?? 'dev',
+    environment: env.ENVIRONMENT,
+  });
 
   return new Response(JSON.stringify(health, null, 2), {
     status: health.status === 'healthy' ? 200 : 503,
@@ -824,8 +855,18 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     const origin = request.headers.get('Origin');
+    const requestStart = Date.now();
 
-    // Handle CORS preflight (no database needed)
+    // Initialize metrics for this request
+    initializeMetrics({
+      enabled: env.METRICS_ENABLED === 'true',
+      pushEndpoint: env.METRICS_PUSH_ENDPOINT,
+      apiKey: env.METRICS_API_KEY,
+      environment: env.ENVIRONMENT,
+      version: env.APP_VERSION ?? 'dev',
+    });
+
+    // Handle CORS preflight (no database needed, no metrics)
     if (request.method === 'OPTIONS') {
       return handlePreflight(request, env);
     }
@@ -833,6 +874,7 @@ export default {
     // Initialize database connection
     // Prefer Hyperdrive (production) over direct connection (local dev)
     // IMPORTANT: Always close connection in finally block to prevent leaks
+    let response: Response;
     try {
       if (env.HYPERDRIVE !== undefined) {
         await initializeDatabaseFromHyperdrive(env.HYPERDRIVE);
@@ -848,11 +890,38 @@ export default {
         );
       }
 
-      return await handleRequest(request, env, path, origin);
+      response = await handleRequest(request, env, path, origin);
+
+      // Record successful request metrics
+      const durationMs = Date.now() - requestStart;
+      const pathPattern = normalizePathPattern(path);
+      const statusClass = getStatusClass(response.status);
+
+      incrementCounter('css_http_request_total', {
+        method: request.method,
+        path_pattern: pathPattern,
+        status_class: statusClass,
+      });
+      recordTiming('css_http_request_duration_ms', durationMs, {
+        method: request.method,
+        path_pattern: pathPattern,
+        status_class: statusClass,
+      });
+
+      return response;
+    } catch (error) {
+      // Record error metrics
+      incrementCounter('css_http_errors_total', {
+        error_type: classifyError(error),
+      });
+      throw error;
     } finally {
       // Always close database connection to prevent connection leaks
       // This is critical for preventing the kqueue event accumulation issue
       await closeDatabaseConnection();
+
+      // Flush metrics (fire-and-forget)
+      await flushMetrics();
     }
   },
 };

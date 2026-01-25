@@ -338,3 +338,22 @@ export type {
   DocumentDiff,
   ComputedDiff,
 } from './document-diff-service';
+
+// Metrics Service
+export {
+  initializeMetrics,
+  incrementCounter,
+  recordTiming,
+  setGauge,
+  flushMetrics,
+  getMetricsBuffer,
+  normalizePathPattern,
+  classifyError,
+  getStatusClass,
+} from './metrics-service';
+
+export type {
+  MetricLabels,
+  MetricsConfig,
+  MetricPoint,
+} from './metrics-service';

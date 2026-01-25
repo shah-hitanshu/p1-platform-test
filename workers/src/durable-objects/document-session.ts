@@ -15,6 +15,7 @@
 import * as Y from 'yjs';
 import type { DurableObjectState } from '@cloudflare/workers-types';
 import type { EditOperation, ConnectionMeta } from '../types';
+import { incrementCounter, setGauge } from '../services/metrics-service';
 
 /**
  * Storage key for persisted Yjs document state
@@ -388,6 +389,10 @@ export class DocumentSession {
     };
     this.connections.set(server, meta);
 
+    // Record WebSocket connection metrics
+    incrementCounter('css_ws_connections_total', { action: 'open' });
+    setGauge('css_ws_connections_active', this.connections.size);
+
     // Send current state to new client
     const stateUpdate = Y.encodeStateAsUpdate(this.ydoc);
     server.send(stateUpdate);
@@ -425,10 +430,14 @@ export class DocumentSession {
     // Handle connection close
     server.addEventListener('close', () => {
       this.connections.delete(server);
+      incrementCounter('css_ws_connections_total', { action: 'close' });
+      setGauge('css_ws_connections_active', this.connections.size);
     });
 
     server.addEventListener('error', () => {
       this.connections.delete(server);
+      incrementCounter('css_ws_connections_total', { action: 'close' });
+      setGauge('css_ws_connections_active', this.connections.size);
     });
 
     // Return the client side of the WebSocket
