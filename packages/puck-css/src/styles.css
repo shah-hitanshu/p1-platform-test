@@ -723,3 +723,225 @@
   outline: 2px solid var(--puck-css-primary);
   outline-offset: 2px;
 }
+
+/* ============================================
+   CSS Plugin Panel
+   ============================================ */
+.css-plugin-panel {
+  padding: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  color: var(--puck-css-text);
+}
+
+.css-plugin-section {
+  margin-bottom: 16px;
+}
+
+.css-plugin-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.css-plugin-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--puck-css-text-secondary);
+  margin-bottom: 6px;
+}
+
+.css-plugin-section-header .css-plugin-label {
+  margin-bottom: 0;
+}
+
+.css-plugin-select {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid var(--puck-css-border);
+  border-radius: 6px;
+  background: var(--puck-css-bg);
+  color: var(--puck-css-text);
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M3 4.5L6 7.5L9 4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.css-plugin-select:focus {
+  outline: none;
+  border-color: var(--puck-css-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.css-plugin-btn-small {
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--puck-css-border);
+  border-radius: 4px;
+  background: var(--puck-css-bg);
+  color: var(--puck-css-text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.css-plugin-btn-small:hover {
+  background: var(--puck-css-bg-secondary);
+  border-color: var(--puck-css-text-secondary);
+}
+
+.css-plugin-btn-primary {
+  background: var(--puck-css-primary);
+  border-color: var(--puck-css-primary);
+  color: white;
+}
+
+.css-plugin-btn-primary:hover {
+  background: var(--puck-css-primary-hover);
+  border-color: var(--puck-css-primary-hover);
+}
+
+.css-plugin-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.css-plugin-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid var(--puck-css-border);
+  border-radius: 6px;
+  background: var(--puck-css-bg);
+  color: var(--puck-css-text);
+  box-sizing: border-box;
+}
+
+.css-plugin-input:focus {
+  outline: none;
+  border-color: var(--puck-css-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.css-plugin-error {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--puck-css-diff-removed);
+  background: var(--puck-css-diff-removed-bg);
+  border-radius: 4px;
+}
+
+.css-plugin-loading,
+.css-plugin-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--puck-css-text-secondary);
+  background: var(--puck-css-bg-secondary);
+  border-radius: 6px;
+}
+
+.css-plugin-doc-list,
+.css-plugin-version-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--puck-css-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.css-plugin-doc-item,
+.css-plugin-version-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border-bottom: 1px solid var(--puck-css-border);
+}
+
+.css-plugin-doc-item:last-child,
+.css-plugin-version-item:last-child {
+  border-bottom: none;
+}
+
+.css-plugin-doc-item:hover,
+.css-plugin-version-item:hover {
+  background: var(--puck-css-bg-secondary);
+}
+
+.css-plugin-doc-item--active {
+  background: rgba(59, 130, 246, 0.1);
+  border-left: 3px solid var(--puck-css-primary);
+  padding-left: 7px;
+}
+
+.css-plugin-doc-path {
+  font-size: 13px;
+  color: var(--puck-css-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.css-plugin-doc-delete {
+  padding: 2px 6px;
+  font-size: 14px;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  color: var(--puck-css-text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.css-plugin-doc-item:hover .css-plugin-doc-delete {
+  opacity: 1;
+}
+
+.css-plugin-doc-delete:hover {
+  color: var(--puck-css-diff-removed);
+}
+
+.css-plugin-version-item {
+  gap: 8px;
+}
+
+.css-plugin-version-item--selected {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.css-plugin-version-number {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--puck-css-text);
+}
+
+.css-plugin-version-date {
+  flex: 1;
+  font-size: 11px;
+  color: var(--puck-css-text-secondary);
+}
+
+.css-plugin-version-badge {
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  background: var(--puck-css-diff-added-bg);
+  color: var(--puck-css-diff-added);
+  border-radius: 3px;
+}
