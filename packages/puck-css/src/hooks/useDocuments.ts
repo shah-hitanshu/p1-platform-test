@@ -4,7 +4,7 @@
  * Provides document management functionality.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Document, PuckData } from '@pantheon/css-client';
 import type { CSSClient } from '@pantheon/css-client';
 
@@ -89,6 +89,21 @@ export function useDocuments({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
+  // Track the previous branchId to detect changes and reset state synchronously
+  const prevBranchIdRef = useRef<string>(branchId);
+
+  // Reset state synchronously when branchId changes
+  // This prevents race conditions where loadDocument is recreated with new branchId
+  // but documents array still contains old branch's documents
+  if (branchId !== prevBranchIdRef.current) {
+    prevBranchIdRef.current = branchId;
+    // Clear documents and set loading synchronously during render
+    // This ensures consumers see loading=true immediately when branch changes
+    setDocuments([]);
+    setLoading(true);
+    setError(null);
+  }
+
   // Fetch documents
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -98,13 +113,14 @@ export function useDocuments({
       const docs = await client.documents.list(siteId, branchId);
       setDocuments(docs);
     } catch (err) {
+      console.error('[useDocuments] error:', err);
       setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       setLoading(false);
     }
   }, [client, siteId, branchId]);
 
-  // Initial fetch - only when branchId is set
+  // Initial fetch and refetch when branchId changes
   useEffect(() => {
     if (branchId) {
       void refresh();

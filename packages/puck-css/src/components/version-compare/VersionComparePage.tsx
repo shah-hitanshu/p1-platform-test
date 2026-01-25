@@ -86,8 +86,10 @@ export function VersionComparePage({
     if (!selectedDiff) return [];
     if (selectedDiff.type === 'unchanged') return [];
 
-    const beforeProps = selectedDiff.before?.props ?? {};
-    const afterProps = selectedDiff.after?.props ?? {};
+    const beforeData = selectedDiff.before as { props?: Record<string, unknown> } | undefined;
+    const afterData = selectedDiff.after as { props?: Record<string, unknown> } | undefined;
+    const beforeProps = beforeData?.props ?? {};
+    const afterProps = afterData?.props ?? {};
 
     return diffProps(beforeProps, afterProps);
   }, [selectedDiff]);
