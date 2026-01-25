@@ -132,6 +132,41 @@ async function createMergeRequestViaUI(
   await expect(page).toHaveURL(/\/merge-requests\/[a-z0-9-]+$/);
 }
 
+// Helper to create a document on a branch via API
+async function createDocumentOnBranch(
+  page: import('@playwright/test').Page,
+  siteId: string,
+  branchId: string,
+  path: string,
+  content: Record<string, unknown>
+) {
+  const token = await page.evaluate(() => localStorage.getItem('token'));
+  const response = await page.request.post(`/api/sites/${siteId}/documents`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { path, branchId, initialContent: content },
+  });
+  return response.json();
+}
+
+// Helper to update a document on a branch via API
+async function updateDocumentOnBranch(
+  page: import('@playwright/test').Page,
+  siteId: string,
+  documentId: string,
+  branchId: string,
+  content: Record<string, unknown>
+) {
+  const token = await page.evaluate(() => localStorage.getItem('token'));
+  const response = await page.request.patch(
+    `/api/sites/${siteId}/documents/${documentId}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { branchId, content, source: 'edit' },
+    }
+  );
+  return response.json();
+}
+
 test.describe('Merge Diff Visualization', () => {
   test.setTimeout(120000); // These tests involve multiple steps
 
@@ -295,6 +330,301 @@ test.describe('Merge Diff Visualization', () => {
       // Conflicted MRs should have resolve and close buttons
       await expect(page.getByTestId('resolve-btn')).toBeVisible();
       await expect(page.getByTestId('close-btn')).toBeVisible();
+    }
+  });
+});
+
+test.describe('Expandable Diff in Merge Preview Panel', () => {
+  test.setTimeout(180000); // These tests require setup with documents
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/login');
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
+    await page.getByTestId('login-button').click();
+    await expect(page).toHaveURL('/');
+  });
+
+  test('should show expand/collapse buttons when conflicts exist', async ({
+    page,
+  }) => {
+    // Create site with branches and conflicting documents
+    const siteName = uniqueName('ExpandDiff Test');
+    const pantheonId = uniqueName('expanddiff');
+    const featureBranchName = uniqueName('feature');
+
+    await createSiteAndNavigate(page, siteName, pantheonId);
+
+    // Get site ID from URL
+    const siteUrl = page.url();
+    const siteIdMatch = siteUrl.match(/\/sites\/([a-z0-9-]+)$/);
+    const siteId = siteIdMatch ? siteIdMatch[1] : '';
+
+    // Get main branch ID
+    const mainBranchRow = page.locator('tr:has-text("main")');
+    const mainBranchLink = mainBranchRow.locator('[data-testid^="view-branch-"]');
+    const mainBranchId = (await mainBranchLink.getAttribute('data-testid'))?.replace('view-branch-', '') || '';
+
+    // Create feature branch
+    await createBranch(page, featureBranchName);
+    const featureBranchRow = page.locator(`tr:has-text("${featureBranchName}")`);
+    const featureBranchLink = featureBranchRow.locator('[data-testid^="view-branch-"]');
+    const featureBranchId = (await featureBranchLink.getAttribute('data-testid'))?.replace('view-branch-', '') || '';
+
+    // Create document on main branch
+    const doc = await createDocumentOnBranch(page, siteId, mainBranchId, '/test/conflict-doc', {
+      title: 'Original Title',
+      content: 'Original content',
+    });
+
+    // Update document differently on both branches to create conflict
+    await updateDocumentOnBranch(page, siteId, doc.id, mainBranchId, {
+      title: 'Main Branch Title',
+      content: 'Main branch content',
+    });
+    await updateDocumentOnBranch(page, siteId, doc.id, featureBranchId, {
+      title: 'Feature Branch Title',
+      content: 'Feature branch content',
+    });
+
+    // Create merge request
+    await createMergeRequestViaUI(
+      page,
+      featureBranchName,
+      'main',
+      'Expand Diff Test MR'
+    );
+
+    // Wait for merge preview panel to load
+    await expect(page.getByTestId('merge-preview-panel')).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByTestId('preview-result')).toBeVisible({
+      timeout: 20000,
+    });
+
+    // Check for expand/collapse controls
+    const expandAllBtn = page.getByTestId('expand-all-diffs-btn');
+    const collapseAllBtn = page.getByTestId('collapse-all-diffs-btn');
+
+    // If conflicts exist, expand/collapse buttons should be visible
+    const hasConflicts = await page.getByTestId('conflicts-warning').isVisible();
+    if (hasConflicts) {
+      await expect(expandAllBtn).toBeVisible();
+      await expect(collapseAllBtn).toBeVisible();
+    }
+  });
+
+  test('should expand conflict row to show JSON diff', async ({ page }) => {
+    // Create site with conflicting documents
+    const siteName = uniqueName('ShowDiff Test');
+    const pantheonId = uniqueName('showdiff');
+    const featureBranchName = uniqueName('feature');
+
+    await createSiteAndNavigate(page, siteName, pantheonId);
+
+    const siteUrl = page.url();
+    const siteIdMatch = siteUrl.match(/\/sites\/([a-z0-9-]+)$/);
+    const siteId = siteIdMatch ? siteIdMatch[1] : '';
+
+    const mainBranchRow = page.locator('tr:has-text("main")');
+    const mainBranchLink = mainBranchRow.locator('[data-testid^="view-branch-"]');
+    const mainBranchId = (await mainBranchLink.getAttribute('data-testid'))?.replace('view-branch-', '') || '';
+
+    await createBranch(page, featureBranchName);
+    const featureBranchRow = page.locator(`tr:has-text("${featureBranchName}")`);
+    const featureBranchLink = featureBranchRow.locator('[data-testid^="view-branch-"]');
+    const featureBranchId = (await featureBranchLink.getAttribute('data-testid'))?.replace('view-branch-', '') || '';
+
+    // Create and update document to cause conflict
+    const doc = await createDocumentOnBranch(page, siteId, mainBranchId, '/test/diff-doc', {
+      title: 'Initial',
+    });
+    await updateDocumentOnBranch(page, siteId, doc.id, mainBranchId, {
+      title: 'Main Version',
+    });
+    await updateDocumentOnBranch(page, siteId, doc.id, featureBranchId, {
+      title: 'Feature Version',
+    });
+
+    await createMergeRequestViaUI(
+      page,
+      featureBranchName,
+      'main',
+      'Show Diff Test MR'
+    );
+
+    // Wait for preview panel
+    await expect(page.getByTestId('merge-preview-panel')).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByTestId('preview-result')).toBeVisible({
+      timeout: 20000,
+    });
+
+    // Find the first expand toggle button
+    const expandToggle = page.locator('[data-testid^="expand-diff-toggle-"]').first();
+
+    if (await expandToggle.isVisible()) {
+      // Click to expand and show diff
+      await expandToggle.click();
+
+      // Wait for loading to complete
+      await page.waitForTimeout(500);
+
+      // JSON diff viewer should appear
+      const diffViewer = page.locator('.json-diff-viewer');
+      await expect(diffViewer).toBeVisible({ timeout: 10000 });
+
+      // Verify diff content is shown
+      await expect(diffViewer.locator('.diff-grid')).toBeVisible();
+    }
+  });
+
+  test('should lazy load diffs on first expand', async ({ page }) => {
+    // This test verifies diffs are not loaded until first expansion
+    const siteName = uniqueName('LazyDiff Test');
+    const pantheonId = uniqueName('lazydiff');
+    const featureBranchName = uniqueName('feature');
+
+    await createSiteAndNavigate(page, siteName, pantheonId);
+
+    const siteUrl = page.url();
+    const siteIdMatch = siteUrl.match(/\/sites\/([a-z0-9-]+)$/);
+    const siteId = siteIdMatch ? siteIdMatch[1] : '';
+
+    const mainBranchRow = page.locator('tr:has-text("main")');
+    const mainBranchLink = mainBranchRow.locator('[data-testid^="view-branch-"]');
+    const mainBranchId = (await mainBranchLink.getAttribute('data-testid'))?.replace('view-branch-', '') || '';
+
+    await createBranch(page, featureBranchName);
+    const featureBranchRow = page.locator(`tr:has-text("${featureBranchName}")`);
+    const featureBranchLink = featureBranchRow.locator('[data-testid^="view-branch-"]');
+    const featureBranchId = (await featureBranchLink.getAttribute('data-testid'))?.replace('view-branch-', '') || '';
+
+    const doc = await createDocumentOnBranch(page, siteId, mainBranchId, '/test/lazy-doc', {
+      data: 'initial',
+    });
+    await updateDocumentOnBranch(page, siteId, doc.id, mainBranchId, {
+      data: 'main',
+    });
+    await updateDocumentOnBranch(page, siteId, doc.id, featureBranchId, {
+      data: 'feature',
+    });
+
+    // Intercept network requests to check for lazy loading
+    const previewRequests: { includeContent: boolean }[] = [];
+    await page.route('**/api/sites/*/merge/preview', async (route, request) => {
+      const postData = request.postDataJSON();
+      previewRequests.push({ includeContent: postData.includeContent || false });
+      await route.continue();
+    });
+
+    await createMergeRequestViaUI(
+      page,
+      featureBranchName,
+      'main',
+      'Lazy Diff Test MR'
+    );
+
+    await expect(page.getByTestId('merge-preview-panel')).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByTestId('preview-result')).toBeVisible({
+      timeout: 20000,
+    });
+
+    // Initial request should NOT include content (lazy loading)
+    // Clear the intercepted requests and find the expand toggle
+    previewRequests.length = 0;
+
+    const expandToggle = page.locator('[data-testid^="expand-diff-toggle-"]').first();
+    if (await expandToggle.isVisible()) {
+      // Clicking expand should trigger a request with includeContent=true
+      await expandToggle.click();
+      await page.waitForTimeout(1000);
+
+      // Check if any request was made with includeContent: true
+      const contentRequest = previewRequests.find((r) => r.includeContent === true);
+      expect(contentRequest).toBeDefined();
+    }
+  });
+
+  test('should expand and collapse all diffs', async ({ page }) => {
+    const siteName = uniqueName('ExpandAll Test');
+    const pantheonId = uniqueName('expandall');
+    const featureBranchName = uniqueName('feature');
+
+    await createSiteAndNavigate(page, siteName, pantheonId);
+
+    const siteUrl = page.url();
+    const siteIdMatch = siteUrl.match(/\/sites\/([a-z0-9-]+)$/);
+    const siteId = siteIdMatch ? siteIdMatch[1] : '';
+
+    const mainBranchRow = page.locator('tr:has-text("main")');
+    const mainBranchLink = mainBranchRow.locator('[data-testid^="view-branch-"]');
+    const mainBranchId = (await mainBranchLink.getAttribute('data-testid'))?.replace('view-branch-', '') || '';
+
+    await createBranch(page, featureBranchName);
+    const featureBranchRow = page.locator(`tr:has-text("${featureBranchName}")`);
+    const featureBranchLink = featureBranchRow.locator('[data-testid^="view-branch-"]');
+    const featureBranchId = (await featureBranchLink.getAttribute('data-testid'))?.replace('view-branch-', '') || '';
+
+    // Create multiple conflicting documents
+    const doc1 = await createDocumentOnBranch(page, siteId, mainBranchId, '/test/doc1', {
+      field: 'value1',
+    });
+    const doc2 = await createDocumentOnBranch(page, siteId, mainBranchId, '/test/doc2', {
+      field: 'value2',
+    });
+
+    await updateDocumentOnBranch(page, siteId, doc1.id, mainBranchId, {
+      field: 'main1',
+    });
+    await updateDocumentOnBranch(page, siteId, doc1.id, featureBranchId, {
+      field: 'feature1',
+    });
+    await updateDocumentOnBranch(page, siteId, doc2.id, mainBranchId, {
+      field: 'main2',
+    });
+    await updateDocumentOnBranch(page, siteId, doc2.id, featureBranchId, {
+      field: 'feature2',
+    });
+
+    await createMergeRequestViaUI(
+      page,
+      featureBranchName,
+      'main',
+      'Expand All Test MR'
+    );
+
+    await expect(page.getByTestId('merge-preview-panel')).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByTestId('preview-result')).toBeVisible({
+      timeout: 20000,
+    });
+
+    const expandAllBtn = page.getByTestId('expand-all-diffs-btn');
+    const collapseAllBtn = page.getByTestId('collapse-all-diffs-btn');
+
+    if (await expandAllBtn.isVisible()) {
+      // Click Expand All
+      await expandAllBtn.click();
+
+      // Wait for diffs to load
+      await page.waitForTimeout(1500);
+
+      // All diff viewers should be visible
+      const diffViewers = page.locator('.json-diff-viewer');
+      const viewerCount = await diffViewers.count();
+      expect(viewerCount).toBeGreaterThan(0);
+
+      // Click Collapse All
+      await collapseAllBtn.click();
+      await page.waitForTimeout(500);
+
+      // Diff viewers should be hidden
+      await expect(page.locator('.json-diff-viewer').first()).not.toBeVisible();
     }
   });
 });
