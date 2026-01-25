@@ -64,6 +64,25 @@ puck-css-integration/
 - TypeScript strict mode, ESLint configured
 - Production build working
 
+### Phase 4.1: Puck 0.21 Migration ✅
+- Migrated from `@measured/puck` to `@puckeditor/core` 0.21.1
+- Integrated with Puck's native Plugin API and Overrides system:
+  - `createCSSPlugin()` - Creates plugin for left rail (branch selector + document list)
+  - `createCSSOverrides()` - Creates header overrides (save indicator + publish button)
+- Document management moved into Puck's plugin rail (removed separate sidebar)
+- Full-width editor layout using Puck's native chrome
+
+### Phase 4.2: Dynamic Branch Selection ✅
+- Made `branchId` optional in configuration
+- App defaults to main branch when branchId not specified:
+  - Queries backend for branch list on startup
+  - Automatically selects the branch marked as `isMain`
+- Fixed infinite loop in `refreshBranches` callback
+- Branch switching now works correctly:
+  - Documents reload when switching branches
+  - Proper state management with functional setState
+  - Uses `initializedRef` to prevent re-initialization
+
 ## Test Summary
 
 | Package | Tests | Status |
@@ -78,8 +97,10 @@ puck-css-integration/
 2. **Auto-Save**: 3-second debounce before creating new document versions
 3. **Publish**: Creates checkpoints (named snapshots of all documents)
 4. **Authentication**: Supports both API key and custom auth providers
-5. **Branch Handling**: Branch selector UI with unsaved changes warning
+5. **Branch Handling**: Branch selector UI with unsaved changes warning; defaults to main branch
 6. **Error Handling**: Exponential backoff retry with configurable attempts
+7. **Puck Integration**: Uses Puck 0.21's Plugin API for left rail and Overrides for header actions
+8. **Optional Configuration**: Only baseUrl, apiKey, siteId, and userId are required; branchId is optional
 
 ## Remaining Work
 
@@ -126,6 +147,8 @@ The demo app requires the following environment variables:
 VITE_CSS_BASE_URL=http://localhost:8787
 VITE_CSS_API_KEY=your-api-key-here
 VITE_CSS_SITE_ID=your-site-id
-VITE_CSS_BRANCH_ID=your-branch-id
 VITE_CSS_USER_ID=demo-user-id
+
+# Optional - defaults to main branch if not set:
+# VITE_CSS_BRANCH_ID=your-branch-id
 ```
