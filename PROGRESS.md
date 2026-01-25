@@ -71,6 +71,32 @@ This document tracks the implementation progress of the Collaborative JSON State
 
 ---
 
+### Document Paths vs. Structure-Based Organization
+
+**Issue:** Currently, documents have a `path` field (e.g., `articles/football/jets/article-name`) that implies hierarchical organization. However, the intended architectural design is for the **site structure system** (structure nodes) to control document organization and navigation, not the document path itself.
+
+**Current State:**
+- Documents have a `path` field that suggests hierarchy
+- Site structures and nodes exist separately and reference documents by ID
+- These two organizational concepts overlap and may conflict
+
+**Architectural Consideration:**
+- Document paths should potentially be simplified to flat identifiers or slugs
+- Hierarchical organization should be controlled entirely by structure nodes
+- This affects how documents are addressed in URLs and internal references
+
+**Impact Areas:**
+- Document service path validation logic
+- Structure node relationship to documents
+- URL routing in frontend applications
+- Site template/copy operations (path vs. structure-based copying)
+
+**Priority:** Low - Requires architectural review before refactoring
+
+**Decision Pending:** Determine whether document paths should remain hierarchical or become flat identifiers, with structure nodes providing all organizational hierarchy.
+
+---
+
 ## Completed Work
 
 ### Phase 1.1: Project Configuration and Build Tooling
