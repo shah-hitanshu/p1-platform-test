@@ -177,6 +177,25 @@ puck-css-integration/
 - Added ResizeObserver polyfill to test setup for @puckeditor/core compatibility
 - 5 new tests for PuckDataSynchronizer component
 
+### Phase 5f: React 19 Compatibility Fix ✅
+- Fixed `usePuck must be used inside <Puck>` error in React 19 environments
+- **Problem**: React 19 is stricter about context errors than React 18. The demo app (React 18) showed warnings but continued working, while apps using React 19 crashed.
+- **Root Cause**: `PuckDataSynchronizer` was rendered in `headerActions` override, which executes outside Puck's context provider during the initial render phase.
+- **Solution**: Moved `PuckDataSynchronizer` from `createCSSOverrides` to `createCSSPlugin`:
+  - Plugin's `render()` function is guaranteed to execute inside Puck's component tree
+  - Added error boundary (`PuckContextErrorBoundary`) to catch and suppress context errors gracefully
+  - Added deferred rendering with `setTimeout(0)` to ensure Puck's context is fully initialized
+- Updated `PuckDataSynchronizer` component:
+  - Split into inner component (`PuckDataSynchronizerInner`) that uses `usePuck()`
+  - Wrapper component with `useState` defers rendering until after first tick
+  - Error boundary wraps inner component to catch React 19 strict mode errors
+  - Error boundary resets when `syncKey` changes, allowing retry on version switches
+- API changes:
+  - `createCSSPlugin()`: Added `syncData` and `dataSyncKey` props (new location)
+  - `createCSSOverrides()`: Deprecated `syncData` and `dataSyncKey` props (ignored, kept for compatibility)
+- Demo app updated to pass sync props to `createCSSPlugin` instead of `createCSSOverrides`
+- Verified working in both React 18 (demo) and React 19 (my-app) environments
+
 ## Test Summary
 
 | Package | Tests | Status |
