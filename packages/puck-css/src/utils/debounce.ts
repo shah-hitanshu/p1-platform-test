@@ -11,6 +11,9 @@ interface DebouncedFunction<T extends AnyFunction> {
   (...args: Parameters<T>): void;
   cancel: () => void;
   flush: () => void;
+  pause: () => void;
+  resume: () => void;
+  isPaused: () => boolean;
 }
 
 /**
@@ -25,21 +28,31 @@ interface DebouncedFunction<T extends AnyFunction> {
 export function debounce<T extends AnyFunction>(func: T, wait: number): DebouncedFunction<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   let lastArgs: Parameters<T> | null = null;
+  let paused = false;
 
-  const debounced = ((...args: Parameters<T>): void => {
-    lastArgs = args;
-
+  const startTimer = (): void => {
     if (timeoutId !== null) {
       clearTimeout(timeoutId);
     }
 
     timeoutId = setTimeout(() => {
       timeoutId = null;
-      if (lastArgs !== null) {
+      if (!paused && lastArgs !== null) {
         func(...lastArgs);
         lastArgs = null;
       }
     }, wait);
+  };
+
+  const debounced = ((...args: Parameters<T>): void => {
+    lastArgs = args;
+
+    // Don't start timer if paused, but still save args
+    if (paused) {
+      return;
+    }
+
+    startTimer();
   }) as DebouncedFunction<T>;
 
   debounced.cancel = (): void => {
@@ -59,6 +72,27 @@ export function debounce<T extends AnyFunction>(func: T, wait: number): Debounce
       func(...lastArgs);
       lastArgs = null;
     }
+  };
+
+  debounced.pause = (): void => {
+    paused = true;
+    // Cancel any pending timer
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+  };
+
+  debounced.resume = (): void => {
+    paused = false;
+    // If there are pending args, restart the timer
+    if (lastArgs !== null) {
+      startTimer();
+    }
+  };
+
+  debounced.isPaused = (): boolean => {
+    return paused;
   };
 
   return debounced;

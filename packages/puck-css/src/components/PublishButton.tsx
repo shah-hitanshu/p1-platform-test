@@ -34,6 +34,18 @@ interface PublishButtonProps {
   onError?: (error: Error) => void;
 
   /**
+   * Callback when the name prompt is shown. Use this to pause auto-save
+   * and prevent refresh interference while typing.
+   */
+  onPromptShow?: () => void;
+
+  /**
+   * Callback when the name prompt is dismissed (after publish or cancel).
+   * Note: Auto-save typically resumes on the next edit, not on prompt close.
+   */
+  onPromptClose?: () => void;
+
+  /**
    * Additional CSS class name.
    */
   className?: string;
@@ -64,6 +76,8 @@ export function PublishButton({
   showNamePrompt = true,
   onSuccess,
   onError,
+  onPromptShow,
+  onPromptClose,
   className = '',
   children = 'Publish',
 }: PublishButtonProps): React.ReactElement {
@@ -76,6 +90,7 @@ export function PublishButton({
   const handlePublish = useCallback(async () => {
     if (showNamePrompt && !showPrompt) {
       setShowPrompt(true);
+      onPromptShow?.();
       return;
     }
 
@@ -85,18 +100,20 @@ export function PublishButton({
       const checkpoint = await onPublish(checkpointName || undefined);
       setShowPrompt(false);
       setCheckpointName('');
+      onPromptClose?.();
       onSuccess?.(checkpoint);
     } catch (error) {
       onError?.(error instanceof Error ? error : new Error(String(error)));
     } finally {
       setIsPublishing(false);
     }
-  }, [onPublish, showNamePrompt, showPrompt, checkpointName, onSuccess, onError]);
+  }, [onPublish, showNamePrompt, showPrompt, checkpointName, onSuccess, onError, onPromptShow, onPromptClose]);
 
   const handleCancel = useCallback(() => {
     setShowPrompt(false);
     setCheckpointName('');
-  }, []);
+    onPromptClose?.();
+  }, [onPromptClose]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

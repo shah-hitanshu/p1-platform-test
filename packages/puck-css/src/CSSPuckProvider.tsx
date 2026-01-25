@@ -77,6 +77,9 @@ export function CSSPuckProvider({
   const currentDocumentRef = useRef<Document | null>(null);
   const initializedRef = useRef(false);
 
+  // Auto-save pause state
+  const [autoSavePaused, setAutoSavePaused] = useState(false);
+
   // Keep refs in sync with state
   useEffect(() => {
     currentDocumentRef.current = currentDocument;
@@ -177,10 +180,28 @@ export function CSSPuckProvider({
     };
   }, [debouncedSave]);
 
+  // Pause auto-save
+  const pauseAutoSave = useCallback(() => {
+    debouncedSave.pause();
+    setAutoSavePaused(true);
+  }, [debouncedSave]);
+
+  // Resume auto-save
+  const resumeAutoSave = useCallback(() => {
+    debouncedSave.resume();
+    setAutoSavePaused(false);
+  }, [debouncedSave]);
+
   // Public save function (triggers debounce)
+  // Also resumes auto-save if paused, per user requirement
   const saveData = useCallback(
     (data: PuckData) => {
       pendingDataRef.current = data;
+      // Resume on next edit if paused
+      if (debouncedSave.isPaused()) {
+        debouncedSave.resume();
+        setAutoSavePaused(false);
+      }
       debouncedSave();
     },
     [debouncedSave]
@@ -279,6 +300,9 @@ export function CSSPuckProvider({
       currentBranch,
       refreshBranches,
       branchesLoading,
+      autoSavePaused,
+      pauseAutoSave,
+      resumeAutoSave,
     }),
     [
       userClient,
@@ -299,6 +323,9 @@ export function CSSPuckProvider({
       currentBranch,
       refreshBranches,
       branchesLoading,
+      autoSavePaused,
+      pauseAutoSave,
+      resumeAutoSave,
     ]
   );
 

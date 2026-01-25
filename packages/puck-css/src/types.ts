@@ -139,6 +139,22 @@ export interface CSSPuckContextValue {
    * Whether branches are still loading (for initial main branch detection).
    */
   branchesLoading: boolean;
+
+  /**
+   * Whether auto-save is currently paused.
+   */
+  autoSavePaused: boolean;
+
+  /**
+   * Pause auto-save. Use when user is entering checkpoint name to prevent
+   * save-triggered refreshes from disrupting typing.
+   */
+  pauseAutoSave: () => void;
+
+  /**
+   * Resume auto-save. Called automatically on next saveData() call.
+   */
+  resumeAutoSave: () => void;
 }
 
 /**

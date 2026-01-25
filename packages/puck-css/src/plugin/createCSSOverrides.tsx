@@ -33,6 +33,12 @@ export interface CSSOverridesOptions {
   showNamePrompt?: boolean;
   /** Whether to show the default Puck publish button */
   showDefaultPublish?: boolean;
+  /**
+   * Callback to pause auto-save when checkpoint prompt is shown.
+   * Pass pauseAutoSave from useCSSPuck to prevent refresh interference
+   * while typing the checkpoint name.
+   */
+  onPauseAutoSave?: () => void;
 }
 
 /**
@@ -84,6 +90,7 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
     onPublishError,
     showNamePrompt = true,
     showDefaultPublish = false,
+    onPauseAutoSave,
   } = options;
 
   return {
@@ -100,6 +107,7 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
           showNamePrompt={showNamePrompt}
           onSuccess={onPublishSuccess}
           onError={onPublishError}
+          onPromptShow={onPauseAutoSave}
           className="css-puck-header-publish"
         >
           Publish

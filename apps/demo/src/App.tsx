@@ -84,6 +84,7 @@ function AppContent() {
     branches,
     currentBranch,
     switchBranch,
+    pauseAutoSave,
   } = useCSSPuck();
 
   // Document management via useDocuments hook
@@ -198,7 +199,8 @@ function AppContent() {
     onPublishError: handlePublishError,
     showNamePrompt: true,
     showDefaultPublish: false,
-  }), [saveStatus, lastSaved, saveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError]);
+    onPauseAutoSave: pauseAutoSave,
+  }), [saveStatus, lastSaved, saveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError, pauseAutoSave]);
 
   // Loading state
   if (loading) {
