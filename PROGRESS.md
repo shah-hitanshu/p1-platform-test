@@ -1831,6 +1831,7 @@ Template for future decisions:
 
 | Date | Phase | Summary |
 |------|-------|---------|
+| 2026-01-25 | 10.2 | Local metrics receiver: scripts/local-metrics-receiver.js with macOS notifications, system monitoring, Makefile target |
 | 2026-01-25 | 10.3-10.6 | Merge Diff Visualization: JsonDiffViewer component, ExpandableConflictRow with expand/collapse, previewMerge includeContent option, ConflictResolutionPanel integration, E2E tests, security fix for status param validation |
 | 2026-01-24 | 8.23 | Site deletion FK fix: clear source_checkpoint_id and base_checkpoint_id before deleting checkpoints |
 | 2026-01-25 | 9.11 | Test data cleanup script: db:cleanup command to delete E2E test entries by naming pattern; handles FK constraints for 16 tables |
