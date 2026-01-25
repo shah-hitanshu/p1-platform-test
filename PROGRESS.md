@@ -182,8 +182,8 @@ puck-css-integration/
 | Package | Tests | Status |
 |---------|-------|--------|
 | @pantheon/css-client | 18 | ✅ Passing |
-| @pantheon/puck-css | 139 | ✅ Passing |
-| **Total** | **157** | ✅ **All Passing** |
+| @pantheon/puck-css | 141 | ✅ Passing |
+| **Total** | **159** | ✅ **All Passing** |
 
 ## Key Decisions
 

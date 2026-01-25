@@ -63,7 +63,7 @@ describe('PuckDataSynchronizer', () => {
     });
   });
 
-  it('should not dispatch when syncKey is null', () => {
+  it('should not dispatch when syncKey is null (null means do not sync)', () => {
     render(<PuckDataSynchronizer data={sampleData} syncKey={null} />);
     expect(mockDispatch).not.toHaveBeenCalled();
   });
@@ -76,6 +76,33 @@ describe('PuckDataSynchronizer', () => {
 
     rerender(<PuckDataSynchronizer data={sampleData} syncKey="key1" />);
     expect(mockDispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('should not dispatch when syncKey changes from value to null', () => {
+    const { rerender } = render(
+      <PuckDataSynchronizer data={sampleData} syncKey="key1" />
+    );
+    expect(mockDispatch).toHaveBeenCalledTimes(1);
+
+    // Changing to null should NOT trigger a dispatch
+    mockDispatch.mockClear();
+    rerender(<PuckDataSynchronizer data={sampleData2} syncKey={null} />);
+    expect(mockDispatch).not.toHaveBeenCalled();
+  });
+
+  it('should not dispatch on remount if syncKey is null', () => {
+    // Simulate what happens when the component remounts due to parent recreation
+    const { unmount } = render(
+      <PuckDataSynchronizer data={sampleData} syncKey={null} />
+    );
+    expect(mockDispatch).not.toHaveBeenCalled();
+
+    unmount();
+    mockDispatch.mockClear();
+
+    // Remount with null key - should still not dispatch
+    render(<PuckDataSynchronizer data={sampleData} syncKey={null} />);
+    expect(mockDispatch).not.toHaveBeenCalled();
   });
 
   it('should render nothing (return null)', () => {

@@ -6,7 +6,7 @@
  * Document management is handled within Puck's plugin rail, not a separate sidebar.
  */
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Puck } from '@puckeditor/core';
 import '@puckeditor/core/puck.css';
@@ -280,13 +280,29 @@ function AppContent() {
     handleVersionSelect,
   ]);
 
+  // Track the last synced key to avoid syncing on every render
+  // This ref persists across renders even if child components remount
+  const lastSyncedKeyRef = useRef<string | null>(null);
+
   // Generate a sync key that changes when we want to force Puck to update its data
-  // This allows data sync without remounting (preserving sidebar state)
-  const dataSyncKey = viewingVersion
+  // Only sync when document or version changes, NOT when currentData changes from saves
+  const targetSyncKey = viewingVersion
     ? `version-${viewingVersion.id}`
     : currentDocument
       ? `doc-${currentDocument.id}-latest`
       : null;
+
+  // Only provide a new dataSyncKey when it's different from what we last synced
+  // This prevents re-syncing after saves which would overwrite user edits
+  const dataSyncKey = targetSyncKey !== lastSyncedKeyRef.current ? targetSyncKey : null;
+
+  // Update the ref after we determine if sync is needed
+  // (The actual sync happens in PuckDataSynchronizer when dataSyncKey is non-null)
+  useEffect(() => {
+    if (dataSyncKey !== null) {
+      lastSyncedKeyRef.current = dataSyncKey;
+    }
+  }, [dataSyncKey]);
 
   // Create Puck overrides for header actions (save indicator, publish button, version banner)
   const cssOverrides = useMemo(() => createCSSOverrides({

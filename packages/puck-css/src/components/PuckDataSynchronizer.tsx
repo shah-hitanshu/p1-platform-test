@@ -42,8 +42,11 @@ export function PuckDataSynchronizer({
   const lastSyncKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Only sync when syncKey changes and we have data
-    if (syncKey !== lastSyncKeyRef.current && data !== null) {
+    // Only sync when:
+    // 1. syncKey is a non-null value (null means "don't sync")
+    // 2. syncKey is different from what we last synced
+    // 3. we have data to sync
+    if (syncKey !== null && syncKey !== lastSyncKeyRef.current && data !== null) {
       lastSyncKeyRef.current = syncKey;
 
       // Dispatch setData to update Puck's internal state
