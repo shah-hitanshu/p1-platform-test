@@ -83,13 +83,22 @@ puck-css-integration/
   - Proper state management with functional setState
   - Uses `initializedRef` to prevent re-initialization
 
+### Phase 4.3: Auto-save Pause During Checkpoint Entry ✅
+- Added pause/resume functionality to debounce utility
+- Prevents auto-save refresh from interfering with checkpoint name typing
+- New context methods: `pauseAutoSave`, `resumeAutoSave`, `autoSavePaused`
+- Auto-resumes on next edit (when `saveData()` is called)
+- `PublishButton` now calls `onPromptShow` when prompt is displayed
+- `createCSSOverrides` accepts `onPauseAutoSave` callback
+- 8 new tests for pause/resume functionality
+
 ## Test Summary
 
 | Package | Tests | Status |
 |---------|-------|--------|
 | @pantheon/css-client | 18 | ✅ Passing |
-| @pantheon/puck-css | 14 | ✅ Passing |
-| **Total** | **32** | ✅ **All Passing** |
+| @pantheon/puck-css | 22 | ✅ Passing |
+| **Total** | **40** | ✅ **All Passing** |
 
 ## Key Decisions
 
