@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import type { Branch, Document } from '@pantheon/css-client';
+import type { Branch, Document, DocumentVersion } from '@pantheon/css-client';
 
 /**
  * Props for the CSS Plugin panel content
@@ -32,11 +32,34 @@ interface CSSPluginPanelProps {
   onDocumentDelete?: (documentId: string, path: string) => Promise<void>;
   /** Whether documents are loading */
   documentsLoading?: boolean;
+  /** List of versions for the current document */
+  versions?: DocumentVersion[];
+  /** Whether versions are loading */
+  versionsLoading?: boolean;
+  /** Currently selected version ID for comparison */
+  selectedVersionId?: string;
+  /** Callback when a version is selected */
+  onVersionSelect?: (version: DocumentVersion) => void;
+  /** Callback when compare is triggered */
+  onCompare?: (beforeVersionId: string, afterVersionId: string) => void;
 }
 
 /**
  * Plugin panel content component
  */
+/**
+ * Formats a date string for display.
+ */
+function formatVersionDate(dateString: string): string {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function CSSPluginPanel({
   branches,
   currentBranch,
@@ -48,6 +71,11 @@ function CSSPluginPanel({
   onDocumentCreate,
   onDocumentDelete,
   documentsLoading = false,
+  versions = [],
+  versionsLoading = false,
+  selectedVersionId,
+  onVersionSelect,
+  onCompare,
 }: CSSPluginPanelProps): React.ReactElement {
   const [isCreating, setIsCreating] = useState(false);
   const [newDocPath, setNewDocPath] = useState('');
@@ -178,6 +206,58 @@ function CSSPluginPanel({
           )}
         </div>
       )}
+
+      {/* Version History */}
+      {(versions.length > 0 || versionsLoading || onVersionSelect) && (
+        <div className="css-plugin-section">
+          <div className="css-plugin-section-header">
+            <label className="css-plugin-label">Version History</label>
+          </div>
+
+          {versionsLoading ? (
+            <div className="css-plugin-loading">Loading versions...</div>
+          ) : versions.length === 0 ? (
+            <div className="css-plugin-empty">No versions yet</div>
+          ) : (
+            <>
+              <ul className="css-plugin-version-list">
+                {versions.map((version, index) => {
+                  const isLatest = index === 0;
+                  const isSelected = version.id === selectedVersionId;
+
+                  return (
+                    <li
+                      key={version.id}
+                      className={`css-plugin-version-item ${isSelected ? 'css-plugin-version-item--selected' : ''}`}
+                      onClick={() => onVersionSelect?.(version)}
+                    >
+                      <span className="css-plugin-version-number">
+                        v{version.versionNumber}
+                      </span>
+                      <span className="css-plugin-version-date">
+                        {formatVersionDate(version.createdAt)}
+                      </span>
+                      {isLatest && (
+                        <span className="css-plugin-version-badge">current</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+
+              {selectedVersionId && selectedVersionId !== versions[0]?.id && onCompare && (
+                <button
+                  type="button"
+                  className="css-plugin-btn css-plugin-btn-primary"
+                  onClick={() => onCompare(selectedVersionId, versions[0].id)}
+                >
+                  Compare with current
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -228,6 +308,16 @@ export interface CSSPluginOptions {
   onDocumentDelete?: (documentId: string, path: string) => Promise<void>;
   /** Whether documents are loading */
   documentsLoading?: boolean;
+  /** List of versions for the current document */
+  versions?: DocumentVersion[];
+  /** Whether versions are loading */
+  versionsLoading?: boolean;
+  /** Currently selected version ID for comparison */
+  selectedVersionId?: string;
+  /** Callback when a version is selected */
+  onVersionSelect?: (version: DocumentVersion) => void;
+  /** Callback when compare is triggered */
+  onCompare?: (beforeVersionId: string, afterVersionId: string) => void;
 }
 
 /**
@@ -279,6 +369,11 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
         onDocumentCreate={options.onDocumentCreate}
         onDocumentDelete={options.onDocumentDelete}
         documentsLoading={options.documentsLoading}
+        versions={options.versions}
+        versionsLoading={options.versionsLoading}
+        selectedVersionId={options.selectedVersionId}
+        onVersionSelect={options.onVersionSelect}
+        onCompare={options.onCompare}
       />
     ),
     overrides: {},

@@ -96,6 +96,7 @@ describe('CSSPlugin Version History', () => {
       ...baseOptions,
       versions: [],
       versionsLoading: false,
+      onVersionSelect: vi.fn(), // Trigger version section to show
     });
     render(plugin.render());
 
@@ -132,6 +133,7 @@ describe('CSSPlugin Version History', () => {
       ...baseOptions,
       versions: mockVersions,
       selectedVersionId: 'v2',
+      onCompare: vi.fn(),
     });
     render(plugin.render());
 
@@ -181,6 +183,7 @@ describe('CSSPlugin Version History', () => {
     render(plugin.render());
 
     // Should show some date format (we'll be flexible on exact format)
-    expect(screen.getByText(/Jan/i)).toBeInTheDocument();
+    const dateElements = screen.getAllByText(/Jan/i);
+    expect(dateElements.length).toBeGreaterThan(0);
   });
 });
