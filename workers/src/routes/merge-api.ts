@@ -234,6 +234,17 @@ async function handleCreateMergeRequest(
 }
 
 /**
+ * Valid merge request statuses for filtering
+ */
+const VALID_STATUSES: readonly MergeRequestStatus[] = [
+  'open',
+  'approved',
+  'conflicted',
+  'merged',
+  'closed',
+];
+
+/**
  * Handle GET /api/sites/{siteId}/merge-requests - List Merge Requests
  */
 async function handleListMergeRequests(
@@ -241,11 +252,16 @@ async function handleListMergeRequests(
   context: MergeRouteContext,
 ): Promise<Response> {
   const url = new URL(request.url);
-  const statusParam = url.searchParams.get('status') as MergeRequestStatus | null;
+  const statusParam = url.searchParams.get('status');
+
+  // Validate status parameter if provided
+  if (statusParam !== null && !VALID_STATUSES.includes(statusParam as MergeRequestStatus)) {
+    return errorResponse('Invalid status parameter', 400);
+  }
 
   const mergeRequests = await listMergeRequests(
     context.siteId,
-    statusParam !== null ? { status: statusParam } : {},
+    statusParam !== null ? { status: statusParam as MergeRequestStatus } : {},
   );
 
   return jsonResponse({ mergeRequests });
