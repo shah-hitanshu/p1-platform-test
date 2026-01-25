@@ -261,8 +261,14 @@ export async function getDocumentByPath(
   siteId: string,
   path: string,
 ): Promise<Document | null> {
+  // Order by archived_at NULLS FIRST to prefer non-archived documents
+  // This ensures if both an archived and non-archived document exist with the same path,
+  // we return the non-archived one
   const result = await query<DocumentRow>(
-    'SELECT * FROM app.documents WHERE site_id = $1 AND path = $2',
+    `SELECT * FROM app.documents
+     WHERE site_id = $1 AND path = $2
+     ORDER BY archived_at NULLS FIRST
+     LIMIT 1`,
     [siteId, path],
   );
 

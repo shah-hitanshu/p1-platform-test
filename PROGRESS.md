@@ -51,6 +51,17 @@ This document tracks the implementation progress of the Collaborative JSON State
 - `workers/src/index.ts` - Updated to use `runWithConnection()`
 - `workers/tests/routes/router.spec.ts` - Updated mock to include new export
 
+### getDocumentByPath Returns Archived Documents (Fixed 2026-01-25)
+
+**Issue:** When creating pages from Content Publisher articles, if a document with the same path had been previously archived (soft-deleted), the `getDocumentByPath` function would return the archived document instead of the active one. This caused "Document not found on this branch" errors when the system tried to access versions of the archived document.
+
+**Root Cause:** The SQL query in `getDocumentByPath` used `SELECT * FROM app.documents WHERE site_id = $1 AND path = $2` without filtering or ordering by archived status. When multiple documents existed with the same path (one archived, one active), the query returned whichever came first, often the archived one.
+
+**Solution:** Modified the query to prefer non-archived documents using `ORDER BY archived_at NULLS FIRST LIMIT 1`. Documents with `archived_at = NULL` (active) are now returned before documents with an archived timestamp.
+
+**Files Changed:**
+- `workers/src/services/document-service.ts` - Updated `getDocumentByPath` query
+
 ---
 
 ## Known Issues / Future Work
