@@ -64,8 +64,8 @@ export function SitesPage() {
     <div className="sites-page">
       <header className="page-header">
         <div className="header-content">
-          <h1 className="page-title">Sites</h1>
-          <p className="page-subtitle">Manage your collaborative sites</p>
+          <h1 className="page-title" data-testid="page-title">Sites</h1>
+          <p className="page-subtitle" data-testid="page-subtitle">Manage your collaborative sites</p>
         </div>
         <Button
           type={showCreateForm ? 'secondary' : 'primary'}

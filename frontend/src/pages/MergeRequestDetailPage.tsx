@@ -257,7 +257,7 @@ export function MergeRequestDetailPage() {
   return (
     <div className="mr-detail-page">
       {/* Breadcrumb */}
-      <nav className="breadcrumb">
+      <nav className="breadcrumb" data-testid="breadcrumb">
         <Link to="/sites">Sites</Link>
         <span className="breadcrumb-separator">/</span>
         <Link to={`/sites/${siteId}`}>{site?.name || 'Site'}</Link>
@@ -270,14 +270,14 @@ export function MergeRequestDetailPage() {
       {/* Header Section */}
       <header className="mr-header">
         <div className="mr-header-top">
-          <h1 className="mr-title">{mergeRequest?.title}</h1>
+          <h1 className="mr-title" data-testid="mr-title">{mergeRequest?.title}</h1>
           {mergeRequest && (
             <Tag type={getStatusTagType(mergeRequest.status)} data-testid="mr-status-badge">
               {mergeRequest.status}
             </Tag>
           )}
         </div>
-        <div className="mr-branches">
+        <div className="mr-branches" data-testid="mr-branches">
           <code className="branch-tag">{getBranchName(mergeRequest?.sourceBranchId || '')}</code>
           <span className="branch-arrow">→</span>
           <code className="branch-tag">{getBranchName(mergeRequest?.targetBranchId || '')}</code>
@@ -285,7 +285,7 @@ export function MergeRequestDetailPage() {
       </header>
 
       {/* Metadata Section */}
-      <section className="mr-metadata">
+      <section className="mr-metadata" data-testid="mr-metadata">
         <div className="metadata-grid">
           <div className="metadata-item">
             <span className="metadata-label">Created by</span>

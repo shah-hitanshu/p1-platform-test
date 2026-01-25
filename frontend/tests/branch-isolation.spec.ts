@@ -27,7 +27,7 @@ function uniqueName(prefix: string): string {
  */
 async function loginAsAlice(page: Page): Promise<void> {
   await page.goto('/login');
-  await page.selectOption('#user-select', ALICE_USER_ID);
+  await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
   await page.getByTestId('login-button').click();
   await expect(page).toHaveURL('/');
 }

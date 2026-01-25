@@ -18,14 +18,14 @@ test.describe('Login Page', () => {
     await expect(page).toHaveURL('/login');
 
     // Should show login form
-    await expect(page.locator('.login-title')).toContainText('CSS Explorer');
-    await expect(page.locator('#user-select')).toBeVisible();
+    await expect(page.getByTestId('login-title')).toContainText('CSS Explorer');
+    await expect(page.getByTestId('user-select')).toBeVisible();
   });
 
   test('should display user options in dropdown', async ({ page }) => {
     await page.goto('/login');
 
-    const select = page.locator('#user-select');
+    const select = page.getByTestId('user-select');
     await select.click();
 
     // Check that user options are present
@@ -36,11 +36,11 @@ test.describe('Login Page', () => {
     await page.goto('/login');
 
     // Select Alice
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
 
     // Should show user preview
-    await expect(page.locator('.user-preview')).toBeVisible();
-    await expect(page.locator('.preview-value').first()).toContainText('Alice Developer');
+    await expect(page.getByTestId('user-preview')).toBeVisible();
+    await expect(page.getByTestId('preview-name')).toContainText('Alice Developer');
   });
 
   test('should require user selection before login', async ({ page }) => {
@@ -55,7 +55,7 @@ test.describe('Login Page', () => {
     await page.goto('/login');
 
     // Select a user
-    await page.selectOption('#user-select', BOB_USER_ID);
+    await page.getByTestId('user-select').selectOption(BOB_USER_ID);
 
     // Login button should be enabled
     const loginButton = page.getByTestId('login-button');
@@ -68,7 +68,7 @@ test.describe('Authentication Flow', () => {
     await page.goto('/login');
 
     // Select user and login
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
 
     // Should redirect to dashboard
@@ -82,7 +82,7 @@ test.describe('Authentication Flow', () => {
     await page.goto('/login');
 
     // Login
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
 
@@ -113,7 +113,7 @@ test.describe('Authentication Flow', () => {
     await page.goto('/login');
 
     // Login
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
 

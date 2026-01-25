@@ -20,9 +20,9 @@ export function Layout() {
 
   return (
     <div className="layout">
-      <nav className="sidebar">
+      <nav className="sidebar" data-testid="sidebar">
         <div className="sidebar-header">
-          <h1 className="sidebar-title">CSS Explorer</h1>
+          <h1 className="sidebar-title" data-testid="sidebar-title">CSS Explorer</h1>
           <p className="sidebar-subtitle">API Testing Tool</p>
         </div>
 
@@ -34,6 +34,7 @@ export function Layout() {
                 className={`nav-link ${
                   location.pathname === item.path ? 'active' : ''
                 }`}
+                data-testid={`nav-${item.label.toLowerCase()}`}
               >
                 {item.label}
               </Link>
@@ -45,7 +46,7 @@ export function Layout() {
           <div className="user-panel">
             <div className="user-info">
               <span className="user-name" data-testid="user-name">{user.name}</span>
-              <span className="user-email">{user.email}</span>
+              <span className="user-email" data-testid="user-email">{user.email}</span>
             </div>
             <Button type="secondary" onClick={logout} data-testid="logout-button">
               Log out

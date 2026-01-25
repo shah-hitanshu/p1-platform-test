@@ -105,7 +105,7 @@ export function MergeRequestsPage() {
   return (
     <div className="merge-requests-page">
       {/* Breadcrumb */}
-      <nav className="breadcrumb">
+      <nav className="breadcrumb" data-testid="breadcrumb">
         <Link to="/sites">Sites</Link>
         <span className="breadcrumb-separator">/</span>
         <Link to={`/sites/${siteId}`}>{site?.name || 'Site'}</Link>
@@ -116,7 +116,7 @@ export function MergeRequestsPage() {
       {/* Page Header */}
       <header className="page-header">
         <div className="page-info">
-          <h1 className="page-title">Merge Requests</h1>
+          <h1 className="page-title" data-testid="page-title">Merge Requests</h1>
         </div>
         <RouterLinkButton
           to={`/sites/${siteId}/merge-requests/new`}
@@ -128,7 +128,7 @@ export function MergeRequestsPage() {
       </header>
 
       {/* Status Filter Tabs */}
-      <div className="filter-tabs">
+      <div className="filter-tabs" data-testid="filter-tabs">
         {STATUS_TABS.map((tab) => (
           <button
             key={tab.key}

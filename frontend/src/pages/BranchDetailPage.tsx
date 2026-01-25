@@ -165,7 +165,7 @@ export function BranchDetailPage() {
   return (
     <div className="branch-detail-page">
       {/* Breadcrumb */}
-      <nav className="breadcrumb">
+      <nav className="breadcrumb" data-testid="breadcrumb">
         <Link to="/sites">Sites</Link>
         <span className="breadcrumb-separator">/</span>
         <Link to={`/sites/${siteId}`}>{site?.name || 'Site'}</Link>
@@ -219,7 +219,7 @@ export function BranchDetailPage() {
           <TabPanel>
             <section className="content-section">
           <div className="section-header">
-            <h2 className="section-title">Checkpoints</h2>
+            <h2 className="section-title" data-testid="section-title-checkpoints">Checkpoints</h2>
             <Button
               type={showCheckpointForm ? 'secondary' : 'primary'}
               onClick={() => setShowCheckpointForm(!showCheckpointForm)}
@@ -316,7 +316,7 @@ export function BranchDetailPage() {
           <TabPanel>
             <section className="content-section">
           <div className="section-header">
-            <h2 className="section-title">Documents</h2>
+            <h2 className="section-title" data-testid="section-title-documents">Documents</h2>
             <Button
               type={showDocumentForm ? 'secondary' : 'primary'}
               onClick={() => setShowDocumentForm(!showDocumentForm)}

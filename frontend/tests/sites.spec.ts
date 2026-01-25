@@ -13,18 +13,18 @@ test.describe('Sites Page', () => {
   test.beforeEach(async ({ page }) => {
     // Login before each test
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
 
     // Navigate to sites
-    await page.click('.nav-link >> text=Sites');
+    await page.getByTestId('nav-sites').click();
     await expect(page).toHaveURL('/sites');
   });
 
   test('should display sites page title', async ({ page }) => {
-    await expect(page.locator('.page-title')).toContainText('Sites');
-    await expect(page.locator('.page-subtitle')).toContainText('Manage your collaborative sites');
+    await expect(page.getByTestId('page-title')).toContainText('Sites');
+    await expect(page.getByTestId('page-subtitle')).toContainText('Manage your collaborative sites');
   });
 
   test('should have create site button', async ({ page }) => {
@@ -74,12 +74,12 @@ test.describe('Sites Table', () => {
   test.beforeEach(async ({ page }) => {
     // Login before each test
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
 
     // Navigate to sites
-    await page.click('.nav-link >> text=Sites');
+    await page.getByTestId('nav-sites').click();
     await expect(page).toHaveURL('/sites');
   });
 
@@ -88,8 +88,8 @@ test.describe('Sites Table', () => {
     await page.waitForTimeout(1000);
 
     // Check if table or empty state is shown
-    const table = page.locator('.sites-table');
-    const emptyState = page.locator('.empty-state');
+    const table = page.getByTestId('sites-table');
+    const emptyState = page.getByTestId('empty-state');
 
     // One of these should be visible
     const tableVisible = await table.isVisible();
@@ -99,7 +99,7 @@ test.describe('Sites Table', () => {
 
     // If table is visible, check headers
     if (tableVisible) {
-      await expect(page.locator('.sites-table th').first()).toContainText('Name');
+      await expect(page.getByTestId('sites-table').locator('th').first()).toContainText('Name');
     }
   });
 
@@ -108,7 +108,7 @@ test.describe('Sites Table', () => {
     await page.waitForTimeout(1000);
 
     // If empty state is shown, verify message
-    const emptyState = page.locator('.empty-state');
+    const emptyState = page.getByTestId('empty-state');
     if (await emptyState.isVisible()) {
       await expect(emptyState).toContainText('No sites found');
     }

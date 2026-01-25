@@ -18,7 +18,7 @@ function uniqueName(prefix: string): string {
 // Helper to create a site and navigate to it
 async function createSiteAndNavigate(page: import('@playwright/test').Page, siteName: string, pantheonId: string) {
   // Navigate to sites
-  await page.click('.nav-link >> text=Sites');
+  await page.getByTestId('nav-sites').click();
   await expect(page).toHaveURL('/sites');
 
   // Create site
@@ -69,7 +69,7 @@ async function navigateToMergeRequests(page: import('@playwright/test').Page) {
 test.describe('Merge Requests List', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
@@ -91,7 +91,7 @@ test.describe('Merge Requests List', () => {
     await createSiteAndNavigate(page, siteName, pantheonId);
     await navigateToMergeRequests(page);
 
-    await expect(page.locator('.page-title')).toContainText('Merge Requests');
+    await expect(page.getByTestId('page-title')).toContainText('Merge Requests');
   });
 
   test('should show empty state when no merge requests exist', async ({ page }) => {
@@ -101,8 +101,8 @@ test.describe('Merge Requests List', () => {
     await createSiteAndNavigate(page, siteName, pantheonId);
     await navigateToMergeRequests(page);
 
-    await expect(page.locator('.empty-state')).toBeVisible();
-    await expect(page.locator('.empty-state')).toContainText('No merge requests found');
+    await expect(page.getByTestId('empty-state')).toBeVisible();
+    await expect(page.getByTestId('empty-state')).toContainText('No merge requests found');
   });
 
   test('should display status filter tabs', async ({ page }) => {
@@ -112,7 +112,7 @@ test.describe('Merge Requests List', () => {
     await createSiteAndNavigate(page, siteName, pantheonId);
     await navigateToMergeRequests(page);
 
-    const tabs = page.locator('.filter-tabs');
+    const tabs = page.getByTestId('filter-tabs');
     await expect(tabs).toBeVisible();
     await expect(tabs).toContainText('All');
     await expect(tabs).toContainText('Open');
@@ -138,7 +138,7 @@ test.describe('Merge Requests List', () => {
 test.describe('Create Merge Request', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
@@ -152,7 +152,7 @@ test.describe('Create Merge Request', () => {
     await page.getByTestId('create-mr-btn').click();
 
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+\/merge-requests\/new$/);
-    await expect(page.locator('.page-title')).toContainText('Create Merge Request');
+    await expect(page.getByTestId('page-title')).toContainText('Create Merge Request');
   });
 
   test('should display form with required fields', async ({ page }) => {
@@ -244,7 +244,7 @@ test.describe('Create Merge Request', () => {
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+\/merge-requests\/[a-z0-9-]+$/);
 
     // Should show the MR title
-    await expect(page.locator('.mr-title')).toContainText(mrTitle);
+    await expect(page.getByTestId('mr-title')).toContainText(mrTitle);
   });
 
   test('should cancel and return to list', async ({ page }) => {
@@ -266,7 +266,7 @@ test.describe('Create Merge Request', () => {
 test.describe('Merge Request Detail', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
@@ -289,10 +289,10 @@ test.describe('Merge Request Detail', () => {
     await page.getByTestId('submit-btn').click();
 
     // Verify detail page content
-    await expect(page.locator('.mr-title')).toContainText(mrTitle);
-    await expect(page.locator('.tag')).toBeVisible();
-    await expect(page.locator('.mr-branches')).toBeVisible();
-    await expect(page.locator('.mr-metadata')).toBeVisible();
+    await expect(page.getByTestId('mr-title')).toContainText(mrTitle);
+    await expect(page.getByTestId('mr-status-badge')).toBeVisible();
+    await expect(page.getByTestId('mr-branches')).toBeVisible();
+    await expect(page.getByTestId('mr-metadata')).toBeVisible();
   });
 
   test('should show status badge with correct color for open MR', async ({ page }) => {
@@ -311,7 +311,7 @@ test.describe('Merge Request Detail', () => {
     await page.locator('#title').fill('Status Test');
     await page.getByTestId('submit-btn').click();
 
-    const badge = page.locator('.tag');
+    const badge = page.getByTestId('mr-status-badge');
     await expect(badge).toContainText('open');
   });
 
@@ -341,7 +341,7 @@ test.describe('Merge Request Detail', () => {
 test.describe('Merge Request Status Changes', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
@@ -366,7 +366,7 @@ test.describe('Merge Request Status Changes', () => {
     await page.getByTestId('approve-btn').click();
 
     // Wait for status to update
-    await expect(page.locator('.tag')).toContainText('approved', { timeout: 10000 });
+    await expect(page.getByTestId('mr-status-badge')).toContainText('approved', { timeout: 10000 });
   });
 
   test('should close merge request', async ({ page }) => {
@@ -386,7 +386,7 @@ test.describe('Merge Request Status Changes', () => {
     await page.getByTestId('submit-btn').click();
 
     // Wait for detail page to load
-    await expect(page.locator('.tag')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('mr-status-badge')).toBeVisible({ timeout: 5000 });
 
     // Click Close - wait for API response
     const responsePromise = page.waitForResponse(resp =>
@@ -396,7 +396,7 @@ test.describe('Merge Request Status Changes', () => {
     await responsePromise;
 
     // Wait for status to update
-    await expect(page.locator('.tag')).toContainText('closed', { timeout: 10000 });
+    await expect(page.getByTestId('mr-status-badge')).toContainText('closed', { timeout: 10000 });
   });
 
   test('should reopen closed merge request', async ({ page }) => {
@@ -416,7 +416,7 @@ test.describe('Merge Request Status Changes', () => {
     await page.getByTestId('submit-btn').click();
 
     // Wait for detail page to load
-    await expect(page.locator('.tag')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('mr-status-badge')).toBeVisible({ timeout: 5000 });
 
     // Close first - wait for API response
     const closeResponsePromise = page.waitForResponse(resp =>
@@ -438,14 +438,14 @@ test.describe('Merge Request Status Changes', () => {
     await page.getByTestId('reopen-btn').click();
     await reopenResponsePromise;
 
-    await expect(page.locator('.tag')).toContainText('open', { timeout: 10000 });
+    await expect(page.getByTestId('mr-status-badge')).toContainText('open', { timeout: 10000 });
   });
 });
 
 test.describe('Merge Request Deletion', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
@@ -502,8 +502,8 @@ test.describe('Merge Request Deletion', () => {
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+\/merge-requests$/, { timeout: 10000 });
 
     // MR should not be in the list - either empty state or table without MR
-    const table = page.locator('.merge-requests-table');
-    const emptyState = page.locator('.empty-state');
+    const table = page.getByTestId('merge-requests-table');
+    const emptyState = page.getByTestId('empty-state');
 
     // Wait for either empty state or table to be visible
     await expect(table.or(emptyState)).toBeVisible({ timeout: 5000 });
@@ -518,7 +518,7 @@ test.describe('Merge Request Deletion', () => {
 test.describe('Merge Request Preview', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
@@ -540,15 +540,15 @@ test.describe('Merge Request Preview', () => {
     await page.getByTestId('submit-btn').click();
 
     // Should show merge preview panel with auto-loaded results
-    await expect(page.locator('.merge-preview-panel')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('merge-preview-panel')).toBeVisible({ timeout: 10000 });
     await expect(page.getByTestId('refresh-preview-btn')).toBeVisible();
 
     // Preview loads automatically - wait for results (or error if race condition in local dev)
     // First check loading starts - use first() to avoid strict mode issues if multiple elements exist
-    await expect(page.locator('.preview-loading, .preview-result, [data-testid="preview-error"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="preview-loading"], [data-testid="preview-result"], [data-testid="preview-error"]').first()).toBeVisible({ timeout: 10000 });
 
     // Then wait for loading to complete
-    await expect(page.locator('.preview-result, [data-testid="preview-error"]').first()).toBeVisible({ timeout: 20000 });
+    await expect(page.locator('[data-testid="preview-result"], [data-testid="preview-error"]').first()).toBeVisible({ timeout: 20000 });
 
     // After loading, button should show "Refresh"
     await expect(page.getByTestId('refresh-preview-btn')).toContainText('Refresh');
@@ -558,7 +558,7 @@ test.describe('Merge Request Preview', () => {
 test.describe('Merge Request List View', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
@@ -581,12 +581,12 @@ test.describe('Merge Request List View', () => {
     await page.getByTestId('submit-btn').click();
 
     // Navigate back to list
-    await page.locator('.breadcrumb >> text=Merge Requests').click();
+    await page.getByTestId('breadcrumb').locator('text=Merge Requests').click();
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+\/merge-requests$/);
 
     // Should see MR in list - wait for table to load
-    await expect(page.locator('.merge-requests-table')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('.merge-requests-table')).toContainText(mrTitle);
+    await expect(page.getByTestId('merge-requests-table')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('merge-requests-table')).toContainText(mrTitle);
   });
 
   test('should navigate to detail when clicking table row', async ({ page }) => {
@@ -607,13 +607,13 @@ test.describe('Merge Request List View', () => {
     await page.getByTestId('submit-btn').click();
 
     // Navigate back to list
-    await page.locator('.breadcrumb >> text=Merge Requests').click();
+    await page.getByTestId('breadcrumb').locator('text=Merge Requests').click();
 
     // Click on the row
     await page.locator(`tr:has-text("${mrTitle}")`).click();
 
     // Should navigate to detail page
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+\/merge-requests\/[a-z0-9-]+$/);
-    await expect(page.locator('.mr-title')).toContainText(mrTitle);
+    await expect(page.getByTestId('mr-title')).toContainText(mrTitle);
   });
 });

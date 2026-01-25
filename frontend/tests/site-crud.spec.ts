@@ -36,12 +36,12 @@ test.describe('Site Creation', () => {
   test.beforeEach(async ({ page }) => {
     // Login before each test
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
 
     // Navigate to sites
-    await page.click('.nav-link >> text=Sites');
+    await page.getByTestId('nav-sites').click();
     await expect(page).toHaveURL('/sites');
   });
 
@@ -71,8 +71,8 @@ test.describe('Site Creation', () => {
     await expect(page.getByTestId('create-form')).not.toBeVisible({ timeout: 10000 });
 
     // Verify site appears in the table
-    await expect(page.locator('.sites-table')).toBeVisible();
-    await expect(page.locator('.sites-table')).toContainText(siteName);
+    await expect(page.getByTestId('sites-table')).toBeVisible();
+    await expect(page.getByTestId('sites-table')).toContainText(siteName);
   });
 
   test('should not create site with empty name', async ({ page }) => {
@@ -102,12 +102,12 @@ test.describe('Site Deletion', () => {
   test.beforeEach(async ({ page }) => {
     // Login
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
 
     // Navigate to sites
-    await page.click('.nav-link >> text=Sites');
+    await page.getByTestId('nav-sites').click();
     await expect(page).toHaveURL('/sites');
   });
 
@@ -199,7 +199,7 @@ test.describe('Site Deletion', () => {
 
     // Site should still exist after closing modal
     await page.getByTestId('cancel-button').click();
-    await expect(page.locator('.sites-table')).toContainText(siteName);
+    await expect(page.getByTestId('sites-table')).toContainText(siteName);
   });
 
   test('should successfully delete site after archiving non-main branches', async ({ page }) => {
@@ -254,7 +254,7 @@ test.describe('Site Deletion', () => {
     await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 10000 });
 
     // Site should be removed from list
-    await expect(page.locator('.sites-table')).not.toContainText(siteName);
+    await expect(page.getByTestId('sites-table')).not.toContainText(siteName);
   });
 
   test('should close modal when clicking cancel', async ({ page }) => {
@@ -276,7 +276,7 @@ test.describe('Site Deletion', () => {
     await expect(page.getByRole('dialog')).not.toBeVisible();
 
     // Site should still exist
-    await expect(page.locator('.sites-table')).toContainText(siteName);
+    await expect(page.getByTestId('sites-table')).toContainText(siteName);
   });
 
   test('should close modal when clicking overlay', async ({ page }) => {
@@ -298,14 +298,14 @@ test.describe('Site Deletion', () => {
     await expect(page.getByRole('dialog')).not.toBeVisible();
 
     // Site should still exist
-    await expect(page.locator('.sites-table')).toContainText(siteName);
+    await expect(page.getByTestId('sites-table')).toContainText(siteName);
   });
 });
 
 test.describe('Site Navigation', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
     await page.click('.nav-link >> text=Sites');
@@ -327,6 +327,6 @@ test.describe('Site Navigation', () => {
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+$/);
 
     // Should show site title
-    await expect(page.locator('.site-title')).toContainText(siteName);
+    await expect(page.getByTestId('site-title')).toContainText(siteName);
   });
 });

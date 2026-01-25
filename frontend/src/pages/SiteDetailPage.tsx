@@ -137,7 +137,7 @@ export function SiteDetailPage() {
   return (
     <div className="site-detail-page">
       {/* Breadcrumb */}
-      <nav className="breadcrumb">
+      <nav className="breadcrumb" data-testid="breadcrumb">
         <Link to="/sites">Sites</Link>
         <span className="breadcrumb-separator">/</span>
         <span className="breadcrumb-current">{site?.name || 'Site'}</span>
@@ -171,7 +171,7 @@ export function SiteDetailPage() {
       {/* Branches Section */}
       <section className="branches-section" data-testid="branches-section">
         <div className="section-header">
-          <h2 className="section-title">Branches</h2>
+          <h2 className="section-title" data-testid="section-title-branches">Branches</h2>
           <Button
             type={showCreateForm ? 'secondary' : 'primary'}
             onClick={() => setShowCreateForm(!showCreateForm)}

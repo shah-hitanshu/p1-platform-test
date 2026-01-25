@@ -13,17 +13,17 @@ test.describe('Dashboard Page', () => {
   test.beforeEach(async ({ page }) => {
     // Login before each test
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
 
   test('should display dashboard title', async ({ page }) => {
-    await expect(page.locator('.page-title')).toContainText('Dashboard');
+    await expect(page.getByTestId('page-title')).toContainText('Dashboard');
   });
 
   test('should display system health section', async ({ page }) => {
-    await expect(page.locator('.card-title').first()).toContainText('System Health');
+    await expect(page.getByTestId('card-title-health')).toContainText('System Health');
   });
 
   test('should have refresh button for health check', async ({ page }) => {
@@ -33,23 +33,23 @@ test.describe('Dashboard Page', () => {
   });
 
   test('should display quick actions section', async ({ page }) => {
-    await expect(page.locator('.card-title').nth(1)).toContainText('Quick Actions');
+    await expect(page.getByTestId('card-title-actions')).toContainText('Quick Actions');
 
     // Check action links
-    await expect(page.locator('.action-link')).toHaveCount(2);
+    await expect(page.getByTestId('create-site-action')).toBeVisible();
+    await expect(page.getByTestId('view-sites-action')).toBeVisible();
   });
 
   test('should display API endpoints reference', async ({ page }) => {
-    await expect(page.locator('.card-title').nth(2)).toContainText('API Endpoints');
+    await expect(page.getByTestId('card-title-endpoints')).toContainText('API Endpoints');
 
     // Check some endpoints are listed
-    await expect(page.locator('.endpoint-item')).toHaveCount(5);
+    await expect(page.getByTestId('endpoints-list').locator('[data-testid^="endpoint-"]')).toHaveCount(5);
   });
 
   test('should navigate to sites from quick action', async ({ page }) => {
     // Click "View Sites" link
-    const viewSitesLink = page.locator('.action-link').filter({ hasText: 'View Sites' });
-    await viewSitesLink.click();
+    await page.getByTestId('view-sites-action').click();
 
     await expect(page).toHaveURL('/sites');
   });
@@ -59,23 +59,23 @@ test.describe('Navigation', () => {
   test.beforeEach(async ({ page }) => {
     // Login before each test
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
 
   test('should show sidebar navigation', async ({ page }) => {
-    await expect(page.locator('.sidebar')).toBeVisible();
-    await expect(page.locator('.sidebar-title')).toContainText('CSS Explorer');
+    await expect(page.getByTestId('sidebar')).toBeVisible();
+    await expect(page.getByTestId('sidebar-title')).toContainText('CSS Explorer');
   });
 
   test('should have Dashboard link active on dashboard', async ({ page }) => {
-    const dashboardLink = page.locator('.nav-link').filter({ hasText: 'Dashboard' });
+    const dashboardLink = page.getByTestId('nav-dashboard');
     await expect(dashboardLink).toHaveClass(/active/);
   });
 
   test('should navigate to Sites page', async ({ page }) => {
-    const sitesLink = page.locator('.nav-link').filter({ hasText: 'Sites' });
+    const sitesLink = page.getByTestId('nav-sites');
     await sitesLink.click();
 
     await expect(page).toHaveURL('/sites');
@@ -84,6 +84,6 @@ test.describe('Navigation', () => {
 
   test('should show user info in sidebar', async ({ page }) => {
     await expect(page.getByTestId('user-name')).toContainText('Alice Developer');
-    await expect(page.locator('.user-email')).toContainText('alice@example.com');
+    await expect(page.getByTestId('user-email')).toContainText('alice@example.com');
   });
 });

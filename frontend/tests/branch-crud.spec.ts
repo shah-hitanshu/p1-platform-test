@@ -18,7 +18,7 @@ function uniqueName(prefix: string): string {
 // Helper to create a site and navigate to it
 async function createSiteAndNavigate(page: import('@playwright/test').Page, siteName: string, pantheonId: string) {
   // Navigate to sites
-  await page.click('.nav-link >> text=Sites');
+  await page.getByTestId('nav-sites').click();
   await expect(page).toHaveURL('/sites');
 
   // Create site - wait for API response
@@ -46,7 +46,7 @@ test.describe('Branch Creation', () => {
   test.beforeEach(async ({ page }) => {
     // Login
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
@@ -58,9 +58,9 @@ test.describe('Branch Creation', () => {
     await createSiteAndNavigate(page, siteName, pantheonId);
 
     // Every site should have a main branch created automatically
-    await expect(page.locator('.section-title')).toContainText('Branches');
-    await expect(page.locator('.branches-table')).toBeVisible();
-    await expect(page.locator('.branches-table')).toContainText('main');
+    await expect(page.getByTestId('section-title-branches')).toContainText('Branches');
+    await expect(page.getByTestId('branches-table')).toBeVisible();
+    await expect(page.getByTestId('branches-table')).toContainText('main');
   });
 
   test('should have create branch button', async ({ page }) => {
@@ -117,7 +117,7 @@ test.describe('Branch Creation', () => {
     await expect(page.getByTestId('create-branch-form')).not.toBeVisible({ timeout: 10000 });
 
     // Verify branch appears in table
-    await expect(page.locator('.branches-table')).toContainText(branchName);
+    await expect(page.getByTestId('branches-table')).toContainText(branchName);
   });
 
   test('should create branch from parent branch', async ({ page }) => {
@@ -145,7 +145,7 @@ test.describe('Branch Creation', () => {
     await expect(page.getByTestId('create-branch-form')).not.toBeVisible({ timeout: 10000 });
 
     // Verify child branch exists
-    await expect(page.locator('.branches-table')).toContainText(childBranchName);
+    await expect(page.getByTestId('branches-table')).toContainText(childBranchName);
   });
 
   test('should not create branch with empty name', async ({ page }) => {
@@ -165,7 +165,7 @@ test.describe('Branch Deletion', () => {
   test.beforeEach(async ({ page }) => {
     // Login
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
@@ -265,7 +265,7 @@ test.describe('Branch Deletion', () => {
     await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 10000 });
 
     // Verify branch is removed
-    await expect(page.locator('.branches-table')).not.toContainText(branchName);
+    await expect(page.getByTestId('branches-table')).not.toContainText(branchName);
   });
 
   test('should close modal when clicking cancel', async ({ page }) => {
@@ -293,7 +293,7 @@ test.describe('Branch Deletion', () => {
     await expect(page.getByRole('dialog')).not.toBeVisible();
 
     // Branch should still exist
-    await expect(page.locator('.branches-table')).toContainText(branchName);
+    await expect(page.getByTestId('branches-table')).toContainText(branchName);
   });
 });
 
@@ -301,7 +301,7 @@ test.describe('Branch Archive', () => {
   test.beforeEach(async ({ page }) => {
     // Login
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
@@ -384,7 +384,7 @@ test.describe('Branch Navigation', () => {
   test.beforeEach(async ({ page }) => {
     // Login
     await page.goto('/login');
-    await page.selectOption('#user-select', ALICE_USER_ID);
+    await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
     await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
@@ -417,7 +417,7 @@ test.describe('Branch Navigation', () => {
     await mainRow.locator('[data-testid^="view-branch-"]').click();
 
     // Breadcrumb should be visible
-    await expect(page.locator('.breadcrumb')).toBeVisible();
-    await expect(page.locator('.breadcrumb')).toContainText('Sites');
+    await expect(page.getByTestId('breadcrumb')).toBeVisible();
+    await expect(page.getByTestId('breadcrumb')).toContainText('Sites');
   });
 });

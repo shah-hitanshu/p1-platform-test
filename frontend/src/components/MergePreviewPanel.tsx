@@ -53,7 +53,7 @@ export function MergePreviewPanel({
   }, [loadPreview]);
 
   return (
-    <div className="merge-preview-panel">
+    <div className="merge-preview-panel" data-testid="merge-preview-panel">
       <div className="preview-header">
         <h3 className="preview-title">Merge Preview</h3>
         <Button
@@ -80,14 +80,14 @@ export function MergePreviewPanel({
       )}
 
       {isLoading && (
-        <div className="preview-loading">
+        <div className="preview-loading" data-testid="preview-loading">
           <span className="loading-spinner"></span>
           <span>Loading preview...</span>
         </div>
       )}
 
       {!isLoading && preview && (
-        <div className="preview-result">
+        <div className="preview-result" data-testid="preview-result">
           <div className="preview-summary">
             <div className={`merge-status ${preview.canMerge ? 'can-merge' : 'cannot-merge'}`}>
               {preview.canMerge ? (
