@@ -680,3 +680,62 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Version list in plugin panel */
+.css-plugin-version-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.css-plugin-version-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.css-plugin-version-item:hover {
+  background: #e0e0e0;
+}
+
+.css-plugin-version-item--selected {
+  background: #d0d0ff;
+}
+
+.css-plugin-version-number {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.css-plugin-version-date {
+  flex: 1;
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.css-plugin-version-badge {
+  font-size: 0.625rem;
+  padding: 0.125rem 0.375rem;
+  background: #22c55e;
+  color: white;
+  border-radius: 9999px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.css-plugin-btn {
+  width: 100%;
+  padding: 0.5rem 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Import version comparison styles from puck-css */
+@import '@pantheon/puck-css/styles.css';
