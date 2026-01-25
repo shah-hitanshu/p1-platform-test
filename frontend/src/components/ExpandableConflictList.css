@@ -1,0 +1,48 @@
+/* Expandable Conflict List Styles */
+
+.expandable-conflict-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.expandable-conflict-list-empty {
+  padding: 24px;
+  text-align: center;
+  color: #6c757d;
+  font-style: italic;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+}
+
+.expandable-conflict-list-empty p {
+  margin: 0;
+}
+
+/* Controls Section */
+.conflict-list-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.conflict-count {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.expand-controls {
+  display: flex;
+  gap: 8px;
+}
+
+/* Conflict Rows Container */
+.conflict-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}

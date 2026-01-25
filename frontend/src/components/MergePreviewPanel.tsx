@@ -3,13 +3,14 @@
  *
  * Shows a preview of what will happen when a merge is executed.
  * Loads automatically when mounted.
+ * Supports expandable diff viewing with lazy loading.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Alert } from '@pantheon-systems/design-toolkit-react';
 import { previewMerge } from '../api/merge-requests';
-import { ConflictList } from './ConflictList';
-import type { MergePreview } from '../types';
+import { ExpandableConflictList } from './ExpandableConflictList';
+import type { MergePreview, DocumentDiff } from '../types';
 import './MergePreviewPanel.css';
 
 interface MergePreviewPanelProps {
@@ -31,6 +32,11 @@ export function MergePreviewPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshCounter, setRefreshCounter] = useState(0);
+
+  // State for lazy-loaded document diffs
+  const [documentDiffs, setDocumentDiffs] = useState<DocumentDiff[]>([]);
+  const [diffsLoading, setDiffsLoading] = useState(false);
+  const diffsLoadedRef = useRef(false);
 
   // Load preview automatically on mount, when branch IDs change, or on manual refresh
   useEffect(() => {
@@ -79,8 +85,39 @@ export function MergePreviewPanel({
 
   // Manual refresh handler - triggers useEffect by incrementing counter
   const handleRefresh = useCallback(() => {
+    // Reset diffs state on refresh
+    diffsLoadedRef.current = false;
+    setDocumentDiffs([]);
     setRefreshCounter((c) => c + 1);
   }, []);
+
+  // Lazy load document diffs when user expands a conflict row
+  const handleRequestDiffs = useCallback(async () => {
+    // Only load once per preview
+    if (diffsLoadedRef.current || !siteId || !sourceBranchId || !targetBranchId) {
+      return;
+    }
+
+    diffsLoadedRef.current = true;
+    setDiffsLoading(true);
+
+    try {
+      const result = await previewMerge(siteId, {
+        sourceBranchId,
+        targetBranchId,
+        includeContent: true,
+      });
+
+      if (result.documentDiffs) {
+        setDocumentDiffs(result.documentDiffs);
+      }
+    } catch (err) {
+      // Silently fail diff loading - the main preview still works
+      console.error('Failed to load document diffs:', err);
+    } finally {
+      setDiffsLoading(false);
+    }
+  }, [siteId, sourceBranchId, targetBranchId]);
 
   return (
     <div className="merge-preview-panel" data-testid="merge-preview-panel">
@@ -141,7 +178,12 @@ export function MergePreviewPanel({
 
           {preview.hasConflicts && preview.conflicts.documentConflicts.length > 0 && (
             <div className="preview-conflicts">
-              <ConflictList conflicts={preview.conflicts.documentConflicts} />
+              <ExpandableConflictList
+                conflicts={preview.conflicts.documentConflicts}
+                documentDiffs={documentDiffs}
+                diffsLoading={diffsLoading}
+                onRequestDiffs={handleRequestDiffs}
+              />
             </div>
           )}
 
