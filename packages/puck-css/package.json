@@ -16,7 +16,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp src/styles.css dist/styles.css",
     "clean": "rm -rf dist *.tsbuildinfo",
     "lint": "eslint src --ext .ts,.tsx",
     "test": "vitest run",

@@ -476,3 +476,177 @@
 .prop-value__object {
   color: var(--puck-css-text-secondary);
 }
+
+/* ============================================
+   VisualVersionCompare
+   ============================================ */
+.visual-version-compare {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--puck-css-bg-secondary);
+}
+
+.visual-version-compare__legend {
+  display: flex;
+  gap: 1.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--puck-css-bg);
+  border-bottom: 1px solid var(--puck-css-border);
+  font-size: 0.75rem;
+}
+
+.visual-version-compare__legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.visual-version-compare__legend-color {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 0.25rem;
+}
+
+.visual-version-compare__legend-item--added .visual-version-compare__legend-color {
+  background: var(--puck-css-diff-added);
+}
+
+.visual-version-compare__legend-item--removed .visual-version-compare__legend-color {
+  background: var(--puck-css-diff-removed);
+}
+
+.visual-version-compare__legend-item--modified .visual-version-compare__legend-color {
+  background: var(--puck-css-diff-modified);
+}
+
+.visual-version-compare__content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.visual-version-compare__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--puck-css-text-secondary);
+  font-size: 1rem;
+}
+
+.visual-version-compare__panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  flex: 1;
+  overflow: hidden;
+  background: var(--puck-css-border);
+}
+
+.visual-version-compare__panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--puck-css-bg);
+  overflow: hidden;
+}
+
+.visual-version-compare__panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: var(--puck-css-bg-secondary);
+  border-bottom: 1px solid var(--puck-css-border);
+}
+
+.visual-version-compare__panel--before .visual-version-compare__panel-header {
+  background: var(--puck-css-diff-removed-bg);
+}
+
+.visual-version-compare__panel--after .visual-version-compare__panel-header {
+  background: var(--puck-css-diff-added-bg);
+}
+
+.visual-version-compare__panel-label {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.visual-version-compare__panel-version {
+  font-size: 0.75rem;
+  color: var(--puck-css-text-secondary);
+}
+
+.visual-version-compare__panel-content {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+}
+
+/* ============================================
+   Visual Diff Highlighting
+   ============================================ */
+.visual-diff-highlight {
+  position: relative;
+  border-radius: 0.375rem;
+}
+
+.visual-diff-highlight--added {
+  outline: 3px solid var(--puck-css-diff-added);
+  outline-offset: 2px;
+  background: var(--puck-css-diff-added-bg);
+}
+
+.visual-diff-highlight--removed {
+  outline: 3px solid var(--puck-css-diff-removed);
+  outline-offset: 2px;
+  background: var(--puck-css-diff-removed-bg);
+  opacity: 0.7;
+}
+
+.visual-diff-highlight--modified {
+  outline: 3px solid var(--puck-css-diff-modified);
+  outline-offset: 2px;
+  background: var(--puck-css-diff-modified-bg);
+}
+
+.visual-diff-highlight--reordered {
+  outline: 3px solid var(--puck-css-diff-reordered);
+  outline-offset: 2px;
+  background: var(--puck-css-diff-reordered-bg);
+}
+
+.visual-diff-badge {
+  position: absolute;
+  top: -0.5rem;
+  right: -0.5rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: white;
+  z-index: 10;
+}
+
+.visual-diff-badge--added {
+  background: var(--puck-css-diff-added);
+}
+
+.visual-diff-badge--removed {
+  background: var(--puck-css-diff-removed);
+}
+
+.visual-diff-badge--modified {
+  background: var(--puck-css-diff-modified);
+}
+
+.visual-diff-badge--reordered {
+  background: var(--puck-css-diff-reordered);
+}

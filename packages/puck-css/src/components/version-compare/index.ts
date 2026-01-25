@@ -24,3 +24,6 @@ export type { DiffHeaderProps } from './DiffHeader.js';
 
 export { VersionComparePage } from './VersionComparePage.js';
 export type { VersionComparePageProps } from './VersionComparePage.js';
+
+export { VisualVersionCompare } from './VisualVersionCompare.js';
+export type { VisualVersionCompareProps } from './VisualVersionCompare.js';

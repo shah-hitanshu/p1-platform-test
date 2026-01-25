@@ -29,6 +29,7 @@ export {
   ComponentTree,
   DiffHeader,
   VersionComparePage,
+  VisualVersionCompare,
 } from './components/version-compare/index.js';
 export type {
   PropValueDisplayProps,
@@ -38,6 +39,7 @@ export type {
   ComponentTreeProps,
   DiffHeaderProps,
   VersionComparePageProps,
+  VisualVersionCompareProps,
 } from './components/version-compare/index.js';
 
 // Puck Plugin Integration
