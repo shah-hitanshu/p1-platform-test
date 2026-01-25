@@ -251,6 +251,25 @@ function AppContent() {
   // This ref persists across renders even if child components remount
   const lastSyncedKeyRef = useRef<string | null>(null);
 
+  // Use refs for values that change frequently but shouldn't trigger plugin/overrides recreation
+  // This prevents the plugin and overrides from being recreated on every save, which causes flicker
+  const saveStatusRef = useRef(saveStatus);
+  const currentDataRef = useRef(currentData);
+  const lastSavedRef = useRef(lastSaved);
+  const saveErrorRef = useRef(saveError);
+  useEffect(() => {
+    saveStatusRef.current = saveStatus;
+  }, [saveStatus]);
+  useEffect(() => {
+    currentDataRef.current = currentData;
+  }, [currentData]);
+  useEffect(() => {
+    lastSavedRef.current = lastSaved;
+  }, [lastSaved]);
+  useEffect(() => {
+    saveErrorRef.current = saveError;
+  }, [saveError]);
+
   // Generate a sync key that changes when we want to force Puck to update its data
   // Only sync when document or version changes, NOT when currentData changes from saves
   const targetSyncKey = viewingVersion
@@ -271,13 +290,21 @@ function AppContent() {
     }
   }, [dataSyncKey]);
 
+  // Stable getter functions (read from refs to avoid stale closures)
+  const getHasUnsavedChanges = useCallback(() => saveStatusRef.current === 'saving', []);
+  const getSaveStatus = useCallback(() => saveStatusRef.current, []);
+  const getLastSaved = useCallback(() => lastSavedRef.current, []);
+  const getSaveError = useCallback(() => saveErrorRef.current, []);
+
   // Create Puck plugin for CSS integration (branch selector + document list + versions in plugin rail)
   // syncData and dataSyncKey are passed here so PuckDataSynchronizer renders inside Puck's context
+  // IMPORTANT: We use refs for saveStatus and currentData to avoid recreating the plugin on every save,
+  // which would cause the iframe to flicker/reload
   const cssPlugin = useMemo(() => createCSSPlugin({
     branches,
     currentBranch,
     onBranchSwitch: switchBranch,
-    hasUnsavedChanges: saveStatus === 'saving',
+    getHasUnsavedChanges,
     documents,
     selectedDocumentPath: selectedPath,
     onDocumentSelect: handleDocumentSelect,
@@ -289,13 +316,14 @@ function AppContent() {
     selectedVersionId: viewingVersion?.id ?? undefined,
     onVersionSelect: handleVersionSelect,
     // Data sync props - these render PuckDataSynchronizer inside the plugin (inside Puck's context)
-    syncData: currentData,
+    // We use the ref's current value but only include dataSyncKey in deps (which controls when to sync)
+    syncData: currentDataRef.current,
     dataSyncKey,
   }), [
     branches,
     currentBranch,
     switchBranch,
-    saveStatus,
+    getHasUnsavedChanges,
     documents,
     selectedPath,
     handleDocumentSelect,
@@ -306,16 +334,19 @@ function AppContent() {
     versionsLoading,
     viewingVersion,
     handleVersionSelect,
-    currentData,
+    // Note: saveStatus and currentData are intentionally NOT in deps - we use refs instead
+    // dataSyncKey changes when we need to sync, currentDataRef.current will have the right value then
     dataSyncKey,
   ]);
 
   // Create Puck overrides for header actions (save indicator, publish button, version banner)
   // NOTE: syncData/dataSyncKey are NOT passed here - they're in the plugin above
+  // IMPORTANT: We use getter functions for saveStatus/lastSaved/saveError to avoid recreating
+  // the overrides on every save, which would cause Puck to potentially re-render and flicker.
   const cssOverrides = useMemo(() => createCSSOverrides({
-    saveStatus,
-    lastSaved,
-    saveError,
+    getSaveStatus,
+    getLastSaved,
+    getSaveError,
     onRetrySave: saveNow,
     onPublish: createCheckpoint,
     onPublishSuccess: handlePublishSuccess,
@@ -326,7 +357,7 @@ function AppContent() {
     isViewingHistoricalVersion,
     viewingVersion,
     onReturnToLatest: returnToLatest,
-  }), [saveStatus, lastSaved, saveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError, pauseAutoSave, isViewingHistoricalVersion, viewingVersion, returnToLatest]);
+  }), [getSaveStatus, getLastSaved, getSaveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError, pauseAutoSave, isViewingHistoricalVersion, viewingVersion, returnToLatest]);
 
   // Loading state
   if (loading) {

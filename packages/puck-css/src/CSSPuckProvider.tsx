@@ -179,7 +179,11 @@ function CSSPuckProviderInner({
         { maxAttempts: maxRetries }
       );
 
-      setCurrentData(dataToSave);
+      // Note: We intentionally do NOT call setCurrentData(dataToSave) here.
+      // The data is already in Puck's internal state (it came from Puck's onChange).
+      // Updating currentData would trigger a re-render cascade that recreates the
+      // cssPlugin, causing Puck to potentially re-render and flicker.
+      // currentData should only be updated when loading a document or switching versions.
       pendingDataRef.current = null;
       setSaveStatus('saved');
       setLastSaved(new Date());

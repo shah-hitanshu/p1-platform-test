@@ -18,12 +18,40 @@ import { HistoricalVersionBanner } from '../components/HistoricalVersionBanner.j
  * Options for creating CSS overrides
  */
 export interface CSSOverridesOptions {
-  /** Current save status */
-  saveStatus: SaveStatus;
-  /** Last saved timestamp */
-  lastSaved: Date | null;
-  /** Save error if any */
-  saveError: Error | null;
+  /**
+   * Getter function for current save status.
+   * Using a getter instead of direct value allows the overrides object to remain stable
+   * while still accessing the latest status when rendering.
+   * Preferred over `saveStatus` for performance.
+   */
+  getSaveStatus?: () => SaveStatus;
+  /**
+   * Getter function for last saved timestamp.
+   * Preferred over `lastSaved` for performance.
+   */
+  getLastSaved?: () => Date | null;
+  /**
+   * Getter function for save error.
+   * Preferred over `saveError` for performance.
+   */
+  getSaveError?: () => Error | null;
+
+  /**
+   * Direct save status value (legacy API).
+   * @deprecated Use getSaveStatus getter for better performance.
+   */
+  saveStatus?: SaveStatus;
+  /**
+   * Direct last saved timestamp (legacy API).
+   * @deprecated Use getLastSaved getter for better performance.
+   */
+  lastSaved?: Date | null;
+  /**
+   * Direct save error value (legacy API).
+   * @deprecated Use getSaveError getter for better performance.
+   */
+  saveError?: Error | null;
+
   /** Callback to retry save */
   onRetrySave: () => void;
   /** Callback to create checkpoint/publish */
@@ -95,13 +123,26 @@ export interface PuckOverrides {
  *     createCheckpoint,
  *   } = useCSSPuck();
  *
+ *   // Preferred: use refs and getters for better performance
+ *   const saveStatusRef = useRef(saveStatus);
+ *   useEffect(() => { saveStatusRef.current = saveStatus; }, [saveStatus]);
+ *
+ *   const overrides = createCSSOverrides({
+ *     getSaveStatus: () => saveStatusRef.current,
+ *     getLastSaved: () => lastSavedRef.current,
+ *     getSaveError: () => saveErrorRef.current,
+ *     onRetrySave: saveNow,
+ *     onPublish: createCheckpoint,
+ *     onPublishSuccess: (cp) => console.log('Published:', cp.name),
+ *   });
+ *
+ *   // Legacy: direct values (causes overrides to be recreated on changes)
  *   const overrides = createCSSOverrides({
  *     saveStatus,
  *     lastSaved,
  *     saveError,
  *     onRetrySave: saveNow,
  *     onPublish: createCheckpoint,
- *     onPublishSuccess: (cp) => console.log('Published:', cp.name),
  *   });
  *
  *   return <Puck overrides={overrides} {...otherProps} />;
@@ -110,9 +151,15 @@ export interface PuckOverrides {
  */
 export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides {
   const {
-    saveStatus,
-    lastSaved,
-    saveError,
+    // New getter-based API (preferred)
+    getSaveStatus,
+    getLastSaved,
+    getSaveError,
+    // Legacy direct value API
+    saveStatus: directSaveStatus,
+    lastSaved: directLastSaved,
+    saveError: directSaveError,
+    // Common options
     onRetrySave,
     onPublish,
     onPublishSuccess,
@@ -132,6 +179,24 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
   void _syncData;
   void _dataSyncKey;
 
+  // Determine if using getter API or direct props API
+  const usingGetters = typeof getSaveStatus === 'function';
+
+  // Build props for SaveIndicator based on which API is being used
+  const saveIndicatorProps = usingGetters
+    ? {
+        getStatus: getSaveStatus,
+        getLastSaved: getLastSaved,
+        getError: getSaveError,
+        onRetry: onRetrySave,
+      }
+    : {
+        status: directSaveStatus,
+        lastSaved: directLastSaved,
+        error: directSaveError,
+        onRetry: onRetrySave,
+      };
+
   return {
     headerActions: ({ children }) => (
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -145,12 +210,7 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
           />
         ) : (
           <>
-            <SaveIndicator
-              status={saveStatus}
-              lastSaved={lastSaved}
-              error={saveError}
-              onRetry={onRetrySave}
-            />
+            <SaveIndicator {...saveIndicatorProps} />
             <PublishButton
               onPublish={onPublish}
               showNamePrompt={showNamePrompt}

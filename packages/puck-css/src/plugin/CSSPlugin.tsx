@@ -19,8 +19,8 @@ interface CSSPluginPanelProps {
   currentBranch: Branch | null;
   /** Callback when branch is switched */
   onBranchSwitch: (branchId: string) => void;
-  /** Whether there are unsaved changes */
-  hasUnsavedChanges?: boolean;
+  /** Getter function to check if there are unsaved changes (function to avoid stale closures) */
+  getHasUnsavedChanges?: () => boolean;
   /** List of documents on the current branch */
   documents?: Document[];
   /** Currently selected document path */
@@ -63,7 +63,7 @@ function CSSPluginPanel({
   branches,
   currentBranch,
   onBranchSwitch,
-  hasUnsavedChanges = false,
+  getHasUnsavedChanges,
   documents = [],
   selectedDocumentPath,
   onDocumentSelect,
@@ -81,7 +81,8 @@ function CSSPluginPanel({
 
   const handleBranchChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newBranchId = e.target.value;
-    if (hasUnsavedChanges) {
+    // Call the getter function to check current unsaved state (avoids stale closures)
+    if (getHasUnsavedChanges?.()) {
       const confirmed = window.confirm(
         'You have unsaved changes. Switch branch anyway?'
       );
@@ -282,8 +283,8 @@ export interface CSSPluginOptions {
   currentBranch: Branch | null;
   /** Callback when branch is switched */
   onBranchSwitch: (branchId: string) => void;
-  /** Whether there are unsaved changes */
-  hasUnsavedChanges?: boolean;
+  /** Getter function to check if there are unsaved changes (function to avoid stale closures) */
+  getHasUnsavedChanges?: () => boolean;
   /** List of documents on the current branch */
   documents?: Document[];
   /** Currently selected document path */
@@ -367,7 +368,7 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
           branches={options.branches}
           currentBranch={options.currentBranch}
           onBranchSwitch={options.onBranchSwitch}
-          hasUnsavedChanges={options.hasUnsavedChanges}
+          getHasUnsavedChanges={options.getHasUnsavedChanges}
           documents={options.documents}
           selectedDocumentPath={options.selectedDocumentPath}
           onDocumentSelect={options.onDocumentSelect}

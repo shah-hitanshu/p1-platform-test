@@ -2,24 +2,48 @@
  * SaveIndicator Component
  *
  * Displays the current save status.
+ * Supports both direct props (legacy) and getter functions (preferred for performance).
+ * Using getter functions avoids recreating parent components on status changes.
  */
 
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { SaveStatus } from '../types.js';
 
 interface SaveIndicatorProps {
   /**
-   * Current save status.
+   * Getter function for current save status.
+   * Using a getter instead of direct value allows parent components to remain stable.
+   * Preferred over `status` prop for performance.
    */
-  status: SaveStatus;
+  getStatus?: () => SaveStatus;
 
   /**
-   * Last successful save timestamp.
+   * Getter function for last successful save timestamp.
+   * Preferred over `lastSaved` prop for performance.
    */
-  lastSaved: Date | null;
+  getLastSaved?: () => Date | null;
 
   /**
-   * Last error (if status is 'error').
+   * Getter function for last error (if status is 'error').
+   * Preferred over `error` prop for performance.
+   */
+  getError?: () => Error | null;
+
+  /**
+   * Direct save status value (legacy API).
+   * @deprecated Use getStatus getter for better performance.
+   */
+  status?: SaveStatus;
+
+  /**
+   * Direct last saved timestamp (legacy API).
+   * @deprecated Use getLastSaved getter for better performance.
+   */
+  lastSaved?: Date | null;
+
+  /**
+   * Direct error value (legacy API).
+   * @deprecated Use getError getter for better performance.
    */
   error?: Error | null;
 
@@ -65,24 +89,106 @@ function formatRelativeTime(date: Date): string {
 
 /**
  * Component that displays the current save status.
+ * Supports both getter functions (preferred) and direct props (legacy).
+ * When using getters, the component polls for updates allowing parent components to remain stable.
  *
  * @example
  * ```tsx
+ * // Preferred: using getters (avoids parent re-renders)
+ * <SaveIndicator
+ *   getStatus={() => saveStatusRef.current}
+ *   getLastSaved={() => lastSavedRef.current}
+ *   getError={() => saveErrorRef.current}
+ *   onRetry={saveNow}
+ * />
+ *
+ * // Legacy: using direct props
  * <SaveIndicator
  *   status={saveStatus}
- *   lastSaved={lastSaved}
+ *   lastSaved={lastSavedDate}
  *   error={saveError}
  *   onRetry={saveNow}
  * />
  * ```
  */
 export function SaveIndicator({
-  status,
-  lastSaved,
-  error,
+  getStatus,
+  getLastSaved,
+  getError,
+  status: directStatus,
+  lastSaved: directLastSaved,
+  error: directError,
   onRetry,
   className = '',
 }: SaveIndicatorProps): React.ReactElement {
+  // Determine if using getter API or direct props API
+  const usingGetters = typeof getStatus === 'function';
+
+  // Internal state that triggers re-renders when values change
+  const [status, setStatus] = useState<SaveStatus>(
+    usingGetters ? getStatus!() : (directStatus ?? 'idle')
+  );
+  const [lastSaved, setLastSaved] = useState<Date | null>(
+    usingGetters ? getLastSaved?.() ?? null : (directLastSaved ?? null)
+  );
+  const [error, setError] = useState<Error | null>(
+    usingGetters ? getError?.() ?? null : (directError ?? null)
+  );
+
+  // Poll getters to update internal state (only when using getter API)
+  // This allows the component to re-render even though parent props are stable
+  const updateFromGetters = useCallback(() => {
+    if (!usingGetters) return;
+
+    const newStatus = getStatus!();
+    const newLastSaved = getLastSaved?.() ?? null;
+    const newError = getError?.() ?? null;
+
+    if (newStatus !== status) {
+      setStatus(newStatus);
+    }
+    if (newLastSaved !== lastSaved) {
+      setLastSaved(newLastSaved);
+    }
+    if (newError !== error) {
+      setError(newError);
+    }
+  }, [usingGetters, getStatus, getLastSaved, getError, status, lastSaved, error]);
+
+  // Poll frequently to catch status changes quickly (getter API only)
+  useEffect(() => {
+    if (!usingGetters) return;
+
+    const interval = setInterval(updateFromGetters, 100);
+    return () => clearInterval(interval);
+  }, [usingGetters, updateFromGetters]);
+
+  // Also update immediately on mount and when getters change
+  useEffect(() => {
+    if (usingGetters) {
+      updateFromGetters();
+    }
+  }, [usingGetters, updateFromGetters]);
+
+  // For direct props API, sync state when props change
+  useEffect(() => {
+    if (!usingGetters && directStatus !== undefined) {
+      setStatus(directStatus);
+    }
+  }, [usingGetters, directStatus]);
+
+  useEffect(() => {
+    if (!usingGetters) {
+      setLastSaved(directLastSaved ?? null);
+    }
+  }, [usingGetters, directLastSaved]);
+
+  useEffect(() => {
+    if (!usingGetters) {
+      setError(directError ?? null);
+    }
+  }, [usingGetters, directError]);
+
   const baseClass = 'css-puck-save-indicator';
 
   return (

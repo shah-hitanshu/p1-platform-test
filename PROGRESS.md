@@ -196,6 +196,22 @@ puck-css-integration/
 - Demo app updated to pass sync props to `createCSSPlugin` instead of `createCSSOverrides`
 - Verified working in both React 18 (demo) and React 19 (my-app) environments
 
+### Phase 6b: Save Flicker Fix ✅
+- Fixed iframe reload/flicker issue triggered by auto-save operations
+- **Problem**: When editing components, the save operation caused the Puck iframe to reload, breaking the user's editing flow and causing visible flicker.
+- **Root Cause**: State changes after saves (`saveStatus`, `lastSaved`, `currentData`) were included in useMemo dependency arrays, causing `cssPlugin` and `cssOverrides` to be recreated on every save, which triggered Puck to remount.
+- **Solution**: Implemented getter-based pattern to decouple state updates from object recreation:
+  1. **CSSPuckProvider.tsx**: Removed `setCurrentData(dataToSave)` after saves - data is already in Puck's internal state
+  2. **App.tsx (demo)**: Added refs for volatile state (`saveStatusRef`, `lastSavedRef`, `saveErrorRef`, `currentDataRef`) and stable getter functions
+  3. **CSSPlugin.tsx**: Updated to accept `getHasUnsavedChanges` getter function instead of boolean
+  4. **SaveIndicator.tsx**: Made backwards-compatible with both getter functions (new API) and direct props (legacy API). Uses 100ms polling interval to update UI while keeping parent stable
+  5. **createCSSOverrides.tsx**: Made backwards-compatible with both `getSaveStatus`/`getLastSaved`/`getSaveError` getters (new API) and `saveStatus`/`lastSaved`/`saveError` direct props (legacy API)
+- **API Changes**:
+  - `createCSSOverrides()`: Added optional getter props (`getSaveStatus`, `getLastSaved`, `getSaveError`). Legacy direct props still work but cause flicker.
+  - `SaveIndicator`: Added optional getter props (`getStatus`, `getLastSaved`, `getError`). Legacy direct props still work but cause flicker.
+  - `CSSPluginOptions`: Changed `hasUnsavedChanges` to `getHasUnsavedChanges` getter function
+- Verified fix with Playwright: iframe ref remains stable across multiple edits and saves
+
 ### Phase 6: Error Notification Component ✅
 - Implemented toast-style notification system for errors and other messages
 - New types in `types.ts`:
