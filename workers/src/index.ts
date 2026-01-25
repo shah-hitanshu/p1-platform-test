@@ -450,15 +450,21 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
   }
 
   // /api/sites/{siteId}/documents/by-path/{documentPath}
+  // Note: documentPath may contain encoded slashes (%2F) for nested paths like "products/rsq8"
   const docByPathMatch = /^\/api\/sites\/([^/]+)\/documents\/by-path\/(.+)$/.exec(normalizedPath);
   if (docByPathMatch) {
-    return {
-      handler: 'documents',
-      params: {
-        siteId: docByPathMatch[1],
-        documentPath: docByPathMatch[2],
-      },
-    };
+    try {
+      return {
+        handler: 'documents',
+        params: {
+          siteId: docByPathMatch[1],
+          documentPath: decodeURIComponent(docByPathMatch[2]),
+        },
+      };
+    } catch {
+      // Invalid URL encoding - route doesn't match
+      return null;
+    }
   }
 
   // /api/sites/{siteId}/documents/{documentId}?
