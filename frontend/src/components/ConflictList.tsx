@@ -5,22 +5,23 @@
  */
 
 import type { DocumentConflict, DocumentConflictType } from '../types';
+import { Tag } from '@pantheon-systems/design-toolkit-react';
 import './ConflictList.css';
 
 interface ConflictListProps {
   conflicts: DocumentConflict[];
 }
 
-function getConflictTypeBadgeClass(type: DocumentConflictType): string {
+function getConflictTypeTagType(type: DocumentConflictType): 'warning' | 'danger' | 'default' {
   switch (type) {
     case 'both-modified':
-      return 'conflict-type-badge conflict-both-modified';
+      return 'warning';
     case 'deleted-in-source':
-      return 'conflict-type-badge conflict-deleted-source';
+      return 'danger';
     case 'deleted-in-target':
-      return 'conflict-type-badge conflict-deleted-target';
+      return 'danger';
     default:
-      return 'conflict-type-badge';
+      return 'default';
   }
 }
 
@@ -70,9 +71,9 @@ export function ConflictList({ conflicts }: ConflictListProps) {
                   <code>{conflict.documentPath}</code>
                 </td>
                 <td>
-                  <span className={getConflictTypeBadgeClass(conflict.conflictType)}>
+                  <Tag type={getConflictTypeTagType(conflict.conflictType)}>
                     {getConflictTypeLabel(conflict.conflictType)}
-                  </span>
+                  </Tag>
                 </td>
                 <td className="conflict-version">
                   {conflict.sourceVersion !== undefined ? `v${conflict.sourceVersion}` : '-'}

@@ -4,6 +4,7 @@
  * Displays API response with loading, error, and success states.
  */
 
+import { Alert } from '@pantheon-systems/design-toolkit-react';
 import { JsonViewer } from './JsonViewer';
 import './ApiResponse.css';
 
@@ -26,9 +27,8 @@ export function ApiResponse({ data, isLoading, error, title }: ApiResponseProps)
 
   if (error) {
     return (
-      <div className="api-response api-response-error">
-        <span className="error-icon">✕</span>
-        <span className="error-message">{error}</span>
+      <div className="api-response">
+        <Alert type="danger">{error}</Alert>
       </div>
     );
   }

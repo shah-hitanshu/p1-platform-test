@@ -5,8 +5,10 @@
  */
 
 import { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { ApiResponse } from '../components/ApiResponse';
+import { Button } from '@pantheon-systems/design-toolkit-react';
 import './DashboardPage.css';
 
 interface HealthResponse {
@@ -41,9 +43,15 @@ export function DashboardPage() {
         <section className="dashboard-card">
           <div className="card-header">
             <h2 className="card-title">System Health</h2>
-            <button className="refresh-btn" onClick={() => execute()} disabled={isLoading}>
+            <Button
+              type="secondary"
+              onClick={() => execute()}
+              disabled={isLoading}
+              isLoading={isLoading}
+              data-testid="refresh-health-btn"
+            >
               Refresh
-            </button>
+            </Button>
           </div>
           <div className="card-content">
             <ApiResponse data={data} isLoading={isLoading} error={error} />
@@ -56,14 +64,14 @@ export function DashboardPage() {
           </div>
           <div className="card-content">
             <div className="quick-actions">
-              <a href="/sites" className="action-link">
+              <Link to="/sites" className="action-link" data-testid="create-site-action">
                 <span className="action-icon">+</span>
-                <span className="action-text">Create Site</span>
-              </a>
-              <a href="/sites" className="action-link">
-                <span className="action-icon">&#8594;</span>
-                <span className="action-text">View Sites</span>
-              </a>
+                <span className="action-text">Create site</span>
+              </Link>
+              <Link to="/sites" className="action-link" data-testid="view-sites-action">
+                <span className="action-icon">&rarr;</span>
+                <span className="action-text">View sites</span>
+              </Link>
             </div>
           </div>
         </section>

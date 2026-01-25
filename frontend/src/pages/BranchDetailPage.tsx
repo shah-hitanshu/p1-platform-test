@@ -13,6 +13,17 @@ import { listCheckpoints, createCheckpoint } from '../api/checkpoints';
 import { listDocumentsOnBranch, createDocumentOnBranch, deleteDocumentOnBranch } from '../api/documents';
 import { ApiResponse } from '../components/ApiResponse';
 import type { Site, Branch, Checkpoint, Document } from '../types';
+import {
+  Button,
+  RouterLinkButton,
+  Alert,
+  Tag,
+  Tabs,
+  TabList,
+  Tab,
+  TabPanels,
+  TabPanel,
+} from '@pantheon-systems/design-toolkit-react';
 import './BranchDetailPage.css';
 
 interface CreateCheckpointParams {
@@ -45,7 +56,7 @@ export function BranchDetailPage() {
   const [checkpointName, setCheckpointName] = useState('');
   const [showDocumentForm, setShowDocumentForm] = useState(false);
   const [documentPath, setDocumentPath] = useState('');
-  const [activeTab, setActiveTab] = useState<'checkpoints' | 'documents'>('checkpoints');
+  const [activeTabIndex, setActiveTabIndex] = useState(0);
 
   useEffect(() => {
     if (siteId && branchId) {
@@ -98,31 +109,31 @@ export function BranchDetailPage() {
     fetchDocuments(siteId, branchId);
   };
 
-  const getStatusBadgeClass = (status: Branch['status']) => {
+  const getStatusTagType = (status: Branch['status']): 'success' | 'info' | 'default' | 'danger' => {
     switch (status) {
       case 'active':
-        return 'status-badge status-active';
+        return 'success';
       case 'merged':
-        return 'status-badge status-merged';
+        return 'info';
       case 'archived':
-        return 'status-badge status-archived';
+        return 'default';
       case 'abandoned':
-        return 'status-badge status-abandoned';
+        return 'danger';
       default:
-        return 'status-badge';
+        return 'default';
     }
   };
 
-  const getCheckpointTypeBadge = (type: Checkpoint['type']) => {
+  const getCheckpointTypeTagType = (type: Checkpoint['type']): 'info' | 'default' | 'success' => {
     switch (type) {
       case 'manual':
-        return 'type-badge type-manual';
+        return 'info';
       case 'auto':
-        return 'type-badge type-auto';
+        return 'default';
       case 'merge':
-        return 'type-badge type-merge';
+        return 'success';
       default:
-        return 'type-badge';
+        return 'default';
     }
   };
 
@@ -141,7 +152,11 @@ export function BranchDetailPage() {
       <div className="branch-detail-page">
         <div className="error-container">
           <ApiResponse data={null} isLoading={false} error={branchError} />
-          <Link to={`/sites/${siteId}`} className="back-link">Back to site</Link>
+          <div className="back-link-container">
+            <RouterLinkButton to={`/sites/${siteId}`} type="secondary">
+              Back to site
+            </RouterLinkButton>
+          </div>
         </div>
       </div>
     );
@@ -164,9 +179,9 @@ export function BranchDetailPage() {
           <div className="branch-title-row">
             <h1 className="branch-title">{branch?.name}</h1>
             {branch && (
-              <span className={getStatusBadgeClass(branch.status)}>
+              <Tag type={getStatusTagType(branch.status)} data-testid="branch-status-badge">
                 {branch.status}
-              </span>
+              </Tag>
             )}
           </div>
           <div className="branch-meta">
@@ -190,60 +205,58 @@ export function BranchDetailPage() {
       </header>
 
       {/* Tabs */}
-      <div className="tabs-container">
-        <div className="tabs">
-          <button
-            className={`tab ${activeTab === 'checkpoints' ? 'active' : ''}`}
-            onClick={() => setActiveTab('checkpoints')}
-          >
+      <Tabs index={activeTabIndex} onChange={setActiveTabIndex}>
+        <TabList>
+          <Tab data-testid="checkpoints-tab">
             Checkpoints {checkpoints ? `(${checkpoints.length})` : ''}
-          </button>
-          <button
-            className={`tab ${activeTab === 'documents' ? 'active' : ''}`}
-            onClick={() => setActiveTab('documents')}
-          >
+          </Tab>
+          <Tab data-testid="documents-tab">
             Documents {documents ? `(${documents.length})` : ''}
-          </button>
-        </div>
-      </div>
-
-      {/* Checkpoints Tab */}
-      {activeTab === 'checkpoints' && (
-        <section className="content-section">
+          </Tab>
+        </TabList>
+        <TabPanels>
+          {/* Checkpoints Tab */}
+          <TabPanel>
+            <section className="content-section">
           <div className="section-header">
             <h2 className="section-title">Checkpoints</h2>
-            <button
-              className="create-btn"
+            <Button
+              type={showCheckpointForm ? 'secondary' : 'primary'}
               onClick={() => setShowCheckpointForm(!showCheckpointForm)}
+              data-testid="create-checkpoint-btn"
             >
               {showCheckpointForm ? 'Cancel' : '+ Create checkpoint'}
-            </button>
+            </Button>
           </div>
 
           {showCheckpointForm && (
-            <div className="create-form-container">
+            <div className="create-form-container" data-testid="checkpoint-form">
               <form onSubmit={handleCreateCheckpoint} className="create-form">
                 <input
                   type="text"
                   value={checkpointName}
                   onChange={(e) => setCheckpointName(e.target.value)}
                   placeholder="Checkpoint name (optional)..."
-                  className="form-input"
+                  className="pds-input"
                   autoFocus
+                  aria-label="Checkpoint name"
+                  data-testid="checkpoint-name-input"
                 />
-                <button
-                  type="submit"
-                  className="submit-btn"
+                <Button
+                  type="primary"
+                  isSubmit
+                  onClick={() => {}}
                   disabled={isCreatingCheckpoint}
+                  isLoading={isCreatingCheckpoint}
+                  data-testid="submit-checkpoint-btn"
                 >
                   {isCreatingCheckpoint ? 'Creating...' : 'Create'}
-                </button>
+                </Button>
               </form>
               {createCheckpointError && (
-                <div className="create-error">
-                  <span className="error-icon">!</span>
-                  <span className="error-text">{createCheckpointError}</span>
-                </div>
+                <Alert type="danger" className="create-error-alert" data-testid="checkpoint-error">
+                  {createCheckpointError}
+                </Alert>
               )}
             </div>
           )}
@@ -260,7 +273,7 @@ export function BranchDetailPage() {
             </div>
           ) : checkpoints && checkpoints.length > 0 ? (
             <div className="table-container">
-              <table className="data-table">
+              <table className="data-table" data-testid="checkpoints-table">
                 <thead>
                   <tr>
                     <th>Name</th>
@@ -276,9 +289,9 @@ export function BranchDetailPage() {
                         {checkpoint.name || <span className="unnamed">(unnamed)</span>}
                       </td>
                       <td>
-                        <span className={getCheckpointTypeBadge(checkpoint.type)}>
+                        <Tag type={getCheckpointTypeTagType(checkpoint.type)}>
                           {checkpoint.type}
-                        </span>
+                        </Tag>
                       </td>
                       <td className="created-by">
                         <code>{checkpoint.createdById.slice(0, 12)}...</code>
@@ -292,50 +305,55 @@ export function BranchDetailPage() {
               </table>
             </div>
           ) : (
-            <div className="empty-state">
+            <div className="empty-state" data-testid="checkpoints-empty">
               <p>No checkpoints found. Create a checkpoint to save the current state.</p>
             </div>
           )}
-        </section>
-      )}
+            </section>
+          </TabPanel>
 
-      {/* Documents Tab */}
-      {activeTab === 'documents' && (
-        <section className="content-section">
+          {/* Documents Tab */}
+          <TabPanel>
+            <section className="content-section">
           <div className="section-header">
             <h2 className="section-title">Documents</h2>
-            <button
-              className="create-btn"
+            <Button
+              type={showDocumentForm ? 'secondary' : 'primary'}
               onClick={() => setShowDocumentForm(!showDocumentForm)}
+              data-testid="create-document-btn"
             >
               {showDocumentForm ? 'Cancel' : '+ Create document'}
-            </button>
+            </Button>
           </div>
 
           {showDocumentForm && (
-            <div className="create-form-container">
+            <div className="create-form-container" data-testid="document-form">
               <form onSubmit={handleCreateDocument} className="create-form">
                 <input
                   type="text"
                   value={documentPath}
                   onChange={(e) => setDocumentPath(e.target.value)}
                   placeholder="Document path (e.g., pages/home)..."
-                  className="form-input"
+                  className="pds-input"
                   autoFocus
+                  aria-label="Document path"
+                  data-testid="document-path-input"
                 />
-                <button
-                  type="submit"
-                  className="submit-btn"
+                <Button
+                  type="primary"
+                  isSubmit
+                  onClick={() => {}}
                   disabled={isCreatingDocument || !documentPath.trim()}
+                  isLoading={isCreatingDocument}
+                  data-testid="submit-document-btn"
                 >
                   {isCreatingDocument ? 'Creating...' : 'Create'}
-                </button>
+                </Button>
               </form>
               {createDocumentError && (
-                <div className="create-error">
-                  <span className="error-icon">!</span>
-                  <span className="error-text">{createDocumentError}</span>
-                </div>
+                <Alert type="danger" className="create-error-alert" data-testid="document-error">
+                  {createDocumentError}
+                </Alert>
               )}
             </div>
           )}
@@ -352,7 +370,7 @@ export function BranchDetailPage() {
             </div>
           ) : documents && documents.length > 0 ? (
             <div className="table-container">
-              <table className="data-table">
+              <table className="data-table" data-testid="documents-table">
                 <thead>
                   <tr>
                     <th>Path</th>
@@ -376,14 +394,14 @@ export function BranchDetailPage() {
                         {new Date(doc.createdAt).toLocaleDateString()}
                       </td>
                       <td className="actions">
-                        <button
-                          className="delete-btn"
+                        <Button
+                          type="danger"
                           onClick={() => handleDeleteDocument(doc.id)}
                           disabled={isDeletingDocument}
-                          title="Delete from this branch."
+                          data-testid={`delete-doc-${doc.id}`}
                         >
                           Delete
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -391,12 +409,14 @@ export function BranchDetailPage() {
               </table>
             </div>
           ) : (
-            <div className="empty-state">
+            <div className="empty-state" data-testid="documents-empty">
               <p>No documents found on this branch.</p>
             </div>
           )}
-        </section>
-      )}
+            </section>
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
     </div>
   );
 }

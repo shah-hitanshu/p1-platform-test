@@ -29,31 +29,7 @@
   }
 }
 
-.api-response-error {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  background-color: var(--dt-color-red-1, #fee2e2);
-  color: var(--dt-color-red-4, #991b1b);
-}
-
-.error-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  background-color: var(--dt-color-red-4, #991b1b);
-  color: #fff;
-  border-radius: 50%;
-  font-size: 0.75rem;
-  font-weight: bold;
-}
-
-.error-message {
-  font-size: 0.875rem;
-}
+/* Error state now uses PDS Alert component */
 
 .api-response-empty {
   padding: 24px;

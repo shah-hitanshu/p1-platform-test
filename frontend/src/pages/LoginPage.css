@@ -1,18 +1,30 @@
-/* Login Page Styles */
+/**
+ * Login Page Styles
+ *
+ * Uses PDS components where possible:
+ * - Button (PDS) for login button
+ * - Alert (PDS) for error messages
+ * - FormGroup (PDS) for form layout
+ *
+ * Custom styles remain for:
+ * - Page layout and card styling
+ * - User preview section
+ * - Select styling (using pds-select class)
+ */
 
 .login-page {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  background: linear-gradient(135deg, var(--dt-color-gray-8, #1a1a2e) 0%, var(--dt-color-gray-7, #16213e) 100%);
   padding: 20px;
 }
 
 .login-card {
   width: 100%;
   max-width: 400px;
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   border-radius: 12px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
   overflow: hidden;
@@ -21,29 +33,25 @@
 .login-header {
   padding: 32px 32px 24px;
   text-align: center;
-  background-color: #f8f9fa;
-  border-bottom: 1px solid #e9ecef;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
 }
 
 .login-title {
   margin: 0;
   font-size: 1.75rem;
   font-weight: 700;
-  color: #1a1a2e;
+  color: var(--dt-color-gray-8, #1a1a2e);
 }
 
 .login-subtitle {
   margin: 8px 0 0;
   font-size: 0.875rem;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .login-form {
   padding: 24px 32px;
-}
-
-.form-group {
-  margin-bottom: 20px;
 }
 
 .form-label {
@@ -51,34 +59,35 @@
   margin-bottom: 8px;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #333;
+  color: var(--dt-color-gray-7, #333);
 }
 
-.form-select {
+/* PDS-styled select element */
+.pds-select {
   width: 100%;
   padding: 12px;
   font-size: 0.9375rem;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--dt-color-gray-3, #ced4da);
   border-radius: 6px;
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   cursor: pointer;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.form-select:focus {
+.pds-select:focus {
   outline: none;
-  border-color: #4a9eff;
-  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.15);
+  border-color: var(--dt-color-cyan-3, #02a9e0);
+  box-shadow: 0 0 0 3px rgba(2, 169, 224, 0.15);
 }
 
-.form-select:disabled {
-  background-color: #e9ecef;
+.pds-select:disabled {
+  background-color: var(--dt-color-gray-2, #e9ecef);
   cursor: not-allowed;
 }
 
 .user-preview {
   padding: 16px;
-  background-color: #f8f9fa;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
   border-radius: 8px;
   margin-bottom: 20px;
 }
@@ -91,64 +100,43 @@
 }
 
 .preview-label {
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .preview-value {
-  color: #333;
+  color: var(--dt-color-gray-7, #333);
   font-weight: 500;
 }
 
 .role-badge {
   display: inline-block;
   padding: 2px 8px;
-  background-color: #e7f3ff;
-  color: #0066cc;
+  background-color: var(--dt-color-cyan-1, #e7f3ff);
+  color: var(--dt-color-cyan-4, #0066cc);
   border-radius: 4px;
   font-size: 0.75rem;
   text-transform: uppercase;
 }
 
-.login-error {
-  padding: 12px;
-  margin-bottom: 20px;
-  background-color: #fee2e2;
-  color: #b91c1c;
-  border-radius: 6px;
-  font-size: 0.875rem;
-}
-
-.login-button {
-  width: 100%;
-  padding: 14px;
-  font-size: 1rem;
-  font-weight: 600;
-  color: #fff;
-  background-color: #4a9eff;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.login-button:hover:not(:disabled) {
-  background-color: #3a8eef;
-}
-
-.login-button:disabled {
-  background-color: #a0c4ff;
-  cursor: not-allowed;
-}
-
 .login-footer {
   padding: 16px 32px;
   text-align: center;
-  background-color: #f8f9fa;
-  border-top: 1px solid #e9ecef;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-top: 1px solid var(--dt-color-gray-2, #e9ecef);
 }
 
 .login-footer p {
   margin: 0;
   font-size: 0.75rem;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
+}
+
+/* PDS Alert spacing adjustment */
+.login-form .pds-alert {
+  margin-bottom: 20px;
+}
+
+/* PDS Button full width for login */
+.login-form .button-primary {
+  width: 100%;
 }

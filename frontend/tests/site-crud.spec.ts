@@ -17,19 +17,19 @@ function uniqueName(prefix: string): string {
 
 // Helper to create a site and wait for API response
 async function createSite(page: import('@playwright/test').Page, siteName: string, pantheonId: string) {
-  await page.click('.create-btn');
-  await page.locator('.form-input').first().fill(siteName);
-  await page.locator('.form-input').nth(1).fill(pantheonId);
+  await page.getByTestId('create-site-btn').click();
+  await page.getByTestId('site-name-input').fill(siteName);
+  await page.getByTestId('pantheon-id-input').fill(pantheonId);
 
   // Wait for API response
   const responsePromise = page.waitForResponse(resp =>
     resp.url().includes('/api/sites') && resp.request().method() === 'POST'
   );
-  await page.click('.submit-btn');
+  await page.getByTestId('submit-site-btn').click();
   await responsePromise;
 
   // Wait for form to close
-  await expect(page.locator('.create-form')).not.toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId('create-form')).not.toBeVisible({ timeout: 10000 });
 }
 
 test.describe('Site Creation', () => {
@@ -37,7 +37,7 @@ test.describe('Site Creation', () => {
     // Login before each test
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
 
     // Navigate to sites
@@ -50,25 +50,25 @@ test.describe('Site Creation', () => {
     const pantheonId = uniqueName('pantheon');
 
     // Open create form
-    await page.click('.create-btn');
-    await expect(page.locator('.create-form')).toBeVisible();
+    await page.getByTestId('create-site-btn').click();
+    await expect(page.getByTestId('create-form')).toBeVisible();
 
     // Fill in site details
-    const nameInput = page.locator('.form-input').first();
-    const pantheonIdInput = page.locator('.form-input').nth(1);
+    const nameInput = page.getByTestId('site-name-input');
+    const pantheonIdInput = page.getByTestId('pantheon-id-input');
 
     await nameInput.fill(siteName);
     await pantheonIdInput.fill(pantheonId);
 
     // Submit button should be enabled
-    const submitBtn = page.locator('.submit-btn');
+    const submitBtn = page.getByTestId('submit-site-btn');
     await expect(submitBtn).toBeEnabled();
 
     // Create the site
     await submitBtn.click();
 
     // Wait for the form to close (indicates success)
-    await expect(page.locator('.create-form')).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('create-form')).not.toBeVisible({ timeout: 10000 });
 
     // Verify site appears in the table
     await expect(page.locator('.sites-table')).toBeVisible();
@@ -76,25 +76,25 @@ test.describe('Site Creation', () => {
   });
 
   test('should not create site with empty name', async ({ page }) => {
-    await page.click('.create-btn');
+    await page.getByTestId('create-site-btn').click();
 
     // Only fill Pantheon ID
-    const pantheonIdInput = page.locator('.form-input').nth(1);
+    const pantheonIdInput = page.getByTestId('pantheon-id-input');
     await pantheonIdInput.fill('some-id');
 
     // Submit button should be disabled
-    await expect(page.locator('.submit-btn')).toBeDisabled();
+    await expect(page.getByTestId('submit-site-btn')).toBeDisabled();
   });
 
   test('should not create site with empty Pantheon ID', async ({ page }) => {
-    await page.click('.create-btn');
+    await page.getByTestId('create-site-btn').click();
 
     // Only fill name
-    const nameInput = page.locator('.form-input').first();
+    const nameInput = page.getByTestId('site-name-input');
     await nameInput.fill('Some Site');
 
     // Submit button should be disabled
-    await expect(page.locator('.submit-btn')).toBeDisabled();
+    await expect(page.getByTestId('submit-site-btn')).toBeDisabled();
   });
 });
 
@@ -103,7 +103,7 @@ test.describe('Site Deletion', () => {
     // Login
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
 
     // Navigate to sites
@@ -121,7 +121,7 @@ test.describe('Site Deletion', () => {
     // Find and click the delete button for our site
     const siteRow = page.locator(`tr:has-text("${siteName}")`);
     await expect(siteRow).toBeVisible();
-    await siteRow.locator('.delete-link').click();
+    await siteRow.locator('[data-testid^="delete-site-"]').click();
 
     // Modal should be visible (PDS Modal uses role="dialog" with aria label)
     const dialog = page.getByRole('dialog', { name: /Delete site confirmation/i });
@@ -137,7 +137,7 @@ test.describe('Site Deletion', () => {
 
     // Click delete
     const siteRow = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow.locator('.delete-link').click();
+    await siteRow.locator('[data-testid^="delete-site-"]').click();
 
     // Delete button should be disabled initially
     const deleteBtn = page.getByTestId('delete-button');
@@ -166,19 +166,19 @@ test.describe('Site Deletion', () => {
 
     // Navigate to site to create an additional branch
     const siteRow = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow.locator('.view-link').click();
+    await siteRow.locator('[data-testid^="view-site-"]').click();
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+$/);
 
     // Create a feature branch
-    await page.locator('.branches-section .create-btn').click();
-    await page.locator('.branches-section .form-input').fill('feature-branch');
+    await page.getByTestId('create-branch-btn').click();
+    await page.getByTestId('branch-name-input').fill('feature-branch');
     const branchResponsePromise = page.waitForResponse(resp =>
       resp.url().includes('/branches') && resp.request().method() === 'POST'
     );
-    await page.locator('.branches-section .submit-btn').click();
+    await page.getByTestId('submit-branch-btn').click();
     await branchResponsePromise;
     // Wait for form to close and branch to appear
-    await expect(page.locator('.branches-section .create-form')).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('create-branch-form')).not.toBeVisible({ timeout: 10000 });
     await expect(page.locator('tr:has-text("feature-branch")')).toBeVisible({ timeout: 10000 });
 
     // Go back to sites list
@@ -187,7 +187,7 @@ test.describe('Site Deletion', () => {
 
     // Try to delete (should fail because of non-main branch)
     const siteRow2 = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow2.locator('.delete-link').click();
+    await siteRow2.locator('[data-testid^="delete-site-"]').click();
     await page.getByTestId('confirm-input').fill(siteName);
     await page.getByTestId('delete-button').click();
 
@@ -211,16 +211,16 @@ test.describe('Site Deletion', () => {
 
     // Navigate to site to create an additional branch
     const siteRow = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow.locator('.view-link').click();
+    await siteRow.locator('[data-testid^="view-site-"]').click();
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+$/);
 
     // Create a feature branch
-    await page.locator('.branches-section .create-btn').click();
-    await page.locator('.branches-section .form-input').fill('feature-branch');
+    await page.getByTestId('create-branch-btn').click();
+    await page.getByTestId('branch-name-input').fill('feature-branch');
     const branchResponsePromise = page.waitForResponse(resp =>
       resp.url().includes('/branches') && resp.request().method() === 'POST'
     );
-    await page.locator('.branches-section .submit-btn').click();
+    await page.getByTestId('submit-branch-btn').click();
     await branchResponsePromise;
     await expect(page.locator('tr:has-text("feature-branch")')).toBeVisible({ timeout: 10000 });
 
@@ -229,11 +229,11 @@ test.describe('Site Deletion', () => {
     const archiveResponsePromise = page.waitForResponse(resp =>
       resp.url().includes('/branches/') && resp.request().method() === 'PATCH'
     );
-    await featureRow.locator('.archive-link').click();
+    await featureRow.locator('[data-testid^="archive-branch-"]').click();
     await archiveResponsePromise;
 
     // Verify branch is now archived
-    await expect(featureRow.locator('.status-badge')).toContainText('archived');
+    await expect(featureRow.locator('.tag')).toContainText('archived');
 
     // Go back to sites list
     await page.click('.nav-link >> text=Sites');
@@ -241,7 +241,7 @@ test.describe('Site Deletion', () => {
 
     // Delete the site (should work now since branch is archived)
     const siteRow2 = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow2.locator('.delete-link').click();
+    await siteRow2.locator('[data-testid^="delete-site-"]').click();
     await page.getByTestId('confirm-input').fill(siteName);
 
     const deleteResponsePromise = page.waitForResponse(resp =>
@@ -266,7 +266,7 @@ test.describe('Site Deletion', () => {
 
     // Open delete modal
     const siteRow = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow.locator('.delete-link').click();
+    await siteRow.locator('[data-testid^="delete-site-"]').click();
     await expect(page.getByRole('dialog')).toBeVisible();
 
     // Click cancel
@@ -288,7 +288,7 @@ test.describe('Site Deletion', () => {
 
     // Open delete modal
     const siteRow = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow.locator('.delete-link').click();
+    await siteRow.locator('[data-testid^="delete-site-"]').click();
     await expect(page.getByRole('dialog')).toBeVisible();
 
     // Click overlay (PDS Modal uses @reach/dialog overlay)
@@ -306,7 +306,7 @@ test.describe('Site Navigation', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
     await page.click('.nav-link >> text=Sites');
     await expect(page).toHaveURL('/sites');
@@ -321,7 +321,7 @@ test.describe('Site Navigation', () => {
 
     // Click View link
     const siteRow = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow.locator('.view-link').click();
+    await siteRow.locator('[data-testid^="view-site-"]').click();
 
     // Should navigate to site detail page
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+$/);

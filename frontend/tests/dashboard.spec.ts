@@ -14,7 +14,7 @@ test.describe('Dashboard Page', () => {
     // Login before each test
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
 
@@ -27,7 +27,7 @@ test.describe('Dashboard Page', () => {
   });
 
   test('should have refresh button for health check', async ({ page }) => {
-    const refreshBtn = page.locator('.refresh-btn');
+    const refreshBtn = page.getByTestId('refresh-health-btn');
     await expect(refreshBtn).toBeVisible();
     await expect(refreshBtn).toContainText('Refresh');
   });
@@ -60,7 +60,7 @@ test.describe('Navigation', () => {
     // Login before each test
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
 

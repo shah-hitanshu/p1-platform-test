@@ -5,13 +5,17 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { listSites, createSite as createSiteApi, deleteSite as deleteSiteApi } from '../api/sites';
 import type { CreateSiteParams } from '../api/sites';
 import { ApiResponse } from '../components/ApiResponse';
 import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import type { Site } from '../types';
+import {
+  Button,
+  RouterLinkButton,
+  Alert,
+} from '@pantheon-systems/design-toolkit-react';
 import './SitesPage.css';
 
 export function SitesPage() {
@@ -63,16 +67,17 @@ export function SitesPage() {
           <h1 className="page-title">Sites</h1>
           <p className="page-subtitle">Manage your collaborative sites</p>
         </div>
-        <button
-          className="create-btn"
+        <Button
+          type={showCreateForm ? 'secondary' : 'primary'}
           onClick={() => setShowCreateForm(!showCreateForm)}
+          data-testid="create-site-btn"
         >
           {showCreateForm ? 'Cancel' : '+ Create site'}
-        </button>
+        </Button>
       </header>
 
       {showCreateForm && (
-        <div className="create-form-container">
+        <div className="create-form-container" data-testid="create-form">
           <form onSubmit={handleCreateSite} className="create-form">
             <div className="form-fields">
               <input
@@ -80,30 +85,36 @@ export function SitesPage() {
                 value={newSiteName}
                 onChange={(e) => setNewSiteName(e.target.value)}
                 placeholder="Enter site name..."
-                className="form-input"
+                className="pds-input"
                 autoFocus
+                aria-label="Site name"
+                data-testid="site-name-input"
               />
               <input
                 type="text"
                 value={newPantheonSiteId}
                 onChange={(e) => setNewPantheonSiteId(e.target.value)}
                 placeholder="Enter Pantheon Site ID..."
-                className="form-input"
+                className="pds-input"
+                aria-label="Pantheon Site ID"
+                data-testid="pantheon-id-input"
               />
             </div>
-            <button
-              type="submit"
-              className="submit-btn"
+            <Button
+              type="primary"
+              isSubmit
+              onClick={() => {}}
               disabled={isCreating || !newSiteName.trim() || !newPantheonSiteId.trim()}
+              isLoading={isCreating}
+              data-testid="submit-site-btn"
             >
               {isCreating ? 'Creating...' : 'Create'}
-            </button>
+            </Button>
           </form>
           {createError && (
-            <div className="create-error">
-              <span className="error-icon">⚠</span>
-              <span className="error-text">{createError}</span>
-            </div>
+            <Alert type="danger" className="create-error-alert" data-testid="create-error">
+              {createError}
+            </Alert>
           )}
         </div>
       )}
@@ -120,7 +131,7 @@ export function SitesPage() {
         </div>
       ) : sites && sites.length > 0 ? (
         <div className="sites-table-container">
-          <table className="sites-table">
+          <table className="sites-table" data-testid="sites-table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -131,7 +142,7 @@ export function SitesPage() {
             </thead>
             <tbody>
               {sites.map((site: Site) => (
-                <tr key={site.id}>
+                <tr key={site.id} data-testid={`site-row-${site.id}`}>
                   <td className="site-name">{site.name}</td>
                   <td className="site-id">
                     <code>{site.id}</code>
@@ -140,15 +151,20 @@ export function SitesPage() {
                     {new Date(site.createdAt).toLocaleDateString()}
                   </td>
                   <td className="site-actions">
-                    <Link to={`/sites/${site.id}`} className="view-link">
+                    <RouterLinkButton
+                      to={`/sites/${site.id}`}
+                      type="secondary"
+                      data-testid={`view-site-${site.id}`}
+                    >
                       View
-                    </Link>
-                    <button
-                      className="delete-link"
+                    </RouterLinkButton>
+                    <Button
+                      type="danger"
                       onClick={() => setSiteToDelete(site)}
+                      data-testid={`delete-site-${site.id}`}
                     >
                       Delete
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -156,7 +172,7 @@ export function SitesPage() {
           </table>
         </div>
       ) : (
-        <div className="empty-state">
+        <div className="empty-state" data-testid="empty-state">
           <p>No sites found. Create your first site to get started.</p>
         </div>
       )}

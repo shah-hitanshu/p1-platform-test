@@ -7,6 +7,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import {
+  Button,
+  Alert,
+  FormGroup,
+  Tag,
+} from '@pantheon-systems/design-toolkit-react';
 import './LoginPage.css';
 
 // User IDs must be valid UUIDs to match database schema for created_by_id columns
@@ -54,16 +60,18 @@ export function LoginPage() {
         </div>
 
         <form onSubmit={handleLogin} className="login-form">
-          <div className="form-group">
+          <FormGroup>
             <label htmlFor="user-select" className="form-label">
-              Select User
+              Select user
             </label>
             <select
               id="user-select"
               value={selectedUserId}
               onChange={(e) => setSelectedUserId(e.target.value)}
-              className="form-select"
+              className="pds-select"
               disabled={isLoading}
+              aria-label="Select user"
+              data-testid="user-select"
             >
               <option value="">Choose a user...</option>
               {MOCK_USERS.map((user) => (
@@ -72,30 +80,41 @@ export function LoginPage() {
                 </option>
               ))}
             </select>
-          </div>
+          </FormGroup>
 
           {selectedUser && (
-            <div className="user-preview">
+            <div className="user-preview" data-testid="user-preview">
               <div className="preview-row">
                 <span className="preview-label">Name:</span>
-                <span className="preview-value">{selectedUser.name}</span>
+                <span className="preview-value" data-testid="preview-name">{selectedUser.name}</span>
               </div>
               <div className="preview-row">
                 <span className="preview-label">Email:</span>
-                <span className="preview-value">{selectedUser.email}</span>
+                <span className="preview-value" data-testid="preview-email">{selectedUser.email}</span>
               </div>
               <div className="preview-row">
                 <span className="preview-label">Role:</span>
-                <span className="preview-value role-badge">{selectedUser.role}</span>
+                <Tag type="info" data-testid="preview-role">{selectedUser.role}</Tag>
               </div>
             </div>
           )}
 
-          {error && <div className="login-error">{error}</div>}
+          {error && (
+            <Alert type="danger" data-testid="login-error">
+              {error}
+            </Alert>
+          )}
 
-          <button type="submit" className="login-button" disabled={isLoading || !selectedUserId}>
+          <Button
+            type="primary"
+            isSubmit
+            onClick={() => {}}
+            disabled={isLoading || !selectedUserId}
+            isLoading={isLoading}
+            data-testid="login-button"
+          >
             {isLoading ? 'Logging in...' : 'Log in'}
-          </button>
+          </Button>
         </form>
 
         <div className="login-footer">

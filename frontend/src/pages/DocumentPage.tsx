@@ -14,6 +14,17 @@ import { getDocument, getLatestDocumentVersion, listDocumentVersions, createDocu
 import type { DocumentVersion } from '../api/documents';
 import { ApiResponse } from '../components/ApiResponse';
 import type { Site, Document, Branch } from '../types';
+import {
+  Button,
+  RouterLinkButton,
+  Alert,
+  Tag,
+  Tabs,
+  TabList,
+  Tab,
+  TabPanels,
+  TabPanel,
+} from '@pantheon-systems/design-toolkit-react';
 import './DocumentPage.css';
 
 export function DocumentPage() {
@@ -27,7 +38,7 @@ export function DocumentPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'content' | 'history'>('content');
+  const [activeTabIndex, setActiveTabIndex] = useState(0);
 
   // API hooks
   const { data: site, execute: fetchSite } = useApi<Site, [string]>(getSite);
@@ -161,7 +172,15 @@ export function DocumentPage() {
       <div className="document-page">
         <div className="error-container">
           <ApiResponse data={null} isLoading={false} error={error} />
-          <Link to={`/sites/${siteId}`} className="back-link">Back to site</Link>
+          <div className="back-link-container">
+            <RouterLinkButton
+              to={`/sites/${siteId}`}
+              type="secondary"
+              data-testid="back-to-site-btn"
+            >
+              Back to site
+            </RouterLinkButton>
+          </div>
         </div>
       </div>
     );
@@ -174,13 +193,13 @@ export function DocumentPage() {
         <Link to="/sites">Sites</Link>
         <span className="breadcrumb-separator">/</span>
         <Link to={`/sites/${siteId}`}>{site?.name || 'Site'}</Link>
+        <span className="breadcrumb-separator">/</span>
         {hasBranchContext && branch && (
           <>
-            <span className="breadcrumb-separator">/</span>
             <Link to={`/sites/${siteId}/branches/${branchId}`}>{branch.name}</Link>
+            <span className="breadcrumb-separator">/</span>
           </>
         )}
-        <span className="breadcrumb-separator">/</span>
         <span className="breadcrumb-current">Document</span>
       </nav>
 
@@ -192,7 +211,7 @@ export function DocumentPage() {
               <code>{document?.path}</code>
             </h1>
             {document?.archivedAt && (
-              <span className="status-badge status-archived">Archived</span>
+              <Tag type="default">Archived</Tag>
             )}
           </div>
           <div className="document-meta">
@@ -215,167 +234,172 @@ export function DocumentPage() {
 
       {/* Branch Context Notice */}
       {!hasBranchContext && (
-        <div className="notice-banner">
+        <Alert type="warning" className="notice-alert" data-testid="no-branch-notice">
           <strong>Viewing document without branch context.</strong> To view or edit content, access this document from a branch.
-        </div>
+        </Alert>
       )}
 
       {/* Tabs */}
       {hasBranchContext && (
-        <div className="tabs-container">
-          <div className="tabs">
-            <button
-              className={`tab ${activeTab === 'content' ? 'active' : ''}`}
-              onClick={() => setActiveTab('content')}
-            >
-              Content
-            </button>
-            <button
-              className={`tab ${activeTab === 'history' ? 'active' : ''}`}
-              onClick={() => setActiveTab('history')}
-            >
+        <Tabs index={activeTabIndex} onChange={setActiveTabIndex}>
+          <TabList>
+            <Tab data-testid="content-tab">Content</Tab>
+            <Tab data-testid="history-tab">
               Version History {versions ? `(${versions.length})` : ''}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Content Tab */}
-      {hasBranchContext && activeTab === 'content' && (
-        <section className="content-section">
-          <div className="section-header">
-            <h2 className="section-title">Document Content</h2>
-            <div className="header-actions">
-              {!isEditing ? (
-                <button className="edit-btn" onClick={handleEdit} disabled={versionLoading}>
-                  Edit
-                </button>
-              ) : (
-                <>
-                  <button className="cancel-btn" onClick={handleCancel} disabled={isSaving}>
-                    Cancel
-                  </button>
-                  <button
-                    className="save-btn"
-                    onClick={handleSave}
-                    disabled={isSaving || Boolean(jsonError)}
-                  >
-                    {isSaving ? 'Saving...' : 'Save'}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {versionLoading ? (
-            <div className="loading-container">
-              <ApiResponse data={null} isLoading={true} error={null} />
-            </div>
-          ) : versionError ? (
-            <div className="error-banner">
-              <ApiResponse data={null} isLoading={false} error={versionError} />
-            </div>
-          ) : (
-            <div className="content-viewer">
-              {isEditing ? (
-                <>
-                  <textarea
-                    className={`json-editor ${jsonError ? 'has-error' : ''}`}
-                    value={editContent}
-                    onChange={(e) => handleContentChange(e.target.value)}
-                    spellCheck={false}
-                    autoFocus
-                  />
-                  {jsonError && (
-                    <div className="json-error">
-                      <span className="error-icon">!</span>
-                      <span className="error-text">{jsonError}</span>
-                    </div>
-                  )}
-                  {saveError && (
-                    <div className="save-error">
-                      <span className="error-icon">!</span>
-                      <span className="error-text">{saveError}</span>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="json-placeholder">
-                  <pre className="json-content">
-                    {latestVersion?.snapshot
-                      ? JSON.stringify(latestVersion.snapshot, null, 2)
-                      : '{}'}
-                  </pre>
+            </Tab>
+          </TabList>
+          <TabPanels>
+            {/* Content Tab */}
+            <TabPanel>
+              <section className="content-section">
+                <div className="section-header">
+                  <h2 className="section-title">Document Content</h2>
+                  <div className="header-actions">
+                    {!isEditing ? (
+                      <Button
+                        type="primary"
+                        onClick={handleEdit}
+                        disabled={versionLoading}
+                        data-testid="edit-btn"
+                      >
+                        Edit
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          type="secondary"
+                          onClick={handleCancel}
+                          disabled={isSaving}
+                          data-testid="cancel-btn"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="primary"
+                          onClick={handleSave}
+                          disabled={isSaving || Boolean(jsonError)}
+                          isLoading={isSaving}
+                          data-testid="save-btn"
+                        >
+                          {isSaving ? 'Saving...' : 'Save'}
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-          )}
 
-          {latestVersion && !isEditing && (
-            <div className="version-info">
-              <span className="version-meta">
-                Last saved by <code>{latestVersion.createdById.slice(0, 8)}...</code>
-                {' '}on {formatDate(latestVersion.createdAt)}
-              </span>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* Version History Tab */}
-      {hasBranchContext && activeTab === 'history' && (
-        <section className="content-section">
-          <div className="section-header">
-            <h2 className="section-title">Version History</h2>
-          </div>
-
-          {versionsLoading ? (
-            <div className="loading-container">
-              <ApiResponse data={null} isLoading={true} error={null} />
-            </div>
-          ) : versions && versions.length > 0 ? (
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Version</th>
-                    <th>Source</th>
-                    <th>Created By</th>
-                    <th>Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {versions.map((version) => (
-                    <tr key={version.id} className={version.id === latestVersion?.id ? 'current-version' : ''}>
-                      <td className="version-number">
-                        <code>v{version.versionNumber}</code>
-                        {version.id === latestVersion?.id && (
-                          <span className="current-badge">Current</span>
+                {versionLoading ? (
+                  <div className="loading-container">
+                    <ApiResponse data={null} isLoading={true} error={null} />
+                  </div>
+                ) : versionError ? (
+                  <div className="error-banner">
+                    <ApiResponse data={null} isLoading={false} error={versionError} />
+                  </div>
+                ) : (
+                  <div className="content-viewer">
+                    {isEditing ? (
+                      <>
+                        <textarea
+                          className={`pds-input json-editor ${jsonError ? 'has-error' : ''}`}
+                          value={editContent}
+                          onChange={(e) => handleContentChange(e.target.value)}
+                          spellCheck={false}
+                          autoFocus
+                          aria-label="JSON content editor"
+                          data-testid="json-editor"
+                        />
+                        {jsonError && (
+                          <Alert type="danger" className="json-error-alert" data-testid="json-error">
+                            {jsonError}
+                          </Alert>
                         )}
-                      </td>
-                      <td>
-                        <span className={getSourceBadgeClass(version.source)}>
-                          {version.source}
-                        </span>
-                      </td>
-                      <td className="created-by">
-                        <code>{version.createdById.slice(0, 12)}...</code>
-                        <span className="creator-type">({version.createdByType})</span>
-                      </td>
-                      <td className="date">
-                        {formatDate(version.createdAt)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="empty-state">
-              <p>No versions found for this document on this branch.</p>
-            </div>
-          )}
-        </section>
+                        {saveError && (
+                          <Alert type="danger" className="save-error-alert" data-testid="save-error">
+                            {saveError}
+                          </Alert>
+                        )}
+                      </>
+                    ) : (
+                      <div className="json-placeholder">
+                        <pre className="json-content" data-testid="json-content">
+                          {latestVersion?.snapshot
+                            ? JSON.stringify(latestVersion.snapshot, null, 2)
+                            : '{}'}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {latestVersion && !isEditing && (
+                  <div className="version-info">
+                    <span className="version-meta">
+                      Last saved by <code>{latestVersion.createdById.slice(0, 8)}...</code>
+                      {' '}on {formatDate(latestVersion.createdAt)}
+                    </span>
+                  </div>
+                )}
+              </section>
+            </TabPanel>
+
+            {/* Version History Tab */}
+            <TabPanel>
+              <section className="content-section">
+                <div className="section-header">
+                  <h2 className="section-title">Version History</h2>
+                </div>
+
+                {versionsLoading ? (
+                  <div className="loading-container">
+                    <ApiResponse data={null} isLoading={true} error={null} />
+                  </div>
+                ) : versions && versions.length > 0 ? (
+                  <div className="table-container">
+                    <table className="data-table" data-testid="versions-table">
+                      <thead>
+                        <tr>
+                          <th>Version</th>
+                          <th>Source</th>
+                          <th>Created By</th>
+                          <th>Created</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {versions.map((version) => (
+                          <tr key={version.id} className={version.id === latestVersion?.id ? 'current-version' : ''}>
+                            <td className="version-number">
+                              <code>v{version.versionNumber}</code>
+                              {version.id === latestVersion?.id && (
+                                <span className="current-badge">Current</span>
+                              )}
+                            </td>
+                            <td>
+                              <span className={getSourceBadgeClass(version.source)}>
+                                {version.source}
+                              </span>
+                            </td>
+                            <td className="created-by">
+                              <code>{version.createdById.slice(0, 12)}...</code>
+                              <span className="creator-type">({version.createdByType})</span>
+                            </td>
+                            <td className="date">
+                              {formatDate(version.createdAt)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="empty-state" data-testid="versions-empty">
+                    <p>No versions found for this document on this branch.</p>
+                  </div>
+                )}
+              </section>
+            </TabPanel>
+          </TabPanels>
+        </Tabs>
       )}
 
       {/* Document Details Section (always shown) */}

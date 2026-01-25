@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { getSite } from '../api/sites';
 import { listBranches } from '../api/branches';
@@ -23,6 +23,12 @@ import { MergePreviewPanel } from '../components/MergePreviewPanel';
 import { ConflictResolutionPanel } from '../components/ConflictResolutionPanel';
 import type { ConflictResolution } from '../api/merge-requests';
 import type { Site, Branch, MergeRequest, MergeRequestStatus, MergeExecuteResult } from '../types';
+import {
+  Button,
+  RouterLinkButton,
+  Alert,
+  Tag,
+} from '@pantheon-systems/design-toolkit-react';
 import './MergeRequestDetailPage.css';
 
 export function MergeRequestDetailPage() {
@@ -58,20 +64,20 @@ export function MergeRequestDetailPage() {
     return branch?.name || branchId.slice(0, 8) + '...';
   };
 
-  const getStatusBadgeClass = (status: MergeRequestStatus) => {
+  const getStatusTagType = (status: MergeRequestStatus): 'info' | 'success' | 'warning' | 'default' => {
     switch (status) {
       case 'open':
-        return 'status-badge status-open';
+        return 'info';
       case 'approved':
-        return 'status-badge status-approved';
+        return 'success';
       case 'conflicted':
-        return 'status-badge status-conflicted';
+        return 'warning';
       case 'merged':
-        return 'status-badge status-merged';
+        return 'success';
       case 'closed':
-        return 'status-badge status-closed';
+        return 'default';
       default:
-        return 'status-badge';
+        return 'default';
     }
   };
 
@@ -120,65 +126,73 @@ export function MergeRequestDetailPage() {
       case 'open':
         return (
           <>
-            <button
-              className="action-btn action-approve"
+            <Button
+              type="primary"
               onClick={() => handleStatusChange('approved')}
               disabled={isUpdating}
+              data-testid="approve-btn"
             >
               Approve
-            </button>
-            <button
-              className="action-btn action-close"
+            </Button>
+            <Button
+              type="secondary"
               onClick={() => handleStatusChange('closed')}
               disabled={isUpdating}
+              data-testid="close-btn"
             >
               Close
-            </button>
-            <button
-              className="action-btn action-delete"
+            </Button>
+            <Button
+              type="danger"
               onClick={() => setShowDeleteModal(true)}
               disabled={isUpdating}
+              data-testid="delete-btn"
             >
               Delete
-            </button>
+            </Button>
           </>
         );
       case 'approved':
         return (
           <>
-            <button
-              className="action-btn action-merge"
+            <Button
+              type="primary"
               onClick={handleExecuteMerge}
               disabled={isMerging}
+              isLoading={isMerging}
+              data-testid="merge-btn"
             >
               {isMerging ? 'Merging...' : 'Execute Merge'}
-            </button>
-            <button
-              className="action-btn action-close"
+            </Button>
+            <Button
+              type="secondary"
               onClick={() => handleStatusChange('closed')}
               disabled={isUpdating || isMerging}
+              data-testid="close-btn"
             >
               Close
-            </button>
+            </Button>
           </>
         );
       case 'conflicted':
         return (
           <>
-            <button
-              className="action-btn action-resolve"
+            <Button
+              type="primary"
               onClick={() => setShowResolutionPanel(!showResolutionPanel)}
               disabled={isUpdating}
+              data-testid="resolve-btn"
             >
               {showResolutionPanel ? 'Hide Resolution Panel' : 'Resolve Conflicts'}
-            </button>
-            <button
-              className="action-btn action-close"
+            </Button>
+            <Button
+              type="secondary"
               onClick={() => handleStatusChange('closed')}
               disabled={isUpdating}
+              data-testid="close-btn"
             >
               Close
-            </button>
+            </Button>
           </>
         );
       case 'merged':
@@ -188,20 +202,22 @@ export function MergeRequestDetailPage() {
       case 'closed':
         return (
           <>
-            <button
-              className="action-btn action-reopen"
+            <Button
+              type="primary"
               onClick={() => handleStatusChange('open')}
               disabled={isUpdating}
+              data-testid="reopen-btn"
             >
               Reopen
-            </button>
-            <button
-              className="action-btn action-delete"
+            </Button>
+            <Button
+              type="danger"
               onClick={() => setShowDeleteModal(true)}
               disabled={isUpdating}
+              data-testid="delete-btn"
             >
               Delete
-            </button>
+            </Button>
           </>
         );
       default:
@@ -224,9 +240,15 @@ export function MergeRequestDetailPage() {
       <div className="mr-detail-page">
         <div className="error-container">
           <ApiResponse data={null} isLoading={false} error={siteError || mrError} />
-          <Link to={`/sites/${siteId}/merge-requests`} className="back-link">
-            Back to merge requests
-          </Link>
+          <div className="back-link-container">
+            <RouterLinkButton
+              to={`/sites/${siteId}/merge-requests`}
+              type="secondary"
+              data-testid="back-to-merge-requests"
+            >
+              Back to merge requests
+            </RouterLinkButton>
+          </div>
         </div>
       </div>
     );
@@ -250,9 +272,9 @@ export function MergeRequestDetailPage() {
         <div className="mr-header-top">
           <h1 className="mr-title">{mergeRequest?.title}</h1>
           {mergeRequest && (
-            <span className={getStatusBadgeClass(mergeRequest.status)}>
+            <Tag type={getStatusTagType(mergeRequest.status)} data-testid="mr-status-badge">
               {mergeRequest.status}
-            </span>
+            </Tag>
           )}
         </div>
         <div className="mr-branches">
@@ -311,16 +333,15 @@ export function MergeRequestDetailPage() {
       </section>
 
       {/* Actions Section */}
-      <section className="mr-actions">
+      <section className="mr-actions-section">
         <h2 className="section-title">Actions</h2>
-        <div className="actions-container">
+        <div className="actions-container" data-testid="actions-container">
           {renderActions()}
         </div>
         {(updateError || mergeError) && (
-          <div className="action-error">
-            <span className="error-icon">!</span>
-            <span className="error-text">{updateError || mergeError}</span>
-          </div>
+          <Alert type="danger" className="action-error-alert" data-testid="action-error">
+            {updateError || mergeError}
+          </Alert>
         )}
       </section>
 

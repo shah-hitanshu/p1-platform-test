@@ -1,4 +1,17 @@
-/* Merge Requests Page Styles */
+/**
+ * Merge Requests Page Styles
+ *
+ * Uses PDS components where possible:
+ * - RouterLinkButton (PDS) for create and view links
+ *
+ * Custom styles remain for:
+ * - Page layout and structure
+ * - Breadcrumb (will be migrated in Phase 4)
+ * - Filter tabs (will be migrated in Phase 4)
+ * - Table styling (will be migrated in Phase 3)
+ * - Status badges (will be migrated in Phase 3)
+ * - Empty state (will be migrated in Phase 5)
+ */
 
 .merge-requests-page {
   max-width: 1200px;
@@ -12,11 +25,11 @@
   gap: 8px;
   margin-bottom: 20px;
   font-size: 0.875rem;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .breadcrumb a {
-  color: #4a9eff;
+  color: var(--dt-color-cyan-3, #02a9e0);
   text-decoration: none;
 }
 
@@ -25,11 +38,11 @@
 }
 
 .breadcrumb-separator {
-  color: #ced4da;
+  color: var(--dt-color-gray-3, #ced4da);
 }
 
 .breadcrumb-current {
-  color: #333;
+  color: var(--dt-color-gray-7, #333);
   font-weight: 500;
 }
 
@@ -38,7 +51,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   border-radius: 8px;
   padding: 24px;
   margin-bottom: 16px;
@@ -49,31 +62,14 @@
   margin: 0;
   font-size: 1.75rem;
   font-weight: 600;
-  color: #1a1a2e;
-}
-
-.create-btn {
-  padding: 10px 20px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #fff;
-  background-color: #4a9eff;
-  border: none;
-  border-radius: 6px;
-  text-decoration: none;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.create-btn:hover {
-  background-color: #3a8eef;
+  color: var(--dt-color-gray-8, #1a1a2e);
 }
 
 /* Filter Tabs */
 .filter-tabs {
   display: flex;
   gap: 4px;
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   border-radius: 8px;
   padding: 8px;
   margin-bottom: 16px;
@@ -84,7 +80,7 @@
   padding: 8px 16px;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
   background: none;
   border: none;
   border-radius: 6px;
@@ -93,18 +89,18 @@
 }
 
 .filter-tab:hover {
-  background-color: #f8f9fa;
-  color: #333;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  color: var(--dt-color-gray-7, #333);
 }
 
 .filter-tab.active {
-  background-color: #4a9eff;
-  color: #fff;
+  background-color: var(--dt-color-cyan-3, #02a9e0);
+  color: var(--dt-color-white, #fff);
 }
 
 /* Merge Requests Section */
 .merge-requests-section {
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   border-radius: 8px;
   padding: 24px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -114,7 +110,7 @@
 .merge-requests-table-container {
   overflow: hidden;
   border-radius: 6px;
-  border: 1px solid #e9ecef;
+  border: 1px solid var(--dt-color-gray-2, #e9ecef);
 }
 
 .merge-requests-table {
@@ -131,17 +127,17 @@
 .merge-requests-table th {
   font-size: 0.8125rem;
   font-weight: 600;
-  color: #6c757d;
-  background-color: #f8f9fa;
-  border-bottom: 1px solid #e9ecef;
+  color: var(--dt-color-gray-5, #6c757d);
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .merge-requests-table td {
   font-size: 0.9375rem;
-  color: #333;
-  border-bottom: 1px solid #e9ecef;
+  color: var(--dt-color-gray-7, #333);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
 }
 
 .merge-requests-table tr:last-child td {
@@ -154,7 +150,7 @@
 }
 
 .clickable-row:hover td {
-  background-color: #f8f9fa;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
 }
 
 .mr-title {
@@ -166,26 +162,11 @@
 }
 
 .mr-date {
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .mr-actions {
   text-align: right;
-}
-
-.view-link {
-  padding: 6px 12px;
-  font-size: 0.8125rem;
-  color: #4a9eff;
-  text-decoration: none;
-  border: 1px solid #4a9eff;
-  border-radius: 4px;
-  transition: all 0.2s;
-}
-
-.view-link:hover {
-  background-color: #4a9eff;
-  color: #fff;
 }
 
 /* Status Badges */
@@ -200,55 +181,43 @@
 }
 
 .status-open {
-  background-color: #cce5ff;
-  color: #004085;
+  background-color: var(--dt-color-cyan-1, #cce5ff);
+  color: var(--dt-color-cyan-4, #004085);
 }
 
 .status-approved {
-  background-color: #d4edda;
-  color: #155724;
+  background-color: var(--dt-color-green-1, #d4edda);
+  color: var(--dt-color-green-4, #155724);
 }
 
 .status-conflicted {
-  background-color: #fff3cd;
-  color: #856404;
+  background-color: var(--dt-color-yellow-1, #fff3cd);
+  color: var(--dt-color-yellow-4, #856404);
 }
 
 .status-merged {
-  background-color: #e2d4f0;
-  color: #563d7c;
+  background-color: var(--dt-color-purple-1, #e2d4f0);
+  color: var(--dt-color-purple-4, #563d7c);
 }
 
 .status-closed {
-  background-color: #e2e3e5;
-  color: #383d41;
+  background-color: var(--dt-color-gray-2, #e2e3e5);
+  color: var(--dt-color-gray-6, #383d41);
 }
 
 /* Empty State */
 .empty-state {
   padding: 40px;
   text-align: center;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .empty-state p {
   margin: 0 0 16px;
 }
 
-.create-link {
+.empty-state-action {
   display: inline-block;
-  padding: 10px 20px;
-  font-size: 0.875rem;
-  color: #4a9eff;
-  text-decoration: none;
-  border: 1px solid #4a9eff;
-  border-radius: 6px;
-  transition: all 0.2s;
-}
-
-.create-link:hover {
-  background-color: #4a9eff;
-  color: #fff;
 }
 
 /* Loading & Error */
@@ -266,19 +235,6 @@
   margin-bottom: 20px;
 }
 
-.back-link {
-  display: inline-block;
+.back-link-container {
   margin-top: 16px;
-  padding: 10px 20px;
-  font-size: 0.875rem;
-  color: #4a9eff;
-  text-decoration: none;
-  border: 1px solid #4a9eff;
-  border-radius: 6px;
-  transition: all 0.2s;
-}
-
-.back-link:hover {
-  background-color: #4a9eff;
-  color: #fff;
 }

@@ -1,4 +1,16 @@
-/* Sites Page Styles */
+/**
+ * Sites Page Styles
+ *
+ * Uses PDS components where possible:
+ * - Button (PDS) for create, submit, delete buttons
+ * - RouterLinkButton (PDS) for view links
+ * - Alert (PDS) for error messages
+ *
+ * Custom styles remain for:
+ * - Page layout and structure
+ * - Table styling (will be migrated in Phase 3)
+ * - Empty state (will be migrated in Phase 5)
+ */
 
 .sites-page {
   max-width: 1200px;
@@ -20,35 +32,19 @@
   margin: 0;
   font-size: 1.75rem;
   font-weight: 600;
-  color: #1a1a2e;
+  color: var(--dt-color-gray-8, #1a1a2e);
 }
 
 .page-subtitle {
   margin: 8px 0 0;
   font-size: 0.9375rem;
-  color: #6c757d;
-}
-
-.create-btn {
-  padding: 10px 20px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #fff;
-  background-color: #4a9eff;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.create-btn:hover {
-  background-color: #3a8eef;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .create-form-container {
   margin-bottom: 24px;
   padding: 20px;
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
@@ -65,61 +61,31 @@
   gap: 12px;
 }
 
-.form-input {
+/* PDS-styled input element */
+.pds-input {
   flex: 1;
   padding: 12px;
   font-size: 0.9375rem;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--dt-color-gray-3, #ced4da);
   border-radius: 6px;
-  transition: border-color 0.2s;
+  background-color: var(--dt-color-white, #fff);
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.form-input:focus {
+.pds-input:focus {
   outline: none;
-  border-color: #4a9eff;
-  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.15);
+  border-color: var(--dt-color-cyan-3, #02a9e0);
+  box-shadow: 0 0 0 3px rgba(2, 169, 224, 0.15);
 }
 
-.submit-btn {
-  padding: 12px 24px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #fff;
-  background-color: #28a745;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.submit-btn:hover:not(:disabled) {
-  background-color: #218838;
-}
-
-.submit-btn:disabled {
-  background-color: #94d3a2;
+.pds-input:disabled {
+  background-color: var(--dt-color-gray-2, #e9ecef);
   cursor: not-allowed;
 }
 
-.create-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* PDS Alert spacing for create error */
+.create-error-alert {
   margin-top: 12px;
-  padding: 12px;
-  background-color: #f8d7da;
-  border: 1px solid #f5c6cb;
-  border-radius: 6px;
-  color: #721c24;
-  font-size: 0.875rem;
-}
-
-.create-error .error-icon {
-  font-size: 1rem;
-}
-
-.create-error .error-text {
-  flex: 1;
 }
 
 .error-banner {
@@ -132,7 +98,7 @@
 }
 
 .sites-table-container {
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   overflow: hidden;
@@ -152,17 +118,17 @@
 .sites-table th {
   font-size: 0.8125rem;
   font-weight: 600;
-  color: #6c757d;
-  background-color: #f8f9fa;
-  border-bottom: 1px solid #e9ecef;
+  color: var(--dt-color-gray-5, #6c757d);
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .sites-table td {
   font-size: 0.9375rem;
-  color: #333;
-  border-bottom: 1px solid #e9ecef;
+  color: var(--dt-color-gray-7, #333);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
 }
 
 .sites-table tr:last-child td {
@@ -170,7 +136,7 @@
 }
 
 .sites-table tr:hover td {
-  background-color: #f8f9fa;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
 }
 
 .site-name {
@@ -182,49 +148,20 @@
 }
 
 .site-date {
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .site-actions {
   text-align: right;
-}
-
-.view-link {
-  padding: 6px 12px;
-  font-size: 0.8125rem;
-  color: #4a9eff;
-  text-decoration: none;
-  border: 1px solid #4a9eff;
-  border-radius: 4px;
-  transition: all 0.2s;
-}
-
-.view-link:hover {
-  background-color: #4a9eff;
-  color: #fff;
-}
-
-.delete-link {
-  margin-left: 8px;
-  padding: 6px 12px;
-  font-size: 0.8125rem;
-  color: #dc3545;
-  background: none;
-  border: 1px solid #dc3545;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.delete-link:hover {
-  background-color: #dc3545;
-  color: #fff;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .empty-state {
   padding: 60px 40px;
   text-align: center;
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
@@ -232,5 +169,5 @@
 .empty-state p {
   margin: 0;
   font-size: 1rem;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }

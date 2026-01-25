@@ -12,6 +12,12 @@ import { listBranches, createBranch, updateBranch, deleteBranch as deleteBranchA
 import { ApiResponse } from '../components/ApiResponse';
 import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import type { Site, Branch } from '../types';
+import {
+  Button,
+  RouterLinkButton,
+  Alert,
+  Tag,
+} from '@pantheon-systems/design-toolkit-react';
 import './SiteDetailPage.css';
 
 interface CreateBranchParams {
@@ -88,18 +94,18 @@ export function SiteDetailPage() {
     }
   };
 
-  const getStatusBadgeClass = (status: Branch['status']) => {
+  const getStatusTagType = (status: Branch['status']): 'success' | 'info' | 'default' | 'danger' => {
     switch (status) {
       case 'active':
-        return 'status-badge status-active';
+        return 'success';
       case 'merged':
-        return 'status-badge status-merged';
+        return 'info';
       case 'archived':
-        return 'status-badge status-archived';
+        return 'default';
       case 'abandoned':
-        return 'status-badge status-abandoned';
+        return 'danger';
       default:
-        return 'status-badge';
+        return 'default';
     }
   };
 
@@ -118,7 +124,11 @@ export function SiteDetailPage() {
       <div className="site-detail-page">
         <div className="error-container">
           <ApiResponse data={null} isLoading={false} error={siteError} />
-          <Link to="/sites" className="back-link">Back to sites</Link>
+          <div className="back-link-container">
+            <RouterLinkButton to="/sites" type="secondary">
+              Back to sites
+            </RouterLinkButton>
+          </div>
         </div>
       </div>
     );
@@ -136,7 +146,7 @@ export function SiteDetailPage() {
       {/* Site Info Header */}
       <header className="site-header">
         <div className="site-info">
-          <h1 className="site-title">{site?.name}</h1>
+          <h1 className="site-title" data-testid="site-title">{site?.name}</h1>
           <div className="site-meta">
             <span className="meta-item">
               <strong>ID:</strong> <code>{site?.id}</code>
@@ -149,25 +159,30 @@ export function SiteDetailPage() {
             </span>
           </div>
         </div>
-        <Link to={`/sites/${siteId}/merge-requests`} className="merge-requests-link">
-          Merge Requests
-        </Link>
+        <RouterLinkButton
+          to={`/sites/${siteId}/merge-requests`}
+          type="secondary"
+          data-testid="merge-requests-link"
+        >
+          Merge requests
+        </RouterLinkButton>
       </header>
 
       {/* Branches Section */}
-      <section className="branches-section">
+      <section className="branches-section" data-testid="branches-section">
         <div className="section-header">
           <h2 className="section-title">Branches</h2>
-          <button
-            className="create-btn"
+          <Button
+            type={showCreateForm ? 'secondary' : 'primary'}
             onClick={() => setShowCreateForm(!showCreateForm)}
+            data-testid="create-branch-btn"
           >
             {showCreateForm ? 'Cancel' : '+ Create branch'}
-          </button>
+          </Button>
         </div>
 
         {showCreateForm && (
-          <div className="create-form-container">
+          <div className="create-form-container" data-testid="create-branch-form">
             <form onSubmit={handleCreateBranch} className="create-form">
               <div className="form-fields">
                 <input
@@ -175,13 +190,17 @@ export function SiteDetailPage() {
                   value={newBranchName}
                   onChange={(e) => setNewBranchName(e.target.value)}
                   placeholder="Enter branch name..."
-                  className="form-input"
+                  className="pds-input"
                   autoFocus
+                  aria-label="Branch name"
+                  data-testid="branch-name-input"
                 />
                 <select
                   value={selectedParentBranch}
                   onChange={(e) => setSelectedParentBranch(e.target.value)}
-                  className="form-select"
+                  className="pds-select"
+                  aria-label="Parent branch"
+                  data-testid="parent-branch-select"
                 >
                   <option value="">No parent (main branch)</option>
                   {branches?.map((branch) => (
@@ -191,19 +210,21 @@ export function SiteDetailPage() {
                   ))}
                 </select>
               </div>
-              <button
-                type="submit"
-                className="submit-btn"
+              <Button
+                type="primary"
+                isSubmit
+                onClick={() => {}}
                 disabled={isCreating || !newBranchName.trim()}
+                isLoading={isCreating}
+                data-testid="submit-branch-btn"
               >
                 {isCreating ? 'Creating...' : 'Create'}
-              </button>
+              </Button>
             </form>
             {createError && (
-              <div className="create-error">
-                <span className="error-icon">!</span>
-                <span className="error-text">{createError}</span>
-              </div>
+              <Alert type="danger" className="create-error-alert" data-testid="create-error">
+                {createError}
+              </Alert>
             )}
           </div>
         )}
@@ -220,7 +241,7 @@ export function SiteDetailPage() {
           </div>
         ) : branches && branches.length > 0 ? (
           <div className="branches-table-container">
-            <table className="branches-table">
+            <table className="branches-table" data-testid="branches-table">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -232,12 +253,12 @@ export function SiteDetailPage() {
               </thead>
               <tbody>
                 {branches.map((branch) => (
-                  <tr key={branch.id}>
+                  <tr key={branch.id} data-testid={`branch-row-${branch.id}`}>
                     <td className="branch-name">{branch.name}</td>
                     <td>
-                      <span className={getStatusBadgeClass(branch.status)}>
+                      <Tag type={getStatusTagType(branch.status)} data-testid={`status-${branch.id}`}>
                         {branch.status}
-                      </span>
+                      </Tag>
                     </td>
                     <td className="branch-parent">
                       {branch.sourceBranchId ? (
@@ -250,28 +271,32 @@ export function SiteDetailPage() {
                       {new Date(branch.createdAt).toLocaleDateString()}
                     </td>
                     <td className="branch-actions">
-                      <Link
+                      <RouterLinkButton
                         to={`/sites/${siteId}/branches/${branch.id}`}
-                        className="view-link"
+                        type="secondary"
+                        data-testid={`view-branch-${branch.id}`}
                       >
                         View
-                      </Link>
+                      </RouterLinkButton>
                       {!branch.isMain && branch.status !== 'archived' && (
-                        <button
-                          className="archive-link"
+                        <Button
+                          type="secondary"
                           onClick={() => handleArchiveBranch(branch)}
                           disabled={isArchiving && archivingBranchId === branch.id}
+                          isLoading={isArchiving && archivingBranchId === branch.id}
+                          data-testid={`archive-branch-${branch.id}`}
                         >
                           {isArchiving && archivingBranchId === branch.id ? 'Archiving...' : 'Archive'}
-                        </button>
+                        </Button>
                       )}
                       {!branch.isMain && (
-                        <button
-                          className="delete-link"
+                        <Button
+                          type="danger"
                           onClick={() => setBranchToDelete(branch)}
+                          data-testid={`delete-branch-${branch.id}`}
                         >
                           Delete
-                        </button>
+                        </Button>
                       )}
                     </td>
                   </tr>
@@ -280,7 +305,7 @@ export function SiteDetailPage() {
             </table>
           </div>
         ) : (
-          <div className="empty-state">
+          <div className="empty-state" data-testid="empty-state">
             <p>No branches found. Create a branch to get started.</p>
           </div>
         )}

@@ -14,7 +14,7 @@ test.describe('Sites Page', () => {
     // Login before each test
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
 
     // Navigate to sites
@@ -28,44 +28,44 @@ test.describe('Sites Page', () => {
   });
 
   test('should have create site button', async ({ page }) => {
-    const createBtn = page.locator('.create-btn');
+    const createBtn = page.getByTestId('create-site-btn');
     await expect(createBtn).toBeVisible();
     await expect(createBtn).toContainText('Create site');
   });
 
   test('should toggle create form on button click', async ({ page }) => {
     // Form should not be visible initially
-    await expect(page.locator('.create-form')).not.toBeVisible();
+    await expect(page.getByTestId('create-form')).not.toBeVisible();
 
     // Click create button
-    await page.click('.create-btn');
+    await page.getByTestId('create-site-btn').click();
 
     // Form should be visible
-    await expect(page.locator('.create-form')).toBeVisible();
+    await expect(page.getByTestId('create-form')).toBeVisible();
 
     // Button text should change to Cancel
-    await expect(page.locator('.create-btn')).toContainText('Cancel');
+    await expect(page.getByTestId('create-site-btn')).toContainText('Cancel');
 
     // Click again to hide
-    await page.click('.create-btn');
-    await expect(page.locator('.create-form')).not.toBeVisible();
+    await page.getByTestId('create-site-btn').click();
+    await expect(page.getByTestId('create-form')).not.toBeVisible();
   });
 
   test('should have disabled submit button when input is empty', async ({ page }) => {
-    await page.click('.create-btn');
+    await page.getByTestId('create-site-btn').click();
 
-    const submitBtn = page.locator('.submit-btn');
+    const submitBtn = page.getByTestId('submit-site-btn');
     await expect(submitBtn).toBeDisabled();
   });
 
   test('should enable submit button when both fields entered', async ({ page }) => {
-    await page.click('.create-btn');
+    await page.getByTestId('create-site-btn').click();
 
     // Type site name and Pantheon ID (both required)
-    await page.locator('.form-input').first().fill('Test Site');
-    await page.locator('.form-input').nth(1).fill('test-pantheon-id');
+    await page.getByTestId('site-name-input').fill('Test Site');
+    await page.getByTestId('pantheon-id-input').fill('test-pantheon-id');
 
-    const submitBtn = page.locator('.submit-btn');
+    const submitBtn = page.getByTestId('submit-site-btn');
     await expect(submitBtn).toBeEnabled();
   });
 });
@@ -75,7 +75,7 @@ test.describe('Sites Table', () => {
     // Login before each test
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
 
     // Navigate to sites

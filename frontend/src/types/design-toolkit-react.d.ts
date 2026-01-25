@@ -34,6 +34,18 @@ declare module '@pantheon-systems/design-toolkit-react' {
   export const SubmitButtonSecondary: ComponentType<ButtonProps>;
   export const SubmitButtonDanger: ComponentType<ButtonProps>;
 
+  // RouterLinkButton types (button styled as a link for react-router navigation)
+  export interface RouterLinkButtonProps {
+    children: ReactNode;
+    to: string;
+    type?: ButtonType;
+    disabled?: boolean;
+    className?: string;
+    'data-testid'?: string;
+  }
+
+  export const RouterLinkButton: ComponentType<RouterLinkButtonProps>;
+
   // Modal types
   export interface ModalProps {
     ariaLabel: string;
@@ -131,9 +143,13 @@ declare module '@pantheon-systems/design-toolkit-react' {
   export const Table: ComponentType<TableProps>;
 
   // Tag types
+  export type TagType = 'default' | 'info' | 'success' | 'warning' | 'danger';
+
   export interface TagProps {
     children: ReactNode;
+    type?: TagType;
     className?: string;
+    'data-testid'?: string;
   }
 
   export const Tag: ComponentType<TagProps>;
@@ -170,6 +186,7 @@ declare module '@pantheon-systems/design-toolkit-react' {
   export interface TabProps {
     children: ReactNode;
     disabled?: boolean;
+    'data-testid'?: string;
   }
 
   export const Tab: ComponentType<TabProps>;

@@ -1,22 +1,37 @@
-/* Document Page Styles */
+/**
+ * Document Page Styles
+ *
+ * Uses PDS components where possible:
+ * - Button (PDS) for edit, save, cancel buttons
+ * - RouterLinkButton (PDS) for back navigation
+ * - Alert (PDS) for error messages and notices
+ *
+ * Custom styles remain for:
+ * - Page layout and structure
+ * - Breadcrumb (will be migrated in Phase 4)
+ * - Tabs (will be migrated in Phase 4)
+ * - Table styling (will be migrated in Phase 3)
+ * - Status/source badges (will be migrated in Phase 3)
+ * - Empty state (will be migrated in Phase 5)
+ */
 
 .document-page {
   max-width: 1200px;
   margin: 0 auto;
 }
 
-/* Breadcrumb */
+/* Breadcrumb - will be migrated in Phase 4 */
 .document-page .breadcrumb {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 20px;
   font-size: 0.875rem;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .document-page .breadcrumb a {
-  color: #4a9eff;
+  color: var(--dt-color-cyan-3, #02a9e0);
   text-decoration: none;
 }
 
@@ -25,17 +40,17 @@
 }
 
 .document-page .breadcrumb-separator {
-  color: #ced4da;
+  color: var(--dt-color-gray-3, #ced4da);
 }
 
 .document-page .breadcrumb-current {
-  color: #333;
+  color: var(--dt-color-gray-7, #333);
   font-weight: 500;
 }
 
 /* Document Header */
 .document-header {
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   border-radius: 8px;
   padding: 24px;
   margin-bottom: 24px;
@@ -53,7 +68,7 @@
   margin: 0;
   font-size: 1.5rem;
   font-weight: 600;
-  color: #1a1a2e;
+  color: var(--dt-color-gray-8, #1a1a2e);
 }
 
 .document-title code {
@@ -69,11 +84,11 @@
 
 .document-page .meta-item {
   font-size: 0.875rem;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .document-page .meta-item strong {
-  color: #333;
+  color: var(--dt-color-gray-7, #333);
   margin-right: 4px;
 }
 
@@ -81,7 +96,7 @@
   font-size: 0.75rem;
 }
 
-/* Status Badge */
+/* Status Badge - will be migrated in Phase 3 */
 .document-page .status-badge {
   display: inline-block;
   padding: 4px 12px;
@@ -93,61 +108,51 @@
 }
 
 .document-page .status-archived {
-  background-color: #e2e3e5;
-  color: #383d41;
+  background-color: var(--dt-color-gray-2, #e2e3e5);
+  color: var(--dt-color-gray-6, #383d41);
 }
 
-/* Notice Banner */
-.notice-banner {
-  background-color: #fff3cd;
-  border: 1px solid #ffc107;
-  border-radius: 6px;
-  padding: 16px;
+/* Notice Alert (replaces notice-banner) */
+.notice-alert {
   margin-bottom: 24px;
-  font-size: 0.9375rem;
-  color: #856404;
 }
 
-.notice-banner strong {
-  color: #664d03;
-}
-
-/* Tabs */
+/* Tabs - will be migrated in Phase 4 */
 .document-page .tabs-container {
   margin-bottom: 24px;
 }
 
 .document-page .tabs {
   display: flex;
-  gap: 0;
-  border-bottom: 1px solid #dee2e6;
+  gap: 4px;
+  border-bottom: 2px solid var(--dt-color-gray-2, #e9ecef);
 }
 
 .document-page .tab {
   padding: 12px 24px;
   font-size: 0.9375rem;
   font-weight: 500;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .document-page .tab:hover {
-  color: #333;
-  background-color: #f8f9fa;
+  color: var(--dt-color-gray-7, #333);
 }
 
 .document-page .tab.active {
-  color: #4a9eff;
-  border-bottom-color: #4a9eff;
+  color: var(--dt-color-cyan-3, #02a9e0);
+  border-bottom-color: var(--dt-color-cyan-3, #02a9e0);
 }
 
 /* Content Section */
 .document-page .content-section {
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   border-radius: 8px;
   padding: 24px;
   margin-bottom: 24px;
@@ -165,65 +170,13 @@
   margin: 0;
   font-size: 1.25rem;
   font-weight: 600;
-  color: #1a1a2e;
+  color: var(--dt-color-gray-8, #1a1a2e);
 }
 
 /* Header Actions */
 .header-actions {
   display: flex;
   gap: 8px;
-}
-
-.edit-btn,
-.cancel-btn,
-.save-btn {
-  padding: 8px 20px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.edit-btn {
-  background-color: #4a9eff;
-  color: #fff;
-  border: none;
-}
-
-.edit-btn:hover:not(:disabled) {
-  background-color: #3a8eef;
-}
-
-.edit-btn:disabled {
-  background-color: #a0c4ff;
-  cursor: not-allowed;
-}
-
-.cancel-btn {
-  background-color: #fff;
-  color: #6c757d;
-  border: 1px solid #dee2e6;
-}
-
-.cancel-btn:hover:not(:disabled) {
-  background-color: #f8f9fa;
-  color: #333;
-}
-
-.save-btn {
-  background-color: #28a745;
-  color: #fff;
-  border: none;
-}
-
-.save-btn:hover:not(:disabled) {
-  background-color: #218838;
-}
-
-.save-btn:disabled {
-  background-color: #94d3a2;
-  cursor: not-allowed;
 }
 
 /* Details Grid */
@@ -242,14 +195,14 @@
 .detail-label {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .detail-value {
   font-size: 0.9375rem;
-  color: #333;
+  color: var(--dt-color-gray-7, #333);
 }
 
 .detail-value code {
@@ -263,11 +216,11 @@
 }
 
 .status-active-text {
-  color: #28a745;
+  color: var(--dt-color-green-4, #28a745);
 }
 
 .status-archived-text {
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 /* Loading & Error */
@@ -281,21 +234,8 @@
   text-align: center;
 }
 
-.document-page .back-link {
-  display: inline-block;
+.document-page .back-link-container {
   margin-top: 16px;
-  padding: 10px 20px;
-  font-size: 0.875rem;
-  color: #4a9eff;
-  text-decoration: none;
-  border: 1px solid #4a9eff;
-  border-radius: 6px;
-  transition: all 0.2s;
-}
-
-.document-page .back-link:hover {
-  background-color: #4a9eff;
-  color: #fff;
 }
 
 .error-banner {
@@ -304,9 +244,9 @@
 
 /* Content Viewer */
 .content-viewer {
-  background-color: #f8f9fa;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
   border-radius: 6px;
-  border: 1px solid #e9ecef;
+  border: 1px solid var(--dt-color-gray-2, #e9ecef);
   overflow: hidden;
 }
 
@@ -320,12 +260,13 @@
   font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
   font-size: 0.875rem;
   line-height: 1.6;
-  color: #333;
+  color: var(--dt-color-gray-7, #333);
   white-space: pre-wrap;
   word-wrap: break-word;
+  background: transparent;
 }
 
-/* JSON Editor */
+/* JSON Editor - extends pds-input */
 .json-editor {
   width: 100%;
   min-height: 400px;
@@ -333,76 +274,50 @@
   font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
   font-size: 0.875rem;
   line-height: 1.6;
-  color: #333;
-  background-color: #fff;
+  color: var(--dt-color-gray-7, #333);
+  background-color: var(--dt-color-white, #fff);
   border: none;
+  border-radius: 0;
   resize: vertical;
-  outline: none;
 }
 
 .json-editor:focus {
-  box-shadow: inset 0 0 0 2px #4a9eff;
+  box-shadow: inset 0 0 0 2px var(--dt-color-cyan-3, #02a9e0);
 }
 
 .json-editor.has-error {
-  box-shadow: inset 0 0 0 2px #dc3545;
+  box-shadow: inset 0 0 0 2px var(--dt-color-red-3, #dc3545);
 }
 
-/* JSON Error */
-.json-error,
-.save-error {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 12px 16px;
-  background-color: #f8d7da;
-  border-top: 1px solid #f5c6cb;
-  color: #721c24;
-  font-size: 0.875rem;
-}
-
-.json-error .error-icon,
-.save-error .error-icon {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: #dc3545;
-  color: #fff;
-  border-radius: 50%;
-  font-size: 0.75rem;
-  font-weight: bold;
-}
-
-.json-error .error-text,
-.save-error .error-text {
-  flex: 1;
-  font-family: 'Monaco', 'Menlo', monospace;
-  word-break: break-word;
+/* PDS Alert spacing for JSON and save errors */
+.json-error-alert,
+.save-error-alert {
+  margin: 0;
+  border-radius: 0;
 }
 
 /* Version Info */
 .version-info {
   margin-top: 16px;
   padding: 12px 16px;
-  background-color: #e9ecef;
+  background-color: var(--dt-color-gray-2, #e9ecef);
   border-radius: 6px;
 }
 
 .version-meta {
   font-size: 0.875rem;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .version-meta code {
   font-size: 0.75rem;
 }
 
-/* Table Styles */
+/* Table Styles - will be migrated in Phase 3 */
 .document-page .table-container {
-  overflow-x: auto;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid var(--dt-color-gray-2, #e9ecef);
 }
 
 .document-page .data-table {
@@ -412,35 +327,40 @@
 
 .document-page .data-table th,
 .document-page .data-table td {
-  padding: 12px 16px;
+  padding: 14px 16px;
   text-align: left;
-  border-bottom: 1px solid #e9ecef;
 }
 
 .document-page .data-table th {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 600;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  background-color: #f8f9fa;
 }
 
 .document-page .data-table td {
   font-size: 0.9375rem;
-  color: #333;
+  color: var(--dt-color-gray-7, #333);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
 }
 
-.document-page .data-table tbody tr:hover {
-  background-color: #f8f9fa;
+.document-page .data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.document-page .data-table tr:hover td {
+  background-color: var(--dt-color-gray-1, #f8f9fa);
 }
 
 .document-page .data-table .current-version {
-  background-color: #e8f4fd;
+  background-color: var(--dt-color-cyan-1, #e8f4fd);
 }
 
-.document-page .data-table .current-version:hover {
-  background-color: #d8ecfc;
+.document-page .data-table .current-version:hover td {
+  background-color: var(--dt-color-cyan-1, #d8ecfc);
 }
 
 .version-number {
@@ -459,8 +379,8 @@
   font-size: 0.625rem;
   font-weight: 600;
   text-transform: uppercase;
-  background-color: #4a9eff;
-  color: #fff;
+  background-color: var(--dt-color-cyan-3, #02a9e0);
+  color: var(--dt-color-white, #fff);
   border-radius: 10px;
 }
 
@@ -476,15 +396,15 @@
 
 .creator-type {
   font-size: 0.75rem;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .date {
   font-size: 0.875rem;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
-/* Source Badges */
+/* Source Badges - will be migrated in Phase 3 */
 .source-badge {
   display: inline-block;
   padding: 4px 10px;
@@ -496,30 +416,30 @@
 }
 
 .source-edit {
-  background-color: #e8f5e9;
-  color: #2e7d32;
+  background-color: var(--dt-color-green-1, #e8f5e9);
+  color: var(--dt-color-green-4, #2e7d32);
 }
 
 .source-merge {
-  background-color: #e3f2fd;
-  color: #1565c0;
+  background-color: var(--dt-color-cyan-1, #e3f2fd);
+  color: var(--dt-color-cyan-4, #1565c0);
 }
 
 .source-revert {
-  background-color: #fff3e0;
-  color: #e65100;
+  background-color: var(--dt-color-yellow-1, #fff3e0);
+  color: var(--dt-color-yellow-4, #e65100);
 }
 
 .source-checkpoint {
-  background-color: #f3e5f5;
-  color: #7b1fa2;
+  background-color: var(--dt-color-purple-1, #f3e5f5);
+  color: var(--dt-color-purple-4, #7b1fa2);
 }
 
-/* Empty State */
+/* Empty State - will be migrated in Phase 5 */
 .document-page .empty-state {
   padding: 40px 20px;
   text-align: center;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .document-page .empty-state p {

@@ -22,14 +22,14 @@ async function createSiteAndNavigate(page: import('@playwright/test').Page, site
   await expect(page).toHaveURL('/sites');
 
   // Create site
-  await page.click('.create-btn');
-  await page.locator('.form-input').first().fill(siteName);
-  await page.locator('.form-input').nth(1).fill(pantheonId);
+  await page.getByTestId('create-site-btn').click();
+  await page.getByTestId('site-name-input').fill(siteName);
+  await page.getByTestId('pantheon-id-input').fill(pantheonId);
 
   const responsePromise = page.waitForResponse(resp =>
     resp.url().includes('/api/sites') && resp.request().method() === 'POST'
   );
-  await page.click('.submit-btn');
+  await page.getByTestId('submit-site-btn').click();
   await responsePromise;
 
   // Wait for the new site row to appear (more reliable than waiting for form to hide)
@@ -37,23 +37,23 @@ async function createSiteAndNavigate(page: import('@playwright/test').Page, site
   await expect(siteRow).toBeVisible({ timeout: 10000 });
 
   // Navigate to site detail
-  await siteRow.locator('.view-link').click();
+  await siteRow.locator('[data-testid^="view-site-"]').click();
   await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+$/);
 }
 
 // Helper to create a branch
 async function createBranch(page: import('@playwright/test').Page, branchName: string, parentBranchName?: string) {
-  await page.locator('.branches-section .create-btn').click();
-  await page.locator('.branches-section .form-input').fill(branchName);
+  await page.getByTestId('create-branch-btn').click();
+  await page.getByTestId('branch-name-input').fill(branchName);
 
   if (parentBranchName) {
-    await page.locator('.branches-section .form-select').selectOption({ label: parentBranchName });
+    await page.getByTestId('parent-branch-select').selectOption({ label: parentBranchName });
   }
 
   const responsePromise = page.waitForResponse(resp =>
     resp.url().includes('/api/sites') && resp.url().includes('/branches') && resp.request().method() === 'POST'
   );
-  await page.locator('.branches-section .submit-btn').click();
+  await page.getByTestId('submit-branch-btn').click();
   await responsePromise;
 
   // Wait for the new branch row to appear (more reliable than waiting for form to hide)
@@ -62,7 +62,7 @@ async function createBranch(page: import('@playwright/test').Page, branchName: s
 
 // Helper to navigate to merge requests page
 async function navigateToMergeRequests(page: import('@playwright/test').Page) {
-  await page.locator('.merge-requests-link').click();
+  await page.getByTestId('merge-requests-link').click();
   await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+\/merge-requests$/);
 }
 
@@ -70,7 +70,7 @@ test.describe('Merge Requests List', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
 
@@ -80,8 +80,8 @@ test.describe('Merge Requests List', () => {
 
     await createSiteAndNavigate(page, siteName, pantheonId);
 
-    await expect(page.locator('.merge-requests-link')).toBeVisible();
-    await expect(page.locator('.merge-requests-link')).toContainText('Merge Requests');
+    await expect(page.getByTestId('merge-requests-link')).toBeVisible();
+    await expect(page.getByTestId('merge-requests-link')).toContainText('Merge requests');
   });
 
   test('should navigate to merge requests page', async ({ page }) => {
@@ -129,7 +129,7 @@ test.describe('Merge Requests List', () => {
     await createSiteAndNavigate(page, siteName, pantheonId);
     await navigateToMergeRequests(page);
 
-    const createBtn = page.locator('.create-btn');
+    const createBtn = page.getByTestId('create-mr-btn');
     await expect(createBtn).toBeVisible();
     await expect(createBtn).toContainText('Create merge request');
   });
@@ -139,7 +139,7 @@ test.describe('Create Merge Request', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
 
@@ -149,7 +149,7 @@ test.describe('Create Merge Request', () => {
 
     await createSiteAndNavigate(page, siteName, pantheonId);
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+\/merge-requests\/new$/);
     await expect(page.locator('.page-title')).toContainText('Create Merge Request');
@@ -161,7 +161,7 @@ test.describe('Create Merge Request', () => {
 
     await createSiteAndNavigate(page, siteName, pantheonId);
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     // Check form fields exist
     await expect(page.locator('#sourceBranch')).toBeVisible();
@@ -181,7 +181,7 @@ test.describe('Create Merge Request', () => {
     await createBranch(page, branchName);
 
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     // Select same branch for source and target
     await page.locator('#sourceBranch').selectOption({ label: branchName });
@@ -189,11 +189,11 @@ test.describe('Create Merge Request', () => {
     await page.locator('#title').fill('Test MR');
 
     // Submit
-    await page.locator('.submit-btn').click();
+    await page.getByTestId('submit-btn').click();
 
     // Should show validation error
-    await expect(page.locator('.error-message')).toBeVisible();
-    await expect(page.locator('.error-message')).toContainText('different');
+    await expect(page.getByTestId('form-error')).toBeVisible();
+    await expect(page.getByTestId('form-error')).toContainText('different');
   });
 
   test('should show validation error when title is empty', async ({ page }) => {
@@ -205,18 +205,18 @@ test.describe('Create Merge Request', () => {
     await createBranch(page, branchName);
 
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     // Select branches but no title
     await page.locator('#sourceBranch').selectOption({ label: branchName });
     await page.locator('#targetBranch').selectOption({ label: 'main' });
 
     // Submit
-    await page.locator('.submit-btn').click();
+    await page.getByTestId('submit-btn').click();
 
     // Should show validation error
-    await expect(page.locator('.error-message')).toBeVisible();
-    await expect(page.locator('.error-message')).toContainText('title');
+    await expect(page.getByTestId('form-error')).toBeVisible();
+    await expect(page.getByTestId('form-error')).toContainText('title');
   });
 
   test('should create merge request with valid inputs', async ({ page }) => {
@@ -229,7 +229,7 @@ test.describe('Create Merge Request', () => {
     await createBranch(page, branchName);
 
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     // Fill form
     await page.locator('#sourceBranch').selectOption({ label: branchName });
@@ -238,7 +238,7 @@ test.describe('Create Merge Request', () => {
     await page.locator('#description').fill('This is a test merge request');
 
     // Submit
-    await page.locator('.submit-btn').click();
+    await page.getByTestId('submit-btn').click();
 
     // Should redirect to detail page
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+\/merge-requests\/[a-z0-9-]+$/);
@@ -253,10 +253,10 @@ test.describe('Create Merge Request', () => {
 
     await createSiteAndNavigate(page, siteName, pantheonId);
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     // Click cancel
-    await page.locator('.cancel-btn').click();
+    await page.getByTestId('cancel-btn').click();
 
     // Should return to list
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+\/merge-requests$/);
@@ -267,7 +267,7 @@ test.describe('Merge Request Detail', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
 
@@ -281,16 +281,16 @@ test.describe('Merge Request Detail', () => {
     await createBranch(page, branchName);
 
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
     await page.locator('#targetBranch').selectOption({ label: 'main' });
     await page.locator('#title').fill(mrTitle);
-    await page.locator('.submit-btn').click();
+    await page.getByTestId('submit-btn').click();
 
     // Verify detail page content
     await expect(page.locator('.mr-title')).toContainText(mrTitle);
-    await expect(page.locator('.status-badge')).toBeVisible();
+    await expect(page.locator('.tag')).toBeVisible();
     await expect(page.locator('.mr-branches')).toBeVisible();
     await expect(page.locator('.mr-metadata')).toBeVisible();
   });
@@ -304,16 +304,15 @@ test.describe('Merge Request Detail', () => {
     await createBranch(page, branchName);
 
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
     await page.locator('#targetBranch').selectOption({ label: 'main' });
     await page.locator('#title').fill('Status Test');
-    await page.locator('.submit-btn').click();
+    await page.getByTestId('submit-btn').click();
 
-    const badge = page.locator('.status-badge');
+    const badge = page.locator('.tag');
     await expect(badge).toContainText('open');
-    await expect(badge).toHaveClass(/status-open/);
   });
 
   test('should display actions for open MR', async ({ page }) => {
@@ -325,17 +324,17 @@ test.describe('Merge Request Detail', () => {
     await createBranch(page, branchName);
 
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
     await page.locator('#targetBranch').selectOption({ label: 'main' });
     await page.locator('#title').fill('Actions Test');
-    await page.locator('.submit-btn').click();
+    await page.getByTestId('submit-btn').click();
 
     // Open MR should have Approve, Close, Delete actions
-    await expect(page.locator('.action-approve')).toBeVisible();
-    await expect(page.locator('.action-close')).toBeVisible();
-    await expect(page.locator('.action-delete')).toBeVisible();
+    await expect(page.getByTestId('approve-btn')).toBeVisible();
+    await expect(page.getByTestId('close-btn')).toBeVisible();
+    await expect(page.getByTestId('delete-btn')).toBeVisible();
   });
 });
 
@@ -343,7 +342,7 @@ test.describe('Merge Request Status Changes', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
 
@@ -356,19 +355,18 @@ test.describe('Merge Request Status Changes', () => {
     await createBranch(page, branchName);
 
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
     await page.locator('#targetBranch').selectOption({ label: 'main' });
     await page.locator('#title').fill('Approve Test');
-    await page.locator('.submit-btn').click();
+    await page.getByTestId('submit-btn').click();
 
     // Click Approve
-    await page.locator('.action-approve').click();
+    await page.getByTestId('approve-btn').click();
 
     // Wait for status to update
-    await expect(page.locator('.status-badge')).toContainText('approved', { timeout: 10000 });
-    await expect(page.locator('.status-badge')).toHaveClass(/status-approved/);
+    await expect(page.locator('.tag')).toContainText('approved', { timeout: 10000 });
   });
 
   test('should close merge request', async ({ page }) => {
@@ -380,25 +378,25 @@ test.describe('Merge Request Status Changes', () => {
     await createBranch(page, branchName);
 
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
     await page.locator('#targetBranch').selectOption({ label: 'main' });
     await page.locator('#title').fill('Close Test');
-    await page.locator('.submit-btn').click();
+    await page.getByTestId('submit-btn').click();
 
     // Wait for detail page to load
-    await expect(page.locator('.status-badge')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.tag')).toBeVisible({ timeout: 5000 });
 
     // Click Close - wait for API response
     const responsePromise = page.waitForResponse(resp =>
       resp.url().includes('/merge-requests/') && resp.request().method() === 'PATCH'
     );
-    await page.locator('.action-close').click();
+    await page.getByTestId('close-btn').click();
     await responsePromise;
 
     // Wait for status to update
-    await expect(page.locator('.status-badge')).toContainText('closed', { timeout: 10000 });
+    await expect(page.locator('.tag')).toContainText('closed', { timeout: 10000 });
   });
 
   test('should reopen closed merge request', async ({ page }) => {
@@ -410,37 +408,37 @@ test.describe('Merge Request Status Changes', () => {
     await createBranch(page, branchName);
 
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
     await page.locator('#targetBranch').selectOption({ label: 'main' });
     await page.locator('#title').fill('Reopen Test');
-    await page.locator('.submit-btn').click();
+    await page.getByTestId('submit-btn').click();
 
     // Wait for detail page to load
-    await expect(page.locator('.status-badge')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.tag')).toBeVisible({ timeout: 5000 });
 
     // Close first - wait for API response
     const closeResponsePromise = page.waitForResponse(resp =>
       resp.url().includes('/merge-requests/') && resp.request().method() === 'PATCH'
     );
-    await page.locator('.action-close').click();
+    await page.getByTestId('close-btn').click();
     await closeResponsePromise;
 
     // Wait for UI to reflect the status change
-    await expect(page.locator('.status-badge')).toContainText('closed', { timeout: 10000 });
+    await expect(page.locator('.tag')).toContainText('closed', { timeout: 10000 });
 
     // Wait for the reopen button to appear (indicates status change completed)
-    await expect(page.locator('.action-reopen')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('reopen-btn')).toBeVisible({ timeout: 5000 });
 
     // Then reopen - wait for API response
     const reopenResponsePromise = page.waitForResponse(resp =>
       resp.url().includes('/merge-requests/') && resp.request().method() === 'PATCH'
     );
-    await page.locator('.action-reopen').click();
+    await page.getByTestId('reopen-btn').click();
     await reopenResponsePromise;
 
-    await expect(page.locator('.status-badge')).toContainText('open', { timeout: 10000 });
+    await expect(page.locator('.tag')).toContainText('open', { timeout: 10000 });
   });
 });
 
@@ -448,7 +446,7 @@ test.describe('Merge Request Deletion', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
 
@@ -461,15 +459,15 @@ test.describe('Merge Request Deletion', () => {
     await createBranch(page, branchName);
 
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
     await page.locator('#targetBranch').selectOption({ label: 'main' });
     await page.locator('#title').fill('Delete Modal Test');
-    await page.locator('.submit-btn').click();
+    await page.getByTestId('submit-btn').click();
 
     // Click Delete
-    await page.locator('.action-delete').click();
+    await page.getByTestId('delete-btn').click();
 
     // Modal should appear (PDS Modal uses role="dialog" with aria label)
     const dialog = page.getByRole('dialog', { name: /Delete merge request confirmation/i });
@@ -486,15 +484,15 @@ test.describe('Merge Request Deletion', () => {
     await createBranch(page, branchName);
 
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
     await page.locator('#targetBranch').selectOption({ label: 'main' });
     await page.locator('#title').fill(mrTitle);
-    await page.locator('.submit-btn').click();
+    await page.getByTestId('submit-btn').click();
 
     // Click Delete
-    await page.locator('.action-delete').click();
+    await page.getByTestId('delete-btn').click();
 
     // Confirm deletion
     await page.getByTestId('confirm-input').fill(mrTitle);
@@ -521,7 +519,7 @@ test.describe('Merge Request Preview', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
 
@@ -534,26 +532,26 @@ test.describe('Merge Request Preview', () => {
     await createBranch(page, branchName);
 
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
     await page.locator('#targetBranch').selectOption({ label: 'main' });
     await page.locator('#title').fill('Preview Test');
-    await page.locator('.submit-btn').click();
+    await page.getByTestId('submit-btn').click();
 
     // Should show merge preview panel with auto-loaded results
     await expect(page.locator('.merge-preview-panel')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('.preview-btn')).toBeVisible();
+    await expect(page.getByTestId('refresh-preview-btn')).toBeVisible();
 
     // Preview loads automatically - wait for results (or error if race condition in local dev)
     // First check loading starts - use first() to avoid strict mode issues if multiple elements exist
-    await expect(page.locator('.preview-loading, .preview-result, .preview-error').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.preview-loading, .preview-result, [data-testid="preview-error"]').first()).toBeVisible({ timeout: 10000 });
 
     // Then wait for loading to complete
-    await expect(page.locator('.preview-result, .preview-error').first()).toBeVisible({ timeout: 20000 });
+    await expect(page.locator('.preview-result, [data-testid="preview-error"]').first()).toBeVisible({ timeout: 20000 });
 
     // After loading, button should show "Refresh"
-    await expect(page.locator('.preview-btn')).toContainText('Refresh');
+    await expect(page.getByTestId('refresh-preview-btn')).toContainText('Refresh');
   });
 });
 
@@ -561,7 +559,7 @@ test.describe('Merge Request List View', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
 
@@ -575,12 +573,12 @@ test.describe('Merge Request List View', () => {
     await createBranch(page, branchName);
 
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
     await page.locator('#targetBranch').selectOption({ label: 'main' });
     await page.locator('#title').fill(mrTitle);
-    await page.locator('.submit-btn').click();
+    await page.getByTestId('submit-btn').click();
 
     // Navigate back to list
     await page.locator('.breadcrumb >> text=Merge Requests').click();
@@ -601,12 +599,12 @@ test.describe('Merge Request List View', () => {
     await createBranch(page, branchName);
 
     await navigateToMergeRequests(page);
-    await page.locator('.create-btn').click();
+    await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
     await page.locator('#targetBranch').selectOption({ label: 'main' });
     await page.locator('#title').fill(mrTitle);
-    await page.locator('.submit-btn').click();
+    await page.getByTestId('submit-btn').click();
 
     // Navigate back to list
     await page.locator('.breadcrumb >> text=Merge Requests').click();

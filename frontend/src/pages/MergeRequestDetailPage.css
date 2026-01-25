@@ -1,4 +1,18 @@
-/* Merge Request Detail Page Styles */
+/**
+ * Merge Request Detail Page Styles
+ *
+ * Uses PDS components where possible:
+ * - Button (PDS) for action buttons (approve, close, delete, merge, etc.)
+ * - RouterLinkButton (PDS) for back navigation
+ * - Alert (PDS) for error messages
+ *
+ * Custom styles remain for:
+ * - Page layout and structure
+ * - Breadcrumb (will be migrated in Phase 4)
+ * - Status badges (will be migrated in Phase 3)
+ * - Metadata grid
+ * - Conflict section styling
+ */
 
 .mr-detail-page {
   max-width: 900px;
@@ -12,11 +26,11 @@
   gap: 8px;
   margin-bottom: 20px;
   font-size: 0.875rem;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .breadcrumb a {
-  color: #4a9eff;
+  color: var(--dt-color-cyan-3, #02a9e0);
   text-decoration: none;
 }
 
@@ -25,17 +39,17 @@
 }
 
 .breadcrumb-separator {
-  color: #ced4da;
+  color: var(--dt-color-gray-3, #ced4da);
 }
 
 .breadcrumb-current {
-  color: #333;
+  color: var(--dt-color-gray-7, #333);
   font-weight: 500;
 }
 
 /* Header */
 .mr-header {
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   border-radius: 8px;
   padding: 24px;
   margin-bottom: 16px;
@@ -54,7 +68,7 @@
   margin: 0;
   font-size: 1.5rem;
   font-weight: 600;
-  color: #1a1a2e;
+  color: var(--dt-color-gray-8, #1a1a2e);
 }
 
 .mr-branches {
@@ -68,7 +82,7 @@
 }
 
 .branch-arrow {
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
   font-size: 1.25rem;
 }
 
@@ -85,33 +99,33 @@
 }
 
 .status-open {
-  background-color: #cce5ff;
-  color: #004085;
+  background-color: var(--dt-color-cyan-1, #cce5ff);
+  color: var(--dt-color-cyan-4, #004085);
 }
 
 .status-approved {
-  background-color: #d4edda;
-  color: #155724;
+  background-color: var(--dt-color-green-1, #d4edda);
+  color: var(--dt-color-green-4, #155724);
 }
 
 .status-conflicted {
-  background-color: #fff3cd;
-  color: #856404;
+  background-color: var(--dt-color-yellow-1, #fff3cd);
+  color: var(--dt-color-yellow-4, #856404);
 }
 
 .status-merged {
-  background-color: #e2d4f0;
-  color: #563d7c;
+  background-color: var(--dt-color-purple-1, #e2d4f0);
+  color: var(--dt-color-purple-4, #563d7c);
 }
 
 .status-closed {
-  background-color: #e2e3e5;
-  color: #383d41;
+  background-color: var(--dt-color-gray-2, #e2e3e5);
+  color: var(--dt-color-gray-6, #383d41);
 }
 
 /* Metadata Section */
 .mr-metadata {
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   border-radius: 8px;
   padding: 24px;
   margin-bottom: 16px;
@@ -135,17 +149,17 @@
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .metadata-value {
   font-size: 0.9375rem;
-  color: #333;
+  color: var(--dt-color-gray-7, #333);
 }
 
 /* Description Section */
 .mr-description {
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   border-radius: 8px;
   padding: 24px;
   margin-bottom: 16px;
@@ -156,13 +170,13 @@
   margin: 0 0 16px;
   font-size: 1.125rem;
   font-weight: 600;
-  color: #1a1a2e;
+  color: var(--dt-color-gray-8, #1a1a2e);
 }
 
 .description-content {
   font-size: 0.9375rem;
   line-height: 1.6;
-  color: #333;
+  color: var(--dt-color-gray-7, #333);
 }
 
 .description-content p {
@@ -170,13 +184,13 @@
 }
 
 .no-description {
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
   font-style: italic;
 }
 
 /* Actions Section */
-.mr-actions {
-  background-color: #fff;
+.mr-actions-section {
+  background-color: var(--dt-color-white, #fff);
   border-radius: 8px;
   padding: 24px;
   margin-bottom: 16px;
@@ -189,115 +203,20 @@
   gap: 12px;
 }
 
-.action-btn {
-  padding: 10px 20px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.action-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.action-approve {
-  background-color: #28a745;
-  color: #fff;
-}
-
-.action-approve:hover:not(:disabled) {
-  background-color: #218838;
-}
-
-.action-merge {
-  background-color: #563d7c;
-  color: #fff;
-}
-
-.action-merge:hover:not(:disabled) {
-  background-color: #452d6c;
-}
-
-.action-resolve {
-  background-color: #fd7e14;
-  color: #fff;
-}
-
-.action-resolve:hover:not(:disabled) {
-  background-color: #e67e04;
-}
-
-.action-close {
-  background-color: #6c757d;
-  color: #fff;
-}
-
-.action-close:hover:not(:disabled) {
-  background-color: #5a6268;
-}
-
-.action-reopen {
-  background-color: #4a9eff;
-  color: #fff;
-}
-
-.action-reopen:hover:not(:disabled) {
-  background-color: #3a8eef;
-}
-
-.action-delete {
-  background-color: #dc3545;
-  color: #fff;
-}
-
-.action-delete:hover:not(:disabled) {
-  background-color: #c82333;
-}
-
 .status-message {
   font-size: 0.9375rem;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
   font-style: italic;
 }
 
-.action-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* PDS Alert spacing for action error */
+.action-error-alert {
   margin-top: 12px;
-  padding: 12px;
-  background-color: #f8d7da;
-  border: 1px solid #f5c6cb;
-  border-radius: 6px;
-  color: #721c24;
-  font-size: 0.875rem;
-}
-
-.action-error .error-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  font-size: 0.75rem;
-  font-weight: bold;
-  background-color: #721c24;
-  color: #fff;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.action-error .error-text {
-  flex: 1;
 }
 
 /* Preview Section */
 .mr-preview {
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   border-radius: 8px;
   padding: 24px;
   margin-bottom: 16px;
@@ -306,18 +225,18 @@
 
 /* Conflicts Section */
 .mr-conflicts {
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   border-radius: 8px;
   padding: 24px;
   margin-bottom: 16px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border-left: 4px solid #fd7e14;
+  border-left: 4px solid var(--dt-color-yellow-3, #fd7e14);
 }
 
 .conflicts-note {
   margin: 0;
   font-size: 0.9375rem;
-  color: #856404;
+  color: var(--dt-color-yellow-4, #856404);
 }
 
 /* Loading & Error */
@@ -331,19 +250,6 @@
   text-align: center;
 }
 
-.back-link {
-  display: inline-block;
+.back-link-container {
   margin-top: 16px;
-  padding: 10px 20px;
-  font-size: 0.875rem;
-  color: #4a9eff;
-  text-decoration: none;
-  border: 1px solid #4a9eff;
-  border-radius: 6px;
-  transition: all 0.2s;
-}
-
-.back-link:hover {
-  background-color: #4a9eff;
-  color: #fff;
 }

@@ -28,7 +28,7 @@ function uniqueName(prefix: string): string {
 async function loginAsAlice(page: Page): Promise<void> {
   await page.goto('/login');
   await page.selectOption('#user-select', ALICE_USER_ID);
-  await page.click('.login-button');
+  await page.getByTestId('login-button').click();
   await expect(page).toHaveURL('/');
 }
 
@@ -68,13 +68,13 @@ test.describe('Branch Isolation', () => {
     const siteName = uniqueName('e2e-isolation');
 
     await page.goto('/sites');
-    await page.click('.create-btn');
-    await expect(page.locator('.create-form')).toBeVisible();
+    await page.getByTestId('create-site-btn').click();
+    await expect(page.getByTestId('create-form')).toBeVisible();
 
     await page.fill('input[placeholder="Enter site name..."]', siteName);
     const pantheonId = siteName.toLowerCase().replace(/[^a-z0-9-]/g, '-');
     await page.fill('input[placeholder="Enter Pantheon Site ID..."]', pantheonId);
-    await page.click('.submit-btn');
+    await page.getByTestId('submit-site-btn').click();
 
     // Wait for site to appear and navigate to it
     await expect(page.locator(`text=${siteName}`)).toBeVisible({ timeout: 15000 });

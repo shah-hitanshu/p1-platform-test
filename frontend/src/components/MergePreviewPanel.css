@@ -22,26 +22,7 @@
   color: #1a1a2e;
 }
 
-.preview-btn {
-  padding: 8px 16px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: #fff;
-  background-color: #6c757d;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.preview-btn:hover:not(:disabled) {
-  background-color: #5a6268;
-}
-
-.preview-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+/* Refresh button now uses PDS Button component */
 
 .preview-info {
   margin-bottom: 16px;
@@ -80,37 +61,7 @@
   }
 }
 
-/* Preview Error */
-.preview-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px;
-  background-color: #f8d7da;
-  border: 1px solid #f5c6cb;
-  border-radius: 6px;
-  color: #721c24;
-  font-size: 0.875rem;
-  margin-bottom: 16px;
-}
-
-.preview-error .error-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  font-size: 0.75rem;
-  font-weight: bold;
-  background-color: #721c24;
-  color: #fff;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.preview-error .error-text {
-  flex: 1;
-}
+/* Preview error now uses PDS Alert component */
 
 /* Preview Result */
 .preview-result {
@@ -145,35 +96,7 @@
   font-size: 1rem;
 }
 
-.conflicts-warning {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  padding: 10px 12px;
-  background-color: #fff3cd;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  color: #856404;
-}
-
-.conflicts-warning .warning-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  font-size: 0.75rem;
-  font-weight: bold;
-  background-color: #856404;
-  color: #fff;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.conflicts-warning .warning-text {
-  flex: 1;
-}
+/* Conflicts warning now uses PDS Alert component */
 
 /* Preview Conflicts */
 .preview-conflicts {

@@ -1,22 +1,37 @@
-/* Branch Detail Page Styles */
+/**
+ * Branch Detail Page Styles
+ *
+ * Uses PDS components where possible:
+ * - Button (PDS) for create, submit, delete buttons
+ * - RouterLinkButton (PDS) for back navigation
+ * - Alert (PDS) for error messages
+ *
+ * Custom styles remain for:
+ * - Page layout and structure
+ * - Breadcrumb (will be migrated in Phase 4)
+ * - Tabs (will be migrated in Phase 4)
+ * - Table styling (will be migrated in Phase 3)
+ * - Status/type badges (will be migrated in Phase 3)
+ * - Empty state (will be migrated in Phase 5)
+ */
 
 .branch-detail-page {
   max-width: 1200px;
   margin: 0 auto;
 }
 
-/* Breadcrumb */
+/* Breadcrumb - will be migrated in Phase 4 */
 .breadcrumb {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 20px;
   font-size: 0.875rem;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .breadcrumb a {
-  color: #4a9eff;
+  color: var(--dt-color-cyan-3, #02a9e0);
   text-decoration: none;
 }
 
@@ -25,17 +40,17 @@
 }
 
 .breadcrumb-separator {
-  color: #ced4da;
+  color: var(--dt-color-gray-3, #ced4da);
 }
 
 .breadcrumb-current {
-  color: #333;
+  color: var(--dt-color-gray-7, #333);
   font-weight: 500;
 }
 
 /* Branch Header */
 .branch-header {
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   border-radius: 8px;
   padding: 24px;
   margin-bottom: 24px;
@@ -53,7 +68,7 @@
   margin: 0;
   font-size: 1.75rem;
   font-weight: 600;
-  color: #1a1a2e;
+  color: var(--dt-color-gray-8, #1a1a2e);
 }
 
 .branch-meta {
@@ -64,22 +79,20 @@
 
 .meta-item {
   font-size: 0.875rem;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .meta-item strong {
-  color: #333;
+  color: var(--dt-color-gray-7, #333);
   margin-right: 4px;
 }
 
-/* Code styling inherits from global styles in index.css */
-
 .no-parent {
-  color: #ced4da;
+  color: var(--dt-color-gray-3, #ced4da);
   font-style: italic;
 }
 
-/* Status Badge */
+/* Status Badge - will be migrated in Phase 3 */
 .status-badge {
   display: inline-block;
   padding: 4px 12px;
@@ -91,26 +104,26 @@
 }
 
 .status-active {
-  background-color: #d4edda;
-  color: #155724;
+  background-color: var(--dt-color-green-1, #d4edda);
+  color: var(--dt-color-green-4, #155724);
 }
 
 .status-merged {
-  background-color: #cce5ff;
-  color: #004085;
+  background-color: var(--dt-color-cyan-1, #cce5ff);
+  color: var(--dt-color-cyan-4, #004085);
 }
 
 .status-archived {
-  background-color: #e2e3e5;
-  color: #383d41;
+  background-color: var(--dt-color-gray-2, #e2e3e5);
+  color: var(--dt-color-gray-6, #383d41);
 }
 
 .status-abandoned {
-  background-color: #f8d7da;
-  color: #721c24;
+  background-color: var(--dt-color-red-1, #f8d7da);
+  color: var(--dt-color-red-4, #721c24);
 }
 
-/* Tabs */
+/* Tabs - will be migrated in Phase 4 */
 .tabs-container {
   margin-bottom: 24px;
 }
@@ -118,14 +131,14 @@
 .tabs {
   display: flex;
   gap: 4px;
-  border-bottom: 2px solid #e9ecef;
+  border-bottom: 2px solid var(--dt-color-gray-2, #e9ecef);
 }
 
 .tab {
   padding: 12px 24px;
   font-size: 0.9375rem;
   font-weight: 500;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -135,17 +148,17 @@
 }
 
 .tab:hover {
-  color: #333;
+  color: var(--dt-color-gray-7, #333);
 }
 
 .tab.active {
-  color: #4a9eff;
-  border-bottom-color: #4a9eff;
+  color: var(--dt-color-cyan-3, #02a9e0);
+  border-bottom-color: var(--dt-color-cyan-3, #02a9e0);
 }
 
 /* Content Section */
 .content-section {
-  background-color: #fff;
+  background-color: var(--dt-color-white, #fff);
   border-radius: 8px;
   padding: 24px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -162,31 +175,14 @@
   margin: 0;
   font-size: 1.25rem;
   font-weight: 600;
-  color: #1a1a2e;
-}
-
-/* Create Button */
-.create-btn {
-  padding: 10px 20px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #fff;
-  background-color: #4a9eff;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.create-btn:hover {
-  background-color: #3a8eef;
+  color: var(--dt-color-gray-8, #1a1a2e);
 }
 
 /* Create Form */
 .create-form-container {
   margin-bottom: 20px;
   padding: 16px;
-  background-color: #f8f9fa;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
   border-radius: 6px;
 }
 
@@ -196,77 +192,38 @@
   align-items: flex-start;
 }
 
-.form-input {
+/* PDS-styled input element */
+.pds-input {
   flex: 1;
   padding: 12px;
   font-size: 0.9375rem;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--dt-color-gray-3, #ced4da);
   border-radius: 6px;
-  transition: border-color 0.2s;
+  background-color: var(--dt-color-white, #fff);
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.form-input:focus {
+.pds-input:focus {
   outline: none;
-  border-color: #4a9eff;
-  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.15);
+  border-color: var(--dt-color-cyan-3, #02a9e0);
+  box-shadow: 0 0 0 3px rgba(2, 169, 224, 0.15);
 }
 
-.submit-btn {
-  padding: 12px 24px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #fff;
-  background-color: #28a745;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.submit-btn:hover:not(:disabled) {
-  background-color: #218838;
-}
-
-.submit-btn:disabled {
-  background-color: #94d3a2;
+.pds-input:disabled {
+  background-color: var(--dt-color-gray-2, #e9ecef);
   cursor: not-allowed;
 }
 
-.create-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* PDS Alert spacing for create error */
+.create-error-alert {
   margin-top: 12px;
-  padding: 12px;
-  background-color: #f8d7da;
-  border: 1px solid #f5c6cb;
-  border-radius: 6px;
-  color: #721c24;
-  font-size: 0.875rem;
 }
 
-.create-error .error-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  font-size: 0.75rem;
-  font-weight: bold;
-  background-color: #721c24;
-  color: #fff;
-  border-radius: 50%;
-}
-
-.create-error .error-text {
-  flex: 1;
-}
-
-/* Table */
+/* Table - will be migrated in Phase 3 */
 .table-container {
   overflow: hidden;
   border-radius: 6px;
-  border: 1px solid #e9ecef;
+  border: 1px solid var(--dt-color-gray-2, #e9ecef);
 }
 
 .data-table {
@@ -283,17 +240,17 @@
 .data-table th {
   font-size: 0.8125rem;
   font-weight: 600;
-  color: #6c757d;
-  background-color: #f8f9fa;
-  border-bottom: 1px solid #e9ecef;
+  color: var(--dt-color-gray-5, #6c757d);
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .data-table td {
   font-size: 0.9375rem;
-  color: #333;
-  border-bottom: 1px solid #e9ecef;
+  color: var(--dt-color-gray-7, #333);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
 }
 
 .data-table tr:last-child td {
@@ -301,7 +258,7 @@
 }
 
 .data-table tr:hover td {
-  background-color: #f8f9fa;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
 }
 
 /* Checkpoint specific */
@@ -310,12 +267,12 @@
 }
 
 .checkpoint-name .unnamed {
-  color: #ced4da;
+  color: var(--dt-color-gray-3, #ced4da);
   font-style: italic;
   font-weight: normal;
 }
 
-/* Type Badge */
+/* Type Badge - will be migrated in Phase 3 */
 .type-badge {
   display: inline-block;
   padding: 3px 8px;
@@ -327,18 +284,18 @@
 }
 
 .type-manual {
-  background-color: #e2e3e5;
-  color: #383d41;
+  background-color: var(--dt-color-gray-2, #e2e3e5);
+  color: var(--dt-color-gray-6, #383d41);
 }
 
 .type-auto {
-  background-color: #fff3cd;
-  color: #856404;
+  background-color: var(--dt-color-yellow-1, #fff3cd);
+  color: var(--dt-color-yellow-4, #856404);
 }
 
 .type-merge {
-  background-color: #d4edda;
-  color: #155724;
+  background-color: var(--dt-color-green-1, #d4edda);
+  color: var(--dt-color-green-4, #155724);
 }
 
 /* Document specific */
@@ -352,7 +309,7 @@
 }
 
 .doc-link:hover code {
-  color: #4a9eff;
+  color: var(--dt-color-cyan-3, #02a9e0);
 }
 
 .doc-path code {
@@ -368,14 +325,20 @@
 }
 
 .date {
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
-/* Empty State */
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Empty State - will be migrated in Phase 5 */
 .empty-state {
   padding: 40px;
   text-align: center;
-  color: #6c757d;
+  color: var(--dt-color-gray-5, #6c757d);
 }
 
 .empty-state p {
@@ -393,23 +356,10 @@
   text-align: center;
 }
 
+.back-link-container {
+  margin-top: 16px;
+}
+
 .error-banner {
   margin-bottom: 20px;
-}
-
-.back-link {
-  display: inline-block;
-  margin-top: 16px;
-  padding: 10px 20px;
-  font-size: 0.875rem;
-  color: #4a9eff;
-  text-decoration: none;
-  border: 1px solid #4a9eff;
-  border-radius: 6px;
-  transition: all 0.2s;
-}
-
-.back-link:hover {
-  background-color: #4a9eff;
-  color: #fff;
 }

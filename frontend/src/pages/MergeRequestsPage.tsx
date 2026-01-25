@@ -5,13 +5,17 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { getSite } from '../api/sites';
 import { listMergeRequests } from '../api/merge-requests';
 import { listBranches } from '../api/branches';
 import { ApiResponse } from '../components/ApiResponse';
 import type { Site, MergeRequest, MergeRequestStatus, Branch } from '../types';
+import {
+  RouterLinkButton,
+  Tag,
+} from '@pantheon-systems/design-toolkit-react';
 import './MergeRequestsPage.css';
 
 type StatusFilter = 'all' | MergeRequestStatus;
@@ -56,20 +60,20 @@ export function MergeRequestsPage() {
     return branch?.name || branchId.slice(0, 8) + '...';
   };
 
-  const getStatusBadgeClass = (status: MergeRequestStatus) => {
+  const getStatusTagType = (status: MergeRequestStatus): 'info' | 'success' | 'warning' | 'default' => {
     switch (status) {
       case 'open':
-        return 'status-badge status-open';
+        return 'info';
       case 'approved':
-        return 'status-badge status-approved';
+        return 'success';
       case 'conflicted':
-        return 'status-badge status-conflicted';
+        return 'warning';
       case 'merged':
-        return 'status-badge status-merged';
+        return 'success';
       case 'closed':
-        return 'status-badge status-closed';
+        return 'default';
       default:
-        return 'status-badge';
+        return 'default';
     }
   };
 
@@ -88,7 +92,11 @@ export function MergeRequestsPage() {
       <div className="merge-requests-page">
         <div className="error-container">
           <ApiResponse data={null} isLoading={false} error={siteError} />
-          <Link to="/sites" className="back-link">Back to sites</Link>
+          <div className="back-link-container">
+            <RouterLinkButton to="/sites" type="secondary" data-testid="back-to-sites">
+              Back to sites
+            </RouterLinkButton>
+          </div>
         </div>
       </div>
     );
@@ -110,9 +118,13 @@ export function MergeRequestsPage() {
         <div className="page-info">
           <h1 className="page-title">Merge Requests</h1>
         </div>
-        <Link to={`/sites/${siteId}/merge-requests/new`} className="create-btn">
+        <RouterLinkButton
+          to={`/sites/${siteId}/merge-requests/new`}
+          type="primary"
+          data-testid="create-mr-btn"
+        >
           + Create merge request
-        </Link>
+        </RouterLinkButton>
       </header>
 
       {/* Status Filter Tabs */}
@@ -122,6 +134,7 @@ export function MergeRequestsPage() {
             key={tab.key}
             className={`filter-tab ${statusFilter === tab.key ? 'active' : ''}`}
             onClick={() => setStatusFilter(tab.key)}
+            data-testid={`filter-tab-${tab.key}`}
           >
             {tab.label}
           </button>
@@ -142,7 +155,7 @@ export function MergeRequestsPage() {
           </div>
         ) : mergeRequests && mergeRequests.length > 0 ? (
           <div className="merge-requests-table-container">
-            <table className="merge-requests-table">
+            <table className="merge-requests-table" data-testid="merge-requests-table">
               <thead>
                 <tr>
                   <th>Title</th>
@@ -159,6 +172,7 @@ export function MergeRequestsPage() {
                     key={mr.id}
                     className="clickable-row"
                     onClick={() => navigate(`/sites/${siteId}/merge-requests/${mr.id}`)}
+                    data-testid={`mr-row-${mr.id}`}
                   >
                     <td className="mr-title">{mr.title}</td>
                     <td className="branch-name">
@@ -168,20 +182,19 @@ export function MergeRequestsPage() {
                       <code>{getBranchName(mr.targetBranchId)}</code>
                     </td>
                     <td>
-                      <span className={getStatusBadgeClass(mr.status)}>
-                        {mr.status}
-                      </span>
+                      <Tag type={getStatusTagType(mr.status)}>{mr.status}</Tag>
                     </td>
                     <td className="mr-date">
                       {new Date(mr.createdAt).toLocaleDateString()}
                     </td>
                     <td className="mr-actions" onClick={(e) => e.stopPropagation()}>
-                      <Link
+                      <RouterLinkButton
                         to={`/sites/${siteId}/merge-requests/${mr.id}`}
-                        className="view-link"
+                        type="secondary"
+                        data-testid={`view-mr-${mr.id}`}
                       >
                         View
-                      </Link>
+                      </RouterLinkButton>
                     </td>
                   </tr>
                 ))}
@@ -189,11 +202,17 @@ export function MergeRequestsPage() {
             </table>
           </div>
         ) : (
-          <div className="empty-state">
+          <div className="empty-state" data-testid="empty-state">
             <p>No merge requests found{statusFilter !== 'all' ? ` with status "${statusFilter}"` : ''}.</p>
-            <Link to={`/sites/${siteId}/merge-requests/new`} className="create-link">
-              Create your first merge request
-            </Link>
+            <div className="empty-state-action">
+              <RouterLinkButton
+                to={`/sites/${siteId}/merge-requests/new`}
+                type="secondary"
+                data-testid="create-first-mr"
+              >
+                Create your first merge request
+              </RouterLinkButton>
+            </div>
           </div>
         )}
       </section>

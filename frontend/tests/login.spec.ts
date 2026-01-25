@@ -47,7 +47,7 @@ test.describe('Login Page', () => {
     await page.goto('/login');
 
     // Login button should be disabled without selection
-    const loginButton = page.locator('.login-button');
+    const loginButton = page.getByTestId('login-button');
     await expect(loginButton).toBeDisabled();
   });
 
@@ -58,7 +58,7 @@ test.describe('Login Page', () => {
     await page.selectOption('#user-select', BOB_USER_ID);
 
     // Login button should be enabled
-    const loginButton = page.locator('.login-button');
+    const loginButton = page.getByTestId('login-button');
     await expect(loginButton).toBeEnabled();
   });
 });
@@ -69,7 +69,7 @@ test.describe('Authentication Flow', () => {
 
     // Select user and login
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
 
     // Should redirect to dashboard
     await expect(page).toHaveURL('/');
@@ -83,7 +83,7 @@ test.describe('Authentication Flow', () => {
 
     // Login
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
 
     // Reload page
@@ -99,7 +99,7 @@ test.describe('Authentication Flow', () => {
 
     // Login first
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
 
     // Logout
@@ -114,7 +114,7 @@ test.describe('Authentication Flow', () => {
 
     // Login
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
 
     // Verify storage has token

@@ -22,23 +22,23 @@ async function createSiteAndNavigate(page: import('@playwright/test').Page, site
   await expect(page).toHaveURL('/sites');
 
   // Create site - wait for API response
-  await page.click('.create-btn');
-  await page.locator('.form-input').first().fill(siteName);
-  await page.locator('.form-input').nth(1).fill(pantheonId);
+  await page.getByTestId('create-site-btn').click();
+  await page.getByTestId('site-name-input').fill(siteName);
+  await page.getByTestId('pantheon-id-input').fill(pantheonId);
 
   // Wait for API response before clicking submit
   const responsePromise = page.waitForResponse(resp =>
     resp.url().includes('/api/sites') && resp.request().method() === 'POST'
   );
-  await page.click('.submit-btn');
+  await page.getByTestId('submit-site-btn').click();
   await responsePromise;
 
   // Wait for form to close
-  await expect(page.locator('.create-form')).not.toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId('create-form')).not.toBeVisible({ timeout: 10000 });
 
   // Navigate to site detail
   const siteRow = page.locator(`tr:has-text("${siteName}")`);
-  await siteRow.locator('.view-link').click();
+  await siteRow.locator('[data-testid^="view-site-"]').click();
   await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+$/);
 }
 
@@ -47,7 +47,7 @@ test.describe('Branch Creation', () => {
     // Login
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
 
@@ -69,7 +69,7 @@ test.describe('Branch Creation', () => {
 
     await createSiteAndNavigate(page, siteName, pantheonId);
 
-    const createBtn = page.locator('.branches-section .create-btn');
+    const createBtn = page.getByTestId('create-branch-btn');
     await expect(createBtn).toBeVisible();
     await expect(createBtn).toContainText('Create branch');
   });
@@ -80,21 +80,21 @@ test.describe('Branch Creation', () => {
 
     await createSiteAndNavigate(page, siteName, pantheonId);
 
-    const createBtn = page.locator('.branches-section .create-btn');
+    const createBtn = page.getByTestId('create-branch-btn');
 
     // Form should not be visible initially
-    await expect(page.locator('.branches-section .create-form')).not.toBeVisible();
+    await expect(page.getByTestId('create-branch-form')).not.toBeVisible();
 
     // Click to show form
     await createBtn.click();
-    await expect(page.locator('.branches-section .create-form')).toBeVisible();
+    await expect(page.getByTestId('create-branch-form')).toBeVisible();
 
     // Button should change to Cancel
     await expect(createBtn).toContainText('Cancel');
 
     // Click to hide form
     await createBtn.click();
-    await expect(page.locator('.branches-section .create-form')).not.toBeVisible();
+    await expect(page.getByTestId('create-branch-form')).not.toBeVisible();
   });
 
   test('should create a new branch', async ({ page }) => {
@@ -105,16 +105,16 @@ test.describe('Branch Creation', () => {
     await createSiteAndNavigate(page, siteName, pantheonId);
 
     // Open create form
-    await page.locator('.branches-section .create-btn').click();
+    await page.getByTestId('create-branch-btn').click();
 
     // Fill branch name
-    await page.locator('.branches-section .form-input').fill(branchName);
+    await page.getByTestId('branch-name-input').fill(branchName);
 
     // Submit
-    await page.locator('.branches-section .submit-btn').click();
+    await page.getByTestId('submit-branch-btn').click();
 
     // Wait for form to close
-    await expect(page.locator('.branches-section .create-form')).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('create-branch-form')).not.toBeVisible({ timeout: 10000 });
 
     // Verify branch appears in table
     await expect(page.locator('.branches-table')).toContainText(branchName);
@@ -129,20 +129,20 @@ test.describe('Branch Creation', () => {
     await createSiteAndNavigate(page, siteName, pantheonId);
 
     // First create a parent branch
-    await page.locator('.branches-section .create-btn').click();
-    await page.locator('.branches-section .form-input').fill(parentBranchName);
-    await page.locator('.branches-section .submit-btn').click();
-    await expect(page.locator('.branches-section .create-form')).not.toBeVisible({ timeout: 10000 });
+    await page.getByTestId('create-branch-btn').click();
+    await page.getByTestId('branch-name-input').fill(parentBranchName);
+    await page.getByTestId('submit-branch-btn').click();
+    await expect(page.getByTestId('create-branch-form')).not.toBeVisible({ timeout: 10000 });
 
     // Now create a child branch from the parent
-    await page.locator('.branches-section .create-btn').click();
-    await page.locator('.branches-section .form-input').fill(childBranchName);
+    await page.getByTestId('create-branch-btn').click();
+    await page.getByTestId('branch-name-input').fill(childBranchName);
 
     // Select the parent branch
-    await page.locator('.branches-section .form-select').selectOption({ label: parentBranchName });
+    await page.getByTestId('parent-branch-select').selectOption({ label: parentBranchName });
 
-    await page.locator('.branches-section .submit-btn').click();
-    await expect(page.locator('.branches-section .create-form')).not.toBeVisible({ timeout: 10000 });
+    await page.getByTestId('submit-branch-btn').click();
+    await expect(page.getByTestId('create-branch-form')).not.toBeVisible({ timeout: 10000 });
 
     // Verify child branch exists
     await expect(page.locator('.branches-table')).toContainText(childBranchName);
@@ -154,10 +154,10 @@ test.describe('Branch Creation', () => {
 
     await createSiteAndNavigate(page, siteName, pantheonId);
 
-    await page.locator('.branches-section .create-btn').click();
+    await page.getByTestId('create-branch-btn').click();
 
     // Submit button should be disabled when name is empty
-    await expect(page.locator('.branches-section .submit-btn')).toBeDisabled();
+    await expect(page.getByTestId('submit-branch-btn')).toBeDisabled();
   });
 });
 
@@ -166,7 +166,7 @@ test.describe('Branch Deletion', () => {
     // Login
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
 
@@ -181,7 +181,7 @@ test.describe('Branch Deletion', () => {
     await expect(mainRow).toBeVisible();
 
     // Main branch should NOT have a delete button
-    await expect(mainRow.locator('.delete-link')).not.toBeVisible();
+    await expect(mainRow.locator('[data-testid^="delete-branch-"]')).not.toBeVisible();
   });
 
   test('should open delete confirmation modal for non-main branch', async ({ page }) => {
@@ -192,15 +192,15 @@ test.describe('Branch Deletion', () => {
     await createSiteAndNavigate(page, siteName, pantheonId);
 
     // Create a branch
-    await page.locator('.branches-section .create-btn').click();
-    await page.locator('.branches-section .form-input').fill(branchName);
-    await page.locator('.branches-section .submit-btn').click();
-    await expect(page.locator('.branches-section .create-form')).not.toBeVisible({ timeout: 10000 });
+    await page.getByTestId('create-branch-btn').click();
+    await page.getByTestId('branch-name-input').fill(branchName);
+    await page.getByTestId('submit-branch-btn').click();
+    await expect(page.getByTestId('create-branch-form')).not.toBeVisible({ timeout: 10000 });
 
     // Find and click delete button
     const branchRow = page.locator(`tr:has-text("${branchName}")`);
     await expect(branchRow).toBeVisible();
-    await branchRow.locator('.delete-link').click();
+    await branchRow.locator('[data-testid^="delete-branch-"]').click();
 
     // Modal should appear (PDS Modal uses role="dialog" with aria label)
     const dialog = page.getByRole('dialog', { name: /Delete branch confirmation/i });
@@ -215,14 +215,14 @@ test.describe('Branch Deletion', () => {
     await createSiteAndNavigate(page, siteName, pantheonId);
 
     // Create branch
-    await page.locator('.branches-section .create-btn').click();
-    await page.locator('.branches-section .form-input').fill(branchName);
-    await page.locator('.branches-section .submit-btn').click();
-    await expect(page.locator('.branches-section .create-form')).not.toBeVisible({ timeout: 10000 });
+    await page.getByTestId('create-branch-btn').click();
+    await page.getByTestId('branch-name-input').fill(branchName);
+    await page.getByTestId('submit-branch-btn').click();
+    await expect(page.getByTestId('create-branch-form')).not.toBeVisible({ timeout: 10000 });
 
     // Open delete modal
     const branchRow = page.locator(`tr:has-text("${branchName}")`);
-    await branchRow.locator('.delete-link').click();
+    await branchRow.locator('[data-testid^="delete-branch-"]').click();
 
     // Delete button should be disabled
     const deleteBtn = page.getByTestId('delete-button');
@@ -245,17 +245,17 @@ test.describe('Branch Deletion', () => {
     await createSiteAndNavigate(page, siteName, pantheonId);
 
     // Create branch
-    await page.locator('.branches-section .create-btn').click();
-    await page.locator('.branches-section .form-input').fill(branchName);
-    await page.locator('.branches-section .submit-btn').click();
-    await expect(page.locator('.branches-section .create-form')).not.toBeVisible({ timeout: 10000 });
+    await page.getByTestId('create-branch-btn').click();
+    await page.getByTestId('branch-name-input').fill(branchName);
+    await page.getByTestId('submit-branch-btn').click();
+    await expect(page.getByTestId('create-branch-form')).not.toBeVisible({ timeout: 10000 });
 
     // Verify branch exists
     await expect(page.locator('.branches-table')).toContainText(branchName);
 
     // Open delete modal
     const branchRow = page.locator(`tr:has-text("${branchName}")`);
-    await branchRow.locator('.delete-link').click();
+    await branchRow.locator('[data-testid^="delete-branch-"]').click();
 
     // Confirm deletion
     await page.getByTestId('confirm-input').fill(branchName);
@@ -276,14 +276,14 @@ test.describe('Branch Deletion', () => {
     await createSiteAndNavigate(page, siteName, pantheonId);
 
     // Create branch
-    await page.locator('.branches-section .create-btn').click();
-    await page.locator('.branches-section .form-input').fill(branchName);
-    await page.locator('.branches-section .submit-btn').click();
-    await expect(page.locator('.branches-section .create-form')).not.toBeVisible({ timeout: 10000 });
+    await page.getByTestId('create-branch-btn').click();
+    await page.getByTestId('branch-name-input').fill(branchName);
+    await page.getByTestId('submit-branch-btn').click();
+    await expect(page.getByTestId('create-branch-form')).not.toBeVisible({ timeout: 10000 });
 
     // Open modal
     const branchRow = page.locator(`tr:has-text("${branchName}")`);
-    await branchRow.locator('.delete-link').click();
+    await branchRow.locator('[data-testid^="delete-branch-"]').click();
     await expect(page.getByRole('dialog')).toBeVisible();
 
     // Cancel
@@ -302,7 +302,7 @@ test.describe('Branch Archive', () => {
     // Login
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
 
@@ -317,7 +317,7 @@ test.describe('Branch Archive', () => {
     await expect(mainRow).toBeVisible();
 
     // Main branch should NOT have an archive button
-    await expect(mainRow.locator('.archive-link')).not.toBeVisible();
+    await expect(mainRow.locator('[data-testid^="archive-branch-"]')).not.toBeVisible();
   });
 
   test('should archive a non-main branch', async ({ page }) => {
@@ -328,10 +328,10 @@ test.describe('Branch Archive', () => {
     await createSiteAndNavigate(page, siteName, pantheonId);
 
     // Create a branch
-    await page.locator('.branches-section .create-btn').click();
-    await page.locator('.branches-section .form-input').fill(branchName);
-    await page.locator('.branches-section .submit-btn').click();
-    await expect(page.locator('.branches-section .create-form')).not.toBeVisible({ timeout: 10000 });
+    await page.getByTestId('create-branch-btn').click();
+    await page.getByTestId('branch-name-input').fill(branchName);
+    await page.getByTestId('submit-branch-btn').click();
+    await expect(page.getByTestId('create-branch-form')).not.toBeVisible({ timeout: 10000 });
 
     // Find the branch row and click archive
     const branchRow = page.locator(`tr:has-text("${branchName}")`);
@@ -341,14 +341,14 @@ test.describe('Branch Archive', () => {
     const responsePromise = page.waitForResponse(resp =>
       resp.url().includes('/branches/') && resp.request().method() === 'PATCH'
     );
-    await branchRow.locator('.archive-link').click();
+    await branchRow.locator('[data-testid^="archive-branch-"]').click();
     await responsePromise;
 
     // Status should change to archived
-    await expect(branchRow.locator('.status-badge')).toContainText('archived');
+    await expect(branchRow.locator('.tag')).toContainText('archived');
 
     // Archive button should no longer be visible for this branch
-    await expect(branchRow.locator('.archive-link')).not.toBeVisible();
+    await expect(branchRow.locator('[data-testid^="archive-branch-"]')).not.toBeVisible();
   });
 
   test('should still show delete button for archived branch', async ({ page }) => {
@@ -359,24 +359,24 @@ test.describe('Branch Archive', () => {
     await createSiteAndNavigate(page, siteName, pantheonId);
 
     // Create a branch
-    await page.locator('.branches-section .create-btn').click();
-    await page.locator('.branches-section .form-input').fill(branchName);
-    await page.locator('.branches-section .submit-btn').click();
-    await expect(page.locator('.branches-section .create-form')).not.toBeVisible({ timeout: 10000 });
+    await page.getByTestId('create-branch-btn').click();
+    await page.getByTestId('branch-name-input').fill(branchName);
+    await page.getByTestId('submit-branch-btn').click();
+    await expect(page.getByTestId('create-branch-form')).not.toBeVisible({ timeout: 10000 });
 
     // Archive it
     const branchRow = page.locator(`tr:has-text("${branchName}")`);
     const responsePromise = page.waitForResponse(resp =>
       resp.url().includes('/branches/') && resp.request().method() === 'PATCH'
     );
-    await branchRow.locator('.archive-link').click();
+    await branchRow.locator('[data-testid^="archive-branch-"]').click();
     await responsePromise;
 
     // Status should be archived
-    await expect(branchRow.locator('.status-badge')).toContainText('archived');
+    await expect(branchRow.locator('.tag')).toContainText('archived');
 
     // Delete button should still be visible
-    await expect(branchRow.locator('.delete-link')).toBeVisible();
+    await expect(branchRow.locator('[data-testid^="delete-branch-"]')).toBeVisible();
   });
 });
 
@@ -385,7 +385,7 @@ test.describe('Branch Navigation', () => {
     // Login
     await page.goto('/login');
     await page.selectOption('#user-select', ALICE_USER_ID);
-    await page.click('.login-button');
+    await page.getByTestId('login-button').click();
     await expect(page).toHaveURL('/');
   });
 
@@ -397,7 +397,7 @@ test.describe('Branch Navigation', () => {
 
     // Click View on main branch
     const mainRow = page.locator('tr:has-text("main")');
-    await mainRow.locator('.view-link').click();
+    await mainRow.locator('[data-testid^="view-branch-"]').click();
 
     // Should navigate to branch detail
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+\/branches\/[a-z0-9-]+$/);
@@ -414,7 +414,7 @@ test.describe('Branch Navigation', () => {
 
     // Navigate to branch
     const mainRow = page.locator('tr:has-text("main")');
-    await mainRow.locator('.view-link').click();
+    await mainRow.locator('[data-testid^="view-branch-"]').click();
 
     // Breadcrumb should be visible
     await expect(page.locator('.breadcrumb')).toBeVisible();
