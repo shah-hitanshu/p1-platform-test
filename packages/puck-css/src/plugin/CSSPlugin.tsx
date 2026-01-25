@@ -2,11 +2,11 @@
  * CSS Puck Plugin
  *
  * Adds CSS functionality to the Puck editor's plugin rail.
- * Provides branch selection and other CSS-specific controls.
+ * Provides branch selection, document management, and other CSS-specific controls.
  */
 
-import React from 'react';
-import type { Branch } from '@pantheon/css-client';
+import React, { useState, useCallback } from 'react';
+import type { Branch, Document } from '@pantheon/css-client';
 
 /**
  * Props for the CSS Plugin panel content
@@ -20,6 +20,18 @@ interface CSSPluginPanelProps {
   onBranchSwitch: (branchId: string) => void;
   /** Whether there are unsaved changes */
   hasUnsavedChanges?: boolean;
+  /** List of documents on the current branch */
+  documents?: Document[];
+  /** Currently selected document path */
+  selectedDocumentPath?: string | null;
+  /** Callback when a document is selected */
+  onDocumentSelect?: (path: string) => void;
+  /** Callback to create a new document */
+  onDocumentCreate?: (path: string) => Promise<void>;
+  /** Callback to delete a document */
+  onDocumentDelete?: (documentId: string, path: string) => Promise<void>;
+  /** Whether documents are loading */
+  documentsLoading?: boolean;
 }
 
 /**
@@ -30,7 +42,17 @@ function CSSPluginPanel({
   currentBranch,
   onBranchSwitch,
   hasUnsavedChanges = false,
+  documents = [],
+  selectedDocumentPath,
+  onDocumentSelect,
+  onDocumentCreate,
+  onDocumentDelete,
+  documentsLoading = false,
 }: CSSPluginPanelProps): React.ReactElement {
+  const [isCreating, setIsCreating] = useState(false);
+  const [newDocPath, setNewDocPath] = useState('');
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const handleBranchChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newBranchId = e.target.value;
     if (hasUnsavedChanges) {
@@ -42,8 +64,37 @@ function CSSPluginPanel({
     onBranchSwitch(newBranchId);
   };
 
+  const handleCreateDocument = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDocPath.trim() || !onDocumentCreate) return;
+
+    const path = newDocPath.startsWith('/') ? newDocPath.slice(1) : newDocPath;
+    setCreateError(null);
+
+    try {
+      await onDocumentCreate(path);
+      setNewDocPath('');
+      setIsCreating(false);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Failed to create document');
+    }
+  }, [newDocPath, onDocumentCreate]);
+
+  const handleDeleteDocument = useCallback(async (e: React.MouseEvent, docId: string, path: string) => {
+    e.stopPropagation();
+    if (!onDocumentDelete) return;
+    if (!window.confirm(`Delete "${path}"?`)) return;
+
+    try {
+      await onDocumentDelete(docId, path);
+    } catch (err) {
+      console.error('Failed to delete document:', err);
+    }
+  }, [onDocumentDelete]);
+
   return (
     <div className="css-plugin-panel">
+      {/* Branch Selection */}
       <div className="css-plugin-section">
         <label className="css-plugin-label" htmlFor="css-branch-select">
           Branch
@@ -63,12 +114,68 @@ function CSSPluginPanel({
         </select>
       </div>
 
-      {currentBranch && (
+      {/* Document Management */}
+      {onDocumentSelect && (
         <div className="css-plugin-section">
-          <div className="css-plugin-info">
-            <span className="css-plugin-info-label">Current Branch:</span>
-            <span className="css-plugin-info-value">{currentBranch.name}</span>
+          <div className="css-plugin-section-header">
+            <label className="css-plugin-label">Documents</label>
+            {onDocumentCreate && (
+              <button
+                type="button"
+                className="css-plugin-btn-small"
+                onClick={() => setIsCreating(!isCreating)}
+              >
+                {isCreating ? '×' : '+'}
+              </button>
+            )}
           </div>
+
+          {isCreating && onDocumentCreate && (
+            <form className="css-plugin-create-form" onSubmit={handleCreateDocument}>
+              <input
+                type="text"
+                className="css-plugin-input"
+                placeholder="/page-path"
+                value={newDocPath}
+                onChange={(e) => setNewDocPath(e.target.value)}
+                autoFocus
+              />
+              <button type="submit" className="css-plugin-btn-small css-plugin-btn-primary">
+                Create
+              </button>
+              {createError && (
+                <div className="css-plugin-error">{createError}</div>
+              )}
+            </form>
+          )}
+
+          {documentsLoading ? (
+            <div className="css-plugin-loading">Loading...</div>
+          ) : documents.length === 0 ? (
+            <div className="css-plugin-empty">No documents yet</div>
+          ) : (
+            <ul className="css-plugin-doc-list">
+              {documents.map((doc) => (
+                <li
+                  key={doc.id}
+                  className={`css-plugin-doc-item ${selectedDocumentPath === doc.path ? 'css-plugin-doc-item--active' : ''}`}
+                  onClick={() => onDocumentSelect(doc.path)}
+                >
+                  <span className="css-plugin-doc-path">{doc.path}</span>
+                  {onDocumentDelete && (
+                    <button
+                      type="button"
+                      className="css-plugin-doc-delete"
+                      onClick={(e) => handleDeleteDocument(e, doc.id, doc.path)}
+                      aria-label={`Delete ${doc.path}`}
+                    >
+                      ×
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>
@@ -109,6 +216,18 @@ export interface CSSPluginOptions {
   onBranchSwitch: (branchId: string) => void;
   /** Whether there are unsaved changes */
   hasUnsavedChanges?: boolean;
+  /** List of documents on the current branch */
+  documents?: Document[];
+  /** Currently selected document path */
+  selectedDocumentPath?: string | null;
+  /** Callback when a document is selected */
+  onDocumentSelect?: (path: string) => void;
+  /** Callback to create a new document */
+  onDocumentCreate?: (path: string) => Promise<void>;
+  /** Callback to delete a document */
+  onDocumentDelete?: (documentId: string, path: string) => Promise<void>;
+  /** Whether documents are loading */
+  documentsLoading?: boolean;
 }
 
 /**
@@ -119,7 +238,7 @@ export interface PuckPlugin {
   label: string;
   icon: React.ReactNode;
   render: () => React.ReactElement;
-  overrides?: Record<string, unknown>;
+  overrides?: object;
 }
 
 /**
@@ -154,6 +273,12 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
         currentBranch={options.currentBranch}
         onBranchSwitch={options.onBranchSwitch}
         hasUnsavedChanges={options.hasUnsavedChanges}
+        documents={options.documents}
+        selectedDocumentPath={options.selectedDocumentPath}
+        onDocumentSelect={options.onDocumentSelect}
+        onDocumentCreate={options.onDocumentCreate}
+        onDocumentDelete={options.onDocumentDelete}
+        documentsLoading={options.documentsLoading}
       />
     ),
     overrides: {},

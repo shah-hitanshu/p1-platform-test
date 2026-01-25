@@ -3,9 +3,10 @@
  *
  * Demonstrates Puck editor integration with the Collaborative State System.
  * Uses Puck's Plugin API and Overrides for proper integration.
+ * Document management is handled within Puck's plugin rail, not a separate sidebar.
  */
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Puck } from '@measured/puck';
 import '@measured/puck/puck.css';
@@ -58,139 +59,17 @@ const cssClient = new CSSClient({
 });
 
 /**
- * Page List Component
- * Shows documents in the sidebar
+ * Main Application Content
+ * Full-width Puck editor with CSS plugin in the plugin rail
  */
-interface PageListProps {
-  selectedPath: string | null;
-  onSelect: (path: string) => void;
-}
+function AppContent() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedPath = searchParams.get('path');
 
-function PageList({ selectedPath, onSelect }: PageListProps) {
-  const { client, siteId, branchId } = useCSSPuck();
-  const { documents, loading, error, create, remove, refresh } = useDocuments({
+  const {
     client,
     siteId,
     branchId,
-  });
-
-  const [isCreating, setIsCreating] = useState(false);
-  const [newPagePath, setNewPagePath] = useState('');
-
-  const handleCreate = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPagePath.trim()) return;
-
-    // CSS API paths should not start with /
-    const path = newPagePath.startsWith('/') ? newPagePath.slice(1) : newPagePath;
-    try {
-      await create(path);
-      setNewPagePath('');
-      setIsCreating(false);
-      onSelect(path);
-    } catch (err) {
-      console.error('Failed to create page:', err);
-    }
-  }, [newPagePath, create, onSelect]);
-
-  const handleDelete = useCallback(async (e: React.MouseEvent, docId: string, path: string) => {
-    e.stopPropagation();
-    if (!window.confirm(`Delete page "${path}"?`)) return;
-
-    try {
-      await remove(docId);
-      if (selectedPath === path) {
-        onSelect('');
-      }
-    } catch (err) {
-      console.error('Failed to delete page:', err);
-    }
-  }, [remove, selectedPath, onSelect]);
-
-  if (loading) {
-    return <div className="loading">Loading pages...</div>;
-  }
-
-  if (error) {
-    return (
-      <div className="error">
-        <h3>Error loading pages</h3>
-        <p>{error.message}</p>
-        <button className="btn btn-primary" onClick={refresh}>
-          Retry
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <div className="sidebar-header">
-        <h2>Pages</h2>
-        <button
-          className="btn btn-small btn-primary"
-          onClick={() => setIsCreating(!isCreating)}
-        >
-          {isCreating ? '×' : '+ New'}
-        </button>
-      </div>
-
-      <div className="sidebar-content">
-        {isCreating && (
-          <form className="create-page-form" onSubmit={handleCreate}>
-            <input
-              type="text"
-              placeholder="/page-path"
-              value={newPagePath}
-              onChange={(e) => setNewPagePath(e.target.value)}
-              autoFocus
-            />
-            <button type="submit" className="btn btn-small btn-primary">
-              Create
-            </button>
-          </form>
-        )}
-
-        {documents.length === 0 ? (
-          <div className="empty-state">
-            <p>No pages yet</p>
-            <p>Click &quot;+ New&quot; to create one</p>
-          </div>
-        ) : (
-          <ul className="page-list">
-            {documents.map((doc) => (
-              <li
-                key={doc.id}
-                className={`page-item ${selectedPath === doc.path ? 'active' : ''}`}
-                onClick={() => onSelect(doc.path)}
-              >
-                <span className="page-item-path">{doc.path}</span>
-                <button
-                  className="page-item-delete"
-                  onClick={(e) => handleDelete(e, doc.id, doc.path)}
-                  aria-label={`Delete ${doc.path}`}
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </>
-  );
-}
-
-/**
- * Editor Component
- * Puck editor with CSS integration via plugins and overrides
- */
-interface EditorProps {
-  documentPath: string;
-}
-
-function Editor({ documentPath }: EditorProps) {
-  const {
     currentData,
     currentDocument,
     loadDocument,
@@ -205,21 +84,66 @@ function Editor({ documentPath }: EditorProps) {
     switchBranch,
   } = useCSSPuck();
 
-  const [loading, setLoading] = useState(true);
+  // Document management via useDocuments hook
+  const { documents, loading: documentsLoading, create, remove } = useDocuments({
+    client,
+    siteId,
+    branchId,
+  });
+
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+
+  // Handle document selection
+  const handleDocumentSelect = useCallback(
+    (path: string) => {
+      if (path) {
+        setSearchParams({ path });
+      } else {
+        setSearchParams({});
+      }
+    },
+    [setSearchParams]
+  );
+
+  // Handle document creation
+  const handleDocumentCreate = useCallback(
+    async (path: string) => {
+      await create(path);
+      handleDocumentSelect(path);
+    },
+    [create, handleDocumentSelect]
+  );
+
+  // Handle document deletion
+  const handleDocumentDelete = useCallback(
+    async (documentId: string, path: string) => {
+      await remove(documentId);
+      if (selectedPath === path) {
+        handleDocumentSelect('');
+      }
+    },
+    [remove, selectedPath, handleDocumentSelect]
+  );
 
   // Load document when path changes
   useEffect(() => {
+    if (!selectedPath) {
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
-    loadDocument(documentPath)
+    loadDocument(selectedPath)
       .then(() => setLoading(false))
       .catch((err) => {
         setError(err instanceof Error ? err : new Error(String(err)));
         setLoading(false);
       });
-  }, [documentPath, loadDocument]);
+  }, [selectedPath, loadDocument]);
 
   const handleChange = useCallback(
     (data: unknown) => {
@@ -236,13 +160,30 @@ function Editor({ documentPath }: EditorProps) {
     alert(`Publish failed: ${err.message}`);
   }, []);
 
-  // Create Puck plugin for CSS integration (branch selector in plugin rail)
+  // Create Puck plugin for CSS integration (branch selector + document list in plugin rail)
   const cssPlugin = useMemo(() => createCSSPlugin({
     branches,
     currentBranch,
     onBranchSwitch: switchBranch,
     hasUnsavedChanges: saveStatus === 'saving',
-  }), [branches, currentBranch, switchBranch, saveStatus]);
+    documents,
+    selectedDocumentPath: selectedPath,
+    onDocumentSelect: handleDocumentSelect,
+    onDocumentCreate: handleDocumentCreate,
+    onDocumentDelete: handleDocumentDelete,
+    documentsLoading,
+  }), [
+    branches,
+    currentBranch,
+    switchBranch,
+    saveStatus,
+    documents,
+    selectedPath,
+    handleDocumentSelect,
+    handleDocumentCreate,
+    handleDocumentDelete,
+    documentsLoading,
+  ]);
 
   // Create Puck overrides for header actions (save indicator, publish button)
   const cssOverrides = useMemo(() => createCSSOverrides({
@@ -257,91 +198,58 @@ function Editor({ documentPath }: EditorProps) {
     showDefaultPublish: false,
   }), [saveStatus, lastSaved, saveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError]);
 
+  // Loading state
   if (loading) {
-    return <div className="loading">Loading document...</div>;
+    return (
+      <div className="app app--fullscreen">
+        <div className="loading">Loading document...</div>
+      </div>
+    );
   }
 
+  // Error state
   if (error) {
     return (
-      <div className="error">
-        <h3>Error loading document</h3>
-        <p>{error.message}</p>
+      <div className="app app--fullscreen">
+        <div className="error">
+          <h3>Error loading document</h3>
+          <p>{error.message}</p>
+        </div>
       </div>
     );
   }
 
-  if (!currentDocument || !currentData) {
+  // Cast plugin to match Puck's expected types
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const puckPlugins = [cssPlugin] as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const puckOverrides = cssOverrides as any;
+
+  // No document selected - show Puck with empty state
+  if (!selectedPath || !currentDocument || !currentData) {
     return (
-      <div className="error">
-        <h3>Document not found</h3>
-        <p>The document at &quot;{documentPath}&quot; could not be loaded.</p>
+      <div className="app app--fullscreen">
+        <Puck
+          config={puckConfig}
+          data={{ content: [], root: { props: {} } }}
+          onChange={() => {}}
+          plugins={puckPlugins}
+          overrides={puckOverrides}
+        />
       </div>
     );
   }
 
+  // Document loaded - show Puck editor
   return (
-    <div className="editor-container">
+    <div className="app app--fullscreen">
       <Puck
         config={puckConfig}
         data={currentData}
         onChange={handleChange}
-        plugins={[cssPlugin]}
-        overrides={cssOverrides}
+        plugins={puckPlugins}
+        overrides={puckOverrides}
       />
-    </div>
-  );
-}
-
-/**
- * Empty State
- * Shown when no page is selected
- */
-function EmptyState() {
-  return (
-    <div className="empty-state">
-      <h3>No page selected</h3>
-      <p>Select a page from the sidebar to start editing, or create a new page.</p>
-    </div>
-  );
-}
-
-/**
- * Main Application Layout
- */
-function AppContent() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const selectedPath = searchParams.get('path');
-
-  const handleSelectPage = useCallback(
-    (path: string) => {
-      if (path) {
-        setSearchParams({ path });
-      } else {
-        setSearchParams({});
-      }
-    },
-    [setSearchParams]
-  );
-
-  return (
-    <div className="app">
-      <header className="app-header">
-        <h1>Puck + CSS Demo</h1>
-      </header>
-
-      <main className="app-main">
-        <aside className="sidebar">
-          <PageList selectedPath={selectedPath} onSelect={handleSelectPage} />
-        </aside>
-
-        <section className="editor-section">
-          {selectedPath ? (
-            <Editor documentPath={selectedPath} />
-          ) : (
-            <EmptyState />
-          )}
-        </section>
-      </main>
     </div>
   );
 }

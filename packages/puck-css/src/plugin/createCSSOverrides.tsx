@@ -39,7 +39,7 @@ export interface CSSOverridesOptions {
  * Puck Overrides type (matches Puck's expected structure)
  */
 export interface PuckOverrides {
-  headerActions?: (props: { children: React.ReactNode }) => React.ReactNode;
+  headerActions?: (props: { children: React.ReactNode }) => React.ReactElement;
 }
 
 /**

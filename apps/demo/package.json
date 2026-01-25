@@ -11,7 +11,7 @@
     "lint": "eslint . --ext .ts,.tsx"
   },
   "dependencies": {
-    "@measured/puck": "^0.16.0",
+    "@measured/puck": "0.21.0-canary.cbc526d1",
     "@pantheon/css-client": "workspace:*",
     "@pantheon/puck-css": "workspace:*",
     "react": "^18.2.0",
