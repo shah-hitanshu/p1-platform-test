@@ -35,7 +35,8 @@
       "name": "Zappy AI Assistant",
       "apiKey": "test-agent-key-zappy",
       "siteRoles": {
-        "site-123": "editor"
+        "site-123": "editor",
+        "35b800c4-6010-4908-a724-f1512e2a2144": "admin"
       }
     },
     {

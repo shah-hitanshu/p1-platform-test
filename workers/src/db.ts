@@ -50,6 +50,11 @@ export interface DatabaseConnection {
 /**
  * Request-scoped database context.
  * Stores the current request's database connection.
+ *
+ * IMPORTANT: In Cloudflare Workers, each request should create and close its own
+ * connection. The global variable here is per-isolate, and concurrent requests
+ * may share the same isolate. Always call closeDatabaseConnection() at the end
+ * of each request to prevent connection leaks.
  */
 let currentConnection: DatabaseConnection | null = null;
 
@@ -134,17 +139,22 @@ export function createDatabaseConnection(
  * Initialize the database connection for the current request.
  * Creates a fresh connection that will be used for all queries in this request.
  *
+ * IMPORTANT: Always call closeDatabaseConnection() at the end of each request
+ * to prevent connection leaks.
+ *
  * @param connectionString - PostgreSQL connection string
  * @param options - Connection options
  */
-export function initializeDatabaseFromConnectionString(
+export async function initializeDatabaseFromConnectionString(
   connectionString: string,
   options: ConnectionOptions = {},
-): void {
-  // Close any existing connection (shouldn't happen in normal flow)
+): Promise<void> {
+  // Close any existing connection before creating a new one
+  // Use fire-and-forget to avoid blocking on slow closes
   if (currentConnection) {
-    // Fire and forget - we're replacing it anyway
-    currentConnection.close().catch(() => {
+    const oldConnection = currentConnection;
+    currentConnection = null;
+    oldConnection.close().catch(() => {
       // Ignore errors closing stale connection
     });
   }
@@ -159,8 +169,8 @@ export function initializeDatabaseFromConnectionString(
  *
  * @param hyperdrive - Hyperdrive binding from env
  */
-export function initializeDatabaseFromHyperdrive(hyperdrive: Hyperdrive): void {
-  initializeDatabaseFromConnectionString(hyperdrive.connectionString, { isHyperdrive: true });
+export async function initializeDatabaseFromHyperdrive(hyperdrive: Hyperdrive): Promise<void> {
+  await initializeDatabaseFromConnectionString(hyperdrive.connectionString, { isHyperdrive: true });
 }
 
 /**
@@ -169,8 +179,8 @@ export function initializeDatabaseFromHyperdrive(hyperdrive: Hyperdrive): void {
  *
  * @param config - Database configuration
  */
-export function initializeDatabase(config: DatabaseConfig): void {
-  initializeDatabaseFromConnectionString(config.connectionString);
+export async function initializeDatabase(config: DatabaseConfig): Promise<void> {
+  await initializeDatabaseFromConnectionString(config.connectionString);
 }
 
 /**
@@ -201,13 +211,17 @@ export async function query<T = Record<string, unknown>>(
 
 /**
  * Close the current database connection.
- * Should be called at the end of each request for cleanup.
- * Optional - connections will be cleaned up by the runtime eventually.
+ * Should be called at the end of each request for cleanup to prevent connection leaks.
  */
 export async function closeDatabaseConnection(): Promise<void> {
   if (currentConnection) {
-    await currentConnection.close();
+    const connectionToClose = currentConnection;
     currentConnection = null;
+    try {
+      await connectionToClose.close();
+    } catch {
+      // Ignore close errors - connection may already be closed
+    }
   }
 }
 

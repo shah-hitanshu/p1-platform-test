@@ -8,6 +8,7 @@
 import {
   initializeDatabaseFromConnectionString,
   initializeDatabaseFromHyperdrive,
+  closeDatabaseConnection,
   query,
 } from './db';
 import { MockIdentityProvider } from './auth/mock-identity-provider';
@@ -260,12 +261,12 @@ async function handleHealth(env: Env): Promise<Response> {
   try {
     // Prefer Hyperdrive (production) over direct connection (local dev)
     if (env.HYPERDRIVE !== undefined) {
-      initializeDatabaseFromHyperdrive(env.HYPERDRIVE);
+      await initializeDatabaseFromHyperdrive(env.HYPERDRIVE);
     } else if (
       env.POSTGRES_CONNECTION_STRING !== undefined &&
       env.POSTGRES_CONNECTION_STRING !== ''
     ) {
-      initializeDatabaseFromConnectionString(env.POSTGRES_CONNECTION_STRING);
+      await initializeDatabaseFromConnectionString(env.POSTGRES_CONNECTION_STRING);
     } else {
       throw new Error('No database connection configured (HYPERDRIVE or POSTGRES_CONNECTION_STRING)');
     }
@@ -824,190 +825,210 @@ export default {
     const path = url.pathname;
     const origin = request.headers.get('Origin');
 
-    // Initialize database connection
-    // Prefer Hyperdrive (production) over direct connection (local dev)
-    if (env.HYPERDRIVE !== undefined) {
-      initializeDatabaseFromHyperdrive(env.HYPERDRIVE);
-    } else if (
-      env.POSTGRES_CONNECTION_STRING !== undefined &&
-      env.POSTGRES_CONNECTION_STRING !== ''
-    ) {
-      initializeDatabaseFromConnectionString(env.POSTGRES_CONNECTION_STRING);
-    } else {
-      return new Response(
-        JSON.stringify({ error: 'No database connection configured' }),
-        { status: 503, headers: { 'Content-Type': 'application/json' } },
-      );
-    }
-
-    // Handle CORS preflight
+    // Handle CORS preflight (no database needed)
     if (request.method === 'OPTIONS') {
       return handlePreflight(request, env);
     }
 
-    // Health endpoint (no auth required)
-    if (path === '/health' || path === '/health/') {
-      const response = await handleHealth(env);
-      return addCorsHeaders(response, origin, env);
-    }
-
-    // Auth endpoints (no auth required)
-    if (path.startsWith('/api/auth')) {
-      const response = await handleAuthRoutes(request, path, env);
-      if (response) {
-        return addCorsHeaders(response, origin, env);
-      }
-      return addCorsHeaders(errorResponse('Not found', 404), origin, env);
-    }
-
-    // Parse route
-    const route = parseRoute(path);
-    if (!route) {
-      return addCorsHeaders(
-        jsonResponse(
-          {
-            error: 'Not Found',
-            message: `No handler for ${request.method} ${path}`,
-            availableEndpoints: ['/health', '/api/sites', '/api/auth/users', '/api/auth/token'],
-          },
-          404,
-        ),
-        origin,
-        env,
-      );
-    }
-
-    // Authenticate request for API routes
-    const principal = await authenticate(request, env);
-    if (!principal) {
-      return addCorsHeaders(
-        errorResponse('Authentication required', 401),
-        origin,
-        env,
-      );
-    }
-
-    // Create principal context for route handlers
-    const principalContext: Principal = {
-      id: principal.id,
-      type: principal.type as 'user' | 'agent',
-      email: principal.email,
-    };
-
+    // Initialize database connection
+    // Prefer Hyperdrive (production) over direct connection (local dev)
+    // IMPORTANT: Always close connection in finally block to prevent leaks
     try {
-      let response: Response;
-
-      switch (route.handler) {
-        case 'sites':
-          response = await handleSiteRoutes(request, {
-            siteId: route.params.siteId,
-            principal: principalContext,
-          });
-          break;
-
-        case 'branches':
-          response = await handleBranchRoutes(request, {
-            siteId: route.params.siteId ?? '',
-            branchId: route.params.branchId,
-            principal: principalContext,
-          });
-          break;
-
-        case 'documents':
-          response = await handleDocumentRoutes(request, {
-            siteId: route.params.siteId ?? '',
-            branchId: route.params.branchId,
-            documentId: route.params.documentId,
-            documentPath: route.params.documentPath,
-            action: route.params.action as 'restore' | undefined,
-            versionsPath: route.params.versionsPath === 'true',
-            versionAction: route.params.versionAction as 'latest' | 'by-id' | undefined,
-            versionId: route.params.versionId,
-            principal: principalContext,
-          });
-          break;
-
-        case 'checkpoints':
-          response = await handleCheckpointRoutes(request, {
-            siteId: route.params.siteId ?? '',
-            branchId: route.params.branchId,
-            checkpointId: route.params.checkpointId,
-            documentsPath: route.params.action === 'documents',
-            revert: route.params.action === 'revert',
-            principal: principalContext,
-          });
-          break;
-
-        case 'merge':
-          response = await handleMergeRoutes(request, {
-            siteId: route.params.siteId ?? '',
-            operation: ['check', 'execute', 'preview'].includes(route.params.action ?? '')
-              ? (route.params.action as 'check' | 'execute' | 'preview')
-              : undefined,
-            mergeRequests: route.params.action === 'requests',
-            executeRequest: route.params.action === 'execute-request',
-            mergeRequestId: route.params.mergeRequestId,
-            principal: principalContext,
-          });
-          break;
-
-        case 'grants':
-          response = await handleGrantRoutes(request, {
-            siteId: route.params.siteId ?? '',
-            branchId: route.params.branchId ?? '',
-            grantId: route.params.grantId,
-            principal: principalContext,
-          });
-          break;
-
-        case 'structures':
-          response = await handleStructureRoutes(request, {
-            siteId: route.params.siteId ?? '',
-            branchId: route.params.branchId,
-            checkpointId: route.params.checkpointId,
-            structureId: route.params.structureId,
-            principal: principalContext,
-          });
-          break;
-
-        case 'nodes':
-          response = await handleNodeRoutes(request, {
-            siteId: route.params.siteId ?? '',
-            branchId: route.params.branchId ?? '',
-            structureId: route.params.structureId ?? '',
-            nodeId: route.params.nodeId,
-            action: route.params.action as 'move' | 'reorder' | 'navigation' | undefined,
-            principal: principalContext,
-          });
-          break;
-
-        case 'metadata':
-          response = await handleMetadataRoutes(request, {
-            siteId: route.params.siteId ?? '',
-            branchId: route.params.branchId ?? '',
-            structureId: route.params.structureId ?? '',
-            documentId: route.params.documentId,
-            action: route.params.action as 'state' | 'schema' | 'validate' | 'list' | undefined,
-            principal: principalContext,
-          });
-          break;
-
-        case 'realtime':
-          response = await handleRealtimeRoutes(request, env);
-          break;
-
-        default:
-          response = errorResponse('Handler not implemented', 501);
+      if (env.HYPERDRIVE !== undefined) {
+        await initializeDatabaseFromHyperdrive(env.HYPERDRIVE);
+      } else if (
+        env.POSTGRES_CONNECTION_STRING !== undefined &&
+        env.POSTGRES_CONNECTION_STRING !== ''
+      ) {
+        await initializeDatabaseFromConnectionString(env.POSTGRES_CONNECTION_STRING);
+      } else {
+        return new Response(
+          JSON.stringify({ error: 'No database connection configured' }),
+          { status: 503, headers: { 'Content-Type': 'application/json' } },
+        );
       }
 
-      return addCorsHeaders(response, origin, env);
-    } catch (error) {
-      console.error('Request handler error:', error);
-      return addCorsHeaders(
-        errorResponse('Internal server error', 500),
-        origin,
-        env,
-      );
+      return await handleRequest(request, env, path, origin);
+    } finally {
+      // Always close database connection to prevent connection leaks
+      // This is critical for preventing the kqueue event accumulation issue
+      await closeDatabaseConnection();
     }
   },
 };
+
+/**
+ * Handle the actual request after database initialization.
+ * Separated to allow proper try/finally structure for connection cleanup.
+ */
+async function handleRequest(
+  request: Request,
+  env: Env,
+  path: string,
+  origin: string | null,
+): Promise<Response> {
+  // Health endpoint (no auth required)
+  if (path === '/health' || path === '/health/') {
+    const response = await handleHealth(env);
+    return addCorsHeaders(response, origin, env);
+  }
+
+  // Auth endpoints (no auth required)
+  if (path.startsWith('/api/auth')) {
+    const response = await handleAuthRoutes(request, path, env);
+    if (response) {
+      return addCorsHeaders(response, origin, env);
+    }
+    return addCorsHeaders(errorResponse('Not found', 404), origin, env);
+  }
+
+  // Parse route
+  const route = parseRoute(path);
+  if (!route) {
+    return addCorsHeaders(
+      jsonResponse(
+        {
+          error: 'Not Found',
+          message: `No handler for ${request.method} ${path}`,
+          availableEndpoints: ['/health', '/api/sites', '/api/auth/users', '/api/auth/token'],
+        },
+        404,
+      ),
+      origin,
+      env,
+    );
+  }
+
+  // Authenticate request for API routes
+  const principal = await authenticate(request, env);
+  if (!principal) {
+    return addCorsHeaders(
+      errorResponse('Authentication required', 401),
+      origin,
+      env,
+    );
+  }
+
+  // Create principal context for route handlers
+  const principalContext: Principal = {
+    id: principal.id,
+    type: principal.type as 'user' | 'agent',
+    email: principal.email,
+  };
+
+  try {
+    let response: Response;
+
+    switch (route.handler) {
+      case 'sites':
+        response = await handleSiteRoutes(request, {
+          siteId: route.params.siteId,
+          principal: principalContext,
+        });
+        break;
+
+      case 'branches':
+        response = await handleBranchRoutes(request, {
+          siteId: route.params.siteId ?? '',
+          branchId: route.params.branchId,
+          principal: principalContext,
+        });
+        break;
+
+      case 'documents':
+        response = await handleDocumentRoutes(request, {
+          siteId: route.params.siteId ?? '',
+          branchId: route.params.branchId,
+          documentId: route.params.documentId,
+          documentPath: route.params.documentPath,
+          action: route.params.action as 'restore' | undefined,
+          versionsPath: route.params.versionsPath === 'true',
+          versionAction: route.params.versionAction as 'latest' | 'by-id' | undefined,
+          versionId: route.params.versionId,
+          principal: principalContext,
+        });
+        break;
+
+      case 'checkpoints':
+        response = await handleCheckpointRoutes(request, {
+          siteId: route.params.siteId ?? '',
+          branchId: route.params.branchId,
+          checkpointId: route.params.checkpointId,
+          documentsPath: route.params.action === 'documents',
+          revert: route.params.action === 'revert',
+          principal: principalContext,
+        });
+        break;
+
+      case 'merge':
+        response = await handleMergeRoutes(request, {
+          siteId: route.params.siteId ?? '',
+          operation: ['check', 'execute', 'preview'].includes(route.params.action ?? '')
+            ? (route.params.action as 'check' | 'execute' | 'preview')
+            : undefined,
+          mergeRequests: route.params.action === 'requests',
+          executeRequest: route.params.action === 'execute-request',
+          mergeRequestId: route.params.mergeRequestId,
+          principal: principalContext,
+        });
+        break;
+
+      case 'grants':
+        response = await handleGrantRoutes(request, {
+          siteId: route.params.siteId ?? '',
+          branchId: route.params.branchId ?? '',
+          grantId: route.params.grantId,
+          principal: principalContext,
+        });
+        break;
+
+      case 'structures':
+        response = await handleStructureRoutes(request, {
+          siteId: route.params.siteId ?? '',
+          branchId: route.params.branchId,
+          checkpointId: route.params.checkpointId,
+          structureId: route.params.structureId,
+          principal: principalContext,
+        });
+        break;
+
+      case 'nodes':
+        response = await handleNodeRoutes(request, {
+          siteId: route.params.siteId ?? '',
+          branchId: route.params.branchId ?? '',
+          structureId: route.params.structureId ?? '',
+          nodeId: route.params.nodeId,
+          action: route.params.action as 'move' | 'reorder' | 'navigation' | undefined,
+          principal: principalContext,
+        });
+        break;
+
+      case 'metadata':
+        response = await handleMetadataRoutes(request, {
+          siteId: route.params.siteId ?? '',
+          branchId: route.params.branchId ?? '',
+          structureId: route.params.structureId ?? '',
+          documentId: route.params.documentId,
+          action: route.params.action as 'state' | 'schema' | 'validate' | 'list' | undefined,
+          principal: principalContext,
+        });
+        break;
+
+      case 'realtime':
+        response = await handleRealtimeRoutes(request, env) ?? errorResponse('Not found', 404);
+        break;
+
+      default:
+        response = errorResponse('Handler not implemented', 501);
+    }
+
+    return addCorsHeaders(response, origin, env);
+  } catch (error) {
+    console.error('Request handler error:', error);
+    return addCorsHeaders(
+      errorResponse('Internal server error', 500),
+      origin,
+      env,
+    );
+  }
+}
