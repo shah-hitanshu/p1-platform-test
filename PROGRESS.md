@@ -6,6 +6,32 @@ This document tracks the implementation progress of the Collaborative JSON State
 
 ---
 
+## Recent Features
+
+### Visual JSON Diffs in MergePreviewPanel (Added 2026-01-25)
+
+**Feature:** Added expandable diff viewing directly from the MergePreviewPanel component, allowing users to see what changed between branches before approving or resolving conflicts.
+
+**Problem Solved:** Previously, visual diffs were only accessible in ConflictResolutionPanel (hidden behind "Resolve Conflicts" button, only for `conflicted` status). Users couldn't preview actual document changes for `open` or `approved` merge requests.
+
+**Implementation:**
+- Created `ExpandableDiffRow` component: Read-only expandable row with JsonDiffViewer (no resolution radio buttons)
+- Created `ExpandableConflictList` component: List with "Expand All" / "Collapse All" controls and lazy loading
+- Updated `MergePreviewPanel` to use ExpandableConflictList instead of ConflictList
+- Implemented lazy loading: Diffs fetched with `includeContent: true` only when user first expands a row
+
+**Files Created:**
+- `frontend/src/components/ExpandableDiffRow.tsx` + `.css`
+- `frontend/src/components/ExpandableConflictList.tsx` + `.css`
+
+**Files Modified:**
+- `frontend/src/components/MergePreviewPanel.tsx`
+- `frontend/tests/merge-diff-visualization.spec.ts` (added 4 new E2E tests)
+
+**Test Commits:** `2a0bc6b` (tests), `a5350af` (implementation)
+
+---
+
 ## Recently Fixed Issues
 
 ### Database Connection Race Condition (Fixed 2026-01-25)
