@@ -115,13 +115,26 @@ puck-css-integration/
 - Barrel export at `src/components/version-compare/index.ts`
 - 70 new tests for version comparison components
 
+### Phase 5b: Version Comparison Integration ✅
+- Extended CSSPlugin with version history section:
+  - Version list with version numbers and timestamps
+  - Current version badge
+  - Click to select version for comparison
+  - Compare with current button
+- Updated demo App.tsx with full version integration:
+  - Uses useVersions hook to fetch version history
+  - Version selection and comparison handlers
+  - Full-page VersionComparePage overlay when comparing
+- Added version list styles to demo app
+- 12 new tests for version plugin section
+
 ## Test Summary
 
 | Package | Tests | Status |
 |---------|-------|--------|
 | @pantheon/css-client | 18 | ✅ Passing |
-| @pantheon/puck-css | 92 | ✅ Passing |
-| **Total** | **110** | ✅ **All Passing** |
+| @pantheon/puck-css | 111 | ✅ Passing |
+| **Total** | **129** | ✅ **All Passing** |
 
 ## Key Decisions
 
@@ -135,11 +148,6 @@ puck-css-integration/
 8. **Optional Configuration**: Only baseUrl, apiKey, siteId, and userId are required; branchId is optional
 
 ## Remaining Work
-
-### Phase 5b: Version Comparison Integration
-- Integrate version comparison components into demo app
-- Add version history panel with compare functionality
-- Connect VersionComparePage to actual version data
 
 ### Phase 6: Error Notification Component
 - Toast-style error notifications
