@@ -20,9 +20,14 @@ import {
   CSSPuckProvider,
   useCSSPuck,
   useDocuments,
+  useVersions,
   createCSSPlugin,
   createCSSOverrides,
+  VersionComparePage,
+  diffPuckDataWithPositions,
 } from '@pantheon/puck-css';
+import type { DocumentVersion, PuckData } from '@pantheon/css-client';
+import type { ComponentDiffWithPosition } from '@pantheon/puck-css';
 
 import { puckConfig } from './puck.config';
 
@@ -94,8 +99,28 @@ function AppContent() {
     branchId,
   });
 
+  // Version management via useVersions hook
+  const {
+    versions,
+    loading: versionsLoading,
+    refresh: refreshVersions,
+  } = useVersions({
+    client,
+    siteId,
+    branchId,
+    documentId: currentDocument?.id ?? null,
+  });
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+
+  // Version comparison state
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [comparisonData, setComparisonData] = useState<{
+    beforeVersion: number;
+    afterVersion: number;
+    diffs: ComponentDiffWithPosition[];
+  } | null>(null);
 
   // Handle document selection
   const handleDocumentSelect = useCallback(
@@ -163,7 +188,47 @@ function AppContent() {
     alert(`Publish failed: ${err.message}`);
   }, []);
 
-  // Create Puck plugin for CSS integration (branch selector + document list in plugin rail)
+  // Handle version selection
+  const handleVersionSelect = useCallback((version: DocumentVersion) => {
+    setSelectedVersionId(version.id);
+  }, []);
+
+  // Handle version comparison
+  const handleCompare = useCallback((beforeVersionId: string, afterVersionId: string) => {
+    const beforeVersion = versions.find((v) => v.id === beforeVersionId);
+    const afterVersion = versions.find((v) => v.id === afterVersionId);
+
+    if (!beforeVersion || !afterVersion) {
+      console.error('Version not found for comparison');
+      return;
+    }
+
+    const beforeData = beforeVersion.snapshot as unknown as PuckData;
+    const afterData = afterVersion.snapshot as unknown as PuckData;
+
+    const diffs = diffPuckDataWithPositions(beforeData, afterData);
+
+    setComparisonData({
+      beforeVersion: beforeVersion.versionNumber,
+      afterVersion: afterVersion.versionNumber,
+      diffs,
+    });
+  }, [versions]);
+
+  // Close comparison view
+  const handleCloseComparison = useCallback(() => {
+    setComparisonData(null);
+    setSelectedVersionId(null);
+  }, []);
+
+  // Refresh versions when document changes or after save
+  useEffect(() => {
+    if (currentDocument?.id) {
+      void refreshVersions();
+    }
+  }, [currentDocument?.id, refreshVersions]);
+
+  // Create Puck plugin for CSS integration (branch selector + document list + versions in plugin rail)
   const cssPlugin = useMemo(() => createCSSPlugin({
     branches,
     currentBranch,
@@ -175,6 +240,11 @@ function AppContent() {
     onDocumentCreate: handleDocumentCreate,
     onDocumentDelete: handleDocumentDelete,
     documentsLoading,
+    versions,
+    versionsLoading,
+    selectedVersionId: selectedVersionId ?? undefined,
+    onVersionSelect: handleVersionSelect,
+    onCompare: handleCompare,
   }), [
     branches,
     currentBranch,
@@ -186,6 +256,11 @@ function AppContent() {
     handleDocumentCreate,
     handleDocumentDelete,
     documentsLoading,
+    versions,
+    versionsLoading,
+    selectedVersionId,
+    handleVersionSelect,
+    handleCompare,
   ]);
 
   // Create Puck overrides for header actions (save indicator, publish button)
@@ -239,6 +314,20 @@ function AppContent() {
           onChange={() => {}}
           plugins={puckPlugins}
           overrides={puckOverrides}
+        />
+      </div>
+    );
+  }
+
+  // Show comparison view if comparing versions
+  if (comparisonData) {
+    return (
+      <div className="app app--fullscreen">
+        <VersionComparePage
+          beforeVersion={comparisonData.beforeVersion}
+          afterVersion={comparisonData.afterVersion}
+          diffs={comparisonData.diffs}
+          onClose={handleCloseComparison}
         />
       </div>
     );

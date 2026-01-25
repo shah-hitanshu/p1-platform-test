@@ -245,15 +245,21 @@ function CSSPluginPanel({
                 })}
               </ul>
 
-              {selectedVersionId && selectedVersionId !== versions[0]?.id && onCompare && (
-                <button
-                  type="button"
-                  className="css-plugin-btn css-plugin-btn-primary"
-                  onClick={() => onCompare(selectedVersionId, versions[0].id)}
-                >
-                  Compare with current
-                </button>
-              )}
+              {(() => {
+                const latestVersion = versions[0];
+                if (selectedVersionId && latestVersion && selectedVersionId !== latestVersion.id && onCompare) {
+                  return (
+                    <button
+                      type="button"
+                      className="css-plugin-btn css-plugin-btn-primary"
+                      onClick={() => onCompare(selectedVersionId, latestVersion.id)}
+                    >
+                      Compare with current
+                    </button>
+                  );
+                }
+                return null;
+              })()}
             </>
           )}
         </div>
