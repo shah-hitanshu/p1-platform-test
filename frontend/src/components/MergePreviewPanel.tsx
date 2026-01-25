@@ -32,6 +32,10 @@ export function MergePreviewPanel({
   const [error, setError] = useState<string | null>(null);
 
   const loadPreview = useCallback(async () => {
+    // Guard against invalid IDs to prevent API errors
+    if (!siteId || !sourceBranchId || !targetBranchId) {
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {

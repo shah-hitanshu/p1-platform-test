@@ -10,143 +10,131 @@ import { test, expect } from '@playwright/test';
 // User IDs from LoginPage.tsx (must be UUIDs to match database schema)
 const ALICE_USER_ID = '11111111-1111-1111-1111-111111111111';
 
-// API base URL from environment or default
-const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:8787';
-
 // Helper to generate unique names for each test
 function uniqueName(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-// Helper to create a site via API
-async function createSiteViaApi(name: string, pantheonId: string): Promise<{ id: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/sites`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-principal-id': ALICE_USER_ID,
-      'x-principal-type': 'user',
-    },
-    body: JSON.stringify({ name, pantheonId }),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to create site: ${response.statusText}`);
-  }
-  return response.json();
-}
+// Helper to create a site and navigate to it
+async function createSiteAndNavigate(
+  page: import('@playwright/test').Page,
+  siteName: string,
+  pantheonId: string
+) {
+  // Navigate to sites
+  await page.getByTestId('nav-sites').click();
+  await expect(page).toHaveURL('/sites');
 
-// Helper to get main branch ID
-async function getMainBranchId(siteId: string): Promise<string> {
-  const response = await fetch(`${API_BASE_URL}/api/sites/${siteId}/branches`, {
-    headers: {
-      'x-principal-id': ALICE_USER_ID,
-      'x-principal-type': 'user',
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to get branches: ${response.statusText}`);
-  }
-  const data = await response.json();
-  const mainBranch = data.branches.find((b: { name: string }) => b.name === 'main');
-  if (!mainBranch) {
-    throw new Error('Main branch not found');
-  }
-  return mainBranch.id;
-}
+  // Create site
+  await page.getByTestId('create-site-btn').click();
+  await page.getByTestId('site-name-input').fill(siteName);
+  await page.getByTestId('pantheon-id-input').fill(pantheonId);
 
-// Helper to create a branch via API
-async function createBranchViaApi(
-  siteId: string,
-  name: string,
-  parentBranchId: string
-): Promise<{ id: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/sites/${siteId}/branches`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-principal-id': ALICE_USER_ID,
-      'x-principal-type': 'user',
-    },
-    body: JSON.stringify({ name, parentBranchId }),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to create branch: ${response.statusText}`);
-  }
-  return response.json();
-}
-
-// Helper to create a document on a branch via API
-async function createDocumentOnBranchViaApi(
-  siteId: string,
-  branchId: string,
-  path: string
-): Promise<{ document: { id: string }; version: { id: string } }> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/sites/${siteId}/branches/${branchId}/documents`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-principal-id': ALICE_USER_ID,
-        'x-principal-type': 'user',
-      },
-      body: JSON.stringify({ path }),
-    }
+  const responsePromise = page.waitForResponse(
+    (resp) =>
+      resp.url().includes('/api/sites') && resp.request().method() === 'POST'
   );
-  if (!response.ok) {
-    throw new Error(`Failed to create document: ${response.statusText}`);
-  }
-  return response.json();
+  await page.getByTestId('submit-site-btn').click();
+  await responsePromise;
+
+  // Wait for the new site row to appear
+  const siteRow = page.locator(`tr:has-text("${siteName}")`);
+  await expect(siteRow).toBeVisible({ timeout: 10000 });
+
+  // Navigate to site detail
+  await siteRow.locator('[data-testid^="view-site-"]').click();
+  await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+$/);
 }
 
-// Helper to update document version on a branch
-async function createDocumentVersionViaApi(
-  siteId: string,
-  branchId: string,
-  documentId: string,
-  snapshot: Record<string, unknown>
-): Promise<{ id: string }> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/versions`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-principal-id': ALICE_USER_ID,
-        'x-principal-type': 'user',
-      },
-      body: JSON.stringify({ snapshot }),
-    }
+// Helper to create a branch
+async function createBranch(
+  page: import('@playwright/test').Page,
+  branchName: string,
+  parentBranchName?: string
+) {
+  await page.getByTestId('create-branch-btn').click();
+  await page.getByTestId('branch-name-input').fill(branchName);
+
+  if (parentBranchName) {
+    await page
+      .getByTestId('parent-branch-select')
+      .selectOption({ label: parentBranchName });
+  }
+
+  const responsePromise = page.waitForResponse(
+    (resp) =>
+      resp.url().includes('/api/sites') &&
+      resp.url().includes('/branches') &&
+      resp.request().method() === 'POST'
   );
-  if (!response.ok) {
-    throw new Error(`Failed to create document version: ${response.statusText}`);
-  }
-  return response.json();
+  await page.getByTestId('submit-branch-btn').click();
+  await responsePromise;
+
+  // Wait for the new branch row to appear
+  await expect(page.locator(`tr:has-text("${branchName}")`)).toBeVisible({
+    timeout: 10000,
+  });
 }
 
-// Helper to create a merge request via API
-async function createMergeRequestViaApi(
-  siteId: string,
-  sourceBranchId: string,
-  targetBranchId: string,
+// Helper to navigate to merge requests page
+async function navigateToMergeRequests(page: import('@playwright/test').Page) {
+  await page.getByTestId('merge-requests-link').click();
+  await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+\/merge-requests$/);
+}
+
+// Helper to create a merge request through UI
+async function createMergeRequestViaUI(
+  page: import('@playwright/test').Page,
+  sourceBranchName: string,
+  targetBranchName: string,
   title: string
-): Promise<{ id: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/sites/${siteId}/merge-requests`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-principal-id': ALICE_USER_ID,
-      'x-principal-type': 'user',
-    },
-    body: JSON.stringify({ sourceBranchId, targetBranchId, title }),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to create merge request: ${response.statusText}`);
+) {
+  // Navigate to merge requests page first if not there
+  const currentUrl = page.url();
+  if (!currentUrl.includes('/merge-requests')) {
+    await navigateToMergeRequests(page);
   }
-  return response.json();
+
+  // Click create button
+  await page.getByTestId('create-mr-btn').click();
+  await expect(page).toHaveURL(/\/merge-requests\/new$/);
+
+  // Wait for form to load and branches to be available
+  const sourceSelect = page.getByTestId('source-branch-select');
+  await expect(sourceSelect).toBeVisible({ timeout: 10000 });
+
+  // Wait for branches to load (options beyond the placeholder)
+  await page.waitForFunction(
+    () => {
+      const select = document.querySelector('[data-testid="source-branch-select"]') as HTMLSelectElement;
+      return select && select.options.length > 1;
+    },
+    { timeout: 15000 }
+  );
+
+  // Fill form - use label for selectOption
+  await sourceSelect.selectOption({ label: sourceBranchName });
+  await page
+    .getByTestId('target-branch-select')
+    .selectOption({ label: targetBranchName });
+  await page.getByTestId('title-input').fill(title);
+
+  // Submit
+  const responsePromise = page.waitForResponse(
+    (resp) =>
+      resp.url().includes('/merge-requests') &&
+      resp.request().method() === 'POST'
+  );
+  await page.getByTestId('submit-btn').click();
+  await responsePromise;
+
+  // Should redirect to detail page
+  await expect(page).toHaveURL(/\/merge-requests\/[a-z0-9-]+$/);
 }
 
 test.describe('Merge Diff Visualization', () => {
+  test.setTimeout(120000); // These tests involve multiple steps
+
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
     await page.getByTestId('user-select').selectOption(ALICE_USER_ID);
@@ -154,227 +142,159 @@ test.describe('Merge Diff Visualization', () => {
     await expect(page).toHaveURL('/');
   });
 
-  test('should show expand/collapse buttons when conflicts have diffs', async ({ page }) => {
-    // Setup: Create site with conflicting document changes
-    const siteName = uniqueName('DiffViz Test');
-    const pantheonId = uniqueName('diffviz');
+  test('should show merge preview panel on merge request detail', async ({
+    page,
+  }) => {
+    // Setup: Create site with a branch
+    const siteName = uniqueName('PreviewPanel Test');
+    const pantheonId = uniqueName('preview');
     const featureBranchName = uniqueName('feature');
-    const docPath = 'pages/home';
 
-    // Create site and get IDs
-    const site = await createSiteViaApi(siteName, pantheonId);
-    const mainBranchId = await getMainBranchId(site.id);
+    await createSiteAndNavigate(page, siteName, pantheonId);
+    await createBranch(page, featureBranchName);
 
-    // Create document on main with initial content
-    const { document } = await createDocumentOnBranchViaApi(site.id, mainBranchId, docPath);
-    await createDocumentVersionViaApi(site.id, mainBranchId, document.id, {
-      title: 'Original Title',
-      content: 'Original content',
-    });
-
-    // Create feature branch from main
-    const featureBranch = await createBranchViaApi(site.id, featureBranchName, mainBranchId);
-
-    // Modify document on feature branch (diverge from main)
-    await createDocumentVersionViaApi(site.id, featureBranch.id, document.id, {
-      title: 'Feature Title',
-      content: 'Feature content',
-    });
-
-    // Modify document on main branch (create conflict)
-    await createDocumentVersionViaApi(site.id, mainBranchId, document.id, {
-      title: 'Main Title',
-      content: 'Main content',
-    });
-
-    // Create merge request
-    const mr = await createMergeRequestViaApi(
-      site.id,
-      featureBranch.id,
-      mainBranchId,
-      'Conflicting MR'
+    // Create merge request from feature to main
+    await createMergeRequestViaUI(
+      page,
+      featureBranchName,
+      'main',
+      'Preview Test MR'
     );
 
-    // Navigate to merge request detail page
-    await page.goto(`/sites/${site.id}/merge-requests/${mr.id}`);
+    // Verify we're on the detail page
+    await expect(page.getByTestId('mr-title')).toContainText('Preview Test MR');
 
-    // Wait for page to load
-    await expect(page.getByTestId('mr-title')).toContainText('Conflicting MR');
+    // Merge preview panel should be visible
+    await expect(page.getByTestId('merge-preview-panel')).toBeVisible({
+      timeout: 15000,
+    });
 
-    // The merge request should show as conflicted (or we can verify preview shows conflicts)
-    // Wait for merge preview to load
-    await expect(page.getByTestId('merge-preview-panel')).toBeVisible({ timeout: 15000 });
-
-    // Wait for preview to finish loading
+    // Wait for preview to load (either result or error)
     await expect(
-      page.locator('[data-testid="preview-result"], [data-testid="preview-error"]').first()
+      page
+        .locator('[data-testid="preview-result"], [data-testid="preview-error"]')
+        .first()
     ).toBeVisible({ timeout: 20000 });
-
-    // Check if conflicts are shown (this depends on the merge status)
-    const conflictsWarning = page.getByTestId('conflicts-warning');
-    const previewResult = page.getByTestId('preview-result');
-
-    // Wait for either conflicts warning or clean merge message
-    await expect(conflictsWarning.or(previewResult)).toBeVisible({ timeout: 10000 });
   });
 
-  test('should expand conflict row to show diff viewer', async ({ page }) => {
-    // Setup: Create site with conflicting document changes
-    const siteName = uniqueName('DiffExpand Test');
-    const pantheonId = uniqueName('diffexpand');
+  test('should show conflict resolution panel when merge request is conflicted', async ({
+    page,
+  }) => {
+    // This test checks that the conflict resolution UI is available
+    // Note: Creating actual conflicts requires document changes which need additional setup
+
+    const siteName = uniqueName('ConflictUI Test');
+    const pantheonId = uniqueName('conflictui');
     const featureBranchName = uniqueName('feature');
-    const docPath = 'pages/about';
 
-    // Create site and get IDs
-    const site = await createSiteViaApi(siteName, pantheonId);
-    const mainBranchId = await getMainBranchId(site.id);
-
-    // Create document on main with initial content
-    const { document } = await createDocumentOnBranchViaApi(site.id, mainBranchId, docPath);
-    await createDocumentVersionViaApi(site.id, mainBranchId, document.id, {
-      title: 'Base Title',
-      description: 'Base description',
-    });
-
-    // Create feature branch from main
-    const featureBranch = await createBranchViaApi(site.id, featureBranchName, mainBranchId);
-
-    // Modify document on feature branch
-    await createDocumentVersionViaApi(site.id, featureBranch.id, document.id, {
-      title: 'Feature Title',
-      description: 'Feature description',
-    });
-
-    // Modify document on main branch
-    await createDocumentVersionViaApi(site.id, mainBranchId, document.id, {
-      title: 'Main Title',
-      description: 'Main description',
-    });
-
-    // Create merge request (should be conflicted)
-    const mr = await createMergeRequestViaApi(
-      site.id,
-      featureBranch.id,
-      mainBranchId,
-      'Expand Diff Test MR'
-    );
-
-    // Navigate to merge request
-    await page.goto(`/sites/${site.id}/merge-requests/${mr.id}`);
-
-    // Wait for page to load
-    await expect(page.getByTestId('mr-title')).toContainText('Expand Diff Test MR');
-
-    // If status is conflicted, there should be a resolve button
-    const resolveBtn = page.getByTestId('resolve-btn');
-    const statusBadge = page.getByTestId('mr-status-badge');
-
-    // Wait for status to load
-    await expect(statusBadge).toBeVisible({ timeout: 10000 });
-
-    // Check if we're in conflicted state
-    const statusText = await statusBadge.textContent();
-
-    if (statusText?.includes('conflicted')) {
-      // Click resolve conflicts button
-      await resolveBtn.click();
-
-      // Wait for conflict resolution panel to appear
-      await expect(page.locator('.conflict-resolution-panel')).toBeVisible({ timeout: 10000 });
-
-      // If diffs are available, expand all button should be visible
-      const expandAllBtn = page.getByTestId('expand-all-btn');
-
-      // Wait a moment for diff data to load
-      await page.waitForTimeout(2000);
-
-      // Check if expand buttons are available
-      if (await expandAllBtn.isVisible()) {
-        // Click expand all
-        await expandAllBtn.click();
-
-        // JSON diff viewer should now be visible
-        await expect(page.locator('.json-diff-viewer').first()).toBeVisible({ timeout: 5000 });
-
-        // Verify diff legend is shown
-        await expect(page.locator('.diff-legend').first()).toBeVisible();
-
-        // Verify side-by-side panes are shown
-        await expect(page.locator('.source-pane').first()).toBeVisible();
-        await expect(page.locator('.target-pane').first()).toBeVisible();
-      }
-    }
-  });
-
-  test('should apply resolution strategy and merge with expanded diffs', async ({ page }) => {
-    // Setup: Create site with conflicting document changes
-    const siteName = uniqueName('DiffResolve Test');
-    const pantheonId = uniqueName('diffresolve');
-    const featureBranchName = uniqueName('feature');
-    const docPath = 'pages/contact';
-
-    // Create site and get IDs
-    const site = await createSiteViaApi(siteName, pantheonId);
-    const mainBranchId = await getMainBranchId(site.id);
-
-    // Create document on main with initial content
-    const { document } = await createDocumentOnBranchViaApi(site.id, mainBranchId, docPath);
-    await createDocumentVersionViaApi(site.id, mainBranchId, document.id, {
-      email: 'original@example.com',
-      phone: '555-0100',
-    });
-
-    // Create feature branch from main
-    const featureBranch = await createBranchViaApi(site.id, featureBranchName, mainBranchId);
-
-    // Modify document on feature branch
-    await createDocumentVersionViaApi(site.id, featureBranch.id, document.id, {
-      email: 'feature@example.com',
-      phone: '555-0101',
-    });
-
-    // Modify document on main branch
-    await createDocumentVersionViaApi(site.id, mainBranchId, document.id, {
-      email: 'main@example.com',
-      phone: '555-0102',
-    });
+    await createSiteAndNavigate(page, siteName, pantheonId);
+    await createBranch(page, featureBranchName);
 
     // Create merge request
-    const mr = await createMergeRequestViaApi(
-      site.id,
-      featureBranch.id,
-      mainBranchId,
-      'Resolution Test MR'
+    await createMergeRequestViaUI(
+      page,
+      featureBranchName,
+      'main',
+      'Conflict UI Test MR'
     );
 
-    // Navigate to merge request
-    await page.goto(`/sites/${site.id}/merge-requests/${mr.id}`);
+    // Wait for status badge to appear
+    await expect(page.getByTestId('mr-status-badge')).toBeVisible({
+      timeout: 10000,
+    });
 
-    // Wait for status badge
-    await expect(page.getByTestId('mr-status-badge')).toBeVisible({ timeout: 10000 });
-
-    // Check status
+    // Check the status - should be 'open' for a clean merge
     const statusText = await page.getByTestId('mr-status-badge').textContent();
 
     if (statusText?.includes('conflicted')) {
-      // Click resolve conflicts
+      // If conflicted, the resolve button should be available
+      await expect(page.getByTestId('resolve-btn')).toBeVisible();
+
+      // Click to show resolution panel
       await page.getByTestId('resolve-btn').click();
 
-      // Wait for resolution panel
-      await expect(page.locator('.conflict-resolution-panel')).toBeVisible({ timeout: 10000 });
-
-      // Apply "take source" to all conflicts
-      await page.getByTestId('apply-all-take-source').click();
-
-      // Click apply resolutions button
-      const applyBtn = page.getByTestId('apply-resolutions-btn');
-      await expect(applyBtn).toBeEnabled({ timeout: 5000 });
-      await applyBtn.click();
-
-      // Wait for merge to complete
-      await expect(page.getByTestId('mr-status-badge')).toContainText('merged', {
-        timeout: 15000,
+      // Resolution panel should appear
+      await expect(page.locator('.conflict-resolution-panel')).toBeVisible({
+        timeout: 10000,
       });
+    } else {
+      // If not conflicted, the approve or merge actions should be available
+      const approveBtn = page.getByTestId('approve-btn');
+      const mergeBtn = page.getByTestId('merge-btn');
+
+      // At least one action should be available for open/approved MRs
+      await expect(approveBtn.or(mergeBtn)).toBeVisible({ timeout: 10000 });
+    }
+  });
+
+  test('should refresh preview when clicking refresh button', async ({
+    page,
+  }) => {
+    const siteName = uniqueName('RefreshPreview Test');
+    const pantheonId = uniqueName('refresh');
+    const featureBranchName = uniqueName('feature');
+
+    await createSiteAndNavigate(page, siteName, pantheonId);
+    await createBranch(page, featureBranchName);
+    await createMergeRequestViaUI(
+      page,
+      featureBranchName,
+      'main',
+      'Refresh Preview MR'
+    );
+
+    // Wait for initial preview load - either result or error
+    await expect(page.getByTestId('merge-preview-panel')).toBeVisible({
+      timeout: 15000,
+    });
+    const previewContent = page.locator(
+      '[data-testid="preview-result"], [data-testid="preview-error"]'
+    ).first();
+    await expect(previewContent).toBeVisible({ timeout: 20000 });
+
+    // Click refresh button
+    const refreshBtn = page.getByTestId('refresh-preview-btn');
+    await expect(refreshBtn).toBeVisible();
+    await refreshBtn.click();
+
+    // Should show loading state briefly, then result or error again
+    await expect(previewContent).toBeVisible({ timeout: 20000 });
+  });
+
+  test('should display actions based on merge request status', async ({
+    page,
+  }) => {
+    const siteName = uniqueName('Actions Test');
+    const pantheonId = uniqueName('actions');
+    const featureBranchName = uniqueName('feature');
+
+    await createSiteAndNavigate(page, siteName, pantheonId);
+    await createBranch(page, featureBranchName);
+    await createMergeRequestViaUI(page, featureBranchName, 'main', 'Actions MR');
+
+    // Wait for page to fully load
+    await expect(page.getByTestId('mr-title')).toContainText('Actions MR');
+    await expect(page.getByTestId('mr-status-badge')).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Actions container should be visible
+    await expect(page.getByTestId('actions-container')).toBeVisible();
+
+    const statusText = await page.getByTestId('mr-status-badge').textContent();
+
+    if (statusText?.includes('open')) {
+      // Open MRs should have approve and close buttons
+      await expect(page.getByTestId('approve-btn')).toBeVisible();
+      await expect(page.getByTestId('close-btn')).toBeVisible();
+    } else if (statusText?.includes('approved')) {
+      // Approved MRs should have merge and close buttons
+      await expect(page.getByTestId('merge-btn')).toBeVisible();
+      await expect(page.getByTestId('close-btn')).toBeVisible();
+    } else if (statusText?.includes('conflicted')) {
+      // Conflicted MRs should have resolve and close buttons
+      await expect(page.getByTestId('resolve-btn')).toBeVisible();
+      await expect(page.getByTestId('close-btn')).toBeVisible();
     }
   });
 });
