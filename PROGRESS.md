@@ -128,13 +128,34 @@ puck-css-integration/
 - Added version list styles to demo app
 - 12 new tests for version plugin section
 
+### Phase 5c: Visual Version Comparison Redesign ✅
+- Replaced structural tree-based comparison with rendered page comparison
+- New `VisualVersionCompare` component:
+  - Uses Puck's `<Render>` component to display actual rendered pages
+  - Side-by-side Before/After panels with scrollable content
+  - Visual highlighting of changed components:
+    - Added: Green outline with + badge
+    - Removed: Red outline with − badge
+    - Modified: Yellow/orange outline with ~ badge
+  - Legend explaining diff colors
+  - Header with version numbers and change summary
+- Config wrapping technique:
+  - `createHighlightedConfig()` wraps component render functions
+  - Adds highlight styling around changed components based on diff data
+- Demo app updated to use `VisualVersionCompare`:
+  - Passes full `beforeData` and `afterData` PuckData objects
+  - Passes `puckConfig` for component rendering
+  - Imports puck-css styles for visual highlighting
+- 13 new tests for VisualVersionCompare component
+- CSS styles for visual diff highlighting added to package
+
 ## Test Summary
 
 | Package | Tests | Status |
 |---------|-------|--------|
 | @pantheon/css-client | 18 | ✅ Passing |
-| @pantheon/puck-css | 111 | ✅ Passing |
-| **Total** | **129** | ✅ **All Passing** |
+| @pantheon/puck-css | 124 | ✅ Passing |
+| **Total** | **142** | ✅ **All Passing** |
 
 ## Key Decisions
 
