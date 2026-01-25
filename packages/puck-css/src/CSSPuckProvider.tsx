@@ -75,6 +75,7 @@ export function CSSPuckProvider({
   // Pending data for debounced save - use ref to avoid recreating debounce
   const pendingDataRef = useRef<PuckData | null>(null);
   const currentDocumentRef = useRef<Document | null>(null);
+  const initializedRef = useRef(false);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -94,28 +95,36 @@ export function CSSPuckProvider({
       const branchList = await userClient.branches.list(siteId);
       setBranches(branchList);
 
-      // If no branchId set, default to main branch
-      let effectiveBranchId = branchId;
-      if (!effectiveBranchId) {
-        const mainBranch = branchList.find((b) => b.isMain);
-        if (mainBranch) {
-          effectiveBranchId = mainBranch.id;
-          setBranchId(mainBranch.id);
-        }
-      }
+      // Update current branch from current branchId state
+      setBranchId((currentBranchId) => {
+        let effectiveBranchId = currentBranchId;
 
-      const current = branchList.find((b) => b.id === effectiveBranchId);
-      setCurrentBranch(current ?? null);
+        // If no branchId set, default to main branch
+        if (!effectiveBranchId) {
+          const mainBranch = branchList.find((b) => b.isMain);
+          if (mainBranch) {
+            effectiveBranchId = mainBranch.id;
+          }
+        }
+
+        const current = branchList.find((b) => b.id === effectiveBranchId);
+        setCurrentBranch(current ?? null);
+
+        return effectiveBranchId;
+      });
     } catch (error) {
       console.error('Failed to load branches:', error);
     } finally {
       setBranchesLoading(false);
     }
-  }, [userClient, siteId, branchId]);
+  }, [userClient, siteId]);
 
-  // Initial branch load
+  // Initial branch load - only once
   useEffect(() => {
-    void refreshBranches();
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      void refreshBranches();
+    }
   }, [refreshBranches]);
 
   // Perform save operation - uses refs to avoid dependency issues
