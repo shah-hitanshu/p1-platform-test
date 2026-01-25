@@ -62,6 +62,7 @@ async function parseJsonBody<T>(request: Request): Promise<T> {
  */
 interface CreateDocumentBody {
   path?: string;
+  snapshot?: Record<string, unknown>;
 }
 
 /**
@@ -282,6 +283,7 @@ async function handleCreateDocumentOnBranch(
     siteId,
     branchId,
     path: body.path,
+    snapshot: body.snapshot,
     createdById: principal.id,
     createdByType: principal.type,
   });

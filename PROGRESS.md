@@ -6,6 +6,24 @@ This document tracks the implementation progress of the Collaborative JSON State
 
 ---
 
+## Known Issues / Future Work
+
+### CORS Configuration for Multi-Tenant Frontends
+
+**Issue:** Currently, allowed CORS origins must be manually added to `wrangler.jsonc` for each frontend that needs to access the CSS API. This doesn't scale for a multi-tenant platform where customers deploy arbitrary frontends.
+
+**Current Workaround:** Manually add each localhost port or domain to `CORS_ORIGINS` in `workers/wrangler.jsonc`.
+
+**Proposed Solutions:**
+1. **Wildcard subdomain matching:** Allow `*.pantheonsite.io` to cover all customer sites
+2. **Dynamic origin validation:** Validate origins against the site's configuration stored in the database (e.g., `site.allowedOrigins` field)
+3. **Authentication-based CORS:** Automatically allow origins that provide valid API keys associated with the site
+4. **Same-origin proxy:** Frontends proxy through their own backend, eliminating browser CORS
+
+**Priority:** Medium - Required before production multi-tenant deployment
+
+---
+
 ## Completed Work
 
 ### Phase 1.1: Project Configuration and Build Tooling

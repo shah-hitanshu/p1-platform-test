@@ -479,6 +479,7 @@ export interface CreateDocumentOnBranchParams {
   siteId: string;
   branchId: string;
   path: string;
+  snapshot?: Record<string, unknown>;
   createdById: string;
   createdByType: 'user' | 'agent';
 }
@@ -647,7 +648,7 @@ export async function createDocumentOnBranch(
       }
     }
 
-    // Create the initial version with empty snapshot
+    // Create the initial version with provided snapshot or empty object
     const versionResult = await query<DocumentVersionRow>(
       `INSERT INTO app.document_versions (
         document_id, branch_id, version_number, snapshot, crdt_state,
@@ -662,7 +663,7 @@ export async function createDocumentOnBranch(
       [
         document.id,
         params.branchId,
-        {},
+        params.snapshot ?? {},
         'edit',
         params.createdById,
         params.createdByType,
