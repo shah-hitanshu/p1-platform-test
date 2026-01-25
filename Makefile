@@ -125,6 +125,12 @@ worker-login: ## Login to Cloudflare (for integration testing)
 	@echo "$(YELLOW)Note: Sessions expire after ~1 hour$(NC)"
 	@cd workers && pnpm exec wrangler login
 
+.PHONY: metrics-receiver
+metrics-receiver: ## Start local metrics receiver with macOS notifications
+	@echo "$(GREEN)Starting local metrics receiver...$(NC)"
+	@echo "$(BLUE)This will send macOS notifications for issues$(NC)"
+	@node scripts/local-metrics-receiver.js
+
 ##@ Terraform - Infrastructure Management
 
 .PHONY: tf-init

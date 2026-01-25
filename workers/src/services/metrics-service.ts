@@ -201,8 +201,11 @@ export async function flushMetrics(): Promise<void> {
   const { pushEndpoint, apiKey, environment, version } = metricsConfig;
 
   // Security: Validate endpoint is HTTPS to prevent API key exposure
-  if (!pushEndpoint.startsWith('https://')) {
-    console.warn('Metrics push endpoint must be HTTPS');
+  // Exception: Allow localhost for local development
+  const isLocalhost = pushEndpoint.startsWith('http://localhost') ||
+                      pushEndpoint.startsWith('http://127.0.0.1');
+  if (!pushEndpoint.startsWith('https://') && !isLocalhost) {
+    console.warn('Metrics push endpoint must be HTTPS (or localhost for development)');
     metricsBuffer = [];
     return;
   }
