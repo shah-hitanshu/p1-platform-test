@@ -6,10 +6,11 @@
  * which sidebar tab is active.
  *
  * This component must be rendered inside the Puck component tree
- * (e.g., via an override) to access the usePuck hook.
+ * (e.g., via a plugin or override) to access the usePuck hook.
+ * It safely handles cases where Puck's context isn't available yet.
  */
 
-import { useEffect, useRef } from 'react';
+import React, { Component, useEffect, useRef, useState } from 'react';
 import { usePuck } from '@puckeditor/core';
 import type { PuckData } from '@pantheon/css-client';
 
@@ -29,12 +30,65 @@ export interface PuckDataSynchronizerProps {
 }
 
 /**
- * Syncs external data changes to Puck without remounting.
- *
- * This component renders nothing but uses an effect to dispatch
- * setData actions when the external data changes.
+ * Error boundary to catch usePuck errors gracefully.
+ * This is needed for React 19 which is stricter about errors.
  */
-export function PuckDataSynchronizer({
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  syncKey: string | null;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  lastSyncKey: string | null;
+}
+
+class PuckContextErrorBoundary extends Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, lastSyncKey: props.syncKey };
+  }
+
+  static getDerivedStateFromError(): Partial<ErrorBoundaryState> {
+    return { hasError: true };
+  }
+
+  static getDerivedStateFromProps(
+    props: ErrorBoundaryProps,
+    state: ErrorBoundaryState
+  ): Partial<ErrorBoundaryState> | null {
+    // Reset error state when syncKey changes - allows retry on new sync attempts
+    if (props.syncKey !== state.lastSyncKey) {
+      return { hasError: false, lastSyncKey: props.syncKey };
+    }
+    return null;
+  }
+
+  componentDidCatch(error: Error): void {
+    // Only suppress "usePuck must be used inside <Puck>" errors
+    if (!error.message?.includes('usePuck')) {
+      // Re-throw other errors
+      throw error;
+    }
+    // Silently ignore usePuck context errors - the sync will work on subsequent renders
+  }
+
+  render(): React.ReactNode {
+    if (this.state.hasError) {
+      // Render nothing when there's an error - sync will be retried when syncKey changes
+      return null;
+    }
+    return this.props.children;
+  }
+}
+
+/**
+ * Inner component that uses usePuck (only rendered after mount when context is ready)
+ */
+function PuckDataSynchronizerInner({
   data,
   syncKey,
 }: PuckDataSynchronizerProps): null {
@@ -59,4 +113,42 @@ export function PuckDataSynchronizer({
 
   // This component renders nothing
   return null;
+}
+
+/**
+ * Syncs external data changes to Puck without remounting.
+ *
+ * This component renders nothing but uses an effect to dispatch
+ * setData actions when the external data changes.
+ *
+ * It safely handles cases where Puck's context might not be ready yet
+ * by deferring the sync until after the first render using setTimeout
+ * to ensure Puck's context provider is fully initialized.
+ *
+ * An error boundary catches any "usePuck must be used inside <Puck>"
+ * errors for React 19 compatibility.
+ */
+export function PuckDataSynchronizer({
+  data,
+  syncKey,
+}: PuckDataSynchronizerProps): React.ReactElement | null {
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    // Use setTimeout to defer to a later tick, ensuring Puck's context is fully set up
+    const timer = setTimeout(() => {
+      setIsReady(true);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!isReady) {
+    return null;
+  }
+
+  return (
+    <PuckContextErrorBoundary syncKey={syncKey}>
+      <PuckDataSynchronizerInner data={data} syncKey={syncKey} />
+    </PuckContextErrorBoundary>
+  );
 }

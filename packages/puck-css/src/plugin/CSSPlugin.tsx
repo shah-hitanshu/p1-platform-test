@@ -6,7 +6,8 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import type { Branch, Document, DocumentVersion } from '@pantheon/css-client';
+import type { Branch, Document, DocumentVersion, PuckData } from '@pantheon/css-client';
+import { PuckDataSynchronizer } from '../components/PuckDataSynchronizer.js';
 
 /**
  * Props for the CSS Plugin panel content
@@ -303,6 +304,19 @@ export interface CSSPluginOptions {
   selectedVersionId?: string;
   /** Callback when a version is selected */
   onVersionSelect?: (version: DocumentVersion) => void;
+  /** Callback to compare two versions */
+  onCompare?: (beforeVersionId: string, afterVersionId: string) => void;
+  /**
+   * Data to sync to Puck's internal state. Used with dataSyncKey
+   * to update Puck's data without remounting (preserving sidebar state).
+   * This is rendered inside the plugin which is guaranteed to be inside Puck's context.
+   */
+  syncData?: PuckData | null;
+  /**
+   * Key that changes when we want to force a data sync to Puck.
+   * Use version ID or document ID to trigger sync on version/document changes.
+   */
+  dataSyncKey?: string | null;
 }
 
 /**
@@ -343,22 +357,29 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
     label: 'CSS',
     icon: <CSSPluginIcon />,
     render: () => (
-      <CSSPluginPanel
-        branches={options.branches}
-        currentBranch={options.currentBranch}
-        onBranchSwitch={options.onBranchSwitch}
-        hasUnsavedChanges={options.hasUnsavedChanges}
-        documents={options.documents}
-        selectedDocumentPath={options.selectedDocumentPath}
-        onDocumentSelect={options.onDocumentSelect}
-        onDocumentCreate={options.onDocumentCreate}
-        onDocumentDelete={options.onDocumentDelete}
-        documentsLoading={options.documentsLoading}
-        versions={options.versions}
-        versionsLoading={options.versionsLoading}
-        selectedVersionId={options.selectedVersionId}
-        onVersionSelect={options.onVersionSelect}
-      />
+      <>
+        {/* PuckDataSynchronizer is rendered here inside the plugin, which is guaranteed
+            to be inside Puck's context. This allows usePuck() to work correctly. */}
+        {options.syncData !== undefined && options.dataSyncKey !== undefined && (
+          <PuckDataSynchronizer data={options.syncData} syncKey={options.dataSyncKey} />
+        )}
+        <CSSPluginPanel
+          branches={options.branches}
+          currentBranch={options.currentBranch}
+          onBranchSwitch={options.onBranchSwitch}
+          hasUnsavedChanges={options.hasUnsavedChanges}
+          documents={options.documents}
+          selectedDocumentPath={options.selectedDocumentPath}
+          onDocumentSelect={options.onDocumentSelect}
+          onDocumentCreate={options.onDocumentCreate}
+          onDocumentDelete={options.onDocumentDelete}
+          documentsLoading={options.documentsLoading}
+          versions={options.versions}
+          versionsLoading={options.versionsLoading}
+          selectedVersionId={options.selectedVersionId}
+          onVersionSelect={options.onVersionSelect}
+        />
+      </>
     ),
     overrides: {},
   };

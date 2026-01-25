@@ -11,7 +11,8 @@ import type { SaveStatus } from '../types.js';
 import { SaveIndicator } from '../components/SaveIndicator.js';
 import { PublishButton } from '../components/PublishButton.js';
 import { HistoricalVersionBanner } from '../components/HistoricalVersionBanner.js';
-import { PuckDataSynchronizer } from '../components/PuckDataSynchronizer.js';
+// NOTE: PuckDataSynchronizer is NOT imported here - it's used in CSSPlugin instead
+// because headerActions renders outside Puck's context where usePuck() doesn't work.
 
 /**
  * Options for creating CSS overrides
@@ -55,14 +56,16 @@ export interface CSSOverridesOptions {
   onReturnToLatest?: () => void;
 
   /**
-   * Data to sync to Puck's internal state. Used with dataSyncKey
-   * to update Puck's data without remounting (preserving sidebar state).
+   * @deprecated Pass syncData to createCSSPlugin instead. The plugin renders
+   * inside Puck's context where usePuck() works correctly. Passing these props
+   * here will be ignored.
    */
   syncData?: PuckData | null;
 
   /**
-   * Key that changes when we want to force a data sync to Puck.
-   * Use version ID or document ID to trigger sync on version/document changes.
+   * @deprecated Pass dataSyncKey to createCSSPlugin instead. The plugin renders
+   * inside Puck's context where usePuck() works correctly. Passing these props
+   * here will be ignored.
    */
   dataSyncKey?: string | null;
 }
@@ -120,17 +123,21 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
     isViewingHistoricalVersion = false,
     viewingVersion,
     onReturnToLatest,
-    syncData,
-    dataSyncKey,
+    // Deprecated props - kept for type signature compatibility but ignored
+    syncData: _syncData,
+    dataSyncKey: _dataSyncKey,
   } = options;
+
+  // Suppress unused variable warnings for deprecated props
+  void _syncData;
+  void _dataSyncKey;
 
   return {
     headerActions: ({ children }) => (
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        {/* Data synchronizer updates Puck's internal data without remounting */}
-        {syncData !== undefined && dataSyncKey !== undefined && (
-          <PuckDataSynchronizer data={syncData} syncKey={dataSyncKey} />
-        )}
+        {/* NOTE: PuckDataSynchronizer was removed from here because headerActions
+            renders outside Puck's context. Use syncData/dataSyncKey in createCSSPlugin
+            instead, which renders inside Puck's context. */}
         {isViewingHistoricalVersion && viewingVersion && onReturnToLatest ? (
           <HistoricalVersionBanner
             version={viewingVersion}

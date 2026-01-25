@@ -247,39 +247,6 @@ function AppContent() {
     }
   }, [currentDocument?.id, refreshVersions]);
 
-  // Create Puck plugin for CSS integration (branch selector + document list + versions in plugin rail)
-  const cssPlugin = useMemo(() => createCSSPlugin({
-    branches,
-    currentBranch,
-    onBranchSwitch: switchBranch,
-    hasUnsavedChanges: saveStatus === 'saving',
-    documents,
-    selectedDocumentPath: selectedPath,
-    onDocumentSelect: handleDocumentSelect,
-    onDocumentCreate: handleDocumentCreate,
-    onDocumentDelete: handleDocumentDelete,
-    documentsLoading,
-    versions,
-    versionsLoading,
-    selectedVersionId: viewingVersion?.id ?? undefined,
-    onVersionSelect: handleVersionSelect,
-  }), [
-    branches,
-    currentBranch,
-    switchBranch,
-    saveStatus,
-    documents,
-    selectedPath,
-    handleDocumentSelect,
-    handleDocumentCreate,
-    handleDocumentDelete,
-    documentsLoading,
-    versions,
-    versionsLoading,
-    viewingVersion,
-    handleVersionSelect,
-  ]);
-
   // Track the last synced key to avoid syncing on every render
   // This ref persists across renders even if child components remount
   const lastSyncedKeyRef = useRef<string | null>(null);
@@ -304,7 +271,47 @@ function AppContent() {
     }
   }, [dataSyncKey]);
 
+  // Create Puck plugin for CSS integration (branch selector + document list + versions in plugin rail)
+  // syncData and dataSyncKey are passed here so PuckDataSynchronizer renders inside Puck's context
+  const cssPlugin = useMemo(() => createCSSPlugin({
+    branches,
+    currentBranch,
+    onBranchSwitch: switchBranch,
+    hasUnsavedChanges: saveStatus === 'saving',
+    documents,
+    selectedDocumentPath: selectedPath,
+    onDocumentSelect: handleDocumentSelect,
+    onDocumentCreate: handleDocumentCreate,
+    onDocumentDelete: handleDocumentDelete,
+    documentsLoading,
+    versions,
+    versionsLoading,
+    selectedVersionId: viewingVersion?.id ?? undefined,
+    onVersionSelect: handleVersionSelect,
+    // Data sync props - these render PuckDataSynchronizer inside the plugin (inside Puck's context)
+    syncData: currentData,
+    dataSyncKey,
+  }), [
+    branches,
+    currentBranch,
+    switchBranch,
+    saveStatus,
+    documents,
+    selectedPath,
+    handleDocumentSelect,
+    handleDocumentCreate,
+    handleDocumentDelete,
+    documentsLoading,
+    versions,
+    versionsLoading,
+    viewingVersion,
+    handleVersionSelect,
+    currentData,
+    dataSyncKey,
+  ]);
+
   // Create Puck overrides for header actions (save indicator, publish button, version banner)
+  // NOTE: syncData/dataSyncKey are NOT passed here - they're in the plugin above
   const cssOverrides = useMemo(() => createCSSOverrides({
     saveStatus,
     lastSaved,
@@ -319,9 +326,7 @@ function AppContent() {
     isViewingHistoricalVersion,
     viewingVersion,
     onReturnToLatest: returnToLatest,
-    syncData: currentData,
-    dataSyncKey,
-  }), [saveStatus, lastSaved, saveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError, pauseAutoSave, isViewingHistoricalVersion, viewingVersion, returnToLatest, currentData, dataSyncKey]);
+  }), [saveStatus, lastSaved, saveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError, pauseAutoSave, isViewingHistoricalVersion, viewingVersion, returnToLatest]);
 
   // Loading state
   if (loading) {
