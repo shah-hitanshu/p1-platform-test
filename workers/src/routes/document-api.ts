@@ -21,6 +21,7 @@ import {
   getBranch,
   // Document version operations
   getLatestDocumentVersion,
+  getDocumentVersion,
   listDocumentVersions,
   createDocumentVersion,
   SiteNotFoundError,
@@ -42,7 +43,8 @@ export interface DocumentRouteContext {
   documentPath?: string;
   action?: 'restore';
   versionsPath?: boolean;
-  versionAction?: 'latest';
+  versionAction?: 'latest' | 'by-id';
+  versionId?: string;
   principal: {
     id: string;
     type: 'user' | 'agent';
@@ -368,6 +370,25 @@ async function handleGetLatestDocumentVersion(
 }
 
 /**
+ * Handle GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/{versionId}
+ */
+async function handleGetDocumentVersionById(
+  documentId: string,
+  branchId: string,
+  versionId: string,
+): Promise<Response> {
+  // Fetch version by ID
+  const version = await getDocumentVersion(versionId);
+
+  // Validate version exists and belongs to this document/branch
+  if (version?.documentId !== documentId || version.branchId !== branchId) {
+    return errorResponse('Version not found', 404);
+  }
+
+  return jsonResponse(version);
+}
+
+/**
  * Handle POST /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions
  */
 async function handleCreateDocumentVersion(
@@ -423,6 +444,14 @@ async function handleDocumentVersionRoutes(
       return errorResponse('Method not allowed', 405);
     }
     return await handleGetLatestDocumentVersion(documentId, branchId);
+  }
+
+  // GET /versions/{versionId}
+  if (context.versionAction === 'by-id' && context.versionId !== undefined) {
+    if (method !== 'GET') {
+      return errorResponse('Method not allowed', 405);
+    }
+    return await handleGetDocumentVersionById(documentId, branchId, context.versionId);
   }
 
   // GET /versions - list versions

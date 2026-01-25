@@ -369,6 +369,7 @@ interface RouteParams {
   action?: string;
   versionsPath?: string;
   versionAction?: string;
+  versionId?: string;
 }
 
 function parseRoute(path: string): { handler: string; params: RouteParams } | null {
@@ -402,6 +403,24 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
         documentId: versionLatestMatch[3],
         versionsPath: 'true',
         versionAction: 'latest',
+      },
+    };
+  }
+
+  // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/{versionId}
+  // Uses UUID pattern [0-9a-f-]{36} to avoid matching 'latest'
+  const versionByIdRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/([^/]+)\/versions\/([0-9a-f-]{36})$/;
+  const versionByIdMatch = versionByIdRe.exec(normalizedPath);
+  if (versionByIdMatch) {
+    return {
+      handler: 'documents',
+      params: {
+        siteId: versionByIdMatch[1],
+        branchId: versionByIdMatch[2],
+        documentId: versionByIdMatch[3],
+        versionId: versionByIdMatch[4],
+        versionsPath: 'true',
+        versionAction: 'by-id',
       },
     };
   }
@@ -902,7 +921,8 @@ export default {
             documentPath: route.params.documentPath,
             action: route.params.action as 'restore' | undefined,
             versionsPath: route.params.versionsPath === 'true',
-            versionAction: route.params.versionAction as 'latest' | undefined,
+            versionAction: route.params.versionAction as 'latest' | 'by-id' | undefined,
+            versionId: route.params.versionId,
             principal: principalContext,
           });
           break;

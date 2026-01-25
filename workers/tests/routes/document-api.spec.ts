@@ -24,6 +24,7 @@ vi.mock('../../src/services', () => ({
   getBranch: vi.fn(),
   // Document version operations
   getLatestDocumentVersion: vi.fn(),
+  getDocumentVersion: vi.fn(),
   listDocumentVersions: vi.fn(),
   createDocumentVersion: vi.fn(),
   SiteNotFoundError: class SiteNotFoundError extends Error {
@@ -1355,6 +1356,271 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         });
 
         expect(response.status).toBe(404);
+      });
+    });
+
+    // GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/{versionId}
+    describe('GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/{versionId}', () => {
+      it('should return 200 with version data when version exists', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+        vi.mocked(services.getDocumentVersion).mockResolvedValueOnce({
+          id: 'version-123e4567-e89b-12d3-a456-426614174000',
+          documentId: 'doc-1',
+          branchId: 'branch-1',
+          versionNumber: 2,
+          snapshot: { content: [{ type: 'Heading', props: { title: 'Historical' } }], root: {} },
+          source: 'edit',
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T11:00:00.000Z',
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions/version-123e4567-e89b-12d3-a456-426614174000',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          versionsPath: true,
+          versionAction: 'by-id',
+          versionId: 'version-123e4567-e89b-12d3-a456-426614174000',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.id).toBe('version-123e4567-e89b-12d3-a456-426614174000');
+        expect(body.versionNumber).toBe(2);
+        expect(body.snapshot.content).toBeDefined();
+      });
+
+      it('should return 404 when version ID does not exist', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+        vi.mocked(services.getDocumentVersion).mockResolvedValueOnce(null);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions/nonexistent-version-id-00000000',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          versionsPath: true,
+          versionAction: 'by-id',
+          versionId: 'nonexistent-version-id-00000000',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(404);
+      });
+
+      it('should return 404 when version exists but belongs to different document', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+        // Version exists but belongs to a different document
+        vi.mocked(services.getDocumentVersion).mockResolvedValueOnce({
+          id: 'version-123e4567-e89b-12d3-a456-426614174000',
+          documentId: 'doc-other',
+          branchId: 'branch-1',
+          versionNumber: 1,
+          snapshot: {},
+          source: 'edit',
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions/version-123e4567-e89b-12d3-a456-426614174000',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          versionsPath: true,
+          versionAction: 'by-id',
+          versionId: 'version-123e4567-e89b-12d3-a456-426614174000',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(404);
+      });
+
+      it('should return 404 when version exists but belongs to different branch', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+        // Version exists but belongs to a different branch
+        vi.mocked(services.getDocumentVersion).mockResolvedValueOnce({
+          id: 'version-123e4567-e89b-12d3-a456-426614174000',
+          documentId: 'doc-1',
+          branchId: 'branch-other',
+          versionNumber: 1,
+          snapshot: {},
+          source: 'edit',
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions/version-123e4567-e89b-12d3-a456-426614174000',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          versionsPath: true,
+          versionAction: 'by-id',
+          versionId: 'version-123e4567-e89b-12d3-a456-426614174000',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(404);
+      });
+
+      it('should return 404 when document does not exist on branch', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(false);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-nothere/versions/version-123e4567-e89b-12d3-a456-426614174000',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-nothere',
+          versionsPath: true,
+          versionAction: 'by-id',
+          versionId: 'version-123e4567-e89b-12d3-a456-426614174000',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(404);
+      });
+
+      it('should return 405 for non-GET methods', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions/version-123e4567-e89b-12d3-a456-426614174000',
+          { method: 'DELETE' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          versionsPath: true,
+          versionAction: 'by-id',
+          versionId: 'version-123e4567-e89b-12d3-a456-426614174000',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(405);
       });
     });
 
