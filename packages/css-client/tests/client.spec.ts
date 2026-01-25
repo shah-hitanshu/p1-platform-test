@@ -67,7 +67,7 @@ describe('CSSClient', () => {
         expect.objectContaining({
           method: 'GET',
           headers: expect.objectContaining({
-            'Authorization': `Bearer ${apiKey}`,
+            'X-API-Key': apiKey,
           }),
         })
       );
