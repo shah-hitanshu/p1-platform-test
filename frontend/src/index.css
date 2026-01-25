@@ -41,6 +41,57 @@ code {
   color: inherit;
 }
 
+/**
+ * PDS Button structural fixes
+ *
+ * The PDS Button component's type classes (button-primary, button-secondary, etc.)
+ * only define colors. The structural styles (padding, border-width, border-radius)
+ * are in the .dt-button class which isn't automatically applied.
+ * These rules add the necessary structural styles to all button types.
+ */
+button.button-primary,
+button.button-secondary,
+button.button-danger,
+button.button-warning,
+button.button-subtle,
+button.button-tertiary,
+button.button-primary-alternate {
+  display: inline-block;
+  flex-shrink: 0;
+  border-radius: 0.25rem;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.5;
+  border-width: 1px;
+  border-style: solid;
+  padding: calc(0.5rem - 1px) 1.5rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+button.button-primary:focus,
+button.button-secondary:focus,
+button.button-danger:focus,
+button.button-warning:focus,
+button.button-subtle:focus,
+button.button-tertiary:focus,
+button.button-primary-alternate:focus {
+  outline: none;
+  box-shadow: 0 0 0 0.125rem rgba(48, 23, 161, 0.4);
+}
+
+button.button-primary:disabled,
+button.button-secondary:disabled,
+button.button-danger:disabled,
+button.button-warning:disabled,
+button.button-subtle:disabled,
+button.button-tertiary:disabled,
+button.button-primary-alternate:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Loading screen - will be replaced with PDS Spinner component */
 .loading-screen {
   display: flex;
