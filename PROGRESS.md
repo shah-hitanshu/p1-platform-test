@@ -160,13 +160,30 @@ puck-css-integration/
 - 6 new backend tests covering success and error scenarios
 - Required for viewing historical versions in the Puck editor
 
+### Phase 5e: Sidebar State Preservation ✅
+- Fixed issue where CSS sidebar closed when switching documents or versions
+- New `PuckDataSynchronizer` component:
+  - Uses Puck's `usePuck().dispatch` to update internal data without remounting
+  - Syncs external data to Puck when `syncKey` changes
+  - Renders nothing (returns null), used purely for side effects
+  - Rendered in headerActions override to access Puck context
+- Updated `createCSSOverrides`:
+  - Added `syncData` and `dataSyncKey` props
+  - Integrates PuckDataSynchronizer into header actions
+- Demo app updated:
+  - Removed `key` prop from Puck (no longer needed)
+  - Added `dataSyncKey` that changes when document or version changes
+  - Passes `currentData` as `syncData` to overrides
+- Added ResizeObserver polyfill to test setup for @puckeditor/core compatibility
+- 5 new tests for PuckDataSynchronizer component
+
 ## Test Summary
 
 | Package | Tests | Status |
 |---------|-------|--------|
 | @pantheon/css-client | 18 | ✅ Passing |
-| @pantheon/puck-css | 124 | ✅ Passing |
-| **Total** | **142** | ✅ **All Passing** |
+| @pantheon/puck-css | 139 | ✅ Passing |
+| **Total** | **157** | ✅ **All Passing** |
 
 ## Key Decisions
 

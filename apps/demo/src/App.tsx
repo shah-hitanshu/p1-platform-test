@@ -280,6 +280,14 @@ function AppContent() {
     handleVersionSelect,
   ]);
 
+  // Generate a sync key that changes when we want to force Puck to update its data
+  // This allows data sync without remounting (preserving sidebar state)
+  const dataSyncKey = viewingVersion
+    ? `version-${viewingVersion.id}`
+    : currentDocument
+      ? `doc-${currentDocument.id}-latest`
+      : null;
+
   // Create Puck overrides for header actions (save indicator, publish button, version banner)
   const cssOverrides = useMemo(() => createCSSOverrides({
     saveStatus,
@@ -295,7 +303,9 @@ function AppContent() {
     isViewingHistoricalVersion,
     viewingVersion,
     onReturnToLatest: returnToLatest,
-  }), [saveStatus, lastSaved, saveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError, pauseAutoSave, isViewingHistoricalVersion, viewingVersion, returnToLatest]);
+    syncData: currentData,
+    dataSyncKey,
+  }), [saveStatus, lastSaved, saveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError, pauseAutoSave, isViewingHistoricalVersion, viewingVersion, returnToLatest, currentData, dataSyncKey]);
 
   // Loading state
   if (loading) {
@@ -341,13 +351,10 @@ function AppContent() {
 
   // Document loaded - show Puck editor
   // When viewing historical version, editor is read-only with diff highlighting
-  // Key includes version ID to force Puck to remount when switching versions
-  const puckKey = viewingVersion ? `historical-${viewingVersion.id}` : `current-${currentDocument.id}`;
-
+  // Data sync happens via PuckDataSynchronizer in overrides (preserves sidebar state)
   return (
     <div className="app app--fullscreen">
       <Puck
-        key={puckKey}
         config={effectiveConfig}
         data={currentData}
         onChange={isViewingHistoricalVersion ? () => {} : handleChange}

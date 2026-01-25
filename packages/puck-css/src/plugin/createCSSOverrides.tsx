@@ -6,11 +6,12 @@
  */
 
 import React from 'react';
-import type { Checkpoint, DocumentVersion } from '@pantheon/css-client';
+import type { Checkpoint, DocumentVersion, PuckData } from '@pantheon/css-client';
 import type { SaveStatus } from '../types.js';
 import { SaveIndicator } from '../components/SaveIndicator.js';
 import { PublishButton } from '../components/PublishButton.js';
 import { HistoricalVersionBanner } from '../components/HistoricalVersionBanner.js';
+import { PuckDataSynchronizer } from '../components/PuckDataSynchronizer.js';
 
 /**
  * Options for creating CSS overrides
@@ -52,6 +53,18 @@ export interface CSSOverridesOptions {
    * Callback to return to the latest version.
    */
   onReturnToLatest?: () => void;
+
+  /**
+   * Data to sync to Puck's internal state. Used with dataSyncKey
+   * to update Puck's data without remounting (preserving sidebar state).
+   */
+  syncData?: PuckData | null;
+
+  /**
+   * Key that changes when we want to force a data sync to Puck.
+   * Use version ID or document ID to trigger sync on version/document changes.
+   */
+  dataSyncKey?: string | null;
 }
 
 /**
@@ -107,11 +120,17 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
     isViewingHistoricalVersion = false,
     viewingVersion,
     onReturnToLatest,
+    syncData,
+    dataSyncKey,
   } = options;
 
   return {
     headerActions: ({ children }) => (
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Data synchronizer updates Puck's internal data without remounting */}
+        {syncData !== undefined && dataSyncKey !== undefined && (
+          <PuckDataSynchronizer data={syncData} syncKey={dataSyncKey} />
+        )}
         {isViewingHistoricalVersion && viewingVersion && onReturnToLatest ? (
           <HistoricalVersionBanner
             version={viewingVersion}

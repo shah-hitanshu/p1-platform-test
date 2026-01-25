@@ -21,6 +21,8 @@ export { PublishButton } from './components/PublishButton.js';
 export { BranchSelector } from './components/BranchSelector.js';
 export { HistoricalVersionBanner } from './components/HistoricalVersionBanner.js';
 export type { HistoricalVersionBannerProps } from './components/HistoricalVersionBanner.js';
+export { PuckDataSynchronizer } from './components/PuckDataSynchronizer.js';
+export type { PuckDataSynchronizerProps } from './components/PuckDataSynchronizer.js';
 
 // Version Comparison Components
 export {
