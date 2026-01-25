@@ -149,6 +149,17 @@ puck-css-integration/
 - 13 new tests for VisualVersionCompare component
 - CSS styles for visual diff highlighting added to package
 
+### Phase 5d: Backend - GET Version by ID Endpoint ✅
+- Added endpoint to CSS backend for fetching individual versions by ID
+- Endpoint: `GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/{versionId}`
+- Enables efficient fetching of historical version snapshots without loading all versions
+- Implementation details (in collaborative-state-system repo):
+  - Route pattern uses UUID regex to avoid matching 'latest'
+  - Handler validates version belongs to specified document and branch
+  - Returns 404 if version not found or mismatched
+- 6 new backend tests covering success and error scenarios
+- Required for viewing historical versions in the Puck editor
+
 ## Test Summary
 
 | Package | Tests | Status |
