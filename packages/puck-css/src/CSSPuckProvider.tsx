@@ -217,8 +217,11 @@ export function CSSPuckProvider({
   const loadDocument = useCallback(
     async (path: string) => {
       try {
+        // Normalize path: strip leading slash if present
+        const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
+
         // Get document by path
-        const doc = await userClient.documents.getByPath(siteId, path);
+        const doc = await userClient.documents.getByPath(siteId, normalizedPath);
         setCurrentDocument(doc);
 
         // Get latest version
