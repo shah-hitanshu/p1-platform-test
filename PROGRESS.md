@@ -92,13 +92,36 @@ puck-css-integration/
 - `createCSSOverrides` accepts `onPauseAutoSave` callback
 - 8 new tests for pause/resume functionality
 
+### Phase 5: Version Comparison UI ✅
+- Extended diff utilities with position tracking:
+  - `diffPuckDataWithPositions()` - Component diffing with before/after indices
+  - `diffProps()` - Prop-level diffing for detailed change detection
+  - `getReorderedComponents()` - Detects moved components
+- New types:
+  - `ComponentDiffWithPosition` - Extended diff type with position info
+  - `PropDiff` - Prop-level diff type (added/removed/modified)
+- React components for version comparison:
+  - `PropValueDisplay` - Smart prop value renderer with color swatches, type formatting
+  - `PropDiffRow` - Single prop diff display with before/after values
+  - `PropDiffPanel` - Container for all prop diffs with summary counts
+  - `ComponentNode` - Component in tree with diff styling (+/−/~/↕ icons)
+  - `ComponentTree` - Side-by-side tree filtering by before/after
+  - `DiffHeader` - Version header with change summary (+3, -1, ~2)
+  - `VersionComparePage` - Full-page comparison view with:
+    - Side-by-side component trees (Before/After)
+    - Prop diff panel for selected component
+    - Empty state for no changes
+- Comprehensive CSS styles for all components
+- Barrel export at `src/components/version-compare/index.ts`
+- 70 new tests for version comparison components
+
 ## Test Summary
 
 | Package | Tests | Status |
 |---------|-------|--------|
 | @pantheon/css-client | 18 | ✅ Passing |
-| @pantheon/puck-css | 22 | ✅ Passing |
-| **Total** | **40** | ✅ **All Passing** |
+| @pantheon/puck-css | 92 | ✅ Passing |
+| **Total** | **110** | ✅ **All Passing** |
 
 ## Key Decisions
 
@@ -113,10 +136,10 @@ puck-css-integration/
 
 ## Remaining Work
 
-### Phase 5: Version Comparison UI
-- Side-by-side version viewer with highlights
-- Visual diff of component changes
-- Version history panel
+### Phase 5b: Version Comparison Integration
+- Integrate version comparison components into demo app
+- Add version history panel with compare functionality
+- Connect VersionComparePage to actual version data
 
 ### Phase 6: Error Notification Component
 - Toast-style error notifications
