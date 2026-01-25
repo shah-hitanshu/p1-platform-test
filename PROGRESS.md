@@ -26,13 +26,18 @@ puck-css-integration/
 - Full API client implementation with endpoint classes:
   - `SitesEndpoint` - Site CRUD operations
   - `BranchesEndpoint` - Branch management
-  - `DocumentsEndpoint` - Document CRUD
+  - `DocumentsEndpoint` - Document CRUD (including `restore()` for archived documents)
   - `VersionsEndpoint` - Document version management
   - `CheckpointsEndpoint` - Checkpoint (publish) operations
 - Authentication support (API key and custom providers)
 - Principal-based request attribution via `withPrincipal()`
 - Error classes for different API error types
 - 18 tests passing
+
+### Phase 2b: Document Restore Method (2026-01-25) ✅
+- Added `documents.restore(siteId, documentId)` method to restore archived documents
+- Used when creating pages from Content Publisher articles that were previously archived
+- Calls `POST /api/sites/{siteId}/documents/{documentId}/restore` endpoint
 
 ### Phase 3: Puck CSS Package (`@pantheon/puck-css`) ✅
 - React hooks for CSS integration:

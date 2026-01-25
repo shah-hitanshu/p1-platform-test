@@ -100,4 +100,17 @@ export class DocumentsEndpoint {
       throw error;
     }
   }
+
+  /**
+   * Restore an archived document.
+   * This unarchives a soft-deleted document, making it active again.
+   */
+  async restore(siteId: string, documentId: string): Promise<Document> {
+    return this.base.request<Document>(
+      `/api/sites/${siteId}/documents/${documentId}/restore`,
+      {
+        method: 'POST',
+      }
+    );
+  }
 }
