@@ -252,6 +252,7 @@ function CSSPuckProviderInner({
 
   // Public save function (triggers debounce)
   // Also resumes auto-save if paused, per user requirement
+  // Sends changes via WebSocket when realtime is enabled
   const saveData = useCallback(
     (data: PuckData) => {
       pendingDataRef.current = data;
@@ -261,8 +262,13 @@ function CSSPuckProviderInner({
         setAutoSavePaused(false);
       }
       debouncedSave();
+
+      // Send changes via WebSocket for real-time collaboration
+      if (enableRealtime && realtime.connected) {
+        realtime.applyLocalChange(data);
+      }
     },
-    [debouncedSave]
+    [debouncedSave, enableRealtime, realtime]
   );
 
   // Force immediate save
