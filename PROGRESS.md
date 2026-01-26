@@ -61,6 +61,68 @@ This document tracks the implementation progress of the Collaborative JSON State
 
 ---
 
+### Yjs CRDT Integration Frontend (Phases 2-3) - Added 2026-01-25
+
+**Feature:** Added frontend WebSocket client and Puck Editor integration for real-time collaborative editing using Yjs CRDT synchronization.
+
+**Problem Solved:** Completes the end-to-end real-time collaboration system. With the backend (Phase 1) syncing CRDT state to PostgreSQL and the frontend (Phases 2-3) connecting via WebSocket, multiple users can now edit the same document simultaneously with automatic conflict-free merging.
+
+**Implementation (in puck-css-integration repo):**
+
+**Phase 2 - RealtimeClient:**
+- Created `RealtimeClient` class in `packages/css-client/src/realtime.ts`
+- Manages WebSocket connection lifecycle with auto-reconnect
+- Handles binary Yjs message encoding/decoding
+- Provides `connect()`, `disconnect()`, `applyLocalUpdate()`, `getYDoc()` methods
+- Added yjs dependency to css-client package
+
+**Phase 3.1 - Puck-Yjs Binding:**
+- Created `puckYjsBinding.ts` utility for bidirectional sync
+- `puckDataToYMap()` - Converts PuckData to Yjs Y.Map structure
+- `yMapToPuckData()` - Converts Yjs Y.Map to PuckData
+- `createPuckYjsBinding()` - Creates binding with LOCAL_ORIGIN to prevent sync loops
+- Uses transaction origins to distinguish local vs remote changes
+
+**Phase 3.2 - useRealtime Hook:**
+- Created `useRealtime.ts` React hook
+- Manages RealtimeClient lifecycle with useEffect
+- Creates Puck-Yjs binding on mount
+- Exposes `connected` state, `applyLocalChange()` function, and `error`
+- Cleans up connections on unmount or dependency changes
+
+**Phase 3.3-3.4 - CSSPuckProvider Integration:**
+- Added `enableRealtime` and `wsBaseUrl` props to CSSPuckConfig
+- Added `realtimeEnabled` and `realtimeConnected` to context value
+- Uses useRealtime hook when enabled
+- Updates currentData on remote changes from collaborators
+
+**Files Created (puck-css-integration):**
+- `packages/css-client/src/realtime.ts` - RealtimeClient class
+- `packages/puck-css/src/utils/puckYjsBinding.ts` - Yjs binding utility
+- `packages/puck-css/src/hooks/useRealtime.ts` - React hook
+- Test files for each component
+
+**Files Modified (puck-css-integration):**
+- `packages/css-client/src/index.ts` - Export RealtimeClient
+- `packages/css-client/package.json` - Added yjs dependency
+- `packages/puck-css/src/hooks/index.ts` - Export useRealtime
+- `packages/puck-css/src/types.ts` - Added realtime config/context props
+- `packages/puck-css/src/CSSPuckProvider.tsx` - Integrated useRealtime hook
+- `packages/puck-css/package.json` - Added yjs dependency
+
+**Test Commits (puck-css-integration):**
+- `8305b77` - RealtimeClient tests (8 tests)
+- `a488753` - puckYjsBinding tests (10 tests)
+- `15113f4` - useRealtime hook tests (7 tests)
+- `a3ec0f5` - CSSPuckProvider realtime tests (7 tests)
+
+**Implementation Commits (puck-css-integration):**
+- `bc089c7` - RealtimeClient implementation
+- `0ebc11a` - useRealtime hook implementation
+- `703c4d5` - CSSPuckProvider realtime integration
+
+---
+
 ### Visual JSON Diffs in MergePreviewPanel (Added 2026-01-25)
 
 **Feature:** Added expandable diff viewing directly from the MergePreviewPanel component, allowing users to see what changed between branches before approving or resolving conflicts.
@@ -2084,4 +2146,4 @@ Template for future decisions:
 
 ---
 
-*Last updated: 2026-01-25 (Phase 10.6 - Merge Diff Visualization Complete)*
+*Last updated: 2026-01-25 (Yjs CRDT Integration Frontend Complete - Phases 2-3)*
