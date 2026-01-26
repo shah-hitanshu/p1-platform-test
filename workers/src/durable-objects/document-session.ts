@@ -89,6 +89,15 @@ interface ApplyResponse {
 }
 
 /**
+ * Response from the /sync endpoint
+ */
+interface SyncResponse {
+  synced: boolean;
+  snapshot: Record<string, unknown>;
+  stateVector: number[];
+}
+
+/**
  * Environment interface for DocumentSession
  */
 interface DocumentSessionEnv {
@@ -177,6 +186,12 @@ export class DocumentSession {
 
         case '/connect':
           return this.handleWebSocket(request);
+
+        case '/sync':
+          return await this.handleSync(request);
+
+        case '/initialize':
+          return await this.handleInitialize(request);
 
         default:
           return new Response(
@@ -445,6 +460,129 @@ export class DocumentSession {
       status: 101,
       webSocket: client,
     });
+  }
+
+  /**
+   * Handle /sync endpoint
+   * Manually trigger sync to PostgreSQL (via internal API)
+   * Returns current state after sync
+   */
+  private async handleSync(request: Request): Promise<Response> {
+    // Only accept POST method
+    if (request.method !== 'POST') {
+      return this.errorResponse(405, 'Method not allowed. Use POST.');
+    }
+
+    // Persist to DO storage (sync to PostgreSQL would be called by the worker)
+    try {
+      await this.persist();
+    } catch (error) {
+      return this.errorResponse(500, `Failed to persist state: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    const root = this.ydoc.getMap('root');
+    const response: SyncResponse = {
+      synced: true,
+      snapshot: root.toJSON() as Record<string, unknown>,
+      stateVector: Array.from(Y.encodeStateVector(this.ydoc)),
+    };
+
+    return new Response(
+      JSON.stringify(response),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+
+  /**
+   * Handle /initialize endpoint
+   * Initialize CRDT state from PostgreSQL snapshot or CRDT state
+   * Used when DO storage is empty but PostgreSQL has data
+   */
+  private async handleInitialize(request: Request): Promise<Response> {
+    // Only accept POST method
+    if (request.method !== 'POST') {
+      return this.errorResponse(405, 'Method not allowed. Use POST.');
+    }
+
+    // Parse request body
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      return this.errorResponse(400, 'Invalid JSON in request body');
+    }
+
+    // Validate body structure
+    if (typeof rawBody !== 'object' || rawBody === null) {
+      return this.errorResponse(400, 'Request body must be an object');
+    }
+
+    const body = rawBody as Record<string, unknown>;
+
+    // Validate snapshot is present
+    if (body.snapshot === null || body.snapshot === undefined || typeof body.snapshot !== 'object') {
+      return this.errorResponse(400, 'snapshot is required and must be an object');
+    }
+
+    const snapshot = body.snapshot as Record<string, unknown>;
+    const crdtState = typeof body.crdtState === 'string' ? body.crdtState : null;
+
+    try {
+      if (crdtState !== null && crdtState !== '') {
+        // Initialize from CRDT state (base64 encoded)
+        const crdtBytes = this.base64ToUint8Array(crdtState);
+        Y.applyUpdate(this.ydoc, crdtBytes);
+      } else {
+        // Initialize from JSON snapshot
+        this.initializeFromSnapshot(snapshot);
+      }
+
+      // Persist the initialized state
+      await this.persist();
+
+      const root = this.ydoc.getMap('root');
+      return new Response(
+        JSON.stringify({
+          success: true,
+          snapshot: root.toJSON(),
+          stateVector: Array.from(Y.encodeStateVector(this.ydoc)),
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    } catch (error) {
+      return this.errorResponse(500, `Failed to initialize: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Initialize Y.Doc from a JSON snapshot
+   */
+  private initializeFromSnapshot(snapshot: Record<string, unknown>): void {
+    const root = this.ydoc.getMap('root');
+
+    // Clear existing data
+    for (const key of root.keys()) {
+      root.delete(key);
+    }
+
+    // Apply snapshot
+    this.ydoc.transact(() => {
+      for (const [key, value] of Object.entries(snapshot)) {
+        root.set(key, this.toYjsValue(value));
+      }
+    }, 'initialize');
+  }
+
+  /**
+   * Decode base64 string to Uint8Array
+   */
+  private base64ToUint8Array(base64: string): Uint8Array {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
   }
 
   /**
