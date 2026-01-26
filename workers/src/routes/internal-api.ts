@@ -10,6 +10,7 @@
 
 import {
   syncCrdtToPostgres,
+  loadLatestCrdtState,
   DocumentNotFoundError,
   SyncError,
 } from '../services/crdt-sync-service';
@@ -178,6 +179,52 @@ async function handleCrdtSync(request: Request): Promise<Response> {
   }
 }
 
+/**
+ * Handle GET /internal/crdt-state
+ * Loads the latest CRDT state from PostgreSQL for a document on a branch.
+ * Used by Durable Objects to initialize from PostgreSQL when storage is empty.
+ *
+ * Query params: siteId, documentPath, branchId
+ */
+async function handleLoadCrdtState(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+
+  // Get query parameters
+  const siteId = url.searchParams.get('siteId');
+  const documentPath = url.searchParams.get('documentPath');
+  const branchId = url.searchParams.get('branchId');
+
+  // Validate required params
+  if (siteId === null || siteId === '') {
+    return errorResponse('siteId query parameter is required', 400);
+  }
+  if (documentPath === null || documentPath === '') {
+    return errorResponse('documentPath query parameter is required', 400);
+  }
+  if (branchId === null || branchId === '') {
+    return errorResponse('branchId query parameter is required', 400);
+  }
+
+  try {
+    const result = await loadLatestCrdtState(siteId, documentPath, branchId);
+
+    if (result === null) {
+      // Document not found or no versions - return 404
+      return jsonResponse({ found: false }, 404);
+    }
+
+    // Return snapshot and CRDT state
+    return jsonResponse({
+      found: true,
+      snapshot: result.snapshot,
+      crdtState: result.crdtState ?? null,
+    });
+  } catch (error) {
+    console.error('Error loading CRDT state:', error);
+    return errorResponse('Failed to load CRDT state', 500);
+  }
+}
+
 // =============================================================================
 // Main Route Handler
 // =============================================================================
@@ -209,6 +256,13 @@ export async function handleInternalRoutes(
       return errorResponse('Method not allowed', 405);
     }
     return handleCrdtSync(request);
+  }
+
+  if (path === '/internal/crdt-state') {
+    if (request.method !== 'GET') {
+      return errorResponse('Method not allowed', 405);
+    }
+    return handleLoadCrdtState(request);
   }
 
   return errorResponse('Not found', 404);

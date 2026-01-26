@@ -231,7 +231,8 @@ export class DocumentSession {
   }
 
   /**
-   * Initialize CRDT state from storage if not already done
+   * Initialize CRDT state from storage if not already done.
+   * Falls back to PostgreSQL if DO storage is empty and internal API is configured.
    */
   private async initializeIfNeeded(): Promise<void> {
     if (this.initialized) {
@@ -241,15 +242,124 @@ export class DocumentSession {
     const stored = await this.state.storage.get(YDOC_STORAGE_KEY);
 
     if (stored instanceof Uint8Array && stored.length > 0) {
+      // Priority 1: Use DO storage
       try {
         Y.applyUpdate(this.ydoc, stored);
+        this.initialized = true;
+        return;
       } catch (error) {
-        // Invalid stored data - log and continue with empty state
+        // Invalid stored data - log and try PostgreSQL fallback
         console.warn('Failed to restore CRDT state from storage:', error);
       }
     }
 
+    // Priority 2: Try to load from PostgreSQL if configured
+    if (this.env.INTERNAL_API_URL !== undefined && this.env.INTERNAL_SECRET !== undefined) {
+      try {
+        await this.initializeFromPostgres();
+      } catch (error) {
+        console.warn('Failed to initialize from PostgreSQL:', error);
+        // Continue with empty state
+      }
+    }
+
     this.initialized = true;
+  }
+
+  /**
+   * Load initial state from PostgreSQL via internal API.
+   * Called when DO storage is empty but PostgreSQL may have data.
+   */
+  private async initializeFromPostgres(): Promise<void> {
+    if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
+      return;
+    }
+
+    const { siteId, documentId, branchId } = this.sessionInfo;
+
+    // Skip initialization for unknown/invalid session IDs
+    if (siteId === 'unknown' || documentId === 'unknown' || branchId === 'unknown') {
+      return;
+    }
+
+    const url = new URL(`${this.env.INTERNAL_API_URL}/internal/crdt-state`);
+    url.searchParams.set('siteId', siteId);
+    url.searchParams.set('documentPath', documentId);
+    url.searchParams.set('branchId', branchId);
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'X-Internal-Secret': this.env.INTERNAL_SECRET,
+      },
+    });
+
+    if (!response.ok) {
+      // 404 is expected for new documents - just continue with empty state
+      if (response.status === 404) {
+        return;
+      }
+      throw new Error(`Failed to load from PostgreSQL: ${String(response.status)}`);
+    }
+
+    const rawData = await response.json();
+    const data = rawData as {
+      found: boolean;
+      snapshot?: Record<string, unknown>;
+      crdtState?: string | null;
+    };
+
+    if (!data.found) {
+      return;
+    }
+
+    // Apply CRDT state if available (preferred)
+    if (typeof data.crdtState === 'string' && data.crdtState !== '') {
+      const bytes = this.base64ToUint8Array(data.crdtState);
+      Y.applyUpdate(this.ydoc, bytes);
+      console.log(`Initialized document ${documentId} from PostgreSQL CRDT state`);
+      // Persist to DO storage for future use
+      await this.persist();
+      return;
+    }
+
+    // Fall back to snapshot if no CRDT state
+    if (data.snapshot !== undefined && typeof data.snapshot === 'object') {
+      const root = this.ydoc.getMap('root');
+      this.applySnapshotToYMap(root, data.snapshot);
+      console.log(`Initialized document ${documentId} from PostgreSQL snapshot`);
+      // Persist to DO storage for future use
+      await this.persist();
+    }
+  }
+
+  /**
+   * Apply a JSON snapshot to a Y.Map (recursive)
+   */
+  private applySnapshotToYMap(ymap: Y.Map<unknown>, snapshot: Record<string, unknown>): void {
+    for (const [key, value] of Object.entries(snapshot)) {
+      if (value === null || value === undefined) {
+        ymap.set(key, value);
+      } else if (Array.isArray(value)) {
+        const yarray = new Y.Array();
+        for (const item of value) {
+          if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+            const nestedMap = new Y.Map();
+            this.applySnapshotToYMap(nestedMap, item as Record<string, unknown>);
+            yarray.push([nestedMap]);
+          } else {
+            yarray.push([item]);
+          }
+        }
+        ymap.set(key, yarray);
+      } else if (typeof value === 'object') {
+        const nestedMap = new Y.Map();
+        this.applySnapshotToYMap(nestedMap, value as Record<string, unknown>);
+        ymap.set(key, nestedMap);
+      } else {
+        ymap.set(key, value);
+      }
+    }
   }
 
   /**
