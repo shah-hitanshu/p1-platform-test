@@ -216,6 +216,12 @@ export interface CSSPuckContextValue {
    * Whether currently connected to the real-time server.
    */
   realtimeConnected: boolean;
+
+  /**
+   * Key that changes when remote updates are received.
+   * Use this to trigger Puck data sync for real-time updates.
+   */
+  remoteSyncKey: string | null;
 }
 
 /**

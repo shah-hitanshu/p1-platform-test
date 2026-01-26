@@ -109,6 +109,15 @@ function CSSPuckProviderInner({
   const [viewingVersion, setViewingVersion] = useState<DocumentVersion | null>(null);
   const [latestVersionData, setLatestVersionData] = useState<PuckData | null>(null);
 
+  // Remote sync key - changes when remote updates arrive to trigger Puck sync
+  const [remoteSyncKey, setRemoteSyncKey] = useState<string | null>(null);
+
+  // Track when we're processing a remote update to prevent bounce-back loops
+  // When Puck receives remote data via setData, it fires onChange, which would
+  // call saveData and send the data back. We use this ref to skip that.
+  const isProcessingRemoteUpdateRef = useRef(false);
+  const remoteUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Real-time collaboration hook
   const realtime = useRealtime({
     baseUrl: wsBaseUrl ?? '',
@@ -120,8 +129,25 @@ function CSSPuckProviderInner({
     actorType: 'user',
     enabled: enableRealtime && !!wsBaseUrl,
     onRemoteUpdate: (data) => {
+      // Mark that we're processing a remote update to prevent bounce-back
+      isProcessingRemoteUpdateRef.current = true;
+
+      // Clear any existing timeout
+      if (remoteUpdateTimeoutRef.current) {
+        clearTimeout(remoteUpdateTimeoutRef.current);
+      }
+
+      // Clear the flag after a short delay to allow the state update and
+      // Puck's onChange to fire without triggering applyLocalChange
+      remoteUpdateTimeoutRef.current = setTimeout(() => {
+        isProcessingRemoteUpdateRef.current = false;
+        remoteUpdateTimeoutRef.current = null;
+      }, 100);
+
       // Update current data when remote changes arrive
       setCurrentData(data);
+      // Update sync key to trigger Puck re-sync
+      setRemoteSyncKey(`remote-${Date.now()}`);
     },
   });
 
@@ -252,7 +278,7 @@ function CSSPuckProviderInner({
 
   // Public save function (triggers debounce)
   // Also resumes auto-save if paused, per user requirement
-  // Sends changes via WebSocket when realtime is enabled
+  // Sends changes via WebSocket when realtime is enabled (but not for remote updates)
   const saveData = useCallback(
     (data: PuckData) => {
       pendingDataRef.current = data;
@@ -264,7 +290,8 @@ function CSSPuckProviderInner({
       debouncedSave();
 
       // Send changes via WebSocket for real-time collaboration
-      if (enableRealtime && realtime.connected) {
+      // Skip if this change originated from a remote update (prevents bounce-back loop)
+      if (enableRealtime && realtime.connected && !isProcessingRemoteUpdateRef.current) {
         realtime.applyLocalChange(data);
       }
     },
@@ -440,6 +467,7 @@ function CSSPuckProviderInner({
       returnToLatest,
       realtimeEnabled: enableRealtime,
       realtimeConnected: realtime.connected,
+      remoteSyncKey,
     }),
     [
       userClient,
@@ -471,6 +499,7 @@ function CSSPuckProviderInner({
       returnToLatest,
       enableRealtime,
       realtime.connected,
+      remoteSyncKey,
     ]
   );
 

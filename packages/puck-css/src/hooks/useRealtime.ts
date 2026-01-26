@@ -177,7 +177,7 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
     if (bindingRef.current) {
       bindingRef.current.applyLocalChange(data as unknown as BindingPuckData);
     }
-  }, []);
+  }, [connected]);
 
   return {
     connected,
