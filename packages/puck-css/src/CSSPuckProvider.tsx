@@ -77,6 +77,7 @@ function CSSPuckProviderInner({
   showErrorNotifications = true,
   enableRealtime = false,
   wsBaseUrl,
+  realtimeApiKey,
   children,
 }: CSSPuckProviderProps): React.ReactElement {
   // Access notification context
@@ -111,6 +112,7 @@ function CSSPuckProviderInner({
   // Real-time collaboration hook
   const realtime = useRealtime({
     baseUrl: wsBaseUrl ?? '',
+    apiKey: realtimeApiKey,
     siteId,
     branchId,
     documentPath: currentDocument?.path ?? null,

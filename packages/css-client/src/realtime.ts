@@ -19,6 +19,13 @@ export interface RealtimeClientConfig {
   baseUrl: string;
 
   /**
+   * API key for authentication.
+   * Will be passed as a query parameter since browsers can't send
+   * custom headers with WebSocket upgrade requests.
+   */
+  apiKey?: string;
+
+  /**
    * Callback when document state is updated (from remote changes)
    */
   onUpdate?: (snapshot: Record<string, unknown>) => void;
@@ -123,6 +130,11 @@ export class RealtimeClient {
     // Add actor info as query params (WebSocket can't send headers)
     url.searchParams.set('actorId', params.actorId);
     url.searchParams.set('actorType', params.actorType);
+
+    // Add API key as query param (WebSocket can't send custom headers)
+    if (this.config.apiKey) {
+      url.searchParams.set('apiKey', this.config.apiKey);
+    }
 
     this.ws = new WebSocket(url.toString());
     this.ws.binaryType = 'arraybuffer';

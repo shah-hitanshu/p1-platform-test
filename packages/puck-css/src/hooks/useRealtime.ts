@@ -20,6 +20,9 @@ export interface UseRealtimeParams {
   /** WebSocket base URL (ws:// or wss://) */
   baseUrl: string;
 
+  /** API key for authentication */
+  apiKey?: string;
+
   /** Site ID */
   siteId: string;
 
@@ -88,6 +91,7 @@ export interface UseRealtimeReturn {
 export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
   const {
     baseUrl,
+    apiKey,
     siteId,
     branchId,
     documentPath,
@@ -120,6 +124,7 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
     // Create new client
     const client = new RealtimeClient({
       baseUrl,
+      apiKey,
       onConnect: () => {
         setConnected(true);
         setError(null);
@@ -165,7 +170,7 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
       clientRef.current = null;
       setConnected(false);
     };
-  }, [baseUrl, siteId, branchId, documentPath, actorId, actorType, enabled]);
+  }, [baseUrl, apiKey, siteId, branchId, documentPath, actorId, actorType, enabled]);
 
   // Apply local change function
   const applyLocalChange = useCallback((data: PuckData) => {

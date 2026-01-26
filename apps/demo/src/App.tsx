@@ -440,6 +440,7 @@ export function App() {
       maxRetries={3}
       enableRealtime={config.enableRealtime}
       wsBaseUrl={config.wsBaseUrl}
+      realtimeApiKey={config.apiKey}
     >
       <AppContent />
     </CSSPuckProvider>

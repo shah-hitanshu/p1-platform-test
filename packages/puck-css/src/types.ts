@@ -58,6 +58,13 @@ export interface CSSPuckConfig {
    * @example 'wss://api.example.com'
    */
   wsBaseUrl?: string;
+
+  /**
+   * API key for real-time WebSocket authentication.
+   * Required when enableRealtime is true.
+   * WebSockets can't send custom headers, so the API key is passed as a query param.
+   */
+  realtimeApiKey?: string;
 }
 
 /**
