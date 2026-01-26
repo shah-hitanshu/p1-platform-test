@@ -11,6 +11,7 @@ import { CSSPuckContext } from './CSSPuckContext.js';
 import { NotificationProvider, useNotifications } from './NotificationContext.js';
 import { debounce } from './utils/debounce.js';
 import { withRetry } from './utils/retry.js';
+import { useRealtime } from './hooks/useRealtime.js';
 
 interface CSSPuckProviderProps extends CSSPuckConfig {
   children: React.ReactNode;
@@ -74,6 +75,8 @@ function CSSPuckProviderInner({
   autoSaveDelay = 3000,
   maxRetries = 3,
   showErrorNotifications = true,
+  enableRealtime = false,
+  wsBaseUrl,
   children,
 }: CSSPuckProviderProps): React.ReactElement {
   // Access notification context
@@ -104,6 +107,21 @@ function CSSPuckProviderInner({
   // Version viewing state
   const [viewingVersion, setViewingVersion] = useState<DocumentVersion | null>(null);
   const [latestVersionData, setLatestVersionData] = useState<PuckData | null>(null);
+
+  // Real-time collaboration hook
+  const realtime = useRealtime({
+    baseUrl: wsBaseUrl ?? '',
+    siteId,
+    branchId,
+    documentPath: currentDocument?.path ?? null,
+    actorId: userId,
+    actorType: 'user',
+    enabled: enableRealtime && !!wsBaseUrl,
+    onRemoteUpdate: (data) => {
+      // Update current data when remote changes arrive
+      setCurrentData(data);
+    },
+  });
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -412,6 +430,8 @@ function CSSPuckProviderInner({
       isViewingHistoricalVersion,
       loadVersion,
       returnToLatest,
+      realtimeEnabled: enableRealtime,
+      realtimeConnected: realtime.connected,
     }),
     [
       userClient,
@@ -441,6 +461,8 @@ function CSSPuckProviderInner({
       isViewingHistoricalVersion,
       loadVersion,
       returnToLatest,
+      enableRealtime,
+      realtime.connected,
     ]
   );
 
