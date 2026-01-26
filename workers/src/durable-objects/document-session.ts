@@ -103,7 +103,17 @@ interface SyncResponse {
 interface DocumentSessionEnv {
   API_URL?: string;
   ENVIRONMENT?: string;
+  /** Internal API URL for syncing to PostgreSQL */
+  INTERNAL_API_URL?: string;
+  /** Shared secret for internal API authentication */
+  INTERNAL_SECRET?: string;
 }
+
+/**
+ * Idle timeout before syncing to PostgreSQL (in milliseconds)
+ * Sync triggers after 5 seconds of no edits
+ */
+const SYNC_IDLE_TIMEOUT_MS = 5000;
 
 /**
  * DocumentSession Durable Object
@@ -118,6 +128,15 @@ export class DocumentSession {
   private ydoc: Y.Doc;
   private connections: Map<WebSocket, ConnectionMeta>;
   private initialized: boolean;
+
+  /** Timer for idle sync (cleared on each edit, fires after SYNC_IDLE_TIMEOUT_MS) */
+  private syncTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Actor ID of the last edit (used for sync attribution) */
+  private lastEditActorId = 'system';
+
+  /** Actor type of the last edit */
+  private lastEditActorType: 'user' | 'agent' = 'user';
 
   constructor(state: unknown, env: unknown) {
     this.state = state as DurableObjectState;
@@ -338,6 +357,9 @@ export class DocumentSession {
     const update = Y.encodeStateAsUpdate(this.ydoc);
     this.broadcastUpdate(update);
 
+    // Schedule sync to PostgreSQL after idle timeout
+    this.scheduleSync(body.actorId, 'user');
+
     const root = this.ydoc.getMap('root');
     const response: ApplyResponse = {
       success: true,
@@ -438,6 +460,9 @@ export class DocumentSession {
 
         // Persist state
         await this.persist();
+
+        // Schedule sync to PostgreSQL after idle timeout
+        this.scheduleSync(meta.actorId, meta.actorType);
       } catch (error) {
         console.error('Error handling WebSocket message:', error);
       }
@@ -448,12 +473,22 @@ export class DocumentSession {
       this.connections.delete(server);
       incrementCounter('css_ws_connections_total', { action: 'close' });
       setGauge('css_ws_connections_active', this.connections.size);
+
+      // If this was the last connection, trigger immediate sync to PostgreSQL
+      if (this.connections.size === 0) {
+        void this.syncToPostgres();
+      }
     });
 
     server.addEventListener('error', () => {
       this.connections.delete(server);
       incrementCounter('css_ws_connections_total', { action: 'close' });
       setGauge('css_ws_connections_active', this.connections.size);
+
+      // If this was the last connection, trigger immediate sync to PostgreSQL
+      if (this.connections.size === 0) {
+        void this.syncToPostgres();
+      }
     });
 
     // Return the client side of the WebSocket
@@ -474,12 +509,15 @@ export class DocumentSession {
       return this.errorResponse(405, 'Method not allowed. Use POST.');
     }
 
-    // Persist to DO storage (sync to PostgreSQL would be called by the worker)
+    // Persist to DO storage first
     try {
       await this.persist();
     } catch (error) {
       return this.errorResponse(500, `Failed to persist state: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+
+    // Sync to PostgreSQL via internal API
+    await this.syncToPostgres();
 
     const root = this.ydoc.getMap('root');
     const response: SyncResponse = {
@@ -776,6 +814,101 @@ export class DocumentSession {
   private async persist(): Promise<void> {
     const update = Y.encodeStateAsUpdate(this.ydoc);
     await this.state.storage.put(YDOC_STORAGE_KEY, update);
+  }
+
+  // =============================================================================
+  // PostgreSQL Sync Methods
+  // =============================================================================
+
+  /**
+   * Schedule a sync to PostgreSQL after idle timeout.
+   * Resets the timer on each call (debouncing).
+   *
+   * @param actorId - ID of the actor making the edit
+   * @param actorType - Type of actor ('user' or 'agent')
+   */
+  private scheduleSync(actorId: string, actorType: 'user' | 'agent'): void {
+    // Store actor info for sync attribution
+    this.lastEditActorId = actorId;
+    this.lastEditActorType = actorType;
+
+    // Clear existing timer (debounce)
+    if (this.syncTimer !== null) {
+      clearTimeout(this.syncTimer);
+    }
+
+    // Only schedule if we have internal API configured
+    if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
+      return;
+    }
+
+    // Schedule sync after idle timeout
+    this.syncTimer = setTimeout(() => {
+      void this.syncToPostgres();
+    }, SYNC_IDLE_TIMEOUT_MS);
+  }
+
+  /**
+   * Sync current CRDT state to PostgreSQL via the internal API.
+   * Called after idle timeout or on last client disconnect.
+   */
+  private async syncToPostgres(): Promise<void> {
+    // Clear timer since we're syncing now
+    if (this.syncTimer !== null) {
+      clearTimeout(this.syncTimer);
+      this.syncTimer = null;
+    }
+
+    // Check if internal API is configured
+    if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
+      console.log('Sync skipped: INTERNAL_API_URL or INTERNAL_SECRET not configured');
+      return;
+    }
+
+    try {
+      const root = this.ydoc.getMap('root');
+      const snapshot = root.toJSON() as Record<string, unknown>;
+      const crdtState = this.uint8ArrayToBase64(Y.encodeStateAsUpdate(this.ydoc));
+
+      const syncUrl = `${this.env.INTERNAL_API_URL}/internal/crdt-sync`;
+
+      const response = await fetch(syncUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': this.env.INTERNAL_SECRET,
+        },
+        body: JSON.stringify({
+          siteId: this.sessionInfo.siteId,
+          documentPath: this.sessionInfo.documentId,
+          branchId: this.sessionInfo.branchId,
+          snapshot,
+          crdtState,
+          actorId: this.lastEditActorId,
+          actorType: this.lastEditActorType,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Sync to PostgreSQL failed: ${String(response.status)} ${errorText}`);
+      } else {
+        console.log(`Synced document ${this.sessionInfo.documentId} to PostgreSQL`);
+      }
+    } catch (error) {
+      console.error('Error syncing to PostgreSQL:', error);
+    }
+  }
+
+  /**
+   * Convert Uint8Array to base64 string
+   */
+  private uint8ArrayToBase64(bytes: Uint8Array): string {
+    let binary = '';
+    for (const byte of bytes) {
+      binary += String.fromCharCode(byte);
+    }
+    return btoa(binary);
   }
 
   /**
