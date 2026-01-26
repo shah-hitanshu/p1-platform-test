@@ -207,6 +207,46 @@ This document tracks the implementation progress of the Collaborative JSON State
 
 ---
 
+### PostgreSQL Initialization Fallback (Phase 1.4b) - Added 2026-01-26
+
+**Feature:** Durable Objects now load initial state from PostgreSQL when their storage is empty, enabling seamless recovery after hibernation.
+
+**Problem Solved:** When a Durable Object wakes up from hibernation or is accessed for the first time, its storage is empty. Without falling back to PostgreSQL, documents would appear empty even though data exists in the database.
+
+**Implementation:**
+
+**GET /internal/crdt-state Endpoint:**
+- Added endpoint to `internal-api.ts` for loading latest CRDT state
+- Query params: `siteId`, `documentPath`, `branchId`
+- Returns `{ found: true, snapshot, crdtState }` or `{ found: false }` (404)
+- Uses same X-Internal-Secret authentication as POST endpoint
+
+**initializeFromPostgres() Method:**
+- Added to DocumentSession DO to fetch state from PostgreSQL
+- Called by `initializeIfNeeded()` when DO storage is empty
+- Falls back gracefully if internal API configuration is missing
+
+**applySnapshotToYMap() Helper:**
+- Recursively applies JSON snapshot to Yjs Y.Map structure
+- Handles objects, arrays, and primitive values
+- Used when PostgreSQL has snapshot but no CRDT state (legacy documents)
+
+**State Recovery Flow:**
+1. DO wakes up, checks storage → empty
+2. Calls `GET /internal/crdt-state` to fetch from PostgreSQL
+3. If CRDT state exists: applies binary state to Y.Doc
+4. If only snapshot exists: builds Y.Doc from JSON structure
+5. If nothing found: starts with empty document
+
+**Files Modified:**
+- `workers/src/routes/internal-api.ts` - Added GET endpoint
+- `workers/src/durable-objects/document-session.ts` - Added initialization methods
+
+**Implementation Commits:**
+- `793f2f2` - feat(realtime): Initialize DO from PostgreSQL when storage is empty (Phase 1.4)
+
+---
+
 ### Visual JSON Diffs in MergePreviewPanel (Added 2026-01-25)
 
 **Feature:** Added expandable diff viewing directly from the MergePreviewPanel component, allowing users to see what changed between branches before approving or resolving conflicts.
