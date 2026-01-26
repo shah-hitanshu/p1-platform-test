@@ -116,8 +116,8 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
 
   // Effect to manage connection lifecycle
   useEffect(() => {
-    // Don't connect if disabled or no document path
-    if (!enabled || !documentPath) {
+    // Don't connect if disabled, no document path, or missing required params
+    if (!enabled || !documentPath || !branchId || !siteId) {
       return;
     }
 
