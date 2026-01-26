@@ -8,6 +8,59 @@ This document tracks the implementation progress of the Collaborative JSON State
 
 ## Recent Features
 
+### Yjs CRDT Integration Backend (Phase 1) - Added 2026-01-25
+
+**Feature:** Added backend infrastructure for syncing Durable Object CRDT state to PostgreSQL, enabling real-time collaborative editing with persistent merge support.
+
+**Problem Solved:** Previously, documents edited via WebSocket/Yjs had CRDT state only in the Durable Object, not synced to PostgreSQL. This meant the `merge-crdt` resolution strategy failed because `document_versions.crdt_state` was NULL.
+
+**Implementation:**
+
+**Phase 1.1 - CRDT Sync Service:**
+- Created `crdt-sync-service.ts` with `syncCrdtToPostgres()` and `loadLatestCrdtState()` functions
+- Looks up documents by path, creates versions with snapshot + crdtState
+- Added 'realtime' to DocumentVersionSource type
+
+**Phase 1.2 - Internal Sync Endpoint:**
+- Created `internal-api.ts` with `POST /internal/crdt-sync` endpoint
+- Uses X-Internal-Secret header authentication (for DO-to-worker calls)
+- Full request validation for siteId, documentPath, branchId, crdtState, actorId, actorType
+
+**Phase 1.3 - Sync Triggers:**
+- Added `/sync` endpoint to DocumentSession DO for manual sync trigger
+- Returns synced state with snapshot and stateVector
+- Only accepts POST method
+
+**Phase 1.4 - PostgreSQL Initialization:**
+- Added `/initialize` endpoint to DocumentSession DO
+- Supports initialization from JSON snapshot or base64-encoded CRDT state
+- CRDT state takes precedence when provided
+- Used when DO storage is empty but PostgreSQL has data
+
+**Files Created:**
+- `workers/src/services/crdt-sync-service.ts`
+- `workers/src/routes/internal-api.ts`
+- `workers/tests/services/crdt-sync-service.spec.ts`
+- `workers/tests/routes/internal-api.spec.ts`
+
+**Files Modified:**
+- `workers/src/durable-objects/document-session.ts` - Added /sync and /initialize endpoints
+- `workers/src/index.ts` - Added internal route handling
+- `workers/src/services/index.ts` - Added CRDT sync exports
+- `workers/src/types.ts` - Added 'realtime' source type
+
+**Test Commits:**
+- `717dfc4` - CRDT sync service tests (12 tests)
+- `737c439` - Internal API route tests (16 tests)
+- `1935f6c` - DocumentSession sync/initialize tests (5 tests)
+
+**Implementation Commits:**
+- `100a896` - CRDT sync service implementation
+- `5fe237e`, `bb85de8` - Internal API route implementation
+- `268b91b` - DocumentSession /sync and /initialize endpoints
+
+---
+
 ### Visual JSON Diffs in MergePreviewPanel (Added 2026-01-25)
 
 **Feature:** Added expandable diff viewing directly from the MergePreviewPanel component, allowing users to see what changed between branches before approving or resolving conflicts.
