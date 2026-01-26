@@ -44,6 +44,27 @@ export interface CSSPuckConfig {
    * @default 3
    */
   maxRetries?: number;
+
+  /**
+   * Enable real-time collaborative editing.
+   * When enabled, changes are synced via WebSocket using Yjs CRDT.
+   * @default false
+   */
+  enableRealtime?: boolean;
+
+  /**
+   * WebSocket base URL for real-time collaboration.
+   * Required when enableRealtime is true.
+   * @example 'wss://api.example.com'
+   */
+  wsBaseUrl?: string;
+
+  /**
+   * API key for real-time WebSocket authentication.
+   * Required when enableRealtime is true.
+   * WebSockets can't send custom headers, so the API key is passed as a query param.
+   */
+  realtimeApiKey?: string;
 }
 
 /**
@@ -185,6 +206,22 @@ export interface CSSPuckContextValue {
    * Return to the latest version after viewing a historical version.
    */
   returnToLatest: () => Promise<void>;
+
+  /**
+   * Whether real-time collaboration is enabled.
+   */
+  realtimeEnabled: boolean;
+
+  /**
+   * Whether currently connected to the real-time server.
+   */
+  realtimeConnected: boolean;
+
+  /**
+   * Key that changes when remote updates are received.
+   * Use this to trigger Puck data sync for real-time updates.
+   */
+  remoteSyncKey: string | null;
 }
 
 /**

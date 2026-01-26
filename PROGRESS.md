@@ -217,6 +217,28 @@ puck-css-integration/
   - `CSSPluginOptions`: Changed `hasUnsavedChanges` to `getHasUnsavedChanges` getter function
 - Verified fix with Playwright: iframe ref remains stable across multiple edits and saves
 
+### Phase 6c: Real-time Collaboration (Yjs CRDT Integration) ✅
+- Implemented WebSocket-based real-time collaborative editing using Yjs CRDT
+- **Frontend Components**:
+  - `RealtimeClient` class (`@pantheon/css-client`) - WebSocket client managing Yjs Y.Doc sync
+  - `useRealtime` hook (`@pantheon/puck-css`) - React hook for connection lifecycle management
+  - `puckYjsBinding` utility - Bidirectional sync between Puck data and Yjs structures
+- **Integration with CSSPuckProvider**:
+  - New props: `enableRealtime`, `wsBaseUrl`, `realtimeApiKey`
+  - Added `remoteSyncKey` to context for triggering Puck UI updates on remote changes
+  - Added `realtimeEnabled` and `realtimeConnected` to context value
+- **Bounce-back Loop Prevention**:
+  - Problem: Remote updates triggered Puck's onChange → saveData → applyLocalChange → infinite loop
+  - Solution: Track when processing remote updates with `isProcessingRemoteUpdateRef` flag
+  - Skip `applyLocalChange` when flag is set; clear after 100ms timeout
+- **Data Sync Fix**:
+  - Problem: Puck UI not updating despite receiving remote data
+  - Solution: Use `currentData` directly in cssPlugin useMemo instead of stale ref
+  - `remoteSyncKey` changes on remote updates to trigger PuckDataSynchronizer
+- Demo app updated:
+  - Configurable via `VITE_CSS_ENABLE_REALTIME` and `VITE_CSS_WS_BASE_URL`
+  - Bidirectional sync verified between multiple browser tabs
+
 ### Phase 6: Error Notification Component ✅
 - Implemented toast-style notification system for errors and other messages
 - New types in `types.ts`:
@@ -255,9 +277,63 @@ puck-css-integration/
 
 | Package | Tests | Status |
 |---------|-------|--------|
-| @pantheon/css-client | 18 | ✅ Passing |
-| @pantheon/puck-css | 179 | ✅ Passing |
-| **Total** | **197** | ✅ **All Passing** |
+| @pantheon/css-client | 31 | ✅ Passing |
+| @pantheon/puck-css | 200 | ⚠️ 3 Failing |
+| **Total** | **231** | ⚠️ **3 Failing** |
+
+### Test Coverage (2026-01-25)
+
+#### @pantheon/css-client (72.53% lines)
+| Metric | Coverage |
+|--------|----------|
+| Statements | 72.53% |
+| Branches | 64.00% |
+| Functions | 67.79% |
+| Lines | 72.53% |
+
+#### @pantheon/puck-css (69.29% lines)
+| Metric | Coverage |
+|--------|----------|
+| Statements | 69.29% |
+| Branches | 88.09% |
+| Functions | 72.89% |
+| Lines | 69.29% |
+
+### Test Coverage Gaps
+
+#### High Priority (0% coverage - need tests)
+
+**css-client:**
+- `src/auth.ts` - Authentication utilities (0%)
+- `src/index.ts` - Entry point/exports (0%)
+
+**puck-css:**
+- `src/hooks/useAutoSave.ts` - Auto-save hook (0%)
+- `src/hooks/useBranches.ts` - Branch management hook (0%)
+- `src/hooks/useCheckpoints.ts` - Checkpoint management hook (0%)
+- `src/hooks/useVersions.ts` - Version history hook (0%)
+- `src/components/BranchSelector.tsx` - Branch switching UI (0%)
+
+#### Medium Priority (partial coverage)
+
+**css-client:**
+- `src/endpoints/checkpoints.ts` - 53.21% (methods: `list`, `getById`)
+- `src/endpoints/documents.ts` - 62.93% (methods: `update`, `archive`, `restore`)
+- `src/endpoints/versions.ts` - 60.81% (methods: `list`, `getById`, `getLatest`)
+
+**puck-css:**
+- `src/components/PublishButton.tsx` - 42.69% (publish flow, loading states)
+- `src/components/SavingIndicator.tsx` - 37.08% (status display states)
+- `src/components/PuckDataSynchronizer.tsx` - 50.64% (3 failing tests)
+- `src/CSSPuckProvider.tsx` - 64.61% (error handling, branch switching)
+
+#### Failing Tests (need investigation)
+
+- `tests/PuckDataSynchronizer.spec.tsx` - 3 tests failing
+  - `should dispatch setData when syncKey changes and data is provided`
+  - `should dispatch when syncKey changes from null to value`
+  - `should not dispatch when syncKey changes from value to null`
+  - **Issue**: Mock `usePuck().dispatch` not being called as expected
 
 ## Key Decisions
 
@@ -310,4 +386,8 @@ VITE_CSS_USER_ID=demo-user-id
 
 # Optional - defaults to main branch if not set:
 # VITE_CSS_BRANCH_ID=your-branch-id
+
+# Real-time collaboration (optional):
+VITE_CSS_ENABLE_REALTIME=true
+VITE_CSS_WS_BASE_URL=ws://localhost:8787
 ```

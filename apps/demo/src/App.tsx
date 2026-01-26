@@ -37,10 +37,12 @@ import { puckConfig } from './puck.config';
 // Environment configuration
 const config = {
   baseUrl: import.meta.env.VITE_CSS_BASE_URL || 'http://localhost:8787',
+  wsBaseUrl: import.meta.env.VITE_CSS_WS_BASE_URL || 'ws://localhost:8787',
   apiKey: import.meta.env.VITE_CSS_API_KEY || '',
   siteId: import.meta.env.VITE_CSS_SITE_ID || '',
   branchId: import.meta.env.VITE_CSS_BRANCH_ID as string | undefined, // Optional - defaults to main
   userId: import.meta.env.VITE_CSS_USER_ID || 'demo-user',
+  enableRealtime: import.meta.env.VITE_CSS_ENABLE_REALTIME !== 'false', // Default to true
 };
 
 // Validate configuration
@@ -98,6 +100,7 @@ function AppContent() {
     latestVersionData,
     loadVersion,
     returnToLatest,
+    remoteSyncKey,
   } = useCSSPuck();
 
   // Document management via useDocuments hook
@@ -254,15 +257,11 @@ function AppContent() {
   // Use refs for values that change frequently but shouldn't trigger plugin/overrides recreation
   // This prevents the plugin and overrides from being recreated on every save, which causes flicker
   const saveStatusRef = useRef(saveStatus);
-  const currentDataRef = useRef(currentData);
   const lastSavedRef = useRef(lastSaved);
   const saveErrorRef = useRef(saveError);
   useEffect(() => {
     saveStatusRef.current = saveStatus;
   }, [saveStatus]);
-  useEffect(() => {
-    currentDataRef.current = currentData;
-  }, [currentData]);
   useEffect(() => {
     lastSavedRef.current = lastSaved;
   }, [lastSaved]);
@@ -271,12 +270,14 @@ function AppContent() {
   }, [saveError]);
 
   // Generate a sync key that changes when we want to force Puck to update its data
-  // Only sync when document or version changes, NOT when currentData changes from saves
-  const targetSyncKey = viewingVersion
-    ? `version-${viewingVersion.id}`
-    : currentDocument
-      ? `doc-${currentDocument.id}-latest`
-      : null;
+  // Only sync when document, version, or remote updates change, NOT when currentData changes from local saves
+  const targetSyncKey = remoteSyncKey
+    ? remoteSyncKey // Remote updates take priority for real-time sync
+    : viewingVersion
+      ? `version-${viewingVersion.id}`
+      : currentDocument
+        ? `doc-${currentDocument.id}-latest`
+        : null;
 
   // Only provide a new dataSyncKey when it's different from what we last synced
   // This prevents re-syncing after saves which would overwrite user edits
@@ -298,8 +299,7 @@ function AppContent() {
 
   // Create Puck plugin for CSS integration (branch selector + document list + versions in plugin rail)
   // syncData and dataSyncKey are passed here so PuckDataSynchronizer renders inside Puck's context
-  // IMPORTANT: We use refs for saveStatus and currentData to avoid recreating the plugin on every save,
-  // which would cause the iframe to flicker/reload
+  // When dataSyncKey is non-null, we need to sync currentData to Puck
   const cssPlugin = useMemo(() => createCSSPlugin({
     branches,
     currentBranch,
@@ -316,8 +316,8 @@ function AppContent() {
     selectedVersionId: viewingVersion?.id ?? undefined,
     onVersionSelect: handleVersionSelect,
     // Data sync props - these render PuckDataSynchronizer inside the plugin (inside Puck's context)
-    // We use the ref's current value but only include dataSyncKey in deps (which controls when to sync)
-    syncData: currentDataRef.current,
+    // We pass currentData directly when syncing is needed (dataSyncKey non-null)
+    syncData: currentData,
     dataSyncKey,
   }), [
     branches,
@@ -334,8 +334,8 @@ function AppContent() {
     versionsLoading,
     viewingVersion,
     handleVersionSelect,
-    // Note: saveStatus and currentData are intentionally NOT in deps - we use refs instead
-    // dataSyncKey changes when we need to sync, currentDataRef.current will have the right value then
+    // Include currentData in deps - the dataSyncKey guards when actual sync happens
+    currentData,
     dataSyncKey,
   ]);
 
@@ -436,6 +436,9 @@ export function App() {
       userId={config.userId}
       autoSaveDelay={3000}
       maxRetries={3}
+      enableRealtime={config.enableRealtime}
+      wsBaseUrl={config.wsBaseUrl}
+      realtimeApiKey={config.apiKey}
     >
       <AppContent />
     </CSSPuckProvider>

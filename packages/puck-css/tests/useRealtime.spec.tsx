@@ -1,0 +1,281 @@
+/**
+ * Phase 3.2: useRealtime Hook Tests (TDD)
+ *
+ * Tests for the React hook that integrates RealtimeClient with Puck.
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { renderHook, act, waitFor } from '@testing-library/react';
+import React from 'react';
+
+// Mock WebSocket
+class MockWebSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+
+  readyState: number = MockWebSocket.CONNECTING;
+  url: string;
+  binaryType: string = 'arraybuffer';
+
+  private listeners: Map<string, Set<EventListener>> = new Map();
+
+  constructor(url: string) {
+    this.url = url;
+    setTimeout(() => this.simulateOpen(), 0);
+  }
+
+  simulateOpen(): void {
+    this.readyState = MockWebSocket.OPEN;
+    const event = new Event('open');
+    this.dispatchEvent(event);
+  }
+
+  simulateClose(code = 1000, reason = ''): void {
+    this.readyState = MockWebSocket.CLOSED;
+    const event = new CloseEvent('close', { code, reason });
+    this.dispatchEvent(event);
+  }
+
+  addEventListener(type: string, listener: EventListener): void {
+    if (!this.listeners.has(type)) {
+      this.listeners.set(type, new Set());
+    }
+    this.listeners.get(type)!.add(listener);
+  }
+
+  removeEventListener(type: string, listener: EventListener): void {
+    this.listeners.get(type)?.delete(listener);
+  }
+
+  dispatchEvent(event: Event): boolean {
+    const listeners = this.listeners.get(event.type);
+    if (listeners) {
+      listeners.forEach((listener) => listener(event));
+    }
+    return true;
+  }
+
+  send = vi.fn();
+  close = vi.fn(() => {
+    this.simulateClose();
+  });
+}
+
+let mockWebSocketInstances: MockWebSocket[] = [];
+const originalWebSocket = global.WebSocket;
+
+// Mock CSSClient
+const mockCSSClient = {
+  sites: { list: vi.fn(), get: vi.fn() },
+  branches: { list: vi.fn(), get: vi.fn() },
+  documents: { getByPath: vi.fn() },
+  versions: { getLatest: vi.fn() },
+  withPrincipal: vi.fn().mockReturnThis(),
+};
+
+describe('Phase 3.2: useRealtime Hook', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockWebSocketInstances = [];
+    global.WebSocket = vi.fn((url: string) => {
+      const ws = new MockWebSocket(url);
+      mockWebSocketInstances.push(ws);
+      return ws;
+    }) as unknown as typeof WebSocket;
+    Object.assign(global.WebSocket, {
+      CONNECTING: 0,
+      OPEN: 1,
+      CLOSING: 2,
+      CLOSED: 3,
+    });
+  });
+
+  afterEach(() => {
+    global.WebSocket = originalWebSocket;
+  });
+
+  describe('initialization', () => {
+    it('should return connected state and applyLocalChange function', async () => {
+      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+
+      const { result } = renderHook(() =>
+        useRealtime({
+          baseUrl: 'ws://localhost:8787',
+          siteId: 'site-123',
+          branchId: 'branch-456',
+          documentPath: 'pages/home',
+          actorId: 'user-789',
+          actorType: 'user',
+          enabled: true,
+        }),
+      );
+
+      expect(result.current).toHaveProperty('connected');
+      expect(result.current).toHaveProperty('applyLocalChange');
+      expect(result.current).toHaveProperty('error');
+      expect(typeof result.current.applyLocalChange).toBe('function');
+    });
+
+    it('should not connect when enabled is false', async () => {
+      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+
+      const { result } = renderHook(() =>
+        useRealtime({
+          baseUrl: 'ws://localhost:8787',
+          siteId: 'site-123',
+          branchId: 'branch-456',
+          documentPath: 'pages/home',
+          actorId: 'user-789',
+          actorType: 'user',
+          enabled: false,
+        }),
+      );
+
+      expect(result.current.connected).toBe(false);
+      expect(mockWebSocketInstances).toHaveLength(0);
+    });
+
+    it('should not connect when documentPath is null', async () => {
+      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+
+      const { result } = renderHook(() =>
+        useRealtime({
+          baseUrl: 'ws://localhost:8787',
+          siteId: 'site-123',
+          branchId: 'branch-456',
+          documentPath: null,
+          actorId: 'user-789',
+          actorType: 'user',
+          enabled: true,
+        }),
+      );
+
+      expect(result.current.connected).toBe(false);
+      expect(mockWebSocketInstances).toHaveLength(0);
+    });
+  });
+
+  describe('connection lifecycle', () => {
+    it('should connect when enabled and documentPath is provided', async () => {
+      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+
+      const { result } = renderHook(() =>
+        useRealtime({
+          baseUrl: 'ws://localhost:8787',
+          siteId: 'site-123',
+          branchId: 'branch-456',
+          documentPath: 'pages/home',
+          actorId: 'user-789',
+          actorType: 'user',
+          enabled: true,
+        }),
+      );
+
+      // Wait for connection
+      await waitFor(() => {
+        expect(mockWebSocketInstances).toHaveLength(1);
+      });
+
+      await waitFor(() => {
+        expect(result.current.connected).toBe(true);
+      });
+    });
+
+    it('should disconnect when unmounted', async () => {
+      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+
+      const { result, unmount } = renderHook(() =>
+        useRealtime({
+          baseUrl: 'ws://localhost:8787',
+          siteId: 'site-123',
+          branchId: 'branch-456',
+          documentPath: 'pages/home',
+          actorId: 'user-789',
+          actorType: 'user',
+          enabled: true,
+        }),
+      );
+
+      await waitFor(() => {
+        expect(result.current.connected).toBe(true);
+      });
+
+      unmount();
+
+      expect(mockWebSocketInstances[0].close).toHaveBeenCalled();
+    });
+
+    it('should reconnect when documentPath changes', async () => {
+      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+
+      const { result, rerender } = renderHook(
+        ({ documentPath }) =>
+          useRealtime({
+            baseUrl: 'ws://localhost:8787',
+            siteId: 'site-123',
+            branchId: 'branch-456',
+            documentPath,
+            actorId: 'user-789',
+            actorType: 'user',
+            enabled: true,
+          }),
+        { initialProps: { documentPath: 'pages/home' } },
+      );
+
+      await waitFor(() => {
+        expect(result.current.connected).toBe(true);
+      });
+
+      // Change document path
+      rerender({ documentPath: 'pages/about' });
+
+      await waitFor(() => {
+        // Should have disconnected and reconnected
+        expect(mockWebSocketInstances).toHaveLength(2);
+      });
+    });
+  });
+
+  describe('onRemoteUpdate callback', () => {
+    it('should call onRemoteUpdate when remote changes arrive', async () => {
+      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const Y = await import('yjs');
+
+      const onRemoteUpdate = vi.fn();
+
+      const { result } = renderHook(() =>
+        useRealtime({
+          baseUrl: 'ws://localhost:8787',
+          siteId: 'site-123',
+          branchId: 'branch-456',
+          documentPath: 'pages/home',
+          actorId: 'user-789',
+          actorType: 'user',
+          enabled: true,
+          onRemoteUpdate,
+        }),
+      );
+
+      await waitFor(() => {
+        expect(result.current.connected).toBe(true);
+      });
+
+      // Simulate receiving a valid Yjs update
+      const testDoc = new Y.Doc();
+      const root = testDoc.getMap('root');
+      const content = new Y.Array();
+      content.push([{ type: 'Header', props: { id: 'h1', title: 'Test' } }]);
+      root.set('content', content);
+      const validUpdate = Y.encodeStateAsUpdate(testDoc);
+
+      const messageEvent = new MessageEvent('message', { data: validUpdate.buffer });
+      mockWebSocketInstances[0].dispatchEvent(messageEvent);
+
+      await waitFor(() => {
+        expect(onRemoteUpdate).toHaveBeenCalled();
+      });
+    });
+  });
+});
