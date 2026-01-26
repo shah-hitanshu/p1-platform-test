@@ -24,7 +24,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pantheon/css-client": "workspace:*"
+    "@pantheon/css-client": "workspace:*",
+    "yjs": "^13.6.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
