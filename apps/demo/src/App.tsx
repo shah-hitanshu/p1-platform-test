@@ -37,10 +37,12 @@ import { puckConfig } from './puck.config';
 // Environment configuration
 const config = {
   baseUrl: import.meta.env.VITE_CSS_BASE_URL || 'http://localhost:8787',
+  wsBaseUrl: import.meta.env.VITE_CSS_WS_BASE_URL || 'ws://localhost:8787',
   apiKey: import.meta.env.VITE_CSS_API_KEY || '',
   siteId: import.meta.env.VITE_CSS_SITE_ID || '',
   branchId: import.meta.env.VITE_CSS_BRANCH_ID as string | undefined, // Optional - defaults to main
   userId: import.meta.env.VITE_CSS_USER_ID || 'demo-user',
+  enableRealtime: import.meta.env.VITE_CSS_ENABLE_REALTIME !== 'false', // Default to true
 };
 
 // Validate configuration
@@ -436,6 +438,8 @@ export function App() {
       userId={config.userId}
       autoSaveDelay={3000}
       maxRetries={3}
+      enableRealtime={config.enableRealtime}
+      wsBaseUrl={config.wsBaseUrl}
     >
       <AppContent />
     </CSSPuckProvider>

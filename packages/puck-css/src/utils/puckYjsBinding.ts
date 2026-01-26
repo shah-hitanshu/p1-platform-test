@@ -120,7 +120,8 @@ export function createPuckYjsBinding(
   const root = ydoc.getMap('root');
 
   // Observer for remote changes
-  const observer = (events: Y.YMapEvent<unknown>[], txn: Y.Transaction): void => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const observer = (_events: any[], txn: Y.Transaction): void => {
     // Ignore local changes
     if (txn.origin === LOCAL_ORIGIN) {
       return;
