@@ -43,7 +43,7 @@ export type CheckpointType = 'manual' | 'auto' | 'pre_merge' | 'post_merge';
 /**
  * Source of a document version creation.
  */
-export type DocumentVersionSource = 'edit' | 'merge' | 'revert' | 'checkpoint';
+export type DocumentVersionSource = 'edit' | 'merge' | 'revert' | 'checkpoint' | 'realtime';
 
 /**
  * Merge request workflow states.
