@@ -123,6 +123,45 @@ This document tracks the implementation progress of the Collaborative JSON State
 
 ---
 
+### WebSocket Connection Fixes (Added 2026-01-26)
+
+**Feature:** Fixed WebSocket connection handling to enable end-to-end real-time collaboration.
+
+**Problem Solved:** WebSocket connections were failing with "Responses may only be constructed with status codes in the range 200 to 599" because the CORS middleware was trying to modify WebSocket upgrade responses (status 101). Additionally, the frontend couldn't authenticate WebSocket connections because browsers can't send custom headers during WebSocket upgrade handshakes.
+
+**Implementation:**
+
+**WebSocket Response Handling:**
+- Added WebSocket detection in `addCorsHeaders()` functions in both `index.ts` and `realtime-api.ts`
+- Uses `'webSocket' in response` check to detect Cloudflare Workers WebSocket responses
+- Returns WebSocket responses as-is without modification (CORS doesn't apply to WebSocket connections)
+
+**API Key Authentication via Query Params:**
+- Added `apiKey` query parameter support in `authenticate()` function for WebSocket connections
+- Browsers cannot send custom headers (like `X-API-Key`) during WebSocket upgrade requests
+- Frontend passes API key as `?apiKey=...` query parameter, backend validates it
+
+**Route Matching Fix:**
+- Moved realtime route matching (`/connect` and `/edits` endpoints) before document routes
+- Prevents document API from incorrectly matching realtime WebSocket URLs
+- Preserved query parameters when forwarding requests to Durable Object
+
+**Files Modified:**
+- `workers/src/index.ts` - WebSocket response handling, query param auth, route priority
+- `workers/src/routes/realtime-api.ts` - WebSocket response handling, query param forwarding
+
+**Files Modified (puck-css-integration):**
+- `packages/css-client/src/realtime.ts` - Added apiKey to config and connect URL
+- `packages/puck-css/src/hooks/useRealtime.ts` - Pass apiKey to RealtimeClient
+- `packages/puck-css/src/types.ts` - Added realtimeApiKey to CSSPuckConfig
+- `packages/puck-css/src/CSSPuckProvider.tsx` - Pass realtimeApiKey to useRealtime
+- `apps/demo/src/App.tsx` - Pass realtimeApiKey prop to CSSPuckProvider
+
+**Implementation Commits:**
+- `e884ad1` - fix(realtime): Fix WebSocket connection handling
+
+---
+
 ### Visual JSON Diffs in MergePreviewPanel (Added 2026-01-25)
 
 **Feature:** Added expandable diff viewing directly from the MergePreviewPanel component, allowing users to see what changed between branches before approving or resolving conflicts.
@@ -2146,4 +2185,4 @@ Template for future decisions:
 
 ---
 
-*Last updated: 2026-01-25 (Yjs CRDT Integration Frontend Complete - Phases 2-3)*
+*Last updated: 2026-01-26 (WebSocket Connection Fixes for Real-Time Collaboration)*
