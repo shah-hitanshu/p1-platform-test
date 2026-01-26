@@ -53,3 +53,7 @@ export {
   ConflictError,
   ValidationError,
 } from './errors.js';
+
+// Real-time collaboration
+export { RealtimeClient } from './realtime.js';
+export type { RealtimeClientConfig, ConnectionParams } from './realtime.js';

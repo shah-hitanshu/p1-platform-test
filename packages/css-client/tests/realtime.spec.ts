@@ -281,6 +281,7 @@ describe('Phase 2.1: RealtimeClient', () => {
   describe('message handling', () => {
     it('should handle binary Yjs update messages', async () => {
       const { RealtimeClient } = await import('../src/realtime.js');
+      const Y = await import('yjs');
 
       const onUpdate = vi.fn();
       const client = new RealtimeClient({
@@ -298,12 +299,20 @@ describe('Phase 2.1: RealtimeClient', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      // Simulate receiving a Yjs update (binary data)
-      const mockUpdate = new Uint8Array([0, 1, 2, 3]).buffer;
-      mockWebSocketInstances[0].simulateMessage(mockUpdate);
+      // Create a valid Yjs update
+      const testDoc = new Y.Doc();
+      const root = testDoc.getMap('root');
+      root.set('title', 'Test Document');
+      const validUpdate = Y.encodeStateAsUpdate(testDoc);
+
+      // Simulate receiving the valid Yjs update
+      mockWebSocketInstances[0].simulateMessage(validUpdate.buffer);
 
       // onUpdate should be called with the snapshot
       expect(onUpdate).toHaveBeenCalled();
+      expect(onUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Test Document' }),
+      );
     });
   });
 
