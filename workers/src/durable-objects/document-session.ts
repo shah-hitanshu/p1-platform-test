@@ -355,20 +355,21 @@ export class DocumentSession {
    * Handle /connect endpoint for WebSocket connections
    */
   private handleWebSocket(request: Request): Response {
-    // Validate required headers
-    const actorId = request.headers.get('X-Actor-Id');
-    const actorType = request.headers.get('X-Actor-Type');
+    // Get actor info from headers OR query params (browsers can't send custom headers with WebSocket)
+    const url = new URL(request.url);
+    const actorId = request.headers.get('X-Actor-Id') ?? url.searchParams.get('actorId');
+    const actorType = request.headers.get('X-Actor-Type') ?? url.searchParams.get('actorType');
 
     if (actorId === null || actorId === '') {
-      return this.errorResponse(400, 'X-Actor-Id header is required');
+      return this.errorResponse(400, 'actorId is required (via X-Actor-Id header or actorId query param)');
     }
 
     if (actorType === null || actorType === '') {
-      return this.errorResponse(400, 'X-Actor-Type header is required');
+      return this.errorResponse(400, 'actorType is required (via X-Actor-Type header or actorType query param)');
     }
 
     if (actorType !== 'user' && actorType !== 'agent') {
-      return this.errorResponse(400, 'X-Actor-Type must be "user" or "agent"');
+      return this.errorResponse(400, 'actorType must be "user" or "agent"');
     }
 
     // Security: Validate actorId format
