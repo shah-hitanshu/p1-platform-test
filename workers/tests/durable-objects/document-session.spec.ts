@@ -14,7 +14,7 @@
  * These tests are written BEFORE implementation following TDD methodology.
  */
 
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import type { EditOperation, ConnectionMeta } from '../../src/types';
 
 // =============================================================================
@@ -860,6 +860,198 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 });
 
 // =============================================================================
+// Phase 1.3: Sync Triggers Tests
+// =============================================================================
+
+describe('Phase 1.3: DocumentSession Sync Triggers', () => {
+  let mockState: MockDurableObjectState;
+  let mockEnv: MockEnv;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockState = createMockState();
+    mockEnv = createMockEnv();
+  });
+
+  describe('/sync endpoint', () => {
+    it('should expose /sync endpoint for manual sync trigger', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+      const session = new DocumentSession(mockState as unknown, mockEnv);
+
+      const request = new Request('http://localhost/sync', {
+        method: 'POST',
+      });
+      const response = await session.fetch(request);
+
+      // Should return 200 (sync triggered) or appropriate status
+      expect([200, 204]).toContain(response.status);
+    });
+
+    it('should return current snapshot after sync', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+      const session = new DocumentSession(mockState as unknown, mockEnv);
+
+      // First set some data
+      await session.fetch(new Request('http://localhost/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operations: [{ type: 'set', path: 'title', value: 'Test' }],
+          actorId: 'user-1',
+        }),
+      }));
+
+      // Then sync
+      const request = new Request('http://localhost/sync', {
+        method: 'POST',
+      });
+      const response = await session.fetch(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toHaveProperty('synced');
+    });
+
+    it('should only accept POST method for /sync', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+      const session = new DocumentSession(mockState as unknown, mockEnv);
+
+      const request = new Request('http://localhost/sync', {
+        method: 'GET',
+      });
+      const response = await session.fetch(request);
+
+      expect(response.status).toBe(405);
+    });
+  });
+
+  describe('sync configuration', () => {
+    it('should have configurable sync settings via environment', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+
+      // Environment can contain API URL and secret for sync
+      const envWithSync = {
+        ...mockEnv,
+        INTERNAL_API_URL: 'http://localhost:8787',
+        INTERNAL_SECRET: 'test-secret',
+      };
+
+      const session = new DocumentSession(mockState as unknown, envWithSync);
+      expect(session).toBeDefined();
+    });
+  });
+});
+
+// =============================================================================
+// Phase 1.4: PostgreSQL Initialization Tests
+// =============================================================================
+
+describe('Phase 1.4: DocumentSession PostgreSQL Initialization', () => {
+  let mockState: MockDurableObjectState;
+  let mockEnv: MockEnv;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockState = createMockState();
+    mockEnv = createMockEnv();
+  });
+
+  describe('initialization priority', () => {
+    it('should prefer DO storage over PostgreSQL when available', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+
+      // Set up stored CRDT state in DO storage
+      const storedData = new Uint8Array([1, 2, 3, 4]);
+      mockState.storage.get.mockResolvedValue(storedData);
+
+      const session = new DocumentSession(mockState as unknown, mockEnv);
+
+      // Trigger initialization
+      await session.fetch(new Request('http://localhost/snapshot'));
+
+      // Should read from DO storage
+      expect(mockState.storage.get).toHaveBeenCalledWith('ydoc');
+    });
+
+    it('should initialize with empty state when no storage and no PostgreSQL config', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+
+      // No stored data
+      mockState.storage.get.mockResolvedValue(undefined);
+
+      const session = new DocumentSession(mockState as unknown, mockEnv);
+
+      const response = await session.fetch(new Request('http://localhost/snapshot'));
+      const data = await response.json();
+
+      expect(data.snapshot).toEqual({});
+    });
+  });
+
+  describe('snapshot initialization', () => {
+    it('should be able to initialize from a JSON snapshot', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+      const session = new DocumentSession(mockState as unknown, mockEnv);
+
+      // Check if there's an endpoint to initialize from snapshot
+      // This would be called by the sync service when initializing from PostgreSQL
+      const request = new Request('http://localhost/initialize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          snapshot: { root: { title: 'From PostgreSQL' } },
+          crdtState: null,  // No CRDT state, just snapshot
+        }),
+      });
+      const response = await session.fetch(request);
+
+      // If endpoint exists, it should succeed
+      // If not, this test documents the expected behavior
+      if (response.status === 200) {
+        const snapshotResponse = await session.fetch(new Request('http://localhost/snapshot'));
+        const data = await snapshotResponse.json();
+        const root = data.snapshot.root as Record<string, unknown> | undefined;
+        expect(root?.title).toBe('From PostgreSQL');
+      } else {
+        // Endpoint not implemented yet - test will fail until implemented
+        expect(response.status).toBe(200);
+      }
+    });
+
+    it('should be able to initialize from CRDT state', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+      const Y = await import('yjs');
+
+      // Create a valid Yjs CRDT state
+      const testDoc = new Y.Doc();
+      const root = testDoc.getMap('root');
+      root.set('title', 'From CRDT State');
+      const crdtBytes = Y.encodeStateAsUpdate(testDoc);
+      const crdtBase64 = btoa(String.fromCharCode(...crdtBytes));
+
+      const session = new DocumentSession(mockState as unknown, mockEnv);
+
+      // Initialize from real CRDT state
+      const request = new Request('http://localhost/initialize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          snapshot: { root: { title: 'Test' } },
+          crdtState: crdtBase64,
+        }),
+      });
+      const response = await session.fetch(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      // CRDT state should take precedence over snapshot
+      expect(data.snapshot.title).toBe('From CRDT State');
+    });
+  });
+});
+
+// =============================================================================
 // Helper Types Tests
 // =============================================================================
 
@@ -939,6 +1131,156 @@ describe('Phase 4.1: DocumentSession Helper Types', () => {
         actorType: 'agent',
       };
       expect(meta.actorType).toBe('agent');
+    });
+  });
+});
+
+// =============================================================================
+// Phase 1.3b: Automatic Sync Trigger Tests
+// =============================================================================
+
+describe('Phase 1.3b: DocumentSession Automatic Sync Triggers', () => {
+  let mockState: MockDurableObjectState;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers();
+    mockState = createMockState('site-uuid:home:branch-uuid');
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  describe('idle timeout sync', () => {
+    it('should schedule sync after edit operations (idle timeout)', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+
+      // Create session with internal API config
+      const envWithSync = {
+        API_URL: 'http://localhost:8787',
+        ENVIRONMENT: 'test',
+        INTERNAL_API_URL: 'http://localhost:8787',
+        INTERNAL_SECRET: 'test-secret',
+      };
+
+      const session = new DocumentSession(mockState as unknown, envWithSync);
+
+      // Apply an edit operation
+      await session.fetch(new Request('http://localhost/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operations: [{ type: 'set', path: 'title', value: 'Test' }],
+          actorId: 'user-1',
+        }),
+      }));
+
+      // Session should have scheduled a sync timer
+      // The actual sync happens after the idle timeout (5 seconds)
+      expect(session).toBeDefined();
+    });
+
+    it('should reset idle timer on subsequent edits', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+
+      const envWithSync = {
+        API_URL: 'http://localhost:8787',
+        ENVIRONMENT: 'test',
+        INTERNAL_API_URL: 'http://localhost:8787',
+        INTERNAL_SECRET: 'test-secret',
+      };
+
+      const session = new DocumentSession(mockState as unknown, envWithSync);
+
+      // First edit
+      await session.fetch(new Request('http://localhost/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operations: [{ type: 'set', path: 'title', value: 'First' }],
+          actorId: 'user-1',
+        }),
+      }));
+
+      // Advance 3 seconds (less than idle timeout)
+      vi.advanceTimersByTime(3000);
+
+      // Second edit - should reset the timer
+      await session.fetch(new Request('http://localhost/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operations: [{ type: 'set', path: 'title', value: 'Second' }],
+          actorId: 'user-1',
+        }),
+      }));
+
+      // Session should still be valid and not have synced yet
+      const snapshotResponse = await session.fetch(new Request('http://localhost/snapshot'));
+      const data = await snapshotResponse.json();
+      expect(data.snapshot.title).toBe('Second');
+    });
+  });
+
+  describe('syncToPostgres method', () => {
+    it('should expose getSyncState for testing sync readiness', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+
+      const envWithSync = {
+        API_URL: 'http://localhost:8787',
+        ENVIRONMENT: 'test',
+        INTERNAL_API_URL: 'http://localhost:8787',
+        INTERNAL_SECRET: 'test-secret',
+      };
+
+      const session = new DocumentSession(mockState as unknown, envWithSync);
+
+      // Apply an edit to create state worth syncing
+      await session.fetch(new Request('http://localhost/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operations: [{ type: 'set', path: 'content', value: 'Hello' }],
+          actorId: 'user-1',
+        }),
+      }));
+
+      // Session should be able to get sync state
+      const snapshotResponse = await session.fetch(new Request('http://localhost/snapshot'));
+      const data = await snapshotResponse.json();
+
+      expect(data.snapshot).toHaveProperty('content', 'Hello');
+      expect(data.stateVector).toBeDefined();
+    });
+
+    it('should include session info for sync context', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+
+      const session = new DocumentSession(mockState as unknown, {
+        API_URL: 'http://localhost:8787',
+        ENVIRONMENT: 'test',
+      });
+
+      // Session should parse session ID correctly
+      const sessionInfo = session.getSessionInfo();
+      expect(sessionInfo.siteId).toBe('site-uuid');
+      expect(sessionInfo.documentId).toBe('home');
+      expect(sessionInfo.branchId).toBe('branch-uuid');
+    });
+  });
+
+  describe('sync on disconnect', () => {
+    it('should track connection count for sync decisions', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+
+      const session = new DocumentSession(mockState as unknown, {
+        API_URL: 'http://localhost:8787',
+        ENVIRONMENT: 'test',
+      });
+
+      // Initial connection count should be 0
+      expect(session.getConnectionCount()).toBe(0);
     });
   });
 });

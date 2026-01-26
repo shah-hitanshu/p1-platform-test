@@ -8,6 +8,245 @@ This document tracks the implementation progress of the Collaborative JSON State
 
 ## Recent Features
 
+### Yjs CRDT Integration Backend (Phase 1) - Added 2026-01-25
+
+**Feature:** Added backend infrastructure for syncing Durable Object CRDT state to PostgreSQL, enabling real-time collaborative editing with persistent merge support.
+
+**Problem Solved:** Previously, documents edited via WebSocket/Yjs had CRDT state only in the Durable Object, not synced to PostgreSQL. This meant the `merge-crdt` resolution strategy failed because `document_versions.crdt_state` was NULL.
+
+**Implementation:**
+
+**Phase 1.1 - CRDT Sync Service:**
+- Created `crdt-sync-service.ts` with `syncCrdtToPostgres()` and `loadLatestCrdtState()` functions
+- Looks up documents by path, creates versions with snapshot + crdtState
+- Added 'realtime' to DocumentVersionSource type
+
+**Phase 1.2 - Internal Sync Endpoint:**
+- Created `internal-api.ts` with `POST /internal/crdt-sync` endpoint
+- Uses X-Internal-Secret header authentication (for DO-to-worker calls)
+- Full request validation for siteId, documentPath, branchId, crdtState, actorId, actorType
+
+**Phase 1.3 - Sync Triggers:**
+- Added `/sync` endpoint to DocumentSession DO for manual sync trigger
+- Returns synced state with snapshot and stateVector
+- Only accepts POST method
+
+**Phase 1.4 - PostgreSQL Initialization:**
+- Added `/initialize` endpoint to DocumentSession DO
+- Supports initialization from JSON snapshot or base64-encoded CRDT state
+- CRDT state takes precedence when provided
+- Used when DO storage is empty but PostgreSQL has data
+
+**Files Created:**
+- `workers/src/services/crdt-sync-service.ts`
+- `workers/src/routes/internal-api.ts`
+- `workers/tests/services/crdt-sync-service.spec.ts`
+- `workers/tests/routes/internal-api.spec.ts`
+
+**Files Modified:**
+- `workers/src/durable-objects/document-session.ts` - Added /sync and /initialize endpoints
+- `workers/src/index.ts` - Added internal route handling
+- `workers/src/services/index.ts` - Added CRDT sync exports
+- `workers/src/types.ts` - Added 'realtime' source type
+
+**Test Commits:**
+- `717dfc4` - CRDT sync service tests (12 tests)
+- `737c439` - Internal API route tests (16 tests)
+- `1935f6c` - DocumentSession sync/initialize tests (5 tests)
+
+**Implementation Commits:**
+- `100a896` - CRDT sync service implementation
+- `5fe237e`, `bb85de8` - Internal API route implementation
+- `268b91b` - DocumentSession /sync and /initialize endpoints
+
+---
+
+### Yjs CRDT Integration Frontend (Phases 2-3) - Added 2026-01-25
+
+**Feature:** Added frontend WebSocket client and Puck Editor integration for real-time collaborative editing using Yjs CRDT synchronization.
+
+**Problem Solved:** Completes the end-to-end real-time collaboration system. With the backend (Phase 1) syncing CRDT state to PostgreSQL and the frontend (Phases 2-3) connecting via WebSocket, multiple users can now edit the same document simultaneously with automatic conflict-free merging.
+
+**Implementation (in puck-css-integration repo):**
+
+**Phase 2 - RealtimeClient:**
+- Created `RealtimeClient` class in `packages/css-client/src/realtime.ts`
+- Manages WebSocket connection lifecycle with auto-reconnect
+- Handles binary Yjs message encoding/decoding
+- Provides `connect()`, `disconnect()`, `applyLocalUpdate()`, `getYDoc()` methods
+- Added yjs dependency to css-client package
+
+**Phase 3.1 - Puck-Yjs Binding:**
+- Created `puckYjsBinding.ts` utility for bidirectional sync
+- `puckDataToYMap()` - Converts PuckData to Yjs Y.Map structure
+- `yMapToPuckData()` - Converts Yjs Y.Map to PuckData
+- `createPuckYjsBinding()` - Creates binding with LOCAL_ORIGIN to prevent sync loops
+- Uses transaction origins to distinguish local vs remote changes
+
+**Phase 3.2 - useRealtime Hook:**
+- Created `useRealtime.ts` React hook
+- Manages RealtimeClient lifecycle with useEffect
+- Creates Puck-Yjs binding on mount
+- Exposes `connected` state, `applyLocalChange()` function, and `error`
+- Cleans up connections on unmount or dependency changes
+
+**Phase 3.3-3.4 - CSSPuckProvider Integration:**
+- Added `enableRealtime` and `wsBaseUrl` props to CSSPuckConfig
+- Added `realtimeEnabled` and `realtimeConnected` to context value
+- Uses useRealtime hook when enabled
+- Updates currentData on remote changes from collaborators
+
+**Files Created (puck-css-integration):**
+- `packages/css-client/src/realtime.ts` - RealtimeClient class
+- `packages/puck-css/src/utils/puckYjsBinding.ts` - Yjs binding utility
+- `packages/puck-css/src/hooks/useRealtime.ts` - React hook
+- Test files for each component
+
+**Files Modified (puck-css-integration):**
+- `packages/css-client/src/index.ts` - Export RealtimeClient
+- `packages/css-client/package.json` - Added yjs dependency
+- `packages/puck-css/src/hooks/index.ts` - Export useRealtime
+- `packages/puck-css/src/types.ts` - Added realtime config/context props
+- `packages/puck-css/src/CSSPuckProvider.tsx` - Integrated useRealtime hook
+- `packages/puck-css/package.json` - Added yjs dependency
+
+**Test Commits (puck-css-integration):**
+- `8305b77` - RealtimeClient tests (8 tests)
+- `a488753` - puckYjsBinding tests (10 tests)
+- `15113f4` - useRealtime hook tests (7 tests)
+- `a3ec0f5` - CSSPuckProvider realtime tests (7 tests)
+
+**Implementation Commits (puck-css-integration):**
+- `bc089c7` - RealtimeClient implementation
+- `0ebc11a` - useRealtime hook implementation
+- `703c4d5` - CSSPuckProvider realtime integration
+
+---
+
+### WebSocket Connection Fixes (Added 2026-01-26)
+
+**Feature:** Fixed WebSocket connection handling to enable end-to-end real-time collaboration.
+
+**Problem Solved:** WebSocket connections were failing with "Responses may only be constructed with status codes in the range 200 to 599" because the CORS middleware was trying to modify WebSocket upgrade responses (status 101). Additionally, the frontend couldn't authenticate WebSocket connections because browsers can't send custom headers during WebSocket upgrade handshakes.
+
+**Implementation:**
+
+**WebSocket Response Handling:**
+- Added WebSocket detection in `addCorsHeaders()` functions in both `index.ts` and `realtime-api.ts`
+- Uses `'webSocket' in response` check to detect Cloudflare Workers WebSocket responses
+- Returns WebSocket responses as-is without modification (CORS doesn't apply to WebSocket connections)
+
+**API Key Authentication via Query Params:**
+- Added `apiKey` query parameter support in `authenticate()` function for WebSocket connections
+- Browsers cannot send custom headers (like `X-API-Key`) during WebSocket upgrade requests
+- Frontend passes API key as `?apiKey=...` query parameter, backend validates it
+
+**Route Matching Fix:**
+- Moved realtime route matching (`/connect` and `/edits` endpoints) before document routes
+- Prevents document API from incorrectly matching realtime WebSocket URLs
+- Preserved query parameters when forwarding requests to Durable Object
+
+**Files Modified:**
+- `workers/src/index.ts` - WebSocket response handling, query param auth, route priority
+- `workers/src/routes/realtime-api.ts` - WebSocket response handling, query param forwarding
+
+**Files Modified (puck-css-integration):**
+- `packages/css-client/src/realtime.ts` - Added apiKey to config and connect URL
+- `packages/puck-css/src/hooks/useRealtime.ts` - Pass apiKey to RealtimeClient
+- `packages/puck-css/src/types.ts` - Added realtimeApiKey to CSSPuckConfig
+- `packages/puck-css/src/CSSPuckProvider.tsx` - Pass realtimeApiKey to useRealtime
+- `apps/demo/src/App.tsx` - Pass realtimeApiKey prop to CSSPuckProvider
+
+**Implementation Commits:**
+- `e884ad1` - fix(realtime): Fix WebSocket connection handling
+
+---
+
+### Automatic Sync Triggers for DocumentSession (Phase 1.3b) - Added 2026-01-26
+
+**Feature:** Implemented automatic sync triggers in DocumentSession Durable Object to sync CRDT state to PostgreSQL after edits.
+
+**Problem Solved:** Previously, CRDT state was only synced when explicitly calling the `/sync` endpoint. Now, edits automatically trigger sync to PostgreSQL after an idle timeout, ensuring data durability without requiring manual intervention.
+
+**Implementation:**
+
+**Idle Timeout Sync (5 seconds):**
+- Added `scheduleSync()` method that schedules sync after 5 seconds of no edits
+- Timer resets on each edit (debouncing) to batch rapid edits
+- Triggered after `/apply` operations and WebSocket message handling
+- Configured via `SYNC_IDLE_TIMEOUT_MS` constant
+
+**Disconnect Sync:**
+- When the last WebSocket client disconnects, immediate sync is triggered
+- Ensures data is persisted when an editing session ends
+- Handles both 'close' and 'error' events on WebSocket
+
+**PostgreSQL Sync via Internal API:**
+- `syncToPostgres()` method calls `POST /internal/crdt-sync`
+- Uses `X-Internal-Secret` header for authentication
+- Sends siteId, documentPath, branchId, snapshot, crdtState, actorId, actorType
+- Gracefully handles missing configuration (logs and skips)
+
+**Environment Configuration:**
+- Added `INTERNAL_API_URL` to wrangler.jsonc for all environments
+- Added `INTERNAL_SECRET` to .dev.vars for local development
+- Production environments should set INTERNAL_SECRET via Cloudflare secrets
+
+**Files Modified:**
+- `workers/src/durable-objects/document-session.ts` - Added sync triggers
+- `workers/wrangler.jsonc` - Added INTERNAL_API_URL config
+- `workers/.dev.vars` - Added INTERNAL_SECRET for local dev
+- `workers/tests/durable-objects/document-session.spec.ts` - Added sync trigger tests
+
+**Test Commits:**
+- `071dfa0` - test: Add automatic sync trigger tests for DocumentSession (TDD - Phase 1.3b)
+
+**Implementation Commits:**
+- `fa7048b` - feat(realtime): Add automatic sync triggers to DocumentSession (Phase 1.3b)
+- `dbd2557` - config: Add INTERNAL_API_URL for DO-to-PostgreSQL sync
+
+---
+
+### PostgreSQL Initialization Fallback (Phase 1.4b) - Added 2026-01-26
+
+**Feature:** Durable Objects now load initial state from PostgreSQL when their storage is empty, enabling seamless recovery after hibernation.
+
+**Problem Solved:** When a Durable Object wakes up from hibernation or is accessed for the first time, its storage is empty. Without falling back to PostgreSQL, documents would appear empty even though data exists in the database.
+
+**Implementation:**
+
+**GET /internal/crdt-state Endpoint:**
+- Added endpoint to `internal-api.ts` for loading latest CRDT state
+- Query params: `siteId`, `documentPath`, `branchId`
+- Returns `{ found: true, snapshot, crdtState }` or `{ found: false }` (404)
+- Uses same X-Internal-Secret authentication as POST endpoint
+
+**initializeFromPostgres() Method:**
+- Added to DocumentSession DO to fetch state from PostgreSQL
+- Called by `initializeIfNeeded()` when DO storage is empty
+- Falls back gracefully if internal API configuration is missing
+
+**applySnapshotToYMap() Helper:**
+- Recursively applies JSON snapshot to Yjs Y.Map structure
+- Handles objects, arrays, and primitive values
+- Used when PostgreSQL has snapshot but no CRDT state (legacy documents)
+
+**State Recovery Flow:**
+1. DO wakes up, checks storage → empty
+2. Calls `GET /internal/crdt-state` to fetch from PostgreSQL
+3. If CRDT state exists: applies binary state to Y.Doc
+4. If only snapshot exists: builds Y.Doc from JSON structure
+5. If nothing found: starts with empty document
+
+**Files Modified:**
+- `workers/src/routes/internal-api.ts` - Added GET endpoint
+- `workers/src/durable-objects/document-session.ts` - Added initialization methods
+
+**Implementation Commits:**
+- `793f2f2` - feat(realtime): Initialize DO from PostgreSQL when storage is empty (Phase 1.4)
+
+---
+
 ### Visual JSON Diffs in MergePreviewPanel (Added 2026-01-25)
 
 **Feature:** Added expandable diff viewing directly from the MergePreviewPanel component, allowing users to see what changed between branches before approving or resolving conflicts.
@@ -2031,4 +2270,4 @@ Template for future decisions:
 
 ---
 
-*Last updated: 2026-01-25 (Phase 10.6 - Merge Diff Visualization Complete)*
+*Last updated: 2026-01-26 (WebSocket Connection Fixes for Real-Time Collaboration)*

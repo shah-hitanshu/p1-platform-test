@@ -89,12 +89,31 @@ interface ApplyResponse {
 }
 
 /**
+ * Response from the /sync endpoint
+ */
+interface SyncResponse {
+  synced: boolean;
+  snapshot: Record<string, unknown>;
+  stateVector: number[];
+}
+
+/**
  * Environment interface for DocumentSession
  */
 interface DocumentSessionEnv {
   API_URL?: string;
   ENVIRONMENT?: string;
+  /** Internal API URL for syncing to PostgreSQL */
+  INTERNAL_API_URL?: string;
+  /** Shared secret for internal API authentication */
+  INTERNAL_SECRET?: string;
 }
+
+/**
+ * Idle timeout before syncing to PostgreSQL (in milliseconds)
+ * Sync triggers after 5 seconds of no edits
+ */
+const SYNC_IDLE_TIMEOUT_MS = 5000;
 
 /**
  * DocumentSession Durable Object
@@ -109,6 +128,15 @@ export class DocumentSession {
   private ydoc: Y.Doc;
   private connections: Map<WebSocket, ConnectionMeta>;
   private initialized: boolean;
+
+  /** Timer for idle sync (cleared on each edit, fires after SYNC_IDLE_TIMEOUT_MS) */
+  private syncTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Actor ID of the last edit (used for sync attribution) */
+  private lastEditActorId = 'system';
+
+  /** Actor type of the last edit */
+  private lastEditActorType: 'user' | 'agent' = 'user';
 
   constructor(state: unknown, env: unknown) {
     this.state = state as DurableObjectState;
@@ -178,6 +206,12 @@ export class DocumentSession {
         case '/connect':
           return this.handleWebSocket(request);
 
+        case '/sync':
+          return await this.handleSync(request);
+
+        case '/initialize':
+          return await this.handleInitialize(request);
+
         default:
           return new Response(
             JSON.stringify({ error: 'Not Found', path }),
@@ -197,7 +231,8 @@ export class DocumentSession {
   }
 
   /**
-   * Initialize CRDT state from storage if not already done
+   * Initialize CRDT state from storage if not already done.
+   * Falls back to PostgreSQL if DO storage is empty and internal API is configured.
    */
   private async initializeIfNeeded(): Promise<void> {
     if (this.initialized) {
@@ -207,15 +242,124 @@ export class DocumentSession {
     const stored = await this.state.storage.get(YDOC_STORAGE_KEY);
 
     if (stored instanceof Uint8Array && stored.length > 0) {
+      // Priority 1: Use DO storage
       try {
         Y.applyUpdate(this.ydoc, stored);
+        this.initialized = true;
+        return;
       } catch (error) {
-        // Invalid stored data - log and continue with empty state
+        // Invalid stored data - log and try PostgreSQL fallback
         console.warn('Failed to restore CRDT state from storage:', error);
       }
     }
 
+    // Priority 2: Try to load from PostgreSQL if configured
+    if (this.env.INTERNAL_API_URL !== undefined && this.env.INTERNAL_SECRET !== undefined) {
+      try {
+        await this.initializeFromPostgres();
+      } catch (error) {
+        console.warn('Failed to initialize from PostgreSQL:', error);
+        // Continue with empty state
+      }
+    }
+
     this.initialized = true;
+  }
+
+  /**
+   * Load initial state from PostgreSQL via internal API.
+   * Called when DO storage is empty but PostgreSQL may have data.
+   */
+  private async initializeFromPostgres(): Promise<void> {
+    if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
+      return;
+    }
+
+    const { siteId, documentId, branchId } = this.sessionInfo;
+
+    // Skip initialization for unknown/invalid session IDs
+    if (siteId === 'unknown' || documentId === 'unknown' || branchId === 'unknown') {
+      return;
+    }
+
+    const url = new URL(`${this.env.INTERNAL_API_URL}/internal/crdt-state`);
+    url.searchParams.set('siteId', siteId);
+    url.searchParams.set('documentPath', documentId);
+    url.searchParams.set('branchId', branchId);
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'X-Internal-Secret': this.env.INTERNAL_SECRET,
+      },
+    });
+
+    if (!response.ok) {
+      // 404 is expected for new documents - just continue with empty state
+      if (response.status === 404) {
+        return;
+      }
+      throw new Error(`Failed to load from PostgreSQL: ${String(response.status)}`);
+    }
+
+    const rawData = await response.json();
+    const data = rawData as {
+      found: boolean;
+      snapshot?: Record<string, unknown>;
+      crdtState?: string | null;
+    };
+
+    if (!data.found) {
+      return;
+    }
+
+    // Apply CRDT state if available (preferred)
+    if (typeof data.crdtState === 'string' && data.crdtState !== '') {
+      const bytes = this.base64ToUint8Array(data.crdtState);
+      Y.applyUpdate(this.ydoc, bytes);
+      console.log(`Initialized document ${documentId} from PostgreSQL CRDT state`);
+      // Persist to DO storage for future use
+      await this.persist();
+      return;
+    }
+
+    // Fall back to snapshot if no CRDT state
+    if (data.snapshot !== undefined && typeof data.snapshot === 'object') {
+      const root = this.ydoc.getMap('root');
+      this.applySnapshotToYMap(root, data.snapshot);
+      console.log(`Initialized document ${documentId} from PostgreSQL snapshot`);
+      // Persist to DO storage for future use
+      await this.persist();
+    }
+  }
+
+  /**
+   * Apply a JSON snapshot to a Y.Map (recursive)
+   */
+  private applySnapshotToYMap(ymap: Y.Map<unknown>, snapshot: Record<string, unknown>): void {
+    for (const [key, value] of Object.entries(snapshot)) {
+      if (value === null || value === undefined) {
+        ymap.set(key, value);
+      } else if (Array.isArray(value)) {
+        const yarray = new Y.Array();
+        for (const item of value) {
+          if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+            const nestedMap = new Y.Map();
+            this.applySnapshotToYMap(nestedMap, item as Record<string, unknown>);
+            yarray.push([nestedMap]);
+          } else {
+            yarray.push([item]);
+          }
+        }
+        ymap.set(key, yarray);
+      } else if (typeof value === 'object') {
+        const nestedMap = new Y.Map();
+        this.applySnapshotToYMap(nestedMap, value as Record<string, unknown>);
+        ymap.set(key, nestedMap);
+      } else {
+        ymap.set(key, value);
+      }
+    }
   }
 
   /**
@@ -323,6 +467,9 @@ export class DocumentSession {
     const update = Y.encodeStateAsUpdate(this.ydoc);
     this.broadcastUpdate(update);
 
+    // Schedule sync to PostgreSQL after idle timeout
+    this.scheduleSync(body.actorId, 'user');
+
     const root = this.ydoc.getMap('root');
     const response: ApplyResponse = {
       success: true,
@@ -340,20 +487,21 @@ export class DocumentSession {
    * Handle /connect endpoint for WebSocket connections
    */
   private handleWebSocket(request: Request): Response {
-    // Validate required headers
-    const actorId = request.headers.get('X-Actor-Id');
-    const actorType = request.headers.get('X-Actor-Type');
+    // Get actor info from headers OR query params (browsers can't send custom headers with WebSocket)
+    const url = new URL(request.url);
+    const actorId = request.headers.get('X-Actor-Id') ?? url.searchParams.get('actorId');
+    const actorType = request.headers.get('X-Actor-Type') ?? url.searchParams.get('actorType');
 
     if (actorId === null || actorId === '') {
-      return this.errorResponse(400, 'X-Actor-Id header is required');
+      return this.errorResponse(400, 'actorId is required (via X-Actor-Id header or actorId query param)');
     }
 
     if (actorType === null || actorType === '') {
-      return this.errorResponse(400, 'X-Actor-Type header is required');
+      return this.errorResponse(400, 'actorType is required (via X-Actor-Type header or actorType query param)');
     }
 
     if (actorType !== 'user' && actorType !== 'agent') {
-      return this.errorResponse(400, 'X-Actor-Type must be "user" or "agent"');
+      return this.errorResponse(400, 'actorType must be "user" or "agent"');
     }
 
     // Security: Validate actorId format
@@ -422,6 +570,9 @@ export class DocumentSession {
 
         // Persist state
         await this.persist();
+
+        // Schedule sync to PostgreSQL after idle timeout
+        this.scheduleSync(meta.actorId, meta.actorType);
       } catch (error) {
         console.error('Error handling WebSocket message:', error);
       }
@@ -432,12 +583,22 @@ export class DocumentSession {
       this.connections.delete(server);
       incrementCounter('css_ws_connections_total', { action: 'close' });
       setGauge('css_ws_connections_active', this.connections.size);
+
+      // If this was the last connection, trigger immediate sync to PostgreSQL
+      if (this.connections.size === 0) {
+        void this.syncToPostgres();
+      }
     });
 
     server.addEventListener('error', () => {
       this.connections.delete(server);
       incrementCounter('css_ws_connections_total', { action: 'close' });
       setGauge('css_ws_connections_active', this.connections.size);
+
+      // If this was the last connection, trigger immediate sync to PostgreSQL
+      if (this.connections.size === 0) {
+        void this.syncToPostgres();
+      }
     });
 
     // Return the client side of the WebSocket
@@ -445,6 +606,132 @@ export class DocumentSession {
       status: 101,
       webSocket: client,
     });
+  }
+
+  /**
+   * Handle /sync endpoint
+   * Manually trigger sync to PostgreSQL (via internal API)
+   * Returns current state after sync
+   */
+  private async handleSync(request: Request): Promise<Response> {
+    // Only accept POST method
+    if (request.method !== 'POST') {
+      return this.errorResponse(405, 'Method not allowed. Use POST.');
+    }
+
+    // Persist to DO storage first
+    try {
+      await this.persist();
+    } catch (error) {
+      return this.errorResponse(500, `Failed to persist state: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    // Sync to PostgreSQL via internal API
+    await this.syncToPostgres();
+
+    const root = this.ydoc.getMap('root');
+    const response: SyncResponse = {
+      synced: true,
+      snapshot: root.toJSON() as Record<string, unknown>,
+      stateVector: Array.from(Y.encodeStateVector(this.ydoc)),
+    };
+
+    return new Response(
+      JSON.stringify(response),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+
+  /**
+   * Handle /initialize endpoint
+   * Initialize CRDT state from PostgreSQL snapshot or CRDT state
+   * Used when DO storage is empty but PostgreSQL has data
+   */
+  private async handleInitialize(request: Request): Promise<Response> {
+    // Only accept POST method
+    if (request.method !== 'POST') {
+      return this.errorResponse(405, 'Method not allowed. Use POST.');
+    }
+
+    // Parse request body
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      return this.errorResponse(400, 'Invalid JSON in request body');
+    }
+
+    // Validate body structure
+    if (typeof rawBody !== 'object' || rawBody === null) {
+      return this.errorResponse(400, 'Request body must be an object');
+    }
+
+    const body = rawBody as Record<string, unknown>;
+
+    // Validate snapshot is present
+    if (body.snapshot === null || body.snapshot === undefined || typeof body.snapshot !== 'object') {
+      return this.errorResponse(400, 'snapshot is required and must be an object');
+    }
+
+    const snapshot = body.snapshot as Record<string, unknown>;
+    const crdtState = typeof body.crdtState === 'string' ? body.crdtState : null;
+
+    try {
+      if (crdtState !== null && crdtState !== '') {
+        // Initialize from CRDT state (base64 encoded)
+        const crdtBytes = this.base64ToUint8Array(crdtState);
+        Y.applyUpdate(this.ydoc, crdtBytes);
+      } else {
+        // Initialize from JSON snapshot
+        this.initializeFromSnapshot(snapshot);
+      }
+
+      // Persist the initialized state
+      await this.persist();
+
+      const root = this.ydoc.getMap('root');
+      return new Response(
+        JSON.stringify({
+          success: true,
+          snapshot: root.toJSON(),
+          stateVector: Array.from(Y.encodeStateVector(this.ydoc)),
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    } catch (error) {
+      return this.errorResponse(500, `Failed to initialize: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Initialize Y.Doc from a JSON snapshot
+   */
+  private initializeFromSnapshot(snapshot: Record<string, unknown>): void {
+    const root = this.ydoc.getMap('root');
+
+    // Clear existing data
+    for (const key of root.keys()) {
+      root.delete(key);
+    }
+
+    // Apply snapshot
+    this.ydoc.transact(() => {
+      for (const [key, value] of Object.entries(snapshot)) {
+        root.set(key, this.toYjsValue(value));
+      }
+    }, 'initialize');
+  }
+
+  /**
+   * Decode base64 string to Uint8Array
+   */
+  private base64ToUint8Array(base64: string): Uint8Array {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
   }
 
   /**
@@ -637,6 +924,101 @@ export class DocumentSession {
   private async persist(): Promise<void> {
     const update = Y.encodeStateAsUpdate(this.ydoc);
     await this.state.storage.put(YDOC_STORAGE_KEY, update);
+  }
+
+  // =============================================================================
+  // PostgreSQL Sync Methods
+  // =============================================================================
+
+  /**
+   * Schedule a sync to PostgreSQL after idle timeout.
+   * Resets the timer on each call (debouncing).
+   *
+   * @param actorId - ID of the actor making the edit
+   * @param actorType - Type of actor ('user' or 'agent')
+   */
+  private scheduleSync(actorId: string, actorType: 'user' | 'agent'): void {
+    // Store actor info for sync attribution
+    this.lastEditActorId = actorId;
+    this.lastEditActorType = actorType;
+
+    // Clear existing timer (debounce)
+    if (this.syncTimer !== null) {
+      clearTimeout(this.syncTimer);
+    }
+
+    // Only schedule if we have internal API configured
+    if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
+      return;
+    }
+
+    // Schedule sync after idle timeout
+    this.syncTimer = setTimeout(() => {
+      void this.syncToPostgres();
+    }, SYNC_IDLE_TIMEOUT_MS);
+  }
+
+  /**
+   * Sync current CRDT state to PostgreSQL via the internal API.
+   * Called after idle timeout or on last client disconnect.
+   */
+  private async syncToPostgres(): Promise<void> {
+    // Clear timer since we're syncing now
+    if (this.syncTimer !== null) {
+      clearTimeout(this.syncTimer);
+      this.syncTimer = null;
+    }
+
+    // Check if internal API is configured
+    if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
+      console.log('Sync skipped: INTERNAL_API_URL or INTERNAL_SECRET not configured');
+      return;
+    }
+
+    try {
+      const root = this.ydoc.getMap('root');
+      const snapshot = root.toJSON() as Record<string, unknown>;
+      const crdtState = this.uint8ArrayToBase64(Y.encodeStateAsUpdate(this.ydoc));
+
+      const syncUrl = `${this.env.INTERNAL_API_URL}/internal/crdt-sync`;
+
+      const response = await fetch(syncUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': this.env.INTERNAL_SECRET,
+        },
+        body: JSON.stringify({
+          siteId: this.sessionInfo.siteId,
+          documentPath: this.sessionInfo.documentId,
+          branchId: this.sessionInfo.branchId,
+          snapshot,
+          crdtState,
+          actorId: this.lastEditActorId,
+          actorType: this.lastEditActorType,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Sync to PostgreSQL failed: ${String(response.status)} ${errorText}`);
+      } else {
+        console.log(`Synced document ${this.sessionInfo.documentId} to PostgreSQL`);
+      }
+    } catch (error) {
+      console.error('Error syncing to PostgreSQL:', error);
+    }
+  }
+
+  /**
+   * Convert Uint8Array to base64 string
+   */
+  private uint8ArrayToBase64(bytes: Uint8Array): string {
+    let binary = '';
+    for (const byte of bytes) {
+      binary += String.fromCharCode(byte);
+    }
+    return btoa(binary);
   }
 
   /**

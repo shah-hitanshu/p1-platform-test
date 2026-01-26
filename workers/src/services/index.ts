@@ -357,3 +357,16 @@ export type {
   MetricsConfig,
   MetricPoint,
 } from './metrics-service';
+
+// CRDT Sync Service
+export {
+  syncCrdtToPostgres,
+  loadLatestCrdtState,
+  DocumentNotFoundError as CrdtSyncDocumentNotFoundError,
+  SyncError,
+} from './crdt-sync-service';
+
+export type {
+  SyncCrdtToPostgresParams,
+  LoadCrdtStateResult,
+} from './crdt-sync-service';
