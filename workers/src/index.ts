@@ -23,6 +23,7 @@ import { handleStructureRoutes } from './routes/structure-api';
 import { handleNodeRoutes } from './routes/node-api';
 import { handleMetadataRoutes } from './routes/metadata-api';
 import { handleRealtimeRoutes } from './routes/realtime-api';
+import { handleInternalRoutes } from './routes/internal-api';
 
 // Metrics
 import {
@@ -61,6 +62,9 @@ export interface Env {
 
   // Mock Identity Provider (local development only)
   MOCK_JWT_SECRET?: string;
+
+  // Internal API secret for Durable Object to PostgreSQL sync
+  INTERNAL_SECRET?: string;
 
   // Hyperdrive binding (production/staging - handles connection pooling properly)
   // See: https://developers.cloudflare.com/hyperdrive/
@@ -943,6 +947,13 @@ async function handleRequest(
       return addCorsHeaders(response, origin, env);
     }
     return addCorsHeaders(errorResponse('Not found', 404), origin, env);
+  }
+
+  // Internal API endpoints (uses X-Internal-Secret auth, not user/agent tokens)
+  if (path.startsWith('/internal/')) {
+    const internalSecret = env.INTERNAL_SECRET ?? 'development-internal-secret';
+    const response = await handleInternalRoutes(request, { internalSecret });
+    return addCorsHeaders(response, origin, env);
   }
 
   // Parse route
