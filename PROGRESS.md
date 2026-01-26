@@ -162,6 +162,51 @@ This document tracks the implementation progress of the Collaborative JSON State
 
 ---
 
+### Automatic Sync Triggers for DocumentSession (Phase 1.3b) - Added 2026-01-26
+
+**Feature:** Implemented automatic sync triggers in DocumentSession Durable Object to sync CRDT state to PostgreSQL after edits.
+
+**Problem Solved:** Previously, CRDT state was only synced when explicitly calling the `/sync` endpoint. Now, edits automatically trigger sync to PostgreSQL after an idle timeout, ensuring data durability without requiring manual intervention.
+
+**Implementation:**
+
+**Idle Timeout Sync (5 seconds):**
+- Added `scheduleSync()` method that schedules sync after 5 seconds of no edits
+- Timer resets on each edit (debouncing) to batch rapid edits
+- Triggered after `/apply` operations and WebSocket message handling
+- Configured via `SYNC_IDLE_TIMEOUT_MS` constant
+
+**Disconnect Sync:**
+- When the last WebSocket client disconnects, immediate sync is triggered
+- Ensures data is persisted when an editing session ends
+- Handles both 'close' and 'error' events on WebSocket
+
+**PostgreSQL Sync via Internal API:**
+- `syncToPostgres()` method calls `POST /internal/crdt-sync`
+- Uses `X-Internal-Secret` header for authentication
+- Sends siteId, documentPath, branchId, snapshot, crdtState, actorId, actorType
+- Gracefully handles missing configuration (logs and skips)
+
+**Environment Configuration:**
+- Added `INTERNAL_API_URL` to wrangler.jsonc for all environments
+- Added `INTERNAL_SECRET` to .dev.vars for local development
+- Production environments should set INTERNAL_SECRET via Cloudflare secrets
+
+**Files Modified:**
+- `workers/src/durable-objects/document-session.ts` - Added sync triggers
+- `workers/wrangler.jsonc` - Added INTERNAL_API_URL config
+- `workers/.dev.vars` - Added INTERNAL_SECRET for local dev
+- `workers/tests/durable-objects/document-session.spec.ts` - Added sync trigger tests
+
+**Test Commits:**
+- `071dfa0` - test: Add automatic sync trigger tests for DocumentSession (TDD - Phase 1.3b)
+
+**Implementation Commits:**
+- `fa7048b` - feat(realtime): Add automatic sync triggers to DocumentSession (Phase 1.3b)
+- `dbd2557` - config: Add INTERNAL_API_URL for DO-to-PostgreSQL sync
+
+---
+
 ### Visual JSON Diffs in MergePreviewPanel (Added 2026-01-25)
 
 **Feature:** Added expandable diff viewing directly from the MergePreviewPanel component, allowing users to see what changed between branches before approving or resolving conflicts.
