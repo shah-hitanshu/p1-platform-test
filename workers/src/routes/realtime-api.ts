@@ -283,11 +283,13 @@ export async function handleRealtimeRoutes(
     // Preserve query parameters (for actorId, actorType, apiKey, etc.)
     const queryString = url.search;
 
-    // Forward the original request with its headers (including Upgrade)
-    forwardedRequest = new Request(`http://internal${targetEndpoint}${queryString}`, {
-      method: 'GET',
-      headers: request.headers,
-    });
+    // For WebSocket upgrade requests, use new Request(url, originalRequest) syntax
+    // This preserves WebSocket-related headers (Upgrade, Connection, Sec-WebSocket-*)
+    // that would otherwise be stripped as "forbidden headers"
+    forwardedRequest = new Request(
+      `http://internal${targetEndpoint}${queryString}`,
+      request,
+    );
   } else if (params.action === 'edits') {
     // Apply edits endpoint
     if (request.method !== 'POST') {
