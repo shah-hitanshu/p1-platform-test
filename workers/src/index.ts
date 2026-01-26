@@ -201,6 +201,13 @@ function addCorsHeaders(
   origin: string | null,
   env: Env,
 ): Response {
+  // WebSocket upgrade responses cannot be modified
+  // Return them as-is since CORS doesn't apply to WebSocket connections
+  // Note: Cloudflare Workers Response has a webSocket property for WebSocket upgrades
+  if ('webSocket' in response && (response as { webSocket: unknown }).webSocket != null) {
+    return response;
+  }
+
   if (origin === null || origin === '' || !isOriginAllowed(origin, env.CORS_ORIGINS)) {
     return response;
   }
@@ -257,10 +264,17 @@ async function authenticate(
     return await identityProvider.validateToken(token);
   }
 
-  // Try API key
+  // Try API key from header
   const apiKey = request.headers.get('X-API-Key');
   if (apiKey !== null && apiKey !== '') {
     return await identityProvider.validateAgentKey(apiKey);
+  }
+
+  // Try API key from query params (for WebSocket - browsers can't send custom headers)
+  const url = new URL(request.url);
+  const queryApiKey = url.searchParams.get('apiKey');
+  if (queryApiKey !== null && queryApiKey !== '') {
+    return await identityProvider.validateAgentKey(queryApiKey);
   }
 
   return null;
@@ -458,6 +472,24 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
         branchId: versionsMatch[2],
         documentId: versionsMatch[3],
         versionsPath: 'true',
+      },
+    };
+  }
+
+  // Realtime routes (must come before document routes)
+  // /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}[/edits|/connect]
+  // Note: These routes handle WebSocket connections and real-time document access
+  const realtimeRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/(.+?)\/(edits|connect)$/;
+  const realtimeConnectMatch = realtimeRe.exec(normalizedPath);
+  if (realtimeConnectMatch) {
+    const docPath = realtimeConnectMatch[3] ?? '';
+    const action = realtimeConnectMatch[4] ?? '';
+    return {
+      handler: 'realtime',
+      params: {
+        siteId: realtimeConnectMatch[1],
+        branchId: realtimeConnectMatch[2],
+        documentPath: `${docPath}/${action}`,
       },
     };
   }
@@ -814,27 +846,6 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
         action: 'requests',
       },
     };
-  }
-
-  // Realtime routes
-  // /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}...
-  const realtimeMatch = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/(.+)$/.exec(normalizedPath);
-  if (realtimeMatch) {
-    const docPathPart = realtimeMatch[3];
-    // Check if this is edits or connect endpoint
-    if (docPathPart.endsWith('/edits') || docPathPart.endsWith('/connect')) {
-      return {
-        handler: 'realtime',
-        params: {
-          siteId: realtimeMatch[1],
-          branchId: realtimeMatch[2],
-          documentPath: docPathPart,
-        },
-      };
-    }
-    // Check if it's a snapshot request (no suffix after doc path)
-    // This overlaps with documents API, so we need to be careful
-    // For now, let documents API handle base paths
   }
 
   return null;

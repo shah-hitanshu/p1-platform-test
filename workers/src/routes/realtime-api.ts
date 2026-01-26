@@ -137,6 +137,13 @@ function addCorsHeaders(
   origin: string | null,
   allowedOrigins: string[],
 ): Response {
+  // WebSocket upgrade responses cannot be modified
+  // Return them as-is since CORS doesn't apply to WebSocket connections
+  // Note: Cloudflare Workers Response has a webSocket property for WebSocket upgrades
+  if ('webSocket' in response && (response as { webSocket: unknown }).webSocket != null) {
+    return response;
+  }
+
   const corsHeaders = getCorsHeaders(origin, allowedOrigins);
   const headers = new Headers(response.headers);
   for (const [key, value] of Object.entries(corsHeaders)) {
@@ -273,8 +280,11 @@ export async function handleRealtimeRoutes(
     }
     targetEndpoint = '/connect';
 
+    // Preserve query parameters (for actorId, actorType, apiKey, etc.)
+    const queryString = url.search;
+
     // Forward the original request with its headers (including Upgrade)
-    forwardedRequest = new Request(`http://internal${targetEndpoint}`, {
+    forwardedRequest = new Request(`http://internal${targetEndpoint}${queryString}`, {
       method: 'GET',
       headers: request.headers,
     });
