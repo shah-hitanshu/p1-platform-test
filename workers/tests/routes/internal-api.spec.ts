@@ -21,10 +21,7 @@ vi.mock('../../src/services/crdt-sync-service', () => ({
     }
   },
   SyncError: class SyncError extends Error {
-    name = 'SyncError';
-    constructor(message: string) {
-      super(message);
-    }
+    override name = 'SyncError';
   },
 }));
 
