@@ -5,6 +5,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "cleanup:dev": "pkill -9 -f 'workerd.*socket-addr=entry=0.0.0.0:8787' 2>/dev/null || true",
+    "cleanup:test": "pkill -9 -f 'vitest' 2>/dev/null || true",
+    "cleanup:all": "pnpm cleanup:dev && pnpm cleanup:test",
+    "predev": "pnpm cleanup:dev",
     "dev": "wrangler dev --local",
     "dev:remote": "wrangler dev",
     "deploy:sbx1": "wrangler deploy --env sbx1",
