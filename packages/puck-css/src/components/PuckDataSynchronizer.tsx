@@ -11,8 +11,12 @@
  */
 
 import React, { Component, useEffect, useRef, useState } from 'react';
-import { usePuck } from '@puckeditor/core';
+import { createUsePuck } from '@puckeditor/core';
 import type { PuckData } from '@pantheon/css-client';
+
+// Create a usePuck hook with selector to avoid unnecessary re-renders
+// We only need dispatch, so we select just that
+const usePuckDispatch = createUsePuck();
 
 export interface PuckDataSynchronizerProps {
   /**
@@ -92,7 +96,8 @@ function PuckDataSynchronizerInner({
   data,
   syncKey,
 }: PuckDataSynchronizerProps): null {
-  const { dispatch } = usePuck();
+  // Use selector to only subscribe to dispatch, avoiding re-renders on other state changes
+  const dispatch = usePuckDispatch((s) => s.dispatch);
   const lastSyncKeyRef = useRef<string | null>(null);
 
   useEffect(() => {

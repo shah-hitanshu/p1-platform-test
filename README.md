@@ -10,6 +10,7 @@ Integration between [Puck Editor](https://puckeditor.com) and the Collaborative 
 - **Publishing** - Create checkpoints (named snapshots) for releases
 - **Conflict Detection** - Detect and resolve merge conflicts between branches
 - **User Attribution** - Track who made each change
+- **Real-time Collaboration** - Multiple users can edit simultaneously with Yjs CRDT sync
 
 ## Packages
 
@@ -107,6 +108,159 @@ function YourEditor() {
   );
 }
 ```
+
+## Real-time Collaboration
+
+The puck-css integration supports real-time collaborative editing using Yjs CRDT over WebSockets. Multiple users can edit the same document simultaneously and see each other's changes in real-time.
+
+### Enabling Real-time Collaboration
+
+#### 1. Configure the Provider
+
+Add the realtime props to `CSSPuckProvider`:
+
+```tsx
+import { CSSPuckProvider } from '@pantheon/puck-css';
+import { CSSClient } from '@pantheon/css-client';
+
+const client = new CSSClient({
+  baseUrl: 'https://your-css-api.example.com',
+  apiKey: 'your-api-key',
+});
+
+function App() {
+  return (
+    <CSSPuckProvider
+      client={client}
+      siteId="your-site-id"
+      userId="current-user-id"
+      enableRealtime={true}
+      wsBaseUrl="wss://your-css-api.example.com"
+      realtimeApiKey="your-api-key"  // Optional, defaults to HTTP API key
+    >
+      <YourEditor />
+    </CSSPuckProvider>
+  );
+}
+```
+
+#### 2. Environment Variables (Next.js example)
+
+```env
+# CSS API Configuration
+NEXT_PUBLIC_CSS_BASE_URL=http://<SERVER>:<PORT>
+NEXT_PUBLIC_CSS_API_KEY=your-api-key
+NEXT_PUBLIC_CSS_SITE_ID=your-site-id
+NEXT_PUBLIC_CSS_USER_ID=demo-user
+
+# Real-time Collaboration
+NEXT_PUBLIC_CSS_ENABLE_REALTIME=true
+NEXT_PUBLIC_CSS_WS_BASE_URL=ws://<SERVER>:<PORT>
+```
+
+### How Real-time Works
+
+1. When `enableRealtime` is true and a document is loaded, a WebSocket connection is established
+2. Local edits are broadcast to all connected clients via Yjs CRDT updates
+3. Remote changes are merged automatically without conflicts using CRDT
+4. The `realtimeConnected` context value indicates connection status
+
+### Context Values for Real-time
+
+```typescript
+const {
+  realtimeEnabled,    // boolean - Whether realtime is configured
+  realtimeConnected,  // boolean - Current WebSocket connection status
+  remoteSyncKey,      // string | null - Changes when remote updates arrive
+} = useCSSPuck();
+```
+
+### Syncing Remote Updates to Puck
+
+To make Puck update its UI when remote changes arrive, you must include `remoteSyncKey` in your sync key calculation. This triggers `PuckDataSynchronizer` to dispatch `setData` to Puck:
+
+```tsx
+const {
+  currentData,
+  currentDocument,
+  viewingVersion,
+  remoteSyncKey,  // Include this!
+} = useCSSPuck();
+
+// Compute sync key: prioritize remote updates, then version viewing, then document loading
+const targetSyncKey = remoteSyncKey
+  ? remoteSyncKey
+  : viewingVersion
+    ? `version-${viewingVersion.id}`
+    : currentDocument
+      ? `doc-${currentDocument.id}-latest`
+      : null;
+
+const dataSyncKey = targetSyncKey !== lastSyncedKeyRef.current ? targetSyncKey : null;
+```
+
+#### Recommended: Getter-based API (Reduces Flickering)
+
+To minimize UI flickering during real-time collaboration, use refs and getter functions instead of passing sync data directly. This prevents the plugin from being recreated on every remote update:
+
+```tsx
+// Use refs to store sync data
+const syncDataRef = useRef<Data | undefined>(undefined);
+const dataSyncKeyRef = useRef<string | undefined>(undefined);
+const lastSyncedKeyRef = useRef<string | null>(null);
+
+// Update refs when sync data changes
+useEffect(() => {
+  if (dataSyncKey !== null) {
+    syncDataRef.current = currentData as Data | undefined;
+    dataSyncKeyRef.current = dataSyncKey;
+    lastSyncedKeyRef.current = dataSyncKey;
+  }
+}, [dataSyncKey, currentData]);
+
+// Create stable getter functions
+const getSyncData = useCallback(() => syncDataRef.current, []);
+const getDataSyncKey = useCallback(() => dataSyncKeyRef.current, []);
+
+// Pass getters to the plugin (plugin stays stable, no flickering)
+const cssPlugin = useMemo(
+  () => createCSSPlugin({
+    // ... other props
+    getSyncData,      // Getter function
+    getDataSyncKey,   // Getter function
+  }),
+  [getSyncData, getDataSyncKey, /* other non-sync deps */]
+);
+```
+
+#### Legacy: Direct Props API
+
+For simpler setups where flickering isn't a concern, you can pass sync data directly:
+
+```tsx
+const cssPlugin = useMemo(
+  () => createCSSPlugin({
+    // ... other props
+    syncData: currentData,
+    dataSyncKey: targetSyncKey,
+  }),
+  [currentData, targetSyncKey, /* other deps */]
+);
+```
+
+Note: This approach recreates the plugin on every sync, which may cause flickering during rapid real-time updates.
+
+### Backend Requirements
+
+The CSS backend must support WebSocket connections at:
+```
+ws://<host>/api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/connect
+```
+
+Query parameters for authentication:
+- `actorId` - User or agent ID
+- `actorType` - Either "user" or "agent"
+- `apiKey` - API key for authentication (WebSocket can't send custom headers)
 
 ## Version Comparison Integration
 
@@ -342,16 +496,20 @@ client.checkpoints.create(siteId, params): Promise<Checkpoint>
 
 #### CSSPuckProvider
 
-React context provider that manages CSS state and auto-save.
+React context provider that manages CSS state, auto-save, and real-time collaboration.
 
 ```tsx
 <CSSPuckProvider
   client={CSSClient}        // Required: CSS client instance
   siteId={string}           // Required: Site ID
-  branchId={string}         // Required: Initial branch ID
+  branchId={string}         // Optional: Initial branch ID (defaults to main branch)
   userId={string}           // Required: Current user ID
   autoSaveDelay={number}    // Optional: Debounce delay in ms (default: 3000)
   maxRetries={number}       // Optional: Max retry attempts (default: 3)
+  showErrorNotifications={boolean}  // Optional: Show error toasts (default: true)
+  enableRealtime={boolean}  // Optional: Enable real-time collaboration (default: false)
+  wsBaseUrl={string}        // Optional: WebSocket server URL (required if enableRealtime is true)
+  realtimeApiKey={string}   // Optional: API key for WebSocket auth (defaults to HTTP API key)
 >
   {children}
 </CSSPuckProvider>
@@ -383,6 +541,17 @@ const {
   createCheckpoint,    // (name?: string) => Promise<Checkpoint>
   switchBranch,        // (branchId: string) => Promise<void>
   refreshBranches,     // () => Promise<void>
+
+  // Version viewing
+  viewingVersion,              // DocumentVersion | null - Currently viewing historical version
+  isViewingHistoricalVersion,  // boolean - True when viewing a past version
+  loadVersion,                 // (version: DocumentVersion) => Promise<void>
+  returnToLatest,              // () => Promise<void>
+
+  // Real-time collaboration
+  realtimeEnabled,     // boolean - Whether realtime is configured
+  realtimeConnected,   // boolean - Current WebSocket connection status
+  remoteSyncKey,       // string | null - Changes when remote updates arrive
 } = useCSSPuck();
 ```
 
@@ -544,11 +713,18 @@ pnpm dev
 ### Environment Variables
 
 ```env
-VITE_CSS_BASE_URL=http://localhost:8787
+# Required
+VITE_CSS_BASE_URL=http://<SERVER>:<PORT>
 VITE_CSS_API_KEY=your-api-key-here
 VITE_CSS_SITE_ID=your-site-id
-VITE_CSS_BRANCH_ID=your-branch-id
 VITE_CSS_USER_ID=demo-user-id
+
+# Optional - defaults to main branch if not set
+VITE_CSS_BRANCH_ID=your-branch-id
+
+# Real-time collaboration (optional)
+VITE_CSS_ENABLE_REALTIME=true
+VITE_CSS_WS_BASE_URL=ws://<SERVER>:<PORT>
 ```
 
 ## Development
@@ -596,6 +772,88 @@ puck-css-integration/
 - **Version comparison**: Side-by-side render with change highlights
 - **Authentication**: API key + user login with per-user attribution
 - **Branch handling**: UI selector with future Change Set extensibility
+- **Real-time sync**: Yjs CRDT over WebSocket for conflict-free collaborative editing
+
+## Troubleshooting
+
+### Real-time Collaboration Issues
+
+#### Understanding the Connection Lifecycle
+
+The WebSocket connection is only established when ALL of these conditions are met:
+1. `enableRealtime` is `true`
+2. `wsBaseUrl` is provided and non-empty
+3. A document is loaded (`currentDocument` exists with a valid path)
+4. `siteId` and `branchId` are set
+
+**Important**: The connection won't happen immediately on page load. It only connects after the document is fully loaded from the CSS backend. This means you'll see the editor before real-time is active.
+
+#### Debugging Connection Issues
+
+Add this to your editor component to monitor connection status:
+
+```tsx
+const { realtimeConnected } = useCSSPuck();
+
+useEffect(() => {
+  console.log('[Realtime] Connected:', realtimeConnected);
+}, [realtimeConnected]);
+```
+
+**WebSocket connection not established**
+- Check that your document has loaded (wait for `currentDocument` to be non-null)
+- Verify environment variables are correctly set (use `console.log` to confirm values)
+- For Next.js: ensure variables are prefixed with `NEXT_PUBLIC_` for client-side access
+- Confirm `enableRealtime` evaluates to `true` (not the string `"true"`)
+
+**WebSocket connection fails**
+- Verify the CSS backend is running and supports WebSocket connections
+- Check that `wsBaseUrl` uses `ws://` for HTTP or `wss://` for HTTPS
+- Ensure CORS is configured on the backend to allow WebSocket upgrades
+- Check browser console for WebSocket errors
+- Test the WebSocket endpoint directly using browser DevTools or a WebSocket client
+
+**Changes not syncing between users**
+- Verify both users are connected (`realtimeConnected === true`)
+- Check browser console for WebSocket errors
+- Ensure both users are on the same branch and document path
+- Verify the document path matches exactly between clients
+- **Important**: Your editor must use `remoteSyncKey` from `useCSSPuck()` to trigger Puck data sync when remote updates arrive. Include it in your sync key calculation (see example below)
+
+**Edits causing infinite loops or bounce-back**
+- The provider includes bounce-back prevention via `isProcessingRemoteUpdate` flag
+- If you see duplicate edits, check that you're using the latest version of the package
+- Ensure `saveData` is only called from Puck's `onChange`, not from other effects
+
+#### Differences Between Bundlers
+
+If you're integrating into an existing app, be aware of bundler-specific considerations:
+
+| Bundler | Environment Variable Prefix | Notes |
+|---------|----------------------------|-------|
+| Vite | `VITE_` | Access via `import.meta.env.VITE_*` |
+| Next.js (Webpack) | `NEXT_PUBLIC_` | Access via `process.env.NEXT_PUBLIC_*` |
+| Create React App | `REACT_APP_` | Access via `process.env.REACT_APP_*` |
+
+For symlinked packages (monorepo setups), ensure:
+- Dependencies like `yjs` and `react` are properly hoisted or deduplicated
+- The same React instance is used across all packages (check with React DevTools)
+
+### General Issues
+
+**Document not loading**
+- Check that `siteId` and `branchId` are correct
+- Verify the document exists on the specified branch
+- Check the browser network tab for API errors
+
+**Auto-save not working**
+- Verify `autoSaveDelay` is set (default: 3000ms)
+- Check that `saveData` is being called from Puck's `onChange`
+- Look for errors in the browser console
+
+**Version history not showing**
+- Ensure `useVersions` hook is provided with valid `documentId`
+- Check that versions exist for the document (first save creates version 1)
 
 ## License
 

@@ -274,6 +274,54 @@ function CSSPluginIcon(): React.ReactElement {
 }
 
 /**
+ * Wrapper component that polls getter functions for sync data.
+ * This allows the plugin to remain stable while still syncing data when needed.
+ * Uses polling to detect when the sync key changes, then triggers a sync.
+ */
+function SyncDataPoller({
+  getSyncData,
+  getDataSyncKey,
+}: {
+  getSyncData: () => PuckData | undefined;
+  getDataSyncKey: () => string | undefined;
+}): React.ReactElement | null {
+  const [syncState, setSyncState] = useState<{
+    data: PuckData | null;
+    key: string | null;
+  }>({ data: null, key: null });
+
+  // Poll for changes at a reasonable interval
+  React.useEffect(() => {
+    // Check immediately on mount
+    const checkForUpdates = () => {
+      const newKey = getDataSyncKey();
+      const newData = getSyncData();
+
+      if (newKey !== undefined && newKey !== syncState.key) {
+        setSyncState({
+          data: newData ?? null,
+          key: newKey,
+        });
+      }
+    };
+
+    // Initial check
+    checkForUpdates();
+
+    // Poll every 50ms for changes - fast enough for real-time, cheap enough to not impact performance
+    const interval = setInterval(checkForUpdates, 50);
+
+    return () => clearInterval(interval);
+  }, [getSyncData, getDataSyncKey, syncState.key]);
+
+  if (!syncState.data || !syncState.key) {
+    return null;
+  }
+
+  return <PuckDataSynchronizer data={syncState.data} syncKey={syncState.key} />;
+}
+
+/**
  * Options for creating the CSS Plugin
  */
 export interface CSSPluginOptions {
@@ -311,13 +359,25 @@ export interface CSSPluginOptions {
    * Data to sync to Puck's internal state. Used with dataSyncKey
    * to update Puck's data without remounting (preserving sidebar state).
    * This is rendered inside the plugin which is guaranteed to be inside Puck's context.
+   * @deprecated Use getSyncData getter for better performance (avoids plugin recreation)
    */
   syncData?: PuckData | null;
   /**
    * Key that changes when we want to force a data sync to Puck.
    * Use version ID or document ID to trigger sync on version/document changes.
+   * @deprecated Use getDataSyncKey getter for better performance (avoids plugin recreation)
    */
   dataSyncKey?: string | null;
+  /**
+   * Getter function for sync data. Preferred over syncData to avoid plugin recreation
+   * on every sync, which reduces flickering during real-time collaboration.
+   */
+  getSyncData?: () => PuckData | undefined;
+  /**
+   * Getter function for data sync key. Preferred over dataSyncKey to avoid plugin recreation
+   * on every sync, which reduces flickering during real-time collaboration.
+   */
+  getDataSyncKey?: () => string | undefined;
 }
 
 /**
@@ -353,16 +413,28 @@ export interface PuckPlugin {
  * ```
  */
 export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
+  // Determine which sync mechanism to use:
+  // - Getter functions (preferred): Uses SyncDataPoller which polls for changes
+  // - Direct values (legacy): Uses PuckDataSynchronizer directly (causes plugin recreation)
+  const useGetterSync = options.getSyncData !== undefined && options.getDataSyncKey !== undefined;
+  const useLegacySync = options.syncData !== undefined && options.dataSyncKey !== undefined;
+
   return {
     name: 'css',
     label: 'CSS',
     icon: <CSSPluginIcon />,
     render: () => (
       <>
-        {/* PuckDataSynchronizer is rendered here inside the plugin, which is guaranteed
-            to be inside Puck's context. This allows usePuck() to work correctly. */}
-        {options.syncData !== undefined && options.dataSyncKey !== undefined && (
-          <PuckDataSynchronizer data={options.syncData} syncKey={options.dataSyncKey} />
+        {/* Sync data to Puck - uses getter-based polling if available (reduces flickering),
+            falls back to direct props for backwards compatibility */}
+        {useGetterSync && (
+          <SyncDataPoller
+            getSyncData={options.getSyncData!}
+            getDataSyncKey={options.getDataSyncKey!}
+          />
+        )}
+        {!useGetterSync && useLegacySync && (
+          <PuckDataSynchronizer data={options.syncData!} syncKey={options.dataSyncKey!} />
         )}
         <CSSPluginPanel
           branches={options.branches}

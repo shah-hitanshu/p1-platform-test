@@ -3,9 +3,41 @@
  *
  * WebSocket-based real-time collaboration client using Yjs CRDT.
  * Provides bidirectional sync between client and DocumentSession Durable Object.
+ * Uses ReconnectingWebSocket from partysocket for automatic reconnection with exponential backoff.
  */
 
 import * as Y from 'yjs';
+import { WebSocket as ReconnectingWebSocket } from 'partysocket';
+
+/**
+ * Configuration for reconnection behavior
+ */
+export interface ReconnectionConfig {
+  /**
+   * Maximum number of reconnection attempts.
+   * Set to Infinity for unlimited retries.
+   * @default Infinity
+   */
+  maxRetries?: number;
+
+  /**
+   * Minimum delay between reconnection attempts in milliseconds.
+   * @default 1000
+   */
+  minReconnectionDelay?: number;
+
+  /**
+   * Maximum delay between reconnection attempts in milliseconds.
+   * @default 30000
+   */
+  maxReconnectionDelay?: number;
+
+  /**
+   * Factor by which to multiply the delay for each retry (exponential backoff).
+   * @default 1.5
+   */
+  reconnectionDelayGrowFactor?: number;
+}
 
 /**
  * Configuration for the RealtimeClient
@@ -44,6 +76,17 @@ export interface RealtimeClientConfig {
    * Callback when an error occurs
    */
   onError?: (error: Error) => void;
+
+  /**
+   * Callback when attempting to reconnect after a connection loss.
+   * Called with the current retry attempt number.
+   */
+  onReconnecting?: (attempt: number) => void;
+
+  /**
+   * Configuration for automatic reconnection behavior.
+   */
+  reconnection?: ReconnectionConfig;
 }
 
 /**
@@ -68,6 +111,7 @@ export interface ConnectionParams {
 
 /**
  * Real-time collaboration client using Yjs CRDT over WebSocket.
+ * Uses PartySocket for automatic reconnection with exponential backoff.
  *
  * @example
  * ```typescript
@@ -75,6 +119,14 @@ export interface ConnectionParams {
  *   baseUrl: 'wss://api.example.com',
  *   onUpdate: (snapshot) => {
  *     console.log('Document updated:', snapshot);
+ *   },
+ *   onReconnecting: (attempt) => {
+ *     console.log(`Reconnecting... attempt ${attempt}`);
+ *   },
+ *   reconnection: {
+ *     maxRetries: 10,
+ *     minReconnectionDelay: 1000,
+ *     maxReconnectionDelay: 30000,
  *   },
  * });
  *
@@ -93,8 +145,12 @@ export interface ConnectionParams {
 export class RealtimeClient {
   private readonly config: RealtimeClientConfig;
   private readonly ydoc: Y.Doc;
-  private ws: WebSocket | null = null;
+  private ws: ReconnectingWebSocket | null = null;
   private connected = false;
+  private intentionalDisconnect = false;
+  private hasConnectedOnce = false;
+  private lastReportedRetryCount = 0;
+  private reconnectCheckInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: RealtimeClientConfig) {
     this.config = config;
@@ -111,6 +167,7 @@ export class RealtimeClient {
 
   /**
    * Connect to a document session via WebSocket.
+   * Uses PartySocket for automatic reconnection on connection loss.
    *
    * @param params - Connection parameters including site, branch, document, and actor info
    */
@@ -118,6 +175,10 @@ export class RealtimeClient {
     if (this.ws) {
       this.disconnect();
     }
+
+    this.intentionalDisconnect = false;
+    this.hasConnectedOnce = false;
+    this.lastReportedRetryCount = 0;
 
     // Build WebSocket URL
     const baseUrl = this.config.baseUrl.replace(/^http/, 'ws');
@@ -136,11 +197,33 @@ export class RealtimeClient {
       url.searchParams.set('apiKey', this.config.apiKey);
     }
 
-    this.ws = new WebSocket(url.toString());
+    // Get reconnection config with defaults
+    const reconnection = this.config.reconnection ?? {};
+    const maxRetries = reconnection.maxRetries ?? Infinity;
+    const minReconnectionDelay = reconnection.minReconnectionDelay ?? 1000;
+    const maxReconnectionDelay = reconnection.maxReconnectionDelay ?? 30000;
+    const reconnectionDelayGrowFactor = reconnection.reconnectionDelayGrowFactor ?? 1.5;
+
+    // Build the full WebSocket URL
+    const wsUrl = url.toString();
+
+    // Create ReconnectingWebSocket with reconnection options
+    this.ws = new ReconnectingWebSocket(wsUrl, [], {
+      maxRetries,
+      minReconnectionDelay,
+      maxReconnectionDelay,
+      reconnectionDelayGrowFactor,
+    });
+
     this.ws.binaryType = 'arraybuffer';
+
+    // Start monitoring for reconnection attempts
+    this.startReconnectMonitoring();
 
     this.ws.addEventListener('open', () => {
       this.connected = true;
+      this.hasConnectedOnce = true;
+      this.lastReportedRetryCount = 0;
       this.config.onConnect?.();
     });
 
@@ -157,6 +240,7 @@ export class RealtimeClient {
         const snapshot = root.toJSON() as Record<string, unknown>;
         this.config.onUpdate?.(snapshot);
       } catch (error) {
+        console.error('[Realtime] Error processing message:', error);
         this.config.onError?.(
           error instanceof Error ? error : new Error('Failed to process message'),
         );
@@ -165,8 +249,13 @@ export class RealtimeClient {
 
     this.ws.addEventListener('close', () => {
       this.connected = false;
-      this.ws = null;
-      this.config.onDisconnect?.();
+      // Only call onDisconnect for intentional disconnects or when max retries exceeded
+      if (this.intentionalDisconnect) {
+        this.stopReconnectMonitoring();
+        this.ws = null;
+        this.config.onDisconnect?.();
+      }
+      // PartySocket will automatically attempt to reconnect otherwise
     });
 
     this.ws.addEventListener('error', () => {
@@ -175,10 +264,49 @@ export class RealtimeClient {
   }
 
   /**
+   * Start monitoring for reconnection attempts by polling retryCount.
+   * This is needed because PartySocket doesn't expose a reconnection callback.
+   */
+  private startReconnectMonitoring(): void {
+    this.stopReconnectMonitoring();
+
+    // Poll every 100ms to detect retry count changes
+    this.reconnectCheckInterval = setInterval(() => {
+      if (!this.ws || this.intentionalDisconnect) {
+        return;
+      }
+
+      const currentRetryCount = this.ws.retryCount;
+
+      // If retry count increased and we've connected before, we're reconnecting
+      if (
+        currentRetryCount > this.lastReportedRetryCount &&
+        this.hasConnectedOnce
+      ) {
+        this.lastReportedRetryCount = currentRetryCount;
+        this.config.onReconnecting?.(currentRetryCount);
+      }
+    }, 100);
+  }
+
+  /**
+   * Stop the reconnection monitoring interval.
+   */
+  private stopReconnectMonitoring(): void {
+    if (this.reconnectCheckInterval) {
+      clearInterval(this.reconnectCheckInterval);
+      this.reconnectCheckInterval = null;
+    }
+  }
+
+  /**
    * Disconnect from the current session.
+   * This permanently closes the connection and stops any reconnection attempts.
    */
   disconnect(): void {
     if (this.ws) {
+      this.intentionalDisconnect = true;
+      this.stopReconnectMonitoring();
       this.ws.close();
       this.ws = null;
       this.connected = false;

@@ -112,11 +112,32 @@ function CSSPuckProviderInner({
   // Remote sync key - changes when remote updates arrive to trigger Puck sync
   const [remoteSyncKey, setRemoteSyncKey] = useState<string | null>(null);
 
-  // Track when we're processing a remote update to prevent bounce-back loops
-  // When Puck receives remote data via setData, it fires onChange, which would
-  // call saveData and send the data back. We use this ref to skip that.
-  const isProcessingRemoteUpdateRef = useRef(false);
-  const remoteUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Counter to track pending remote updates that will trigger onChange callbacks.
+  // When we receive a remote update and sync it to Puck via setData, Puck fires onChange.
+  // We need to skip the realtime send for that onChange to prevent bounce-back loops.
+  // Using a counter is more reliable than a timeout because it's synchronized with
+  // the actual number of remote updates received.
+  const pendingRemoteUpdatesRef = useRef(0);
+
+  // Pending remote data ref - stores latest data during debounce period
+  const pendingRemoteDataRef = useRef<PuckData | null>(null);
+  // Debounce timer for remote sync - batches rapid updates to reduce flickering
+  const remoteSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Delay for debouncing remote sync updates (ms)
+  const REMOTE_SYNC_DEBOUNCE_DELAY = 50;
+
+  // Ref to track viewingVersion for use in callbacks (avoids stale closure)
+  const viewingVersionRef = useRef<DocumentVersion | null>(null);
+
+  // Helper to cancel any pending remote sync - used when loading documents/versions
+  // This prevents race conditions where a pending remote update overrides loaded data
+  const cancelPendingRemoteSync = useCallback(() => {
+    if (remoteSyncTimerRef.current) {
+      clearTimeout(remoteSyncTimerRef.current);
+      remoteSyncTimerRef.current = null;
+    }
+    pendingRemoteDataRef.current = null;
+  }, []);
 
   // Real-time collaboration hook
   const realtime = useRealtime({
@@ -129,32 +150,65 @@ function CSSPuckProviderInner({
     actorType: 'user',
     enabled: enableRealtime && !!wsBaseUrl,
     onRemoteUpdate: (data) => {
-      // Mark that we're processing a remote update to prevent bounce-back
-      isProcessingRemoteUpdateRef.current = true;
-
-      // Clear any existing timeout
-      if (remoteUpdateTimeoutRef.current) {
-        clearTimeout(remoteUpdateTimeoutRef.current);
+      // Don't apply remote updates while viewing a historical version
+      // The user is viewing read-only historical data and shouldn't see live changes
+      if (viewingVersionRef.current !== null) {
+        return;
       }
 
-      // Clear the flag after a short delay to allow the state update and
-      // Puck's onChange to fire without triggering applyLocalChange
-      remoteUpdateTimeoutRef.current = setTimeout(() => {
-        isProcessingRemoteUpdateRef.current = false;
-        remoteUpdateTimeoutRef.current = null;
-      }, 100);
+      // Store the latest data - will be used when debounce fires
+      pendingRemoteDataRef.current = data;
 
-      // Update current data when remote changes arrive
-      setCurrentData(data);
-      // Update sync key to trigger Puck re-sync
-      setRemoteSyncKey(`remote-${Date.now()}`);
+      // Clear any pending debounce timer
+      if (remoteSyncTimerRef.current) {
+        clearTimeout(remoteSyncTimerRef.current);
+      }
+
+      // Debounce the sync to batch rapid successive updates
+      // This prevents plugin recreation and flickering on every update
+      remoteSyncTimerRef.current = setTimeout(() => {
+        // Double-check we're still not viewing a historical version
+        // (user might have switched while debounce was pending)
+        if (viewingVersionRef.current !== null) {
+          pendingRemoteDataRef.current = null;
+          remoteSyncTimerRef.current = null;
+          return;
+        }
+
+        const dataToSync = pendingRemoteDataRef.current;
+        if (dataToSync) {
+          // Increment counter - we expect one onChange callback from Puck after setData
+          pendingRemoteUpdatesRef.current += 1;
+
+          // Update current data when remote changes arrive
+          setCurrentData(dataToSync);
+          // Update sync key to trigger Puck re-sync
+          setRemoteSyncKey(`remote-${Date.now()}`);
+
+          pendingRemoteDataRef.current = null;
+        }
+        remoteSyncTimerRef.current = null;
+      }, REMOTE_SYNC_DEBOUNCE_DELAY);
     },
   });
+
+  // Cleanup remote sync timer on unmount
+  useEffect(() => {
+    return () => {
+      if (remoteSyncTimerRef.current) {
+        clearTimeout(remoteSyncTimerRef.current);
+      }
+    };
+  }, []);
 
   // Keep refs in sync with state
   useEffect(() => {
     currentDocumentRef.current = currentDocument;
   }, [currentDocument]);
+
+  useEffect(() => {
+    viewingVersionRef.current = viewingVersion;
+  }, [viewingVersion]);
 
   // Create client with user principal
   const userClient = useMemo(
@@ -291,8 +345,13 @@ function CSSPuckProviderInner({
 
       // Send changes via WebSocket for real-time collaboration
       // Skip if this change originated from a remote update (prevents bounce-back loop)
-      if (enableRealtime && realtime.connected && !isProcessingRemoteUpdateRef.current) {
-        realtime.applyLocalChange(data);
+      if (enableRealtime && realtime.connected) {
+        if (pendingRemoteUpdatesRef.current > 0) {
+          // This onChange is from a remote update we just synced to Puck, skip sending
+          pendingRemoteUpdatesRef.current -= 1;
+        } else {
+          realtime.applyLocalChange(data);
+        }
       }
     },
     [debouncedSave, enableRealtime, realtime]
@@ -307,6 +366,10 @@ function CSSPuckProviderInner({
   // Load document by path
   const loadDocument = useCallback(
     async (path: string) => {
+      // Cancel any pending remote sync to prevent race conditions
+      // where a stale remote update overrides the document we're loading
+      cancelPendingRemoteSync();
+
       try {
         // Normalize path: strip leading slash if present
         const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
@@ -318,9 +381,16 @@ function CSSPuckProviderInner({
         // Get latest version
         const version = await userClient.versions.getLatest(siteId, branchId, doc.id);
         const puckData = version.snapshot as unknown as PuckData;
+
+        // IMPORTANT: Update the ref BEFORE state updates
+        // Setting to null allows remote updates after document loads
+        viewingVersionRef.current = null;
+
         setCurrentData(puckData);
         setLatestVersionData(puckData);
         setViewingVersion(null);
+        // Clear remoteSyncKey so document sync takes priority
+        setRemoteSyncKey(null);
         pendingDataRef.current = null;
         setSaveStatus('idle');
         setSaveError(null);
@@ -329,12 +399,16 @@ function CSSPuckProviderInner({
         throw error;
       }
     },
-    [userClient, siteId, branchId]
+    [userClient, siteId, branchId, cancelPendingRemoteSync]
   );
 
   // Load a specific version into the editor
   const loadVersion = useCallback(
     async (version: DocumentVersion) => {
+      // Cancel any pending remote sync to prevent race conditions
+      // where a stale remote update overrides the version we're loading
+      cancelPendingRemoteSync();
+
       try {
         const doc = currentDocumentRef.current;
         if (!doc) {
@@ -361,8 +435,15 @@ function CSSPuckProviderInner({
           puckData = { content: [], root: { props: {} } };
         }
 
+        // IMPORTANT: Update the ref BEFORE state updates to block any incoming remote updates
+        // The effect that syncs viewingVersionRef runs AFTER render, which is too late
+        // Remote updates check this ref, so we need it set synchronously
+        viewingVersionRef.current = versionToUse;
+
         setCurrentData(puckData);
         setViewingVersion(versionToUse);
+        // Clear remoteSyncKey so version sync takes priority
+        setRemoteSyncKey(null);
         // Pause auto-save when viewing historical version
         debouncedSave.pause();
         setAutoSavePaused(true);
@@ -373,21 +454,31 @@ function CSSPuckProviderInner({
         throw error;
       }
     },
-    [userClient, siteId, branchId, debouncedSave]
+    [userClient, siteId, branchId, debouncedSave, cancelPendingRemoteSync]
   );
 
   // Return to the latest version
   const returnToLatest = useCallback(async () => {
+    // Cancel any pending remote sync to prevent race conditions
+    // The latest data will be loaded fresh, then remote sync can resume
+    cancelPendingRemoteSync();
+
     if (latestVersionData) {
+      // IMPORTANT: Update the ref BEFORE state updates
+      // Setting to null allows remote updates to resume
+      viewingVersionRef.current = null;
+
       setCurrentData(latestVersionData);
       setViewingVersion(null);
+      // Clear remoteSyncKey so latest version sync takes priority
+      setRemoteSyncKey(null);
       // Resume auto-save
       debouncedSave.resume();
       setAutoSavePaused(false);
       pendingDataRef.current = null;
       setSaveStatus('idle');
     }
-  }, [latestVersionData, debouncedSave]);
+  }, [latestVersionData, debouncedSave, cancelPendingRemoteSync]);
 
   // Computed property for whether viewing historical version
   const isViewingHistoricalVersion = viewingVersion !== null;
@@ -415,15 +506,24 @@ function CSSPuckProviderInner({
   // Switch branch
   const switchBranch = useCallback(
     async (newBranchId: string) => {
+      // Cancel any pending remote sync - we're switching to a different branch
+      cancelPendingRemoteSync();
+
       // Save any pending changes first
       if (pendingDataRef.current) {
         debouncedSave.cancel();
         await performSave();
       }
 
+      // IMPORTANT: Update the ref BEFORE state updates
+      viewingVersionRef.current = null;
+
       setBranchId(newBranchId);
       setCurrentDocument(null);
       setCurrentData(null);
+      setViewingVersion(null);
+      // Clear remoteSyncKey so new branch document sync takes priority
+      setRemoteSyncKey(null);
       pendingDataRef.current = null;
       setSaveStatus('idle');
       setSaveError(null);
@@ -432,7 +532,7 @@ function CSSPuckProviderInner({
       const branch = branches.find((b) => b.id === newBranchId);
       setCurrentBranch(branch ?? null);
     },
-    [branches, debouncedSave, performSave]
+    [branches, debouncedSave, performSave, cancelPendingRemoteSync]
   );
 
   // Context value

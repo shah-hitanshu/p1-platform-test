@@ -3,20 +3,34 @@
  *
  * Tests for the WebSocket-based real-time collaboration client.
  * Uses Yjs for CRDT-based conflict-free editing.
+ * Uses ReconnectingWebSocket from partysocket for automatic reconnection.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Mock WebSocket
-class MockWebSocket {
+// Mock ReconnectingWebSocket options
+interface MockWSOptions {
+  maxRetries?: number;
+  minReconnectionDelay?: number;
+  maxReconnectionDelay?: number;
+  reconnectionDelayGrowFactor?: number;
+}
+
+// Mock ReconnectingWebSocket
+class MockReconnectingWebSocket {
   static CONNECTING = 0;
   static OPEN = 1;
   static CLOSING = 2;
   static CLOSED = 3;
 
-  readyState: number = MockWebSocket.CONNECTING;
-  url: string;
+  readyState: number = MockReconnectingWebSocket.CONNECTING;
   binaryType: string = 'arraybuffer';
+  retryCount: number = 0;
+
+  // Store constructor args for verification
+  url: string;
+  protocols: string[];
+  options: MockWSOptions;
 
   private listeners: Map<string, Set<EventListener>> = new Map();
   private onopen: ((event: Event) => void) | null = null;
@@ -24,14 +38,16 @@ class MockWebSocket {
   private onerror: ((event: Event) => void) | null = null;
   private onmessage: ((event: MessageEvent) => void) | null = null;
 
-  constructor(url: string) {
+  constructor(url: string, protocols: string[] = [], options: MockWSOptions = {}) {
     this.url = url;
+    this.protocols = protocols;
+    this.options = options;
     // Simulate async connection
     setTimeout(() => this.simulateOpen(), 0);
   }
 
   simulateOpen(): void {
-    this.readyState = MockWebSocket.OPEN;
+    this.readyState = MockReconnectingWebSocket.OPEN;
     const event = new Event('open');
     this.dispatchEvent(event);
   }
@@ -42,7 +58,7 @@ class MockWebSocket {
   }
 
   simulateClose(code = 1000, reason = ''): void {
-    this.readyState = MockWebSocket.CLOSED;
+    this.readyState = MockReconnectingWebSocket.CLOSED;
     const event = new CloseEvent('close', { code, reason });
     this.dispatchEvent(event);
   }
@@ -50,6 +66,14 @@ class MockWebSocket {
   simulateError(): void {
     const event = new Event('error');
     this.dispatchEvent(event);
+  }
+
+  /**
+   * Simulate PartySocket attempting to reconnect by incrementing retryCount.
+   * The RealtimeClient polls retryCount to detect reconnection attempts.
+   */
+  simulateReconnectAttempt(): void {
+    this.retryCount++;
   }
 
   addEventListener(type: string, listener: EventListener): void {
@@ -93,31 +117,35 @@ class MockWebSocket {
 }
 
 // Store instances for test access
-let mockWebSocketInstances: MockWebSocket[] = [];
+let mockWSInstances: MockReconnectingWebSocket[] = [];
 
-// Replace global WebSocket with mock
-const originalWebSocket = global.WebSocket;
+// Mock partysocket module - export WebSocket (ReconnectingWebSocket)
+vi.mock('partysocket', () => ({
+  WebSocket: vi.fn((url: string, protocols: string[] = [], options: MockWSOptions = {}) => {
+    const ws = new MockReconnectingWebSocket(url, protocols, options);
+    mockWSInstances.push(ws);
+    return ws;
+  }),
+}));
 
 describe('Phase 2.1: RealtimeClient', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
-    mockWebSocketInstances = [];
-    // Mock WebSocket globally
-    global.WebSocket = vi.fn((url: string) => {
-      const ws = new MockWebSocket(url);
-      mockWebSocketInstances.push(ws);
-      return ws;
-    }) as unknown as typeof WebSocket;
-    Object.assign(global.WebSocket, {
-      CONNECTING: 0,
-      OPEN: 1,
-      CLOSING: 2,
-      CLOSED: 3,
-    });
+    mockWSInstances = [];
+    // Re-mock to ensure fresh instances
+    const partysocket = await import('partysocket');
+    vi.mocked(partysocket.WebSocket).mockImplementation(
+      (url: string, protocols: string[] = [], options: MockWSOptions = {}) => {
+        const ws = new MockReconnectingWebSocket(url, protocols, options);
+        mockWSInstances.push(ws);
+        return ws as unknown as ReturnType<typeof partysocket.WebSocket>;
+      },
+    );
   });
 
   afterEach(() => {
-    global.WebSocket = originalWebSocket;
+    vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   describe('constructor', () => {
@@ -139,6 +167,7 @@ describe('Phase 2.1: RealtimeClient', () => {
       const onConnect = vi.fn();
       const onDisconnect = vi.fn();
       const onError = vi.fn();
+      const onReconnecting = vi.fn();
 
       const client = new RealtimeClient({
         baseUrl: 'ws://localhost:8787',
@@ -146,6 +175,23 @@ describe('Phase 2.1: RealtimeClient', () => {
         onConnect,
         onDisconnect,
         onError,
+        onReconnecting,
+      });
+
+      expect(client).toBeDefined();
+    });
+
+    it('should accept reconnection configuration', async () => {
+      const { RealtimeClient } = await import('../src/realtime.js');
+
+      const client = new RealtimeClient({
+        baseUrl: 'ws://localhost:8787',
+        reconnection: {
+          maxRetries: 5,
+          minReconnectionDelay: 500,
+          maxReconnectionDelay: 10000,
+          reconnectionDelayGrowFactor: 2,
+        },
       });
 
       expect(client).toBeDefined();
@@ -155,6 +201,7 @@ describe('Phase 2.1: RealtimeClient', () => {
   describe('connect', () => {
     it('should establish WebSocket connection with correct URL', async () => {
       const { RealtimeClient } = await import('../src/realtime.js');
+      const { WebSocket } = await import('partysocket');
 
       const client = new RealtimeClient({
         baseUrl: 'ws://localhost:8787',
@@ -169,12 +216,21 @@ describe('Phase 2.1: RealtimeClient', () => {
       });
 
       // Check that WebSocket was created with correct URL
-      expect(global.WebSocket).toHaveBeenCalledWith(
+      expect(WebSocket).toHaveBeenCalledWith(
         expect.stringContaining('ws://localhost:8787'),
+        expect.any(Array),
+        expect.any(Object),
       );
-      expect(global.WebSocket).toHaveBeenCalledWith(
-        expect.stringContaining('/api/sites/site-123/branches/branch-456/documents/pages%2Fhome/connect'),
+      // Verify URL contains the expected route
+      expect(WebSocket).toHaveBeenCalledWith(
+        expect.stringContaining(
+          '/api/sites/site-123/branches/branch-456/documents/pages%2Fhome/connect',
+        ),
+        expect.any(Array),
+        expect.any(Object),
       );
+
+      client.disconnect();
     });
 
     it('should call onConnect callback when connection opens', async () => {
@@ -199,10 +255,13 @@ describe('Phase 2.1: RealtimeClient', () => {
 
       expect(onConnect).toHaveBeenCalled();
       expect(client.isConnected()).toBe(true);
+
+      client.disconnect();
     });
 
-    it('should include actor headers in URL as query params', async () => {
+    it('should include actor info in URL as query params', async () => {
       const { RealtimeClient } = await import('../src/realtime.js');
+      const { WebSocket } = await import('partysocket');
 
       const client = new RealtimeClient({
         baseUrl: 'ws://localhost:8787',
@@ -217,17 +276,59 @@ describe('Phase 2.1: RealtimeClient', () => {
       });
 
       // WebSocket connections can't send headers, so actor info goes in URL
-      expect(global.WebSocket).toHaveBeenCalledWith(
+      expect(WebSocket).toHaveBeenCalledWith(
         expect.stringContaining('actorId=user-789'),
+        expect.any(Array),
+        expect.any(Object),
       );
-      expect(global.WebSocket).toHaveBeenCalledWith(
+      expect(WebSocket).toHaveBeenCalledWith(
         expect.stringContaining('actorType=user'),
+        expect.any(Array),
+        expect.any(Object),
       );
+
+      client.disconnect();
+    });
+
+    it('should pass reconnection config to WebSocket', async () => {
+      const { RealtimeClient } = await import('../src/realtime.js');
+      const { WebSocket } = await import('partysocket');
+
+      const client = new RealtimeClient({
+        baseUrl: 'ws://localhost:8787',
+        reconnection: {
+          maxRetries: 5,
+          minReconnectionDelay: 500,
+          maxReconnectionDelay: 10000,
+          reconnectionDelayGrowFactor: 2,
+        },
+      });
+
+      client.connect({
+        siteId: 'site-123',
+        branchId: 'branch-456',
+        documentPath: 'pages/home',
+        actorId: 'user-789',
+        actorType: 'user',
+      });
+
+      expect(WebSocket).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Array),
+        expect.objectContaining({
+          maxRetries: 5,
+          minReconnectionDelay: 500,
+          maxReconnectionDelay: 10000,
+          reconnectionDelayGrowFactor: 2,
+        }),
+      );
+
+      client.disconnect();
     });
   });
 
   describe('disconnect', () => {
-    it('should close WebSocket connection', async () => {
+    it('should close PartySocket connection', async () => {
       const { RealtimeClient } = await import('../src/realtime.js');
 
       const client = new RealtimeClient({
@@ -247,10 +348,10 @@ describe('Phase 2.1: RealtimeClient', () => {
 
       client.disconnect();
 
-      expect(mockWebSocketInstances[0].close).toHaveBeenCalled();
+      expect(mockWSInstances[0].close).toHaveBeenCalled();
     });
 
-    it('should call onDisconnect callback', async () => {
+    it('should call onDisconnect callback on intentional disconnect', async () => {
       const { RealtimeClient } = await import('../src/realtime.js');
 
       const onDisconnect = vi.fn();
@@ -306,18 +407,20 @@ describe('Phase 2.1: RealtimeClient', () => {
       const validUpdate = Y.encodeStateAsUpdate(testDoc);
 
       // Simulate receiving the valid Yjs update
-      mockWebSocketInstances[0].simulateMessage(validUpdate.buffer);
+      mockWSInstances[0].simulateMessage(validUpdate.buffer);
 
       // onUpdate should be called with the snapshot
       expect(onUpdate).toHaveBeenCalled();
       expect(onUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'Test Document' }),
       );
+
+      client.disconnect();
     });
   });
 
   describe('local updates', () => {
-    it('should send local updates via WebSocket', async () => {
+    it('should send local updates via PartySocket', async () => {
       const { RealtimeClient } = await import('../src/realtime.js');
 
       const client = new RealtimeClient({
@@ -338,7 +441,9 @@ describe('Phase 2.1: RealtimeClient', () => {
       const update = new Uint8Array([0, 1, 2, 3]);
       client.applyLocalUpdate(update);
 
-      expect(mockWebSocketInstances[0].send).toHaveBeenCalledWith(update);
+      expect(mockWSInstances[0].send).toHaveBeenCalledWith(update);
+
+      client.disconnect();
     });
   });
 
@@ -373,7 +478,7 @@ describe('Phase 2.1: RealtimeClient', () => {
   });
 
   describe('error handling', () => {
-    it('should call onError callback on WebSocket error', async () => {
+    it('should call onError callback on PartySocket error', async () => {
       const { RealtimeClient } = await import('../src/realtime.js');
 
       const onError = vi.fn();
@@ -393,9 +498,11 @@ describe('Phase 2.1: RealtimeClient', () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Simulate error
-      mockWebSocketInstances[0].simulateError();
+      mockWSInstances[0].simulateError();
 
       expect(onError).toHaveBeenCalled();
+
+      client.disconnect();
     });
   });
 
@@ -423,6 +530,194 @@ describe('Phase 2.1: RealtimeClient', () => {
       client.disconnect();
       await new Promise((resolve) => setTimeout(resolve, 10));
       expect(client.isConnected()).toBe(false);
+    });
+
+    it('should call onReconnecting callback when retryCount increases', async () => {
+      vi.useFakeTimers();
+      const { RealtimeClient } = await import('../src/realtime.js');
+
+      const onReconnecting = vi.fn();
+      const client = new RealtimeClient({
+        baseUrl: 'ws://localhost:8787',
+        onReconnecting,
+      });
+
+      client.connect({
+        siteId: 'site-123',
+        branchId: 'branch-456',
+        documentPath: 'pages/home',
+        actorId: 'user-789',
+        actorType: 'user',
+      });
+
+      // Simulate initial connection
+      await vi.advanceTimersByTimeAsync(10);
+
+      // Simulate first reconnection attempt (retryCount goes from 0 to 1)
+      mockWSInstances[0].simulateReconnectAttempt();
+
+      // Wait for the polling interval to detect the change
+      await vi.advanceTimersByTimeAsync(150);
+
+      expect(onReconnecting).toHaveBeenCalledWith(1);
+
+      // Simulate another reconnection attempt
+      mockWSInstances[0].simulateReconnectAttempt();
+      await vi.advanceTimersByTimeAsync(150);
+
+      expect(onReconnecting).toHaveBeenCalledWith(2);
+
+      client.disconnect();
+    });
+
+    it('should reset retry tracking on successful reconnection', async () => {
+      vi.useFakeTimers();
+      const { RealtimeClient } = await import('../src/realtime.js');
+
+      const onReconnecting = vi.fn();
+      const onConnect = vi.fn();
+      const client = new RealtimeClient({
+        baseUrl: 'ws://localhost:8787',
+        onReconnecting,
+        onConnect,
+      });
+
+      client.connect({
+        siteId: 'site-123',
+        branchId: 'branch-456',
+        documentPath: 'pages/home',
+        actorId: 'user-789',
+        actorType: 'user',
+      });
+
+      await vi.advanceTimersByTimeAsync(10);
+      expect(onConnect).toHaveBeenCalledTimes(1);
+
+      // Simulate connection loss and reconnection attempts
+      mockWSInstances[0].simulateReconnectAttempt();
+      await vi.advanceTimersByTimeAsync(150);
+      expect(onReconnecting).toHaveBeenCalledWith(1);
+
+      mockWSInstances[0].simulateReconnectAttempt();
+      await vi.advanceTimersByTimeAsync(150);
+      expect(onReconnecting).toHaveBeenCalledWith(2);
+
+      // Simulate successful reconnection (this resets the internal lastReportedRetryCount)
+      mockWSInstances[0].retryCount = 0; // PartySocket resets this on success
+      mockWSInstances[0].simulateOpen();
+      expect(onConnect).toHaveBeenCalledTimes(2);
+
+      // Simulate another connection loss - counter should start from 1 again
+      mockWSInstances[0].simulateReconnectAttempt();
+      await vi.advanceTimersByTimeAsync(150);
+      expect(onReconnecting).toHaveBeenCalledWith(1);
+
+      client.disconnect();
+    });
+
+    it('should not call onDisconnect during automatic reconnection', async () => {
+      const { RealtimeClient } = await import('../src/realtime.js');
+
+      const onDisconnect = vi.fn();
+      const client = new RealtimeClient({
+        baseUrl: 'ws://localhost:8787',
+        onDisconnect,
+      });
+
+      client.connect({
+        siteId: 'site-123',
+        branchId: 'branch-456',
+        documentPath: 'pages/home',
+        actorId: 'user-789',
+        actorType: 'user',
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Simulate connection close (but not intentional disconnect)
+      // PartySocket will handle reconnection
+      mockWSInstances[0].readyState = MockReconnectingWebSocket.CLOSED;
+      const event = new CloseEvent('close', { code: 1006, reason: 'Connection lost' });
+      mockWSInstances[0].dispatchEvent(event);
+
+      // onDisconnect should NOT be called because PartySocket will reconnect
+      expect(onDisconnect).not.toHaveBeenCalled();
+
+      client.disconnect();
+    });
+
+    it('should use default reconnection config when not provided', async () => {
+      const { RealtimeClient } = await import('../src/realtime.js');
+      const { WebSocket } = await import('partysocket');
+
+      const client = new RealtimeClient({
+        baseUrl: 'ws://localhost:8787',
+      });
+
+      client.connect({
+        siteId: 'site-123',
+        branchId: 'branch-456',
+        documentPath: 'pages/home',
+        actorId: 'user-789',
+        actorType: 'user',
+      });
+
+      // Check default values are passed
+      expect(WebSocket).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Array),
+        expect.objectContaining({
+          maxRetries: Infinity,
+          minReconnectionDelay: 1000,
+          maxReconnectionDelay: 30000,
+          reconnectionDelayGrowFactor: 1.5,
+        }),
+      );
+
+      client.disconnect();
+    });
+
+    it('should only call onReconnecting after initial connection is established', async () => {
+      vi.useFakeTimers();
+      const { RealtimeClient } = await import('../src/realtime.js');
+
+      const onReconnecting = vi.fn();
+      const client = new RealtimeClient({
+        baseUrl: 'ws://localhost:8787',
+        onReconnecting,
+      });
+
+      client.connect({
+        siteId: 'site-123',
+        branchId: 'branch-456',
+        documentPath: 'pages/home',
+        actorId: 'user-789',
+        actorType: 'user',
+      });
+
+      // Immediately after connect (before the setTimeout(0) fires for auto-open),
+      // simulate retry count increasing. This mimics what happens when initial
+      // connection fails before ever establishing.
+      mockWSInstances[0].simulateReconnectAttempt();
+
+      // Run the first polling cycle but NOT the setTimeout(0) that opens the connection
+      // by advancing less than 100ms
+      await vi.advanceTimersByTimeAsync(50);
+
+      // Should NOT call onReconnecting because we haven't connected yet
+      // (the polling interval is 100ms, so no poll has happened yet)
+      expect(onReconnecting).not.toHaveBeenCalled();
+
+      // Now let the connection open (setTimeout 0) and poll cycle complete
+      await vi.advanceTimersByTimeAsync(100);
+
+      // After connection, since retryCount is 1 and we've connected,
+      // the next poll should detect this
+      // But since the connection just opened, hasConnectedOnce is now true
+      // and lastReportedRetryCount is 0, so it will report retryCount 1
+      expect(onReconnecting).toHaveBeenCalledWith(1);
+
+      client.disconnect();
     });
   });
 });
