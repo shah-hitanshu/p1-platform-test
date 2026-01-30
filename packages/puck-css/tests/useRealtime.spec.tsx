@@ -278,4 +278,129 @@ describe('Phase 3.2: useRealtime Hook', () => {
       });
     });
   });
+
+  describe('getSnapshot', () => {
+    it('should return current Yjs document state when connected', async () => {
+      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+
+      const { result } = renderHook(() =>
+        useRealtime({
+          baseUrl: 'ws://localhost:8787',
+          siteId: 'site-123',
+          branchId: 'branch-456',
+          documentPath: 'pages/home',
+          actorId: 'user-789',
+          actorType: 'user',
+          enabled: true,
+        }),
+      );
+
+      // Wait for connection
+      await waitFor(() => {
+        expect(result.current.connected).toBe(true);
+      });
+
+      // Apply a local change to set up some data
+      act(() => {
+        result.current.applyLocalChange({
+          content: [{ type: 'Header', props: { id: 'h1', title: 'Test Title' } }],
+          root: { props: { title: 'Test Page' } },
+        });
+      });
+
+      // Get the snapshot - should return the current Yjs document state
+      const snapshot = result.current.getSnapshot();
+
+      expect(snapshot).not.toBeNull();
+      expect(snapshot).toHaveProperty('content');
+      expect(snapshot).toHaveProperty('root');
+    });
+
+    it('should return null when not connected (no documentPath)', async () => {
+      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+
+      const { result } = renderHook(() =>
+        useRealtime({
+          baseUrl: 'ws://localhost:8787',
+          siteId: 'site-123',
+          branchId: 'branch-456',
+          documentPath: null, // No document path means no connection
+          actorId: 'user-789',
+          actorType: 'user',
+          enabled: true,
+        }),
+      );
+
+      // Should not be connected
+      expect(result.current.connected).toBe(false);
+
+      // getSnapshot should return null when not connected
+      const snapshot = result.current.getSnapshot();
+      expect(snapshot).toBeNull();
+    });
+
+    it('should return null when disabled', async () => {
+      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+
+      const { result } = renderHook(() =>
+        useRealtime({
+          baseUrl: 'ws://localhost:8787',
+          siteId: 'site-123',
+          branchId: 'branch-456',
+          documentPath: 'pages/home',
+          actorId: 'user-789',
+          actorType: 'user',
+          enabled: false, // Disabled
+        }),
+      );
+
+      // Should not be connected when disabled
+      expect(result.current.connected).toBe(false);
+
+      // getSnapshot should return null when not connected
+      const snapshot = result.current.getSnapshot();
+      expect(snapshot).toBeNull();
+    });
+
+    it('should return data with valid PuckData structure', async () => {
+      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+
+      const { result } = renderHook(() =>
+        useRealtime({
+          baseUrl: 'ws://localhost:8787',
+          siteId: 'site-123',
+          branchId: 'branch-456',
+          documentPath: 'pages/home',
+          actorId: 'user-789',
+          actorType: 'user',
+          enabled: true,
+        }),
+      );
+
+      // Wait for connection
+      await waitFor(() => {
+        expect(result.current.connected).toBe(true);
+      });
+
+      // Apply valid PuckData
+      const puckData = {
+        content: [
+          { type: 'Header', props: { id: 'h1', title: 'Hello World' } },
+          { type: 'Text', props: { id: 't1', content: 'Some text' } },
+        ],
+        root: { props: { title: 'My Page', backgroundColor: '#fff' } },
+      };
+
+      act(() => {
+        result.current.applyLocalChange(puckData);
+      });
+
+      const snapshot = result.current.getSnapshot();
+
+      // Verify the snapshot contains the expected data structure
+      expect(snapshot).not.toBeNull();
+      expect(snapshot!.content).toBeDefined();
+      expect(snapshot!.root).toBeDefined();
+    });
+  });
 });

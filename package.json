@@ -10,7 +10,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "typecheck": "pnpm -r typecheck",
-    "clean": "pnpm -r clean"
+    "clean": "pnpm -r clean",
+    "publish:packages": "pnpm build && pnpm -r publish --no-git-checks --access restricted"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.0",

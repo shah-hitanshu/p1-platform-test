@@ -9,3 +9,8 @@ export { BranchesEndpoint } from './branches.js';
 export { DocumentsEndpoint } from './documents.js';
 export { VersionsEndpoint } from './versions.js';
 export { CheckpointsEndpoint } from './checkpoints.js';
+
+// Agent Politeness endpoints
+export { PresenceEndpoint } from './presence.js';
+export { AgentRegistryEndpoint } from './agent-registry.js';
+export { AgentEditEndpoint } from './agent-edit.js';

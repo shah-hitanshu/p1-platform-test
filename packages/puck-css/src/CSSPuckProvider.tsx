@@ -5,13 +5,25 @@
  */
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import type { Document, PuckData, Checkpoint, Branch, DocumentVersion } from '@pantheon/css-client';
-import type { CSSPuckConfig, CSSPuckContextValue, SaveStatus } from './types.js';
+import type {
+  Document,
+  PuckData,
+  Checkpoint,
+  Branch,
+  DocumentVersion,
+  ActorPresence,
+} from '@pantheon/css-client';
+import type { CSSPuckConfig, CSSPuckContextValue, SaveStatus, PresenceState } from './types.js';
 import { CSSPuckContext } from './CSSPuckContext.js';
 import { NotificationProvider, useNotifications } from './NotificationContext.js';
+import { PresenceContext } from './PresenceContext.js';
+import type { PresenceContextValue } from './PresenceContext.js';
 import { debounce } from './utils/debounce.js';
 import { withRetry } from './utils/retry.js';
 import { useRealtime } from './hooks/useRealtime.js';
+import type { UseAgentEditReturn } from './hooks/useAgentEdit.js';
+import type { UseAgentTriggerReturn } from './hooks/useAgentTrigger.js';
+import type { ConflictNotification } from './components/conflict-notifications/index.js';
 
 interface CSSPuckProviderProps extends CSSPuckConfig {
   children: React.ReactNode;
@@ -78,6 +90,18 @@ function CSSPuckProviderInner({
   enableRealtime = false,
   wsBaseUrl,
   realtimeApiKey,
+  // Phase 9: Presence props
+  presenceEnabled = false,
+  presencePollingInterval = 5000,
+  userName: _userName,
+  userAvatar: _userAvatar,
+  // Phase 9: Agent mode props
+  agentModeEnabled = false,
+  agentId,
+  agentTrigger: _agentTrigger,
+  // Phase 9: Callbacks
+  onPresenceChange,
+  onAgentConflict: _onAgentConflict,
   children,
 }: CSSPuckProviderProps): React.ReactElement {
   // Access notification context
@@ -119,6 +143,12 @@ function CSSPuckProviderInner({
   // the actual number of remote updates received.
   const pendingRemoteUpdatesRef = useRef(0);
 
+  // Flag to track if we're currently applying a remote sync.
+  // This is set before setCurrentData and cleared after a short delay to ensure
+  // all related onChange events are skipped (there may be multiple: one from data
+  // prop change and one from setData dispatch).
+  const isApplyingRemoteSyncRef = useRef(false);
+
   // Pending remote data ref - stores latest data during debounce period
   const pendingRemoteDataRef = useRef<PuckData | null>(null);
   // Debounce timer for remote sync - batches rapid updates to reduce flickering
@@ -139,6 +169,10 @@ function CSSPuckProviderInner({
     pendingRemoteDataRef.current = null;
   }, []);
 
+  // WebSocket presence state - used when realtime is connected for instant presence updates
+  const [wsPresenceActors, setWsPresenceActors] = useState<ActorPresence[]>([]);
+  const wsPresenceActiveRef = useRef(false);
+
   // Real-time collaboration hook
   const realtime = useRealtime({
     baseUrl: wsBaseUrl ?? '',
@@ -149,6 +183,20 @@ function CSSPuckProviderInner({
     actorId: userId,
     actorType: 'user',
     enabled: enableRealtime && !!wsBaseUrl,
+    // WebSocket presence callbacks - receive instant presence updates
+    onPresenceUpdate: (actors) => {
+      // Mark WebSocket presence as active
+      wsPresenceActiveRef.current = true;
+      // Filter out self and update state
+      const filtered = actors.filter((a) => a.actorId !== userId);
+      setWsPresenceActors(filtered);
+    },
+    onFocusRegionBroadcast: (actorId, focusRegions) => {
+      // Update focus regions for the specific actor
+      setWsPresenceActors((prev) =>
+        prev.map((a) => (a.actorId === actorId ? { ...a, focusRegions } : a))
+      );
+    },
     onRemoteUpdate: (data) => {
       // Don't apply remote updates while viewing a historical version
       // The user is viewing read-only historical data and shouldn't see live changes
@@ -177,7 +225,13 @@ function CSSPuckProviderInner({
 
         const dataToSync = pendingRemoteDataRef.current;
         if (dataToSync) {
-          // Increment counter - we expect one onChange callback from Puck after setData
+          // Set flag to indicate we're applying a remote sync.
+          // All onChange events during this period should be skipped to prevent
+          // the receiving client from echoing updates back to the sender.
+          // There may be multiple onChange events (from data prop change and setData dispatch).
+          isApplyingRemoteSyncRef.current = true;
+
+          // Also increment counter as backup (for returnToLatest and other paths)
           pendingRemoteUpdatesRef.current += 1;
 
           // Update current data when remote changes arrive
@@ -186,6 +240,13 @@ function CSSPuckProviderInner({
           setRemoteSyncKey(`remote-${Date.now()}`);
 
           pendingRemoteDataRef.current = null;
+
+          // Clear the flag after a short delay to ensure all onChange events are captured.
+          // React may batch state updates and fire onChange asynchronously.
+          // 100ms should be enough for React to process the state changes.
+          setTimeout(() => {
+            isApplyingRemoteSyncRef.current = false;
+          }, 100);
         }
         remoteSyncTimerRef.current = null;
       }, REMOTE_SYNC_DEBOUNCE_DELAY);
@@ -344,11 +405,23 @@ function CSSPuckProviderInner({
       debouncedSave();
 
       // Send changes via WebSocket for real-time collaboration
-      // Skip if this change originated from a remote update (prevents bounce-back loop)
+      // Skip if:
+      // 1. We're currently applying a remote sync (flag-based, prevents bounce-back loop)
+      // 2. This change originated from a remote update counter (backup check)
+      // 3. We're viewing a historical version (prevents broadcasting historical data)
       if (enableRealtime && realtime.connected) {
-        if (pendingRemoteUpdatesRef.current > 0) {
-          // This onChange is from a remote update we just synced to Puck, skip sending
+        if (isApplyingRemoteSyncRef.current) {
+          // We're in the middle of applying a remote sync, skip to prevent echo
+          // Decrement counter if it was incremented (for cleanup)
+          if (pendingRemoteUpdatesRef.current > 0) {
+            pendingRemoteUpdatesRef.current -= 1;
+          }
+        } else if (pendingRemoteUpdatesRef.current > 0) {
+          // Backup: counter indicates this onChange is from a recent remote update
           pendingRemoteUpdatesRef.current -= 1;
+        } else if (viewingVersionRef.current !== null) {
+          // User is viewing historical version - don't broadcast historical data
+          // This prevents other users from seeing historical content
         } else {
           realtime.applyLocalChange(data);
         }
@@ -463,12 +536,31 @@ function CSSPuckProviderInner({
     // The latest data will be loaded fresh, then remote sync can resume
     cancelPendingRemoteSync();
 
-    if (latestVersionData) {
+    // Get current state from Yjs if realtime is connected
+    // This ensures we get any changes made by other users while viewing history
+    let dataToRestore: PuckData | null = null;
+
+    if (enableRealtime && realtime.connected) {
+      const currentYjsData = realtime.getSnapshot();
+      if (currentYjsData) {
+        dataToRestore = currentYjsData;
+      }
+    }
+
+    // Fall back to latestVersionData if Yjs snapshot not available
+    if (!dataToRestore) {
+      dataToRestore = latestVersionData;
+    }
+
+    if (dataToRestore) {
       // IMPORTANT: Update the ref BEFORE state updates
       // Setting to null allows remote updates to resume
       viewingVersionRef.current = null;
 
-      setCurrentData(latestVersionData);
+      // Increment counter to skip onChange that will fire
+      pendingRemoteUpdatesRef.current += 1;
+
+      setCurrentData(dataToRestore);
       setViewingVersion(null);
       // Clear remoteSyncKey so latest version sync takes priority
       setRemoteSyncKey(null);
@@ -478,10 +570,318 @@ function CSSPuckProviderInner({
       pendingDataRef.current = null;
       setSaveStatus('idle');
     }
-  }, [latestVersionData, debouncedSave, cancelPendingRemoteSync]);
+  }, [latestVersionData, debouncedSave, cancelPendingRemoteSync, enableRealtime, realtime]);
 
   // Computed property for whether viewing historical version
   const isViewingHistoricalVersion = viewingVersion !== null;
+
+  // =========================================================================
+  // Phase 9: Presence & Agent Mode State
+  // =========================================================================
+
+  // Presence state (when presenceEnabled)
+  const [presenceActors, setPresenceActors] = useState<ActorPresence[]>([]);
+  const presenceInitializedRef = useRef(false);
+
+  // Track previous actors for onPresenceChange callback comparison
+  const prevActorsRef = useRef<ActorPresence[]>([]);
+
+  // Conflict notifications state
+  const [conflicts, setConflicts] = useState<ConflictNotification[]>([]);
+
+  // Agent edit session state (when agentModeEnabled && agentId)
+  const [agentSession, setAgentSession] = useState<{ sessionId: string; checkpointId?: string } | null>(null);
+  const [agentEditLoading, setAgentEditLoading] = useState(false);
+  const [agentEditError, setAgentEditError] = useState<Error | null>(null);
+
+  // Fetch presence data
+  const fetchPresence = useCallback(async () => {
+    if (!presenceEnabled || !branchId) return;
+
+    try {
+      const branchPresence = await userClient.presence.getBranchPresence(siteId, branchId);
+
+      // Filter out self
+      const filteredActors = branchPresence.actors.filter(
+        (actor) => actor.actorId !== userId
+      );
+
+      setPresenceActors(filteredActors);
+
+      // Call onPresenceChange if actors changed
+      if (onPresenceChange) {
+        const actorsChanged =
+          JSON.stringify(filteredActors.map((a) => a.id).sort()) !==
+          JSON.stringify(prevActorsRef.current.map((a) => a.id).sort());
+        if (actorsChanged) {
+          onPresenceChange(filteredActors);
+          prevActorsRef.current = filteredActors;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch presence:', error);
+    }
+  }, [presenceEnabled, branchId, siteId, userId, userClient, onPresenceChange]);
+
+  // Keep fetchPresence in a ref to avoid restarting the interval when callback changes
+  const fetchPresenceRef = useRef(fetchPresence);
+  useEffect(() => {
+    fetchPresenceRef.current = fetchPresence;
+  }, [fetchPresence]);
+
+  // Initial presence fetch and polling
+  // HTTP polling is skipped when WebSocket presence is active and connected
+  useEffect(() => {
+    if (!presenceEnabled) return;
+
+    // Skip HTTP polling if WebSocket presence is handling updates
+    const shouldSkipPolling = wsPresenceActiveRef.current && realtime.connected;
+
+    // Initial fetch (only if WS isn't active yet)
+    if (!presenceInitializedRef.current && !shouldSkipPolling) {
+      presenceInitializedRef.current = true;
+      void fetchPresenceRef.current();
+    }
+
+    // Set up polling - use ref to avoid restarting interval when callback changes
+    // Skip polling when WebSocket is handling presence
+    const intervalId = setInterval(() => {
+      // Check again at each interval - WS state may have changed
+      if (!wsPresenceActiveRef.current || !realtime.connected) {
+        void fetchPresenceRef.current();
+      }
+    }, presencePollingInterval);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [presenceEnabled, presencePollingInterval, realtime.connected]);
+
+  // Reset presence when disabled
+  useEffect(() => {
+    if (!presenceEnabled) {
+      setPresenceActors([]);
+      presenceInitializedRef.current = false;
+    }
+  }, [presenceEnabled]);
+
+  // Compute derived presence values
+  // Prefer WebSocket presence when connected for instant updates
+  const presenceState: PresenceState | null = useMemo(() => {
+    if (!presenceEnabled) return null;
+
+    // Use WebSocket presence when active and connected, otherwise fall back to HTTP polling data
+    const effectiveActors =
+      wsPresenceActiveRef.current && realtime.connected ? wsPresenceActors : presenceActors;
+
+    const humans = effectiveActors.filter((actor) => actor.role === 'human');
+    const agents = effectiveActors.filter((actor) => actor.role === 'agent');
+    const hasActiveHumans = humans.some(
+      (actor) => actor.state === 'active' || actor.state === 'editing'
+    );
+    const hasActiveAgents = agents.some(
+      (actor) => actor.state === 'active' || actor.state === 'editing'
+    );
+
+    return {
+      actors: effectiveActors,
+      humans,
+      agents,
+      hasActiveHumans,
+      hasActiveAgents,
+      refresh: fetchPresence,
+    };
+  }, [presenceEnabled, presenceActors, wsPresenceActors, realtime.connected, fetchPresence]);
+
+  // =========================================================================
+  // Phase 9: Agent Edit Capabilities (when this client IS an agent)
+  // =========================================================================
+
+  const agentEditCapabilities: UseAgentEditReturn | null = useMemo(() => {
+    if (!agentModeEnabled || !agentId) return null;
+
+    const documentPath = currentDocument?.path ?? null;
+
+    const canEdit = async (params: {
+      trigger: 'human_requested' | 'autonomous';
+      intent: string;
+      targetRegions: string[];
+      requestedById?: string;
+    }) => {
+      if (!documentPath) {
+        throw new Error('No document loaded');
+      }
+      return userClient.agentEdit.canEdit(siteId, branchId, documentPath, {
+        agentId,
+        trigger: params.trigger,
+        intent: params.intent,
+        targetRegions: params.targetRegions,
+        requestedById: params.requestedById,
+      });
+    };
+
+    const startEdit = async (params: {
+      trigger: 'human_requested' | 'autonomous';
+      intent: string;
+      targetRegions: string[];
+      requestedById?: string;
+    }) => {
+      if (!documentPath) {
+        throw new Error('No document loaded');
+      }
+      setAgentEditLoading(true);
+      setAgentEditError(null);
+      try {
+        const session = await userClient.agentEdit.startEdit(siteId, branchId, documentPath, {
+          agentId,
+          trigger: params.trigger,
+          intent: params.intent,
+          targetRegions: params.targetRegions,
+          requestedById: params.requestedById,
+        });
+        setAgentSession(session);
+        setAgentEditLoading(false);
+        return session;
+      } catch (err) {
+        const e = err instanceof Error ? err : new Error(String(err));
+        setAgentEditError(e);
+        setAgentEditLoading(false);
+        throw e;
+      }
+    };
+
+    const completeEdit = async () => {
+      if (!agentSession) {
+        throw new Error('No active edit session');
+      }
+      if (!documentPath) {
+        throw new Error('No document loaded');
+      }
+      setAgentEditLoading(true);
+      try {
+        await userClient.agentEdit.completeEdit(siteId, branchId, documentPath, agentId);
+        setAgentSession(null);
+        setAgentEditLoading(false);
+      } catch (err) {
+        const e = err instanceof Error ? err : new Error(String(err));
+        setAgentEditError(e);
+        setAgentEditLoading(false);
+        throw e;
+      }
+    };
+
+    const abortEdit = async () => {
+      if (!agentSession) {
+        throw new Error('No active edit session');
+      }
+      if (!documentPath) {
+        throw new Error('No document loaded');
+      }
+      if (!agentSession.checkpointId) {
+        throw new Error('No checkpoint ID in session');
+      }
+      setAgentEditLoading(true);
+      try {
+        await userClient.agentEdit.abortEdit(
+          siteId,
+          branchId,
+          documentPath,
+          agentId,
+          agentSession.checkpointId
+        );
+        setAgentSession(null);
+        setAgentEditLoading(false);
+      } catch (err) {
+        const e = err instanceof Error ? err : new Error(String(err));
+        setAgentEditError(e);
+        setAgentEditLoading(false);
+        throw e;
+      }
+    };
+
+    return {
+      canEdit,
+      startEdit,
+      completeEdit,
+      abortEdit,
+      session: agentSession,
+      sessionId: agentSession?.sessionId ?? null,
+      isEditing: agentSession !== null,
+      isLoading: agentEditLoading,
+      error: agentEditError,
+    };
+  }, [
+    agentModeEnabled,
+    agentId,
+    currentDocument,
+    siteId,
+    branchId,
+    userClient,
+    agentSession,
+    agentEditLoading,
+    agentEditError,
+  ]);
+
+  // =========================================================================
+  // Phase 9: Agent Trigger (for human users to trigger agents)
+  // =========================================================================
+
+  const triggerAgentFn: UseAgentTriggerReturn['triggerAgent'] | null = useMemo(() => {
+    // Only available when agentModeEnabled but no agentId (human user)
+    if (!agentModeEnabled || agentId) return null;
+
+    const documentPath = currentDocument?.path ?? null;
+
+    return async (action: {
+      agentId: string;
+      intent: string;
+      targetRegions: string[];
+      operationType?: string;
+    }) => {
+      if (!documentPath) {
+        return { success: false, error: 'No document loaded' };
+      }
+
+      try {
+        // Check permission
+        const permission = await userClient.agentEdit.canEdit(siteId, branchId, documentPath, {
+          agentId: action.agentId,
+          trigger: 'human_requested',
+          intent: action.intent,
+          targetRegions: action.targetRegions,
+          requestedById: userId,
+        });
+
+        if (!permission.allowed) {
+          return { success: false, error: permission.reason };
+        }
+
+        // Start edit session
+        const session = await userClient.agentEdit.startEdit(siteId, branchId, documentPath, {
+          agentId: action.agentId,
+          trigger: 'human_requested',
+          intent: action.intent,
+          targetRegions: action.targetRegions,
+          requestedById: userId,
+        });
+
+        return { success: true, checkpointId: session.checkpointId };
+      } catch (err) {
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    };
+  }, [agentModeEnabled, agentId, currentDocument, siteId, branchId, userId, userClient]);
+
+  // =========================================================================
+  // Phase 9: Conflict Notifications
+  // =========================================================================
+
+  const dismissConflict = useCallback((id: string) => {
+    setConflicts((prev) => prev.filter((c) => c.id !== id));
+  }, []);
 
   // Create checkpoint
   const createCheckpoint = useCallback(
@@ -535,6 +935,45 @@ function CSSPuckProviderInner({
     [branches, debouncedSave, performSave, cancelPendingRemoteSync]
   );
 
+  // Presence context value (for hooks like useFocusRegionReporting)
+  const presenceContextValue: PresenceContextValue | null = useMemo(() => {
+    if (!presenceEnabled) return null;
+
+    const actors = presenceState?.actors ?? [];
+    return {
+      client: userClient,
+      siteId,
+      branchId,
+      documentPath: currentDocument?.path ?? null,
+      userId,
+      currentUserId: userId,
+      isConnected: realtime.connected,
+      presence: actors,
+      actors,
+      activeAgents: presenceState?.agents?.filter(a => a.state === 'editing') ?? [],
+      agentEditingRegions: presenceState?.agents
+        ?.filter(a => a.state === 'editing')
+        ?.flatMap(a => a.focusRegions ?? []) ?? [],
+      isAgentEditing: presenceState?.hasActiveAgents ?? false,
+      // Agent edit functions - placeholder implementations
+      // These are handled by agentEditCapabilities in the main context
+      canEdit: async () => ({ allowed: true }),
+      startEdit: async () => ({ sessionId: '' }),
+      completeEdit: async () => ({ success: true }),
+      abortEdit: async () => ({ success: true }),
+      subscribe: () => () => {},
+    };
+  }, [
+    presenceEnabled,
+    userClient,
+    siteId,
+    branchId,
+    currentDocument?.path,
+    userId,
+    realtime.connected,
+    presenceState,
+  ]);
+
   // Context value
   const contextValue: CSSPuckContextValue = useMemo(
     () => ({
@@ -568,6 +1007,14 @@ function CSSPuckProviderInner({
       realtimeEnabled: enableRealtime,
       realtimeConnected: realtime.connected,
       remoteSyncKey,
+      // WebSocket presence - send focus regions via WebSocket when connected
+      sendFocusRegions: realtime.sendFocusRegions,
+      // Phase 9: Presence & Agent values
+      presence: presenceState,
+      agentEdit: agentEditCapabilities,
+      triggerAgent: triggerAgentFn,
+      conflicts,
+      dismissConflict,
     }),
     [
       userClient,
@@ -600,8 +1047,24 @@ function CSSPuckProviderInner({
       enableRealtime,
       realtime.connected,
       remoteSyncKey,
+      realtime.sendFocusRegions,
+      // Phase 9 dependencies
+      presenceState,
+      agentEditCapabilities,
+      triggerAgentFn,
+      conflicts,
+      dismissConflict,
     ]
   );
 
-  return <CSSPuckContext.Provider value={contextValue}>{children}</CSSPuckContext.Provider>;
+  // Wrap with PresenceContext.Provider when presence is enabled
+  const wrappedChildren = presenceContextValue ? (
+    <PresenceContext.Provider value={presenceContextValue}>
+      {children}
+    </PresenceContext.Provider>
+  ) : (
+    children
+  );
+
+  return <CSSPuckContext.Provider value={contextValue}>{wrappedChildren}</CSSPuckContext.Provider>;
 }

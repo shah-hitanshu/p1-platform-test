@@ -6,11 +6,13 @@
  */
 
 import React from 'react';
-import type { Checkpoint, DocumentVersion, PuckData } from '@pantheon/css-client';
+import type { Checkpoint, DocumentVersion, PuckData, ActorPresence } from '@pantheon/css-client';
 import type { SaveStatus } from '../types.js';
 import { SaveIndicator } from '../components/SaveIndicator.js';
 import { PublishButton } from '../components/PublishButton.js';
 import { HistoricalVersionBanner } from '../components/HistoricalVersionBanner.js';
+import { CollaboratorAvatars } from '../components/presence/CollaboratorAvatars.js';
+import { AgentActivityBanner } from '../components/presence/AgentActivityBanner.js';
 // NOTE: PuckDataSynchronizer is NOT imported here - it's used in CSSPlugin instead
 // because headerActions renders outside Puck's context where usePuck() doesn't work.
 
@@ -96,6 +98,17 @@ export interface CSSOverridesOptions {
    * here will be ignored.
    */
   dataSyncKey?: string | null;
+  // Presence/Agent Features for Header
+  /** Whether to show collaborator avatars in header */
+  showCollaboratorAvatars?: boolean;
+  /** Current presence list for avatars */
+  presence?: ActorPresence[];
+  /** Whether to show agent activity banner in header */
+  showAgentActivityBanner?: boolean;
+  /** Currently active agents */
+  activeAgents?: ActorPresence[];
+  /** Whether any agent is currently editing */
+  isAgentEditing?: boolean;
 }
 
 /**
@@ -173,6 +186,12 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
     // Deprecated props - kept for type signature compatibility but ignored
     syncData: _syncData,
     dataSyncKey: _dataSyncKey,
+    // Presence/Agent Features
+    showCollaboratorAvatars = false,
+    presence = [],
+    showAgentActivityBanner = false,
+    activeAgents = [],
+    isAgentEditing = false,
   } = options;
 
   // Suppress unused variable warnings for deprecated props
@@ -197,12 +216,23 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
         onRetry: onRetrySave,
       };
 
+  // Find the first active agent for banner display
+  const firstActiveAgent = activeAgents.find(a => a.state === 'editing') || activeAgents[0];
+
   return {
     headerActions: ({ children }) => (
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         {/* NOTE: PuckDataSynchronizer was removed from here because headerActions
             renders outside Puck's context. Use syncData/dataSyncKey in createCSSPlugin
             instead, which renders inside Puck's context. */}
+        {/* Agent Activity Banner - shown when agent is editing */}
+        {showAgentActivityBanner && isAgentEditing && firstActiveAgent && (
+          <AgentActivityBanner agent={firstActiveAgent} showIdle />
+        )}
+        {/* Collaborator Avatars */}
+        {showCollaboratorAvatars && presence.length > 0 && (
+          <CollaboratorAvatars actors={presence} maxVisible={5} />
+        )}
         {isViewingHistoricalVersion && viewingVersion && onReturnToLatest ? (
           <HistoricalVersionBanner
             version={viewingVersion}

@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, act, waitFor } from '@testing-library/react';
-import { PuckDataSynchronizer } from '../src/components/PuckDataSynchronizer.js';
+import { PuckDataSynchronizer, _resetSyncTracking } from '../src/components/PuckDataSynchronizer.js';
 import type { PuckData } from '@pantheon/css-client';
 
 // Mock @puckeditor/core
@@ -43,6 +43,8 @@ describe('PuckDataSynchronizer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+    // Reset module-level state to ensure tests don't affect each other
+    _resetSyncTracking();
   });
 
   afterEach(() => {

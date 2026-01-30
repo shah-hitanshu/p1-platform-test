@@ -19,6 +19,7 @@ export type {
   DocumentVersionSource,
   Checkpoint,
   CheckpointType,
+  CheckpointStatus,
   CheckpointDocument,
   WorkflowSettings,
   // Puck types
@@ -33,6 +34,33 @@ export type {
   CreateDocumentVersionParams,
   CreateCheckpointParams,
   ListDocumentsOptions,
+  // Presence types
+  ActorState,
+  ActorRole,
+  ActorPresence,
+  DocumentPresenceSummary,
+  BranchPresenceSummary,
+  BranchPresence,
+  SitePresence,
+  AgentPresenceLocation,
+  AgentGlobalPresence,
+  // Agent registry types
+  AgentStatus,
+  AgentSettings,
+  RegisteredAgent,
+  CreateAgentParams,
+  UpdateAgentParams,
+  ListAgentsOptions,
+  // Agent edit types
+  AgentTrigger,
+  AgentEditDenialReason,
+  AgentEditContext,
+  AgentEditPermission,
+  AgentEditSession,
+  AgentEditCompleteResult,
+  AgentEditAbortResult,
+  // Focus region types
+  UpdateFocusRegionsResponse,
 } from './types.js';
 
 // Auth utilities

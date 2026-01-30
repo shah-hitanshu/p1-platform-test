@@ -10,13 +10,34 @@
  * It safely handles cases where Puck's context isn't available yet.
  */
 
-import React, { Component, useEffect, useRef, useState } from 'react';
+import React, { Component, useEffect, useState } from 'react';
 import { createUsePuck } from '@puckeditor/core';
 import type { PuckData } from '@pantheon/css-client';
 
 // Create a usePuck hook with selector to avoid unnecessary re-renders
 // We only need dispatch, so we select just that
 const usePuckDispatch = createUsePuck();
+
+/**
+ * Track the last synced key at module level to survive component remounts.
+ * This is necessary because the plugin may be recreated frequently, which would
+ * reset any component-level refs and cause repeated syncs.
+ *
+ * The tracking is done inside useEffect (not during render) to be safe with
+ * React's concurrent features and strict mode.
+ */
+let lastSyncedKeyModule: string | null = null;
+
+/**
+ * Reset the module-level sync tracking. This is only for testing purposes.
+ * In tests, the module state persists across test cases, which can cause
+ * unexpected behavior. Call this in beforeEach to start each test fresh.
+ *
+ * @internal
+ */
+export function _resetSyncTracking(): void {
+  lastSyncedKeyModule = null;
+}
 
 export interface PuckDataSynchronizerProps {
   /**
@@ -98,15 +119,22 @@ function PuckDataSynchronizerInner({
 }: PuckDataSynchronizerProps): null {
   // Use selector to only subscribe to dispatch, avoiding re-renders on other state changes
   const dispatch = usePuckDispatch((s) => s.dispatch);
-  const lastSyncKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     // Only sync when:
     // 1. syncKey is a non-null value (null means "don't sync")
-    // 2. syncKey is different from what we last synced
+    // 2. syncKey is different from what we last synced (using module-level tracking)
     // 3. we have data to sync
-    if (syncKey !== null && syncKey !== lastSyncKeyRef.current && data !== null) {
-      lastSyncKeyRef.current = syncKey;
+    //
+    // Module-level tracking is critical because:
+    // - The plugin may be recreated frequently, causing this component to remount
+    // - When remounted, component-level refs reset to null
+    // - This would cause duplicate syncs of the same data
+    // - Module-level tracking survives remounts and prevents this
+    if (syncKey !== null && syncKey !== lastSyncedKeyModule && data !== null) {
+      // Update module-level tracking BEFORE dispatching
+      // This is safe because we're in useEffect, not during render
+      lastSyncedKeyModule = syncKey;
 
       // Dispatch setData to update Puck's internal state
       dispatch({

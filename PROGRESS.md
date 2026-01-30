@@ -239,6 +239,22 @@ puck-css-integration/
   - Configurable via `VITE_CSS_ENABLE_REALTIME` and `VITE_CSS_WS_BASE_URL`
   - Bidirectional sync verified between multiple browser tabs
 
+### Phase 6d: Version History Isolation Fix ✅
+- Fixed bug where viewing historical versions would broadcast historical data to other users
+- **Problem**: When User A loads a historical version from version history, the historical data was being broadcast to ALL other users via WebSocket, disrupting their editing sessions.
+- **Root Cause**: In `saveData()`, when viewing a historical version and Puck fires `onChange`, the historical data was sent via `realtime.applyLocalChange(data)` because there was no check to block outgoing sync when viewing history.
+- **Second Issue**: When returning to latest, `returnToLatest()` used `latestVersionData` which was captured when the document initially loaded. If other users made changes while User A was viewing history, those changes were lost.
+- **Solution**:
+  1. **Block outgoing sync when viewing history**: In `saveData()`, check `viewingVersionRef.current !== null` and skip `realtime.applyLocalChange()` to prevent historical data from being broadcast
+  2. **Sync to current Yjs state on return**: In `returnToLatest()`, get current state from Yjs via `getSnapshot()` to capture any changes made by other users while viewing history
+  3. **Added `getSnapshot()` to useRealtime hook**: Returns current Yjs document state as PuckData, or null when not connected
+- **Files Modified**:
+  - `packages/puck-css/src/hooks/useRealtime.ts` - Added `getSnapshot()` method
+  - `packages/puck-css/src/CSSPuckProvider.tsx` - Updated `saveData()` and `returnToLatest()`
+- **Tests Added**:
+  - Unit tests: 4 new tests for `getSnapshot()` in `useRealtime.spec.tsx`
+  - E2E tests: 2 new tests in `version-history.spec.ts` for version history isolation
+
 ### Phase 6: Error Notification Component ✅
 - Implemented toast-style notification system for errors and other messages
 - New types in `types.ts`:
@@ -273,13 +289,498 @@ puck-css-integration/
   - Toast component (16 tests) - rendering, actions, accessibility
   - NotificationContainer (9 tests) - positioning, multiple notifications
 
+---
+
+## Agent Politeness Integration
+
+Integration with the Collaborative State System's Agent Politeness APIs to enable respectful human-agent collaboration within the Puck Editor.
+
+**Branch:** `feature/agent-politeness-integration`
+**Plan Document:** `docs/AGENT_POLITENESS_FRONTEND_PLAN.md`
+
+### Design Decisions (2026-01-27)
+
+| # | Question | Decision |
+|---|----------|----------|
+| 1 | Presence mechanism | Hybrid (WebSocket + REST polling fallback) |
+| 2 | Agent color assignment | Hash-based (derive from agent ID) |
+| 3 | Focus region granularity | Hierarchical JSON paths with prefix matching |
+| 4 | Kill switch permissions | Branch permission-based (EDITOR/ADMIN can kick) |
+| 5 | Offline handling | 60-second grace period before presence removal |
+| 6 | Agent list source | Fetched from API (organization agents endpoint) |
+
+### Phase 1: API Client Extensions ✅
+
+**Commits:** `b73444e` (TDD tests), `1b01e8d` (implementation)
+
+New endpoints added to `@pantheon/css-client`:
+
+- **PresenceEndpoint** (`src/endpoints/presence.ts`)
+  - `getSitePresence(siteId)` - Site-level presence rollup
+  - `getBranchPresence(siteId, branchId)` - Branch-level presence with actors
+  - `getAgentPresence(orgId, agentId)` - Agent's global presence across org
+
+- **AgentRegistryEndpoint** (`src/endpoints/agent-registry.ts`)
+  - `list(orgId, options?)` - List agents with optional status filter
+  - `get(orgId, agentId)` - Get agent by ID
+  - `create(orgId, params)` - Create new agent
+  - `update(orgId, agentId, params)` - Update agent properties
+  - `updateStatus(orgId, agentId, status)` - Change agent status
+  - `delete(orgId, agentId)` - Delete agent
+
+- **AgentEditEndpoint** (`src/endpoints/agent-edit.ts`)
+  - `canEdit(siteId, branchId, path, context)` - Check if agent can edit
+  - `startEdit(siteId, branchId, path, context)` - Start edit session
+  - `completeEdit(siteId, branchId, path, agentId)` - Complete edit
+  - `abortEdit(siteId, branchId, path, agentId, checkpointId)` - Abort and rollback
+
+New types added (20+):
+- Presence: `ActorState`, `ActorRole`, `ActorPresence`, `BranchPresence`, `SitePresence`, `AgentGlobalPresence`
+- Agent Registry: `AgentStatus`, `RegisteredAgent`, `CreateAgentParams`, `UpdateAgentParams`
+- Agent Edit: `AgentTrigger`, `AgentEditContext`, `AgentEditPermission`, `AgentEditSession`
+
+**Test Coverage:** 25 new tests, 100% coverage on new endpoints
+
+### Phase 2: Presence Hooks ✅
+
+**Commits:** TDD tests, implementation
+
+New hooks added to `@pantheon/puck-css`:
+
+- **usePresence** - Document-level presence with polling
+  - Returns actors, editingActors, humans, agents
+  - hasActiveHumans, hasActiveAgents flags
+  - Self-filtering (exclude current user)
+  - Configurable polling interval
+
+- **useBranchPresence** - Branch-level presence summary
+  - Returns presence rollup with document summary
+  - Active document counts
+
+- **useSitePresence** - Site-level presence rollup
+  - Returns presence across all branches
+  - Active branch summary
+
+**Test Coverage:** 22 tests for presence hooks
+
+### Phase 3: Presence UI Components ✅
+
+New components for presence visualization:
+
+- **CollaboratorAvatars** - Avatar stack showing present users
+- **PresenceIndicator** - Compact presence badge/pill
+- **AgentActivityBanner** - Banner showing agent editing status
+- **FocusRegionHighlight** - Overlay for agent focus regions
+
+### Phase 4: Agent Edit Workflow Hooks ✅
+
+- **useAgentEdit** - Agent edit session management
+  - canEdit, startEdit, completeEdit, abortEdit methods
+  - Session tracking with isEditing flag
+
+- **useAgentTrigger** - Human-triggered agent actions
+  - triggerAgent function for starting agent workflows
+  - Status tracking: idle, checking, starting, editing, completing, error
+
+### Phase 5: Agent Action UI Components ✅
+
+- **AgentActionButton** - Trigger agent actions
+- **AgentActionModal** - Modal for agent action configuration
+- **AgentStatusPanel** - Panel showing agent activity status
+
+### Phase 6: Enhanced Version History ✅
+
+- **VersionItem** - Version list item with agent attribution
+- **AgentCheckpointBadge** - Badge for agent-created checkpoints
+
+### Phase 7: Conflict Notification System ✅
+
+- **useConflictNotifications** - Hook for conflict events
+  - Tracks agent_editing, human_conflict, agent_checkpoint, agent_kicked events
+  - Auto-dismiss for checkpoint notifications
+
+- **ConflictNotificationToast** - Toast component for conflicts
+  - Shows conflict type, affected regions, agent info
+
+### Phase 8: Plugin Integration ✅
+
+- Integrated presence and agent features into CSS Plugin
+- Plugin shows presence indicators and agent activity
+- Added authorization checks to presence API endpoints
+
+### Phase 9: Provider Enhancement ✅
+
+**Commits:** `0d4d9db` (TDD tests), `4703951` (implementation)
+
+Enhanced `CSSPuckProvider` with presence and agent mode support:
+
+**New Props (CSSPuckConfig):**
+- `presenceEnabled` - Enable presence tracking (default: false)
+- `presencePollingInterval` - Polling interval in ms (default: 5000)
+- `userName`, `userAvatar` - Display info for presence
+- `agentModeEnabled` - Enable agent mode features (default: false)
+- `agentId` - When client IS an agent
+- `agentTrigger` - Agent trigger type
+- `onPresenceChange` - Callback when actors change
+- `onAgentConflict` - Callback on conflict events
+
+**New Context Values (CSSPuckContextValue):**
+- `presence: PresenceState | null` - actors, humans, agents, hasActiveHumans, hasActiveAgents, refresh
+- `agentEdit: UseAgentEditReturn | null` - Agent edit capabilities (when agentId set)
+- `triggerAgent` - Function to trigger agent actions (when human user)
+- `conflicts` - Active conflict notifications
+- `dismissConflict` - Dismiss conflict by ID
+
+**New Types:**
+- `PresenceState` - Presence data structure with actors and derived values
+
+**Test Coverage:** 24 tests for provider enhancement
+
+**Demo App Update:** (commit `e7994e5`)
+- Added `enablePresence` and `userName` to config
+- Extract `presence` from `useCSSPuck()` hook
+- Pass presence props to `createCSSOverrides`:
+  - `showCollaboratorAvatars` - Shows avatars when presence enabled
+  - `presence` - Array of actors for avatar display
+  - `showAgentActivityBanner` - Shows banner when agents are active
+  - `activeAgents` - Agent actors for banner
+  - `isAgentEditing` - Flag for agent editing state
+- Added `presenceEnabled` and `userName` props to `CSSPuckProvider`
+
+### Agent Politeness Integration Summary
+
+| Phase | Focus | Status |
+|-------|-------|--------|
+| 1 | API Client Extensions | ✅ Complete |
+| 2 | Presence Hooks | ✅ Complete |
+| 3 | Presence UI Components | ✅ Complete |
+| 4 | Agent Edit Workflow Hooks | ✅ Complete |
+| 5 | Agent Action UI Components | ✅ Complete |
+| 6 | Enhanced Version History | ✅ Complete |
+| 7 | Conflict Notification System | ✅ Complete |
+| 8 | Plugin Integration | ✅ Complete |
+| 9 | Provider Enhancement | ✅ Complete |
+
+### Proactive Focus Region Reporting (2026-01-29) ✅
+
+**Feature Overview:** Enables humans to report which components they have selected in the editor, even before making edits. This allows agents to avoid editing regions where a human has focus, preventing conflicts proactively.
+
+**Phase 2: CSS Client (commits `d07a703`, `615a470`)**
+- Added `UpdateFocusRegionsResponse` type to types.ts
+- Added `updateFocusRegions()` method to PresenceEndpoint
+- POST to `/api/sites/{siteId}/branches/{branchId}/documents/{path}/focus-regions`
+- URL-encodes document path, includes `X-Actor-Type: user` header
+- 9 new tests for presence endpoint
+
+**Phase 3: Puck CSS (commits `676755b`, `5fc19fa`, `3566e6c`)**
+
+*useFocusRegionReporting hook:*
+- Manages debounced reporting of focus regions to backend (default: 300ms)
+- Heartbeat interval (default: 15s) to keep focus alive
+- Automatic cleanup on unmount (sends empty array)
+- Deduplication to avoid redundant API calls
+- Error handling (silent failures - focus is not critical)
+
+*PuckSelectionTracker component:*
+- Renders inside Puck context (via plugin) to access usePuck hook
+- Converts Puck's itemSelector to JSON path format
+- Handles content zone (`/content/N`) and nested zones (`/zones/X/Y/N`)
+- Calls onSelectionChange when selection changes
+
+*CSSPlugin Integration:*
+- Added `PuckSelectionTracker` to CSSPlugin render function
+- Added `onSelectionChange` callback prop to `CSSPluginOptions`
+- Selection tracking runs inside Puck context (via plugin)
+
+**Test Coverage:** 19 new tests for focus region reporting
+
+**Demo App Integration (commit `6513c2a`):**
+- Wired up focus region reporting in demo app
+- Added `useFocusRegionReporting` hook to `AppContent` component
+- Created `handleSelectionChange` callback that reports selection to backend
+- Passed `onSelectionChange` to `createCSSPlugin` when presence is enabled
+- Exported `useFocusRegionReporting` and types from puck-css package index
+- Fixed TypeScript errors for null documentPath and undefined zone/index
+
+**Usage:**
+```tsx
+// In your Puck configuration
+const { setFocusRegions, clearFocus } = useFocusRegionReporting();
+
+const plugin = createCSSPlugin({
+  // ... other options
+  onSelectionChange: (path, itemId) => {
+    if (path) {
+      setFocusRegions([path]);
+    } else {
+      clearFocus();
+    }
+  },
+});
+```
+
+### Realtime Sync Architecture Fix (2026-01-29) ✅
+
+**Issue:** Remote updates received via WebSocket were syncing to Puck's internal Yjs document but not updating the React UI. PuckDataSynchronizer was receiving `syncKey: null` due to a race condition in the demo app.
+
+**Root Cause:** The demo app's `AppContent` component was computing `dataSyncKey` from `remoteSyncKey`, but React's state update timing caused the key to become null before PuckDataSynchronizer could dispatch to Puck. This was a fundamental architectural issue - sync logic was in the wrong layer.
+
+**Solution (commit `9f598f7`):**
+- Created `ContextSyncBridge` component in `CSSPlugin.tsx` that reads sync state directly from `CSSPuckContext`
+- Moved all sync logic from demo app to the puck-css integration layer
+- Added `useContextSync` option (default: true) to createCSSPlugin
+- ContextSyncBridge computes dataSyncKey and renders PuckDataSynchronizer internally
+
+**Files Changed:**
+- `packages/puck-css/src/plugin/CSSPlugin.tsx` - Added ContextSyncBridge component (+65 lines)
+- `packages/puck-css/src/CSSPuckProvider.tsx` - Minor cleanup
+- `apps/demo/src/App.tsx` - Removed sync-related props and computation (-30 lines)
+- `e2e/version-history.spec.ts` - Added console log filters for debugging
+
+**Key Design Principle:** Reliable sync logic belongs in the integration layer (puck-css), not in consuming applications. This ensures consistent behavior across all apps using the integration.
+
+### Realtime Sync React Safety Fix (2026-01-29) ✅
+
+**Issue:** The previous fix (commit `9f598f7`) introduced a new bug where realtime sync between browsers stopped working. The fix tracked `lastSyncedKey` as a side effect during render in `ContextSyncBridge`, which is unsafe with React's concurrent features and strict mode.
+
+**Root Cause:** When React re-renders components (strict mode double-render, concurrent features), the render-phase side effect would set `lastSyncedKey` before the actual dispatch happened. On subsequent renders, the key was already "synced" but the dispatch never occurred, causing remote updates to be silently dropped.
+
+**Solution (commit `7a17673`):**
+- Moved module-level tracking (`lastSyncedKeyModule`) from `CSSPlugin.tsx` to `PuckDataSynchronizer.tsx`
+- Track sync state inside `useEffect` instead of during render (React-safe)
+- `ContextSyncBridge` now passes through sync key without any side effects
+- Added `_resetSyncTracking()` function for test isolation
+
+**Files Changed:**
+- `packages/puck-css/src/components/PuckDataSynchronizer.tsx` - Added module-level tracking in useEffect (+23 lines)
+- `packages/puck-css/src/plugin/CSSPlugin.tsx` - Removed render-phase side effects (-15 lines)
+- `packages/puck-css/tests/PuckDataSynchronizer.spec.tsx` - Added test isolation via reset function
+
+**Key Lesson:** Never update module-level state during render in React. Side effects belong in `useEffect` to work correctly with concurrent features and strict mode.
+
+### Server-Side Bot Edit Authorization & Focus Region Highlighting (2026-01-29) ✅
+
+Two related features to improve collaborative editing security and visibility.
+
+#### Feature 1: Server-Side Bot Edit Authorization
+
+**Problem:** The Agent Politeness Protocol exists (`canEdit` → `startEdit` → `completeEdit`) but was advisory only. Agents could bypass it and send WebSocket/REST updates directly without authorization.
+
+**Solution:** Added `sessionId` credential passing from client to server, enabling server-side enforcement.
+
+**Phase 1A: RealtimeClient Session Authorization (commits `eb7ed90`, `7ddb4fb`)**
+- Added `sessionId?: string` to `ConnectionParams` interface
+- Pass `sessionId` as query param in `connect()` for agent connections
+- Added `onAuthorizationError?: (error: Error) => void` callback to config
+- Handle WebSocket close codes 4401/4403 as authorization failures
+- 10 new tests for session handling
+
+**Phase 1B: Client-Level Session Authorization (commits `59b9b18`, `1ba439e`)**
+- Added `withSessionId(sessionId: string): CSSClient` method to `CSSClient`
+- Creates new client instance with `X-Agent-Session-Id` header attached
+- Follows existing `withPrincipal()` immutable pattern
+- Added `sessionId` tracking to `BaseEndpoint` class
+- 4 new tests for session header handling
+
+**Phase 2: useAgentEdit Session Tracking (commits `7d9b789`, `9faf942`)**
+- Added `sessionId: string | null` property to `UseAgentEditReturn` interface
+- Tracks sessionId from `startEdit()` response, clears on `completeEdit()` or `abortEdit()`
+- Added `sessionId?: string` to `UseRealtimeParams` for passing to WebSocket
+- 7 new tests for session integration
+
+#### Feature 2: Focus Region Visual Highlighting
+
+**Problem:** `FocusRegionHighlight` component existed but rendered empty divs - no actual visual highlighting of what other users are editing.
+
+**Solution:** Follow the existing `createHighlightedConfig()` pattern - wrap component render functions to add highlight overlays.
+
+**Phase 3A: focusRegionMap Utilities (commits `072d037`, `4cffa45`, `559e0c8`)**
+- New file: `packages/puck-css/src/utils/focusRegionMap.ts`
+- `pathToComponentId(data, path)` - Converts focus region path to component ID
+  - Supports `/content/N` for root content array
+  - Supports `/root/default-zone/N` for Puck's internal root zone format (added `559e0c8`)
+  - Supports `/zones/ZoneName/N` for nested zones (e.g., `/zones/Header:left/0`)
+- `createFocusRegionMap(data, actors)` - Creates Map<componentId, FocusHighlight> from actor presence
+- `generateActorColor(actorId)` - Generates consistent hex color from actor ID using djb2 hash (matches avatar colors in CollaboratorAvatars)
+- `FocusHighlight` type with actorId, actorName, color, isEditing
+- 29 new tests for mapping utilities
+
+**Phase 3B: focusHighlightConfig Wrapper (commits `afb6cb2`, `cba8fa5`)**
+- New file: `packages/puck-css/src/utils/focusHighlightConfig.ts`
+- `createFocusHighlightConfig(config, focusMap)` - Wraps Puck component render functions
+- Adds highlight wrapper div with:
+  - CSS class `focus-region-highlight` (or `focus-region-highlight--editing`)
+  - CSS variable `--focus-color` with actor's color
+  - Data attribute `data-actor-id` for identification
+  - Badge element showing actor's initial
+- Preserves all other component config properties (fields, defaultProps, etc.)
+- 15 new tests for config wrapping
+
+**Phase 4: CSS Styles, Exports, Demo Integration (commit `31967a0`)**
+- Added focus region CSS to `packages/puck-css/src/styles.css`:
+  - `.focus-region-highlight` - Colored outline with CSS variable
+  - `.focus-region-highlight--editing` - Thicker outline with pulsing animation
+  - `.focus-region-highlight__badge` - Circular badge showing actor initial
+- Exported utilities from `packages/puck-css/src/index.ts`:
+  - `pathToComponentId`, `createFocusRegionMap`, `generateActorColor`
+  - `FocusHighlight` type
+  - `createFocusHighlightConfig`
+- Integrated into demo app (`apps/demo/src/App.tsx`):
+  - Uses `usePresenceContext()` to get current user ID
+  - Creates `focusMap` from other actors' focus regions
+  - Wraps config with `createFocusHighlightConfig()` when focusMap has entries
+  - Focus highlighting chains with historical version highlighting
+
+**Files Summary:**
+
+| File | Changes |
+|------|---------|
+| `packages/css-client/src/realtime.ts` | sessionId in ConnectionParams, onAuthorizationError callback |
+| `packages/css-client/src/endpoints/base.ts` | sessionId tracking, withSessionId method |
+| `packages/css-client/src/client.ts` | withSessionId method |
+| `packages/puck-css/src/hooks/useAgentEdit.ts` | sessionId property |
+| `packages/puck-css/src/hooks/useRealtime.ts` | sessionId parameter |
+| `packages/puck-css/src/utils/focusRegionMap.ts` | NEW - Path-to-ID mapping, focus map creation |
+| `packages/puck-css/src/utils/focusHighlightConfig.ts` | NEW - Config wrapper for highlighting |
+| `packages/puck-css/src/styles.css` | Focus highlight CSS styles |
+| `packages/puck-css/src/index.ts` | New exports |
+| `apps/demo/src/App.tsx` | Focus highlighting integration |
+
+**Test Files:**
+- `packages/css-client/tests/realtime-session.spec.ts` - 10 tests
+- `packages/css-client/tests/versions-session.spec.ts` - 4 tests
+- `packages/puck-css/tests/agent-session-integration.spec.ts` - 7 tests
+- `packages/puck-css/tests/focusRegionMap.spec.ts` - 32 tests (29 + 3 for root zone format)
+- `packages/puck-css/tests/focusHighlightConfig.spec.ts` - 15 tests
+
+**Verified Working (2026-01-30):**
+- **Focus Region Visual Highlighting** is fully operational:
+  - Backend correctly stores focus regions via POST `/documents/{path}/focus-regions`
+  - Backend correctly returns `focusRegions` arrays in the branch-level presence response
+  - Frontend displays colored highlight borders and avatar badges on components where other users have focus
+  - Path formats supported: `/content/N`, `/root/default-zone/N` (Puck internal), `/zones/ZoneName/N`
+  - Tested with two separate browser tabs: Alice's focus on Heading component visible to Bob as colored highlight with "A" badge
+  - Focus highlight colors now match avatar colors (commit `f358940`) - uses same djb2 hash algorithm as CollaboratorAvatars
+
+### WebSocket-Based Presence (2026-01-30) - In Progress
+
+Moving presence updates from HTTP polling to WebSocket messaging for real-time presence with near-zero HTTP overhead.
+
+**Impact:**
+- Presence HTTP requests: ~24 req/min → ~0 req/min (when WS connected)
+- Focus region HTTP POSTs: ~8 req/min → ~0 req/min (when WS connected)
+- Latency: 144ms polling delay → instant push updates
+- HTTP fallback maintained for when WebSocket disconnects
+
+**Phase 1: Add WebSocket message types (css-client) ✅**
+- Added `WsFocusRegionUpdateMessage`, `WsPresenceHeartbeatMessage` (client→server)
+- Added `WsPresenceUpdateMessage`, `WsFocusRegionBroadcastMessage`, `WsFocusRegionAckMessage`, `WsPresenceErrorMessage` (server→client)
+- Union types: `WsClientMessage`, `WsServerMessage`
+
+**Phase 2: Extend RealtimeClient (css-client) ✅**
+- Added text vs binary message detection in handler
+- Added `handleTextMessage()` for JSON presence messages
+- Added `sendFocusRegions(focusRegions: string[]): boolean` method
+- Added `sendHeartbeat(state?: ActorState): void` method
+- Added `presenceViaWebSocket` getter property
+- Added `onPresenceUpdate` and `onFocusRegionBroadcast` callbacks to config
+- 11 new tests for WebSocket presence
+
+**Phase 3: Extend useRealtime Hook (puck-css) ✅**
+- Added `onPresenceUpdate` and `onFocusRegionBroadcast` to UseRealtimeParams
+- Added `sendFocusRegions`, `sendHeartbeat`, `presenceViaWebSocket` to UseRealtimeReturn
+- Callback refs pattern to avoid recreating callbacks
+- 12 new tests for hook presence features
+
+**Phase 4: Update CSSPuckProvider (puck-css) ✅** (commit `6951601`)
+- Added WebSocket presence state (`wsPresenceActors`, `wsPresenceActiveRef`)
+- Wired up `onPresenceUpdate` and `onFocusRegionBroadcast` callbacks to useRealtime
+- Prefer WebSocket presence over HTTP polling when connected
+- HTTP polling continues as fallback when WebSocket disconnects
+- Added `sendFocusRegions` to CSSPuckContext for components to use
+- Added `actors` property to PresenceContextValue for consistency
+- Stability fix for presence hooks: use refs to avoid restarting polling intervals
+- 4 tests for provider WebSocket presence integration
+
+**Phase 5: Update useFocusRegionReporting (puck-css) ✅** (commits `7e5729b` tests, `c05d156` impl)
+- Added `sendViaWebSocket` option to UseFocusRegionReportingOptions interface
+- Try WebSocket first in reportFocusRegions, fall back to HTTP when WebSocket returns false
+- Try WebSocket first on unmount cleanup, fall back to HTTP
+- Use ref pattern for sendViaWebSocket to avoid callback recreation
+- Heartbeat, clearFocus, and normal reporting all use WebSocket-first approach
+- 8 new tests for WebSocket-first focus region reporting
+
+**Phase 6-7: DocumentSession WebSocket Presence (server) ✅** (commits in collaborative-state-system)
+- Added WebSocket message types: `WsFocusRegionUpdateMessage`, `WsPresenceHeartbeatMessage`, `WsPresenceUpdateMessage`, `WsFocusRegionBroadcastMessage`, `WsFocusRegionAckMessage`, `WsPresenceErrorMessage`
+- Added type guards: `isWsClientMessage`, `isWsFocusRegionUpdate`, `isWsPresenceHeartbeat`
+- DocumentSession text message handling: `handlePresenceMessage` routes based on message type
+- `handleWsFocusRegionUpdate` with validation, ACK, and broadcast to other clients
+- `handleWsPresenceHeartbeat` for keep-alive and optional state update
+- `broadcastPresenceUpdate` on connect/disconnect for full presence sync
+- 18 message type tests + 29 DO presence tests
+- 1711 total server tests passing
+
+**WebSocket Presence Implementation: COMPLETE ✅**
+
+All phases completed across both repositories:
+- Client (puck-css-integration): Phases 1-5 ✅
+- Server (collaborative-state-system): Phases 6-7 ✅
+
+**Bug Fixes (2026-01-30):**
+
+1. **WebSocket Focus Region Wiring** (commit `4669ce8`)
+   - Demo app wasn't passing `sendFocusRegions` from context to `useFocusRegionReporting`
+   - Fixed by wiring `sendFocusRegionsViaWs` from `useCSSPuck()` to the hook's `sendViaWebSocket` option
+   - HTTP polling for focus regions now properly bypassed when WebSocket is connected
+
+2. **Edit Flicker Fix** (commit `c424064`)
+   - Typing in editor caused flickering on all browsers
+   - Root cause: `focusMap` recalculated on every keystroke because it depended on `currentData`
+   - Config recreation triggered Puck full re-render
+   - Fixed by caching data for focus mapping in a ref, only updating when presence changes
+
+3. **Focus Region Highlight Flicker Fix** (commit `2f9ee49`)
+   - Selecting components caused flickering of focus highlights AND Puck's native UI (selection controls, tabs)
+   - Root cause: `createFocusHighlightConfig` created new config with new render wrappers on every focusMap change
+   - Puck detected config change via referential equality → full re-render
+   - **Solution: Context-based focus highlighting**
+     - Created `FocusHighlightContext` to provide focusMap dynamically
+     - Updated `createFocusHighlightConfig` to create stable wrappers that read from context
+     - Wrapped Puck with `FocusHighlightProvider` that receives focusMap
+     - Config is now stable; only context updates on focus change → no Puck re-render
+
+4. **Echo Overwrite Bug Fix** (2026-01-30)
+   - **Problem**: When typing in the editor, text would be overwritten/truncated (e.g., typing "BEEP BOOP" resulted in "BEEP BOO")
+   - **Root cause analysis**:
+     - Initially suspected server was echoing updates back to sender
+     - Server actually uses `conn !== server` check - it does NOT echo back to sender
+     - Real issue: When Page2 received a remote update, it would trigger Puck onChange events
+     - If multiple onChange events fired (from data prop change AND setData dispatch), the counter-based skip logic would only catch the first
+     - Second onChange would call `applyLocalChange`, sending update back to server
+     - Server broadcast this to Page1, overwriting the editor's current state
+   - **Solution**: Dual-layer protection in `CSSPuckProvider`:
+     - Added `isApplyingRemoteSyncRef` flag set before `setCurrentData` and cleared after 100ms
+     - `saveData` checks flag first (catches all onChange during sync period)
+     - Counter still used as backup for edge cases (returnToLatest, etc.)
+     - Added `isApplyingLocalChange` flag in `puckYjsBinding` as additional safeguard
+   - **Files modified**:
+     - `packages/puck-css/src/CSSPuckProvider.tsx` - Flag-based remote sync protection
+     - `packages/puck-css/src/utils/puckYjsBinding.ts` - Local change flag in observer
+   - **Tests added**:
+     - "editor should not have text echoed back during typing" - Verifies editor doesn't lose characters
+     - "passive viewer should receive complete text without truncation" - Verifies full sync to viewer
+   - All 507 unit tests + 15 E2E tests passing
+
+---
+
 ## Test Summary
 
 | Package | Tests | Status |
 |---------|-------|--------|
-| @pantheon/css-client | 31 | ✅ Passing |
-| @pantheon/puck-css | 200 | ⚠️ 3 Failing |
-| **Total** | **231** | ⚠️ **3 Failing** |
+| @pantheon/css-client | 111 | ✅ Passing |
+| @pantheon/puck-css | 507 | ✅ Passing |
+| E2E (Playwright) | 15 | ✅ Passing |
+| **Total** | **633** | ✅ **All Passing** |
 
 ### Test Coverage (2026-01-25)
 
@@ -324,16 +825,13 @@ puck-css-integration/
 **puck-css:**
 - `src/components/PublishButton.tsx` - 42.69% (publish flow, loading states)
 - `src/components/SavingIndicator.tsx` - 37.08% (status display states)
-- `src/components/PuckDataSynchronizer.tsx` - 50.64% (3 failing tests)
+- `src/components/PuckDataSynchronizer.tsx` - 50.64% (all tests now passing)
 - `src/CSSPuckProvider.tsx` - 64.61% (error handling, branch switching)
 
-#### Failing Tests (need investigation)
+#### Previously Failing Tests (now fixed)
 
-- `tests/PuckDataSynchronizer.spec.tsx` - 3 tests failing
-  - `should dispatch setData when syncKey changes and data is provided`
-  - `should dispatch when syncKey changes from null to value`
-  - `should not dispatch when syncKey changes from value to null`
-  - **Issue**: Mock `usePuck().dispatch` not being called as expected
+- `tests/PuckDataSynchronizer.spec.tsx` - All 7 tests passing ✅
+  - Fixed via module-level sync tracking with `_resetSyncTracking()` for test isolation
 
 ## Key Decisions
 

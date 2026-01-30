@@ -2,7 +2,19 @@
  * Puck CSS Integration Types
  */
 
-import type { CSSClient, PuckData, Document, Branch, Checkpoint, DocumentVersion } from '@pantheon/css-client';
+import type {
+  CSSClient,
+  PuckData,
+  Document,
+  Branch,
+  Checkpoint,
+  DocumentVersion,
+  ActorPresence,
+  AgentTrigger,
+} from '@pantheon/css-client';
+import type { ConflictNotification } from './components/conflict-notifications/index.js';
+import type { UseAgentEditReturn } from './hooks/useAgentEdit.js';
+import type { UseAgentTriggerReturn } from './hooks/useAgentTrigger.js';
 
 /**
  * Save status for auto-save functionality.
@@ -65,6 +77,70 @@ export interface CSSPuckConfig {
    * WebSockets can't send custom headers, so the API key is passed as a query param.
    */
   realtimeApiKey?: string;
+
+  // =========================================================================
+  // Presence Props (Phase 9)
+  // =========================================================================
+
+  /**
+   * Enable presence tracking.
+   * When enabled, shows other users and agents editing the same content.
+   * @default false
+   */
+  presenceEnabled?: boolean;
+
+  /**
+   * Polling interval for presence updates in milliseconds.
+   * @default 5000
+   */
+  presencePollingInterval?: number;
+
+  /**
+   * Display name for the current user in presence.
+   */
+  userName?: string;
+
+  /**
+   * Avatar URL for the current user in presence.
+   */
+  userAvatar?: string;
+
+  // =========================================================================
+  // Agent Mode Props (Phase 9)
+  // =========================================================================
+
+  /**
+   * Enable agent mode features.
+   * When enabled, provides agent edit capabilities or agent trigger functionality.
+   * @default false
+   */
+  agentModeEnabled?: boolean;
+
+  /**
+   * Agent ID when this client IS an agent.
+   * If set, the provider enables agent edit capabilities.
+   * If not set but agentModeEnabled is true, enables triggerAgent for human users.
+   */
+  agentId?: string;
+
+  /**
+   * Agent trigger type (only used when agentId is set).
+   */
+  agentTrigger?: AgentTrigger;
+
+  // =========================================================================
+  // Callbacks (Phase 9)
+  // =========================================================================
+
+  /**
+   * Callback when presence data changes.
+   */
+  onPresenceChange?: (actors: ActorPresence[]) => void;
+
+  /**
+   * Callback when an agent conflict occurs.
+   */
+  onAgentConflict?: (conflict: ConflictNotification) => void;
 }
 
 /**
@@ -222,6 +298,88 @@ export interface CSSPuckContextValue {
    * Use this to trigger Puck data sync for real-time updates.
    */
   remoteSyncKey: string | null;
+
+  /**
+   * Send focus regions to other users via WebSocket.
+   * Returns true if sent successfully, false if not connected.
+   * Use this for instant focus region updates when realtime is enabled.
+   */
+  sendFocusRegions: (regions: string[]) => boolean;
+
+  // =========================================================================
+  // Presence Values (Phase 9)
+  // =========================================================================
+
+  /**
+   * Presence information when presenceEnabled is true.
+   * Null when presence is disabled.
+   */
+  presence: PresenceState | null;
+
+  // =========================================================================
+  // Agent Values (Phase 9)
+  // =========================================================================
+
+  /**
+   * Agent edit capabilities when this client IS an agent.
+   * Null when agentModeEnabled is false or when agentId is not set.
+   */
+  agentEdit: UseAgentEditReturn | null;
+
+  /**
+   * Function to trigger an agent action (for human users).
+   * Null when agentModeEnabled is false or when agentId is set.
+   */
+  triggerAgent: UseAgentTriggerReturn['triggerAgent'] | null;
+
+  // =========================================================================
+  // Conflict Notifications (Phase 9)
+  // =========================================================================
+
+  /**
+   * Active conflict notifications.
+   */
+  conflicts: ConflictNotification[];
+
+  /**
+   * Dismiss a conflict notification by ID.
+   */
+  dismissConflict: (id: string) => void;
+}
+
+/**
+ * Presence state provided by the context when presence is enabled.
+ */
+export interface PresenceState {
+  /**
+   * All actors present in the document/branch.
+   */
+  actors: ActorPresence[];
+
+  /**
+   * Human actors only.
+   */
+  humans: ActorPresence[];
+
+  /**
+   * Agent actors only.
+   */
+  agents: ActorPresence[];
+
+  /**
+   * Whether any human is actively editing.
+   */
+  hasActiveHumans: boolean;
+
+  /**
+   * Whether any agent is actively editing.
+   */
+  hasActiveAgents: boolean;
+
+  /**
+   * Force refresh presence data.
+   */
+  refresh: () => Promise<void>;
 }
 
 /**

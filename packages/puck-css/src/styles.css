@@ -1281,3 +1281,397 @@
     transform: translateY(100%);
   }
 }
+
+/* ============================================
+   Collaborator Avatars
+   ============================================ */
+
+/* Avatar colors - agents have a specific color, humans use hash-based colors via inline styles */
+:root {
+  --puck-css-avatar-agent: #6366f1;
+  --puck-css-avatar-fallback: #64748b;
+}
+
+.css-puck-collaborator-avatars {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.css-puck-collaborator-avatars__group {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.css-puck-collaborator-avatars__avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  position: relative;
+  border: 2px solid white;
+  margin-left: -8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.15s ease, z-index 0.15s ease;
+  /* Fallback color - actual color is set via inline style based on user ID hash */
+  background: var(--puck-css-avatar-fallback);
+}
+
+.css-puck-collaborator-avatars__avatar:first-child {
+  margin-left: 0;
+}
+
+.css-puck-collaborator-avatars__avatar:hover {
+  transform: scale(1.1);
+  z-index: 10;
+}
+
+/* Z-index stacking - later avatars appear behind earlier ones */
+.css-puck-collaborator-avatars__avatar:nth-child(1) { z-index: 5; }
+.css-puck-collaborator-avatars__avatar:nth-child(2) { z-index: 4; }
+.css-puck-collaborator-avatars__avatar:nth-child(3) { z-index: 3; }
+.css-puck-collaborator-avatars__avatar:nth-child(4) { z-index: 2; }
+.css-puck-collaborator-avatars__avatar:nth-child(5) { z-index: 1; }
+
+/* Editing state - pulsing ring */
+.css-puck-collaborator-avatars__avatar--editing {
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.4);
+  animation: css-puck-avatar-pulse 2s ease-in-out infinite;
+}
+
+@keyframes css-puck-avatar-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.2);
+  }
+}
+
+/* Agent avatar styling - uses same hash-based coloring as humans */
+/* The agent badge provides visual distinction without overriding the color */
+.css-puck-collaborator-avatars__avatar--agent {
+  /* No background override - agents use hash-based colors like humans */
+}
+
+.css-puck-collaborator-avatars__image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.css-puck-collaborator-avatars__initials {
+  text-transform: uppercase;
+  user-select: none;
+}
+
+/* Agent badge indicator */
+.css-puck-collaborator-avatars__agent-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 12px;
+  height: 12px;
+  background: var(--puck-css-avatar-agent);
+  border: 2px solid white;
+  border-radius: 50%;
+}
+
+.css-puck-collaborator-avatars__agent-badge::before {
+  content: "⚡";
+  font-size: 6px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Separator between groups */
+.css-puck-collaborator-avatars__separator {
+  width: 1px;
+  height: 24px;
+  background: var(--puck-css-border);
+  margin: 0 8px;
+}
+
+/* Overflow indicator */
+.css-puck-collaborator-avatars__overflow {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--puck-css-bg-secondary);
+  border: 2px solid white;
+  color: var(--puck-css-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: -8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Tooltip styling */
+.css-puck-collaborator-avatars__avatar[data-tooltip] {
+  position: relative;
+}
+
+.css-puck-collaborator-avatars__avatar[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 10px;
+  background: var(--puck-css-text);
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: pre-line;
+  border-radius: 6px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+  z-index: 100;
+  pointer-events: none;
+  min-width: 100px;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.css-puck-collaborator-avatars__avatar[data-tooltip]::before {
+  content: "";
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom-color: var(--puck-css-text);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+  z-index: 100;
+}
+
+.css-puck-collaborator-avatars__avatar[data-tooltip]:hover::after,
+.css-puck-collaborator-avatars__avatar[data-tooltip]:hover::before {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ============================================
+   AgentActivityBanner
+   ============================================ */
+.css-puck-agent-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--puck-css-bg);
+  border: 1px solid var(--puck-css-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  gap: 12px;
+}
+
+.css-puck-agent-banner--editing {
+  border-color: var(--puck-css-primary);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(99, 102, 241, 0.02) 100%);
+}
+
+.css-puck-agent-banner--active {
+  border-color: var(--puck-css-diff-added);
+}
+
+.css-puck-agent-banner__content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.css-puck-agent-banner__avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 12px;
+  position: relative;
+  flex-shrink: 0;
+  /* Default agent color - can be overridden by inline style */
+  background: var(--puck-css-avatar-agent, #6366f1);
+}
+
+.css-puck-agent-banner__initials {
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.css-puck-agent-banner__agent-icon {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 12px;
+  height: 12px;
+  background: var(--puck-css-avatar-agent, #6366f1);
+  border: 2px solid white;
+  border-radius: 50%;
+}
+
+.css-puck-agent-banner__agent-icon::before {
+  content: "⚡";
+  font-size: 6px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.css-puck-agent-banner__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.css-puck-agent-banner__name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--puck-css-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.css-puck-agent-banner__intent {
+  font-size: 12px;
+  color: var(--puck-css-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.css-puck-agent-banner__regions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.css-puck-agent-banner__regions-label {
+  font-size: 11px;
+  color: var(--puck-css-text-secondary);
+  font-weight: 500;
+}
+
+.css-puck-agent-banner__region {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: var(--puck-css-bg-secondary);
+  border-radius: 4px;
+  color: var(--puck-css-text);
+  font-family: ui-monospace, monospace;
+}
+
+.css-puck-agent-banner__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.css-puck-agent-banner__stop-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--puck-css-diff-removed);
+  background: var(--puck-css-diff-removed-bg);
+  border: 1px solid var(--puck-css-diff-removed);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.css-puck-agent-banner__stop-btn:hover {
+  background: var(--puck-css-diff-removed);
+  color: white;
+}
+
+.css-puck-agent-banner__stop-btn:active {
+  transform: scale(0.98);
+}
+
+.css-puck-agent-banner__dismiss-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--puck-css-text-secondary);
+  background: transparent;
+  border: 1px solid var(--puck-css-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.css-puck-agent-banner__dismiss-btn:hover {
+  background: var(--puck-css-bg-secondary);
+}
+
+/* ============================================
+   Focus Region Highlighting
+   ============================================ */
+
+/* Focus region highlight wrapper - shows which components other actors have selected */
+.focus-region-highlight {
+  position: relative;
+  outline: 2px solid var(--focus-color, #6366f1);
+  outline-offset: 2px;
+  border-radius: 0.375rem;
+}
+
+/* Editing state - thicker outline with pulsing animation */
+.focus-region-highlight--editing {
+  outline-width: 3px;
+  animation: focus-pulse 2s ease-in-out infinite;
+}
+
+@keyframes focus-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 var(--focus-color, #6366f1);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--focus-color, #6366f1) 30%, transparent);
+  }
+}
+
+/* Actor badge - shows first initial of actor's name */
+.focus-region-highlight__badge {
+  position: absolute;
+  top: -0.75rem;
+  left: 0.5rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--focus-color, #6366f1);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 50%;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}

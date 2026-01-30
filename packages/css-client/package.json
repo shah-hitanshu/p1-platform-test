@@ -2,6 +2,14 @@
   "name": "@pantheon/css-client",
   "version": "0.0.1",
   "description": "TypeScript API client for Collaborative State System",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pantheon-systems/puck-css-integration.git",
+    "directory": "packages/css-client"
+  },
+  "publishConfig": {
+    "@pantheon:registry": "https://npm.pkg.github.com"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

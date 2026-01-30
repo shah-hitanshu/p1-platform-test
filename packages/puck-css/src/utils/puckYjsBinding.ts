@@ -31,6 +31,13 @@ interface PuckRootData {
 const LOCAL_ORIGIN = 'local';
 
 /**
+ * Flag to track if we're currently applying a local change.
+ * Used to prevent the observer from firing during local changes,
+ * even if there are edge cases with transaction origins.
+ */
+let isApplyingLocalChange = false;
+
+/**
  * Convert a Puck data structure to a Yjs Y.Map.
  *
  * @param data - The PuckData to convert
@@ -122,13 +129,24 @@ export function createPuckYjsBinding(
   // Observer for remote changes
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const observer = (_events: any[], txn: Y.Transaction): void => {
-    // Ignore local changes
+    console.log('[puckYjsBinding] Observer called, origin:', txn.origin, 'isApplyingLocalChange:', isApplyingLocalChange);
+
+    // Double-check: skip if we're in the middle of applying a local change
+    // This handles any edge cases where transaction origin might not be set correctly
+    if (isApplyingLocalChange) {
+      console.log('[puckYjsBinding] Ignoring change - local change in progress (flag)');
+      return;
+    }
+
+    // Ignore local changes by transaction origin
     if (txn.origin === LOCAL_ORIGIN) {
+      console.log('[puckYjsBinding] Ignoring local change (origin)');
       return;
     }
 
     // Convert Y.Map to PuckData and notify
     const puckData = yMapToPuckData(root);
+    console.log('[puckYjsBinding] Calling onRemoteUpdate with title:', puckData.root?.props?.title);
     onRemoteUpdate(puckData);
   };
 
@@ -139,9 +157,15 @@ export function createPuckYjsBinding(
     /**
      * Apply a local change to the Y.Doc.
      * Uses LOCAL_ORIGIN to prevent triggering onRemoteUpdate.
+     * Also sets isApplyingLocalChange flag as a backup mechanism.
      */
     applyLocalChange: (data: PuckData) => {
-      puckDataToYMap(data, root);
+      isApplyingLocalChange = true;
+      try {
+        puckDataToYMap(data, root);
+      } finally {
+        isApplyingLocalChange = false;
+      }
     },
 
     /**

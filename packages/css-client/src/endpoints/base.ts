@@ -19,6 +19,11 @@ export interface BaseEndpointConfig {
   baseUrl: string;
   authProvider?: AuthProvider;
   principal?: Principal;
+  /**
+   * Session ID for agent authorization.
+   * When set, the X-Agent-Session-Id header will be sent with all requests.
+   */
+  sessionId?: string;
 }
 
 export interface RequestOptions {
@@ -36,12 +41,14 @@ export class BaseEndpoint {
   private readonly baseUrl: string;
   private readonly authProvider?: AuthProvider;
   private readonly principal?: Principal;
+  private readonly sessionId?: string;
 
   constructor(config: BaseEndpointConfig) {
     // Remove trailing slash from base URL
     this.baseUrl = config.baseUrl.replace(/\/$/, '');
     this.authProvider = config.authProvider;
     this.principal = config.principal;
+    this.sessionId = config.sessionId;
   }
 
   /**
@@ -76,6 +83,11 @@ export class BaseEndpoint {
     if (this.principal) {
       headers['X-Principal-Id'] = this.principal.id;
       headers['X-Principal-Type'] = this.principal.type;
+    }
+
+    // Add session ID header for agent authorization
+    if (this.sessionId) {
+      headers['X-Agent-Session-Id'] = this.sessionId;
     }
 
     let response: Response;
@@ -138,6 +150,19 @@ export class BaseEndpoint {
       baseUrl: this.baseUrl,
       authProvider: this.authProvider,
       principal,
+      sessionId: this.sessionId,
+    });
+  }
+
+  /**
+   * Create a new BaseEndpoint with session ID for agent authorization.
+   */
+  withSessionId(sessionId: string): BaseEndpoint {
+    return new BaseEndpoint({
+      baseUrl: this.baseUrl,
+      authProvider: this.authProvider,
+      principal: this.principal,
+      sessionId,
     });
   }
 }

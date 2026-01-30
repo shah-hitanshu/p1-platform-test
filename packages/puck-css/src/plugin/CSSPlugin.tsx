@@ -6,8 +6,11 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import type { Branch, Document, DocumentVersion, PuckData } from '@pantheon/css-client';
+import type { Branch, Document, DocumentVersion, PuckData, RegisteredAgent, ActorPresence } from '@pantheon/css-client';
 import { PuckDataSynchronizer } from '../components/PuckDataSynchronizer.js';
+import { AgentActivityBanner } from '../components/presence/AgentActivityBanner.js';
+import { PuckSelectionTracker } from '../components/PuckSelectionTracker.js';
+import { useCSSPuck } from '../CSSPuckContext.js';
 
 /**
  * Props for the CSS Plugin panel content
@@ -41,6 +44,25 @@ interface CSSPluginPanelProps {
   selectedVersionId?: string;
   /** Callback when a version is selected */
   onVersionSelect?: (version: DocumentVersion) => void;
+  // Presence/Agent Features
+  /** Whether to show presence indicator */
+  showPresenceIndicator?: boolean;
+  /** Current presence list */
+  presence?: ActorPresence[];
+  /** Whether to show agent activity section */
+  showAgentActivity?: boolean;
+  /** Currently active agents */
+  activeAgents?: ActorPresence[];
+  /** Whether to show agent action trigger */
+  showAgentActions?: boolean;
+  /** Available agents for actions */
+  availableAgents?: RegisteredAgent[];
+  /** Callback when agent action is triggered */
+  onAgentAction?: (agentId: string, intent: string, targetRegions?: string[]) => void;
+  /** Whether to show focus regions */
+  showFocusRegions?: boolean;
+  /** Regions being edited by agents */
+  agentEditingRegions?: string[];
 }
 
 /**
@@ -74,7 +96,21 @@ function CSSPluginPanel({
   versionsLoading = false,
   selectedVersionId,
   onVersionSelect,
+  // Presence/Agent Features
+  showPresenceIndicator = false,
+  presence = [],
+  showAgentActivity = false,
+  activeAgents = [],
+  showAgentActions = false,
+  availableAgents = [],
+  onAgentAction,
+  // Focus regions are shown within AgentActivityBanner
+  showFocusRegions: _showFocusRegions = false,
+  agentEditingRegions: _agentEditingRegions = [],
 }: CSSPluginPanelProps): React.ReactElement {
+  // Suppress unused variable warnings - these are passed through for future use
+  void _showFocusRegions;
+  void _agentEditingRegions;
   const [isCreating, setIsCreating] = useState(false);
   const [newDocPath, setNewDocPath] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
@@ -247,6 +283,54 @@ function CSSPluginPanel({
           )}
         </div>
       )}
+
+      {/* Presence Section */}
+      {showPresenceIndicator && (
+        <div className="css-plugin-section">
+          <div className="css-plugin-section-header">
+            <label className="css-plugin-label">Collaborators</label>
+          </div>
+          {presence.length === 0 ? (
+            <div className="css-plugin-empty">No collaborators</div>
+          ) : (
+            <ul className="css-plugin-presence-list">
+              {presence.map((actor) => (
+                <li key={actor.id} className="css-plugin-presence-item">
+                  <span className="css-plugin-presence-name">{actor.name}</span>
+                  <span className={`css-plugin-presence-state css-plugin-presence-state--${actor.state}`}>
+                    {actor.state}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* Agent Activity Section */}
+      {showAgentActivity && activeAgents.length > 0 && (
+        <div className="css-plugin-section">
+          <div className="css-plugin-section-header">
+            <label className="css-plugin-label">Agent Activity</label>
+          </div>
+          {activeAgents.map((agent) => (
+            <AgentActivityBanner key={agent.id} agent={agent} showIdle />
+          ))}
+        </div>
+      )}
+
+      {/* Agent Actions Section */}
+      {showAgentActions && availableAgents.length > 0 && availableAgents[0] && (
+        <div className="css-plugin-section">
+          <button
+            type="button"
+            className="css-plugin-btn css-plugin-btn-primary"
+            onClick={() => onAgentAction?.(availableAgents[0]!.id, '', [])}
+          >
+            Ask Agent
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -322,6 +406,52 @@ function SyncDataPoller({
 }
 
 /**
+ * Component that reads sync data directly from CSSPuckContext.
+ * This is the preferred sync mechanism as it keeps all sync logic in the integration layer,
+ * rather than requiring consumers to manage sync state.
+ *
+ * The component computes the sync key from context values:
+ * - remoteSyncKey takes priority (for real-time updates)
+ * - Falls back to viewingVersion or currentDocument for initial load/version switching
+ *
+ * Note: The actual deduplication of syncs is handled by PuckDataSynchronizer using
+ * module-level tracking. This component simply passes through the current sync key
+ * without any side effects during render.
+ */
+function ContextSyncBridge(): React.ReactElement | null {
+  // Try to get context - may fail if not inside CSSPuckProvider
+  let context: ReturnType<typeof useCSSPuck> | null = null;
+  try {
+    context = useCSSPuck();
+  } catch {
+    // Not inside CSSPuckProvider, skip context-based sync
+    return null;
+  }
+
+  const { currentData, remoteSyncKey, currentDocument, viewingVersion } = context;
+
+  // Compute the sync key from context values
+  // - remoteSyncKey takes priority for real-time updates (changes with each remote update)
+  // - viewingVersion for viewing historical versions
+  // - currentDocument for initial document load
+  const syncKey = remoteSyncKey
+    ? remoteSyncKey // Remote updates take priority - unique per update via Date.now()
+    : viewingVersion
+      ? `version-${viewingVersion.id}`
+      : currentDocument
+        ? `doc-${currentDocument.id}-latest`
+        : null;
+
+  if (!currentData || !syncKey) {
+    return null;
+  }
+
+  // PuckDataSynchronizer handles deduplication via module-level tracking
+  // in its useEffect, so we can safely pass the current sync key every time
+  return <PuckDataSynchronizer data={currentData} syncKey={syncKey} />;
+}
+
+/**
  * Options for creating the CSS Plugin
  */
 export interface CSSPluginOptions {
@@ -378,6 +508,40 @@ export interface CSSPluginOptions {
    * on every sync, which reduces flickering during real-time collaboration.
    */
   getDataSyncKey?: () => string | undefined;
+  /**
+   * When true, the plugin reads sync data directly from CSSPuckContext.
+   * This is the recommended approach as it keeps sync logic in the integration layer.
+   * When false, you must provide syncData/dataSyncKey or getSyncData/getDataSyncKey.
+   * @default true
+   */
+  useContextSync?: boolean;
+  // Presence/Agent Features
+  /** Whether to show presence indicator in the plugin panel */
+  showPresenceIndicator?: boolean;
+  /** Current presence list */
+  presence?: ActorPresence[];
+  /** Whether to show agent activity section */
+  showAgentActivity?: boolean;
+  /** Currently active agents */
+  activeAgents?: ActorPresence[];
+  /** Whether to show agent action trigger button */
+  showAgentActions?: boolean;
+  /** Available agents for triggering actions */
+  availableAgents?: RegisteredAgent[];
+  /** Callback when agent action is triggered */
+  onAgentAction?: (agentId: string, intent: string, targetRegions?: string[]) => void;
+  /** Whether to show focus regions being edited */
+  showFocusRegions?: boolean;
+  /** Regions currently being edited by agents */
+  agentEditingRegions?: string[];
+  // Focus Region Reporting
+  /**
+   * Callback when user selection changes in the Puck editor.
+   * Used to report focus regions for proactive collision detection.
+   * @param path - JSON path of selected item (e.g., "/content/0"), or null if deselected
+   * @param itemId - Component ID, or null if deselected
+   */
+  onSelectionChange?: (path: string | null, itemId: string | null) => void;
 }
 
 /**
@@ -413,11 +577,13 @@ export interface PuckPlugin {
  * ```
  */
 export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
-  // Determine which sync mechanism to use:
-  // - Getter functions (preferred): Uses SyncDataPoller which polls for changes
-  // - Direct values (legacy): Uses PuckDataSynchronizer directly (causes plugin recreation)
-  const useGetterSync = options.getSyncData !== undefined && options.getDataSyncKey !== undefined;
-  const useLegacySync = options.syncData !== undefined && options.dataSyncKey !== undefined;
+  // Determine which sync mechanism to use (in order of preference):
+  // 1. Context-based (default): Reads from CSSPuckContext directly - most reliable
+  // 2. Getter functions: Uses SyncDataPoller which polls for changes
+  // 3. Direct values (legacy): Uses PuckDataSynchronizer directly (causes plugin recreation)
+  const useContextSync = options.useContextSync !== false; // Default to true
+  const useGetterSync = !useContextSync && options.getSyncData !== undefined && options.getDataSyncKey !== undefined;
+  const useLegacySync = !useContextSync && !useGetterSync && options.syncData !== undefined && options.dataSyncKey !== undefined;
 
   return {
     name: 'css',
@@ -425,16 +591,21 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
     icon: <CSSPluginIcon />,
     render: () => (
       <>
-        {/* Sync data to Puck - uses getter-based polling if available (reduces flickering),
-            falls back to direct props for backwards compatibility */}
+        {/* Sync data to Puck - context-based is preferred (most reliable),
+            falls back to getter-based or direct props for backwards compatibility */}
+        {useContextSync && <ContextSyncBridge />}
         {useGetterSync && (
           <SyncDataPoller
             getSyncData={options.getSyncData!}
             getDataSyncKey={options.getDataSyncKey!}
           />
         )}
-        {!useGetterSync && useLegacySync && (
+        {useLegacySync && (
           <PuckDataSynchronizer data={options.syncData!} syncKey={options.dataSyncKey!} />
+        )}
+        {/* Track selection changes for focus region reporting */}
+        {options.onSelectionChange && (
+          <PuckSelectionTracker onSelectionChange={options.onSelectionChange} />
         )}
         <CSSPluginPanel
           branches={options.branches}
@@ -451,6 +622,16 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
           versionsLoading={options.versionsLoading}
           selectedVersionId={options.selectedVersionId}
           onVersionSelect={options.onVersionSelect}
+          // Presence/Agent Features
+          showPresenceIndicator={options.showPresenceIndicator}
+          presence={options.presence}
+          showAgentActivity={options.showAgentActivity}
+          activeAgents={options.activeAgents}
+          showAgentActions={options.showAgentActions}
+          availableAgents={options.availableAgents}
+          onAgentAction={options.onAgentAction}
+          showFocusRegions={options.showFocusRegions}
+          agentEditingRegions={options.agentEditingRegions}
         />
       </>
     ),

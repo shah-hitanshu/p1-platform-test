@@ -25,6 +25,11 @@ import {
   createCSSOverrides,
   diffPuckDataWithPositions,
   createHistoricalVersionConfig,
+  useFocusRegionReporting,
+  createFocusRegionMap,
+  createFocusHighlightConfig,
+  FocusHighlightProvider,
+  usePresenceContext,
 } from '@pantheon/puck-css';
 import type { DocumentVersion } from '@pantheon/css-client';
 import type { ComponentDiffWithPosition } from '@pantheon/puck-css';
@@ -42,8 +47,120 @@ const config = {
   siteId: import.meta.env.VITE_CSS_SITE_ID || '',
   branchId: import.meta.env.VITE_CSS_BRANCH_ID as string | undefined, // Optional - defaults to main
   userId: import.meta.env.VITE_CSS_USER_ID || 'demo-user',
+  userName: import.meta.env.VITE_CSS_USER_NAME || 'Demo User',
   enableRealtime: import.meta.env.VITE_CSS_ENABLE_REALTIME !== 'false', // Default to true
+  enablePresence: import.meta.env.VITE_CSS_ENABLE_PRESENCE !== 'false', // Default to true
 };
+
+// Demo users for testing presence
+const DEMO_USERS = [
+  { id: 'alice', name: 'Alice Johnson' },
+  { id: 'bob', name: 'Bob Smith' },
+  { id: 'charlie', name: 'Charlie Brown' },
+  { id: 'diana', name: 'Diana Prince' },
+];
+
+/**
+ * Generate a consistent hash from a string.
+ * Uses a simple but effective hash algorithm (djb2).
+ * Must match the algorithm in CollaboratorAvatars.tsx for consistent colors.
+ */
+function hashString(str: string): number {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 33) ^ str.charCodeAt(i);
+  }
+  return hash >>> 0; // Convert to unsigned 32-bit integer
+}
+
+/**
+ * Generate a consistent HSL color from a user's ID.
+ * Uses the ID to generate a hue, with fixed saturation and lightness
+ * for good contrast with white text.
+ */
+function getAvatarColor(userId: string): string {
+  const hash = hashString(userId);
+  const hue = hash % 360;
+  return `hsl(${hue}, 65%, 45%)`;
+}
+
+interface UserSwitcherProps {
+  currentUserId: string;
+  onUserChange: (userId: string, userName: string) => void;
+}
+
+/**
+ * User Switcher Component
+ * Allows switching between demo users to test presence features
+ */
+function UserSwitcher({ currentUserId, onUserChange }: UserSwitcherProps) {
+  const currentUser = DEMO_USERS.find(u => u.id === currentUserId) || DEMO_USERS[0];
+  const avatarColor = getAvatarColor(currentUser.id);
+
+  return (
+    <div style={{
+      position: 'fixed',
+      bottom: '20px',
+      right: '20px',
+      zIndex: 9999,
+      background: 'white',
+      borderRadius: '12px',
+      boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+      padding: '12px 16px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '12px',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      fontSize: '14px',
+    }}>
+      <div style={{
+        width: '32px',
+        height: '32px',
+        borderRadius: '50%',
+        background: avatarColor,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: '14px',
+      }}>
+        {currentUser.name.charAt(0)}
+      </div>
+      <select
+        value={currentUserId}
+        onChange={(e) => {
+          const user = DEMO_USERS.find(u => u.id === e.target.value);
+          if (user) {
+            onUserChange(user.id, user.name);
+          }
+        }}
+        style={{
+          padding: '8px 12px',
+          borderRadius: '6px',
+          border: '1px solid #ddd',
+          background: 'white',
+          cursor: 'pointer',
+          fontSize: '14px',
+          minWidth: '150px',
+        }}
+      >
+        {DEMO_USERS.map(user => (
+          <option key={user.id} value={user.id}>
+            {user.name}
+          </option>
+        ))}
+      </select>
+      <div style={{
+        fontSize: '12px',
+        color: '#666',
+        maxWidth: '200px',
+      }}>
+        Switch users to see presence avatars
+      </div>
+    </div>
+  );
+}
 
 // Validate configuration
 function ConfigWarning() {
@@ -100,8 +217,30 @@ function AppContent() {
     latestVersionData,
     loadVersion,
     returnToLatest,
-    remoteSyncKey,
+    // Phase 9: Presence
+    presence,
+    // WebSocket focus region sender
+    sendFocusRegions: sendFocusRegionsViaWs,
   } = useCSSPuck();
+
+  // Focus region reporting - reports which component the user has selected
+  // This helps agents avoid editing regions where a human has focus
+  // Pass sendFocusRegions from context to use WebSocket first, with HTTP fallback
+  const { setFocusRegions, clearFocus } = useFocusRegionReporting({
+    enabled: config.enablePresence,
+    debounceMs: 300,
+    heartbeatMs: 15000,
+    sendViaWebSocket: sendFocusRegionsViaWs,
+  });
+
+  // Handle selection changes from Puck for focus region reporting
+  const handleSelectionChange = useCallback((path: string | null, _itemId: string | null) => {
+    if (path) {
+      setFocusRegions([path]);
+    } else {
+      clearFocus();
+    }
+  }, [setFocusRegions, clearFocus]);
 
   // Document management via useDocuments hook
   const { documents, loading: documentsLoading, create, remove } = useDocuments({
@@ -134,14 +273,38 @@ function AppContent() {
     return diffPuckDataWithPositions(currentData, latestVersionData);
   }, [isViewingHistoricalVersion, currentData, latestVersionData]);
 
+  // Get the current user's ID from the presence context to filter them out of focus highlights
+  const presenceContext = usePresenceContext();
+  const currentUserId = presenceContext?.userId ?? '';
+
+  // Create focus map from other actors' focus regions
+  // This shows visual highlights on components that other users/agents are viewing or editing
+  // With context-based highlighting, focusMap changes no longer cause config recreation
+  const focusMap = useMemo(() => {
+    if (!presence || !currentData) return new Map();
+    // Filter out the current user - we only show highlights for OTHER actors
+    const otherActors = presence.actors.filter(a => a.actorId !== currentUserId);
+    return createFocusRegionMap(currentData, otherActors);
+  }, [presence, currentUserId, currentData]);
+
+  // Create config with focus highlight wrappers (stable - uses context for actual highlights)
+  // The focus highlighting is context-based, so config doesn't need to change when focusMap changes
+  const focusEnabledConfig = useMemo(() => {
+    return createFocusHighlightConfig(puckConfig) as typeof puckConfig;
+  }, []);
+
   // Create highlighted config when viewing historical version
+  // Only changes when viewing history, not on focus region changes
   const effectiveConfig = useMemo(() => {
+    let config = focusEnabledConfig;
+
+    // Apply historical version highlighting if viewing old version
     if (isViewingHistoricalVersion && historicalDiffs.length > 0) {
-      // Type assertion needed because createHistoricalVersionConfig returns a wrapped config
-      return createHistoricalVersionConfig(puckConfig, historicalDiffs) as typeof puckConfig;
+      config = createHistoricalVersionConfig(config, historicalDiffs) as typeof puckConfig;
     }
-    return puckConfig;
-  }, [isViewingHistoricalVersion, historicalDiffs]);
+
+    return config;
+  }, [isViewingHistoricalVersion, historicalDiffs, focusEnabledConfig]);
 
   // Puck permissions - read-only when viewing historical version
   const puckPermissions = useMemo(() => {
@@ -250,10 +413,6 @@ function AppContent() {
     }
   }, [currentDocument?.id, refreshVersions]);
 
-  // Track the last synced key to avoid syncing on every render
-  // This ref persists across renders even if child components remount
-  const lastSyncedKeyRef = useRef<string | null>(null);
-
   // Use refs for values that change frequently but shouldn't trigger plugin/overrides recreation
   // This prevents the plugin and overrides from being recreated on every save, which causes flicker
   const saveStatusRef = useRef(saveStatus);
@@ -269,28 +428,6 @@ function AppContent() {
     saveErrorRef.current = saveError;
   }, [saveError]);
 
-  // Generate a sync key that changes when we want to force Puck to update its data
-  // Only sync when document, version, or remote updates change, NOT when currentData changes from local saves
-  const targetSyncKey = remoteSyncKey
-    ? remoteSyncKey // Remote updates take priority for real-time sync
-    : viewingVersion
-      ? `version-${viewingVersion.id}`
-      : currentDocument
-        ? `doc-${currentDocument.id}-latest`
-        : null;
-
-  // Only provide a new dataSyncKey when it's different from what we last synced
-  // This prevents re-syncing after saves which would overwrite user edits
-  const dataSyncKey = targetSyncKey !== lastSyncedKeyRef.current ? targetSyncKey : null;
-
-  // Update the ref after we determine if sync is needed
-  // (The actual sync happens in PuckDataSynchronizer when dataSyncKey is non-null)
-  useEffect(() => {
-    if (dataSyncKey !== null) {
-      lastSyncedKeyRef.current = dataSyncKey;
-    }
-  }, [dataSyncKey]);
-
   // Stable getter functions (read from refs to avoid stale closures)
   const getHasUnsavedChanges = useCallback(() => saveStatusRef.current === 'saving', []);
   const getSaveStatus = useCallback(() => saveStatusRef.current, []);
@@ -298,8 +435,7 @@ function AppContent() {
   const getSaveError = useCallback(() => saveErrorRef.current, []);
 
   // Create Puck plugin for CSS integration (branch selector + document list + versions in plugin rail)
-  // syncData and dataSyncKey are passed here so PuckDataSynchronizer renders inside Puck's context
-  // When dataSyncKey is non-null, we need to sync currentData to Puck
+  // The plugin uses ContextSyncBridge internally to sync data from CSSPuckContext to Puck
   const cssPlugin = useMemo(() => createCSSPlugin({
     branches,
     currentBranch,
@@ -315,10 +451,8 @@ function AppContent() {
     versionsLoading,
     selectedVersionId: viewingVersion?.id ?? undefined,
     onVersionSelect: handleVersionSelect,
-    // Data sync props - these render PuckDataSynchronizer inside the plugin (inside Puck's context)
-    // We pass currentData directly when syncing is needed (dataSyncKey non-null)
-    syncData: currentData,
-    dataSyncKey,
+    // Focus region reporting - reports component selection to backend for agent collision avoidance
+    onSelectionChange: config.enablePresence ? handleSelectionChange : undefined,
   }), [
     branches,
     currentBranch,
@@ -334,13 +468,11 @@ function AppContent() {
     versionsLoading,
     viewingVersion,
     handleVersionSelect,
-    // Include currentData in deps - the dataSyncKey guards when actual sync happens
-    currentData,
-    dataSyncKey,
+    // Focus region reporting for agent collision avoidance
+    handleSelectionChange,
   ]);
 
   // Create Puck overrides for header actions (save indicator, publish button, version banner)
-  // NOTE: syncData/dataSyncKey are NOT passed here - they're in the plugin above
   // IMPORTANT: We use getter functions for saveStatus/lastSaved/saveError to avoid recreating
   // the overrides on every save, which would cause Puck to potentially re-render and flicker.
   const cssOverrides = useMemo(() => createCSSOverrides({
@@ -357,7 +489,13 @@ function AppContent() {
     isViewingHistoricalVersion,
     viewingVersion,
     onReturnToLatest: returnToLatest,
-  }), [getSaveStatus, getLastSaved, getSaveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError, pauseAutoSave, isViewingHistoricalVersion, viewingVersion, returnToLatest]);
+    // Phase 9: Presence features
+    showCollaboratorAvatars: !!presence,
+    presence: presence?.actors ?? [],
+    showAgentActivityBanner: !!presence?.hasActiveAgents,
+    activeAgents: presence?.agents ?? [],
+    isAgentEditing: presence?.hasActiveAgents ?? false,
+  }), [getSaveStatus, getLastSaved, getSaveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError, pauseAutoSave, isViewingHistoricalVersion, viewingVersion, returnToLatest, presence]);
 
   // Loading state
   if (loading) {
@@ -404,16 +542,19 @@ function AppContent() {
   // Document loaded - show Puck editor
   // When viewing historical version, editor is read-only with diff highlighting
   // Data sync happens via PuckDataSynchronizer in overrides (preserves sidebar state)
+  // FocusHighlightProvider enables focus highlighting without config recreation (no flicker)
   return (
     <div className="app app--fullscreen">
-      <Puck
-        config={effectiveConfig}
-        data={currentData}
-        onChange={isViewingHistoricalVersion ? () => {} : handleChange}
-        plugins={puckPlugins}
-        overrides={puckOverrides}
-        permissions={puckPermissions}
-      />
+      <FocusHighlightProvider focusMap={focusMap}>
+        <Puck
+          config={effectiveConfig}
+          data={currentData}
+          onChange={isViewingHistoricalVersion ? () => {} : handleChange}
+          plugins={puckPlugins}
+          overrides={puckOverrides}
+          permissions={puckPermissions}
+        />
+      </FocusHighlightProvider>
     </div>
   );
 }
@@ -423,24 +564,44 @@ function AppContent() {
  * Main entry point with provider setup
  */
 export function App() {
+  // State for current user (enables user switching for presence demo)
+  const [currentUser, setCurrentUser] = useState({
+    id: DEMO_USERS[0].id,
+    name: DEMO_USERS[0].name,
+  });
+
+  // Handle user change - this will remount the provider with new user
+  const handleUserChange = useCallback((userId: string, userName: string) => {
+    setCurrentUser({ id: userId, name: userName });
+  }, []);
+
   // Check for required configuration (branchId is optional - defaults to main)
   if (!config.apiKey || !config.siteId) {
     return <ConfigWarning />;
   }
 
   return (
-    <CSSPuckProvider
-      client={cssClient}
-      siteId={config.siteId}
-      branchId={config.branchId}
-      userId={config.userId}
-      autoSaveDelay={3000}
-      maxRetries={3}
-      enableRealtime={config.enableRealtime}
-      wsBaseUrl={config.wsBaseUrl}
-      realtimeApiKey={config.apiKey}
-    >
-      <AppContent />
-    </CSSPuckProvider>
+    <>
+      <CSSPuckProvider
+        key={currentUser.id} // Force remount on user change to reset connections
+        client={cssClient}
+        siteId={config.siteId}
+        branchId={config.branchId}
+        userId={currentUser.id}
+        userName={currentUser.name}
+        autoSaveDelay={3000}
+        maxRetries={3}
+        enableRealtime={config.enableRealtime}
+        wsBaseUrl={config.wsBaseUrl}
+        realtimeApiKey={config.apiKey}
+        presenceEnabled={config.enablePresence}
+      >
+        <AppContent />
+      </CSSPuckProvider>
+      <UserSwitcher
+        currentUserId={currentUser.id}
+        onUserChange={handleUserChange}
+      />
+    </>
   );
 }

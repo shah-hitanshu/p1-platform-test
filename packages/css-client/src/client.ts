@@ -13,6 +13,9 @@ import {
   DocumentsEndpoint,
   VersionsEndpoint,
   CheckpointsEndpoint,
+  PresenceEndpoint,
+  AgentRegistryEndpoint,
+  AgentEditEndpoint,
 } from './endpoints/index.js';
 
 /**
@@ -104,6 +107,21 @@ export class CSSClient {
    */
   public readonly checkpoints: CheckpointsEndpoint;
 
+  /**
+   * Presence queries for sites, branches, and agents.
+   */
+  public readonly presence: PresenceEndpoint;
+
+  /**
+   * Agent registry operations.
+   */
+  public readonly agentRegistry: AgentRegistryEndpoint;
+
+  /**
+   * Agent edit workflow operations.
+   */
+  public readonly agentEdit: AgentEditEndpoint;
+
   constructor(config: CSSClientConfig | InternalConfig) {
     // Check if this is an internal config (has baseEndpoint)
     if ('baseEndpoint' in config) {
@@ -127,6 +145,11 @@ export class CSSClient {
     this.documents = new DocumentsEndpoint(this.baseEndpoint);
     this.versions = new VersionsEndpoint(this.baseEndpoint);
     this.checkpoints = new CheckpointsEndpoint(this.baseEndpoint);
+
+    // Agent Politeness endpoints
+    this.presence = new PresenceEndpoint(this.baseEndpoint);
+    this.agentRegistry = new AgentRegistryEndpoint(this.baseEndpoint);
+    this.agentEdit = new AgentEditEndpoint(this.baseEndpoint);
   }
 
   /**
@@ -138,6 +161,26 @@ export class CSSClient {
    */
   withPrincipal(principal: Principal): CSSClient {
     const newBaseEndpoint = this.baseEndpoint.withPrincipal(principal);
+    return new CSSClient({ baseEndpoint: newBaseEndpoint });
+  }
+
+  /**
+   * Create a new client instance with session ID for agent authorization.
+   * The session ID is obtained from startEdit() and enables server-side
+   * enforcement of the Agent Politeness Protocol.
+   *
+   * @param sessionId - The session ID from startEdit()
+   * @returns A new CSSClient instance with the session ID set
+   *
+   * @example
+   * ```typescript
+   * const session = await client.agentEdit.startEdit(siteId, branchId, docPath, context);
+   * const authorizedClient = client.withSessionId(session.sessionId);
+   * await authorizedClient.versions.create(siteId, params);
+   * ```
+   */
+  withSessionId(sessionId: string): CSSClient {
+    const newBaseEndpoint = this.baseEndpoint.withSessionId(sessionId);
     return new CSSClient({ baseEndpoint: newBaseEndpoint });
   }
 }

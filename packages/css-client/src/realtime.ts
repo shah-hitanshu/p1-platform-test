@@ -8,6 +8,13 @@
 
 import * as Y from 'yjs';
 import { WebSocket as ReconnectingWebSocket } from 'partysocket';
+import type {
+  ActorPresence,
+  ActorState,
+  WsFocusRegionUpdateMessage,
+  WsPresenceHeartbeatMessage,
+  WsServerMessage,
+} from './types';
 
 /**
  * Configuration for reconnection behavior
@@ -84,6 +91,25 @@ export interface RealtimeClientConfig {
   onReconnecting?: (attempt: number) => void;
 
   /**
+   * Callback when authorization fails (WebSocket close code 4401 or 4403).
+   * This indicates the session is invalid or the agent lacks permission.
+   * When this is called, the client will NOT attempt to reconnect.
+   */
+  onAuthorizationError?: (error: Error) => void;
+
+  /**
+   * Callback when presence update is received from server.
+   * Called with the full list of actors in the document.
+   */
+  onPresenceUpdate?: (actors: ActorPresence[]) => void;
+
+  /**
+   * Callback when another actor updates their focus regions.
+   * Called with the actor ID and their new focus regions.
+   */
+  onFocusRegionBroadcast?: (actorId: string, focusRegions: string[]) => void;
+
+  /**
    * Configuration for automatic reconnection behavior.
    */
   reconnection?: ReconnectionConfig;
@@ -107,6 +133,13 @@ export interface ConnectionParams {
 
   /** Actor type */
   actorType: 'user' | 'agent';
+
+  /**
+   * Session ID for agent authorization.
+   * Required for agents, obtained from startEdit() response.
+   * Enables server-side enforcement of the Agent Politeness Protocol.
+   */
+  sessionId?: string;
 }
 
 /**
@@ -160,7 +193,11 @@ export class RealtimeClient {
     this.ydoc.on('update', (update: Uint8Array, origin: unknown) => {
       // Only broadcast if this update didn't come from remote
       if (origin !== 'remote' && this.ws && this.ws.readyState === WebSocket.OPEN) {
+        /* TODO: Remove console.log */
+        console.log('[Realtime] Sending local update, size:', update.length, 'origin:', origin);
         this.ws.send(update);
+      } else if (origin !== 'remote') {
+        console.log('[Realtime] NOT sending update - ws:', !!this.ws, 'readyState:', this.ws?.readyState);
       }
     });
   }
@@ -197,6 +234,11 @@ export class RealtimeClient {
       url.searchParams.set('apiKey', this.config.apiKey);
     }
 
+    // Add session ID for agent authorization (obtained from startEdit())
+    if (params.sessionId) {
+      url.searchParams.set('sessionId', params.sessionId);
+    }
+
     // Get reconnection config with defaults
     const reconnection = this.config.reconnection ?? {};
     const maxRetries = reconnection.maxRetries ?? Infinity;
@@ -221,6 +263,8 @@ export class RealtimeClient {
     this.startReconnectMonitoring();
 
     this.ws.addEventListener('open', () => {
+      /* TODO: Remove console.log */
+      console.log('[Realtime] WebSocket connected');
       this.connected = true;
       this.hasConnectedOnce = true;
       this.lastReportedRetryCount = 0;
@@ -229,8 +273,18 @@ export class RealtimeClient {
 
     this.ws.addEventListener('message', (event) => {
       try {
+        // Distinguish text (presence JSON) from binary (Yjs CRDT) messages
+        if (typeof event.data === 'string') {
+          // Text frame: JSON presence message
+          this.handleTextMessage(event.data);
+          return;
+        }
+
+        // Binary frame: Yjs CRDT update
         const data = event.data as ArrayBuffer;
         const update = new Uint8Array(data);
+        /* TODO: Remove console.log */
+        console.log('[Realtime] Received message, update size:', update.length);
 
         // Apply remote update to local Y.Doc
         Y.applyUpdate(this.ydoc, update, 'remote');
@@ -238,6 +292,7 @@ export class RealtimeClient {
         // Notify listeners of new snapshot
         const root = this.ydoc.getMap('root');
         const snapshot = root.toJSON() as Record<string, unknown>;
+        console.log('[Realtime] Applied update, snapshot:', JSON.stringify(snapshot).slice(0, 200));
         this.config.onUpdate?.(snapshot);
       } catch (error) {
         console.error('[Realtime] Error processing message:', error);
@@ -247,8 +302,25 @@ export class RealtimeClient {
       }
     });
 
-    this.ws.addEventListener('close', () => {
+    this.ws.addEventListener('close', (event) => {
       this.connected = false;
+
+      // Check for authorization failure close codes (4401 Unauthorized, 4403 Forbidden)
+      const closeEvent = event as CloseEvent;
+      if (closeEvent.code === 4401 || closeEvent.code === 4403) {
+        // Authorization failure - do not attempt to reconnect
+        this.intentionalDisconnect = true;
+        this.stopReconnectMonitoring();
+        this.ws?.close();
+        this.ws = null;
+
+        // Call authorization error callback
+        const reason = closeEvent.reason || 'Authorization failed';
+        this.config.onAuthorizationError?.(new Error(reason));
+        this.config.onDisconnect?.();
+        return;
+      }
+
       // Only call onDisconnect for intentional disconnects or when max retries exceeded
       if (this.intentionalDisconnect) {
         this.stopReconnectMonitoring();
@@ -346,5 +418,85 @@ export class RealtimeClient {
    */
   isConnected(): boolean {
     return this.connected;
+  }
+
+  /**
+   * Check if presence updates are available via WebSocket.
+   * Returns true when connected and able to send/receive presence messages.
+   */
+  get presenceViaWebSocket(): boolean {
+    return this.connected && this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+  }
+
+  /**
+   * Send focus regions update to the server.
+   * @param focusRegions - JSON paths the actor is focused on
+   * @returns true if message was sent, false if not connected
+   */
+  sendFocusRegions(focusRegions: string[]): boolean {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+
+    const message: WsFocusRegionUpdateMessage = {
+      type: 'focus_region_update',
+      focusRegions,
+      timestamp: Date.now(),
+    };
+
+    this.ws.send(JSON.stringify(message));
+    return true;
+  }
+
+  /**
+   * Send a presence heartbeat to keep the connection alive.
+   * @param state - Optional state update (active, idle, editing)
+   */
+  sendHeartbeat(state?: ActorState): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const message: WsPresenceHeartbeatMessage = {
+      type: 'presence_heartbeat',
+      timestamp: Date.now(),
+      ...(state && { state }),
+    };
+
+    this.ws.send(JSON.stringify(message));
+  }
+
+  /**
+   * Handle incoming text (JSON) messages for presence protocol.
+   * @param data - Raw JSON string from WebSocket
+   */
+  private handleTextMessage(data: string): void {
+    try {
+      const message = JSON.parse(data) as WsServerMessage;
+
+      switch (message.type) {
+        case 'presence_update':
+          this.config.onPresenceUpdate?.(message.actors);
+          break;
+
+        case 'focus_region_broadcast':
+          this.config.onFocusRegionBroadcast?.(message.actorId, message.focusRegions);
+          break;
+
+        case 'focus_region_ack':
+          // Acknowledgment received - could add callback if needed
+          console.log('[Realtime] Focus region ack:', message.success);
+          break;
+
+        case 'presence_error':
+          console.error('[Realtime] Presence error:', message.code, message.message);
+          break;
+
+        default:
+          console.warn('[Realtime] Unknown message type:', (message as { type: string }).type);
+      }
+    } catch (error) {
+      console.error('[Realtime] Error parsing text message:', error);
+    }
   }
 }

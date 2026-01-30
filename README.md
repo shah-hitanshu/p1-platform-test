@@ -11,6 +11,8 @@ Integration between [Puck Editor](https://puckeditor.com) and the Collaborative 
 - **Conflict Detection** - Detect and resolve merge conflicts between branches
 - **User Attribution** - Track who made each change
 - **Real-time Collaboration** - Multiple users can edit simultaneously with Yjs CRDT sync
+- **Presence Awareness** - See who's viewing/editing documents in real-time
+- **Agent Politeness** - AI agents can edit documents while respecting human presence
 
 ## Packages
 
@@ -262,6 +264,250 @@ Query parameters for authentication:
 - `actorType` - Either "user" or "agent"
 - `apiKey` - API key for authentication (WebSocket can't send custom headers)
 
+## Presence and Agent Politeness
+
+The puck-css integration includes presence awareness and agent politeness features that enable:
+- Real-time visibility of who's viewing or editing documents
+- AI agents that can edit documents while respecting human presence
+- Visual indicators showing agent activity with the ability to stop agents
+
+### Enabling Presence
+
+Add the presence props to `CSSPuckProvider`:
+
+```tsx
+import { CSSPuckProvider } from '@pantheon/puck-css';
+
+function App() {
+  return (
+    <CSSPuckProvider
+      client={client}
+      siteId="your-site-id"
+      userId="current-user-id"
+      userName="John Doe"           // Display name for presence
+      userAvatar="https://..."      // Optional avatar URL
+      enableRealtime={true}
+      wsBaseUrl="wss://your-css-api.example.com"
+      presenceEnabled={true}        // Enable presence features
+    >
+      <YourEditor />
+    </CSSPuckProvider>
+  );
+}
+```
+
+### Context Values for Presence
+
+```typescript
+const {
+  // Presence data
+  presence,  // PresenceState | null
+} = useCSSPuck();
+
+// PresenceState shape:
+interface PresenceState {
+  actors: ActorPresence[];      // All actors (humans + agents)
+  humans: ActorPresence[];      // Only human users
+  agents: ActorPresence[];      // Only AI agents
+  hasActiveAgents: boolean;     // True if any agent is editing
+  isAgentEditing: boolean;      // True if an agent is in 'editing' state
+}
+
+// ActorPresence shape:
+interface ActorPresence {
+  id: string;                   // Presence record ID
+  actorId: string;              // User or agent ID
+  actorType: 'user' | 'agent';
+  role: 'human' | 'agent';
+  name: string;
+  avatar?: string;
+  state: 'active' | 'idle' | 'inactive' | 'editing';
+  intent?: string;              // Agent's current intent
+  focusRegions?: string[];      // Regions being edited
+  lastActivityAt: string;
+  joinedAt: string;
+}
+```
+
+### Displaying Collaborator Avatars
+
+Use the `CollaboratorAvatars` component to show who's online:
+
+```tsx
+import { CollaboratorAvatars } from '@pantheon/puck-css';
+
+function Header() {
+  const { presence } = useCSSPuck();
+
+  return (
+    <header>
+      <CollaboratorAvatars
+        actors={presence?.actors ?? []}
+        maxVisible={5}
+        separateAgents={true}  // Show agents with a separator
+        onAvatarClick={(actor) => console.log('Clicked:', actor.name)}
+      />
+    </header>
+  );
+}
+```
+
+**Props:**
+- `actors` - Array of `ActorPresence` objects to display
+- `maxVisible` - Maximum avatars before "+N" overflow (default: 5)
+- `separateAgents` - Show agents separately from humans with a divider
+- `onAvatarClick` - Click handler for avatars
+- `className` - Additional CSS class
+
+**Features:**
+- Hash-based consistent colors for each user (same user = same color)
+- Tooltips showing name, state, and agent intent
+- Pulsing ring for users in "editing" state
+- Lightning bolt badge for AI agents
+- Stacked layout with overflow indicator
+
+### Agent Activity Banner
+
+When an agent is actively editing, show the `AgentActivityBanner`:
+
+```tsx
+import { AgentActivityBanner } from '@pantheon/puck-css';
+
+function Editor() {
+  const { presence } = useCSSPuck();
+
+  // Get the first active agent
+  const activeAgent = presence?.agents.find(a => a.state === 'editing');
+
+  return (
+    <div>
+      {activeAgent && (
+        <AgentActivityBanner
+          agent={activeAgent}
+          onStopAgent={(agent) => {
+            // Handle stopping the agent
+            console.log('Stop agent:', agent.actorId);
+          }}
+        />
+      )}
+      {/* Rest of editor */}
+    </div>
+  );
+}
+```
+
+**Props:**
+- `agent` - The `ActorPresence` object for the agent
+- `showIdle` - Show banner even when agent is idle (default: false)
+- `dismissible` - Allow dismissing the banner (default: false)
+- `onStopAgent` - Callback when "Stop Agent" button is clicked
+- `className` - Additional CSS class
+
+**Features:**
+- Colored avatar with hash-based color (consistent with CollaboratorAvatars)
+- Agent name and current intent display
+- List of regions being edited
+- "Stop Agent" button for human intervention
+
+### Using with createCSSOverrides
+
+The `createCSSOverrides` function can automatically add presence UI to Puck's header:
+
+```tsx
+import { createCSSOverrides } from '@pantheon/puck-css';
+
+const cssOverrides = useMemo(() => createCSSOverrides({
+  // ... other props
+
+  // Presence features
+  showCollaboratorAvatars: !!presence,
+  presence: presence?.actors ?? [],
+
+  // Agent activity banner
+  showAgentActivityBanner: !!presence?.hasActiveAgents,
+  activeAgents: presence?.agents ?? [],
+  isAgentEditing: presence?.hasActiveAgents ?? false,
+}), [presence, /* other deps */]);
+
+// Use with Puck
+<Puck
+  config={config}
+  data={data}
+  overrides={cssOverrides}
+/>
+```
+
+### Styling
+
+Import the puck-css styles to get the presence component styling:
+
+```tsx
+import '@pantheon/puck-css/styles.css';
+```
+
+This includes:
+- `CollaboratorAvatars` - Stacked avatars with tooltips
+- `AgentActivityBanner` - Agent editing notification banner
+- CSS variables for customization
+
+**CSS Variables for customization:**
+
+```css
+:root {
+  --puck-css-avatar-agent: #6366f1;     /* Agent badge color */
+  --puck-css-avatar-fallback: #9ca3af;  /* Fallback avatar color */
+  --puck-css-border: #e5e7eb;
+  --puck-css-bg: #ffffff;
+  --puck-css-bg-secondary: #f9fafb;
+  --puck-css-text: #111827;
+  --puck-css-text-secondary: #6b7280;
+}
+```
+
+### Agent Politeness Protocol
+
+When integrating AI agents that can edit documents, follow the politeness protocol:
+
+1. **Check Permission First**: Before editing, call `can-agent-edit` to check if the agent can proceed
+2. **Start Edit Session**: Call `agent-edit-start` to reserve regions and create a rollback checkpoint
+3. **Apply Edits**: Make changes via the edits API
+4. **Complete or Abort**: Call `agent-edit-complete` on success or `agent-edit-abort` on failure
+
+The backend enforces these rules:
+- Agents cannot edit regions where humans are actively present
+- Agents must request permission before editing
+- Human-triggered edits (via UI) take precedence over autonomous agents
+- Edit sessions have expiration times to prevent stale locks
+
+### MCP Server Integration
+
+For Claude Desktop or other MCP-compatible AI assistants, use the MCP server in `examples/collaborative-state-mcp`:
+
+```json
+{
+  "mcpServers": {
+    "collaborative-state": {
+      "command": "node",
+      "args": ["/path/to/collaborative-state-mcp/dist/index.js"],
+      "env": {
+        "CSS_API_URL": "http://localhost:8787",
+        "CSS_AGENT_ID": "agent-zappy",
+        "CSS_AGENT_API_KEY": "your-agent-api-key"
+      }
+    }
+  }
+}
+```
+
+Available MCP tools:
+- `list_sites`, `list_branches`, `list_documents` - Discovery
+- `get_document` - Read document content
+- `check_edit_permission` - Check if agent can edit
+- `start_edit_session` - Begin polite editing
+- `apply_document_edits` - Make changes
+- `complete_edit_session`, `abort_edit_session` - Finish editing
+- `get_branch_presence`, `get_document_presence` - Check who's online
+
 ## Version Comparison Integration
 
 To enable visual version comparison in your editor, you need to:
@@ -504,12 +750,15 @@ React context provider that manages CSS state, auto-save, and real-time collabor
   siteId={string}           // Required: Site ID
   branchId={string}         // Optional: Initial branch ID (defaults to main branch)
   userId={string}           // Required: Current user ID
+  userName={string}         // Optional: Display name for presence
+  userAvatar={string}       // Optional: Avatar URL for presence
   autoSaveDelay={number}    // Optional: Debounce delay in ms (default: 3000)
   maxRetries={number}       // Optional: Max retry attempts (default: 3)
   showErrorNotifications={boolean}  // Optional: Show error toasts (default: true)
   enableRealtime={boolean}  // Optional: Enable real-time collaboration (default: false)
   wsBaseUrl={string}        // Optional: WebSocket server URL (required if enableRealtime is true)
   realtimeApiKey={string}   // Optional: API key for WebSocket auth (defaults to HTTP API key)
+  presenceEnabled={boolean} // Optional: Enable presence awareness (default: false)
 >
   {children}
 </CSSPuckProvider>
@@ -552,6 +801,9 @@ const {
   realtimeEnabled,     // boolean - Whether realtime is configured
   realtimeConnected,   // boolean - Current WebSocket connection status
   remoteSyncKey,       // string | null - Changes when remote updates arrive
+
+  // Presence awareness
+  presence,            // PresenceState | null - Current presence data
 } = useCSSPuck();
 ```
 
@@ -644,6 +896,30 @@ const {
   config={PuckConfig}              // Required: Your Puck component config
   diffs={ComponentDiff[]}          // Required: Diff array from compareVersions
   onClose={() => void}             // Required: Close callback
+  className={string}               // Optional: Additional CSS class
+/>
+```
+
+**CollaboratorAvatars** - Display stacked user/agent avatars
+
+```tsx
+<CollaboratorAvatars
+  actors={ActorPresence[]}         // Required: Array of presence objects
+  maxVisible={number}              // Optional: Max avatars before "+N" (default: 5)
+  separateAgents={boolean}         // Optional: Show agents separately (default: false)
+  onAvatarClick={(actor) => void}  // Optional: Click handler
+  className={string}               // Optional: Additional CSS class
+/>
+```
+
+**AgentActivityBanner** - Banner showing active agent editing
+
+```tsx
+<AgentActivityBanner
+  agent={ActorPresence}            // Required: The agent presence object
+  showIdle={boolean}               // Optional: Show when idle (default: false)
+  dismissible={boolean}            // Optional: Allow dismiss (default: false)
+  onStopAgent={(agent) => void}    // Optional: Stop button callback
   className={string}               // Optional: Additional CSS class
 />
 ```
