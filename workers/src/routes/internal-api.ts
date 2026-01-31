@@ -32,7 +32,7 @@ export interface InternalRouteContext {
  */
 interface CrdtSyncBody {
   siteId: string;
-  documentPath: string;
+  documentId: string;
   branchId: string;
   snapshot: Record<string, unknown>;
   crdtState: string;
@@ -87,9 +87,9 @@ function validateCrdtSyncBody(body: unknown): { valid: false; error: string } | 
     return { valid: false, error: 'siteId is required and must be a non-empty string' };
   }
 
-  // Validate documentPath
-  if (typeof data.documentPath !== 'string' || data.documentPath.trim() === '') {
-    return { valid: false, error: 'documentPath is required and must be a non-empty string' };
+  // Validate documentId
+  if (typeof data.documentId !== 'string' || data.documentId.trim() === '') {
+    return { valid: false, error: 'documentId is required and must be a non-empty string' };
   }
 
   // Validate branchId
@@ -121,7 +121,7 @@ function validateCrdtSyncBody(body: unknown): { valid: false; error: string } | 
     valid: true,
     data: {
       siteId: data.siteId,
-      documentPath: data.documentPath,
+      documentId: data.documentId,
       branchId: data.branchId,
       snapshot: data.snapshot as Record<string, unknown>,
       crdtState: data.crdtState,
@@ -159,7 +159,7 @@ async function handleCrdtSync(request: Request): Promise<Response> {
   try {
     const version = await syncCrdtToPostgres({
       siteId: data.siteId,
-      documentPath: data.documentPath,
+      documentId: data.documentId,
       branchId: data.branchId,
       snapshot: data.snapshot,
       crdtState: data.crdtState,
@@ -170,7 +170,7 @@ async function handleCrdtSync(request: Request): Promise<Response> {
     return jsonResponse({ version });
   } catch (error) {
     if (error instanceof DocumentNotFoundError) {
-      return errorResponse(`Document not found: ${error.documentPath}`, 404);
+      return errorResponse(`Document not found: ${error.documentId}`, 404);
     }
     if (error instanceof SyncError) {
       return errorResponse(`Sync failed: ${error.message}`, 500);
@@ -184,29 +184,29 @@ async function handleCrdtSync(request: Request): Promise<Response> {
  * Loads the latest CRDT state from PostgreSQL for a document on a branch.
  * Used by Durable Objects to initialize from PostgreSQL when storage is empty.
  *
- * Query params: siteId, documentPath, branchId
+ * Query params: siteId, documentId, branchId
  */
 async function handleLoadCrdtState(request: Request): Promise<Response> {
   const url = new URL(request.url);
 
   // Get query parameters
   const siteId = url.searchParams.get('siteId');
-  const documentPath = url.searchParams.get('documentPath');
+  const documentId = url.searchParams.get('documentId');
   const branchId = url.searchParams.get('branchId');
 
   // Validate required params
   if (siteId === null || siteId === '') {
     return errorResponse('siteId query parameter is required', 400);
   }
-  if (documentPath === null || documentPath === '') {
-    return errorResponse('documentPath query parameter is required', 400);
+  if (documentId === null || documentId === '') {
+    return errorResponse('documentId query parameter is required', 400);
   }
   if (branchId === null || branchId === '') {
     return errorResponse('branchId query parameter is required', 400);
   }
 
   try {
-    const result = await loadLatestCrdtState(siteId, documentPath, branchId);
+    const result = await loadLatestCrdtState(siteId, documentId, branchId);
 
     if (result === null) {
       // Document not found or no versions - return 404

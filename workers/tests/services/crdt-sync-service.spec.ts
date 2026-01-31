@@ -17,7 +17,7 @@ vi.mock('../../src/db', () => ({
 
 // Mock document service
 vi.mock('../../src/services/document-service', () => ({
-  getDocumentByPath: vi.fn(),
+  getDocument: vi.fn(),
 }));
 
 // Mock document version service
@@ -94,7 +94,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       const documentVersionService = await import('../../src/services/document-version-service');
 
       const mockDoc = createMockDocument();
-      vi.mocked(documentService.getDocumentByPath).mockResolvedValue({
+      vi.mocked(documentService.getDocument).mockResolvedValue({
         id: mockDoc.id,
         siteId: mockDoc.site_id,
         path: mockDoc.path,
@@ -117,7 +117,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
 
       const params = {
         siteId: 'site-uuid-456',
-        documentPath: 'pages/home',
+        documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: { root: { title: 'Test Document' } },
         crdtState: 'base64encodedstate==',
@@ -128,10 +128,8 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       const result = await syncCrdtToPostgres(params);
 
       expect(result).toBeDefined();
-      expect(documentService.getDocumentByPath).toHaveBeenCalledWith(
-        'site-uuid-456',
-        'pages/home',
-      );
+      // getDocument is called with just the document ID, siteId validation happens in service
+      expect(documentService.getDocument).toHaveBeenCalledWith('doc-uuid-123');
     });
   });
 
@@ -146,7 +144,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       const documentVersionService = await import('../../src/services/document-version-service');
 
       const mockDoc = createMockDocument();
-      vi.mocked(documentService.getDocumentByPath).mockResolvedValue({
+      vi.mocked(documentService.getDocument).mockResolvedValue({
         id: mockDoc.id,
         siteId: mockDoc.site_id,
         path: mockDoc.path,
@@ -173,7 +171,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
 
       const result = await syncCrdtToPostgres({
         siteId: 'site-uuid-456',
-        documentPath: 'pages/home',
+        documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: { root: { title: 'Test' } },
         crdtState: crdtStateBase64,
@@ -198,12 +196,12 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       const { syncCrdtToPostgres, DocumentNotFoundError } = await import('../../src/services/crdt-sync-service');
       const documentService = await import('../../src/services/document-service');
 
-      vi.mocked(documentService.getDocumentByPath).mockResolvedValue(null);
+      vi.mocked(documentService.getDocument).mockResolvedValue(null);
 
       await expect(
         syncCrdtToPostgres({
           siteId: 'site-uuid-456',
-          documentPath: 'nonexistent/path',
+          documentId: 'nonexistent-doc-uuid',
           branchId: 'branch-uuid-456',
           snapshot: { root: {} },
           crdtState: 'base64==',
@@ -219,7 +217,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       const documentVersionService = await import('../../src/services/document-version-service');
 
       const mockDoc = createMockDocument();
-      vi.mocked(documentService.getDocumentByPath).mockResolvedValue({
+      vi.mocked(documentService.getDocument).mockResolvedValue({
         id: mockDoc.id,
         siteId: mockDoc.site_id,
         path: mockDoc.path,
@@ -245,7 +243,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
 
       const result = await syncCrdtToPostgres({
         siteId: 'site-uuid-456',
-        documentPath: 'pages/home',
+        documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: { root: {} },
         crdtState: 'base64==',
@@ -268,7 +266,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       const documentVersionService = await import('../../src/services/document-version-service');
 
       const mockDoc = createMockDocument();
-      vi.mocked(documentService.getDocumentByPath).mockResolvedValue({
+      vi.mocked(documentService.getDocument).mockResolvedValue({
         id: mockDoc.id,
         siteId: mockDoc.site_id,
         path: mockDoc.path,
@@ -291,7 +289,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
 
       const result = await syncCrdtToPostgres({
         siteId: 'site-uuid-456',
-        documentPath: 'pages/home',
+        documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: {},
         crdtState: 'base64==',
@@ -314,7 +312,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       const documentVersionService = await import('../../src/services/document-version-service');
 
       const mockDoc = createMockDocument();
-      vi.mocked(documentService.getDocumentByPath).mockResolvedValue({
+      vi.mocked(documentService.getDocument).mockResolvedValue({
         id: mockDoc.id,
         siteId: mockDoc.site_id,
         path: mockDoc.path,
@@ -338,7 +336,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         createdAt: mockVersion.created_at,
       });
 
-      const result = await loadLatestCrdtState('site-uuid-456', 'pages/home', 'branch-uuid-456');
+      const result = await loadLatestCrdtState('site-uuid-456', 'doc-uuid-123', 'branch-uuid-456');
 
       expect(result).not.toBeNull();
       expect(result?.snapshot).toEqual({ root: { title: 'Test' } });
@@ -349,9 +347,9 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       const { loadLatestCrdtState } = await import('../../src/services/crdt-sync-service');
       const documentService = await import('../../src/services/document-service');
 
-      vi.mocked(documentService.getDocumentByPath).mockResolvedValue(null);
+      vi.mocked(documentService.getDocument).mockResolvedValue(null);
 
-      const result = await loadLatestCrdtState('site-uuid-456', 'nonexistent/path', 'branch-uuid-456');
+      const result = await loadLatestCrdtState('site-uuid-456', 'nonexistent-doc-uuid', 'branch-uuid-456');
 
       expect(result).toBeNull();
     });
@@ -362,7 +360,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       const documentVersionService = await import('../../src/services/document-version-service');
 
       const mockDoc = createMockDocument();
-      vi.mocked(documentService.getDocumentByPath).mockResolvedValue({
+      vi.mocked(documentService.getDocument).mockResolvedValue({
         id: mockDoc.id,
         siteId: mockDoc.site_id,
         path: mockDoc.path,
@@ -371,7 +369,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
 
       vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
 
-      const result = await loadLatestCrdtState('site-uuid-456', 'pages/home', 'branch-uuid-456');
+      const result = await loadLatestCrdtState('site-uuid-456', 'doc-uuid-123', 'branch-uuid-456');
 
       expect(result).toBeNull();
     });
@@ -382,7 +380,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       const documentVersionService = await import('../../src/services/document-version-service');
 
       const mockDoc = createMockDocument();
-      vi.mocked(documentService.getDocumentByPath).mockResolvedValue({
+      vi.mocked(documentService.getDocument).mockResolvedValue({
         id: mockDoc.id,
         siteId: mockDoc.site_id,
         path: mockDoc.path,
@@ -403,7 +401,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         createdAt: mockVersion.created_at,
       });
 
-      const result = await loadLatestCrdtState('site-uuid-456', 'pages/home', 'branch-uuid-456');
+      const result = await loadLatestCrdtState('site-uuid-456', 'doc-uuid-123', 'branch-uuid-456');
 
       expect(result).not.toBeNull();
       expect(result?.snapshot).toEqual({ root: { title: 'Test' } });
@@ -415,8 +413,9 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       const documentService = await import('../../src/services/document-service');
       const documentVersionService = await import('../../src/services/document-version-service');
 
-      const mockDoc = createMockDocument();
-      vi.mocked(documentService.getDocumentByPath).mockResolvedValue({
+      // Create mock document with matching siteId for validation to pass
+      const mockDoc = createMockDocument({ site_id: 'my-site-id' });
+      vi.mocked(documentService.getDocument).mockResolvedValue({
         id: mockDoc.id,
         siteId: mockDoc.site_id,
         path: mockDoc.path,
@@ -425,9 +424,11 @@ describe('Phase 1.1: CRDT Sync Service', () => {
 
       vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
 
-      await loadLatestCrdtState('my-site-id', 'my/document/path', 'my-branch-id');
+      await loadLatestCrdtState('my-site-id', 'my-doc-uuid', 'my-branch-id');
 
-      expect(documentService.getDocumentByPath).toHaveBeenCalledWith('my-site-id', 'my/document/path');
+      // getDocument is called with just the document ID
+      expect(documentService.getDocument).toHaveBeenCalledWith('my-doc-uuid');
+      // getLatestDocumentVersion is called with document.id from the returned document
       expect(documentVersionService.getLatestDocumentVersion).toHaveBeenCalledWith(
         'doc-uuid-123', // document ID from mock
         'my-branch-id',
@@ -446,7 +447,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       const error = new DocumentNotFoundError('pages/home');
       expect(error.name).toBe('DocumentNotFoundError');
       expect(error.message).toContain('pages/home');
-      expect(error.documentPath).toBe('pages/home');
+      expect(error.documentId).toBe('pages/home');
     });
 
     it('should export SyncError for general sync failures', async () => {
