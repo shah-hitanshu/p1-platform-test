@@ -14,10 +14,10 @@ vi.mock('../../src/services/crdt-sync-service', () => ({
   syncCrdtToPostgres: vi.fn(),
   DocumentNotFoundError: class DocumentNotFoundError extends Error {
     name = 'DocumentNotFoundError';
-    documentPath: string;
+    documentId: string;
     constructor(path: string) {
       super(`Document at path "${path}" not found.`);
-      this.documentPath = path;
+      this.documentId = path;
     }
   },
   SyncError: class SyncError extends Error {
@@ -36,7 +36,7 @@ describe('Phase 1.2: Internal API Routes', () => {
 
   interface CrdtSyncBody {
     siteId: string;
-    documentPath: string;
+    documentId: string;
     branchId: string;
     snapshot: Record<string, unknown>;
     crdtState: string;
@@ -48,7 +48,7 @@ describe('Phase 1.2: Internal API Routes', () => {
   function createValidSyncBody(overrides: Partial<CrdtSyncBody> = {}): CrdtSyncBody {
     return {
       siteId: 'site-uuid-123',
-      documentPath: 'pages/home',
+      documentId: 'pages/home',
       branchId: 'branch-uuid-456',
       snapshot: { root: { title: 'Test Document' } },
       crdtState: 'base64encodedcrdtstate==',
@@ -172,7 +172,7 @@ describe('Phase 1.2: Internal API Routes', () => {
 
       expect(crdtSyncService.syncCrdtToPostgres).toHaveBeenCalledWith({
         siteId: syncBody.siteId,
-        documentPath: syncBody.documentPath,
+        documentId: syncBody.documentId,
         branchId: syncBody.branchId,
         snapshot: syncBody.snapshot,
         crdtState: syncBody.crdtState,
@@ -234,7 +234,7 @@ describe('Phase 1.2: Internal API Routes', () => {
           'Content-Type': 'application/json',
           'X-Internal-Secret': 'correct-secret',
         },
-        body: JSON.stringify(createValidSyncBody({ documentPath: 'pages/missing' })),
+        body: JSON.stringify(createValidSyncBody({ documentId: 'pages/missing' })),
       });
 
       const response = await handleInternalRoutes(request, {
@@ -299,7 +299,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       expect(body.error).toContain('siteId');
     });
 
-    it('should require documentPath', async () => {
+    it('should require documentId', async () => {
       const { handleInternalRoutes } = await import('../../src/routes/internal-api');
 
       const request = new Request('http://localhost/internal/crdt-sync', {
@@ -308,7 +308,7 @@ describe('Phase 1.2: Internal API Routes', () => {
           'Content-Type': 'application/json',
           'X-Internal-Secret': 'correct-secret',
         },
-        body: JSON.stringify(createValidSyncBody({ documentPath: '' })),
+        body: JSON.stringify(createValidSyncBody({ documentId: '' })),
       });
 
       const response = await handleInternalRoutes(request, {
@@ -317,7 +317,7 @@ describe('Phase 1.2: Internal API Routes', () => {
 
       expect(response.status).toBe(400);
       const body = await response.json();
-      expect(body.error).toContain('documentPath');
+      expect(body.error).toContain('documentId');
     });
 
     it('should require branchId', async () => {

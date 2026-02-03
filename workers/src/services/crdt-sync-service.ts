@@ -11,7 +11,7 @@
  */
 
 import type { DocumentVersion } from '../types';
-import { getDocumentByPath } from './document-service';
+import { getDocument } from './document-service';
 import {
   createDocumentVersion,
   getLatestDocumentVersion,
@@ -25,10 +25,10 @@ import {
  * Parameters for syncing CRDT state to PostgreSQL.
  */
 export interface SyncCrdtToPostgresParams {
-  /** The site ID */
+  /** The site ID (for validation) */
   siteId: string;
-  /** The document path within the site */
-  documentPath: string;
+  /** The document UUID */
+  documentId: string;
   /** The branch ID */
   branchId: string;
   /** The current document snapshot (JSON representation) */
@@ -61,8 +61,8 @@ export interface LoadCrdtStateResult {
 export class DocumentNotFoundError extends Error {
   public readonly name = 'DocumentNotFoundError';
 
-  constructor(public readonly documentPath: string) {
-    super(`Document at path "${documentPath}" not found.`);
+  constructor(public readonly documentId: string) {
+    super(`Document with ID "${documentId}" not found.`);
     Object.setPrototypeOf(this, DocumentNotFoundError.prototype);
   }
 }
@@ -91,16 +91,21 @@ export class SyncError extends Error {
  *
  * @param params - Sync parameters
  * @returns The created document version
- * @throws DocumentNotFoundError if the document doesn't exist
+ * @throws DocumentNotFoundError if the document doesn't exist or doesn't belong to the site
  */
 export async function syncCrdtToPostgres(
   params: SyncCrdtToPostgresParams,
 ): Promise<DocumentVersion> {
-  // Look up the document by path
-  const document = await getDocumentByPath(params.siteId, params.documentPath);
+  // Look up the document by ID
+  const document = await getDocument(params.documentId);
 
   if (document === null) {
-    throw new DocumentNotFoundError(params.documentPath);
+    throw new DocumentNotFoundError(params.documentId);
+  }
+
+  // Verify the document belongs to the specified site (security check)
+  if (document.siteId !== params.siteId) {
+    throw new DocumentNotFoundError(params.documentId);
   }
 
   // Create a new document version with the CRDT state
@@ -123,20 +128,25 @@ export async function syncCrdtToPostgres(
  * This is used by Durable Objects to initialize their state when they
  * have no local storage (e.g., after eviction or first access).
  *
- * @param siteId - The site ID
- * @param documentPath - The document path within the site
+ * @param siteId - The site ID (for validation)
+ * @param documentId - The document UUID
  * @param branchId - The branch ID
  * @returns The snapshot and CRDT state, or null if not found
  */
 export async function loadLatestCrdtState(
   siteId: string,
-  documentPath: string,
+  documentId: string,
   branchId: string,
 ): Promise<LoadCrdtStateResult | null> {
-  // Look up the document by path
-  const document = await getDocumentByPath(siteId, documentPath);
+  // Look up the document by ID
+  const document = await getDocument(documentId);
 
   if (document === null) {
+    return null;
+  }
+
+  // Verify the document belongs to the specified site (security check)
+  if (document.siteId !== siteId) {
     return null;
   }
 

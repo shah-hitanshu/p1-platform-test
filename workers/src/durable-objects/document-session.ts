@@ -990,7 +990,7 @@ export class DocumentSession {
         },
         body: JSON.stringify({
           siteId: this.sessionInfo.siteId,
-          documentPath: this.sessionInfo.documentId,
+          documentId: this.sessionInfo.documentId,
           branchId: this.sessionInfo.branchId,
           snapshot,
           crdtState,
