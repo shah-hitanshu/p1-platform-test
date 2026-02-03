@@ -25,6 +25,12 @@ export interface CreateDocumentVersionParams {
   source: DocumentVersionSource;
   createdById: string;
   createdByType: 'user' | 'agent' | 'system';
+  /**
+   * Skip duplicate snapshot check and always create a new version.
+   * Use for reverts or explicit version creation where duplicates are intentional.
+   * @default false
+   */
+  skipDuplicateCheck?: boolean;
 }
 
 /**
@@ -135,6 +141,33 @@ function isForeignKeyViolation(error: unknown): boolean {
   );
 }
 
+/**
+ * Deep comparison of two values for equality.
+ * Used to compare snapshots to avoid creating duplicate versions.
+ */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== 'object') return false;
+
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    return a.every((item, index) => deepEqual(item, b[index]));
+  }
+
+  const aObj = a as Record<string, unknown>;
+  const bObj = b as Record<string, unknown>;
+  const aKeys = Object.keys(aObj);
+  const bKeys = Object.keys(bObj);
+
+  if (aKeys.length !== bKeys.length) return false;
+
+  return aKeys.every(key => deepEqual(aObj[key], bObj[key]));
+}
+
 // =============================================================================
 // Service Functions
 // =============================================================================
@@ -159,6 +192,20 @@ export async function createDocumentVersion(
   }
   if (!params.createdById || params.createdById.trim() === '') {
     throw new InvalidDocumentVersionParamsError('Created by ID is required');
+  }
+
+  // Check for duplicate snapshot unless explicitly skipped
+  if (params.skipDuplicateCheck !== true) {
+    const latestVersion = await getLatestDocumentVersion(
+      params.documentId,
+      params.branchId,
+    );
+    if (latestVersion?.snapshot && deepEqual(latestVersion.snapshot, params.snapshot)) {
+      console.log(
+        `Version creation skipped for document ${params.documentId}: snapshot unchanged`,
+      );
+      return latestVersion;
+    }
   }
 
   // Convert base64 CRDT state to buffer if provided

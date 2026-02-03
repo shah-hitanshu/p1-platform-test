@@ -1,0 +1,367 @@
+/**
+ * Real-Time API Routes - Focus Regions Endpoint Tests (TDD)
+ *
+ * Tests for the focus-regions route that allows humans to proactively
+ * report their current component selection.
+ *
+ * POST /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/focus-regions
+ */
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Mock document service for database calls
+vi.mock('../../src/services/document-service', () => ({
+  getDocumentByPath: vi.fn(),
+}));
+
+// Import mocked module for test setup
+import * as documentService from '../../src/services/document-service';
+
+// Mock types for Cloudflare Durable Objects
+interface MockDurableObjectStub {
+  fetch: ReturnType<typeof vi.fn>;
+}
+
+interface MockDurableObjectId {
+  toString: () => string;
+}
+
+interface MockDurableObjectNamespace {
+  idFromName: ReturnType<typeof vi.fn<[string], MockDurableObjectId>>;
+  get: ReturnType<typeof vi.fn<[MockDurableObjectId], MockDurableObjectStub>>;
+}
+
+// Mock environment
+interface MockEnv {
+  ENVIRONMENT: string;
+  DOCUMENT_STATE: MockDurableObjectNamespace;
+  POSTGRES_CONNECTION_STRING: string;
+}
+
+describe('Real-Time API: Focus Regions Endpoint', () => {
+  let mockEnv: MockEnv;
+  let mockStub: MockDurableObjectStub;
+  let mockId: MockDurableObjectId;
+
+  beforeEach(() => {
+    // Reset all mocks
+    vi.resetAllMocks();
+
+    // Mock getDocumentByPath to return a document by default
+    vi.mocked(documentService.getDocumentByPath).mockResolvedValue({
+      id: 'mock-document-uuid',
+      siteId: 'site-123',
+      path: 'test-doc',
+      createdAt: new Date().toISOString(),
+      archivedAt: null,
+    });
+
+    // Create mock Durable Object infrastructure
+    mockStub = {
+      fetch: vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ success: true, focusRegions: ['/content/0'] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    };
+
+    mockId = { toString: (): string => 'mock-do-id' };
+
+    mockEnv = {
+      ENVIRONMENT: 'test',
+      DOCUMENT_STATE: {
+        idFromName: vi.fn().mockReturnValue(mockId),
+        get: vi.fn().mockReturnValue(mockStub),
+      },
+      POSTGRES_CONNECTION_STRING: 'postgresql://localhost:5432/test',
+    };
+  });
+
+  describe('route matching', () => {
+    it('should match POST /api/sites/{siteId}/branches/{branchId}/documents/{path}/focus-regions', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'http://localhost/api/sites/site-1/branches/main/documents/test-doc/focus-regions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Actor-Type': 'user',
+          },
+          body: JSON.stringify({
+            actorId: 'user-123',
+            focusRegions: ['/content/0'],
+          }),
+        },
+      );
+
+      const response = await handleRealtimeRoutes(request, mockEnv);
+
+      expect(response).not.toBeNull();
+      expect(response?.status).toBe(200);
+    });
+
+    it('should require POST method for focus-regions', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'http://localhost/api/sites/site-1/branches/main/documents/test-doc/focus-regions',
+        {
+          method: 'GET',
+          headers: {
+            'X-Actor-Type': 'user',
+          },
+        },
+      );
+
+      const response = await handleRealtimeRoutes(request, mockEnv);
+
+      expect(response).not.toBeNull();
+      expect(response?.status).toBe(405);
+    });
+  });
+
+  describe('request validation', () => {
+    it('should require X-Actor-Type: user header', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'http://localhost/api/sites/site-1/branches/main/documents/test-doc/focus-regions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Actor-Type': 'agent', // Wrong type
+          },
+          body: JSON.stringify({
+            actorId: 'agent-123',
+            focusRegions: ['/content/0'],
+          }),
+        },
+      );
+
+      const response = await handleRealtimeRoutes(request, mockEnv);
+
+      expect(response).not.toBeNull();
+      expect(response?.status).toBe(403);
+      const body = await response?.json();
+      expect(body.error).toContain('user');
+    });
+
+    it('should require Content-Type: application/json', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'http://localhost/api/sites/site-1/branches/main/documents/test-doc/focus-regions',
+        {
+          method: 'POST',
+          headers: {
+            'X-Actor-Type': 'user',
+          },
+          body: 'not json',
+        },
+      );
+
+      const response = await handleRealtimeRoutes(request, mockEnv);
+
+      expect(response).not.toBeNull();
+      expect(response?.status).toBe(415);
+    });
+
+    it('should require actorId field', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'http://localhost/api/sites/site-1/branches/main/documents/test-doc/focus-regions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Actor-Type': 'user',
+          },
+          body: JSON.stringify({
+            focusRegions: ['/content/0'],
+          }),
+        },
+      );
+
+      const response = await handleRealtimeRoutes(request, mockEnv);
+
+      expect(response).not.toBeNull();
+      expect(response?.status).toBe(400);
+      const body = await response?.json();
+      expect(body.error).toContain('actorId');
+    });
+
+    it('should require focusRegions field', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'http://localhost/api/sites/site-1/branches/main/documents/test-doc/focus-regions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Actor-Type': 'user',
+          },
+          body: JSON.stringify({
+            actorId: 'user-123',
+          }),
+        },
+      );
+
+      const response = await handleRealtimeRoutes(request, mockEnv);
+
+      expect(response).not.toBeNull();
+      expect(response?.status).toBe(400);
+      const body = await response?.json();
+      expect(body.error).toContain('focusRegions');
+    });
+
+    it('should limit focusRegions to maximum 50', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const tooManyRegions = Array.from(
+        { length: 100 },
+        (_, i) => `/content/${String(i)}`,
+      );
+
+      const request = new Request(
+        'http://localhost/api/sites/site-1/branches/main/documents/test-doc/focus-regions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Actor-Type': 'user',
+          },
+          body: JSON.stringify({
+            actorId: 'user-123',
+            focusRegions: tooManyRegions,
+          }),
+        },
+      );
+
+      const response = await handleRealtimeRoutes(request, mockEnv);
+
+      expect(response).not.toBeNull();
+      expect(response?.status).toBe(400);
+      const body = await response?.json();
+      expect(body.error).toContain('50');
+    });
+  });
+
+  describe('forwarding to Durable Object', () => {
+    it('should forward valid request to DocumentSession DO', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'http://localhost/api/sites/site-1/branches/main/documents/test-doc/focus-regions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Actor-Type': 'user',
+          },
+          body: JSON.stringify({
+            actorId: 'user-123',
+            focusRegions: ['/content/0', '/content/1'],
+          }),
+        },
+      );
+
+      await handleRealtimeRoutes(request, mockEnv);
+
+      // Verify DO was called
+      expect(mockStub.fetch).toHaveBeenCalled();
+
+      // Check the forwarded request
+      const forwardedRequest = mockStub.fetch.mock.calls[0][0] as Request;
+      expect(forwardedRequest.url).toContain('/update-focus-regions');
+    });
+
+    it('should include original headers when forwarding', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'http://localhost/api/sites/site-1/branches/main/documents/test-doc/focus-regions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Actor-Type': 'user',
+            'X-Actor-Id': 'user-123',
+          },
+          body: JSON.stringify({
+            actorId: 'user-123',
+            focusRegions: ['/content/0'],
+          }),
+        },
+      );
+
+      await handleRealtimeRoutes(request, mockEnv);
+
+      const forwardedRequest = mockStub.fetch.mock.calls[0][0] as Request;
+      expect(forwardedRequest.headers.get('X-Actor-Type')).toBe('user');
+    });
+
+    it('should return response from DO', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      mockStub.fetch.mockResolvedValue(
+        new Response(JSON.stringify({
+          success: true,
+          focusRegions: ['/content/0', '/content/1'],
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+      const request = new Request(
+        'http://localhost/api/sites/site-1/branches/main/documents/test-doc/focus-regions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Actor-Type': 'user',
+          },
+          body: JSON.stringify({
+            actorId: 'user-123',
+            focusRegions: ['/content/0', '/content/1'],
+          }),
+        },
+      );
+
+      const response = await handleRealtimeRoutes(request, mockEnv);
+
+      expect(response?.status).toBe(200);
+      const body = await response?.json();
+      expect(body.success).toBe(true);
+      expect(body.focusRegions).toContain('/content/0');
+    });
+  });
+
+  describe('CORS support', () => {
+    it('should handle OPTIONS preflight for focus-regions', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'http://localhost/api/sites/site-1/branches/main/documents/test-doc/focus-regions',
+        {
+          method: 'OPTIONS',
+          headers: {
+            Origin: 'http://localhost:3000',
+          },
+        },
+      );
+
+      const response = await handleRealtimeRoutes(request, mockEnv);
+
+      expect(response).not.toBeNull();
+      expect(response?.status).toBe(204);
+      expect(response?.headers.get('Access-Control-Allow-Methods')).toContain('POST');
+    });
+  });
+});

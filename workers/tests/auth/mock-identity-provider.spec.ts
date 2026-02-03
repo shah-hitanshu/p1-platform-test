@@ -46,7 +46,7 @@ const TEST_CONFIG: MockIdentityConfig = {
   ],
   agents: [
     {
-      id: 'agent-zappy',
+      id: 'a0000000-0000-0000-0000-000000000001',
       name: 'Zappy AI Assistant',
       apiKey: 'test-agent-key-zappy',
       siteRoles: {
@@ -54,7 +54,7 @@ const TEST_CONFIG: MockIdentityConfig = {
       },
     },
     {
-      id: 'agent-helper',
+      id: 'a0000000-0000-0000-0000-000000000002',
       name: 'Helper Bot',
       apiKey: 'test-agent-key-helper',
       siteRoles: {
@@ -359,7 +359,7 @@ describe('Phase 2.1: Mock Identity Provider', () => {
       const principal = await provider.validateAgentKey('test-agent-key-zappy');
 
       expect(principal).not.toBeNull();
-      expect(principal?.id).toBe('agent-zappy');
+      expect(principal?.id).toBe('a0000000-0000-0000-0000-000000000001');
       expect(principal?.type).toBe('agent');
     });
 
@@ -408,10 +408,10 @@ describe('Phase 2.1: Mock Identity Provider', () => {
       const zappy = await provider.validateAgentKey('test-agent-key-zappy');
       const helper = await provider.validateAgentKey('test-agent-key-helper');
 
-      expect(zappy?.id).toBe('agent-zappy');
+      expect(zappy?.id).toBe('a0000000-0000-0000-0000-000000000001');
       expect(zappy?.pantheonSiteRoles).toEqual({ 'site-123': 'editor' });
 
-      expect(helper?.id).toBe('agent-helper');
+      expect(helper?.id).toBe('a0000000-0000-0000-0000-000000000002');
       expect(helper?.pantheonSiteRoles).toEqual({
         'site-123': 'viewer',
         'site-456': 'editor',
@@ -457,10 +457,10 @@ describe('Phase 2.1: Mock Identity Provider', () => {
 
   describe('Agent Lookup (getAgent)', () => {
     it('should return agent by ID', () => {
-      const agent = provider.getAgent('agent-zappy');
+      const agent = provider.getAgent('a0000000-0000-0000-0000-000000000001');
 
       expect(agent).toBeDefined();
-      expect(agent?.id).toBe('agent-zappy');
+      expect(agent?.id).toBe('a0000000-0000-0000-0000-000000000001');
       expect(agent?.name).toBe('Zappy AI Assistant');
     });
 
@@ -639,9 +639,9 @@ describe('Phase 2.1: Mock Identity Provider', () => {
         provider.validateAgentKey('test-agent-key-zappy'),
       ]);
 
-      expect(results[0]?.id).toBe('agent-zappy');
-      expect(results[1]?.id).toBe('agent-helper');
-      expect(results[2]?.id).toBe('agent-zappy');
+      expect(results[0]?.id).toBe('a0000000-0000-0000-0000-000000000001');
+      expect(results[1]?.id).toBe('a0000000-0000-0000-0000-000000000002');
+      expect(results[2]?.id).toBe('a0000000-0000-0000-0000-000000000001');
     });
   });
 });

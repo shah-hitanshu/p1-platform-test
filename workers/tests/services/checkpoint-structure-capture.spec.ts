@@ -227,6 +227,8 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
         })
         // getDocumentsAtCheckpoint
         .mockResolvedValueOnce({ rows: [] })
+        // revertToCheckpoint: BEGIN transaction
+        .mockResolvedValueOnce({ rows: [] })
         // getStructuresAtCheckpoint
         .mockResolvedValueOnce({
           rows: [
@@ -249,6 +251,10 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
         // delete current metadata
         .mockResolvedValueOnce({ rows: [] })
         // restore metadata
+        .mockResolvedValueOnce({ rows: [] })
+        // inline UPDATE checkpoint status to rolled_back
+        .mockResolvedValueOnce({ rows: [] })
+        // revertToCheckpoint: COMMIT transaction
         .mockResolvedValueOnce({ rows: [] })
         // createCheckpoint: BEGIN
         .mockResolvedValueOnce({ rows: [] })
@@ -411,6 +417,8 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
         })
         // getDocumentsAtCheckpoint
         .mockResolvedValueOnce({ rows: [] })
+        // revertToCheckpoint: BEGIN transaction
+        .mockResolvedValueOnce({ rows: [] })
         // getStructuresAtCheckpoint
         .mockResolvedValueOnce({ rows: [] })
         // delete current structures
@@ -420,6 +428,10 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
         // delete current metadata
         .mockResolvedValueOnce({ rows: [] })
         // restore metadata
+        .mockResolvedValueOnce({ rows: [] })
+        // inline UPDATE checkpoint status to rolled_back
+        .mockResolvedValueOnce({ rows: [] })
+        // revertToCheckpoint: COMMIT transaction
         .mockResolvedValueOnce({ rows: [] })
         // createCheckpoint: BEGIN
         .mockResolvedValueOnce({ rows: [] })

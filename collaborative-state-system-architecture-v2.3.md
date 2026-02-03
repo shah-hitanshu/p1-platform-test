@@ -2,8 +2,10 @@
 
 ## Architecture Specification
 
-**Version:** 2.2  
+**Version:** 2.3
 **Status:** Scope-Focused Architecture
+
+> **v2.3 Changes**: Added Agent Politeness System with organization-level configuration, agent registry, enhanced checkpoints with full metadata, presence/awareness system, activity detection, and region-aware conflict resolution for human-agent collaboration.
 
 > **v2.2 Changes**: Reduced scope to core mission. Removed agent lifecycle management, audit logging, and notification preferences (delegate to platform services). Authentication simplified to local mock for development with production delegation to Pantheon Identity Service. Branch-level authorization remains in this service.
 
@@ -26,6 +28,16 @@ The Collaborative State System provides:
 3. **Real-time collaboration** via CRDT within documents
 4. **Conflict detection and resolution** for merge operations
 5. **Branch-level authorization** for access control
+6. **Agent Politeness** for respectful human-agent collaboration
+
+### Organization Ownership
+
+The **Organization** entity is now owned by this service as a minimal model for agent configuration and site grouping. While Pantheon's broader organization hierarchy exists externally, this service maintains its own lightweight organization layer specifically for:
+
+- Agent idle timeout configuration
+- Agent registry and status management
+- Site grouping for agent scope
+- Future priority tier configuration
 
 ### Delegated Responsibilities
 
@@ -37,7 +49,6 @@ This system **consumes** rather than **implements** the following platform capab
 | Agent identity & lifecycle | Pantheon AI Agent Service | `AgentIdentity` |
 | Audit logging | Pantheon Audit Service | Event emission |
 | Notifications | Platform Notification Service | Event emission |
-| Organization hierarchy | Pantheon (existing) | Site-to-org mapping |
 
 ### Local Development
 
@@ -56,11 +67,11 @@ interface AuthenticatedPrincipal {
   id: string;
   type: 'user' | 'agent' | 'service';
   email?: string;
-  
+
   // Pantheon context
   organizationId?: string;
   pantheonSiteRoles: Map<string, PantheonRole>;
-  
+
   // Token metadata
   tokenExpiry: Date;
   scopes?: string[];
@@ -84,7 +95,7 @@ interface AgentIdentity {
   organizationId: string;
   name: string;
   capabilities: string[];
-  
+
   // Access grants (managed by Agent Service)
   siteAccess: Map<string, AgentSiteRole>;
 }
@@ -94,7 +105,7 @@ type AgentSiteRole = 'viewer' | 'editor' | 'admin';
 interface AgentService {
   // Validate agent token/API key
   validateAgent(token: string): Promise<AgentIdentity | null>;
-  
+
   // Report usage for billing/metering
   reportUsage(agentId: string, usage: UsageRecord): Promise<void>;
 }
@@ -307,7 +318,7 @@ Branch Lineage:
 
 **Choice:** Use Yjs CRDTs for document state. Concurrent edits within a document are automatically merged without conflicts.
 
-**Rationale:** CRDTs guarantee convergence"”two users editing the same document will always arrive at the same state. This eliminates intra-document merge conflicts entirely.
+**Rationale:** CRDTs guarantee convergence—two users editing the same document will always arrive at the same state. This eliminates intra-document merge conflicts entirely.
 
 **Tradeoff:** CRDT merge results may occasionally be semantically nonsensical (e.g., two users rewriting the same paragraph differently). The automatic merge preserves both contributions but may require human review. This is preferable to blocking collaboration with conflict markers.
 
@@ -317,21 +328,21 @@ Branch Lineage:
 
 **Rationale:** While CRDTs can technically merge any concurrent changes, cross-branch merges represent deliberate divergent work. Humans should decide how to reconcile "holiday campaign version of homepage" with "bug fix version of homepage."
 
-**Tradeoff:** Merges require more human oversight than pure CRDT systems. This is intentional"”branches represent intentional divergence that should be reconciled thoughtfully.
+**Tradeoff:** Merges require more human oversight than pure CRDT systems. This is intentional—branches represent intentional divergence that should be reconciled thoughtfully.
 
 ### Decision 6: Agents as First-Class Collaborators
 
-**Choice:** AI agents interact with the system through the same mechanisms as human users"”joining branches, making edits via CRDT, creating checkpoints, and proposing merges.
+**Choice:** AI agents interact with the system through the same mechanisms as human users—joining branches, making edits via CRDT, creating checkpoints, and proposing merges.
 
 **Rationale:** This simplifies the architecture (one collaboration model, not two) and enables natural human-agent collaboration. Agents appear in presence indicators, their edits stream in real-time, and humans can observe or intervene.
 
-**Tradeoff:** Agents must be "polite—”pausing when humans are actively editing, rate-limiting their changes to not overwhelm the UI. This requires agent-side courtesy logic.
+**Tradeoff:** Agents must be "polite"—pausing when humans are actively editing, rate-limiting their changes to not overwhelm the UI. This requires agent-side courtesy logic.
 
 ### Decision 7: PostgreSQL for Version Control, Durable Objects for Real-Time
 
 **Choice:** PostgreSQL (CloudSQL) stores site metadata, branches, checkpoints, and document snapshots. Cloudflare Durable Objects host live CRDT sessions.
 
-**Rationale:** PostgreSQL provides transactional guarantees, relational queries, and recursive CTEs for graph traversal (merge-base calculation). Durable Objects provide WebSocket termination, in-memory CRDT state, and automatic persistence"”ideal for real-time collaboration.
+**Rationale:** PostgreSQL provides transactional guarantees, relational queries, and recursive CTEs for graph traversal (merge-base calculation). Durable Objects provide WebSocket termination, in-memory CRDT state, and automatic persistence—ideal for real-time collaboration.
 
 **Tradeoff:** Two storage systems to maintain. The clear separation of concerns (version control vs. real-time) justifies this.
 
@@ -339,9 +350,9 @@ Branch Lineage:
 
 **Choice:** Documents are organized into site structures (hierarchical collections). Each structure defines a metadata schema that documents should conform to. Both the structure hierarchy and the schema are versioned per-branch.
 
-**Rationale:** Websites need organizational hierarchy beyond flat document lists"”for navigation, URL paths, and content discovery. Metadata requirements vary by content type (blog posts need authors and publish dates; documentation pages need version numbers). Making schemas modifiable and branch-versioned allows teams to evolve requirements without breaking existing content.
+**Rationale:** Websites need organizational hierarchy beyond flat document lists—for navigation, URL paths, and content discovery. Metadata requirements vary by content type (blog posts need authors and publish dates; documentation pages need version numbers). Making schemas modifiable and branch-versioned allows teams to evolve requirements without breaking existing content.
 
-**Tradeoff:** Added complexity in merge conflict detection (structure changes can conflict). Schema enforcement must balance strictness with usability"”we offer configurable enforcement modes (strict, warn, none).
+**Tradeoff:** Added complexity in merge conflict detection (structure changes can conflict). Schema enforcement must balance strictness with usability—we offer configurable enforcement modes (strict, warn, none).
 
 ### Decision 9: Separation of Document Content and Structure Metadata
 
@@ -351,6 +362,25 @@ Branch Lineage:
 
 **Tradeoff:** More tables to manage and join. Metadata must be explicitly managed per-structure rather than being intrinsic to the document.
 
+### Decision 10: Agent Politeness System
+
+**Choice:** Implement agent politeness directly in CSS with: idle-detection gating, individual agent accounts, presence with advisory region locking, enhanced checkpoints, and region-aware conflict resolution.
+
+**Rationale:** AI agents operating on the same content as humans need coordination to avoid poor user experience. Without coordination, agents could overwrite human work, create confusing real-time edits, or flood the UI with rapid changes.
+
+**Key Decisions:**
+
+| Area | Decision |
+|------|----------|
+| Activity detection | Hybrid: user-requested work immediate, autonomous waits for configurable idle |
+| Agent identity | Individual agent accounts registered at organization level with trigger audit (human_requested vs autonomous) |
+| Presence scope | Document-level with branch/site rollups, JSON path regions for advisory locks |
+| Checkpoint metadata | Full: description, trigger, affected_regions, status, rollback tracking |
+| Conflict resolution | Region-aware: agent yields on overlap, otherwise Y.js merges |
+| Kill switch | Document-level kick by any collaborator |
+
+**Tradeoff:** Adds complexity to the edit flow for agents. However, this complexity is necessary for acceptable human-agent collaboration UX. The system remains simple for human-only use cases.
+
 ---
 
 ## Data Model
@@ -358,13 +388,54 @@ Branch Lineage:
 ### PostgreSQL Schema
 
 ```sql
+-- Organizations (minimal model for agent configuration)
+CREATE TABLE app.organizations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    settings JSONB NOT NULL DEFAULT '{
+        "agentIdleTimeoutMs": 5000
+    }',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Organization settings schema (in JSONB):
+-- {
+--   "agentIdleTimeoutMs": 5000,        -- default 5 seconds
+--   "agentPriorityTiers": {}           -- future: tier configurations
+-- }
+
+-- Agent registry (organization-level agent accounts)
+CREATE TABLE app.agents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES app.organizations(id),
+    name TEXT NOT NULL,
+    description TEXT,
+    capabilities TEXT[] NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'disabled')),
+    settings JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(organization_id, name)
+);
+
+CREATE INDEX idx_agents_organization ON app.agents(organization_id);
+CREATE INDEX idx_agents_status ON app.agents(status);
+
+-- Agent settings schema:
+-- {
+--   "priorityTier": "default",         -- future: tier reference
+--   "allowedOperationTypes": ["*"],    -- future: operation restrictions
+--   "maxConcurrentDocuments": 10       -- future: concurrency limits
+-- }
+
 -- Sites (corresponds to Pantheon websites)
--- Organization ownership is managed by Pantheon, not this service
-CREATE TABLE sites (
+CREATE TABLE app.sites (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     pantheon_site_id TEXT UNIQUE NOT NULL,  -- Reference to Pantheon's site identifier
+    organization_id UUID REFERENCES app.organizations(id),  -- Organization ownership
     name TEXT NOT NULL,
-    
+
     -- Workflow settings for merge approval
     workflow_settings JSONB NOT NULL DEFAULT '{
         "mergeApprovalMode": "optional",
@@ -373,145 +444,165 @@ CREATE TABLE sites (
         "approverMode": "both",
         "approverMinRole": "EDITOR"
     }',
-    
+
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE INDEX idx_sites_organization ON app.sites(organization_id);
+
 -- Documents within a site
-CREATE TABLE documents (
+CREATE TABLE app.documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    site_id UUID NOT NULL REFERENCES sites(id),
+    site_id UUID NOT NULL REFERENCES app.sites(id),
     path TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    
+
     UNIQUE(site_id, path)
 );
 
-CREATE INDEX idx_documents_site ON documents(site_id);
+CREATE INDEX idx_documents_site ON app.documents(site_id);
 
 -- Branches represent lines of work
 -- Each site has a 'main' branch representing the published state
-CREATE TABLE branches (
+CREATE TABLE app.branches (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    site_id UUID NOT NULL REFERENCES sites(id),
+    site_id UUID NOT NULL REFERENCES app.sites(id),
     name TEXT NOT NULL,
     description TEXT,
     status TEXT NOT NULL DEFAULT 'active',
     -- Valid statuses: 'active', 'review', 'merged', 'archived'
-    
+
     -- Is this the main (published) branch?
     is_main BOOLEAN NOT NULL DEFAULT FALSE,
-    
+
     -- Lineage
-    source_branch_id UUID REFERENCES branches(id),
+    source_branch_id UUID REFERENCES app.branches(id),
     source_checkpoint_id UUID,  -- References checkpoints(id), added after table creation
-    
+
     -- Ownership
     created_by_id UUID NOT NULL,
     created_by_type TEXT NOT NULL,  -- 'user', 'agent'
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
-    
+
     UNIQUE(site_id, name)
 );
 
-CREATE INDEX idx_branches_site ON branches(site_id);
-CREATE INDEX idx_branches_status ON branches(site_id, status);
+CREATE INDEX idx_branches_site ON app.branches(site_id);
+CREATE INDEX idx_branches_status ON app.branches(site_id, status);
 
 -- Ensure only one main branch per site
-CREATE UNIQUE INDEX idx_branches_main ON branches(site_id) WHERE is_main = TRUE;
+CREATE UNIQUE INDEX idx_branches_main ON app.branches(site_id) WHERE is_main = TRUE;
 
 -- Document versions (snapshots of document state on a branch)
-CREATE TABLE document_versions (
+CREATE TABLE app.document_versions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    document_id UUID NOT NULL REFERENCES documents(id),
-    branch_id UUID NOT NULL REFERENCES branches(id),
-    
+    document_id UUID NOT NULL REFERENCES app.documents(id),
+    branch_id UUID NOT NULL REFERENCES app.branches(id),
+
     -- Version metadata
     version_number INTEGER NOT NULL,
-    
+
     -- Content snapshot
     snapshot JSONB NOT NULL,
-    
+
     -- CRDT state for merge support
     crdt_state BYTEA,
-    
+
     -- What created this version
     source TEXT NOT NULL DEFAULT 'edit',
     -- Valid sources: 'edit', 'merge', 'revert', 'checkpoint'
-    
+
     -- Authorship
     created_by_id UUID NOT NULL,
     created_by_type TEXT NOT NULL,  -- 'user', 'agent', 'system'
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    
+
     UNIQUE(document_id, branch_id, version_number)
 );
 
-CREATE INDEX idx_versions_doc_branch ON document_versions(document_id, branch_id);
-CREATE INDEX idx_versions_branch ON document_versions(branch_id);
+CREATE INDEX idx_versions_doc_branch ON app.document_versions(document_id, branch_id);
+CREATE INDEX idx_versions_branch ON app.document_versions(branch_id);
 
 -- Checkpoints (named snapshots of branch state)
-CREATE TABLE checkpoints (
+-- Enhanced with agent politeness metadata
+CREATE TABLE app.checkpoints (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    branch_id UUID NOT NULL REFERENCES branches(id),
-    
+    branch_id UUID NOT NULL REFERENCES app.branches(id),
+
     -- Checkpoint metadata
     name TEXT,
     message TEXT,
-    
+    description TEXT,  -- Detailed reason for checkpoint
+
     -- Type of checkpoint
     checkpoint_type TEXT NOT NULL DEFAULT 'manual',
     -- Valid types: 'manual', 'auto', 'pre_merge', 'post_merge'
-    
+
+    -- Agent politeness: trigger tracking
+    trigger TEXT NOT NULL DEFAULT 'manual'
+        CHECK (trigger IN ('manual', 'human_requested', 'autonomous')),
+    requested_by_id UUID,  -- User who requested (if human_requested)
+    operation_type TEXT,   -- Category of operation (layout_optimization, etc.)
+    affected_regions JSONB DEFAULT '[]',  -- JSON paths affected
+
+    -- Status tracking for rollback
+    status TEXT NOT NULL DEFAULT 'completed'
+        CHECK (status IN ('completed', 'rolled_back', 'partial')),
+    rolled_back_by_id UUID,
+    rolled_back_at TIMESTAMPTZ,
+
     -- Authorship
     created_by_id UUID NOT NULL,
     created_by_type TEXT NOT NULL,  -- 'user', 'agent', 'system'
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_checkpoints_branch ON checkpoints(branch_id, created_at DESC);
+CREATE INDEX idx_checkpoints_branch ON app.checkpoints(branch_id, created_at DESC);
+CREATE INDEX idx_checkpoints_trigger ON app.checkpoints(trigger);
+CREATE INDEX idx_checkpoints_status ON app.checkpoints(status);
+CREATE INDEX idx_checkpoints_operation_type ON app.checkpoints(operation_type);
 
 -- Checkpoint document snapshots (which versions are in this checkpoint)
-CREATE TABLE checkpoint_documents (
-    checkpoint_id UUID NOT NULL REFERENCES checkpoints(id),
-    document_id UUID NOT NULL REFERENCES documents(id),
-    document_version_id UUID NOT NULL REFERENCES document_versions(id),
-    
+CREATE TABLE app.checkpoint_documents (
+    checkpoint_id UUID NOT NULL REFERENCES app.checkpoints(id),
+    document_id UUID NOT NULL REFERENCES app.documents(id),
+    document_version_id UUID NOT NULL REFERENCES app.document_versions(id),
+
     PRIMARY KEY (checkpoint_id, document_id)
 );
 
 -- Merge requests
-CREATE TABLE merge_requests (
+CREATE TABLE app.merge_requests (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    site_id UUID NOT NULL REFERENCES sites(id),
-    
+    site_id UUID NOT NULL REFERENCES app.sites(id),
+
     -- Source and target branches
-    source_branch_id UUID NOT NULL REFERENCES branches(id),
-    target_branch_id UUID NOT NULL REFERENCES branches(id),
-    
+    source_branch_id UUID NOT NULL REFERENCES app.branches(id),
+    target_branch_id UUID NOT NULL REFERENCES app.branches(id),
+
     -- Merge base (checkpoint on target when merge was proposed)
-    base_checkpoint_id UUID REFERENCES checkpoints(id),
-    
+    base_checkpoint_id UUID REFERENCES app.checkpoints(id),
+
     -- Request metadata
     title TEXT NOT NULL,
     description TEXT,
-    
+
     -- State
     status TEXT NOT NULL DEFAULT 'open',
     -- Valid statuses: 'open', 'approved', 'merged', 'closed', 'conflicted'
-    
+
     -- Conflict tracking
     has_conflicts BOOLEAN DEFAULT FALSE,
     conflict_details JSONB,
-    
+
     -- Authorship
     created_by_id UUID NOT NULL,
     created_by_type TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
-    
+
     -- Resolution
     merged_at TIMESTAMPTZ,
     merged_by_id UUID,
@@ -521,103 +612,103 @@ CREATE TABLE merge_requests (
     closed_by_type TEXT
 );
 
-CREATE INDEX idx_merge_requests_site ON merge_requests(site_id);
-CREATE INDEX idx_merge_requests_source ON merge_requests(source_branch_id);
-CREATE INDEX idx_merge_requests_target ON merge_requests(target_branch_id);
-CREATE INDEX idx_merge_requests_status ON merge_requests(site_id, status);
+CREATE INDEX idx_merge_requests_site ON app.merge_requests(site_id);
+CREATE INDEX idx_merge_requests_source ON app.merge_requests(source_branch_id);
+CREATE INDEX idx_merge_requests_target ON app.merge_requests(target_branch_id);
+CREATE INDEX idx_merge_requests_status ON app.merge_requests(site_id, status);
 
 -- Branch grants (role elevation for actors on specific branches)
 -- This is the primary authorization table owned by this service
-CREATE TABLE branch_grants (
+CREATE TABLE app.branch_grants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
-    
+    branch_id UUID NOT NULL REFERENCES app.branches(id) ON DELETE CASCADE,
+
     -- Actor identity (from Pantheon Identity or Agent Service)
     actor_id UUID NOT NULL,
     actor_type TEXT NOT NULL,  -- 'user', 'agent'
-    
+
     -- Elevated role for this branch
     role TEXT NOT NULL,  -- 'VIEWER', 'EDITOR', 'ADMIN'
-    
+
     -- Grant metadata
     granted_by_id UUID NOT NULL,
     granted_by_type TEXT NOT NULL,
     granted_at TIMESTAMPTZ DEFAULT NOW(),
     reason TEXT,
-    
+
     UNIQUE(branch_id, actor_id)
 );
 
-CREATE INDEX idx_branch_grants_branch ON branch_grants(branch_id);
-CREATE INDEX idx_branch_grants_actor ON branch_grants(actor_id);
+CREATE INDEX idx_branch_grants_branch ON app.branch_grants(branch_id);
+CREATE INDEX idx_branch_grants_actor ON app.branch_grants(actor_id);
 
 -- Guest links (view-only, branch-scoped)
 -- NOTE: Candidate for extraction to shared approval/access service
-CREATE TABLE guest_links (
+CREATE TABLE app.guest_links (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
-    
+    branch_id UUID NOT NULL REFERENCES app.branches(id) ON DELETE CASCADE,
+
     -- Recipient
     email TEXT NOT NULL,
     name TEXT,
-    
+
     -- Auth
     token_hash TEXT NOT NULL UNIQUE,
-    
+
     -- Lifecycle
     status TEXT NOT NULL DEFAULT 'active',
     -- Valid: 'active', 'revoked', 'expired'
     expires_at TIMESTAMPTZ NOT NULL,
-    
+
     -- Metadata
     created_by_id UUID NOT NULL,
     created_by_type TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     message TEXT,
-    
+
     -- Usage tracking
     access_count INTEGER DEFAULT 0,
     last_access_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_guest_links_token ON guest_links(token_hash);
-CREATE INDEX idx_guest_links_branch ON guest_links(branch_id);
-CREATE INDEX idx_guest_links_status ON guest_links(status, expires_at);
+CREATE INDEX idx_guest_links_token ON app.guest_links(token_hash);
+CREATE INDEX idx_guest_links_branch ON app.guest_links(branch_id);
+CREATE INDEX idx_guest_links_status ON app.guest_links(status, expires_at);
 
 -- Approval requests (for merge request approvals)
 -- NOTE: Candidate for extraction to shared approval service
-CREATE TABLE approval_requests (
+CREATE TABLE app.approval_requests (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    merge_request_id UUID NOT NULL REFERENCES merge_requests(id) ON DELETE CASCADE,
-    
+    merge_request_id UUID NOT NULL REFERENCES app.merge_requests(id) ON DELETE CASCADE,
+
     -- Approver identity (may not have Pantheon account)
     approver_email TEXT NOT NULL,
     approver_name TEXT,
-    
+
     -- Auth (for external approvers without Pantheon accounts)
     token_hash TEXT UNIQUE,
-    
+
     -- State
     status TEXT NOT NULL DEFAULT 'pending',
     -- Valid: 'pending', 'approved', 'rejected', 'expired'
-    
+
     -- Lifecycle
     expires_at TIMESTAMPTZ,
     responded_at TIMESTAMPTZ,
     comment TEXT,
-    
+
     -- Audit trail
     ip_address TEXT,
     user_agent TEXT,
-    
+
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    
+
     UNIQUE(merge_request_id, approver_email)
 );
 
-CREATE INDEX idx_approval_requests_mr ON approval_requests(merge_request_id);
-CREATE INDEX idx_approval_requests_token ON approval_requests(token_hash) WHERE token_hash IS NOT NULL;
-CREATE INDEX idx_approval_requests_status ON approval_requests(status);
+CREATE INDEX idx_approval_requests_mr ON app.approval_requests(merge_request_id);
+CREATE INDEX idx_approval_requests_token ON app.approval_requests(token_hash) WHERE token_hash IS NOT NULL;
+CREATE INDEX idx_approval_requests_status ON app.approval_requests(status);
 ```
 
 ### Firestore Schema (Real-Time Layer)
@@ -631,7 +722,7 @@ Firestore handles real-time collaboration state. This is complementary to Postgr
       - crdtState: bytes        # Yjs encoded state
       - lastModified: timestamp
       - activeEditors: map      # userId -> cursor position
-      
+
     /presence/
       /{odId}/                 # Durable Object ID
         - connectedUsers: []
@@ -641,10 +732,50 @@ Firestore handles real-time collaboration state. This is complementary to Postgr
 ### TypeScript Types
 
 ```typescript
+// Organization types (owned by this service for agent configuration)
+interface Organization {
+  id: string;
+  name: string;
+  settings: OrganizationSettings;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface OrganizationSettings {
+  agentIdleTimeoutMs: number;  // default: 5000
+  agentPriorityTiers?: Record<string, AgentPriorityTier>;  // future
+}
+
+interface AgentPriorityTier {
+  name: string;
+  idleTimeoutMultiplier: number;
+  canInterruptAutonomous: boolean;
+}
+
+// Agent registry types
+interface RegisteredAgent {
+  id: string;
+  organizationId: string;
+  name: string;
+  description?: string;
+  capabilities: string[];
+  status: 'active' | 'suspended' | 'disabled';
+  settings: AgentSettings;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface AgentSettings {
+  priorityTier?: string;
+  allowedOperationTypes?: string[];
+  maxConcurrentDocuments?: number;
+}
+
 // Core entities
 interface Site {
   id: string;
   pantheonSiteId: string;
+  organizationId?: string;
   name: string;
   workflowSettings: WorkflowSettings;
   createdAt: Date;
@@ -694,15 +825,42 @@ interface DocumentVersion {
   createdAt: Date;
 }
 
+// Checkpoint types (enhanced for agent politeness)
+type CheckpointTrigger = 'manual' | 'human_requested' | 'autonomous';
+type CheckpointStatus = 'completed' | 'rolled_back' | 'partial';
+type CheckpointType = 'manual' | 'auto' | 'pre_merge' | 'post_merge';
+
 interface Checkpoint {
   id: string;
   branchId: string;
   name?: string;
   message?: string;
-  checkpointType: 'manual' | 'auto' | 'pre_merge' | 'post_merge';
+  description?: string;
+  checkpointType: CheckpointType;
+  trigger: CheckpointTrigger;
   createdById: string;
   createdByType: 'user' | 'agent' | 'system';
+  requestedById?: string;
+  operationType?: string;
+  affectedRegions: string[];
+  status: CheckpointStatus;
+  rolledBackById?: string;
+  rolledBackAt?: Date;
   createdAt: Date;
+}
+
+interface CreateCheckpointParams {
+  branchId: string;
+  name?: string;
+  message?: string;
+  description?: string;
+  checkpointType?: CheckpointType;
+  trigger: CheckpointTrigger;
+  createdById: string;
+  createdByType: 'user' | 'agent' | 'system';
+  requestedById?: string;
+  operationType?: string;
+  affectedRegions?: string[];
 }
 
 interface MergeRequest {
@@ -768,6 +926,55 @@ interface ApprovalRequest {
   comment?: string;
   createdAt: Date;
 }
+
+// Presence types (for agent politeness)
+type ActorState = 'active' | 'idle' | 'editing';
+type ActorRole = 'human' | 'agent';
+
+interface ActorPresence {
+  id: string;
+  actorId: string;
+  actorType: 'user' | 'agent' | 'guest' | 'service' | 'system';
+  role: ActorRole;
+  name: string;
+  avatar?: string;
+  state: ActorState;
+  intent?: string;
+  focusRegions?: string[];
+  lastActivityAt: Date;
+  joinedAt: Date;
+}
+
+interface PresenceUpdate {
+  state?: ActorState;
+  intent?: string;
+  focusRegions?: string[];
+}
+
+interface DocumentPresence {
+  documentId: string;
+  branchId: string;
+  siteId: string;
+  actors: ActorPresence[];
+  lastUpdatedAt: Date;
+}
+
+// Agent edit context (for politeness workflow)
+interface AgentEditContext {
+  agentId: string;
+  trigger: 'human_requested' | 'autonomous';
+  requestedById?: string;
+  intent: string;
+  targetRegions: string[];
+  operationType?: string;
+}
+
+interface AgentEditPermission {
+  allowed: boolean;
+  reason?: 'human_active' | 'region_conflict' | 'agent_suspended';
+  retryAfterMs?: number;
+  conflictingRegions?: string[];
+}
 ```
 
 ---
@@ -786,17 +993,17 @@ export class DocumentSession {
     private env: Env;
     private ydoc: Y.Doc;
     private connections: Map<WebSocket, ConnectionMeta>;
-    
+
     constructor(state: DurableObjectState, env: Env) {
         this.state = state;
         this.env = env;
         this.ydoc = new Y.Doc();
         this.connections = new Map();
     }
-    
+
     async fetch(request: Request): Promise<Response> {
         const url = new URL(request.url);
-        
+
         switch (url.pathname) {
             case '/connect':
                 return this.handleWebSocket(request);
@@ -808,75 +1015,75 @@ export class DocumentSession {
                 return new Response('Not found', { status: 404 });
         }
     }
-    
+
     private async handleWebSocket(request: Request): Promise<Response> {
         const [client, server] = Object.values(new WebSocketPair());
-        
+
         await this.initializeIfNeeded();
-        
+
         server.accept();
-        
+
         const meta: ConnectionMeta = {
             actorId: request.headers.get('X-Actor-Id'),
             actorType: request.headers.get('X-Actor-Type') as 'user' | 'agent',
         };
         this.connections.set(server, meta);
-        
+
         // Send current state to new client
         const stateUpdate = Y.encodeStateAsUpdate(this.ydoc);
         server.send(stateUpdate);
-        
+
         // Handle incoming updates
         server.addEventListener('message', async (event) => {
             const update = new Uint8Array(event.data as ArrayBuffer);
-            
+
             // Apply to local doc
             Y.applyUpdate(this.ydoc, update);
-            
+
             // Broadcast to other clients
             for (const [conn, _] of this.connections) {
                 if (conn !== server && conn.readyState === WebSocket.OPEN) {
                     conn.send(update);
                 }
             }
-            
+
             // Persist to durable storage
             await this.persist();
         });
-        
+
         server.addEventListener('close', () => {
             this.connections.delete(server);
         });
-        
+
         return new Response(null, { status: 101, webSocket: client });
     }
-    
+
     private async handleSnapshot(): Promise<Response> {
         await this.initializeIfNeeded();
-        
+
         const root = this.ydoc.getMap('root');
         const snapshot = root.toJSON();
         const stateVector = Y.encodeStateVector(this.ydoc);
-        
+
         return Response.json({
             snapshot,
             stateVector: Array.from(stateVector),
             connectedActors: Array.from(this.connections.values())
         });
     }
-    
+
     private async handleApplyOperations(request: Request): Promise<Response> {
         await this.initializeIfNeeded();
-        
+
         const { operations, actorId } = await request.json();
-        
+
         // Apply operations to CRDT
         this.ydoc.transact(() => {
             for (const op of operations) {
                 this.applyOperation(op);
             }
         }, actorId);
-        
+
         // Broadcast update to connected clients
         const update = Y.encodeStateAsUpdate(this.ydoc);
         for (const [conn, _] of this.connections) {
@@ -884,18 +1091,18 @@ export class DocumentSession {
                 conn.send(update);
             }
         }
-        
+
         await this.persist();
-        
-        return Response.json({ 
+
+        return Response.json({
             success: true,
             snapshot: this.ydoc.getMap('root').toJSON()
         });
     }
-    
+
     private applyOperation(op: EditOperation): void {
         const root = this.ydoc.getMap('root');
-        
+
         switch (op.type) {
             case 'set':
                 this.setNestedValue(root, op.path, op.value);
@@ -914,10 +1121,10 @@ export class DocumentSession {
                 break;
         }
     }
-    
+
     private async initializeIfNeeded(): Promise<void> {
         const stored = await this.state.storage.get('ydoc');
-        
+
         if (stored) {
             Y.applyUpdate(this.ydoc, new Uint8Array(stored as ArrayBuffer));
         } else {
@@ -925,12 +1132,12 @@ export class DocumentSession {
             await this.initializeFromCheckpoint();
         }
     }
-    
+
     private async initializeFromCheckpoint(): Promise<void> {
         // Parse session ID to get branch info
         const sessionId = this.state.id.toString();
         const [siteId, documentId, branchId] = sessionId.split(':');
-        
+
         // Fetch initial state from PostgreSQL via API
         const response = await fetch(
             `${this.env.API_URL}/internal/document-initial-state`,
@@ -940,21 +1147,21 @@ export class DocumentSession {
                 body: JSON.stringify({ siteId, documentId, branchId })
             }
         );
-        
+
         const { snapshot } = await response.json();
-        
+
         // Initialize CRDT with snapshot
         const root = this.ydoc.getMap('root');
         this.populateFromSnapshot(root, snapshot);
-        
+
         await this.persist();
     }
-    
+
     private async persist(): Promise<void> {
         const update = Y.encodeStateAsUpdate(this.ydoc);
         await this.state.storage.put('ydoc', update);
     }
-    
+
     // Helper methods for nested operations omitted for brevity
 }
 
@@ -990,6 +1197,204 @@ async function getOrCreateDocumentSession(
     return env.DOCUMENT_SESSIONS.get(id);
 }
 ```
+
+---
+
+## Agent Politeness System
+
+The Agent Politeness System enables AI agents to collaborate respectfully with human users. It coordinates timing, communicates intent, provides audit trails, and resolves conflicts when agents and humans work on the same content.
+
+### Organization Configuration
+
+Organizations own agent configuration at the top level:
+
+```typescript
+interface OrganizationSettings {
+  agentIdleTimeoutMs: number;  // How long humans must be idle (default: 5000ms)
+  agentPriorityTiers?: Record<string, AgentPriorityTier>;  // Future: priority tiers
+}
+```
+
+The `agentIdleTimeoutMs` setting controls how long autonomous agents must wait after the last human edit before proceeding with their own changes. User-requested agent work bypasses this check.
+
+### Agent Registry
+
+Agents are registered at the organization level with individual accounts:
+
+```typescript
+interface RegisteredAgent {
+  id: string;
+  organizationId: string;
+  name: string;
+  description?: string;
+  capabilities: string[];
+  status: 'active' | 'suspended' | 'disabled';
+  settings: AgentSettings;
+}
+```
+
+Agent status controls whether the agent can operate:
+- **active**: Agent can perform all allowed operations
+- **suspended**: Agent cannot start new operations but can complete in-progress work
+- **disabled**: Agent cannot perform any operations
+
+### Presence and Awareness
+
+The presence system tracks who is working on each document and what they are doing:
+
+```typescript
+interface ActorPresence {
+  id: string;
+  actorId: string;
+  actorType: 'user' | 'agent' | 'guest' | 'service' | 'system';
+  role: 'human' | 'agent';  // Simplified for conflict detection
+  name: string;
+  avatar?: string;
+  state: 'active' | 'idle' | 'editing';
+  intent?: string;  // What the actor is currently doing
+  focusRegions?: string[];  // JSON paths being worked on (advisory locks)
+  lastActivityAt: Date;
+  joinedAt: Date;
+}
+```
+
+**Presence Sources:**
+- **WebSocket connections**: Real-time presence via Y.js Awareness protocol
+- **API registration**: Presence for API-only agents without WebSocket
+- **Merged view**: Clients receive a unified view of all presence sources
+
+**Presence Rollups:**
+- Document-level: All actors in a specific document
+- Branch-level: All actors across all documents on a branch
+- Site-level: All actors across all branches on a site
+
+### Activity Detection and Idle Timeout
+
+The system tracks human activity to determine when autonomous agents can safely edit:
+
+```typescript
+// In Document Session
+private lastHumanEditAt: number = 0;
+private humanEditingRegions: Set<string> = new Set();
+
+// Record when humans edit
+private recordHumanActivity(actorId: string, regions: string[]) {
+  this.lastHumanEditAt = Date.now();
+  regions.forEach(r => this.humanEditingRegions.add(r));
+  this.scheduleRegionClear();  // Clear after idle timeout
+}
+```
+
+**Idle Detection Rules:**
+1. User-requested agent work (human clicked a button) proceeds immediately
+2. Autonomous agent work waits until `agentIdleTimeoutMs` has passed since last human edit
+3. Region-specific conflicts are checked even after idle timeout
+
+### Agent Edit Workflow
+
+Agents follow a structured workflow for making edits:
+
+```
+1. POST /can-agent-edit
+   - Check if agent can proceed
+   - Returns: { allowed, reason?, retryAfterMs?, conflictingRegions? }
+
+2. POST /agent-edit-start
+   - Declare intent to edit
+   - System creates checkpoint (if autonomous)
+   - System registers agent's focus regions
+   - System updates agent's presence with intent
+
+3. POST /apply (normal edit endpoint)
+   - Agent makes edits
+   - If human starts editing overlapping region:
+     - Agent receives conflict notification
+     - Agent should call /agent-edit-abort
+
+4. POST /agent-edit-complete
+   - Agent finished editing
+   - System clears agent's focus regions
+   - System updates checkpoint status
+
+   OR
+
+   POST /agent-edit-abort
+   - Agent encountered conflict or error
+   - System rolls back to pre-edit checkpoint
+   - System marks checkpoint as 'rolled_back'
+```
+
+**Edit Permission Logic:**
+
+```typescript
+async canAgentEdit(context: AgentEditContext): Promise<AgentEditPermission> {
+  // User-requested work always allowed
+  if (context.trigger === 'human_requested') {
+    return { allowed: true };
+  }
+
+  // Get organization settings for idle timeout
+  const org = await this.getOrganization();
+  const idleTimeoutMs = org.settings.agentIdleTimeoutMs;
+
+  // Check if humans are idle
+  const timeSinceHumanEdit = Date.now() - this.lastHumanEditAt;
+  if (timeSinceHumanEdit < idleTimeoutMs) {
+    return {
+      allowed: false,
+      reason: 'human_active',
+      retryAfterMs: idleTimeoutMs - timeSinceHumanEdit
+    };
+  }
+
+  // Check for region conflicts
+  const conflictingRegions = context.targetRegions.filter(
+    r => this.isRegionConflicting(r)
+  );
+  if (conflictingRegions.length > 0) {
+    return {
+      allowed: false,
+      reason: 'region_conflict',
+      conflictingRegions
+    };
+  }
+
+  return { allowed: true };
+}
+```
+
+### Region-Based Conflict Detection
+
+Regions are JSON paths that identify parts of a document. The system detects when agents and humans work on overlapping regions:
+
+```typescript
+// Check if two regions overlap
+private regionsOverlap(a: string, b: string): boolean {
+  // /content/0 overlaps with /content/0/props
+  // /content/0 does not overlap with /content/1
+  return a.startsWith(b) || b.startsWith(a);
+}
+```
+
+**Conflict Resolution Rules:**
+1. Agent yields when human enters overlapping region (agent aborts and rolls back)
+2. Non-overlapping regions: Y.js CRDT merges changes automatically
+3. Kill switch: Any collaborator can kick an agent from a document
+
+### Agent Context Headers
+
+Agents provide context in API requests via headers:
+
+```
+X-Agent-Id: <agent-uuid>
+X-Agent-Trigger: human_requested | autonomous
+X-Agent-Requested-By: <user-uuid>  (when human_requested)
+X-Agent-Intent: <description of what agent is doing>
+X-Agent-Operation-Type: <category>
+X-Agent-Target-Regions: <comma-separated JSON paths>
+```
+
+The API validates these headers, checks agent status, and enforces the edit workflow based on the trigger type.
 
 ---
 
@@ -1491,13 +1896,13 @@ async function revertToCheckpoint(
 ): Promise<Checkpoint> {
     // Get state at target checkpoint
     const targetState = await getDocumentsAtCheckpoint(targetCheckpointId);
-    
+
     // Update live CRDT sessions to match
     for (const doc of targetState) {
         const session = await getDocumentSession(siteId, doc.documentId, branchId);
         await session.replaceState(doc.snapshot);
     }
-    
+
     // Create checkpoint documenting the revert
     return await createCheckpoint(siteId, branchId, {
         message: `Reverted to checkpoint: ${targetCheckpointId}`,
@@ -1566,11 +1971,11 @@ For local testing, a mock provider issues JWTs and validates them:
 // Mock provider implementation
 class MockIdentityProvider {
   private config: MockIdentityConfig;
-  
+
   async issueToken(userId: string): Promise<string> {
     const user = this.config.users.find(u => u.id === userId);
     if (!user) throw new Error('User not found');
-    
+
     return jwt.sign({
       sub: user.id,
       email: user.email,
@@ -1579,7 +1984,7 @@ class MockIdentityProvider {
       siteRoles: user.siteRoles,
     }, this.config.jwtSecret, { expiresIn: this.config.tokenExpiry });
   }
-  
+
   async validateToken(token: string): Promise<AuthenticatedPrincipal | null> {
     try {
       const payload = jwt.verify(token, this.config.jwtSecret);
@@ -1594,11 +1999,11 @@ class MockIdentityProvider {
       return null;
     }
   }
-  
+
   async validateAgentKey(apiKey: string): Promise<AuthenticatedPrincipal | null> {
     const agent = this.config.agents.find(a => a.apiKey === apiKey);
     if (!agent) return null;
-    
+
     return {
       id: agent.id,
       type: 'agent',
@@ -1658,7 +2063,7 @@ const ROLES = {
     canMergeToMain: false,
     canManageGrants: false,
   },
-  
+
   VIEWER: {
     canView: true,
     canEdit: false,
@@ -1670,7 +2075,7 @@ const ROLES = {
     canMergeToMain: false,
     canManageGrants: false,
   },
-  
+
   EDITOR: {
     canView: true,
     canEdit: true,
@@ -1682,7 +2087,7 @@ const ROLES = {
     canMergeToMain: false,    // Requires approval or ADMIN
     canManageGrants: false,
   },
-  
+
   ADMIN: {
     canView: true,
     canEdit: true,
@@ -1746,18 +2151,18 @@ async function getEffectiveRole(
   // Step 1: Get Pantheon baseline role for this site
   const pantheonRole = principal.pantheonSiteRoles.get(siteId);
   const baselineRoleName = mapPantheonRole(pantheonRole);
-  
+
   // Step 2: Check for branch-level elevation
   const branchGrant = await db.query(`
     SELECT role FROM branch_grants
     WHERE branch_id = $1 AND actor_id = $2
   `, [branchId, principal.id]);
-  
+
   const grantRoleName = branchGrant.rows[0]?.role as RoleName | undefined;
-  
+
   // Step 3: Effective role is the higher of the two
   const effectiveRoleName = maxRole(baselineRoleName, grantRoleName);
-  
+
   return {
     role: ROLES[effectiveRoleName],
     roleName: effectiveRoleName,
@@ -1777,7 +2182,7 @@ function maxRole(a: RoleName, b: RoleName | undefined): RoleName {
 function requirePermission(permission: keyof Role) {
   return async (req: RequestWithPrincipal, res: Response, next: NextFunction) => {
     const { siteId, branchId } = req.params;
-    
+
     // Special case: guests have fixed VIEWER role
     if (req.principal.type === 'guest') {
       if (permission !== 'canView') {
@@ -1786,13 +2191,13 @@ function requirePermission(permission: keyof Role) {
       next();
       return;
     }
-    
+
     const { role, roleName } = await getEffectiveRole(
       req.principal,
       siteId,
       branchId
     );
-    
+
     if (!role[permission]) {
       return res.status(403).json({
         error: `Missing permission: ${permission}`,
@@ -1800,7 +2205,7 @@ function requirePermission(permission: keyof Role) {
         yourRole: roleName,
       });
     }
-    
+
     req.effectiveRole = role;
     req.effectiveRoleName = roleName;
     next();
@@ -1834,25 +2239,25 @@ Guests access specific branches via magic links. They receive a fixed VIEWER rol
 ```typescript
 async function validateGuestToken(token: string): Promise<GuestPrincipal | null> {
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-  
+
   const result = await db.query(`
     SELECT * FROM guest_links
-    WHERE token_hash = $1 
+    WHERE token_hash = $1
       AND status = 'active'
       AND expires_at > NOW()
   `, [tokenHash]);
-  
+
   if (result.rows.length === 0) return null;
-  
+
   const link = result.rows[0];
-  
+
   // Update access tracking
   await db.query(`
     UPDATE guest_links
     SET access_count = access_count + 1, last_access_at = NOW()
     WHERE id = $1
   `, [link.id]);
-  
+
   return {
     id: `guest:${link.id}`,
     type: 'guest',
@@ -1878,25 +2283,25 @@ async function canApprove(
   const mr = await getMergeRequest(mergeRequestId);
   const site = await getSite(mr.siteId);
   const settings = site.workflowSettings;
-  
+
   // Check explicit approval request
   if (settings.approverMode !== 'role_based') {
     const explicitRequest = await db.query(`
       SELECT * FROM approval_requests
       WHERE merge_request_id = $1 AND approver_email = $2 AND status = 'pending'
     `, [mergeRequestId, principal.email]);
-    
+
     if (explicitRequest.rows.length > 0) return true;
   }
-  
+
   // Check role-based approval
   if (settings.approverMode !== 'explicit') {
     const { roleName } = await getEffectiveRole(principal, mr.siteId, mr.sourceBranchId);
     const minRole = settings.approverMinRole ?? 'EDITOR';
-    
+
     if (roleAtLeast(roleName, minRole)) return true;
   }
-  
+
   return false;
 }
 
@@ -1917,21 +2322,21 @@ async function canMergeToMain(
 ): Promise<{ allowed: boolean; reason?: string }> {
   const site = await getSite(mergeRequest.siteId);
   const settings = site.workflowSettings;
-  
+
   // Check if target is main
   const targetBranch = await getBranch(mergeRequest.targetBranchId);
   if (!targetBranch.isMain) {
     // Not merging to main, use regular canMerge permission
     return { allowed: true };
   }
-  
+
   // Get actor's role
   const { role, roleName } = await getEffectiveRole(
     principal,
     mergeRequest.siteId,
     mergeRequest.sourceBranchId
   );
-  
+
   // If approval mode is 'none', ADMIN can merge directly
   if (settings.mergeApprovalMode === 'none') {
     if (role.canMergeToMain) {
@@ -1939,7 +2344,7 @@ async function canMergeToMain(
     }
     return { allowed: false, reason: 'ADMIN role required for direct merge to main' };
   }
-  
+
   // Check approval count
   const approvals = await getApprovalCount(mergeRequest.id);
   if (approvals < settings.minApprovers) {
@@ -1948,7 +2353,7 @@ async function canMergeToMain(
       reason: `Requires ${settings.minApprovers} approval(s), has ${approvals}`,
     };
   }
-  
+
   // Self-approval check
   if (!settings.allowSelfApproval) {
     const selfApproved = await hasSelfApproval(mergeRequest.id, principal.id);
@@ -1956,12 +2361,12 @@ async function canMergeToMain(
       return { allowed: false, reason: 'Self-approval not allowed' };
     }
   }
-  
+
   // Approved merge can be executed by EDITOR+
   if (role.canMerge) {
     return { allowed: true };
   }
-  
+
   return { allowed: false, reason: 'Insufficient permissions' };
 }
 ```
@@ -1985,7 +2390,7 @@ class LocalAuditEmitter implements AuditEmitter {
 // Production: emit to Pantheon Audit Service
 class PantheonAuditEmitter implements AuditEmitter {
   private client: AuditServiceClient;
-  
+
   async emit(event: AuditEvent): Promise<void> {
     await this.client.emit({
       ...event,
@@ -1997,7 +2402,7 @@ class PantheonAuditEmitter implements AuditEmitter {
 // Usage in handlers
 async function createBranchHandler(req: RequestWithPrincipal, res: Response) {
   const branch = await createBranch(req.body);
-  
+
   await auditEmitter.emit({
     action: 'branch.created',
     actor: { id: req.principal.id, type: req.principal.type },
@@ -2006,7 +2411,7 @@ async function createBranchHandler(req: RequestWithPrincipal, res: Response) {
     timestamp: new Date(),
     success: true,
   });
-  
+
   res.status(201).json(branch);
 }
 ```
@@ -2014,7 +2419,7 @@ async function createBranchHandler(req: RequestWithPrincipal, res: Response) {
 ---
 ## Site Structure
 
-Websites are more than collections of documents"”they have hierarchical organization, navigation, and shared metadata requirements. The site structure layer provides this organizational capability.
+Websites are more than collections of documents—they have hierarchical organization, navigation, and shared metadata requirements. The site structure layer provides this organizational capability.
 
 ### Core Concepts
 
@@ -2028,63 +2433,63 @@ Websites are more than collections of documents"”they have hierarchical organi
 
 ```sql
 -- Site structures define organizational containers
-CREATE TABLE site_structures (
+CREATE TABLE app.site_structures (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    site_id UUID NOT NULL REFERENCES sites(id),
+    site_id UUID NOT NULL REFERENCES app.sites(id),
     name TEXT NOT NULL,
     slug TEXT NOT NULL,           -- URL-safe identifier
     description TEXT,
-    
+
     structure_type TEXT NOT NULL DEFAULT 'hierarchy',
     -- Types: 'collection' (flat list), 'hierarchy' (nested tree)
-    
+
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    
+
     UNIQUE(site_id, slug)
 );
 
-CREATE INDEX idx_site_structures_site ON site_structures(site_id);
+CREATE INDEX idx_site_structures_site ON app.site_structures(site_id);
 
 -- Structure nodes define the hierarchy
-CREATE TABLE structure_nodes (
+CREATE TABLE app.structure_nodes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    structure_id UUID NOT NULL REFERENCES site_structures(id),
-    
+    structure_id UUID NOT NULL REFERENCES app.site_structures(id),
+
     -- Hierarchy
-    parent_node_id UUID REFERENCES structure_nodes(id),
+    parent_node_id UUID REFERENCES app.structure_nodes(id),
     position INTEGER NOT NULL DEFAULT 0,  -- Order among siblings
-    
+
     -- Node identity
     name TEXT NOT NULL,
     slug TEXT NOT NULL,           -- URL segment for this node
-    
+
     -- What this node represents
     node_type TEXT NOT NULL DEFAULT 'section',
     -- Types: 'section' (grouping only), 'document' (links to document), 'external' (external URL)
-    
+
     -- For document nodes
-    document_id UUID REFERENCES documents(id),
-    
+    document_id UUID REFERENCES app.documents(id),
+
     -- For external nodes
     external_url TEXT,
-    
+
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    
+
     UNIQUE(structure_id, parent_node_id, slug)
 );
 
-CREATE INDEX idx_structure_nodes_parent ON structure_nodes(parent_node_id, position);
-CREATE INDEX idx_structure_nodes_structure ON structure_nodes(structure_id);
-CREATE INDEX idx_structure_nodes_document ON structure_nodes(document_id);
+CREATE INDEX idx_structure_nodes_parent ON app.structure_nodes(parent_node_id, position);
+CREATE INDEX idx_structure_nodes_structure ON app.structure_nodes(structure_id);
+CREATE INDEX idx_structure_nodes_document ON app.structure_nodes(document_id);
 
 -- Branch-specific structure state
-CREATE TABLE branch_structure_state (
-    branch_id UUID NOT NULL REFERENCES branches(id),
-    structure_id UUID NOT NULL REFERENCES site_structures(id),
-    
+CREATE TABLE app.branch_structure_state (
+    branch_id UUID NOT NULL REFERENCES app.branches(id),
+    structure_id UUID NOT NULL REFERENCES app.site_structures(id),
+
     -- Denormalized tree for efficient reads (computed from structure_nodes)
     structure_tree JSONB NOT NULL DEFAULT '[]',
-    
+
     -- Metadata schema (JSON Schema format) - versioned per branch
     metadata_schema JSONB NOT NULL DEFAULT '{
         "type": "object",
@@ -2094,62 +2499,62 @@ CREATE TABLE branch_structure_state (
         },
         "required": ["title"]
     }',
-    
+
     -- Schema enforcement mode
     schema_enforcement TEXT NOT NULL DEFAULT 'warn',
     -- 'strict': reject non-conforming documents on save
     -- 'warn': allow but flag non-conforming documents
     -- 'none': no enforcement
-    
+
     has_changes_since_checkpoint BOOLEAN DEFAULT FALSE,
     last_modified_at TIMESTAMPTZ,
     last_modified_by UUID,
-    
+
     PRIMARY KEY (branch_id, structure_id)
 );
 
 -- Document metadata within a structure (separate from document content)
-CREATE TABLE branch_document_metadata (
-    branch_id UUID NOT NULL REFERENCES branches(id),
-    structure_id UUID NOT NULL REFERENCES site_structures(id),
-    document_id UUID NOT NULL REFERENCES documents(id),
-    
+CREATE TABLE app.branch_document_metadata (
+    branch_id UUID NOT NULL REFERENCES app.branches(id),
+    structure_id UUID NOT NULL REFERENCES app.site_structures(id),
+    document_id UUID NOT NULL REFERENCES app.documents(id),
+
     -- Metadata conforming to the structure's schema
     metadata JSONB NOT NULL DEFAULT '{}',
-    
+
     -- Validation state (cached, updated on schema or metadata change)
     conforms_to_schema BOOLEAN DEFAULT TRUE,
     validation_errors JSONB DEFAULT '[]',
-    
+
     last_modified_at TIMESTAMPTZ,
     last_modified_by UUID,
-    
+
     PRIMARY KEY (branch_id, structure_id, document_id)
 );
 
-CREATE INDEX idx_branch_doc_metadata_document ON branch_document_metadata(document_id);
-CREATE INDEX idx_branch_doc_metadata_conformance ON branch_document_metadata(branch_id, structure_id, conforms_to_schema);
+CREATE INDEX idx_branch_doc_metadata_document ON app.branch_document_metadata(document_id);
+CREATE INDEX idx_branch_doc_metadata_conformance ON app.branch_document_metadata(branch_id, structure_id, conforms_to_schema);
 
 -- Structure snapshots at checkpoints
-CREATE TABLE checkpoint_structures (
-    checkpoint_id UUID NOT NULL REFERENCES checkpoints(id),
-    structure_id UUID NOT NULL REFERENCES site_structures(id),
-    
+CREATE TABLE app.checkpoint_structures (
+    checkpoint_id UUID NOT NULL REFERENCES app.checkpoints(id),
+    structure_id UUID NOT NULL REFERENCES app.site_structures(id),
+
     structure_tree JSONB NOT NULL,
     metadata_schema JSONB NOT NULL,
     schema_enforcement TEXT NOT NULL,
-    
+
     PRIMARY KEY (checkpoint_id, structure_id)
 );
 
 -- Document metadata snapshots at checkpoints
-CREATE TABLE checkpoint_document_metadata (
-    checkpoint_id UUID NOT NULL REFERENCES checkpoints(id),
-    structure_id UUID NOT NULL REFERENCES site_structures(id),
-    document_id UUID NOT NULL REFERENCES documents(id),
-    
+CREATE TABLE app.checkpoint_document_metadata (
+    checkpoint_id UUID NOT NULL REFERENCES app.checkpoints(id),
+    structure_id UUID NOT NULL REFERENCES app.site_structures(id),
+    document_id UUID NOT NULL REFERENCES app.documents(id),
+
     metadata JSONB NOT NULL,
-    
+
     PRIMARY KEY (checkpoint_id, structure_id, document_id)
 );
 ```
@@ -2295,18 +2700,18 @@ interface StructureAPI {
     structureType: 'collection' | 'hierarchy';
     initialSchema?: JSONSchema;
   }): Promise<SiteStructure>;
-  
+
   getStructure(
     siteId: string,
     branchId: string,
     structureId: string
   ): Promise<SiteStructure>;
-  
+
   listStructures(
     siteId: string,
     branchId: string
   ): Promise<SiteStructure[]>;
-  
+
   // Node management
   addNode(params: {
     siteId: string;
@@ -2323,7 +2728,7 @@ interface StructureAPI {
     };
     position?: number;
   }): Promise<StructureNode>;
-  
+
   updateNode(params: {
     siteId: string;
     branchId: string;
@@ -2334,7 +2739,7 @@ interface StructureAPI {
       isVisible?: boolean;
     };
   }): Promise<StructureNode>;
-  
+
   moveNode(params: {
     siteId: string;
     branchId: string;
@@ -2342,21 +2747,21 @@ interface StructureAPI {
     newParentId?: string;
     newPosition: number;
   }): Promise<StructureNode>;
-  
+
   removeNode(params: {
     siteId: string;
     branchId: string;
     nodeId: string;
     strategy: 'remove-children' | 'promote-children';
   }): Promise<void>;
-  
+
   reorderNodes(params: {
     siteId: string;
     branchId: string;
     parentNodeId: string | null;
     nodeOrder: string[];  // Array of node IDs in desired order
   }): Promise<void>;
-  
+
   // Schema management
   updateMetadataSchema(params: {
     siteId: string;
@@ -2365,13 +2770,13 @@ interface StructureAPI {
     schema: JSONSchema;
     enforcement?: 'strict' | 'warn' | 'none';
   }): Promise<SchemaValidationResult>;
-  
+
   validateStructureDocuments(params: {
     siteId: string;
     branchId: string;
     structureId: string;
   }): Promise<SchemaValidationResult>;
-  
+
   // Document metadata
   getDocumentMetadata(params: {
     siteId: string;
@@ -2379,7 +2784,7 @@ interface StructureAPI {
     structureId: string;
     documentId: string;
   }): Promise<DocumentMetadata>;
-  
+
   updateDocumentMetadata(params: {
     siteId: string;
     branchId: string;
@@ -2387,7 +2792,7 @@ interface StructureAPI {
     documentId: string;
     metadata: Record<string, any>;
   }): Promise<DocumentMetadata>;
-  
+
   // Navigation queries
   getNavigation(params: {
     siteId: string;
@@ -2396,7 +2801,7 @@ interface StructureAPI {
     depth?: number;           // How deep to traverse
     visibleOnly?: boolean;    // Filter to visible nodes only
   }): Promise<NavigationTree>;
-  
+
   getDocumentByPath(params: {
     siteId: string;
     branchId: string;
@@ -2410,13 +2815,13 @@ interface StructureAPI {
 
 Key design decisions:
 
-1. **Documents exist independently of structures** "” A document can exist without being in any structure, and can be added to multiple structures.
+1. **Documents exist independently of structures** — A document can exist without being in any structure, and can be added to multiple structures.
 
-2. **Metadata is per-structure** "” The same document in different structures can have different metadata (e.g., different featured images for blog vs. homepage feature).
+2. **Metadata is per-structure** — The same document in different structures can have different metadata (e.g., different featured images for blog vs. homepage feature).
 
-3. **Structure changes are branch-scoped** "” Reorganizing navigation on a feature branch doesn't affect main until merged.
+3. **Structure changes are branch-scoped** — Reorganizing navigation on a feature branch doesn't affect main until merged.
 
-4. **Documents can be removed from structure without deletion** "” Removing a node with `nodeType: 'document'` doesn't delete the underlying document.
+4. **Documents can be removed from structure without deletion** — Removing a node with `nodeType: 'document'` doesn't delete the underlying document.
 
 ### Merge Considerations for Structures
 
@@ -2473,6 +2878,7 @@ interface AgentService {
 - Branch grants for agents (elevation on specific branches)
 - Receiving and executing tasks assigned by Agent Service
 - Recording agent actions in audit events
+- Agent registry for politeness configuration (organization-level)
 
 ### Pantheon Audit Service (External)
 
@@ -2539,7 +2945,7 @@ The following tables remain in this service but are flagged as candidates for ex
 
 | Term | Definition |
 |------|------------|
-| **site** | Scoped collection of modifications to content, components, templates, or media; typically scoped to a single site |
+| **Site** | Scoped collection of modifications to content, components, templates, or media; typically scoped to a single site |
 | **Document** | Single JSON object identified by path; represents a page or content unit |
 | **Branch** | Named initiative for collaborative work |
 | **Checkpoint** | Named snapshot of branch state |
@@ -2553,6 +2959,11 @@ The following tables remain in this service but are flagged as candidates for ex
 | **Site Structure** | Hierarchical organization of documents (e.g., navigation, collection) |
 | **Structure Node** | Entry in a site structure representing a section, document, or external link |
 | **Metadata Schema** | JSON Schema defining required metadata for documents in a structure |
+| **Organization** | Container for agent configuration and site grouping; minimal model owned by this service |
+| **Agent Registry** | Organization-level registry of AI agents with status and settings |
+| **Presence** | Real-time tracking of who is working on a document |
+| **Advisory Lock** | Non-blocking indication that an actor is working on a region (JSON path) |
+| **Region** | JSON path identifying a portion of a document (e.g., `/content/0/props`) |
 
 ---
 
@@ -2564,6 +2975,8 @@ For existing systems, migration involves:
 2. **Initialize CRDT sessions** from checkpoint snapshots
 3. **Map existing users** to actor records with appropriate permissions
 4. **Configure branch grants** for any actors needing elevated access
+5. **Create default organization** for agent configuration
+6. **Register agents** in the organization-level registry
 
 ---
 
@@ -2576,6 +2989,12 @@ Not included in v1 but worth considering:
 - **Partial document checkout**: For very large documents, only load visible components
 - **Document references**: Components that reference other documents, with cascade handling
 - **Conflict prediction**: Warn when starting work on a document another branch has modified
+
+### Agent Politeness Enhancements
+- **Priority Tiers**: Configurable priority levels for autonomous agents at organization level
+- **Rate Limiting**: Per-agent operation limits for resource protection
+- **Agent Permissions**: Fine-grained operation type restrictions
+- **Agent Analytics**: Usage and conflict metrics dashboards
 
 ### Integration Points (Delegated Services)
 - **Approval service extraction**: If other Pantheon products need DocuSign-style approvals, extract `guest_links` and `approval_requests` to a shared service

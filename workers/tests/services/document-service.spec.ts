@@ -749,7 +749,9 @@ describe('Phase 3.1: Document Service', () => {
 
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_doc
           .mockResolvedValueOnce({ rows: [docRow] }) // INSERT document
+          .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_doc
           .mockResolvedValueOnce({ rows: [versionRow] }) // INSERT version
           .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
@@ -775,7 +777,9 @@ describe('Phase 3.1: Document Service', () => {
 
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_doc
           .mockResolvedValueOnce({ rows: [docRow] }) // INSERT document
+          .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_doc
           .mockResolvedValueOnce({ rows: [versionRow] }) // INSERT version
           .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
@@ -790,7 +794,7 @@ describe('Phase 3.1: Document Service', () => {
         expect(result.version.snapshot).toEqual({});
       });
 
-      it('should reuse existing document if path already exists', async () => {
+      it('should reuse existing document if path already exists but no version on this branch', async () => {
         const { createDocumentOnBranch } = await import('../../src/services/document-service');
         const db = await import('../../src/db');
 
@@ -803,8 +807,11 @@ describe('Phase 3.1: Document Service', () => {
 
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_doc
           .mockRejectedValueOnce(uniqueError) // INSERT document fails
+          .mockResolvedValueOnce({ rows: [] }) // ROLLBACK TO SAVEPOINT insert_doc
           .mockResolvedValueOnce({ rows: [existingDocRow] }) // SELECT existing doc
+          .mockResolvedValueOnce({ rows: [] }) // SELECT latest version on branch (none exists)
           .mockResolvedValueOnce({ rows: [versionRow] }) // INSERT version
           .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
@@ -819,6 +826,83 @@ describe('Phase 3.1: Document Service', () => {
         expect(result.document.id).toBe('existing-doc-id');
       });
 
+      it('should throw DuplicateDocumentPathError if non-tombstoned version exists on branch', async () => {
+        const { createDocumentOnBranch, DuplicateDocumentPathError } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        const existingDocRow = createMockDocumentRow({ id: 'existing-doc-id', path: 'pages/existing' });
+        const existingVersionRow = createMockVersionRow({
+          document_id: 'existing-doc-id',
+          snapshot: { content: 'existing content' },
+        });
+
+        // Simulate unique constraint violation on document insert, then find existing
+        const uniqueError = new Error('duplicate key');
+        (uniqueError as NodeJS.ErrnoException).code = '23505';
+
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_doc
+          .mockRejectedValueOnce(uniqueError) // INSERT document fails
+          .mockResolvedValueOnce({ rows: [] }) // ROLLBACK TO SAVEPOINT insert_doc
+          .mockResolvedValueOnce({ rows: [existingDocRow] }) // SELECT existing doc
+          // SELECT latest version on branch (exists, not tombstoned)
+          .mockResolvedValueOnce({ rows: [existingVersionRow] })
+          .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
+
+        await expect(
+          createDocumentOnBranch({
+            siteId: 'site-uuid-456',
+            branchId: 'branch-uuid-456',
+            path: 'pages/existing',
+            createdById: 'user-uuid-789',
+            createdByType: 'user',
+          }),
+        ).rejects.toThrow(DuplicateDocumentPathError);
+      });
+
+      it('should recreate document fresh if latest version on branch is tombstoned', async () => {
+        const { createDocumentOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        const existingDocRow = createMockDocumentRow({ id: 'existing-doc-id', path: 'pages/existing' });
+        const tombstonedVersionRow = createMockVersionRow({
+          document_id: 'existing-doc-id',
+          snapshot: { _deleted: true },
+        });
+        const newVersionRow = createMockVersionRow({
+          document_id: 'existing-doc-id',
+          version_number: 1,
+          source: 'recreate',
+        });
+
+        // Simulate unique constraint violation on document insert, then find existing
+        const uniqueError = new Error('duplicate key');
+        (uniqueError as NodeJS.ErrnoException).code = '23505';
+
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_doc
+          .mockRejectedValueOnce(uniqueError) // INSERT document fails
+          .mockResolvedValueOnce({ rows: [] }) // ROLLBACK TO SAVEPOINT insert_doc
+          .mockResolvedValueOnce({ rows: [existingDocRow] }) // SELECT existing doc
+          .mockResolvedValueOnce({ rows: [tombstonedVersionRow] }) // SELECT latest version (tombstoned)
+          .mockResolvedValueOnce({ rows: [] }) // DELETE all versions on branch
+          .mockResolvedValueOnce({ rows: [newVersionRow] }) // INSERT new version (version 1)
+          .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+        const result = await createDocumentOnBranch({
+          siteId: 'site-uuid-456',
+          branchId: 'branch-uuid-456',
+          path: 'pages/existing',
+          createdById: 'user-uuid-789',
+          createdByType: 'user',
+        });
+
+        expect(result.document.id).toBe('existing-doc-id');
+        expect(result.version.source).toBe('recreate');
+      });
+
       it('should throw SiteNotFoundError when site does not exist', async () => {
         const { createDocumentOnBranch, SiteNotFoundError } = await import('../../src/services/document-service');
         const db = await import('../../src/db');
@@ -829,7 +913,10 @@ describe('Phase 3.1: Document Service', () => {
 
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockRejectedValueOnce(fkError); // INSERT document fails
+          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_doc
+          .mockRejectedValueOnce(fkError) // INSERT document fails
+          .mockResolvedValueOnce({ rows: [] }) // ROLLBACK TO SAVEPOINT insert_doc
+          .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
 
         await expect(
           createDocumentOnBranch({
@@ -865,7 +952,9 @@ describe('Phase 3.1: Document Service', () => {
 
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_doc
           .mockResolvedValueOnce({ rows: [docRow] }) // INSERT document
+          .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_doc
           .mockResolvedValueOnce({ rows: [versionRow] }) // INSERT version
           .mockResolvedValueOnce({ rows: [] }); // COMMIT
 

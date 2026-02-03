@@ -129,7 +129,12 @@ describe('Phase 3.3: Document Version Service', () => {
 
       const error = new Error('violates foreign key constraint');
       (error as NodeJS.ErrnoException).code = '23503';
-      vi.mocked(db.query).mockRejectedValue(error);
+
+      // First call is getLatestDocumentVersion (returns null - no existing version)
+      // Second call is the INSERT which fails with FK error
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] })
+        .mockRejectedValueOnce(error);
 
       await expect(
         createDocumentVersion({
@@ -173,6 +178,99 @@ describe('Phase 3.3: Document Version Service', () => {
           createdByType: 'user',
         }),
       ).rejects.toThrow(InvalidDocumentVersionParamsError);
+    });
+
+    it('should skip version creation when snapshot is unchanged from latest version', async () => {
+      const { createDocumentVersion } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      const existingSnapshot = { title: 'Same Title', content: [{ id: 'item1' }] };
+      const mockExistingVersion = createMockVersionRow({
+        version_number: 5,
+        snapshot: existingSnapshot,
+      });
+
+      // First call: getLatestDocumentVersion returns existing version with same snapshot
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockExistingVersion] });
+
+      const result = await createDocumentVersion({
+        documentId: 'doc-uuid-456',
+        branchId: 'branch-uuid-789',
+        snapshot: existingSnapshot,
+        source: 'edit',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+      });
+
+      // Should return existing version without creating new one
+      expect(result.versionNumber).toBe(5);
+      // query should only be called once (for getLatestDocumentVersion)
+      expect(db.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('should create new version when snapshot differs from latest', async () => {
+      const { createDocumentVersion } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      const existingSnapshot = { title: 'Old Title' };
+      const newSnapshot = { title: 'New Title' };
+      const mockExistingVersion = createMockVersionRow({
+        version_number: 5,
+        snapshot: existingSnapshot,
+      });
+      const mockNewVersion = createMockVersionRow({
+        version_number: 6,
+        snapshot: newSnapshot,
+      });
+
+      // First call: getLatestDocumentVersion returns existing version with different snapshot
+      // Second call: INSERT returns new version
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [mockExistingVersion] })
+        .mockResolvedValueOnce({ rows: [mockNewVersion] });
+
+      const result = await createDocumentVersion({
+        documentId: 'doc-uuid-456',
+        branchId: 'branch-uuid-789',
+        snapshot: newSnapshot,
+        source: 'edit',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+      });
+
+      // Should create new version
+      expect(result.versionNumber).toBe(6);
+      // query should be called twice (check + insert)
+      expect(db.query).toHaveBeenCalledTimes(2);
+    });
+
+    it('should skip deduplication check when skipDuplicateCheck is true', async () => {
+      const { createDocumentVersion } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      const sameSnapshot = { title: 'Same Title' };
+      const mockNewVersion = createMockVersionRow({
+        version_number: 6,
+        snapshot: sameSnapshot,
+      });
+
+      // Only INSERT call (no getLatestDocumentVersion check)
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockNewVersion] });
+
+      const result = await createDocumentVersion({
+        documentId: 'doc-uuid-456',
+        branchId: 'branch-uuid-789',
+        snapshot: sameSnapshot,
+        source: 'revert',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+        skipDuplicateCheck: true,
+      });
+
+      // Should create new version despite same snapshot
+      expect(result.versionNumber).toBe(6);
+      // query should be called once (insert only, no check)
+      expect(db.query).toHaveBeenCalledTimes(1);
     });
   });
 

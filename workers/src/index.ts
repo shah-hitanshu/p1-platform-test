@@ -24,6 +24,7 @@ import { handleNodeRoutes } from './routes/node-api';
 import { handleMetadataRoutes } from './routes/metadata-api';
 import { handleRealtimeRoutes } from './routes/realtime-api';
 import { handleInternalRoutes } from './routes/internal-api';
+import { handlePresenceRoutes } from './routes/presence-api';
 
 // Metrics
 import {
@@ -54,6 +55,7 @@ export interface Env {
   METRICS_PUSH_ENDPOINT?: string;
   METRICS_API_KEY?: string;
   APP_VERSION?: string;
+  DO_ALARM_METRICS_ENABLED?: string; // Enable detailed DO alarm/cleanup metrics (can be high volume)
 
   // Secrets (from .dev.vars or Vault)
   POSTGRES_CONNECTION_STRING?: string; // Fallback for local dev without Hyperdrive
@@ -134,7 +136,12 @@ const DEFAULT_MOCK_CONFIG: MockIdentityConfig = {
       id: '44444444-4444-4444-4444-444444444444',
       name: 'Zappy AI Assistant',
       apiKey: 'test-agent-key-zappy',
-      siteRoles: { 'site-123': 'editor' },
+      siteRoles: {
+        'site-123': 'editor',
+        '5da7f0d0-81d8-4e92-9a4b-a4cb07090768': 'admin',
+        '35b800c4-6010-4908-a724-f1512e2a2144': 'admin',
+        'b56bdbfd-512c-4c1f-82e9-e774c2a8ec22': 'admin',
+      },
     },
     {
       id: '55555555-5555-5555-5555-555555555555',
@@ -216,7 +223,7 @@ function addCorsHeaders(
   headers.set('Access-Control-Allow-Origin', origin);
   headers.set('Access-Control-Allow-Credentials', 'true');
   headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key, X-Principal-Id, X-Principal-Type');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key, X-Principal-Id, X-Principal-Type, X-Actor-Id, X-Actor-Type');
   headers.set('Access-Control-Max-Age', '86400');
 
   return new Response(response.body, {
@@ -241,7 +248,7 @@ function handlePreflight(request: Request, env: Env): Response {
     headers: {
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, X-Principal-Id, X-Principal-Type',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, X-Principal-Id, X-Principal-Type, X-Actor-Id, X-Actor-Type',
       'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Max-Age': '86400',
     },
@@ -406,6 +413,8 @@ interface RouteParams {
   versionsPath?: string;
   versionAction?: string;
   versionId?: string;
+  organizationId?: string;
+  agentId?: string;
 }
 
 function parseRoute(path: string): { handler: string; params: RouteParams } | null {
@@ -477,9 +486,13 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
   }
 
   // Realtime routes (must come before document routes)
-  // /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}[/edits|/connect]
-  // Note: These routes handle WebSocket connections and real-time document access
-  const realtimeRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/(.+?)\/(edits|connect)$/;
+  // /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}[/action]
+  // Note: These routes handle WebSocket connections, real-time document access, and agent edit workflows
+  // Actions: edits, connect, can-agent-edit, agent-edit-start, agent-edit-complete, agent-edit-abort, focus-regions
+  const realtimeActions = 'edits|connect|can-agent-edit|agent-edit-start|agent-edit-complete|agent-edit-abort|focus-regions';
+  const realtimeRe = new RegExp(
+    `^/api/sites/([^/]+)/branches/([^/]+)/documents/(.+?)/(${realtimeActions})$`,
+  );
   const realtimeConnectMatch = realtimeRe.exec(normalizedPath);
   if (realtimeConnectMatch) {
     const docPath = realtimeConnectMatch[3] ?? '';
@@ -495,17 +508,37 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
   }
 
   // Branch-scoped document routes (must come before site-scoped document routes)
-  // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}?
+  // /api/sites/{siteId}/branches/{branchId}/documents/{documentIdOrPath}?
+  // If the parameter looks like a UUID, route to document handler
+  // Otherwise, treat it as a document path and route to realtime handler
   const branchDocMatch = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents(?:\/([^/]+))?$/.exec(normalizedPath);
   if (branchDocMatch) {
-    return {
-      handler: 'documents',
-      params: {
-        siteId: branchDocMatch[1],
-        branchId: branchDocMatch[2],
-        documentId: branchDocMatch[3],
-      },
-    };
+    const docIdOrPath = branchDocMatch[3];
+    // UUID pattern: 8-4-4-4-12 hex characters
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isUuid = docIdOrPath !== undefined && uuidPattern.test(docIdOrPath);
+
+    if (docIdOrPath === undefined || isUuid) {
+      // No doc specified, or it's a UUID - use document handler
+      return {
+        handler: 'documents',
+        params: {
+          siteId: branchDocMatch[1],
+          branchId: branchDocMatch[2],
+          documentId: branchDocMatch[3],
+        },
+      };
+    } else {
+      // It's a document path - use realtime handler for document state
+      return {
+        handler: 'realtime',
+        params: {
+          siteId: branchDocMatch[1],
+          branchId: branchDocMatch[2],
+          documentPath: docIdOrPath,
+        },
+      };
+    }
   }
 
   // Document routes
@@ -848,6 +881,34 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
     };
   }
 
+  // Presence routes (Phase 8)
+  // Site presence: /api/sites/{siteId}/presence
+  const sitePresenceMatch = /^\/api\/sites\/([^/]+)\/presence$/.exec(normalizedPath);
+  if (sitePresenceMatch) {
+    return {
+      handler: 'presence',
+      params: { siteId: sitePresenceMatch[1] },
+    };
+  }
+
+  // Branch presence: /api/sites/{siteId}/branches/{branchId}/presence
+  const branchPresenceMatch = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/presence$/.exec(normalizedPath);
+  if (branchPresenceMatch) {
+    return {
+      handler: 'presence',
+      params: { siteId: branchPresenceMatch[1], branchId: branchPresenceMatch[2] },
+    };
+  }
+
+  // Agent presence: /api/organizations/{orgId}/agents/{agentId}/presence
+  const agentPresenceMatch = /^\/api\/organizations\/([^/]+)\/agents\/([^/]+)\/presence$/.exec(normalizedPath);
+  if (agentPresenceMatch) {
+    return {
+      handler: 'presence',
+      params: { organizationId: agentPresenceMatch[1], agentId: agentPresenceMatch[2] },
+    };
+  }
+
   return null;
 }
 
@@ -1101,6 +1162,21 @@ async function handleRequest(
 
       case 'realtime':
         response = await handleRealtimeRoutes(request, env) ?? errorResponse('Not found', 404);
+        break;
+
+      case 'presence':
+        response = await handlePresenceRoutes(request, {
+          siteId: route.params.siteId,
+          branchId: route.params.branchId,
+          organizationId: route.params.organizationId,
+          agentId: route.params.agentId,
+          principal: {
+            id: principal.id,
+            type: principal.type as 'user' | 'agent',
+            organizationId: principal.organizationId,
+            pantheonSiteRoles: principal.pantheonSiteRoles,
+          },
+        }, env);
         break;
 
       default:

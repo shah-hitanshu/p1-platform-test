@@ -89,8 +89,11 @@ export class SyncError extends Error {
  * This creates a new document version with source='realtime' containing
  * both the JSON snapshot and the binary CRDT state.
  *
+ * Deduplication is handled by createDocumentVersion in document-version-service.ts,
+ * which skips creating a new version if the snapshot is identical to the latest.
+ *
  * @param params - Sync parameters
- * @returns The created document version
+ * @returns The created or existing document version
  * @throws DocumentNotFoundError if the document doesn't exist or doesn't belong to the site
  */
 export async function syncCrdtToPostgres(
@@ -109,6 +112,7 @@ export async function syncCrdtToPostgres(
   }
 
   // Create a new document version with the CRDT state
+  // Deduplication is handled by createDocumentVersion
   const version = await createDocumentVersion({
     documentId: document.id,
     branchId: params.branchId,

@@ -201,10 +201,18 @@ describe('Documents Table', () => {
     expect(hasIndex(indexes, 'idx_documents_site')).toBe(true);
   });
 
-  it('should have unique constraint on (site_id, path)', async () => {
-    const constraints = await getTableConstraints('documents');
-    const hasUnique = constraints.some((c) => c.constraint_type === 'UNIQUE');
-    expect(hasUnique).toBe(true);
+  it('should have unique partial index on (site_id, path) for non-deleted documents', async () => {
+    // The schema uses a partial unique index instead of a regular constraint
+    // to allow recreating documents on the same path after soft-delete
+    const indexes = await getTableIndexes('documents');
+    // Look for either the exact index name or a unique index containing site_id and path
+    const hasUniqueIndex = indexes.some(
+      (i) =>
+        i.indexdef.includes('UNIQUE') &&
+        i.indexdef.includes('site_id') &&
+        i.indexdef.includes('path'),
+    );
+    expect(hasUniqueIndex).toBe(true);
   });
 });
 
@@ -492,18 +500,24 @@ describe('Site Structures Table', () => {
   it('should have required columns with correct types', async () => {
     const columns = await getTableColumns('site_structures');
 
+    // Primary key
     expect(hasColumn(columns, 'id', 'uuid')).toBe(true);
+
+    // Required fields
     expect(hasColumn(columns, 'site_id', 'uuid')).toBe(true);
-    expect(hasColumn(columns, 'name', 'text')).toBe(true);
-    expect(hasColumn(columns, 'slug', 'text')).toBe(true);
-    expect(hasColumn(columns, 'description', 'text')).toBe(true);
-    expect(hasColumn(columns, 'structure_type', 'text')).toBe(true);
+
+    // Timestamps
     expect(hasColumn(columns, 'created_at')).toBe(true);
+
+    // Note: The schema was simplified. structure_type, name, slug, description
+    // columns were removed as structure metadata is managed by the
+    // structure_tree JSONB in branch_structure_state table.
   });
 
-  it('should have index on site_id', async () => {
-    const indexes = await getTableIndexes('site_structures');
-    expect(hasIndex(indexes, 'idx_site_structures_site')).toBe(true);
+  it('should have foreign key to sites table', async () => {
+    const constraints = await getTableConstraints('site_structures');
+    const hasFK = constraints.some((c) => c.constraint_type === 'FOREIGN KEY');
+    expect(hasFK).toBe(true);
   });
 });
 
@@ -634,6 +648,157 @@ describe('Checkpoint Document Metadata Table', () => {
     const constraints = await getTableConstraints('checkpoint_document_metadata');
     const hasPK = constraints.some((c) => c.constraint_type === 'PRIMARY KEY');
     expect(hasPK).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agent Politeness System Schema Tests - Organizations
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Organizations Table', () => {
+  it('should exist', async () => {
+    const exists = await tableExists('organizations');
+    expect(exists).toBe(true);
+  });
+
+  it('should have required columns with correct types', async () => {
+    const columns = await getTableColumns('organizations');
+
+    // Primary key
+    expect(hasColumn(columns, 'id', 'uuid')).toBe(true);
+
+    // Required fields
+    expect(hasColumn(columns, 'name', 'text')).toBe(true);
+
+    // Settings (JSONB with agentIdleTimeoutMs)
+    expect(hasColumn(columns, 'settings', 'jsonb')).toBe(true);
+
+    // Timestamps
+    expect(hasColumn(columns, 'created_at')).toBe(true);
+    expect(hasColumn(columns, 'updated_at')).toBe(true);
+  });
+
+  it('should have default settings with agentIdleTimeoutMs', async () => {
+    const columns = await getTableColumns('organizations');
+    const settingsCol = columns.find((c) => c.column_name === 'settings');
+    expect(settingsCol).toBeDefined();
+    // Default should include agentIdleTimeoutMs: 5000
+    expect(settingsCol?.column_default).toContain('agentIdleTimeoutMs');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agent Politeness System Schema Tests - Agent Registry
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Agents Table', () => {
+  it('should exist', async () => {
+    const exists = await tableExists('agents');
+    expect(exists).toBe(true);
+  });
+
+  it('should have required columns with correct types', async () => {
+    const columns = await getTableColumns('agents');
+
+    // Primary key - uses text but must be valid UUID format for checkpoint compatibility
+    expect(hasColumn(columns, 'id', 'text')).toBe(true);
+
+    // Foreign key to organization
+    expect(hasColumn(columns, 'organization_id', 'uuid')).toBe(true);
+
+    // Agent identity
+    expect(hasColumn(columns, 'name', 'text')).toBe(true);
+    expect(hasColumn(columns, 'description', 'text')).toBe(true);
+
+    // Capabilities (array)
+    expect(hasColumn(columns, 'capabilities', 'ARRAY')).toBe(true);
+
+    // Status
+    expect(hasColumn(columns, 'status', 'text')).toBe(true);
+
+    // Settings (JSONB)
+    expect(hasColumn(columns, 'settings', 'jsonb')).toBe(true);
+
+    // Timestamps
+    expect(hasColumn(columns, 'created_at')).toBe(true);
+    expect(hasColumn(columns, 'updated_at')).toBe(true);
+  });
+
+  it('should have unique constraint on (organization_id, name)', async () => {
+    const constraints = await getTableConstraints('agents');
+    const hasUnique = constraints.some((c) => c.constraint_type === 'UNIQUE');
+    expect(hasUnique).toBe(true);
+  });
+
+  it('should have indexes for common queries', async () => {
+    const indexes = await getTableIndexes('agents');
+
+    expect(hasIndex(indexes, 'idx_agents_organization')).toBe(true);
+    expect(hasIndex(indexes, 'idx_agents_status')).toBe(true);
+  });
+
+  it('should have check constraint on status values', async () => {
+    const constraints = await getTableConstraints('agents');
+    const hasCheck = constraints.some((c) => c.constraint_type === 'CHECK');
+    expect(hasCheck).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agent Politeness System Schema Tests - Sites Organization Link
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Sites Table - Organization Link', () => {
+  it('should have organization_id column', async () => {
+    const columns = await getTableColumns('sites');
+    expect(hasColumn(columns, 'organization_id', 'uuid')).toBe(true);
+  });
+
+  it('should have index on organization_id', async () => {
+    const indexes = await getTableIndexes('sites');
+    expect(hasIndex(indexes, 'idx_sites_organization')).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agent Politeness System Schema Tests - Enhanced Checkpoints
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Checkpoints Table - Agent Politeness Enhancements', () => {
+  it('should have description column for detailed metadata', async () => {
+    const columns = await getTableColumns('checkpoints');
+    expect(hasColumn(columns, 'description', 'text')).toBe(true);
+  });
+
+  it('should have trigger column for tracking creation context', async () => {
+    const columns = await getTableColumns('checkpoints');
+    expect(hasColumn(columns, 'trigger', 'text')).toBe(true);
+  });
+
+  it('should have requested_by_id for human-requested agent work', async () => {
+    const columns = await getTableColumns('checkpoints');
+    expect(hasColumn(columns, 'requested_by_id', 'uuid')).toBe(true);
+  });
+
+  it('should have operation_type for categorizing agent operations', async () => {
+    const columns = await getTableColumns('checkpoints');
+    expect(hasColumn(columns, 'operation_type', 'text')).toBe(true);
+  });
+
+  it('should have affected_regions for JSON path tracking', async () => {
+    const columns = await getTableColumns('checkpoints');
+    expect(hasColumn(columns, 'affected_regions', 'jsonb')).toBe(true);
+  });
+
+  it('should have status for checkpoint completion tracking', async () => {
+    const columns = await getTableColumns('checkpoints');
+    expect(hasColumn(columns, 'status', 'text')).toBe(true);
+  });
+
+  it('should have rollback tracking columns', async () => {
+    const columns = await getTableColumns('checkpoints');
+    expect(hasColumn(columns, 'rolled_back_by_id', 'uuid')).toBe(true);
+    expect(hasColumn(columns, 'rolled_back_at')).toBe(true);
   });
 });
 

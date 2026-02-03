@@ -471,6 +471,7 @@ describe('Phase 3.3: Checkpoint Service', () => {
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
         .mockResolvedValueOnce({ rows: mockVersionRows }) // Get documents at checkpoint
+        .mockResolvedValueOnce({ rows: [] }) // revertToCheckpoint: BEGIN
         .mockResolvedValueOnce({ rows: [{ id: 'new-version-1' }] }) // Create revert version 1
         .mockResolvedValueOnce({ rows: [{ id: 'new-version-2' }] }) // Create revert version 2
         .mockResolvedValueOnce({ rows: [] }) // Get structures at checkpoint
@@ -478,6 +479,8 @@ describe('Phase 3.3: Checkpoint Service', () => {
         .mockResolvedValueOnce({ rows: [] }) // Restore structures
         .mockResolvedValueOnce({ rows: [] }) // Delete current metadata
         .mockResolvedValueOnce({ rows: [] }) // Restore metadata
+        .mockResolvedValueOnce({ rows: [] }) // inline UPDATE checkpoint status
+        .mockResolvedValueOnce({ rows: [] }) // revertToCheckpoint: COMMIT
         // createCheckpoint transaction
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
         .mockResolvedValueOnce({ rows: [newCheckpointRow] }) // Insert checkpoint
@@ -525,11 +528,14 @@ describe('Phase 3.3: Checkpoint Service', () => {
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
         .mockResolvedValueOnce({ rows: [] }) // No documents at checkpoint
+        .mockResolvedValueOnce({ rows: [] }) // revertToCheckpoint: BEGIN
         .mockResolvedValueOnce({ rows: [] }) // Get structures at checkpoint
         .mockResolvedValueOnce({ rows: [] }) // Delete current structures
         .mockResolvedValueOnce({ rows: [] }) // Restore structures
         .mockResolvedValueOnce({ rows: [] }) // Delete current metadata
         .mockResolvedValueOnce({ rows: [] }) // Restore metadata
+        .mockResolvedValueOnce({ rows: [] }) // inline UPDATE checkpoint status
+        .mockResolvedValueOnce({ rows: [] }) // revertToCheckpoint: COMMIT
         // createCheckpoint transaction
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
         .mockResolvedValueOnce({ rows: [newCheckpointRow] }) // Insert checkpoint
@@ -561,11 +567,14 @@ describe('Phase 3.3: Checkpoint Service', () => {
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
         .mockResolvedValueOnce({ rows: [] }) // No documents at checkpoint
+        .mockResolvedValueOnce({ rows: [] }) // revertToCheckpoint: BEGIN
         .mockResolvedValueOnce({ rows: [] }) // Get structures at checkpoint
         .mockResolvedValueOnce({ rows: [] }) // Delete current structures
         .mockResolvedValueOnce({ rows: [] }) // Restore structures
         .mockResolvedValueOnce({ rows: [] }) // Delete current metadata
         .mockResolvedValueOnce({ rows: [] }) // Restore metadata
+        .mockResolvedValueOnce({ rows: [] }) // inline UPDATE checkpoint status
+        .mockResolvedValueOnce({ rows: [] }) // revertToCheckpoint: COMMIT
         // createCheckpoint transaction
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
         .mockResolvedValueOnce({ rows: [newCheckpointRow] }) // Insert checkpoint

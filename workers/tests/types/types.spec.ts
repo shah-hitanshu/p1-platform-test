@@ -28,12 +28,24 @@ import type {
   SchemaEnforcementMode,
   EditOperationType,
 
+  // Agent Politeness System types
+  CheckpointTrigger,
+  CheckpointStatus,
+  AgentStatus,
+  PresenceState,
+
   // Core entities
   Site,
   WorkflowSettings,
   Branch,
   Document,
   DocumentVersion,
+
+  // Organization and Agent Registry (Agent Politeness)
+  Organization,
+  OrganizationSettings,
+  RegisteredAgent,
+  AgentSettings,
 
   // Checkpoint
   Checkpoint,
@@ -75,6 +87,11 @@ import type {
   AuditEvent,
   AuditActor,
   AuditResource,
+
+  // Presence and Agent Politeness
+  ActorPresence,
+  AgentEditContext,
+  AgentEditPermission,
 } from '../../src/types';
 
 /**
@@ -1113,6 +1130,289 @@ describe('Phase 1.3: Core TypeScript Types', () => {
         createdAt: '2024-01-01T00:00:00Z',
       };
       expect(typeof version.snapshot).toBe('object');
+    });
+  });
+
+  // ===========================================================================
+  // Agent Politeness System Types
+  // ===========================================================================
+
+  describe('Agent Politeness System Types', () => {
+    describe('New Union Types', () => {
+      it('should define CheckpointTrigger union', () => {
+        const values: CheckpointTrigger[] = ['manual', 'human_requested', 'autonomous'];
+        expect(values).toHaveLength(3);
+      });
+
+      it('should define CheckpointStatus union', () => {
+        const values: CheckpointStatus[] = ['completed', 'rolled_back', 'partial'];
+        expect(values).toHaveLength(3);
+      });
+
+      it('should define AgentStatus union', () => {
+        const values: AgentStatus[] = ['active', 'suspended', 'disabled'];
+        expect(values).toHaveLength(3);
+      });
+
+      it('should define PresenceState union', () => {
+        const values: PresenceState[] = ['active', 'idle', 'editing'];
+        expect(values).toHaveLength(3);
+      });
+    });
+
+    describe('Organization', () => {
+      it('should have required properties', () => {
+        const org: Organization = {
+          id: 'org-123',
+          name: 'Acme Corp',
+          settings: {
+            agentIdleTimeoutMs: 5000,
+          },
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+        };
+        assertType<Organization>(org);
+        expect(org.name).toBe('Acme Corp');
+      });
+
+      it('should allow optional settings fields', () => {
+        const settings: OrganizationSettings = {
+          agentIdleTimeoutMs: 10000,
+          agentPriorityTiers: {
+            default: {
+              name: 'Default',
+              idleTimeoutMultiplier: 1.0,
+              canInterruptAutonomous: false,
+            },
+          },
+        };
+        assertType<OrganizationSettings>(settings);
+        const defaultTier = settings.agentPriorityTiers?.default;
+        expect(defaultTier?.idleTimeoutMultiplier).toBe(1.0);
+      });
+    });
+
+    describe('RegisteredAgent', () => {
+      it('should have required properties', () => {
+        const agent: RegisteredAgent = {
+          id: 'agent-123',
+          organizationId: 'org-123',
+          name: 'Content Bot',
+          capabilities: ['edit', 'create'],
+          status: 'active',
+          settings: {},
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+        };
+        assertType<RegisteredAgent>(agent);
+        expect(agent.status).toBe('active');
+      });
+
+      it('should allow optional description', () => {
+        const agent: RegisteredAgent = {
+          id: 'agent-123',
+          organizationId: 'org-123',
+          name: 'Content Bot',
+          description: 'Handles content updates',
+          capabilities: ['edit', 'create'],
+          status: 'suspended',
+          settings: {},
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+        };
+        assertType<RegisteredAgent>(agent);
+        expect(agent.description).toBe('Handles content updates');
+      });
+
+      it('should support agent settings', () => {
+        const settings: AgentSettings = {
+          priorityTier: 'premium',
+          allowedOperationTypes: ['content_edit', 'style_update'],
+          maxConcurrentDocuments: 5,
+        };
+        assertType<AgentSettings>(settings);
+        expect(settings.maxConcurrentDocuments).toBe(5);
+      });
+    });
+
+    describe('Enhanced Checkpoint', () => {
+      it('should support trigger field', () => {
+        const checkpoint: Checkpoint = {
+          id: 'checkpoint-123',
+          branchId: 'branch-123',
+          checkpointType: 'auto',
+          trigger: 'autonomous',
+          createdById: 'agent-123',
+          createdByType: 'agent',
+          createdAt: '2024-01-01T00:00:00Z',
+        };
+        assertType<Checkpoint>(checkpoint);
+        expect(checkpoint.trigger).toBe('autonomous');
+      });
+
+      it('should support human-requested agent work metadata', () => {
+        const checkpoint: Checkpoint = {
+          id: 'checkpoint-123',
+          branchId: 'branch-123',
+          checkpointType: 'auto',
+          trigger: 'human_requested',
+          requestedById: 'user-456',
+          operationType: 'content_edit',
+          affectedRegions: ['/content/0', '/content/0/props/title'],
+          createdById: 'agent-123',
+          createdByType: 'agent',
+          createdAt: '2024-01-01T00:00:00Z',
+        };
+        assertType<Checkpoint>(checkpoint);
+        expect(checkpoint.requestedById).toBe('user-456');
+        expect(checkpoint.affectedRegions).toHaveLength(2);
+      });
+
+      it('should support status and rollback tracking', () => {
+        const checkpoint: Checkpoint = {
+          id: 'checkpoint-123',
+          branchId: 'branch-123',
+          checkpointType: 'auto',
+          trigger: 'autonomous',
+          status: 'rolled_back',
+          rolledBackById: 'user-789',
+          rolledBackAt: '2024-01-02T00:00:00Z',
+          createdById: 'agent-123',
+          createdByType: 'agent',
+          createdAt: '2024-01-01T00:00:00Z',
+        };
+        assertType<Checkpoint>(checkpoint);
+        expect(checkpoint.status).toBe('rolled_back');
+        expect(checkpoint.rolledBackById).toBe('user-789');
+      });
+
+      it('should support description for detailed metadata', () => {
+        const checkpoint: Checkpoint = {
+          id: 'checkpoint-123',
+          branchId: 'branch-123',
+          description: 'Agent updated homepage hero section with new promotional content',
+          checkpointType: 'auto',
+          trigger: 'autonomous',
+          createdById: 'agent-123',
+          createdByType: 'agent',
+          createdAt: '2024-01-01T00:00:00Z',
+        };
+        assertType<Checkpoint>(checkpoint);
+        expect(checkpoint.description).toContain('homepage hero');
+      });
+    });
+
+    describe('Site with Organization', () => {
+      it('should allow optional organizationId', () => {
+        const site: Site = {
+          id: 'site-123',
+          pantheonSiteId: 'pantheon-456',
+          organizationId: 'org-123',
+          name: 'Test Site',
+          workflowSettings: {
+            mergeApprovalMode: 'required',
+            minApprovers: 1,
+            allowSelfApproval: false,
+            approverMode: 'role_based',
+          },
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+        };
+        assertType<Site>(site);
+        expect(site.organizationId).toBe('org-123');
+      });
+    });
+
+    describe('ActorPresence', () => {
+      it('should have required properties', () => {
+        const presence: ActorPresence = {
+          id: 'presence-123',
+          actorId: 'user-123',
+          actorType: 'user',
+          role: 'human',
+          name: 'Alice',
+          state: 'editing',
+          lastActivityAt: '2024-01-01T12:00:00Z',
+          joinedAt: '2024-01-01T10:00:00Z',
+        };
+        assertType<ActorPresence>(presence);
+        expect(presence.state).toBe('editing');
+      });
+
+      it('should allow optional fields for agent context', () => {
+        const presence: ActorPresence = {
+          id: 'presence-456',
+          actorId: 'agent-123',
+          actorType: 'agent',
+          role: 'agent',
+          name: 'Content Bot',
+          avatar: 'https://example.com/bot-avatar.png',
+          state: 'active',
+          intent: 'Updating hero section content',
+          focusRegions: ['/content/0', '/content/0/props'],
+          lastActivityAt: '2024-01-01T12:00:00Z',
+          joinedAt: '2024-01-01T10:00:00Z',
+        };
+        assertType<ActorPresence>(presence);
+        expect(presence.intent).toBe('Updating hero section content');
+        expect(presence.focusRegions).toHaveLength(2);
+      });
+    });
+
+    describe('AgentEditContext', () => {
+      it('should have required properties for edit check', () => {
+        const context: AgentEditContext = {
+          agentId: 'agent-123',
+          trigger: 'autonomous',
+          targetRegions: ['/content/0'],
+        };
+        assertType<AgentEditContext>(context);
+        expect(context.trigger).toBe('autonomous');
+      });
+
+      it('should allow human-requested context', () => {
+        const context: AgentEditContext = {
+          agentId: 'agent-123',
+          trigger: 'human_requested',
+          requestedById: 'user-456',
+          targetRegions: ['/content/0', '/content/1'],
+          intent: 'Fix typo in hero section',
+          operationType: 'content_edit',
+        };
+        assertType<AgentEditContext>(context);
+        expect(context.requestedById).toBe('user-456');
+      });
+    });
+
+    describe('AgentEditPermission', () => {
+      it('should allow edit when conditions are met', () => {
+        const permission: AgentEditPermission = {
+          allowed: true,
+        };
+        assertType<AgentEditPermission>(permission);
+        expect(permission.allowed).toBe(true);
+      });
+
+      it('should deny edit with reason when human active', () => {
+        const permission: AgentEditPermission = {
+          allowed: false,
+          reason: 'human_active',
+          retryAfterMs: 3000,
+        };
+        assertType<AgentEditPermission>(permission);
+        expect(permission.reason).toBe('human_active');
+        expect(permission.retryAfterMs).toBe(3000);
+      });
+
+      it('should deny edit with conflicting regions', () => {
+        const permission: AgentEditPermission = {
+          allowed: false,
+          reason: 'region_conflict',
+          conflictingRegions: ['/content/0', '/content/0/props'],
+        };
+        assertType<AgentEditPermission>(permission);
+        expect(permission.conflictingRegions).toHaveLength(2);
+      });
     });
   });
 });

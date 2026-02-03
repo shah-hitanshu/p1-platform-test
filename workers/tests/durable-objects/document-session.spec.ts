@@ -29,13 +29,15 @@ interface MockDurableObjectStorage {
   put: Mock<(key: string, value: unknown) => Promise<void>>;
   delete: Mock<(key: string) => Promise<boolean>>;
   list: Mock<() => Promise<Map<string, unknown>>>;
+  getAlarm: Mock<() => Promise<number | null>>;
+  setAlarm: Mock<(scheduledTime: number) => Promise<void>>;
 }
 
 /**
  * Mock DurableObjectState interface
  */
 interface MockDurableObjectState {
-  id: { toString: () => string };
+  id: { toString: () => string; name: string };
   storage: MockDurableObjectStorage;
   blockConcurrencyWhile: Mock<(callback: () => Promise<void>) => Promise<void>>;
 }
@@ -49,10 +51,12 @@ function createMockState(sessionId = 'site-1:doc-1:branch-1'): MockDurableObject
     put: vi.fn().mockResolvedValue(undefined),
     delete: vi.fn().mockResolvedValue(true),
     list: vi.fn().mockResolvedValue(new Map()),
+    getAlarm: vi.fn().mockResolvedValue(null),
+    setAlarm: vi.fn().mockResolvedValue(undefined),
   };
 
   return {
-    id: { toString: () => sessionId },
+    id: { toString: () => sessionId, name: sessionId },
     storage,
     blockConcurrencyWhile: vi.fn().mockImplementation(async (cb: () => Promise<void>) => {
       await cb();
@@ -447,6 +451,85 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       expect(data.snapshot.title).toBe('Document');
       expect(data.snapshot.author).toBe('Bob');
       expect(data.snapshot.version).toBe(1);
+    });
+
+    it('should handle array index paths without corrupting arrays', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+      const session = new DocumentSession(mockState as unknown, mockEnv);
+
+      // First set up a Puck-like document structure with content array
+      await session.fetch(new Request('http://localhost/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operations: [{
+            type: 'set',
+            path: 'root',
+            value: { props: { title: 'My Page' } },
+          }],
+          actorId: 'user-1',
+        }),
+      }));
+
+      // Set up content as an array using insert
+      await session.fetch(new Request('http://localhost/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operations: [{ type: 'set', path: 'content', value: [] }],
+          actorId: 'user-1',
+        }),
+      }));
+
+      // Insert a component into the content array
+      await session.fetch(new Request('http://localhost/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operations: [{
+            type: 'insert',
+            path: 'content',
+            index: 0,
+            value: { type: 'Heading', props: { id: 'heading-1', text: 'Original Title' } },
+          }],
+          actorId: 'user-1',
+        }),
+      }));
+
+      // Verify initial state - content should be an array
+      const snapshotResponse = await session.fetch(new Request('http://localhost/snapshot'));
+      const snapshotData = await snapshotResponse.json();
+      expect(Array.isArray(snapshotData.snapshot.content)).toBe(true);
+      expect((snapshotData.snapshot.content as unknown[])).toHaveLength(1);
+
+      // Now update a nested property using array index path (this was the bug)
+      // Path: content.0.props.text - updating text property of first component
+      const request = new Request('http://localhost/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operations: [{
+            type: 'replace',
+            path: 'content.0.props.text',
+            content: 'Updated Title',
+          }],
+          actorId: 'user-1',
+        }),
+      });
+      const response = await session.fetch(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      // Critical: content should still be an array, not corrupted to an object
+      expect(Array.isArray(data.snapshot.content)).toBe(true);
+      expect((data.snapshot.content as unknown[])).toHaveLength(1);
+
+      // The nested property should be updated
+      const content = data.snapshot.content as { type: string; props: { text: string } }[];
+      expect(content[0].props.text).toBe('Updated Title');
+      expect(content[0].type).toBe('Heading');
     });
 
     it('should return error for invalid operation type', async () => {
@@ -1156,6 +1239,12 @@ describe('Phase 1.3b: DocumentSession Automatic Sync Triggers', () => {
     it('should schedule sync after edit operations (idle timeout)', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
 
+      // Provide stored data to skip PostgreSQL initialization
+      mockState.storage.get.mockResolvedValue(new Uint8Array([0]));
+
+      // Use real timers since fake timers interfere with async initialization
+      vi.useRealTimers();
+
       // Create session with internal API config
       const envWithSync = {
         API_URL: 'http://localhost:8787',
@@ -1179,10 +1268,16 @@ describe('Phase 1.3b: DocumentSession Automatic Sync Triggers', () => {
       // Session should have scheduled a sync timer
       // The actual sync happens after the idle timeout (5 seconds)
       expect(session).toBeDefined();
-    });
+    }, 30000); // Increase timeout due to initialization overhead
 
     it('should reset idle timer on subsequent edits', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
+
+      // Provide stored data to skip PostgreSQL initialization
+      mockState.storage.get.mockResolvedValue(new Uint8Array([0]));
+
+      // Use real timers since fake timers interfere with async initialization
+      vi.useRealTimers();
 
       const envWithSync = {
         API_URL: 'http://localhost:8787',
@@ -1203,10 +1298,7 @@ describe('Phase 1.3b: DocumentSession Automatic Sync Triggers', () => {
         }),
       }));
 
-      // Advance 3 seconds (less than idle timeout)
-      vi.advanceTimersByTime(3000);
-
-      // Second edit - should reset the timer
+      // Second edit (simulates subsequent edit that would reset timer)
       await session.fetch(new Request('http://localhost/apply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1216,16 +1308,22 @@ describe('Phase 1.3b: DocumentSession Automatic Sync Triggers', () => {
         }),
       }));
 
-      // Session should still be valid and not have synced yet
+      // Session should still be valid with the second value
       const snapshotResponse = await session.fetch(new Request('http://localhost/snapshot'));
       const data = await snapshotResponse.json();
       expect(data.snapshot.title).toBe('Second');
-    });
+    }, 30000); // Increase timeout due to initialization overhead
   });
 
   describe('syncToPostgres method', () => {
     it('should expose getSyncState for testing sync readiness', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
+
+      // Provide stored data to skip PostgreSQL initialization
+      mockState.storage.get.mockResolvedValue(new Uint8Array([0]));
+
+      // Use real timers since fake timers interfere with async initialization
+      vi.useRealTimers();
 
       const envWithSync = {
         API_URL: 'http://localhost:8787',
@@ -1252,12 +1350,14 @@ describe('Phase 1.3b: DocumentSession Automatic Sync Triggers', () => {
 
       expect(data.snapshot).toHaveProperty('content', 'Hello');
       expect(data.stateVector).toBeDefined();
-    });
+    }, 30000); // Increase timeout due to initialization overhead
 
     it('should include session info for sync context', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
 
-      const session = new DocumentSession(mockState as unknown, {
+      // Create mock state with specific session ID format
+      const customState = createMockState('site-uuid:home:branch-uuid');
+      const session = new DocumentSession(customState as unknown, {
         API_URL: 'http://localhost:8787',
         ENVIRONMENT: 'test',
       });

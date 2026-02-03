@@ -7,7 +7,13 @@
  * @see collaborative-state-system-architecture-v2.2.md Section "Checkpoints"
  */
 
-import type { Checkpoint, CheckpointType, DocumentVersion } from '../types';
+import type {
+  Checkpoint,
+  CheckpointType,
+  CheckpointStatus,
+  CheckpointTrigger,
+  DocumentVersion,
+} from '../types';
 import { query } from '../db';
 
 // =============================================================================
@@ -24,6 +30,16 @@ export interface CreateCheckpointParams {
   checkpointType: CheckpointType;
   createdById: string;
   createdByType: 'user' | 'agent' | 'system';
+  /** Detailed description of what the checkpoint contains */
+  description?: string;
+  /** How this checkpoint was triggered */
+  trigger?: CheckpointTrigger;
+  /** User ID who requested the agent action (if trigger = human_requested) */
+  requestedById?: string;
+  /** Category of operation that created this checkpoint */
+  operationType?: string;
+  /** JSON paths of regions affected by this checkpoint */
+  affectedRegions?: string[];
 }
 
 /**
@@ -62,6 +78,18 @@ export interface RevertToCheckpointResult {
 }
 
 /**
+ * Options for listing checkpoints by agent.
+ */
+export interface ListCheckpointsByAgentOptions {
+  limit?: number;
+  offset?: number;
+  branchId?: string;
+  operationType?: string;
+  trigger?: CheckpointTrigger;
+  status?: CheckpointStatus;
+}
+
+/**
  * Document version with path information for checkpoint queries.
  */
 export interface CheckpointDocumentVersion extends DocumentVersion {
@@ -80,6 +108,15 @@ interface CheckpointRow {
   created_by_id: string;
   created_by_type: 'user' | 'agent' | 'system';
   created_at: string;
+  // Enhanced checkpoint fields (Agent Politeness)
+  description: string | null;
+  trigger: CheckpointTrigger | null;
+  requested_by_id: string | null;
+  operation_type: string | null;
+  affected_regions: string[] | null;
+  status: CheckpointStatus | null;
+  rolled_back_by_id: string | null;
+  rolled_back_at: string | null;
 }
 
 /**
@@ -198,6 +235,15 @@ function mapRowToCheckpoint(row: CheckpointRow): Checkpoint {
     createdById: row.created_by_id,
     createdByType: row.created_by_type,
     createdAt: row.created_at,
+    // Enhanced checkpoint fields (Agent Politeness)
+    description: row.description ?? undefined,
+    trigger: row.trigger ?? undefined,
+    requestedById: row.requested_by_id ?? undefined,
+    operationType: row.operation_type ?? undefined,
+    affectedRegions: row.affected_regions ?? undefined,
+    status: row.status ?? undefined,
+    rolledBackById: row.rolled_back_by_id ?? undefined,
+    rolledBackAt: row.rolled_back_at ?? undefined,
   };
 }
 
@@ -260,6 +306,28 @@ function isForeignKeyViolation(error: unknown): boolean {
 }
 
 // =============================================================================
+// Input Validation Constants
+// =============================================================================
+
+/** Maximum length for checkpoint name */
+const MAX_NAME_LENGTH = 255;
+
+/** Maximum length for checkpoint message */
+const MAX_MESSAGE_LENGTH = 1000;
+
+/** Maximum length for checkpoint description */
+const MAX_DESCRIPTION_LENGTH = 5000;
+
+/** Maximum length for operation type */
+const MAX_OPERATION_TYPE_LENGTH = 100;
+
+/** Maximum number of affected regions per checkpoint */
+const MAX_AFFECTED_REGIONS = 100;
+
+/** Maximum length for a single affected region path */
+const MAX_REGION_PATH_LENGTH = 500;
+
+// =============================================================================
 // Service Functions
 // =============================================================================
 
@@ -283,6 +351,42 @@ export async function createCheckpoint(
     throw new InvalidCheckpointParamsError('Created by ID is required');
   }
 
+  // Validate optional field lengths
+  if (params.name != null && params.name.length > MAX_NAME_LENGTH) {
+    throw new InvalidCheckpointParamsError(
+      `Name exceeds maximum length of ${String(MAX_NAME_LENGTH)}`,
+    );
+  }
+  if (params.message != null && params.message.length > MAX_MESSAGE_LENGTH) {
+    throw new InvalidCheckpointParamsError(
+      `Message exceeds maximum length of ${String(MAX_MESSAGE_LENGTH)}`,
+    );
+  }
+  if (params.description != null && params.description.length > MAX_DESCRIPTION_LENGTH) {
+    throw new InvalidCheckpointParamsError(
+      `Description exceeds maximum length of ${String(MAX_DESCRIPTION_LENGTH)}`,
+    );
+  }
+  if (params.operationType != null && params.operationType.length > MAX_OPERATION_TYPE_LENGTH) {
+    throw new InvalidCheckpointParamsError(
+      `Operation type exceeds maximum length of ${String(MAX_OPERATION_TYPE_LENGTH)}`,
+    );
+  }
+  if (params.affectedRegions != null) {
+    if (params.affectedRegions.length > MAX_AFFECTED_REGIONS) {
+      throw new InvalidCheckpointParamsError(
+        `Affected regions exceeds maximum of ${String(MAX_AFFECTED_REGIONS)}`,
+      );
+    }
+    for (const region of params.affectedRegions) {
+      if (typeof region !== 'string' || region.length > MAX_REGION_PATH_LENGTH) {
+        throw new InvalidCheckpointParamsError(
+          `Invalid affected region: must be string under ${String(MAX_REGION_PATH_LENGTH)} chars`,
+        );
+      }
+    }
+  }
+
   try {
     // Use transaction for multi-step operation
     await query('BEGIN');
@@ -291,9 +395,10 @@ export async function createCheckpoint(
     const checkpointResult = await query<CheckpointRow>(
       `INSERT INTO app.checkpoints (
         branch_id, name, message, checkpoint_type,
-        created_by_id, created_by_type
+        created_by_id, created_by_type,
+        description, trigger, requested_by_id, operation_type, affected_regions, status
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *`,
       [
         params.branchId,
@@ -302,6 +407,12 @@ export async function createCheckpoint(
         params.checkpointType,
         params.createdById,
         params.createdByType,
+        params.description ?? null,
+        params.trigger ?? 'manual',
+        params.requestedById ?? null,
+        params.operationType ?? null,
+        params.affectedRegions ? JSON.stringify(params.affectedRegions) : '[]',
+        'completed',
       ],
     );
 
@@ -543,79 +654,100 @@ export async function revertToCheckpoint(
     throw new InvalidCheckpointParamsError('Created by ID is required');
   }
 
-  // Get the checkpoint
+  // Get the checkpoint (before transaction to avoid holding locks)
   const checkpoint = await getCheckpoint(params.checkpointId);
   if (!checkpoint) {
     throw new CheckpointNotFoundError(params.checkpointId);
   }
 
-  // Get documents at the checkpoint
+  // Get documents at the checkpoint (before transaction)
   const documentsAtCheckpoint = await getDocumentsAtCheckpoint(params.checkpointId);
 
-  // Create new versions for each document with source='revert'
-  for (const doc of documentsAtCheckpoint) {
+  try {
+    // Use transaction for the revert operations
+    await query('BEGIN');
+
+    // Create new versions for each document with source='revert'
+    for (const doc of documentsAtCheckpoint) {
+      await query(
+        `INSERT INTO app.document_versions (
+          document_id, branch_id, version_number, snapshot, crdt_state,
+          source, created_by_id, created_by_type
+        )
+        SELECT $1, $2,
+          COALESCE(MAX(version_number), 0) + 1,
+          $3, $4, 'revert', $5, $6
+        FROM app.document_versions
+        WHERE document_id = $1 AND branch_id = $2`,
+        [
+          doc.documentId,
+          checkpoint.branchId,
+          doc.snapshot,
+          doc.crdtState !== undefined && doc.crdtState !== '' ?
+            Buffer.from(doc.crdtState, 'base64') : null,
+          params.createdById,
+          params.createdByType,
+        ],
+      );
+    }
+
+    // Get structures at the checkpoint
+    await getStructuresAtCheckpoint(params.checkpointId);
+
+    // Delete current structure state for the branch
     await query(
-      `INSERT INTO app.document_versions (
-        document_id, branch_id, version_number, snapshot, crdt_state,
-        source, created_by_id, created_by_type
+      'DELETE FROM app.branch_structure_state WHERE branch_id = $1',
+      [checkpoint.branchId],
+    );
+
+    // Restore structure state from checkpoint
+    await query(
+      `INSERT INTO app.branch_structure_state (
+        branch_id, structure_id, name, slug, description, structure_type,
+        structure_tree, metadata_schema, schema_enforcement
       )
-      SELECT $1, $2,
-        COALESCE(MAX(version_number), 0) + 1,
-        $3, $4, 'revert', $5, $6
-      FROM app.document_versions
-      WHERE document_id = $1 AND branch_id = $2`,
-      [
-        doc.documentId,
-        checkpoint.branchId,
-        doc.snapshot,
-        doc.crdtState !== undefined && doc.crdtState !== '' ?
-          Buffer.from(doc.crdtState, 'base64') : null,
-        params.createdById,
-        params.createdByType,
-      ],
+      SELECT $1, cs.structure_id, cs.name, cs.slug, cs.description, cs.structure_type,
+             cs.structure_tree, cs.metadata_schema, cs.schema_enforcement
+      FROM app.checkpoint_structures cs
+      WHERE cs.checkpoint_id = $2`,
+      [checkpoint.branchId, params.checkpointId],
+    );
+
+    // Delete current document metadata for the branch
+    await query(
+      'DELETE FROM app.branch_document_metadata WHERE branch_id = $1',
+      [checkpoint.branchId],
+    );
+
+    // Restore document metadata from checkpoint
+    await query(
+      `INSERT INTO app.branch_document_metadata (
+        branch_id, structure_id, document_id, metadata
+      )
+      SELECT $1, cdm.structure_id, cdm.document_id, cdm.metadata
+      FROM app.checkpoint_document_metadata cdm
+      WHERE cdm.checkpoint_id = $2`,
+      [checkpoint.branchId, params.checkpointId],
+    );
+
+    // Update the original checkpoint status to rolled_back
+    await query(
+      `UPDATE app.checkpoints
+       SET status = 'rolled_back', rolled_back_by_id = $2, rolled_back_at = $3
+       WHERE id = $1`,
+      [params.checkpointId, params.createdById, new Date().toISOString()],
+    );
+
+    await query('COMMIT');
+  } catch (error) {
+    await query('ROLLBACK');
+    throw new DatabaseError(
+      `Failed to revert to checkpoint: ${error instanceof Error ? error.message : String(error)}`,
+      'revertToCheckpoint',
     );
   }
 
-  // Get structures at the checkpoint
-  await getStructuresAtCheckpoint(params.checkpointId);
-
-  // Delete current structure state for the branch
-  await query(
-    'DELETE FROM app.branch_structure_state WHERE branch_id = $1',
-    [checkpoint.branchId],
-  );
-
-  // Restore structure state from checkpoint
-  await query(
-    `INSERT INTO app.branch_structure_state (
-      branch_id, structure_id, name, slug, description, structure_type,
-      structure_tree, metadata_schema, schema_enforcement
-    )
-    SELECT $1, cs.structure_id, cs.name, cs.slug, cs.description, cs.structure_type,
-           cs.structure_tree, cs.metadata_schema, cs.schema_enforcement
-    FROM app.checkpoint_structures cs
-    WHERE cs.checkpoint_id = $2`,
-    [checkpoint.branchId, params.checkpointId],
-  );
-
-  // Delete current document metadata for the branch
-  await query(
-    'DELETE FROM app.branch_document_metadata WHERE branch_id = $1',
-    [checkpoint.branchId],
-  );
-
-  // Restore document metadata from checkpoint
-  await query(
-    `INSERT INTO app.branch_document_metadata (
-      branch_id, structure_id, document_id, metadata
-    )
-    SELECT $1, cdm.structure_id, cdm.document_id, cdm.metadata
-    FROM app.checkpoint_document_metadata cdm
-    WHERE cdm.checkpoint_id = $2`,
-    [checkpoint.branchId, params.checkpointId],
-  );
-
-  // Create a checkpoint documenting the revert
+  // Create a checkpoint documenting the revert (separate transaction)
   const revertMessage = params.message ??
     `Reverted to checkpoint: ${checkpoint.name ?? ''} (${params.checkpointId})`.trim();
 
@@ -698,4 +830,138 @@ export async function getCheckpointDocumentCount(checkpointId: string): Promise<
   );
 
   return parseInt(getFirstRow(result.rows).count, 10);
+}
+
+// =============================================================================
+// Enhanced Checkpoint Functions (Agent Politeness)
+// =============================================================================
+
+/**
+ * Updates the status of a checkpoint.
+ * Used when rolling back or marking a checkpoint as partial.
+ *
+ * @param checkpointId - The checkpoint ID
+ * @param status - The new status
+ * @param rolledBackById - Optional user ID who performed the rollback
+ * @returns The updated checkpoint or null if not found
+ * @throws CheckpointNotFoundError if the checkpoint does not exist
+ */
+export async function updateCheckpointStatus(
+  checkpointId: string,
+  status: CheckpointStatus,
+  rolledBackById?: string,
+): Promise<Checkpoint> {
+  const rolledBackAt = status === 'rolled_back' ? new Date().toISOString() : null;
+
+  const result = await query<CheckpointRow>(
+    `UPDATE app.checkpoints
+     SET status = $2, rolled_back_by_id = $3, rolled_back_at = $4
+     WHERE id = $1
+     RETURNING *`,
+    [checkpointId, status, rolledBackById ?? null, rolledBackAt],
+  );
+
+  if (result.rows.length === 0) {
+    throw new CheckpointNotFoundError(checkpointId);
+  }
+
+  return mapRowToCheckpoint(getFirstRow(result.rows));
+}
+
+/**
+ * Lists checkpoints created by a specific agent.
+ *
+ * @param agentId - The agent ID (createdById where createdByType='agent')
+ * @param options - Filtering and pagination options
+ * @returns Array of checkpoints created by the agent
+ */
+export async function listCheckpointsByAgent(
+  agentId: string,
+  options: ListCheckpointsByAgentOptions = {},
+): Promise<Checkpoint[]> {
+  const { limit, offset, branchId, operationType, trigger, status } = options;
+
+  let sql = `SELECT * FROM app.checkpoints
+     WHERE created_by_id = $1 AND created_by_type = 'agent'`;
+  const params: unknown[] = [agentId];
+  let paramIndex = 2;
+
+  if (branchId !== undefined) {
+    sql += ` AND branch_id = $${String(paramIndex)}`;
+    params.push(branchId);
+    paramIndex++;
+  }
+
+  if (operationType !== undefined) {
+    sql += ` AND operation_type = $${String(paramIndex)}`;
+    params.push(operationType);
+    paramIndex++;
+  }
+
+  if (trigger !== undefined) {
+    sql += ` AND trigger = $${String(paramIndex)}`;
+    params.push(trigger);
+    paramIndex++;
+  }
+
+  if (status !== undefined) {
+    sql += ` AND status = $${String(paramIndex)}`;
+    params.push(status);
+    paramIndex++;
+  }
+
+  sql += ' ORDER BY created_at DESC';
+
+  if (limit !== undefined) {
+    sql += ` LIMIT $${String(paramIndex)}`;
+    params.push(limit);
+    paramIndex++;
+  }
+
+  if (offset !== undefined) {
+    sql += ` OFFSET $${String(paramIndex)}`;
+    params.push(offset);
+  }
+
+  const result = await query<CheckpointRow>(sql, params);
+
+  return result.rows.map(mapRowToCheckpoint);
+}
+
+/**
+ * Lists checkpoints filtered by operation type.
+ *
+ * @param branchId - The branch ID
+ * @param operationType - The operation type to filter by
+ * @param options - Pagination options
+ * @returns Array of checkpoints with the specified operation type
+ */
+export async function listCheckpointsByOperationType(
+  branchId: string,
+  operationType: string,
+  options: { limit?: number; offset?: number } = {},
+): Promise<Checkpoint[]> {
+  const { limit, offset } = options;
+
+  let sql = `SELECT * FROM app.checkpoints
+     WHERE branch_id = $1 AND operation_type = $2`;
+  const params: unknown[] = [branchId, operationType];
+  let paramIndex = 3;
+
+  sql += ' ORDER BY created_at DESC';
+
+  if (limit !== undefined) {
+    sql += ` LIMIT $${String(paramIndex)}`;
+    params.push(limit);
+    paramIndex++;
+  }
+
+  if (offset !== undefined) {
+    sql += ` OFFSET $${String(paramIndex)}`;
+    params.push(offset);
+  }
+
+  const result = await query<CheckpointRow>(sql, params);
+
+  return result.rows.map(mapRowToCheckpoint);
 }

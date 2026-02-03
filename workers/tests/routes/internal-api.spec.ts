@@ -25,6 +25,31 @@ vi.mock('../../src/services/crdt-sync-service', () => ({
   },
 }));
 
+// Mock checkpoint service
+vi.mock('../../src/services/checkpoint-service', () => ({
+  createCheckpoint: vi.fn(),
+  revertToCheckpoint: vi.fn(),
+  BranchNotFoundError: class BranchNotFoundError extends Error {
+    name = 'BranchNotFoundError';
+    branchId: string;
+    constructor(branchId: string) {
+      super(`Branch with ID "${branchId}" not found.`);
+      this.branchId = branchId;
+    }
+  },
+  CheckpointNotFoundError: class CheckpointNotFoundError extends Error {
+    name = 'CheckpointNotFoundError';
+    checkpointId: string;
+    constructor(checkpointId: string) {
+      super(`Checkpoint with ID "${checkpointId}" not found.`);
+      this.checkpointId = checkpointId;
+    }
+  },
+  InvalidCheckpointParamsError: class InvalidCheckpointParamsError extends Error {
+    name = 'InvalidCheckpointParamsError';
+  },
+}));
+
 describe('Phase 1.2: Internal API Routes', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -472,6 +497,386 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(404);
+    });
+  });
+
+  // =============================================================================
+  // Agent Checkpoint API Tests (Agent Politeness Protocol)
+  // =============================================================================
+
+  describe('POST /internal/agent-checkpoint-start', () => {
+    // Request body type
+    interface AgentCheckpointStartBody {
+      branchId: string;
+      agentId: string;
+      intent: string;
+      trigger: 'human_requested' | 'autonomous';
+      targetRegions?: string[];
+    }
+
+    function createValidStartBody(overrides: Partial<AgentCheckpointStartBody> = {}): AgentCheckpointStartBody {
+      return {
+        branchId: 'branch-uuid-123',
+        agentId: 'agent-uuid-456',
+        intent: 'Update hero section',
+        trigger: 'autonomous',
+        targetRegions: ['root.hero'],
+        ...overrides,
+      };
+    }
+
+    it('should create a checkpoint before agent edits', async () => {
+      const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+      const checkpointService = await import('../../src/services/checkpoint-service');
+
+      const mockCheckpoint = {
+        id: 'checkpoint-uuid-789',
+        branchId: 'branch-uuid-123',
+        checkpointType: 'agent_pre_edit' as const,
+        createdById: 'agent-uuid-456',
+        createdByType: 'agent' as const,
+        createdAt: '2026-01-28T10:00:00.000Z',
+        trigger: 'autonomous' as const,
+        description: 'Pre-edit checkpoint: Update hero section',
+        affectedRegions: ['root.hero'],
+        status: 'completed' as const,
+      };
+
+      vi.mocked(checkpointService.createCheckpoint).mockResolvedValue({
+        checkpoint: mockCheckpoint,
+        documentCount: 3,
+      });
+
+      const body = createValidStartBody();
+      const request = new Request('http://localhost/internal/agent-checkpoint-start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'correct-secret',
+        },
+        body: JSON.stringify(body),
+      });
+
+      const response = await handleInternalRoutes(request, {
+        internalSecret: 'correct-secret',
+      });
+
+      expect(response.status).toBe(200);
+      const responseBody = await response.json();
+      expect(responseBody.checkpointId).toBe('checkpoint-uuid-789');
+
+      expect(checkpointService.createCheckpoint).toHaveBeenCalledWith({
+        branchId: 'branch-uuid-123',
+        checkpointType: 'agent_pre_edit',
+        createdById: 'agent-uuid-456',
+        createdByType: 'agent',
+        description: 'Pre-edit checkpoint: Update hero section',
+        trigger: 'autonomous',
+        affectedRegions: ['root.hero'],
+      });
+    });
+
+    it('should require branchId', async () => {
+      const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+
+      const body = createValidStartBody({ branchId: '' });
+      const request = new Request('http://localhost/internal/agent-checkpoint-start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'correct-secret',
+        },
+        body: JSON.stringify(body),
+      });
+
+      const response = await handleInternalRoutes(request, {
+        internalSecret: 'correct-secret',
+      });
+
+      expect(response.status).toBe(400);
+      const responseBody = await response.json();
+      expect(responseBody.error).toContain('branchId');
+    });
+
+    it('should require agentId', async () => {
+      const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+
+      const body = createValidStartBody({ agentId: '' });
+      const request = new Request('http://localhost/internal/agent-checkpoint-start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'correct-secret',
+        },
+        body: JSON.stringify(body),
+      });
+
+      const response = await handleInternalRoutes(request, {
+        internalSecret: 'correct-secret',
+      });
+
+      expect(response.status).toBe(400);
+      const responseBody = await response.json();
+      expect(responseBody.error).toContain('agentId');
+    });
+
+    it('should require intent', async () => {
+      const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+
+      const body = createValidStartBody({ intent: '' });
+      const request = new Request('http://localhost/internal/agent-checkpoint-start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'correct-secret',
+        },
+        body: JSON.stringify(body),
+      });
+
+      const response = await handleInternalRoutes(request, {
+        internalSecret: 'correct-secret',
+      });
+
+      expect(response.status).toBe(400);
+      const responseBody = await response.json();
+      expect(responseBody.error).toContain('intent');
+    });
+
+    it('should return 404 when branch not found', async () => {
+      const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+      const checkpointService = await import('../../src/services/checkpoint-service');
+
+      vi.mocked(checkpointService.createCheckpoint).mockRejectedValue(
+        new checkpointService.BranchNotFoundError('branch-uuid-missing'),
+      );
+
+      const body = createValidStartBody({ branchId: 'branch-uuid-missing' });
+      const request = new Request('http://localhost/internal/agent-checkpoint-start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'correct-secret',
+        },
+        body: JSON.stringify(body),
+      });
+
+      const response = await handleInternalRoutes(request, {
+        internalSecret: 'correct-secret',
+      });
+
+      expect(response.status).toBe(404);
+      const responseBody = await response.json();
+      expect(responseBody.error).toContain('Branch');
+    });
+  });
+
+  describe('POST /internal/agent-checkpoint-complete', () => {
+    interface AgentCheckpointCompleteBody {
+      branchId: string;
+      agentId: string;
+      intent: string;
+      preEditCheckpointId: string;
+      affectedRegions?: string[];
+    }
+
+    function createValidCompleteBody(
+      overrides: Partial<AgentCheckpointCompleteBody> = {},
+    ): AgentCheckpointCompleteBody {
+      return {
+        branchId: 'branch-uuid-123',
+        agentId: 'agent-uuid-456',
+        intent: 'Update hero section',
+        preEditCheckpointId: 'checkpoint-uuid-pre',
+        affectedRegions: ['root.hero'],
+        ...overrides,
+      };
+    }
+
+    it('should create a checkpoint after agent edits', async () => {
+      const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+      const checkpointService = await import('../../src/services/checkpoint-service');
+
+      const mockCheckpoint = {
+        id: 'checkpoint-uuid-post',
+        branchId: 'branch-uuid-123',
+        checkpointType: 'agent_post_edit' as const,
+        createdById: 'agent-uuid-456',
+        createdByType: 'agent' as const,
+        createdAt: '2026-01-28T10:05:00.000Z',
+        trigger: 'autonomous' as const,
+        description: 'Post-edit checkpoint: Update hero section',
+        affectedRegions: ['root.hero'],
+        status: 'completed' as const,
+      };
+
+      vi.mocked(checkpointService.createCheckpoint).mockResolvedValue({
+        checkpoint: mockCheckpoint,
+        documentCount: 3,
+      });
+
+      const body = createValidCompleteBody();
+      const request = new Request('http://localhost/internal/agent-checkpoint-complete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'correct-secret',
+        },
+        body: JSON.stringify(body),
+      });
+
+      const response = await handleInternalRoutes(request, {
+        internalSecret: 'correct-secret',
+      });
+
+      expect(response.status).toBe(200);
+      const responseBody = await response.json();
+      expect(responseBody.checkpointId).toBe('checkpoint-uuid-post');
+
+      expect(checkpointService.createCheckpoint).toHaveBeenCalledWith({
+        branchId: 'branch-uuid-123',
+        checkpointType: 'agent_post_edit',
+        createdById: 'agent-uuid-456',
+        createdByType: 'agent',
+        description: 'Post-edit checkpoint: Update hero section',
+        trigger: 'autonomous',
+        affectedRegions: ['root.hero'],
+      });
+    });
+
+    it('should require preEditCheckpointId', async () => {
+      const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+
+      const body = createValidCompleteBody({ preEditCheckpointId: '' });
+      const request = new Request('http://localhost/internal/agent-checkpoint-complete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'correct-secret',
+        },
+        body: JSON.stringify(body),
+      });
+
+      const response = await handleInternalRoutes(request, {
+        internalSecret: 'correct-secret',
+      });
+
+      expect(response.status).toBe(400);
+      const responseBody = await response.json();
+      expect(responseBody.error).toContain('preEditCheckpointId');
+    });
+  });
+
+  describe('POST /internal/agent-checkpoint-rollback', () => {
+    interface AgentCheckpointRollbackBody {
+      checkpointId: string;
+      agentId: string;
+      reason?: string;
+    }
+
+    function createValidRollbackBody(
+      overrides: Partial<AgentCheckpointRollbackBody> = {},
+    ): AgentCheckpointRollbackBody {
+      return {
+        checkpointId: 'checkpoint-uuid-pre',
+        agentId: 'agent-uuid-456',
+        reason: 'User interrupted the agent',
+        ...overrides,
+      };
+    }
+
+    it('should rollback to pre-edit checkpoint', async () => {
+      const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+      const checkpointService = await import('../../src/services/checkpoint-service');
+
+      const mockCheckpoint = {
+        id: 'checkpoint-uuid-reverted',
+        branchId: 'branch-uuid-123',
+        checkpointType: 'manual' as const,
+        createdById: 'agent-uuid-456',
+        createdByType: 'agent' as const,
+        createdAt: '2026-01-28T10:10:00.000Z',
+        status: 'completed' as const,
+      };
+
+      vi.mocked(checkpointService.revertToCheckpoint).mockResolvedValue({
+        checkpoint: mockCheckpoint,
+        documentsReverted: 2,
+      });
+
+      const body = createValidRollbackBody();
+      const request = new Request('http://localhost/internal/agent-checkpoint-rollback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'correct-secret',
+        },
+        body: JSON.stringify(body),
+      });
+
+      const response = await handleInternalRoutes(request, {
+        internalSecret: 'correct-secret',
+      });
+
+      expect(response.status).toBe(200);
+      const responseBody = await response.json();
+      expect(responseBody.rolledBack).toBe(true);
+      expect(responseBody.documentsReverted).toBe(2);
+
+      expect(checkpointService.revertToCheckpoint).toHaveBeenCalledWith({
+        checkpointId: 'checkpoint-uuid-pre',
+        createdById: 'agent-uuid-456',
+        createdByType: 'agent',
+        message: 'User interrupted the agent',
+      });
+    });
+
+    it('should require checkpointId', async () => {
+      const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+
+      const body = createValidRollbackBody({ checkpointId: '' });
+      const request = new Request('http://localhost/internal/agent-checkpoint-rollback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'correct-secret',
+        },
+        body: JSON.stringify(body),
+      });
+
+      const response = await handleInternalRoutes(request, {
+        internalSecret: 'correct-secret',
+      });
+
+      expect(response.status).toBe(400);
+      const responseBody = await response.json();
+      expect(responseBody.error).toContain('checkpointId');
+    });
+
+    it('should return 404 when checkpoint not found', async () => {
+      const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+      const checkpointService = await import('../../src/services/checkpoint-service');
+
+      vi.mocked(checkpointService.revertToCheckpoint).mockRejectedValue(
+        new checkpointService.CheckpointNotFoundError('checkpoint-uuid-missing'),
+      );
+
+      const body = createValidRollbackBody({ checkpointId: 'checkpoint-uuid-missing' });
+      const request = new Request('http://localhost/internal/agent-checkpoint-rollback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'correct-secret',
+        },
+        body: JSON.stringify(body),
+      });
+
+      const response = await handleInternalRoutes(request, {
+        internalSecret: 'correct-secret',
+      });
+
+      expect(response.status).toBe(404);
+      const responseBody = await response.json();
+      expect(responseBody.error).toContain('Checkpoint');
     });
   });
 });

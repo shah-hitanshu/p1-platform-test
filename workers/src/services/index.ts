@@ -114,6 +114,10 @@ export {
   getLatestCheckpoint,
   getCheckpointDocumentCount,
   getStructureAtCheckpoint,
+  // Enhanced checkpoint functions (Agent Politeness)
+  updateCheckpointStatus,
+  listCheckpointsByAgent,
+  listCheckpointsByOperationType,
   // Note: BranchNotFoundError is already exported from branch-service
   CheckpointNotFoundError,
   InvalidCheckpointParamsError,
@@ -127,6 +131,8 @@ export type {
   RevertToCheckpointResult,
   CheckpointDocumentVersion,
   CheckpointStructure,
+  // Enhanced checkpoint types (Agent Politeness)
+  ListCheckpointsByAgentOptions,
 } from './checkpoint-service';
 
 // Merge Request Service
@@ -370,3 +376,111 @@ export type {
   SyncCrdtToPostgresParams,
   LoadCrdtStateResult,
 } from './crdt-sync-service';
+
+// Organization Service
+export {
+  createOrganization,
+  getOrganizationById,
+  updateOrganization,
+  deleteOrganization,
+  listOrganizations,
+  linkSiteToOrganization,
+  unlinkSiteFromOrganization,
+  getSitesByOrganization,
+  getOrganizationForSite,
+  InvalidOrganizationParamsError,
+  OrganizationHasSitesError,
+  OrganizationNotFoundError,
+} from './organization-service';
+
+export type {
+  CreateOrganizationParams,
+  UpdateOrganizationParams,
+  ListOrganizationsOptions,
+} from './organization-service';
+
+// Agent Service
+export {
+  createAgent,
+  getAgentById,
+  getAgentByName,
+  updateAgent,
+  updateAgentStatus,
+  deleteAgent,
+  listAgents,
+  getAgentsByOrganization,
+  getActiveAgentCount,
+  InvalidAgentParamsError,
+  DuplicateAgentNameError,
+  OrganizationNotFoundError as AgentOrganizationNotFoundError,
+  AgentNotFoundError,
+} from './agent-service';
+
+export type {
+  CreateAgentParams,
+  UpdateAgentParams,
+  ListAgentsOptions,
+  GetAgentsByOrganizationOptions,
+} from './agent-service';
+
+// Presence Service
+export {
+  PresenceManager,
+  regionsOverlap,
+  MAX_PRESENCES,
+  MaxPresencesExceededError,
+} from './presence-service';
+
+export type { RegisterPresenceOptions } from './presence-service';
+
+// Activity Detection Service
+export {
+  ActivityDetector,
+  DEFAULT_IDLE_TIMEOUT_MS,
+  MAX_ACTIVE_REGIONS,
+} from './activity-detection-service';
+
+export type {
+  ActivityDetectorOptions,
+  AgentProceedContext,
+  AgentProceedResult,
+  ActivityDetectorState,
+} from './activity-detection-service';
+
+// Agent Edit Permission Service
+export { AgentEditPermissionService } from './agent-edit-permission-service';
+
+export type {
+  AgentEditContext,
+  AgentEditPermission,
+  GetAgentStatusFn,
+  AgentEditPermissionServiceOptions,
+} from './agent-edit-permission-service';
+
+// Agent Context Service (Phase 7.1)
+export {
+  parseAgentContext,
+  hasAgentContext,
+  validateAgentContext,
+  MAX_AGENT_ID_LENGTH,
+  MAX_INTENT_LENGTH,
+  MAX_OPERATION_TYPE_LENGTH,
+  MAX_TARGET_REGIONS,
+  MAX_REGION_PATH_LENGTH,
+} from './agent-context-service';
+
+export type {
+  AgentContext,
+  AgentContextValidationResult,
+} from './agent-context-service';
+
+// Presence Rollup Service (Phase 8)
+export {
+  getBranchPresence,
+  getSitePresence,
+  getAgentPresence,
+  queryDocumentPresence,
+  BranchNotFoundError as PresenceRollupBranchNotFoundError,
+  SiteNotFoundError as PresenceRollupSiteNotFoundError,
+  AgentNotFoundError as PresenceRollupAgentNotFoundError,
+} from './presence-rollup-service';

@@ -31,16 +31,17 @@
   ],
   "agents": [
     {
-      "id": "agent-zappy",
+      "id": "a0000000-0000-0000-0000-000000000001",
       "name": "Zappy AI Assistant",
       "apiKey": "test-agent-key-zappy",
       "siteRoles": {
         "site-123": "editor",
-        "35b800c4-6010-4908-a724-f1512e2a2144": "admin"
+        "35b800c4-6010-4908-a724-f1512e2a2144": "admin",
+        "5da7f0d0-81d8-4e92-9a4b-a4cb07090768": "admin"
       }
     },
     {
-      "id": "agent-helper",
+      "id": "a0000000-0000-0000-0000-000000000002",
       "name": "Helper Bot",
       "apiKey": "test-agent-key-helper",
       "siteRoles": {

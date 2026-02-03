@@ -2,7 +2,8 @@
  * Collaborative State System - Core TypeScript Types
  *
  * Phase 1.3: Type definitions matching the architecture document.
- * @see collaborative-state-system-architecture-v2.2.md
+ * Phase 1.2 (Agent Politeness): Added organization, agent registry, and presence types.
+ * @see collaborative-state-system-architecture-v2.3.md
  */
 
 // =============================================================================
@@ -37,8 +38,14 @@ export type BranchStatus = 'active' | 'review' | 'merged' | 'archived';
 
 /**
  * Types of checkpoints that can be created.
+ * - manual: Created by user action
+ * - auto: Created automatically by the system
+ * - pre_merge: Created before a merge operation
+ * - post_merge: Created after a merge operation
+ * - agent_pre_edit: Created before an agent starts editing (for rollback)
+ * - agent_post_edit: Created after an agent completes editing (for audit)
  */
-export type CheckpointType = 'manual' | 'auto' | 'pre_merge' | 'post_merge';
+export type CheckpointType = 'manual' | 'auto' | 'pre_merge' | 'post_merge' | 'agent_pre_edit' | 'agent_post_edit';
 
 /**
  * Source of a document version creation.
@@ -96,6 +103,39 @@ export type SchemaEnforcementMode = 'strict' | 'warn' | 'none';
 export type EditOperationType = 'set' | 'delete' | 'insert' | 'move' | 'replace';
 
 // =============================================================================
+// Agent Politeness System - Union Types
+// =============================================================================
+
+/**
+ * How a checkpoint was triggered.
+ * - manual: User explicitly created checkpoint
+ * - human_requested: Agent created after user requested work
+ * - autonomous: Agent created during autonomous operation
+ */
+export type CheckpointTrigger = 'manual' | 'human_requested' | 'autonomous';
+
+/**
+ * Checkpoint completion status.
+ * - completed: Operation finished successfully
+ * - rolled_back: Operation was rolled back (agent yielded to human)
+ * - partial: Operation was interrupted before completion
+ */
+export type CheckpointStatus = 'completed' | 'rolled_back' | 'partial';
+
+/**
+ * Agent operational status.
+ * - active: Agent can perform all allowed operations
+ * - suspended: Agent cannot start new operations but can complete in-progress work
+ * - disabled: Agent cannot perform any operations
+ */
+export type AgentStatus = 'active' | 'suspended' | 'disabled';
+
+/**
+ * Actor presence state within a document.
+ */
+export type PresenceState = 'active' | 'idle' | 'editing';
+
+// =============================================================================
 // Core Entities
 // =============================================================================
 
@@ -110,12 +150,80 @@ export interface WorkflowSettings {
   approverMinRole?: 'EDITOR' | 'ADMIN';
 }
 
+// =============================================================================
+// Agent Politeness System - Organization & Agent Registry
+// =============================================================================
+
+/**
+ * Priority tier configuration for agent scheduling.
+ */
+export interface AgentPriorityTier {
+  name: string;
+  idleTimeoutMultiplier: number;
+  canInterruptAutonomous: boolean;
+}
+
+/**
+ * Organization-level settings for agent behavior.
+ */
+export interface OrganizationSettings {
+  /**
+   * How long humans must be idle before autonomous agents can edit (default: 5000ms).
+   * Optional for defensive handling of missing/legacy data.
+   */
+  agentIdleTimeoutMs?: number;
+  /** Future: priority tier configurations */
+  agentPriorityTiers?: Record<string, AgentPriorityTier>;
+}
+
+/**
+ * Organization entity for agent configuration and site grouping.
+ * Minimal model owned by this service for agent politeness.
+ */
+export interface Organization {
+  id: string;
+  name: string;
+  settings: OrganizationSettings;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Agent-specific settings for registered agents.
+ */
+export interface AgentSettings {
+  /** Reference to priority tier name */
+  priorityTier?: string;
+  /** Allowed operation types (future) */
+  allowedOperationTypes?: string[];
+  /** Maximum concurrent document edits (future) */
+  maxConcurrentDocuments?: number;
+}
+
+/**
+ * Registered agent at the organization level.
+ * Individual agent accounts for the Agent Politeness System.
+ */
+export interface RegisteredAgent {
+  id: string;
+  organizationId: string;
+  name: string;
+  description?: string;
+  capabilities: string[];
+  status: AgentStatus;
+  settings: AgentSettings;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /**
  * Represents a Pantheon website in the collaborative state system.
  */
 export interface Site {
   id: string;
   pantheonSiteId: string;
+  /** Organization this site belongs to (for agent configuration) */
+  organizationId?: string;
   name: string;
   workflowSettings: WorkflowSettings;
   createdAt: string;
@@ -175,13 +283,33 @@ export interface DocumentVersion {
 /**
  * Named snapshot of branch state at a point in time.
  * Serves as semantic markers, rollback points, and merge bases.
+ * Enhanced for Agent Politeness System with trigger, status, and rollback tracking.
  */
 export interface Checkpoint {
   id: string;
   branchId: string;
   name?: string;
   message?: string;
+  /** Detailed description of what the checkpoint contains */
+  description?: string;
   checkpointType: CheckpointType;
+
+  // Agent Politeness fields
+  /** How this checkpoint was triggered */
+  trigger?: CheckpointTrigger;
+  /** User ID who requested the agent action (if trigger = human_requested) */
+  requestedById?: string;
+  /** Category of operation that created this checkpoint */
+  operationType?: string;
+  /** JSON paths of regions affected by this checkpoint */
+  affectedRegions?: string[];
+  /** Checkpoint completion status */
+  status?: CheckpointStatus;
+  /** User ID who rolled back this checkpoint */
+  rolledBackById?: string;
+  /** When the checkpoint was rolled back */
+  rolledBackAt?: string;
+
   createdById: string;
   createdByType: 'user' | 'agent' | 'system';
   createdAt: string;
@@ -537,4 +665,143 @@ export interface AuditEvent {
   timestamp: string;
   success: boolean;
   errorMessage?: string;
+}
+
+// =============================================================================
+// Agent Politeness System - Presence & Edit Workflow
+// =============================================================================
+
+/**
+ * Actor presence information for awareness system.
+ * Tracks who is viewing/editing a document.
+ */
+export interface ActorPresence {
+  id: string;
+  actorId: string;
+  actorType: 'user' | 'agent';
+  role: 'human' | 'agent';
+  name: string;
+  avatar?: string;
+  state: PresenceState;
+  /** Agent's declared intent (e.g., "Updating hero section") */
+  intent?: string;
+  /** JSON paths the actor is focused on */
+  focusRegions?: string[];
+  lastActivityAt: string;
+  joinedAt: string;
+}
+
+/**
+ * Context provided by agent when requesting edit permission.
+ */
+export interface AgentEditContext {
+  agentId: string;
+  trigger: 'autonomous' | 'human_requested';
+  /** User who requested the agent action (if trigger = human_requested) */
+  requestedById?: string;
+  /** JSON paths the agent intends to edit */
+  targetRegions: string[];
+  /** Human-readable description of intended action */
+  intent?: string;
+  /** Category of operation (e.g., 'content_edit', 'style_update') */
+  operationType?: string;
+}
+
+/**
+ * Result of agent edit permission check.
+ */
+export interface AgentEditPermission {
+  allowed: boolean;
+  /** Reason for denial (if allowed = false) */
+  reason?: 'human_active' | 'region_conflict' | 'agent_disabled' | 'no_access';
+  /** Suggested retry delay in milliseconds */
+  retryAfterMs?: number;
+  /** Regions that conflict with active human edits */
+  conflictingRegions?: string[];
+}
+
+// =============================================================================
+// Presence Rollup Types (Phase 8)
+// =============================================================================
+
+/**
+ * Summary counts for presence rollups.
+ */
+export interface PresenceSummary {
+  totalActors: number;
+  humanCount: number;
+  agentCount: number;
+  editingCount: number;
+}
+
+/**
+ * Per-document presence summary for branch rollups.
+ */
+export interface DocumentPresenceSummary {
+  documentId: string;
+  documentPath: string;
+  actorCount: number;
+  hasHumans: boolean;
+  hasAgents: boolean;
+}
+
+/**
+ * Branch-level presence aggregation.
+ */
+export interface BranchPresence {
+  branchId: string;
+  branchName: string;
+  siteId: string;
+  summary: PresenceSummary;
+  actors: ActorPresence[];
+  documentSummary: DocumentPresenceSummary[];
+}
+
+/**
+ * Per-branch presence summary for site rollups.
+ */
+export interface BranchPresenceSummary {
+  branchId: string;
+  branchName: string;
+  actorCount: number;
+  hasHumans: boolean;
+  hasAgents: boolean;
+}
+
+/**
+ * Site-level presence aggregation.
+ */
+export interface SitePresence {
+  siteId: string;
+  siteName: string;
+  summary: {
+    totalActors: number;
+    humanCount: number;
+    agentCount: number;
+    activeBranches: number;
+  };
+  branches: BranchPresenceSummary[];
+}
+
+/**
+ * Agent presence location for global agent queries.
+ */
+export interface AgentPresenceLocation {
+  siteId: string;
+  siteName: string;
+  branchId: string;
+  branchName: string;
+  documentId: string;
+  documentPath: string;
+  presence: ActorPresence;
+}
+
+/**
+ * Agent's presence across an organization.
+ */
+export interface AgentGlobalPresence {
+  agentId: string;
+  agentName: string;
+  organizationId: string;
+  locations: AgentPresenceLocation[];
 }

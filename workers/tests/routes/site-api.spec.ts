@@ -443,11 +443,11 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       expect(response.status).toBe(204);
     });
 
-    it('should return 409 if site has non-archived branches', async () => {
+    it('should return 409 if site has active non-main branches', async () => {
       const { handleSiteRoutes } = await import('../../src/routes/site-api');
       const services = await import('../../src/services');
 
-      // Has active branches
+      // Has active non-main branch (feature branch)
       vi.mocked(services.listBranches).mockResolvedValueOnce([
         {
           id: 'branch-1',
@@ -456,6 +456,16 @@ describe('Phase 7.1.1b: Site API Routes', () => {
           isMain: true,
           status: 'active',
           createdAt: '2026-01-24T10:00:00.000Z',
+          createdById: 'user-1',
+          createdByType: 'user',
+        },
+        {
+          id: 'branch-2',
+          siteId: 'site-1',
+          name: 'feature-branch',
+          isMain: false,
+          status: 'active',
+          createdAt: '2026-01-24T11:00:00.000Z',
           createdById: 'user-1',
           createdByType: 'user',
         },
@@ -473,7 +483,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
 
       expect(response.status).toBe(409);
       const body = await response.json();
-      expect(body.error).toContain('non-archived branches');
+      expect(body.error).toContain('non-main branches');
     });
 
     it('should return 404 for non-existent site', async () => {

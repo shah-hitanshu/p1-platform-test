@@ -10,7 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock the database
 vi.mock('../../src/db', () => ({
   initializeDatabaseFromConnectionString: vi.fn(),
-  runWithConnection: vi.fn().mockImplementation(async (_connStr, _opts, fn) => fn()),
+  runWithConnection: vi.fn().mockImplementation((_connStr: string, _opts: unknown, fn: () => unknown) => fn()),
   query: vi.fn().mockResolvedValue({ rows: [{ now: new Date().toISOString() }] }),
 }));
 
@@ -116,7 +116,7 @@ vi.mock('../../src/auth/mock-identity-provider', () => ({
       tokenExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     }),
     validateAgentKey: vi.fn().mockResolvedValue({
-      id: 'agent-zappy',
+      id: 'a0000000-0000-0000-0000-000000000001',
       type: 'agent',
       pantheonSiteRoles: { 'site-123': 'editor' },
       tokenExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
@@ -574,6 +574,106 @@ describe('Phase 0: Router and Middleware', () => {
       const response = await module.default.fetch(request, mockEnv, mockContext);
 
       expect(response.status).toBe(404);
+    });
+  });
+
+  // ===========================================================================
+  // Route Wiring - Realtime (including focus-regions)
+  // ===========================================================================
+
+  describe('Realtime Routes', () => {
+    it('should route POST /api/sites/{siteId}/branches/{branchId}/documents/{path}/focus-regions to realtime handler', async () => {
+      const module = await import('../../src/index');
+      const realtimeApi = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-123/branches/main/documents/test-doc/focus-regions',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer token',
+            'Content-Type': 'application/json',
+            'X-Actor-Type': 'user',
+          },
+          body: JSON.stringify({
+            actorId: 'user-123',
+            focusRegions: ['/content/0'],
+          }),
+        },
+      );
+
+      await module.default.fetch(request, mockEnv, mockContext);
+
+      expect(realtimeApi.handleRealtimeRoutes).toHaveBeenCalled();
+    });
+
+    it('should route POST /api/sites/{siteId}/branches/{branchId}/documents/{path}/edits to realtime handler', async () => {
+      const module = await import('../../src/index');
+      const realtimeApi = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-123/branches/main/documents/test-doc/edits',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer token',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            operations: [],
+            actorId: 'user-123',
+          }),
+        },
+      );
+
+      await module.default.fetch(request, mockEnv, mockContext);
+
+      expect(realtimeApi.handleRealtimeRoutes).toHaveBeenCalled();
+    });
+
+    it('should route GET /api/sites/{siteId}/branches/{branchId}/documents/{path}/connect to realtime handler', async () => {
+      const module = await import('../../src/index');
+      const realtimeApi = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-123/branches/main/documents/test-doc/connect',
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': 'Bearer token',
+          },
+        },
+      );
+
+      await module.default.fetch(request, mockEnv, mockContext);
+
+      expect(realtimeApi.handleRealtimeRoutes).toHaveBeenCalled();
+    });
+
+    it('should route POST /api/sites/{siteId}/branches/{branchId}/documents/{path}/can-agent-edit to realtime handler', async () => {
+      const module = await import('../../src/index');
+      const realtimeApi = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-123/branches/main/documents/test-doc/can-agent-edit',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer token',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            agentId: 'agent-123',
+            trigger: 'human_requested',
+            intent: 'Edit content',
+            targetRegions: ['/content/0'],
+          }),
+        },
+      );
+
+      await module.default.fetch(request, mockEnv, mockContext);
+
+      expect(realtimeApi.handleRealtimeRoutes).toHaveBeenCalled();
     });
   });
 

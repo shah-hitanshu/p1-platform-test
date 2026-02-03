@@ -2,371 +2,9 @@
 
 ## Overview
 
-This document tracks the implementation progress of the Collaborative JSON State Versioning System as defined in `collaborative-state-system-architecture-v2.2.md`.
+This document tracks the implementation progress of the Collaborative JSON State Versioning System as defined in `collaborative-state-system-architecture-v2.3.md`.
 
 ---
-
-## Recent Features
-
-### Yjs CRDT Integration Backend (Phase 1) - Added 2026-01-25
-
-**Feature:** Added backend infrastructure for syncing Durable Object CRDT state to PostgreSQL, enabling real-time collaborative editing with persistent merge support.
-
-**Problem Solved:** Previously, documents edited via WebSocket/Yjs had CRDT state only in the Durable Object, not synced to PostgreSQL. This meant the `merge-crdt` resolution strategy failed because `document_versions.crdt_state` was NULL.
-
-**Implementation:**
-
-**Phase 1.1 - CRDT Sync Service:**
-- Created `crdt-sync-service.ts` with `syncCrdtToPostgres()` and `loadLatestCrdtState()` functions
-- Looks up documents by path, creates versions with snapshot + crdtState
-- Added 'realtime' to DocumentVersionSource type
-
-**Phase 1.2 - Internal Sync Endpoint:**
-- Created `internal-api.ts` with `POST /internal/crdt-sync` endpoint
-- Uses X-Internal-Secret header authentication (for DO-to-worker calls)
-- Full request validation for siteId, documentPath, branchId, crdtState, actorId, actorType
-
-**Phase 1.3 - Sync Triggers:**
-- Added `/sync` endpoint to DocumentSession DO for manual sync trigger
-- Returns synced state with snapshot and stateVector
-- Only accepts POST method
-
-**Phase 1.4 - PostgreSQL Initialization:**
-- Added `/initialize` endpoint to DocumentSession DO
-- Supports initialization from JSON snapshot or base64-encoded CRDT state
-- CRDT state takes precedence when provided
-- Used when DO storage is empty but PostgreSQL has data
-
-**Files Created:**
-- `workers/src/services/crdt-sync-service.ts`
-- `workers/src/routes/internal-api.ts`
-- `workers/tests/services/crdt-sync-service.spec.ts`
-- `workers/tests/routes/internal-api.spec.ts`
-
-**Files Modified:**
-- `workers/src/durable-objects/document-session.ts` - Added /sync and /initialize endpoints
-- `workers/src/index.ts` - Added internal route handling
-- `workers/src/services/index.ts` - Added CRDT sync exports
-- `workers/src/types.ts` - Added 'realtime' source type
-
-**Test Commits:**
-- `717dfc4` - CRDT sync service tests (12 tests)
-- `737c439` - Internal API route tests (16 tests)
-- `1935f6c` - DocumentSession sync/initialize tests (5 tests)
-
-**Implementation Commits:**
-- `100a896` - CRDT sync service implementation
-- `5fe237e`, `bb85de8` - Internal API route implementation
-- `268b91b` - DocumentSession /sync and /initialize endpoints
-
----
-
-### Yjs CRDT Integration Frontend (Phases 2-3) - Added 2026-01-25
-
-**Feature:** Added frontend WebSocket client and Puck Editor integration for real-time collaborative editing using Yjs CRDT synchronization.
-
-**Problem Solved:** Completes the end-to-end real-time collaboration system. With the backend (Phase 1) syncing CRDT state to PostgreSQL and the frontend (Phases 2-3) connecting via WebSocket, multiple users can now edit the same document simultaneously with automatic conflict-free merging.
-
-**Implementation (in puck-css-integration repo):**
-
-**Phase 2 - RealtimeClient:**
-- Created `RealtimeClient` class in `packages/css-client/src/realtime.ts`
-- Manages WebSocket connection lifecycle with auto-reconnect
-- Handles binary Yjs message encoding/decoding
-- Provides `connect()`, `disconnect()`, `applyLocalUpdate()`, `getYDoc()` methods
-- Added yjs dependency to css-client package
-
-**Phase 3.1 - Puck-Yjs Binding:**
-- Created `puckYjsBinding.ts` utility for bidirectional sync
-- `puckDataToYMap()` - Converts PuckData to Yjs Y.Map structure
-- `yMapToPuckData()` - Converts Yjs Y.Map to PuckData
-- `createPuckYjsBinding()` - Creates binding with LOCAL_ORIGIN to prevent sync loops
-- Uses transaction origins to distinguish local vs remote changes
-
-**Phase 3.2 - useRealtime Hook:**
-- Created `useRealtime.ts` React hook
-- Manages RealtimeClient lifecycle with useEffect
-- Creates Puck-Yjs binding on mount
-- Exposes `connected` state, `applyLocalChange()` function, and `error`
-- Cleans up connections on unmount or dependency changes
-
-**Phase 3.3-3.4 - CSSPuckProvider Integration:**
-- Added `enableRealtime` and `wsBaseUrl` props to CSSPuckConfig
-- Added `realtimeEnabled` and `realtimeConnected` to context value
-- Uses useRealtime hook when enabled
-- Updates currentData on remote changes from collaborators
-
-**Files Created (puck-css-integration):**
-- `packages/css-client/src/realtime.ts` - RealtimeClient class
-- `packages/puck-css/src/utils/puckYjsBinding.ts` - Yjs binding utility
-- `packages/puck-css/src/hooks/useRealtime.ts` - React hook
-- Test files for each component
-
-**Files Modified (puck-css-integration):**
-- `packages/css-client/src/index.ts` - Export RealtimeClient
-- `packages/css-client/package.json` - Added yjs dependency
-- `packages/puck-css/src/hooks/index.ts` - Export useRealtime
-- `packages/puck-css/src/types.ts` - Added realtime config/context props
-- `packages/puck-css/src/CSSPuckProvider.tsx` - Integrated useRealtime hook
-- `packages/puck-css/package.json` - Added yjs dependency
-
-**Test Commits (puck-css-integration):**
-- `8305b77` - RealtimeClient tests (8 tests)
-- `a488753` - puckYjsBinding tests (10 tests)
-- `15113f4` - useRealtime hook tests (7 tests)
-- `a3ec0f5` - CSSPuckProvider realtime tests (7 tests)
-
-**Implementation Commits (puck-css-integration):**
-- `bc089c7` - RealtimeClient implementation
-- `0ebc11a` - useRealtime hook implementation
-- `703c4d5` - CSSPuckProvider realtime integration
-
----
-
-### WebSocket Connection Fixes (Added 2026-01-26)
-
-**Feature:** Fixed WebSocket connection handling to enable end-to-end real-time collaboration.
-
-**Problem Solved:** WebSocket connections were failing with "Responses may only be constructed with status codes in the range 200 to 599" because the CORS middleware was trying to modify WebSocket upgrade responses (status 101). Additionally, the frontend couldn't authenticate WebSocket connections because browsers can't send custom headers during WebSocket upgrade handshakes.
-
-**Implementation:**
-
-**WebSocket Response Handling:**
-- Added WebSocket detection in `addCorsHeaders()` functions in both `index.ts` and `realtime-api.ts`
-- Uses `'webSocket' in response` check to detect Cloudflare Workers WebSocket responses
-- Returns WebSocket responses as-is without modification (CORS doesn't apply to WebSocket connections)
-
-**API Key Authentication via Query Params:**
-- Added `apiKey` query parameter support in `authenticate()` function for WebSocket connections
-- Browsers cannot send custom headers (like `X-API-Key`) during WebSocket upgrade requests
-- Frontend passes API key as `?apiKey=...` query parameter, backend validates it
-
-**Route Matching Fix:**
-- Moved realtime route matching (`/connect` and `/edits` endpoints) before document routes
-- Prevents document API from incorrectly matching realtime WebSocket URLs
-- Preserved query parameters when forwarding requests to Durable Object
-
-**Files Modified:**
-- `workers/src/index.ts` - WebSocket response handling, query param auth, route priority
-- `workers/src/routes/realtime-api.ts` - WebSocket response handling, query param forwarding
-
-**Files Modified (puck-css-integration):**
-- `packages/css-client/src/realtime.ts` - Added apiKey to config and connect URL
-- `packages/puck-css/src/hooks/useRealtime.ts` - Pass apiKey to RealtimeClient
-- `packages/puck-css/src/types.ts` - Added realtimeApiKey to CSSPuckConfig
-- `packages/puck-css/src/CSSPuckProvider.tsx` - Pass realtimeApiKey to useRealtime
-- `apps/demo/src/App.tsx` - Pass realtimeApiKey prop to CSSPuckProvider
-
-**Implementation Commits:**
-- `e884ad1` - fix(realtime): Fix WebSocket connection handling
-
----
-
-### Automatic Sync Triggers for DocumentSession (Phase 1.3b) - Added 2026-01-26
-
-**Feature:** Implemented automatic sync triggers in DocumentSession Durable Object to sync CRDT state to PostgreSQL after edits.
-
-**Problem Solved:** Previously, CRDT state was only synced when explicitly calling the `/sync` endpoint. Now, edits automatically trigger sync to PostgreSQL after an idle timeout, ensuring data durability without requiring manual intervention.
-
-**Implementation:**
-
-**Idle Timeout Sync (5 seconds):**
-- Added `scheduleSync()` method that schedules sync after 5 seconds of no edits
-- Timer resets on each edit (debouncing) to batch rapid edits
-- Triggered after `/apply` operations and WebSocket message handling
-- Configured via `SYNC_IDLE_TIMEOUT_MS` constant
-
-**Disconnect Sync:**
-- When the last WebSocket client disconnects, immediate sync is triggered
-- Ensures data is persisted when an editing session ends
-- Handles both 'close' and 'error' events on WebSocket
-
-**PostgreSQL Sync via Internal API:**
-- `syncToPostgres()` method calls `POST /internal/crdt-sync`
-- Uses `X-Internal-Secret` header for authentication
-- Sends siteId, documentPath, branchId, snapshot, crdtState, actorId, actorType
-- Gracefully handles missing configuration (logs and skips)
-
-**Environment Configuration:**
-- Added `INTERNAL_API_URL` to wrangler.jsonc for all environments
-- Added `INTERNAL_SECRET` to .dev.vars for local development
-- Production environments should set INTERNAL_SECRET via Cloudflare secrets
-
-**Files Modified:**
-- `workers/src/durable-objects/document-session.ts` - Added sync triggers
-- `workers/wrangler.jsonc` - Added INTERNAL_API_URL config
-- `workers/.dev.vars` - Added INTERNAL_SECRET for local dev
-- `workers/tests/durable-objects/document-session.spec.ts` - Added sync trigger tests
-
-**Test Commits:**
-- `071dfa0` - test: Add automatic sync trigger tests for DocumentSession (TDD - Phase 1.3b)
-
-**Implementation Commits:**
-- `fa7048b` - feat(realtime): Add automatic sync triggers to DocumentSession (Phase 1.3b)
-- `dbd2557` - config: Add INTERNAL_API_URL for DO-to-PostgreSQL sync
-
----
-
-### PostgreSQL Initialization Fallback (Phase 1.4b) - Added 2026-01-26
-
-**Feature:** Durable Objects now load initial state from PostgreSQL when their storage is empty, enabling seamless recovery after hibernation.
-
-**Problem Solved:** When a Durable Object wakes up from hibernation or is accessed for the first time, its storage is empty. Without falling back to PostgreSQL, documents would appear empty even though data exists in the database.
-
-**Implementation:**
-
-**GET /internal/crdt-state Endpoint:**
-- Added endpoint to `internal-api.ts` for loading latest CRDT state
-- Query params: `siteId`, `documentPath`, `branchId`
-- Returns `{ found: true, snapshot, crdtState }` or `{ found: false }` (404)
-- Uses same X-Internal-Secret authentication as POST endpoint
-
-**initializeFromPostgres() Method:**
-- Added to DocumentSession DO to fetch state from PostgreSQL
-- Called by `initializeIfNeeded()` when DO storage is empty
-- Falls back gracefully if internal API configuration is missing
-
-**applySnapshotToYMap() Helper:**
-- Recursively applies JSON snapshot to Yjs Y.Map structure
-- Handles objects, arrays, and primitive values
-- Used when PostgreSQL has snapshot but no CRDT state (legacy documents)
-
-**State Recovery Flow:**
-1. DO wakes up, checks storage → empty
-2. Calls `GET /internal/crdt-state` to fetch from PostgreSQL
-3. If CRDT state exists: applies binary state to Y.Doc
-4. If only snapshot exists: builds Y.Doc from JSON structure
-5. If nothing found: starts with empty document
-
-**Files Modified:**
-- `workers/src/routes/internal-api.ts` - Added GET endpoint
-- `workers/src/durable-objects/document-session.ts` - Added initialization methods
-
-**Implementation Commits:**
-- `793f2f2` - feat(realtime): Initialize DO from PostgreSQL when storage is empty (Phase 1.4)
-
----
-
-### Visual JSON Diffs in MergePreviewPanel (Added 2026-01-25)
-
-**Feature:** Added expandable diff viewing directly from the MergePreviewPanel component, allowing users to see what changed between branches before approving or resolving conflicts.
-
-**Problem Solved:** Previously, visual diffs were only accessible in ConflictResolutionPanel (hidden behind "Resolve Conflicts" button, only for `conflicted` status). Users couldn't preview actual document changes for `open` or `approved` merge requests.
-
-**Implementation:**
-- Created `ExpandableDiffRow` component: Read-only expandable row with JsonDiffViewer (no resolution radio buttons)
-- Created `ExpandableConflictList` component: List with "Expand All" / "Collapse All" controls and lazy loading
-- Updated `MergePreviewPanel` to use ExpandableConflictList instead of ConflictList
-- Implemented lazy loading: Diffs fetched with `includeContent: true` only when user first expands a row
-
-**Files Created:**
-- `frontend/src/components/ExpandableDiffRow.tsx` + `.css`
-- `frontend/src/components/ExpandableConflictList.tsx` + `.css`
-
-**Files Modified:**
-- `frontend/src/components/MergePreviewPanel.tsx`
-- `frontend/tests/merge-diff-visualization.spec.ts` (added 4 new E2E tests)
-
-**Test Commits:** `2a0bc6b` (tests), `a5350af` (implementation)
-
----
-
-## Recently Fixed Issues
-
-### Database Connection Race Condition (Fixed 2026-01-25)
-
-**Issue:** Document pages in the frontend would intermittently fail to load, showing "Internal server error" for document version endpoints. The `/versions/latest` and `/versions` API calls returned 500 errors.
-
-**Root Cause:** The database module (`workers/src/db.ts`) used a global `currentConnection` variable shared across all concurrent requests. When the frontend made 5 parallel API calls to load a document page, each request would initialize a new connection, overwriting and closing the previous one. This caused some requests to fail when their connection was closed by another concurrent request.
-
-**Solution:** Implemented request-scoped database connections using Node.js `AsyncLocalStorage`:
-- Added `runWithConnection()` function that wraps request handlers in isolated AsyncLocalStorage context
-- Each concurrent request now gets its own database connection that cannot interfere with others
-- Updated `index.ts` to use the new pattern
-- Deprecated the old `initializeDatabaseFromConnectionString()` and `closeDatabaseConnection()` functions
-
-**Files Changed:**
-- `workers/src/db.ts` - Added AsyncLocalStorage-based connection management
-- `workers/src/index.ts` - Updated to use `runWithConnection()`
-- `workers/tests/routes/router.spec.ts` - Updated mock to include new export
-
-### getDocumentByPath Returns Archived Documents (Fixed 2026-01-25)
-
-**Issue:** When creating pages from Content Publisher articles, if a document with the same path had been previously archived (soft-deleted), the `getDocumentByPath` function would return the archived document instead of the active one. This caused "Document not found on this branch" errors when the system tried to access versions of the archived document.
-
-**Root Cause:** The SQL query in `getDocumentByPath` used `SELECT * FROM app.documents WHERE site_id = $1 AND path = $2` without filtering or ordering by archived status. When multiple documents existed with the same path (one archived, one active), the query returned whichever came first, often the archived one.
-
-**Solution:** Modified the query to prefer non-archived documents using `ORDER BY archived_at NULLS FIRST LIMIT 1`. Documents with `archived_at = NULL` (active) are now returned before documents with an archived timestamp.
-
-**Files Changed:**
-- `workers/src/services/document-service.ts` - Updated `getDocumentByPath` query
-
-### GitHub Advanced Security Alerts (Fixed 2026-01-25)
-
-**Issue:** GitHub Advanced Security identified 3 code scanning alerts:
-1. **High severity** (2 alerts): Incomplete string escaping in `escapeLikePattern` function (js/incomplete-sanitization)
-2. **Medium severity** (1 alert): Log injection vulnerability in metrics receiver (js/log-injection)
-
-**Root Causes:**
-- The `escapeLikePattern` function escaped `%` and `_` for PostgreSQL LIKE queries but failed to escape backslashes first. Input containing `\` could bypass the sanitization.
-- The `logMetric` function logged metric names, values, and labels directly without sanitizing control characters, allowing potential log forging via newlines or other control chars.
-
-**Solutions:**
-1. Modified `escapeLikePattern` to escape backslashes first (`\\` → `\\\\`) before escaping `%` and `_`
-2. Added `sanitizeForLog` function that strips control characters (0x00-0x1F and 0x7F) from strings before logging
-
-**Files Changed:**
-- `workers/src/services/document-service.ts` - Fixed `escapeLikePattern` to escape backslashes first
-- `scripts/local-metrics-receiver.js` - Added `sanitizeForLog` function and applied to all logged values
-
-**Commit:** `34ddecb`
-
----
-
-## Known Issues / Future Work
-
-### CORS Configuration for Multi-Tenant Frontends
-
-**Issue:** Currently, allowed CORS origins must be manually added to `wrangler.jsonc` for each frontend that needs to access the CSS API. This doesn't scale for a multi-tenant platform where customers deploy arbitrary frontends.
-
-**Current Workaround:** Manually add each localhost port or domain to `CORS_ORIGINS` in `workers/wrangler.jsonc`.
-
-**Proposed Solutions:**
-1. **Wildcard subdomain matching:** Allow `*.pantheonsite.io` to cover all customer sites
-2. **Dynamic origin validation:** Validate origins against the site's configuration stored in the database (e.g., `site.allowedOrigins` field)
-3. **Authentication-based CORS:** Automatically allow origins that provide valid API keys associated with the site
-4. **Same-origin proxy:** Frontends proxy through their own backend, eliminating browser CORS
-
-**Priority:** Medium - Required before production multi-tenant deployment
-
----
-
-### Document Paths vs. Structure-Based Organization
-
-**Issue:** Currently, documents have a `path` field (e.g., `articles/football/jets/article-name`) that implies hierarchical organization. However, the intended architectural design is for the **site structure system** (structure nodes) to control document organization and navigation, not the document path itself.
-
-**Current State:**
-- Documents have a `path` field that suggests hierarchy
-- Site structures and nodes exist separately and reference documents by ID
-- These two organizational concepts overlap and may conflict
-
-**Architectural Consideration:**
-- Document paths should potentially be simplified to flat identifiers or slugs
-- Hierarchical organization should be controlled entirely by structure nodes
-- This affects how documents are addressed in URLs and internal references
-
-**Impact Areas:**
-- Document service path validation logic
-- Structure node relationship to documents
-- URL routing in frontend applications
-- Site template/copy operations (path vs. structure-based copying)
-
-**Priority:** Low - Requires architectural review before refactoring
-
-**Decision Pending:** Determine whether document paths should remain hierarchical or become flat identifiers, with structure nodes providing all organizational hierarchy.
-
----
-
 ## Completed Work
 
 ### Phase 1.1: Project Configuration and Build Tooling
@@ -697,38 +335,6 @@ This document tracks the implementation progress of the Collaborative JSON State
 - **Impact:** Services validated via integration tests; API endpoints deferred to Phase 7
 
 ---
-
-## Security Review
-
-### Authentication & Authorization
-- [x] **JWT Security:** HS256 signing with configurable secret (min 32 chars enforced)
-- [x] **Token Expiry:** All tokens have configurable expiration (default 24h)
-- [x] **Issuer Validation:** JWT issuer claim validated on every token check
-- [x] **Role Escalation Prevention:** `maxRole()` returns highest of two roles, never arbitrary elevation
-- [x] **Permission Checks:** All authorization checks use `assertPermission()` or `hasPermission()`
-- [x] **Guest Access Scoping:** Guest tokens validated against specific branch_id
-
-### Database Security
-- [x] **Parameterized Queries:** All SQL uses `$1, $2, ...` placeholders via `query()` function
-- [x] **No SQL Concatenation:** No string interpolation in SQL queries
-- [x] **Connection String as Secret:** Stored in `.dev.vars` (gitignored), not in config files
-- [x] **Minimal Privileges:** Worker connection uses cssuser, not superuser
-
-### Input Validation
-- [x] **Path Validation:** Document paths validated (no leading/trailing slashes, non-empty)
-- [x] **UUID Validation:** Site/document IDs validated as UUIDs before database queries
-- [x] **Unique Constraints:** Database enforces uniqueness (pantheon_site_id, document paths)
-- [x] **Foreign Key Constraints:** Cascading deletes properly ordered (documents before sites)
-
-### Areas for Future Review (Phase 4+)
-- [ ] WebSocket authentication and session management
-- [ ] Rate limiting on public endpoints
-- [ ] CORS configuration validation for production
-- [ ] Audit logging for sensitive operations
-- [ ] Content-Security-Policy headers
-
----
-
 ## Outstanding Work
 
 ---
@@ -1972,20 +1578,950 @@ The following features are candidates for future frontend development phases:
 - [ ] WebSocket authentication integration
 
 ---
+## Recent Features
 
-## Architecture Reference
+### Visual JSON Diffs in MergePreviewPanel (Added 2026-01-25)
 
-The implementation follows the architecture defined in:
-- `collaborative-state-system-architecture-v2.2.md`
-- `AUTH_IMPLEMENTATION_GUIDE.md`
-- `README.md`
+**Feature:** Added expandable diff viewing directly from the MergePreviewPanel component, allowing users to see what changed between branches before approving or resolving conflicts.
 
-## Testing Approach
+**Problem Solved:** Previously, visual diffs were only accessible in ConflictResolutionPanel (hidden behind "Resolve Conflicts" button, only for `conflicted` status). Users couldn't preview actual document changes for `open` or `approved` merge requests.
 
-Following Pantheon testing practices:
-- **Unit Tests:** Vitest with @testing-library/react patterns
-- **E2E Tests:** Playwright via Carbon Framework (future)
-- **Test-Driven Development:** Tests written before implementation code
+**Implementation:**
+- Created `ExpandableDiffRow` component: Read-only expandable row with JsonDiffViewer (no resolution radio buttons)
+- Created `ExpandableConflictList` component: List with "Expand All" / "Collapse All" controls and lazy loading
+- Updated `MergePreviewPanel` to use ExpandableConflictList instead of ConflictList
+- Implemented lazy loading: Diffs fetched with `includeContent: true` only when user first expands a row
+
+**Files Created:**
+- `frontend/src/components/ExpandableDiffRow.tsx` + `.css`
+- `frontend/src/components/ExpandableConflictList.tsx` + `.css`
+
+**Files Modified:**
+- `frontend/src/components/MergePreviewPanel.tsx`
+- `frontend/tests/merge-diff-visualization.spec.ts` (added 4 new E2E tests)
+
+**Test Commits:** `2a0bc6b` (tests), `a5350af` (implementation)
+
+---
+### PostgreSQL Initialization Fallback (Phase 1.4b) - Added 2026-01-26
+
+**Feature:** Durable Objects now load initial state from PostgreSQL when their storage is empty, enabling seamless recovery after hibernation.
+
+**Problem Solved:** When a Durable Object wakes up from hibernation or is accessed for the first time, its storage is empty. Without falling back to PostgreSQL, documents would appear empty even though data exists in the database.
+
+**Implementation:**
+
+**GET /internal/crdt-state Endpoint:**
+- Added endpoint to `internal-api.ts` for loading latest CRDT state
+- Query params: `siteId`, `documentPath`, `branchId`
+- Returns `{ found: true, snapshot, crdtState }` or `{ found: false }` (404)
+- Uses same X-Internal-Secret authentication as POST endpoint
+
+**initializeFromPostgres() Method:**
+- Added to DocumentSession DO to fetch state from PostgreSQL
+- Called by `initializeIfNeeded()` when DO storage is empty
+- Falls back gracefully if internal API configuration is missing
+
+**applySnapshotToYMap() Helper:**
+- Recursively applies JSON snapshot to Yjs Y.Map structure
+- Handles objects, arrays, and primitive values
+- Used when PostgreSQL has snapshot but no CRDT state (legacy documents)
+
+**State Recovery Flow:**
+1. DO wakes up, checks storage → empty
+2. Calls `GET /internal/crdt-state` to fetch from PostgreSQL
+3. If CRDT state exists: applies binary state to Y.Doc
+4. If only snapshot exists: builds Y.Doc from JSON structure
+5. If nothing found: starts with empty document
+
+**Files Modified:**
+- `workers/src/routes/internal-api.ts` - Added GET endpoint
+- `workers/src/durable-objects/document-session.ts` - Added initialization methods
+
+**Implementation Commits:**
+- `793f2f2` - feat(realtime): Initialize DO from PostgreSQL when storage is empty (Phase 1.4)
+
+---
+
+### Automatic Sync Triggers for DocumentSession (Phase 1.3b) - Added 2026-01-26
+
+**Feature:** Implemented automatic sync triggers in DocumentSession Durable Object to sync CRDT state to PostgreSQL after edits.
+
+**Problem Solved:** Previously, CRDT state was only synced when explicitly calling the `/sync` endpoint. Now, edits automatically trigger sync to PostgreSQL after an idle timeout, ensuring data durability without requiring manual intervention.
+
+**Implementation:**
+
+**Idle Timeout Sync (5 seconds):**
+- Added `scheduleSync()` method that schedules sync after 5 seconds of no edits
+- Timer resets on each edit (debouncing) to batch rapid edits
+- Triggered after `/apply` operations and WebSocket message handling
+- Configured via `SYNC_IDLE_TIMEOUT_MS` constant
+
+**Disconnect Sync:**
+- When the last WebSocket client disconnects, immediate sync is triggered
+- Ensures data is persisted when an editing session ends
+- Handles both 'close' and 'error' events on WebSocket
+
+**PostgreSQL Sync via Internal API:**
+- `syncToPostgres()` method calls `POST /internal/crdt-sync`
+- Uses `X-Internal-Secret` header for authentication
+- Sends siteId, documentPath, branchId, snapshot, crdtState, actorId, actorType
+- Gracefully handles missing configuration (logs and skips)
+
+**Environment Configuration:**
+- Added `INTERNAL_API_URL` to wrangler.jsonc for all environments
+- Added `INTERNAL_SECRET` to .dev.vars for local development
+- Production environments should set INTERNAL_SECRET via Cloudflare secrets
+
+**Files Modified:**
+- `workers/src/durable-objects/document-session.ts` - Added sync triggers
+- `workers/wrangler.jsonc` - Added INTERNAL_API_URL config
+- `workers/.dev.vars` - Added INTERNAL_SECRET for local dev
+- `workers/tests/durable-objects/document-session.spec.ts` - Added sync trigger tests
+
+**Test Commits:**
+- `071dfa0` - test: Add automatic sync trigger tests for DocumentSession (TDD - Phase 1.3b)
+
+**Implementation Commits:**
+- `fa7048b` - feat(realtime): Add automatic sync triggers to DocumentSession (Phase 1.3b)
+- `dbd2557` - config: Add INTERNAL_API_URL for DO-to-PostgreSQL sync
+
+---
+
+### WebSocket Connection Fixes (Added 2026-01-26)
+
+**Feature:** Fixed WebSocket connection handling to enable end-to-end real-time collaboration.
+
+**Problem Solved:** WebSocket connections were failing with "Responses may only be constructed with status codes in the range 200 to 599" because the CORS middleware was trying to modify WebSocket upgrade responses (status 101). Additionally, the frontend couldn't authenticate WebSocket connections because browsers can't send custom headers during WebSocket upgrade handshakes.
+
+**Implementation:**
+
+**WebSocket Response Handling:**
+- Added WebSocket detection in `addCorsHeaders()` functions in both `index.ts` and `realtime-api.ts`
+- Uses `'webSocket' in response` check to detect Cloudflare Workers WebSocket responses
+- Returns WebSocket responses as-is without modification (CORS doesn't apply to WebSocket connections)
+
+**API Key Authentication via Query Params:**
+- Added `apiKey` query parameter support in `authenticate()` function for WebSocket connections
+- Browsers cannot send custom headers (like `X-API-Key`) during WebSocket upgrade requests
+- Frontend passes API key as `?apiKey=...` query parameter, backend validates it
+
+**Route Matching Fix:**
+- Moved realtime route matching (`/connect` and `/edits` endpoints) before document routes
+- Prevents document API from incorrectly matching realtime WebSocket URLs
+- Preserved query parameters when forwarding requests to Durable Object
+
+**Files Modified:**
+- `workers/src/index.ts` - WebSocket response handling, query param auth, route priority
+- `workers/src/routes/realtime-api.ts` - WebSocket response handling, query param forwarding
+
+**Files Modified (puck-css-integration):**
+- `packages/css-client/src/realtime.ts` - Added apiKey to config and connect URL
+- `packages/puck-css/src/hooks/useRealtime.ts` - Pass apiKey to RealtimeClient
+- `packages/puck-css/src/types.ts` - Added realtimeApiKey to CSSPuckConfig
+- `packages/puck-css/src/CSSPuckProvider.tsx` - Pass realtimeApiKey to useRealtime
+- `apps/demo/src/App.tsx` - Pass realtimeApiKey prop to CSSPuckProvider
+
+**Implementation Commits:**
+- `e884ad1` - fix(realtime): Fix WebSocket connection handling
+
+---
+
+### Yjs CRDT Integration Frontend (Phases 2-3) - Added 2026-01-25
+
+**Feature:** Added frontend WebSocket client and Puck Editor integration for real-time collaborative editing using Yjs CRDT synchronization.
+
+**Problem Solved:** Completes the end-to-end real-time collaboration system. With the backend (Phase 1) syncing CRDT state to PostgreSQL and the frontend (Phases 2-3) connecting via WebSocket, multiple users can now edit the same document simultaneously with automatic conflict-free merging.
+
+**Implementation (in puck-css-integration repo):**
+
+**Phase 2 - RealtimeClient:**
+- Created `RealtimeClient` class in `packages/css-client/src/realtime.ts`
+- Manages WebSocket connection lifecycle with auto-reconnect
+- Handles binary Yjs message encoding/decoding
+- Provides `connect()`, `disconnect()`, `applyLocalUpdate()`, `getYDoc()` methods
+- Added yjs dependency to css-client package
+
+**Phase 3.1 - Puck-Yjs Binding:**
+- Created `puckYjsBinding.ts` utility for bidirectional sync
+- `puckDataToYMap()` - Converts PuckData to Yjs Y.Map structure
+- `yMapToPuckData()` - Converts Yjs Y.Map to PuckData
+- `createPuckYjsBinding()` - Creates binding with LOCAL_ORIGIN to prevent sync loops
+- Uses transaction origins to distinguish local vs remote changes
+
+**Phase 3.2 - useRealtime Hook:**
+- Created `useRealtime.ts` React hook
+- Manages RealtimeClient lifecycle with useEffect
+- Creates Puck-Yjs binding on mount
+- Exposes `connected` state, `applyLocalChange()` function, and `error`
+- Cleans up connections on unmount or dependency changes
+
+**Phase 3.3-3.4 - CSSPuckProvider Integration:**
+- Added `enableRealtime` and `wsBaseUrl` props to CSSPuckConfig
+- Added `realtimeEnabled` and `realtimeConnected` to context value
+- Uses useRealtime hook when enabled
+- Updates currentData on remote changes from collaborators
+
+**Files Created (puck-css-integration):**
+- `packages/css-client/src/realtime.ts` - RealtimeClient class
+- `packages/puck-css/src/utils/puckYjsBinding.ts` - Yjs binding utility
+- `packages/puck-css/src/hooks/useRealtime.ts` - React hook
+- Test files for each component
+
+**Files Modified (puck-css-integration):**
+- `packages/css-client/src/index.ts` - Export RealtimeClient
+- `packages/css-client/package.json` - Added yjs dependency
+- `packages/puck-css/src/hooks/index.ts` - Export useRealtime
+- `packages/puck-css/src/types.ts` - Added realtime config/context props
+- `packages/puck-css/src/CSSPuckProvider.tsx` - Integrated useRealtime hook
+- `packages/puck-css/package.json` - Added yjs dependency
+
+**Test Commits (puck-css-integration):**
+- `8305b77` - RealtimeClient tests (8 tests)
+- `a488753` - puckYjsBinding tests (10 tests)
+- `15113f4` - useRealtime hook tests (7 tests)
+- `a3ec0f5` - CSSPuckProvider realtime tests (7 tests)
+
+**Implementation Commits (puck-css-integration):**
+- `bc089c7` - RealtimeClient implementation
+- `0ebc11a` - useRealtime hook implementation
+- `703c4d5` - CSSPuckProvider realtime integration
+
+---
+
+### Yjs CRDT Integration Backend (Phase 1) - Added 2026-01-25
+
+**Feature:** Added backend infrastructure for syncing Durable Object CRDT state to PostgreSQL, enabling real-time collaborative editing with persistent merge support.
+
+**Problem Solved:** Previously, documents edited via WebSocket/Yjs had CRDT state only in the Durable Object, not synced to PostgreSQL. This meant the `merge-crdt` resolution strategy failed because `document_versions.crdt_state` was NULL.
+
+**Implementation:**
+
+**Phase 1.1 - CRDT Sync Service:**
+- Created `crdt-sync-service.ts` with `syncCrdtToPostgres()` and `loadLatestCrdtState()` functions
+- Looks up documents by path, creates versions with snapshot + crdtState
+- Added 'realtime' to DocumentVersionSource type
+
+**Phase 1.2 - Internal Sync Endpoint:**
+- Created `internal-api.ts` with `POST /internal/crdt-sync` endpoint
+- Uses X-Internal-Secret header authentication (for DO-to-worker calls)
+- Full request validation for siteId, documentPath, branchId, crdtState, actorId, actorType
+
+**Phase 1.3 - Sync Triggers:**
+- Added `/sync` endpoint to DocumentSession DO for manual sync trigger
+- Returns synced state with snapshot and stateVector
+- Only accepts POST method
+
+**Phase 1.4 - PostgreSQL Initialization:**
+- Added `/initialize` endpoint to DocumentSession DO
+- Supports initialization from JSON snapshot or base64-encoded CRDT state
+- CRDT state takes precedence when provided
+- Used when DO storage is empty but PostgreSQL has data
+
+**Files Created:**
+- `workers/src/services/crdt-sync-service.ts`
+- `workers/src/routes/internal-api.ts`
+- `workers/tests/services/crdt-sync-service.spec.ts`
+- `workers/tests/routes/internal-api.spec.ts`
+
+**Files Modified:**
+- `workers/src/durable-objects/document-session.ts` - Added /sync and /initialize endpoints
+- `workers/src/index.ts` - Added internal route handling
+- `workers/src/services/index.ts` - Added CRDT sync exports
+- `workers/src/types.ts` - Added 'realtime' source type
+
+**Test Commits:**
+- `717dfc4` - CRDT sync service tests (12 tests)
+- `737c439` - Internal API route tests (16 tests)
+- `1935f6c` - DocumentSession sync/initialize tests (5 tests)
+
+**Implementation Commits:**
+- `100a896` - CRDT sync service implementation
+- `5fe237e`, `bb85de8` - Internal API route implementation
+- `268b91b` - DocumentSession /sync and /initialize endpoints
+
+---
+
+### Agent Politeness System - Database Schema (Phase 1.1) - Added 2026-01-26
+
+**Feature:** Added database schema foundation for the Agent Politeness System, enabling organization-level agent configuration, agent registry, and enhanced checkpoints for agent-human collaboration.
+
+**Problem Solved:** The v2.3 architecture introduces the Agent Politeness System for respectful human-agent collaboration. This phase establishes the database foundation required for:
+- Organization-level agent idle timeout configuration
+- Individual agent accounts with status management
+- Enhanced checkpoint tracking for agent operations with rollback support
+
+**Implementation:**
+
+**Migration 009 - Organizations:**
+- Created `app.organizations` table with settings JSONB
+- Default `agentIdleTimeoutMs: 5000` (5 seconds)
+- Added `organization_id` foreign key to `app.sites`
+- Added index `idx_sites_organization`
+
+**Migration 010 - Agent Registry:**
+- Created `app.agents` table for organization-level agent accounts
+- Status field with check constraint: `active`, `suspended`, `disabled`
+- Capabilities array for agent permissions
+- Settings JSONB for future extensibility
+- Unique constraint on `(organization_id, name)`
+- Indexes: `idx_agents_organization`, `idx_agents_status`
+
+**Migration 011 - Enhanced Checkpoints:**
+- Added `description` for detailed checkpoint metadata
+- Added `trigger` field: `manual`, `human_requested`, `autonomous`
+- Added `requested_by_id` for human-requested agent work
+- Added `operation_type` for categorizing agent operations
+- Added `affected_regions` JSONB for JSON path tracking
+- Added `status` field: `completed`, `rolled_back`, `partial`
+- Added rollback tracking: `rolled_back_by_id`, `rolled_back_at`
+
+**Files Created:**
+- `workers/src/db/migrations/009_organizations.sql`
+- `workers/src/db/migrations/010_agents.sql`
+- `workers/src/db/migrations/011_enhanced_checkpoints.sql`
+
+**Files Modified:**
+- `workers/tests/db/schema.spec.ts` - Added 17 tests for new schema
+
+**Test Commit:**
+- `8421d3c` - Agent Politeness schema tests (17 tests)
+
+**Implementation Commit:**
+- `71c6927` - Agent Politeness database schema migrations
+
+---
+
+### Agent Politeness System - TypeScript Types (Phase 1.2) - Added 2026-01-26
+
+**Feature:** Added comprehensive TypeScript types for the Agent Politeness System, including organization settings, agent registry, enhanced checkpoints, and presence/awareness system.
+
+**Implementation:**
+
+**New Union Types:**
+- `CheckpointTrigger`: manual | human_requested | autonomous
+- `CheckpointStatus`: completed | rolled_back | partial
+- `AgentStatus`: active | suspended | disabled
+- `PresenceState`: active | idle | editing
+
+**Organization & Agent Registry Types:**
+- `Organization` and `OrganizationSettings` (with agentIdleTimeoutMs)
+- `RegisteredAgent` and `AgentSettings`
+- `AgentPriorityTier` for future scheduling configuration
+
+**Enhanced Checkpoint Type:**
+- Added `trigger`, `requestedById`, `operationType` fields
+- Added `affectedRegions` for JSON path tracking
+- Added `status`, `rolledBackById`, `rolledBackAt` for rollback
+
+**Presence & Edit Workflow Types:**
+- `ActorPresence` for awareness system
+- `AgentEditContext` for edit permission requests
+- `AgentEditPermission` for permission responses
+
+**Site Type Enhancement:**
+- Added optional `organizationId` field
+
+**Files Modified:**
+- `workers/src/types.ts` - Added 11 new types/interfaces
+- `workers/tests/types/types.spec.ts` - Added 21 new tests
+
+**Test Commit:**
+- `60e6685` - Agent Politeness type tests (21 tests)
+
+**Implementation Commit:**
+- `3bedecb` - Agent Politeness TypeScript types
+
+---
+
+### Agent Politeness System - Organization Service (Phase 1.3) - Added 2026-01-26
+
+**Feature:** Implemented Organization Service providing CRUD operations for organizations and site-organization linking.
+
+**Implementation:**
+
+**Service Functions:**
+- `createOrganization(params)` - Create organization with name and optional settings
+- `getOrganizationById(id)` - Get organization by ID
+- `updateOrganization(id, params)` - Update organization name and/or settings
+- `deleteOrganization(id)` - Delete organization (fails if has linked sites)
+- `listOrganizations(options)` - List organizations with pagination
+- `linkSiteToOrganization(siteId, organizationId)` - Link site to organization
+- `unlinkSiteFromOrganization(siteId)` - Remove site from organization
+- `getSitesByOrganization(organizationId)` - Get all sites for an organization
+- `getOrganizationForSite(siteId)` - Get organization for a site
+
+**Error Classes:**
+- `InvalidOrganizationParamsError` - Invalid name (empty/whitespace)
+- `OrganizationHasSitesError` - Cannot delete organization with linked sites
+- `OrganizationNotFoundError` - Organization not found when linking site
+
+**Files Created:**
+- `workers/src/services/organization-service.ts` - Service implementation
+
+**Files Modified:**
+- `workers/src/services/index.ts` - Added organization service exports
+- `workers/tests/services/organization-service.spec.ts` - Removed TDD eslint-disable
+
+**Test Commit:**
+- `971033f` - Organization Service tests (26 tests)
+
+**Implementation Commit:**
+- `6da4bdc` - Organization Service implementation
+
+---
+
+### Agent Politeness System - Agent Registry Service (Phase 1.4) - Added 2026-01-26
+
+**Feature:** Implemented Agent Registry Service providing CRUD operations for registered agents with status management.
+
+**Implementation:**
+
+**Service Functions:**
+- `createAgent(params)` - Create agent with name, description, capabilities, settings
+- `getAgentById(id)` - Get agent by ID
+- `getAgentByName(organizationId, name)` - Get agent by organization and name (unique)
+- `updateAgent(id, params)` - Update agent name, description, capabilities, settings
+- `updateAgentStatus(id, status)` - Change agent status (active/suspended/disabled)
+- `deleteAgent(id)` - Delete agent
+- `listAgents(options)` - List agents with pagination and status filter
+- `getAgentsByOrganization(organizationId, options)` - Get all agents for an organization
+- `getActiveAgentCount(organizationId)` - Count active agents in organization
+
+**Error Classes:**
+- `InvalidAgentParamsError` - Invalid name (empty/whitespace)
+- `DuplicateAgentNameError` - Agent name already exists in organization
+- `OrganizationNotFoundError` - Organization not found when creating agent
+- `AgentNotFoundError` - Agent not found
+
+**Files Created:**
+- `workers/src/services/agent-service.ts` - Service implementation
+
+**Files Modified:**
+- `workers/src/services/index.ts` - Added agent service exports
+- `workers/tests/services/agent-service.spec.ts` - Removed TDD eslint-disable
+
+**Test Commit:**
+- `96a0c5e` - Agent Registry Service tests (34 tests)
+
+**Implementation Commit:**
+- `3d4e646` - Agent Registry Service implementation
+
+---
+
+### Agent Politeness System - Organization & Agent API Routes (Phase 1.5) - Added 2026-01-26
+
+**Feature:** Implemented REST API endpoints for organizations and agents.
+
+**Implementation:**
+
+**Organization API Endpoints:**
+- `POST /api/organizations` - Create organization
+- `GET /api/organizations` - List organizations with pagination
+- `GET /api/organizations/{id}` - Get organization by ID
+- `PATCH /api/organizations/{id}` - Update organization
+- `DELETE /api/organizations/{id}` - Delete organization (409 if has linked sites)
+- `GET /api/organizations/{id}/sites` - List linked sites
+- `POST /api/organizations/{id}/sites/{siteId}` - Link site to organization
+- `DELETE /api/organizations/{id}/sites/{siteId}` - Unlink site from organization
+
+**Agent API Endpoints:**
+- `POST /api/organizations/{id}/agents` - Create agent
+- `GET /api/organizations/{id}/agents` - List agents with status filter
+- `GET /api/organizations/{id}/agents/{agentId}` - Get agent (403 if wrong org)
+- `PATCH /api/organizations/{id}/agents/{agentId}` - Update agent
+- `PUT /api/organizations/{id}/agents/{agentId}/status` - Update agent status
+- `DELETE /api/organizations/{id}/agents/{agentId}` - Delete agent
+
+**Files Created:**
+- `workers/src/routes/organization-api.ts` - Organization API routes
+- `workers/src/routes/agent-api.ts` - Agent API routes
+
+**Test Commit:**
+- `e4af15c` - Organization and Agent API tests (34 tests)
+
+**Implementation Commit:**
+- `1dd7b6a` - Organization and Agent API routes
+
+---
+
+### Agent Politeness System - Presence Service (Phase 2.1) - Added 2026-01-26
+
+**Feature:** Implemented in-memory Presence Service for tracking actors in document sessions.
+
+**Implementation:**
+
+**PresenceManager Class:**
+- `register(options)` - Register new presence (replaces existing for same actor)
+- `get(id)` - Get presence by ID
+- `getByActorId(actorId)` - Get presence by actor ID
+- `updateState(id, state)` - Update presence state (active/idle/editing)
+- `updateFocusRegions(id, regions)` - Update focus regions (JSON paths)
+- `updateIntent(id, intent)` - Update agent intent
+- `recordActivity(id)` - Update lastActivityAt timestamp
+- `unregister(id)` - Remove presence by ID
+- `unregisterByActorId(actorId)` - Remove presence by actor ID
+- `getAll()` - Get all presences
+- `getHumans()` - Get human presences only
+- `getAgents()` - Get agent presences only
+- `getByState(state)` - Get presences by state
+- `hasHumanPresence()` - Check if any humans present
+- `hasActiveHumans()` - Check if any humans are active/editing
+- `getActorsInRegion(region)` - Get actors with overlapping focus regions
+- `count()` - Get presence count
+- `clear()` - Clear all presences
+- `toJSON()` - Serialize to array
+
+**Utility Functions:**
+- `regionsOverlap(path1, path2)` - Check if JSON paths overlap (parent/child/exact match)
+
+**Design Notes:**
+- In-memory storage using Map with O(1) lookups via actorId index
+- Designed for use within Durable Object for ephemeral session state
+- Actor re-registration replaces existing presence (handles reconnects)
+- Automatic role assignment: 'user' → 'human', 'agent' → 'agent'
+
+**Files Created:**
+- `workers/src/services/presence-service.ts` - Service implementation
+
+**Files Modified:**
+- `workers/src/services/index.ts` - Added presence service exports
+
+**Test Commit:**
+- `bb2a4e3` - Presence Service tests (40 tests)
+
+**Implementation Commit:**
+- `2178668` - Presence Service implementation
+
+---
+
+### Agent Politeness System - Activity Detection Service (Phase 2.2) - Added 2026-01-26
+
+**Feature:** Implemented Activity Detection Service for tracking human activity and determining when autonomous agents can safely edit.
+
+**Implementation:**
+
+**ActivityDetector Class:**
+- `recordHumanActivity(actorId, regions?)` - Record human activity with timestamp and regions
+- `isHumanIdle()` - Check if humans are idle (no activity within timeout)
+- `getTimeSinceLastActivity()` - Get elapsed time since last human activity
+- `getTimeUntilIdle()` - Get remaining time until humans are considered idle
+- `getActiveRegions()` - Get all regions currently being edited by humans
+- `clearRegions()` - Clear all active regions
+- `isRegionActive(region)` - Check if a region overlaps with active regions
+- `getConflictingRegions(targetRegions)` - Get regions that conflict with active regions
+- `setIdleTimeout(ms)` - Update idle timeout dynamically
+- `reset()` - Clear all activity state
+- `canAgentProceed(context)` - Check if agent can proceed with edits:
+  - Human-requested work always allowed
+  - Autonomous work waits for idle timeout
+  - Region conflicts checked even when idle
+- `toJSON()` - Serialize state for inspection
+
+**Constants:**
+- `DEFAULT_IDLE_TIMEOUT_MS` - Default idle timeout (5000ms)
+
+**Design Notes:**
+- Uses `regionsOverlap` from presence-service for path comparisons
+- Designed for use within Document Session Durable Object
+- Region deduplication via Set
+- Dynamic idle timeout configuration for organization-level settings
+
+**Files Created:**
+- `workers/src/services/activity-detection-service.ts` - Service implementation
+
+**Files Modified:**
+- `workers/src/services/index.ts` - Added activity detection service exports
+
+**Test Commit:**
+- `b2aa603` - Activity Detection Service tests (40 tests)
+
+**Implementation Commit:**
+- `18a6f9c` - Activity Detection Service implementation
+
+---
+
+### Agent Politeness System - Agent Edit Permission Service (Phase 2.3) - Added 2026-01-26
+
+**Feature:** Implemented Agent Edit Permission Service combining activity detection with agent status checks.
+
+**Implementation:**
+
+**AgentEditPermissionService Class:**
+- `canAgentEdit(context)` - Check if agent can edit with permission rules:
+  1. Agent status check first (suspended/disabled denied)
+  2. Human-requested work always allowed if agent active
+  3. Autonomous work waits for idle timeout
+  4. Region conflicts checked even when idle
+- `recordHumanActivity(actorId, regions?)` - Delegate to activity detector
+- `clearRegions()` - Clear active regions
+- `setIdleTimeout(ms)` / `getIdleTimeoutMs()` - Manage idle timeout
+- `isHumanIdle()` - Check if humans are idle
+- `getConflictingRegions(targetRegions)` - Get overlapping regions
+- `getActiveRegions()` - Get all active regions
+- `reset()` - Reset all activity state
+
+**Types:**
+- `AgentEditContext` - Context for edit permission requests
+- `AgentEditPermission` - Permission result with allowed/reason
+- `GetAgentStatusFn` - Callback for agent status lookup
+
+**Design Notes:**
+- Integrates ActivityDetector for idle/region tracking
+- Optional getAgentStatus callback for status lookup
+- Agent status checked before all other checks
+- Human-requested bypasses idle check but not status check
+
+**Files Created:**
+- `workers/src/services/agent-edit-permission-service.ts` - Service implementation
+
+**Files Modified:**
+- `workers/src/services/index.ts` - Added service exports
+
+**Test Commit:**
+- `b088fe1` - Agent Edit Permission Service tests (19 tests)
+
+**Implementation Commit:**
+- `3a3ccee` - Agent Edit Permission Service implementation
+
+---
+
+### Agent Politeness System - Agent Edit Workflow API Routes (Phase 2.4) - Added 2026-01-26
+
+**Feature:** Implemented Agent Edit Workflow API routes for agent edit lifecycle management.
+
+**Implementation:**
+
+**New API Endpoints:**
+- `POST /can-agent-edit` - Check if agent can proceed with editing
+- `POST /agent-edit-start` - Declare intent to edit, create checkpoint (if autonomous)
+- `POST /agent-edit-complete` - Complete edit session, clear focus regions
+- `POST /agent-edit-abort` - Abort edit session, rollback to checkpoint
+
+**Request Validation:**
+- `validateAgentEditBody()` - Validates agentId, trigger, intent, targetRegions
+- `validateEditSessionBody()` - Validates editSessionId (reason optional for abort)
+- Trigger validation: Must be "human_requested" or "autonomous"
+
+**Route Updates:**
+- Extended route pattern to match agent edit action paths
+- All routes forward to Durable Object with validated body
+- CORS support for all agent edit endpoints
+- Consistent session ID generation
+
+**Design Notes:**
+- Routes proxy to DocumentSession Durable Object
+- DO will implement actual permission checks and checkpoint creation
+- Worker layer handles validation and routing only
+- Compatible with existing realtime API route structure
+
+**Files Modified:**
+- `workers/src/routes/realtime-api.ts` - Added agent edit workflow routes
+
+**Test Commit:**
+- `e9dbd26` - Agent Edit Workflow API route tests (41 tests)
+
+**Implementation Commit:**
+- `b69fcba` - Agent Edit Workflow API route implementation
+
+**Security Fix Commit:**
+- `fd39d60` - Added input validation limits (agentId, intent, targetRegions, editSessionId, reason)
+
+**Security Review Notes:**
+- Added limits: MAX_AGENT_ID_LENGTH (128), MAX_INTENT_LENGTH (1000), MAX_EDIT_SESSION_ID_LENGTH (128), MAX_REGION_PATH_LENGTH (256), MAX_TARGET_REGIONS (100), MAX_REASON_LENGTH (500)
+- Authentication is handled at DO level via X-Actor-Id/X-Actor-Type headers (by design)
+
+---
+
+### Agent Politeness System - Extended Checkpoint Model (Phase 3) - Added 2026-01-26
+
+**Feature:** Extended the Checkpoint Service with enhanced fields for Agent Politeness System, enabling full agent auditability and reversibility.
+
+**Implementation:**
+
+**Extended CreateCheckpointParams:**
+- `description` - Optional description of checkpoint purpose
+- `trigger` - How checkpoint was triggered: 'manual' | 'human_requested' | 'autonomous'
+- `requestedById` - Who requested the checkpoint (for human_requested)
+- `operationType` - Type of operation: 'content_edit' | 'structure_edit' | 'metadata_edit' | custom
+- `affectedRegions` - Array of JSON paths affected by changes
+
+**New Checkpoint Service Functions:**
+- `updateCheckpointStatus(id, status, rolledBackById?)` - Update checkpoint status to 'completed' | 'rolled_back' | 'partial'
+- `listCheckpointsByAgent(agentId, options?)` - List checkpoints created by specific agent with filtering
+- `listCheckpointsByOperationType(branchId, operationType, options?)` - List checkpoints by operation type
+
+**Enhanced ListCheckpointsByAgentOptions:**
+- `limit` / `offset` - Pagination support
+- `branchId` - Filter by branch
+- `operationType` - Filter by operation type
+- `trigger` - Filter by trigger type
+- `status` - Filter by checkpoint status
+
+**Rollback Enhancement:**
+- `revertToCheckpoint` now updates original checkpoint status to 'rolled_back'
+- Records `rolled_back_by_id` and `rolled_back_at` timestamp
+- Wrapped in explicit transaction with proper BEGIN/COMMIT/ROLLBACK
+
+**Security Hardening:**
+- Input validation for all string parameters with length limits:
+  - Name: 255 chars, Message: 1000 chars, Description: 5000 chars
+  - Operation type: 100 chars, Region paths: 500 chars
+  - Max affected regions: 100 items
+- Transaction handling with proper rollback on errors
+
+**Files Modified:**
+- `workers/src/services/checkpoint-service.ts` - Extended with enhanced checkpoint fields
+- `workers/src/services/index.ts` - Added new exports
+
+**Test Commit:**
+- `7e40f4a` - Phase 3 Enhanced Checkpoint Model tests (25 tests)
+
+**Implementation Commit:**
+- `d8e9d6c` - Phase 3 Enhanced Checkpoint Model implementation
+
+**Security Fix Commit:**
+- `b593d5c` - Input validation and transaction handling
+
+---
+
+### Agent Politeness System - DocumentSession Integration (Phase 4) - Added 2026-01-26
+
+**Feature:** Integrated Agent Politeness services (PresenceManager, ActivityDetector, AgentEditPermissionService) into the DocumentSession Durable Object for coordinated human-agent collaboration.
+
+**Implementation:**
+
+**New DocumentSession Endpoints:**
+- `GET /presences` - Return all actor presences in document session
+- `GET /activity-state` - Return activity detection state (idle status, active regions, timeout config)
+- `POST /can-agent-edit` - Check if agent can proceed with editing based on human activity
+- `POST /agent-edit-start` - Start edit session, create checkpoint for autonomous work
+- `POST /agent-edit-complete` - Complete edit session, clear focus regions
+- `POST /agent-edit-abort` - Abort edit session, rollback to checkpoint if autonomous
+- `GET /edit-sessions` - Return active edit sessions with metadata
+- `POST /set-idle-timeout` - Configure idle timeout for activity detection
+
+**Service Integrations:**
+- **PresenceManager** - Tracks actors (users/agents) in document sessions
+- **ActivityDetector** - Monitors human activity and idle state with configurable timeout
+- **AgentEditPermissionService** - Checks if agents can edit based on activity and regions
+
+**Human Activity Recording:**
+- `/apply` endpoint now records human activity when users edit
+- Extracts target regions from operations for region-based coordination
+- Feeds into ActivityDetector for idle timeout calculation
+
+**Edit Session Management:**
+- Agents declare intent with `agent-edit-start`, receive session ID
+- Autonomous edits create checkpoints for reversibility
+- Sessions track agent ID, trigger type, intent, target regions
+- Prevents concurrent edit sessions from same agent
+
+**Security:**
+- Input validation on all request bodies before type narrowing
+- agentId, trigger, intent length validation
+- Target regions count limit (MAX_TARGET_REGIONS)
+- editSessionId and reason length validation
+
+**Files Modified:**
+- `workers/src/durable-objects/document-session.ts` - Core integration (+449 lines)
+- `workers/tests/durable-objects/document-session-agent-politeness.spec.ts` - Test fixes
+
+**Test Commit:**
+- `24a7162` - Phase 4 DocumentSession Agent Politeness integration tests (29 tests, TDD)
+
+**Implementation Commit:**
+- `dc18741` - Phase 4 implementation and test environment fixes
+
+---
+
+### Agent Politeness System - Organization Settings Integration (Phase 5) - Added 2026-01-26
+
+**Feature:** DocumentSession now fetches and uses organization-level settings for agent idle timeout instead of the hardcoded default.
+
+**Implementation:**
+
+**Organization Settings Loading:**
+- `loadOrgSettingsIfNeeded()` - Loads organization settings on first access, caches result
+- `loadOrganizationSettings()` - Fetches org via `getOrganizationForSite(siteId)`, updates ActivityDetector timeout
+- `refreshOrganizationSettings()` - Forces reload of organization settings from database
+
+**New DocumentSession Endpoints:**
+- `GET /org-settings` - Returns organization info (id, name) and current agentIdleTimeoutMs
+- `POST /org-settings/refresh` - Forces reload of organization settings from database
+
+**Caching Strategy:**
+- Organization settings cached in memory after first load
+- Prevents repeated DB lookups on every request
+- `/org-settings/refresh` allows explicit cache invalidation
+
+**Fallback Behavior:**
+- Uses default timeout (5000ms) when no organization linked
+- Uses default when org exists but settings missing agentIdleTimeoutMs
+- Graceful degradation on database errors (logs warning, continues with default)
+
+**Type Changes:**
+- `OrganizationSettings.agentIdleTimeoutMs` made optional for defensive handling of missing/legacy data
+
+**Files Modified:**
+- `workers/src/durable-objects/document-session.ts` - Org settings integration (+98 lines)
+- `workers/src/types.ts` - Made agentIdleTimeoutMs optional
+- `workers/tests/durable-objects/document-session-org-settings.spec.ts` - Lint fix (return type)
+- `workers/tests/routes/router.spec.ts` - Lint fix (removed async)
+
+**Test Commit:**
+- `06a0daa` - Phase 5 Organization Settings Integration tests (11 tests, TDD)
+
+**Implementation Commit:**
+- `f9a45b5` - Phase 5 implementation with lint fixes
+
+### Agent Politeness System - Conflict Notification & Kill Switch (Phase 6) - Added 2026-01-26
+
+**Feature:** Added conflict detection when human edits overlap with active agent regions, plus kill switch endpoints to terminate agent edit sessions.
+
+**Conflict Detection (in handleApplyOperations):**
+- When a human user makes an edit, checks all active agent edit sessions for region overlap
+- Uses `regionsOverlap()` from presence-service for path-based overlap detection (e.g., `/content/header/title` overlaps with `/content/header`)
+- Marks conflicted sessions with `conflicted: true` and `conflictReason` explaining which regions overlap
+- Includes `agentConflicts` array in `/apply` response when conflicts are detected
+
+**New DocumentSession Endpoints:**
+- `POST /kick-agent` - Terminate a specific agent's edit session by agentId
+  - Requires `agentId` in request body
+  - Optional `reason` for audit purposes
+  - Returns 404 if agent session not found
+  - Response includes `success`, `agentId`, `sessionId`, `reason`, `kickedBy`
+- `POST /kick-all-agents` - Terminate all active agent edit sessions
+  - Optional `reason` in request body
+  - Response includes `kickedCount`, `kickedAgents` array, `reason`, `kickedBy`
+- `GET /active-agents` - List all active agent edit sessions
+  - Returns array of agents with `agentId`, `sessionId`, `regions`, `trigger`, `intent`, `startedAt`, `conflicted`
+
+**Updated Endpoints:**
+- `GET /edit-sessions` - Now includes `conflicted` and `conflictReason` fields in session objects
+
+**Type Changes:**
+- `AgentEditSession` interface extended with optional `conflicted` and `conflictReason` fields
+
+**Files Modified:**
+- `workers/src/durable-objects/document-session.ts` - Conflict detection + 3 new endpoints (+156 lines)
+- `workers/tests/durable-objects/document-session-conflict-killswitch.spec.ts` - Added missing `intent` field to test setup
+
+**Test Commit:**
+- `0beb027` - Phase 6 TDD tests for Conflict Notification & Kill Switch (12 tests)
+
+**Implementation Commit:**
+- `9732cb1` - Phase 6 implementation with lint fixes
+
+---
+
+### Agent Politeness System - Agent Context Headers & Status Validation (Phase 7) - Added 2026-01-26
+
+**Feature:** Added agent context header parsing and status validation middleware per the architecture specification. Agents can now provide context via X-Agent-* HTTP headers.
+
+**Agent Context Headers (per architecture):**
+```
+X-Agent-Id: <agent-uuid>
+X-Agent-Trigger: human_requested | autonomous
+X-Agent-Requested-By: <user-uuid> (when human_requested)
+X-Agent-Intent: <description of what agent is doing>
+X-Agent-Operation-Type: <category>
+X-Agent-Target-Regions: <comma-separated JSON paths>
+```
+
+**Phase 7.1 - Agent Context Parser Service:**
+- `parseAgentContext(headers)` - Parse X-Agent-* headers into typed AgentContext object
+- `hasAgentContext(headers)` - Check if agent headers are present
+- `validateAgentContext(context)` - Validate context with security limits
+- Case-insensitive header parsing per HTTP spec
+- Comma-separated target regions parsing with whitespace trimming
+
+**Security Limits:**
+- MAX_AGENT_ID_LENGTH: 128 characters
+- MAX_INTENT_LENGTH: 1000 characters
+- MAX_OPERATION_TYPE_LENGTH: 100 characters
+- MAX_TARGET_REGIONS: 100 items
+- MAX_REGION_PATH_LENGTH: 256 characters
+
+**Phase 7.2 - Agent Status Middleware:**
+- `checkAgentStatus(agentContext)` - Validate agent status before operations
+- `createAgentStatusMiddleware()` - Factory for middleware function
+- `parseAgentHeaders(request)` - Helper for parsing request headers
+- Returns 403 for suspended agents
+- Returns 403 for disabled agents
+- Returns 404 for unknown agents
+- Returns 500 on database errors
+
+**Files Created:**
+- `workers/src/services/agent-context-service.ts` - Context parser service
+- `workers/src/middleware/agent-status-middleware.ts` - Status validation middleware
+- `workers/src/middleware/index.ts` - Middleware exports
+
+**Files Modified:**
+- `workers/src/services/index.ts` - Added agent context service exports
+
+**Test Commit:**
+- `6c17814` - Phase 7 TDD tests (51 tests)
+
+**Implementation Commit:**
+- `9699fb6` - Phase 7 implementation
+
+**Phase 7.3 - Realtime API Header Integration:**
+Added support for X-Agent-* headers in the Realtime API, allowing agent context to be provided via HTTP headers alongside or instead of body parameters.
+
+**Header/Body Merging Behavior:**
+- Headers can provide agent context when body params are omitted
+- Body params take precedence over headers for backwards compatibility
+- CORS configured to allow all X-Agent-* headers in preflight responses
+
+**CORS Headers Added:**
+```
+Access-Control-Allow-Headers: Content-Type, X-Actor-Id, X-Actor-Type, Upgrade,
+  X-Agent-Id, X-Agent-Trigger, X-Agent-Requested-By, X-Agent-Intent,
+  X-Agent-Operation-Type, X-Agent-Target-Regions
+```
+
+**Endpoints Updated:**
+- `POST /can-agent-edit` - Accepts agent context via headers
+- `POST /agent-edit-start` - Accepts agent context via headers
+
+**Files Modified:**
+- `workers/src/routes/realtime-api.ts` - Added header parsing and CORS configuration
+
+**Test Commit:**
+- `6528662` - Phase 7.3 TDD tests for header integration (18 tests)
+
+**Implementation Commit:**
+- `e91fffb` - Phase 7.3 Realtime API header integration
+
+**Pre-existing Test Fixes:**
+During Phase 7.3 testing, fixed unrelated test issues:
+- `site-api.spec.ts` - Fixed test using wrong branch type for 409 response
+- `document-session.spec.ts` - Fixed timeout issues with PostgreSQL initialization
+
+**Test Fix Commit:**
+- `2c1eb8a` - Pre-existing test fixes
+
+**Phase 7.4 - Edit Workflow Status Enforcement:**
+
+Integrated agent status validation into the Realtime API's agent edit workflow endpoints. Suspended/disabled agents are now rejected at the Worker level BEFORE forwarding requests to the Durable Object.
+
+**Implementation Details:**
+- Added `validateAgentStatusForEdit()` helper function to realtime-api.ts
+- Integrated status check into `can-agent-edit` and `agent-edit-start` endpoints (required check using agentId from body/header merge)
+- Integrated optional status check into `agent-edit-complete` and `agent-edit-abort` endpoints (only checks if X-Agent-Id header is present for backwards compatibility)
+- Response codes: 403 (suspended/disabled), 404 (not found), 500 (database error)
+- All error responses include proper CORS headers
+
+**Test Commit:**
+- `37948c7` - Phase 7.4 TDD tests for edit workflow status enforcement (22 tests)
+
+**Implementation Commit:**
+- `47dc3eb` - Phase 7.4 edit workflow status enforcement implementation
+
+**Security Review:** Completed with no critical vulnerabilities. Minor enhancement recommendations noted:
+- Agent ID character pattern validation (low priority - parameterized queries prevent injection)
+- Code consistency for header access (low priority)
 
 ---
 
@@ -2148,76 +2684,144 @@ Template for future decisions:
   - `pnpm db:cleanup:execute --all` - Delete all data (full reset)
 
 ---
+## Security Review
 
-## Change History
+### Authentication & Authorization
+- [x] **JWT Security:** HS256 signing with configurable secret (min 32 chars enforced)
+- [x] **Token Expiry:** All tokens have configurable expiration (default 24h)
+- [x] **Issuer Validation:** JWT issuer claim validated on every token check
+- [x] **Role Escalation Prevention:** `maxRole()` returns highest of two roles, never arbitrary elevation
+- [x] **Permission Checks:** All authorization checks use `assertPermission()` or `hasPermission()`
+- [x] **Guest Access Scoping:** Guest tokens validated against specific branch_id
 
-| Date | Phase | Summary |
-|------|-------|---------|
-| 2026-01-25 | 10.2 | Local metrics receiver: scripts/local-metrics-receiver.js with macOS notifications, system monitoring, Makefile target |
-| 2026-01-25 | 10.3-10.6 | Merge Diff Visualization: JsonDiffViewer component, ExpandableConflictRow with expand/collapse, previewMerge includeContent option, ConflictResolutionPanel integration, E2E tests, security fix for status param validation |
-| 2026-01-24 | 8.23 | Site deletion FK fix: clear source_checkpoint_id and base_checkpoint_id before deleting checkpoints |
-| 2026-01-25 | 9.11 | Test data cleanup script: db:cleanup command to delete E2E test entries by naming pattern; handles FK constraints for 16 tables |
-| 2026-01-25 | 9.10 | PDS Migration Phase 7: E2E Test Finalization; added data-testid to Layout, Login, Dashboard, Sites, SiteDetail, BranchDetail, MergeRequests, MergeRequestDetail, MergePreviewPanel; updated all E2E tests to use robust selectors (getByTestId) instead of CSS class selectors |
-| 2026-01-25 | 9.9 | PDS Migration Phase 6: ConflictResolutionPanel uses PDS Button; JsonViewer kept custom (simple, working); ConflictList already using PDS Tag |
-| 2026-01-25 | 9.8 | PDS Migration Phase 5: ApiResponse uses PDS Alert for errors; MergePreviewPanel uses PDS Button and Alert; CSS cleanup for removed custom styles; E2E tests updated |
-| 2026-01-25 | 9.7 | PDS Migration Phase 4: Tabs migrated to PDS Tabs/TabList/Tab/TabPanels/TabPanel in BranchDetailPage and DocumentPage; Breadcrumbs kept custom (PDS requires context-based pattern); 55/75 tests pass (failures are infrastructure flakiness) |
-| 2026-01-25 | 9.6 | PDS Migration Phase 3: All status badges migrated to PDS Tag component; E2E tests updated (.status-badge → .tag selectors); 60/75 tests pass (failures are infrastructure flakiness) |
-| 2026-01-25 | 10.2 | MetricsService: request-scoped buffering, 8 metrics (HTTP, DB, WS), HTTPS/API key validation, buffer limits, security hardening |
-| 2026-01-25 | 10.1 | DocumentDiffService: JSON diffing for merge visualization (18 tests) |
-| 2026-01-25 | 9.5 | PDS Migration Phase 2: All pages use PDS Button/RouterLinkButton/Alert components; form inputs use pds-input/pds-select classes; E2E tests updated for data-testid selectors (73/75 tests pass) |
-| 2026-01-24 | 9.4 | PDS JsonViewer fix: override PDS global pre element dark theme with light theme |
-| 2026-01-24 | 9.3 | PDS contrast fixes: global code styling, ApiResponse/Dashboard using PDS design tokens |
-| 2026-01-24 | 9.2 | PDS Migration: ConfirmDeleteModal to PDS components (Modal, Button, Alert), updated E2E tests |
-| 2026-01-24 | 9.1 | PDS Foundation: import global styles, migration plan with E2E test strategy |
-| 2026-01-24 | 8.22 | Branch archive button, site deletion fix: archive UI for branches, site delete allowed with only main branch |
-| 2026-01-24 | 8.21 | Cascade delete fix: deleteBranch/deleteSite now clean up all related FK data |
-| 2026-01-24 | 8.20 | E2E test stability: wait for API responses, improved assertions, robust helper functions |
-| 2026-01-24 | 8.19 | Preview Merge fix: fixed endpoint URL, previewMerge service params, auto-load UX on mount |
-| 2026-01-24 | 8.18 | Execute Merge fix: added /execute endpoint, fixed detectConflicts and checkpointType params |
-| 2026-01-24 | 8.17 | E2E test fixes: UUID-based user IDs, delete modal bug fix, site/branch CRUD tests |
-| 2026-01-24 | 8.16 | Merge Request UI: list, create, detail pages; conflict display; preview panel; resolution UI; E2E tests |
-| 2026-01-24 | 8.15 | Document content editing: version API endpoints, frontend JSON editor, version history, SQL NULL fix |
-| 2026-01-24 | 8.14 | Cloudflare Hyperdrive integration for PostgreSQL connection pooling |
-| 2026-01-24 | 8.13 | Branch isolation E2E test, documented postgres.js Hyperdrive limitation |
-| 2026-01-24 | 8.12 | UX writing style compliance: sentence case, verb forms, error messages, tooltips |
-| 2026-01-24 | 8.11 | Bug fix: JSONB double-stringification in document snapshots, full isolation verified |
-| 2026-01-24 | 8.11 | Bug fixes: checkpoint-based branching query, branch-scoped document routing |
-| 2026-01-24 | 8.11 | Branch isolation: document version inheritance, branch-scoped CRUD APIs, security fix |
-| 2026-01-24 | 8.10 | Usability enhancements: delete confirmation modals, create document, JSON viewer |
-| 2026-01-24 | 8.9 | Enhancement: auto-create checkpoint when branching from branch without one |
-| 2026-01-24 | 8.8 | Bug fixes: checkpoint creation (checkpointType param, SQL columns), optional name |
-| 2026-01-24 | 8.7 | DocumentPage implementation and navigation fixes |
-| 2026-01-24 | 8.6 | Bug fixes: Cloudflare Workers DB I/O error, Create Site form missing field |
-| 2026-01-24 | 8.1-8.5 | Frontend API Explorer: project setup, API client, auth UI, dashboard/sites pages, E2E tests |
-| 2026-01-24 | 7.3 | Route wiring: all API routes wired with CORS and auth middleware (971 tests) |
-| 2026-01-24 | 7.1.1b | Security hardening: pagination validation, path traversal, LIKE escaping, size limits (947 tests) |
-| 2026-01-24 | 7.1.1b | Resource Management APIs complete: Site, Document, Structure, Node, Metadata (916 tests) |
-| 2026-01-24 | 7.1.1a | Branch-scoped structure identity complete: migration, service updates (829 tests) |
-| 2026-01-24 | 7.1.1 | Proposal finalized: branch-scoped structures, soft-delete, bulk operations |
-| 2026-01-24 | 7.2 | Audit Integration complete (9 tests) |
-| 2026-01-24 | 7.1 | REST API Endpoints complete: Branch, Checkpoint, Merge, Grant APIs (49 tests) |
-| 2026-01-24 | 6.2 | Metadata Service complete (29 tests) |
-| 2026-01-24 | 6.1 | Structure Service complete (42 tests) |
-| 2026-01-24 | 5.3 | Merge Execution Service complete (13 tests) |
-| 2026-01-24 | 5.2c | CRDT Merge Service complete (14 tests) |
-| 2026-01-24 | 5.2b | Conflict Resolution Service complete (15 tests) |
-| 2026-01-24 | 5.2a | Conflict Detection Service complete (13 tests) |
-| 2026-01-24 | 5.1b | Merge Base Service complete (18 tests) |
-| 2026-01-24 | 5.1a | Merge Request Service complete (51 tests) |
-| 2026-01-24 | 4.2 | Real-Time API routes complete (39 tests, security hardening) |
-| 2026-01-24 | 4.1 | DocumentSession Durable Object complete (46 tests, security hardening) |
-| 2026-01-23 | 3.3 | Checkpoint System complete (18 + 30 = 48 unit tests) |
-| 2026-01-23 | 3.2 | Branch Operations complete (63 unit + 28 integration tests) |
-| 2026-01-23 | Infra | Infrastructure validation: /health endpoint, real postgres connection, DO stubs |
-| 2026-01-23 | 3.1 | Site and Document Operations complete (69 unit + 24 integration tests) |
-| 2026-01-23 | 2.2 | Authorization System complete (92 tests) |
-| 2026-01-23 | 2.1 | Mock Identity Provider complete (44 tests) |
-| 2026-01-23 | 1.3 | Core TypeScript types complete (50 types) |
-| 2026-01-23 | 1.2 | Database schema and migrations complete |
-| 2026-01-23 | 1.1 | Initial project configuration and build tooling complete |
+### Database Security
+- [x] **Parameterized Queries:** All SQL uses `$1, $2, ...` placeholders via `query()` function
+- [x] **No SQL Concatenation:** No string interpolation in SQL queries
+- [x] **Connection String as Secret:** Stored in `.dev.vars` (gitignored), not in config files
+- [x] **Minimal Privileges:** Worker connection uses cssuser, not superuser
+
+### Input Validation
+- [x] **Path Validation:** Document paths validated (no leading/trailing slashes, non-empty)
+- [x] **UUID Validation:** Site/document IDs validated as UUIDs before database queries
+- [x] **Unique Constraints:** Database enforces uniqueness (pantheon_site_id, document paths)
+- [x] **Foreign Key Constraints:** Cascading deletes properly ordered (documents before sites)
+
+### Areas for Future Review (Phase 4+)
+- [ ] WebSocket authentication and session management
+- [ ] Rate limiting on public endpoints
+- [ ] CORS configuration validation for production
+- [ ] Audit logging for sensitive operations
+- [ ] Content-Security-Policy headers
+
+---
+## Recently Fixed Issues
+
+### Database Connection Race Condition (Fixed 2026-01-25)
+
+**Issue:** Document pages in the frontend would intermittently fail to load, showing "Internal server error" for document version endpoints. The `/versions/latest` and `/versions` API calls returned 500 errors.
+
+**Root Cause:** The database module (`workers/src/db.ts`) used a global `currentConnection` variable shared across all concurrent requests. When the frontend made 5 parallel API calls to load a document page, each request would initialize a new connection, overwriting and closing the previous one. This caused some requests to fail when their connection was closed by another concurrent request.
+
+**Solution:** Implemented request-scoped database connections using Node.js `AsyncLocalStorage`:
+- Added `runWithConnection()` function that wraps request handlers in isolated AsyncLocalStorage context
+- Each concurrent request now gets its own database connection that cannot interfere with others
+- Updated `index.ts` to use the new pattern
+- Deprecated the old `initializeDatabaseFromConnectionString()` and `closeDatabaseConnection()` functions
+
+**Files Changed:**
+- `workers/src/db.ts` - Added AsyncLocalStorage-based connection management
+- `workers/src/index.ts` - Updated to use `runWithConnection()`
+- `workers/tests/routes/router.spec.ts` - Updated mock to include new export
+
+### getDocumentByPath Returns Archived Documents (Fixed 2026-01-25)
+
+**Issue:** When creating pages from Content Publisher articles, if a document with the same path had been previously archived (soft-deleted), the `getDocumentByPath` function would return the archived document instead of the active one. This caused "Document not found on this branch" errors when the system tried to access versions of the archived document.
+
+**Root Cause:** The SQL query in `getDocumentByPath` used `SELECT * FROM app.documents WHERE site_id = $1 AND path = $2` without filtering or ordering by archived status. When multiple documents existed with the same path (one archived, one active), the query returned whichever came first, often the archived one.
+
+**Solution:** Modified the query to prefer non-archived documents using `ORDER BY archived_at NULLS FIRST LIMIT 1`. Documents with `archived_at = NULL` (active) are now returned before documents with an archived timestamp.
+
+**Files Changed:**
+- `workers/src/services/document-service.ts` - Updated `getDocumentByPath` query
+
+### GitHub Advanced Security Alerts (Fixed 2026-01-25)
+
+**Issue:** GitHub Advanced Security identified 3 code scanning alerts:
+1. **High severity** (2 alerts): Incomplete string escaping in `escapeLikePattern` function (js/incomplete-sanitization)
+2. **Medium severity** (1 alert): Log injection vulnerability in metrics receiver (js/log-injection)
+
+**Root Causes:**
+- The `escapeLikePattern` function escaped `%` and `_` for PostgreSQL LIKE queries but failed to escape backslashes first. Input containing `\` could bypass the sanitization.
+- The `logMetric` function logged metric names, values, and labels directly without sanitizing control characters, allowing potential log forging via newlines or other control chars.
+
+**Solutions:**
+1. Modified `escapeLikePattern` to escape backslashes first (`\\` → `\\\\`) before escaping `%` and `_`
+2. Added `sanitizeForLog` function that strips control characters (0x00-0x1F and 0x7F) from strings before logging
+
+**Files Changed:**
+- `workers/src/services/document-service.ts` - Fixed `escapeLikePattern` to escape backslashes first
+- `scripts/local-metrics-receiver.js` - Added `sanitizeForLog` function and applied to all logged values
+
+**Commit:** `34ddecb`
+
+---
+## Known Issues / Future Work
+
+### CORS Configuration for Multi-Tenant Frontends
+
+**Issue:** Currently, allowed CORS origins must be manually added to `wrangler.jsonc` for each frontend that needs to access the CSS API. This doesn't scale for a multi-tenant platform where customers deploy arbitrary frontends.
+
+**Current Workaround:** Manually add each localhost port or domain to `CORS_ORIGINS` in `workers/wrangler.jsonc`.
+
+**Proposed Solutions:**
+1. **Wildcard subdomain matching:** Allow `*.pantheonsite.io` to cover all customer sites
+2. **Dynamic origin validation:** Validate origins against the site's configuration stored in the database (e.g., `site.allowedOrigins` field)
+3. **Authentication-based CORS:** Automatically allow origins that provide valid API keys associated with the site
+4. **Same-origin proxy:** Frontends proxy through their own backend, eliminating browser CORS
+
+**Priority:** Medium - Required before production multi-tenant deployment
 
 ---
 
+### Document Paths vs. Structure-Based Organization
+
+**Issue:** Currently, documents have a `path` field (e.g., `articles/football/jets/article-name`) that implies hierarchical organization. However, the intended architectural design is for the **site structure system** (structure nodes) to control document organization and navigation, not the document path itself.
+
+**Current State:**
+- Documents have a `path` field that suggests hierarchy
+- Site structures and nodes exist separately and reference documents by ID
+- These two organizational concepts overlap and may conflict
+
+**Architectural Consideration:**
+- Document paths should potentially be simplified to flat identifiers or slugs
+- Hierarchical organization should be controlled entirely by structure nodes
+- This affects how documents are addressed in URLs and internal references
+
+**Impact Areas:**
+- Document service path validation logic
+- Structure node relationship to documents
+- URL routing in frontend applications
+- Site template/copy operations (path vs. structure-based copying)
+
+**Priority:** Low - Requires architectural review before refactoring
+
+**Decision Pending:** Determine whether document paths should remain hierarchical or become flat identifiers, with structure nodes providing all organizational hierarchy.
+
+---
+## Architecture Reference
+
+The implementation follows the architecture defined in:
+- `collaborative-state-system-architecture-v2.2.md`
+- `AUTH_IMPLEMENTATION_GUIDE.md`
+- `README.md`
+## Testing Approach
+
+Following Pantheon testing practices:
+- **Unit Tests:** Vitest with @testing-library/react patterns
+- **E2E Tests:** Playwright via Carbon Framework (future)
+- **Test-Driven Development:** Tests written before implementation code
+
+---
 ## Test Summary
 
 | Component | Unit Tests | Integration Tests |
@@ -2235,6 +2839,7 @@ Template for future decisions:
 | Branch Service | 63 | 28 |
 | Document Version Service | 18 | - |
 | Checkpoint Service | 30 | - |
+| Checkpoint Enhanced | 25 | - |
 | DocumentSession Durable Object | 46 | - |
 | Real-Time API Routes | 39 | - |
 | Merge Request Service | 51 | - |
@@ -2266,8 +2871,105 @@ Template for future decisions:
 | Router Integration | 24 | - |
 | Document Diff Service | 18 | - |
 | Metrics Service | 36 | - |
-| **Total** | **1070** | **52** |
+| Presence Service | 42 | - |
+| Activity Detection Service | 64 | - |
+| Agent Edit Permission Service | 19 | - |
+| Presence Rollup Service | 15 | - |
+| Presence API Routes | 15 | - |
+| DocumentSession Focus Regions | 12 | - |
+| Realtime API Focus Regions | 11 | - |
+| WebSocket Message Types | 18 | - |
+| DocumentSession WS Presence | 29 | - |
+| **Total** | **1716** | **52** |
 
 ---
 
-*Last updated: 2026-01-26 (WebSocket Connection Fixes for Real-Time Collaboration)*
+*Last updated: 2026-02-02 (PR #5 Security Fixes)*
+## Change History
+
+| Date | Phase | Summary |
+|------|-------|---------|
+| 2026-01-23 | 1.1 | Initial project configuration and build tooling complete |
+| 2026-01-23 | 1.2 | Database schema and migrations complete |
+| 2026-01-23 | 1.3 | Core TypeScript types complete (50 types) |
+| 2026-01-23 | 2.1 | Mock Identity Provider complete (44 tests) |
+| 2026-01-23 | 2.2 | Authorization System complete (92 tests) |
+| 2026-01-23 | 3.1 | Site and Document Operations complete (69 unit + 24 integration tests) |
+| 2026-01-23 | Infra | Infrastructure validation: /health endpoint, real postgres connection, DO stubs |
+| 2026-01-23 | 3.2 | Branch Operations complete (63 unit + 28 integration tests) |
+| 2026-01-23 | 3.3 | Checkpoint System complete (18 + 30 = 48 unit tests) |
+| 2026-01-24 | 4.1 | DocumentSession Durable Object complete (46 tests, security hardening) |
+| 2026-01-24 | 4.2 | Real-Time API routes complete (39 tests, security hardening) |
+| 2026-01-24 | 5.1a | Merge Request Service complete (51 tests) |
+| 2026-01-24 | 5.1b | Merge Base Service complete (18 tests) |
+| 2026-01-24 | 5.2a | Conflict Detection Service complete (13 tests) |
+| 2026-01-24 | 5.2b | Conflict Resolution Service complete (15 tests) |
+| 2026-01-24 | 5.2c | CRDT Merge Service complete (14 tests) |
+| 2026-01-24 | 5.3 | Merge Execution Service complete (13 tests) |
+| 2026-01-24 | 6.1 | Structure Service complete (42 tests) |
+| 2026-01-24 | 6.2 | Metadata Service complete (29 tests) |
+| 2026-01-24 | 7.1 | REST API Endpoints complete: Branch, Checkpoint, Merge, Grant APIs (49 tests) |
+| 2026-01-24 | 7.2 | Audit Integration complete (9 tests) |
+| 2026-01-24 | 7.1.1 | Proposal finalized: branch-scoped structures, soft-delete, bulk operations |
+| 2026-01-24 | 7.1.1a | Branch-scoped structure identity complete: migration, service updates (829 tests) |
+| 2026-01-24 | 7.1.1b | Resource Management APIs complete: Site, Document, Structure, Node, Metadata (916 tests) |
+| 2026-01-24 | 7.1.1b | Security hardening: pagination validation, path traversal, LIKE escaping, size limits (947 tests) |
+| 2026-01-24 | 7.3 | Route wiring: all API routes wired with CORS and auth middleware (971 tests) |
+| 2026-01-24 | 8.1-8.5 | Frontend API Explorer: project setup, API client, auth UI, dashboard/sites pages, E2E tests |
+| 2026-01-24 | 8.6 | Bug fixes: Cloudflare Workers DB I/O error, Create Site form missing field |
+| 2026-01-24 | 8.7 | DocumentPage implementation and navigation fixes |
+| 2026-01-24 | 8.8 | Bug fixes: checkpoint creation (checkpointType param, SQL columns), optional name |
+| 2026-01-24 | 8.9 | Enhancement: auto-create checkpoint when branching from branch without one |
+| 2026-01-24 | 8.10 | Usability enhancements: delete confirmation modals, create document, JSON viewer |
+| 2026-01-24 | 8.11 | Branch isolation: document version inheritance, branch-scoped CRUD APIs, security fix |
+| 2026-01-24 | 8.11 | Bug fixes: checkpoint-based branching query, branch-scoped document routing |
+| 2026-01-24 | 8.11 | Bug fix: JSONB double-stringification in document snapshots, full isolation verified |
+| 2026-01-24 | 8.12 | UX writing style compliance: sentence case, verb forms, error messages, tooltips |
+| 2026-01-24 | 8.13 | Branch isolation E2E test, documented postgres.js Hyperdrive limitation |
+| 2026-01-24 | 8.14 | Cloudflare Hyperdrive integration for PostgreSQL connection pooling |
+| 2026-01-24 | 8.15 | Document content editing: version API endpoints, frontend JSON editor, version history, SQL NULL fix |
+| 2026-01-24 | 8.16 | Merge Request UI: list, create, detail pages; conflict display; preview panel; resolution UI; E2E tests |
+| 2026-01-24 | 8.17 | E2E test fixes: UUID-based user IDs, delete modal bug fix, site/branch CRUD tests |
+| 2026-01-24 | 8.18 | Execute Merge fix: added /execute endpoint, fixed detectConflicts and checkpointType params |
+| 2026-01-24 | 8.19 | Preview Merge fix: fixed endpoint URL, previewMerge service params, auto-load UX on mount |
+| 2026-01-24 | 8.20 | E2E test stability: wait for API responses, improved assertions, robust helper functions |
+| 2026-01-24 | 8.21 | Cascade delete fix: deleteBranch/deleteSite now clean up all related FK data |
+| 2026-01-24 | 8.22 | Branch archive button, site deletion fix: archive UI for branches, site delete allowed with only main branch |
+| 2026-01-24 | 9.1 | PDS Foundation: import global styles, migration plan with E2E test strategy |
+| 2026-01-24 | 9.2 | PDS Migration: ConfirmDeleteModal to PDS components (Modal, Button, Alert), updated E2E tests |
+| 2026-01-24 | 9.3 | PDS contrast fixes: global code styling, ApiResponse/Dashboard using PDS design tokens |
+| 2026-01-24 | 9.4 | PDS JsonViewer fix: override PDS global pre element dark theme with light theme |
+| 2026-01-25 | 9.5 | PDS Migration Phase 2: All pages use PDS Button/RouterLinkButton/Alert components; form inputs use pds-input/pds-select classes; E2E tests updated for data-testid selectors (73/75 tests pass) |
+| 2026-01-25 | 10.1 | DocumentDiffService: JSON diffing for merge visualization (18 tests) |
+| 2026-01-25 | 10.2 | MetricsService: request-scoped buffering, 8 metrics (HTTP, DB, WS), HTTPS/API key validation, buffer limits, security hardening |
+| 2026-01-25 | 9.6 | PDS Migration Phase 3: All status badges migrated to PDS Tag component; E2E tests updated (.status-badge → .tag selectors); 60/75 tests pass (failures are infrastructure flakiness) |
+| 2026-01-25 | 9.7 | PDS Migration Phase 4: Tabs migrated to PDS Tabs/TabList/Tab/TabPanels/TabPanel in BranchDetailPage and DocumentPage; Breadcrumbs kept custom (PDS requires context-based pattern); 55/75 tests pass (failures are infrastructure flakiness) |
+| 2026-01-25 | 9.8 | PDS Migration Phase 5: ApiResponse uses PDS Alert for errors; MergePreviewPanel uses PDS Button and Alert; CSS cleanup for removed custom styles; E2E tests updated |
+| 2026-01-25 | 9.9 | PDS Migration Phase 6: ConflictResolutionPanel uses PDS Button; JsonViewer kept custom (simple, working); ConflictList already using PDS Tag |
+| 2026-01-25 | 9.10 | PDS Migration Phase 7: E2E Test Finalization; added data-testid to Layout, Login, Dashboard, Sites, SiteDetail, BranchDetail, MergeRequests, MergeRequestDetail, MergePreviewPanel; updated all E2E tests to use robust selectors (getByTestId) instead of CSS class selectors |
+| 2026-01-25 | 9.11 | Test data cleanup script: db:cleanup command to delete E2E test entries by naming pattern; handles FK constraints for 16 tables |
+| 2026-01-24 | 8.23 | Site deletion FK fix: clear source_checkpoint_id and base_checkpoint_id before deleting checkpoints |
+| 2026-01-25 | 10.3-10.6 | Merge Diff Visualization: JsonDiffViewer component, ExpandableConflictRow with expand/collapse, previewMerge includeContent option, ConflictResolutionPanel integration, E2E tests, security fix for status param validation |
+| 2026-01-25 | 10.2 | Local metrics receiver: scripts/local-metrics-receiver.js with macOS notifications, system monitoring, Makefile target |
+| 2026-01-27 | Bugfix | Session ID parsing for Miniflare (X-Session-Id header, _sessionId query param), PostgreSQL transaction handling with SAVEPOINT, document tombstone recreation flow, hasUnsyncedEdits flag |
+| 2026-01-27 | Schema | Schema test fixes: documents partial unique index (vs constraint), site_structures simplified (no name/slug/description/structure_type), agents.id is text (not uuid); all 1571 tests pass |
+| 2026-01-27 | 8 (Agent Politeness) | Presence Rollups and Queries: getBranchPresence, getSitePresence, getAgentPresence, queryDocumentPresence services; REST API endpoints for site/branch/agent presence; 1597 tests pass |
+| 2026-01-27 | 8 (Security) | Presence API Authorization: canViewSite, canViewBranch, canViewAgentPresence checks; uses pantheonSiteRoles and organizationId for access control; 403 responses for unauthorized requests; 5 new authorization tests; 1602 tests pass |
+| 2026-01-28 | 8 (Frontend) | Plugin Integration: Enhanced createCSSPlugin with presence/agent options (showPresenceIndicator, showAgentActivity, showAgentActions, showFocusRegions); Enhanced createCSSOverrides with header presence/agent features (showCollaboratorAvatars, showAgentActivityBanner); 11 new TDD tests, 391 puck-css tests pass |
+| 2026-01-28 | 8 (MCP) | MCP Server Presence Tools: Added get_branch_presence and get_document_presence tools; API client methods for presence queries; Tests for both api-client and tools modules |
+| 2026-01-28 | 8 (Frontend) | Avatar Color Consistency: Fixed CollaboratorAvatars to use actorId for hash-based colors; Added AgentActivityBanner CSS styling (~160 lines); Hash-based colors for agents matching human avatar algorithm |
+| 2026-01-28 | 8 (Docs) | puck-css Documentation: Added comprehensive presence and agent politeness documentation to README; Covers enabling presence, context values, components, styling, agent politeness protocol, MCP integration |
+| 2026-01-28 | 8 (Backend) | Agent Politeness Enforcement: Internal API endpoints for agent checkpoint lifecycle (agent-checkpoint-start, agent-checkpoint-complete, agent-checkpoint-rollback); Edit session enforcement on /apply endpoint (agents MUST provide valid editSessionId); DocumentSession creates real pre/post-edit checkpoints via internal API; Automatic rollback on agent-edit-abort; 10 new internal API tests, 5 new DocumentSession tests; 1617 tests pass |
+| 2026-01-28 | 8 (Docs) | Agent Integration Guide v1.1: Updated documentation with edit session enforcement, checkpoint lifecycle (pre/post-edit), automatic rollback behavior, new error codes, updated examples with editSessionId parameter |
+| 2026-01-28 | 8 (MCP) | MCP Server Conformance: Updated apply_document_edits to require edit_session_id; API client passes editSessionId in request body; Updated README with workflow requirements and troubleshooting; 49 MCP tests pass |
+| 2026-01-29 | Focus Regions | Proactive Focus Region Reporting: ActivityDetector focus tracking (recordFocusActivity, clearActorFocus, clearStaleFocus, getHumanFocusRegions, getAllFocusedRegions); DocumentSession /update-focus-regions endpoint; Realtime API /focus-regions route; Focus regions integrated into canAgentProceed conflict detection; Focus does NOT reset idle timer; 23 focus tests + 12 DO tests + 11 route tests; 1664 tests pass |
+
+---
+| 2026-01-29 | Security | Focus Regions Security: Optimized isRegionFocused with cached focus regions (O(n) vs O(n*m)); Optimized conflict checking with early termination and labeled loops; Truncated conflict reason strings to 500 chars; Centralized all security limits to workers/src/constants/security-limits.ts; 1664 tests pass |
+| 2026-01-29 | Memory Fixes | Memory leak fixes: (1) WebSocket disconnect cleanup - clears actor focus/presence; (2) activeRegions cleanup when idle; (3) Periodic cleanup timer for stale focus (60s) and presence (120s); (4) PresenceManager.clearStale() method; (5) Y.Doc CRDT compaction on disconnect; 7 new tests; 1671 tests pass |
+| 2026-01-29 | DO Alarms | Refactored cleanup from setInterval to Durable Object alarms: (1) scheduleCleanupAlarm() using state.storage.setAlarm(); (2) alarm() handler for periodic cleanup; (3) Alarms survive hibernation, persist across crashes, auto-deduplicate; (4) Fixed HTTP-only client memory leak (all endpoints now schedule alarms); (5) Added orphaned edit session cleanup (1 hour max age); (6) Added getAlarm/setAlarm mocks to all test files; 1671 tests pass |
+| 2026-01-29 | Router Fix | Wired focus-regions route: Added focus-regions to realtimeActions pattern in index.ts; Endpoint handler existed in realtime-api.ts and document-session.ts but route was not connected; Added 4 router tests for realtime routes (focus-regions, edits, connect, can-agent-edit); 1675 tests pass |
+| 2026-01-30 | WebSocket Presence | WebSocket-based presence messaging: (1) Message types in workers/src/types/websocket-messages.ts (WsFocusRegionUpdateMessage, WsPresenceHeartbeatMessage, WsPresenceUpdateMessage, WsFocusRegionBroadcastMessage, WsFocusRegionAckMessage, WsPresenceErrorMessage); (2) Type guards for message validation; (3) DocumentSession text message handling (handlePresenceMessage routes by type); (4) handleWsFocusRegionUpdate with validation, ACK, broadcast; (5) handleWsPresenceHeartbeat for keep-alive; (6) broadcastPresenceUpdate on connect/disconnect; (7) 18 message type tests + 36 DO presence tests; 1711 tests pass |
+| 2026-02-02 | CRDT Sync | Deduplication refactor: Moved deduplication logic from crdt-sync-service.ts to document-version-service.ts; syncCrdtToPostgres now uses document ID instead of path for PostgreSQL sync; Updated tests to reflect new behavior; 1716 tests pass |
+| 2026-02-02 | Security | CodeQL high severity fix: Changed Math.random() to crypto.randomUUID() for edit session IDs in DocumentSession; Prevents predictable session ID generation; PR #5 (Agent Politeness System with WebSocket Presence) updated with security fix |
+| 2026-02-02 | PR Maintenance | Merged security PRs: PR #4 (esbuild update), PR #2 (react-router-dom fix with conflict resolution); Created PR #5 for feature/websocket-presence branch (114 commits, Agent Politeness System) |

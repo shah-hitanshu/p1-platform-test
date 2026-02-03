@@ -12,6 +12,14 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Mock document service for database calls
+vi.mock('../../src/services/document-service', () => ({
+  getDocumentByPath: vi.fn(),
+}));
+
+// Import mocked module for test setup
+import * as documentService from '../../src/services/document-service';
+
 /**
  * Helper to assert a value is not null and return it as non-null type.
  * Avoids non-null assertions in tests.
@@ -52,6 +60,16 @@ describe('Phase 4.2: Real-Time API Routes', () => {
   beforeEach(() => {
     // Reset all mocks
     vi.resetAllMocks();
+
+    // Mock getDocumentByPath to return a document by default
+    // This simulates the document lookup in realtime-api.ts
+    vi.mocked(documentService.getDocumentByPath).mockResolvedValue({
+      id: 'mock-document-uuid',
+      siteId: 'site-123',
+      path: 'test-doc',
+      createdAt: new Date().toISOString(),
+      archivedAt: null,
+    });
 
     // Create mock Durable Object infrastructure
     mockStub = {
@@ -104,7 +122,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ operations: [] }),
+          body: JSON.stringify({ operations: [], actorId: 'test-actor' }),
         },
       );
 
@@ -208,9 +226,9 @@ describe('Phase 4.2: Real-Time API Routes', () => {
 
       await handleRealtimeRoutes(request, mockEnv);
 
-      // The session ID should include the document path
+      // The session ID should include the document UUID (looked up from path)
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalledWith(
-        expect.stringContaining('my-document-path'),
+        expect.stringContaining('mock-document-uuid'),
       );
     });
 
@@ -245,8 +263,9 @@ describe('Phase 4.2: Real-Time API Routes', () => {
 
       await handleRealtimeRoutes(request, mockEnv);
 
+      // Session ID uses document UUID (from mock) instead of path
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalledWith(
-        'site-abc:pages/home:branch-xyz',
+        'site-abc:mock-document-uuid:branch-xyz',
       );
     });
 
@@ -311,6 +330,23 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         '../../src/routes/realtime-api'
       );
 
+      // Mock different document UUIDs for different paths
+      vi.mocked(documentService.getDocumentByPath)
+        .mockResolvedValueOnce({
+          id: 'uuid-for-doc-1',
+          siteId: 'site-1',
+          path: 'doc-1',
+          createdAt: new Date().toISOString(),
+          archivedAt: null,
+        })
+        .mockResolvedValueOnce({
+          id: 'uuid-for-doc-2',
+          siteId: 'site-1',
+          path: 'doc-2',
+          createdAt: new Date().toISOString(),
+          archivedAt: null,
+        });
+
       // Request for doc-1
       const request1 = new Request(
         'https://example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
@@ -331,6 +367,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
 
       const secondCallArg = mockEnv.DOCUMENT_STATE.idFromName.mock.calls[0][0];
 
+      // Session IDs should differ because document UUIDs are different
       expect(firstCallArg).not.toBe(secondCallArg);
     });
   });
@@ -373,7 +410,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
             'X-Actor-Id': 'user-123',
             'X-Actor-Type': 'user',
           },
-          body: JSON.stringify({ operations }),
+          body: JSON.stringify({ operations, actorId: 'user-123' }),
         },
       );
 
@@ -403,7 +440,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
             'X-Actor-Id': 'agent-456',
             'X-Actor-Type': 'agent',
           },
-          body: JSON.stringify({ operations: [] }),
+          body: JSON.stringify({ operations: [], actorId: 'agent-456' }),
         },
       );
 
@@ -423,13 +460,14 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { type: 'set', path: 'title', value: 'Test' },
         { type: 'delete', path: 'oldField' },
       ];
+      const actorId = 'test-actor';
 
       const request = new Request(
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/edits',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ operations }),
+          body: JSON.stringify({ operations, actorId }),
         },
       );
 
@@ -437,7 +475,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
-      expect(body).toEqual({ operations });
+      expect(body).toEqual({ operations, actorId });
     });
   });
 
@@ -495,7 +533,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ operations: [] }),
+          body: JSON.stringify({ operations: [], actorId: 'test-actor' }),
         },
       );
 
@@ -524,7 +562,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ operations: [] }),
+          body: JSON.stringify({ operations: [], actorId: 'test-actor' }),
         },
       );
 
@@ -938,8 +976,9 @@ describe('Phase 4.2: Real-Time API Routes', () => {
 
       await handleRealtimeRoutes(request, mockEnv);
 
+      // Session ID uses document UUID (from mock) instead of path
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalledWith(
-        'site-1:pages/marketing/home:branch-1',
+        'site-1:mock-document-uuid:branch-1',
       );
     });
   });

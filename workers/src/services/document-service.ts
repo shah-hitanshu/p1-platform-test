@@ -7,8 +7,26 @@
  * @see collaborative-state-system-architecture-v2.2.md Section "Documents"
  */
 
-import type { Document } from '../types';
+import type { Document, Json } from '../types';
 import { query } from '../db';
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/**
+ * Checks if a snapshot represents a tombstone (deleted document version).
+ * Tombstones are marked with { _deleted: true }.
+ */
+function isTombstoneSnapshot(snapshot: Json): boolean {
+  if (typeof snapshot !== 'object' || snapshot === null) {
+    return false;
+  }
+  // Use Object.prototype.hasOwnProperty to check for _deleted property
+  // and cast to access the value
+  const obj = snapshot as Record<string, unknown>;
+  return Object.prototype.hasOwnProperty.call(obj, '_deleted') && obj._deleted === true;
+}
 
 // =============================================================================
 // Types
@@ -627,8 +645,11 @@ export async function createDocumentOnBranch(
     await query('BEGIN');
 
     let document: Document;
+    let isRecreation = false;
 
-    // Try to create the document
+    // Try to create the document using SAVEPOINT to handle unique constraint violations
+    // PostgreSQL aborts transactions on errors, so we need SAVEPOINT to recover
+    await query('SAVEPOINT insert_doc');
     try {
       const docResult = await query<DocumentRow>(
         `INSERT INTO app.documents (site_id, path)
@@ -636,8 +657,12 @@ export async function createDocumentOnBranch(
          RETURNING *`,
         [params.siteId, params.path],
       );
+      await query('RELEASE SAVEPOINT insert_doc');
       document = mapRowToDocument(docResult.rows[0]);
     } catch (docError) {
+      // Rollback to savepoint to clear the error state and allow further queries
+      await query('ROLLBACK TO SAVEPOINT insert_doc');
+
       // If document already exists, find it
       if (isUniqueConstraintViolation(docError)) {
         const existingResult = await query<DocumentRow>(
@@ -650,6 +675,36 @@ export async function createDocumentOnBranch(
           throw new DuplicateDocumentPathError(params.path, params.siteId);
         }
         document = mapRowToDocument(existingResult.rows[0]);
+
+        // Check if the latest version on this branch is a tombstone
+        // If so, this is a recreation - we should start fresh
+        const latestVersionResult = await query<DocumentVersionRow>(
+          `SELECT * FROM app.document_versions
+           WHERE document_id = $1 AND branch_id = $2
+           ORDER BY version_number DESC
+           LIMIT 1`,
+          [document.id, params.branchId],
+        );
+
+        if (latestVersionResult.rows.length > 0) {
+          const latestVersion = latestVersionResult.rows[0];
+          const snapshot = latestVersion.snapshot;
+          if (isTombstoneSnapshot(snapshot)) {
+            // This is a recreation after tombstone - delete all versions on this branch
+            // to start fresh with version 1
+            await query(
+              `DELETE FROM app.document_versions
+               WHERE document_id = $1 AND branch_id = $2`,
+              [document.id, params.branchId],
+            );
+            isRecreation = true;
+          } else {
+            // Document exists and is not tombstoned - this is a duplicate
+            await query('ROLLBACK');
+            throw new DuplicateDocumentPathError(params.path, params.siteId);
+          }
+        }
+        // If no versions exist on this branch, it's fine to create version 1
       } else if (isForeignKeyViolation(docError)) {
         await query('ROLLBACK');
         throw new SiteNotFoundError(params.siteId);
@@ -659,6 +714,7 @@ export async function createDocumentOnBranch(
     }
 
     // Create the initial version with provided snapshot or empty object
+    // After deletion of tombstoned versions, this will be version 1
     const versionResult = await query<DocumentVersionRow>(
       `INSERT INTO app.document_versions (
         document_id, branch_id, version_number, snapshot, crdt_state,
@@ -674,7 +730,7 @@ export async function createDocumentOnBranch(
         document.id,
         params.branchId,
         params.snapshot ?? {},
-        'edit',
+        isRecreation ? 'recreate' : 'edit',
         params.createdById,
         params.createdByType,
       ],

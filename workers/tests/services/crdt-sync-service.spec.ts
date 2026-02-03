@@ -101,6 +101,9 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         createdAt: mockDoc.created_at,
       });
 
+      // Mock getLatestDocumentVersion to return null (no existing version to compare)
+      vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
+
       const mockVersion = createMockVersion();
       vi.mocked(documentVersionService.createDocumentVersion).mockResolvedValue({
         id: mockVersion.id,
@@ -150,6 +153,9 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         path: mockDoc.path,
         createdAt: mockDoc.created_at,
       });
+
+      // Mock getLatestDocumentVersion to return null (no existing version to compare)
+      vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
 
       const crdtStateBase64 = Buffer.from('mock-crdt-state').toString('base64');
       const mockVersion = createMockVersion({
@@ -224,6 +230,9 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         createdAt: mockDoc.created_at,
       });
 
+      // Mock getLatestDocumentVersion to return null (no existing version to compare)
+      vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
+
       const mockVersion = createMockVersion({
         created_by_type: 'agent',
         created_by_id: 'agent-uuid-001',
@@ -273,6 +282,9 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         createdAt: mockDoc.created_at,
       });
 
+      // Mock getLatestDocumentVersion to return null (no existing version to compare)
+      vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
+
       const mockVersion = createMockVersion({ snapshot: {} });
       vi.mocked(documentVersionService.createDocumentVersion).mockResolvedValue({
         id: mockVersion.id,
@@ -298,6 +310,111 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       });
 
       expect(result.snapshot).toEqual({});
+    });
+
+    it('should return existing version when snapshot is unchanged (deduplication in document-version-service)', async () => {
+      const { syncCrdtToPostgres } = await import('../../src/services/crdt-sync-service');
+      const documentService = await import('../../src/services/document-service');
+      const documentVersionService = await import('../../src/services/document-version-service');
+
+      const mockDoc = createMockDocument();
+      vi.mocked(documentService.getDocument).mockResolvedValue({
+        id: mockDoc.id,
+        siteId: mockDoc.site_id,
+        path: mockDoc.path,
+        createdAt: mockDoc.created_at,
+      });
+
+      // Mock createDocumentVersion to return the existing version
+      // (simulating deduplication behavior in document-version-service)
+      const existingSnapshot = { root: { title: 'Same Content' } };
+      const mockVersion = createMockVersion({ snapshot: existingSnapshot });
+      vi.mocked(documentVersionService.createDocumentVersion).mockResolvedValue({
+        id: mockVersion.id,
+        documentId: mockVersion.document_id,
+        branchId: mockVersion.branch_id,
+        versionNumber: mockVersion.version_number,
+        snapshot: existingSnapshot,
+        crdtState: 'existing-crdt-state',
+        source: 'realtime',
+        createdById: mockVersion.created_by_id,
+        createdByType: mockVersion.created_by_type,
+        createdAt: mockVersion.created_at,
+      });
+
+      const result = await syncCrdtToPostgres({
+        siteId: 'site-uuid-456',
+        documentId: 'doc-uuid-123',
+        branchId: 'branch-uuid-456',
+        snapshot: existingSnapshot, // Same as latest version
+        crdtState: 'new-crdt-state',
+        actorId: 'user-uuid-001',
+        actorType: 'user',
+      });
+
+      // createDocumentVersion is called, but it returns existing version due to deduplication
+      expect(documentVersionService.createDocumentVersion).toHaveBeenCalled();
+      expect(result.id).toBe(mockVersion.id);
+      expect(result.versionNumber).toBe(mockVersion.version_number);
+    });
+
+    it('should create new version when snapshot differs from latest version', async () => {
+      const { syncCrdtToPostgres } = await import('../../src/services/crdt-sync-service');
+      const documentService = await import('../../src/services/document-service');
+      const documentVersionService = await import('../../src/services/document-version-service');
+
+      const mockDoc = createMockDocument();
+      vi.mocked(documentService.getDocument).mockResolvedValue({
+        id: mockDoc.id,
+        siteId: mockDoc.site_id,
+        path: mockDoc.path,
+        createdAt: mockDoc.created_at,
+      });
+
+      // Mock getLatestDocumentVersion to return a version with DIFFERENT snapshot
+      const existingSnapshot = { root: { title: 'Old Content' } };
+      const newSnapshot = { root: { title: 'New Content' } };
+      const existingVersion = createMockVersion({ snapshot: existingSnapshot, version_number: 1 });
+      vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue({
+        id: existingVersion.id,
+        documentId: existingVersion.document_id,
+        branchId: existingVersion.branch_id,
+        versionNumber: 1,
+        snapshot: existingSnapshot,
+        crdtState: 'existing-crdt-state',
+        source: 'realtime',
+        createdById: existingVersion.created_by_id,
+        createdByType: existingVersion.created_by_type,
+        createdAt: existingVersion.created_at,
+      });
+
+      const newVersion = createMockVersion({ snapshot: newSnapshot, version_number: 2 });
+      vi.mocked(documentVersionService.createDocumentVersion).mockResolvedValue({
+        id: newVersion.id,
+        documentId: newVersion.document_id,
+        branchId: newVersion.branch_id,
+        versionNumber: 2,
+        snapshot: newSnapshot,
+        crdtState: 'new-crdt-state',
+        source: 'realtime',
+        createdById: newVersion.created_by_id,
+        createdByType: newVersion.created_by_type,
+        createdAt: newVersion.created_at,
+      });
+
+      const result = await syncCrdtToPostgres({
+        siteId: 'site-uuid-456',
+        documentId: 'doc-uuid-123',
+        branchId: 'branch-uuid-456',
+        snapshot: newSnapshot, // Different from latest version
+        crdtState: 'new-crdt-state',
+        actorId: 'user-uuid-001',
+        actorType: 'user',
+      });
+
+      // Should create a new version
+      expect(documentVersionService.createDocumentVersion).toHaveBeenCalled();
+      expect(result.versionNumber).toBe(2);
     });
   });
 

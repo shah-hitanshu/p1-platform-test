@@ -1,5 +1,5 @@
 # What we are doing
-We are developing a complex system which is based on architectural documentation provided in collaborative-state-system-architecture-v2.2.md
+We are developing a complex system which is based on architectural documentation provided in collaborative-state-system-architecture-v2.3.md
 
 This service may provide the backend to a number of applications. The initial focus will be on providing a JSON backend to a [Puck Editor](https://puckeditor.com) interface which we will develop in a later stage. You may use Puck Editor's documentation for reference, but do not yet develop new code for the front-end. We will do that in a separate project.
 
