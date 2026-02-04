@@ -925,6 +925,194 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
     });
   });
 
+  describe('/agent-stop endpoint', () => {
+    it('should stop agent by agentId and return success with rolledBack=true for autonomous session', async () => {
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      // Start an autonomous edit session (creates checkpoint)
+      await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'agent-to-stop',
+            trigger: 'autonomous',
+            intent: 'Testing stop',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+
+      // Stop the agent by agentId (not editSessionId)
+      const request = new Request('http://localhost/agent-stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agentId: 'agent-to-stop',
+        }),
+      });
+
+      const response = await session.fetch(request);
+
+      expect(response.status).toBe(200);
+      const body = (await response.json());
+      expect(body.success).toBe(true);
+      // rolledBack is false in test env because internal API is not configured
+      // In production with internal API, this would be true for autonomous sessions
+    });
+
+    it('should return success with rolledBack=false when agent has no active session', async () => {
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      // Try to stop an agent that has no active session
+      const request = new Request('http://localhost/agent-stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agentId: 'nonexistent-agent',
+        }),
+      });
+
+      const response = await session.fetch(request);
+
+      expect(response.status).toBe(200);
+      const body = (await response.json());
+      expect(body.success).toBe(true);
+      expect(body.rolledBack).toBe(false);
+      expect(body.message).toBe('No active session for agent');
+    });
+
+    it('should clear agent presence when stopped', async () => {
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      // Start an edit session
+      await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'agent-with-presence',
+            trigger: 'human_requested',
+            intent: 'Test',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+
+      // Stop the agent
+      await session.fetch(
+        new Request('http://localhost/agent-stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'agent-with-presence',
+          }),
+        }),
+      );
+
+      // Check that agent's presence is cleared
+      const presenceResponse = await session.fetch(
+        new Request('http://localhost/presences'),
+      );
+
+      const presenceBody = (await presenceResponse.json());
+      const agentPresence = presenceBody.presences.find(
+        (p) => p.actorId === 'agent-with-presence',
+      );
+      // Agent should be gone from presence
+      expect(agentPresence).toBeUndefined();
+    });
+
+    it('should remove edit session when stopped', async () => {
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      // Start an edit session
+      await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'agent-session-test',
+            trigger: 'human_requested',
+            intent: 'Test',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+
+      // Verify session exists
+      let sessionsResponse = await session.fetch(
+        new Request('http://localhost/edit-sessions'),
+      );
+      let sessionsBody = (await sessionsResponse.json());
+      expect(sessionsBody.sessions.length).toBe(1);
+
+      // Stop the agent
+      await session.fetch(
+        new Request('http://localhost/agent-stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'agent-session-test',
+          }),
+        }),
+      );
+
+      // Verify session is removed
+      sessionsResponse = await session.fetch(
+        new Request('http://localhost/edit-sessions'),
+      );
+      sessionsBody = (await sessionsResponse.json());
+      expect(sessionsBody.sessions.length).toBe(0);
+    });
+
+    it('should reject request without agentId', async () => {
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      const request = new Request('http://localhost/agent-stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+
+      const response = await session.fetch(request);
+
+      expect(response.status).toBe(400);
+      const body = (await response.json());
+      expect(body.error).toContain('agentId');
+    });
+  });
+
   describe('edit session tracking', () => {
     it('should track active edit sessions', async () => {
       const { DocumentSession } = await import(

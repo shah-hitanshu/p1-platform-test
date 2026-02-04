@@ -122,6 +122,14 @@ interface AgentEditAbortRequest {
 }
 
 /**
+ * Request body for /agent-stop endpoint (human-initiated stop)
+ */
+interface AgentStopRequest {
+  agentId: string;
+  reason?: string;
+}
+
+/**
  * Session information parsed from the Durable Object ID
  */
 interface SessionInfo {
@@ -414,6 +422,9 @@ export class DocumentSession {
 
         case '/agent-edit-abort':
           return await this.handleAgentEditAbort(request);
+
+        case '/agent-stop':
+          return await this.handleAgentStop(request);
 
         case '/edit-sessions':
           return this.handleGetEditSessions();
@@ -2550,6 +2561,76 @@ export class DocumentSession {
 
     // Remove the edit session
     this.editSessions.delete(parsed.editSessionId);
+
+    // Broadcast presence update to all connected clients
+    this.broadcastPresenceUpdate();
+
+    return this.jsonResponse(200, {
+      success: true,
+      rolledBack,
+    });
+  }
+
+  /**
+   * Handle POST /agent-stop - Stop an agent's edit session (human-initiated)
+   *
+   * Unlike /agent-edit-abort which requires the editSessionId, this endpoint
+   * looks up the session by agentId, making it easier for humans to stop
+   * an agent without knowing the session details.
+   */
+  private async handleAgentStop(request: Request): Promise<Response> {
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return this.errorResponse(400, 'Invalid JSON body');
+    }
+
+    const parsed = body as AgentStopRequest;
+
+    if (typeof parsed.agentId !== 'string' || parsed.agentId.length === 0) {
+      return this.errorResponse(400, 'agentId is required');
+    }
+
+    if (parsed.reason !== undefined && parsed.reason.length > MAX_REASON_LENGTH) {
+      return this.errorResponse(400, `reason exceeds maximum length of ${String(MAX_REASON_LENGTH)}`);
+    }
+
+    // Find the edit session by agentId
+    let session: AgentEditSession | undefined;
+    let sessionId: string | undefined;
+    for (const [id, s] of this.editSessions.entries()) {
+      if (s.agentId === parsed.agentId) {
+        session = s;
+        sessionId = id;
+        break;
+      }
+    }
+
+    // If no active session, return success with rolledBack=false
+    if (session === undefined || sessionId === undefined) {
+      return this.jsonResponse(200, {
+        success: true,
+        rolledBack: false,
+        message: 'No active session for agent',
+      });
+    }
+
+    // Rollback if there was a checkpoint (for autonomous work)
+    let rolledBack = false;
+    if (session.checkpointId !== undefined) {
+      rolledBack = await this.rollbackToAgentCheckpoint(
+        session.checkpointId,
+        session.agentId,
+        parsed.reason ?? 'Stopped by human user',
+      );
+    }
+
+    // Clear agent's presence
+    this.presenceManager.unregisterByActorId(session.agentId);
+
+    // Remove the edit session
+    this.editSessions.delete(sessionId);
 
     // Broadcast presence update to all connected clients
     this.broadcastPresenceUpdate();
