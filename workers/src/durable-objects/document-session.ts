@@ -42,6 +42,7 @@ import {
 } from '../constants/security-limits';
 import { AgentEditPermissionService } from '../services/agent-edit-permission-service';
 import { getOrganizationForSite } from '../services/organization-service';
+import { getAgentById } from '../services/agent-service';
 import type { Organization } from '../types';
 import type {
   WsFocusRegionUpdateMessage,
@@ -2299,8 +2300,14 @@ export class DocumentSession {
       return this.errorResponse(400, agentIdError);
     }
 
-    // Validate target regions if provided
-    const targetRegions = parsed.targetRegions ?? [];
+    // Validate target regions - REQUIRED for agent politeness enforcement
+    if (!Array.isArray(parsed.targetRegions)) {
+      return this.errorResponse(400, 'targetRegions is required and must be an array of region paths');
+    }
+    const targetRegions = parsed.targetRegions;
+    if (targetRegions.length === 0) {
+      return this.errorResponse(400, 'targetRegions cannot be empty - specify which regions you intend to edit');
+    }
     if (targetRegions.length > MAX_TARGET_REGIONS) {
       return this.errorResponse(400, `targetRegions exceeds maximum of ${String(MAX_TARGET_REGIONS)}`);
     }
@@ -2360,8 +2367,14 @@ export class DocumentSession {
       return this.errorResponse(400, agentIdError);
     }
 
-    // Validate target regions if provided
-    const targetRegions = parsed.targetRegions ?? [];
+    // Validate target regions - REQUIRED for agent politeness enforcement
+    if (!Array.isArray(parsed.targetRegions)) {
+      return this.errorResponse(400, 'targetRegions is required and must be an array of region paths');
+    }
+    const targetRegions = parsed.targetRegions;
+    if (targetRegions.length === 0) {
+      return this.errorResponse(400, 'targetRegions cannot be empty - specify which regions you intend to edit');
+    }
     if (targetRegions.length > MAX_TARGET_REGIONS) {
       return this.errorResponse(400, `targetRegions exceeds maximum of ${String(MAX_TARGET_REGIONS)}`);
     }
@@ -2385,6 +2398,16 @@ export class DocumentSession {
         allowed: false,
         reason: permission.reason,
       });
+    }
+
+    // Look up agent's display name from the registry
+    // Wrapped in try-catch because database may not be available in DO context
+    let agentName = parsed.agentId;
+    try {
+      const agent = await getAgentById(parsed.agentId);
+      agentName = agent?.name ?? parsed.agentId;
+    } catch (error) {
+      console.warn('Failed to look up agent name, using agentId:', error);
     }
 
     // Generate edit session ID using cryptographically secure random
@@ -2421,7 +2444,7 @@ export class DocumentSession {
     this.presenceManager.register({
       actorId: parsed.agentId,
       actorType: 'agent',
-      name: parsed.agentId, // Use agentId as name for now
+      name: agentName,
       focusRegions: targetRegions,
       intent: parsed.intent,
       state: 'editing',
@@ -2786,6 +2809,7 @@ export class DocumentSession {
     meta: ConnectionMeta,
     message: WsFocusRegionUpdateMessage,
   ): void {
+    console.log('[DocumentSession] handleWsFocusRegionUpdate called from actor:', meta.actorId, 'focusRegions:', message.focusRegions);
     const { focusRegions } = message;
 
     // Validate focus regions

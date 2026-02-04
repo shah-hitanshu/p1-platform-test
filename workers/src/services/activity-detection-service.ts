@@ -208,6 +208,7 @@ export class ActivityDetector {
    * @param focusRegions - The regions the actor is currently focused on
    */
   recordFocusActivity(actorId: string, focusRegions: string[]): void {
+    console.log('[ActivityDetector] recordFocusActivity called:', { actorId, focusRegions });
     // Limit the number of regions per actor
     const limitedRegions = focusRegions.slice(0, MAX_FOCUS_REGIONS_PER_ACTOR);
 
@@ -218,6 +219,7 @@ export class ActivityDetector {
 
     // Invalidate cache since focus regions changed
     this.invalidateFocusCache();
+    console.log('[ActivityDetector] Focus regions now:', this.getHumanFocusRegions());
   }
 
   /**
@@ -351,13 +353,23 @@ export class ActivityDetector {
    * 3. Region conflicts are checked even after idle timeout
    */
   canAgentProceed(context: AgentProceedContext): AgentProceedResult {
+    console.log('[ActivityDetector] canAgentProceed called:', {
+      trigger: context.trigger,
+      targetRegions: context.targetRegions,
+      humanFocusRegions: this.getHumanFocusRegions(),
+      activeRegions: this.getActiveRegions(),
+      isHumanIdle: this.isHumanIdle(),
+    });
+
     // Human-requested work always allowed
     if (context.trigger === 'human_requested') {
+      console.log('[ActivityDetector] Allowing - human_requested trigger');
       return { allowed: true };
     }
 
     // Check if humans are idle
     if (!this.isHumanIdle()) {
+      console.log('[ActivityDetector] Denying - humans are not idle');
       return {
         allowed: false,
         reason: 'human_active',
@@ -367,7 +379,9 @@ export class ActivityDetector {
 
     // Check for region conflicts
     const conflictingRegions = this.getConflictingRegions(context.targetRegions);
+    console.log('[ActivityDetector] Checking region conflicts:', conflictingRegions);
     if (conflictingRegions.length > 0) {
+      console.log('[ActivityDetector] Denying - region conflict:', conflictingRegions);
       return {
         allowed: false,
         reason: 'region_conflict',
@@ -375,6 +389,7 @@ export class ActivityDetector {
       };
     }
 
+    console.log('[ActivityDetector] Allowing - no conflicts');
     return { allowed: true };
   }
 

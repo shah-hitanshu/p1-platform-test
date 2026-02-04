@@ -39,6 +39,19 @@ vi.mock('../../src/services/agent-service', () => ({
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }),
+  getAgentById: vi.fn().mockImplementation((agentId: string) => {
+    return Promise.resolve({
+      id: agentId,
+      organizationId: 'org-1',
+      name: `Test Agent ${agentId.substring(0, 8)}`,
+      description: 'Test agent for unit tests',
+      capabilities: ['edit'],
+      status: 'active',
+      settings: {},
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  }),
 }));
 
 /**

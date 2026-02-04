@@ -15,6 +15,24 @@
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 
+// Mock agent service to return agent info for name lookup
+vi.mock('../../src/services/agent-service', () => ({
+  getAgentById: vi.fn().mockImplementation((agentId: string) => {
+    // Return mock agent with the agentId as part of the name
+    return Promise.resolve({
+      id: agentId,
+      organizationId: 'test-org',
+      name: `Test Agent ${agentId.substring(0, 8)}`,
+      description: 'Test agent for unit tests',
+      capabilities: ['edit'],
+      status: 'active',
+      settings: {},
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  }),
+}));
+
 // =============================================================================
 // Mock Types for Durable Object Testing
 // =============================================================================

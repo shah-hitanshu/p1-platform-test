@@ -116,24 +116,36 @@ const DEFAULT_MOCK_CONFIG: MockIdentityConfig = {
       id: '11111111-1111-1111-1111-111111111111',
       email: 'alice@example.com',
       name: 'Alice Developer',
-      siteRoles: { 'site-123': 'admin', 'site-456': 'developer' },
+      siteRoles: {
+        'site-123': 'admin',
+        'site-456': 'developer',
+        'b56bdbfd-512c-4c1f-82e9-e774c2a8ec22': 'admin',
+      },
     },
     {
       id: '22222222-2222-2222-2222-222222222222',
       email: 'bob@example.com',
       name: 'Bob Reviewer',
-      siteRoles: { 'site-123': 'team_member' },
+      siteRoles: {
+        'site-123': 'team_member',
+        'b56bdbfd-512c-4c1f-82e9-e774c2a8ec22': 'admin',
+      },
     },
     {
       id: '33333333-3333-3333-3333-333333333333',
       email: 'carol@example.com',
       name: 'Carol Editor',
-      siteRoles: { 'site-123': 'developer', 'site-456': 'admin' },
+      siteRoles: {
+        'site-123': 'developer',
+        'site-456': 'admin',
+        'b56bdbfd-512c-4c1f-82e9-e774c2a8ec22': 'admin',
+      },
     },
   ],
   agents: [
     {
-      id: '44444444-4444-4444-4444-444444444444',
+      // ID must match database: a0000000-0000-0000-0000-000000000001 (Zappy)
+      id: 'a0000000-0000-0000-0000-000000000001',
       name: 'Zappy AI Assistant',
       apiKey: 'test-agent-key-zappy',
       siteRoles: {
@@ -144,7 +156,8 @@ const DEFAULT_MOCK_CONFIG: MockIdentityConfig = {
       },
     },
     {
-      id: '55555555-5555-5555-5555-555555555555',
+      // ID must match database: a0000000-0000-0000-0000-000000000002 (Helper)
+      id: 'a0000000-0000-0000-0000-000000000002',
       name: 'Helper Bot',
       apiKey: 'test-agent-key-helper',
       siteRoles: { 'site-123': 'viewer', 'site-456': 'editor' },
@@ -277,10 +290,20 @@ async function authenticate(
     return await identityProvider.validateAgentKey(apiKey);
   }
 
-  // Try API key from query params (for WebSocket - browsers can't send custom headers)
+  // Try from query params (for WebSocket - browsers can't send custom headers)
   const url = new URL(request.url);
   const queryApiKey = url.searchParams.get('apiKey');
   if (queryApiKey !== null && queryApiKey !== '') {
+    // Try as JWT token first (for human users), then as agent API key
+    // JWTs are longer and contain dots, agent keys are shorter alphanumeric
+    if (queryApiKey.includes('.')) {
+      // Looks like a JWT token (header.payload.signature format)
+      const tokenResult = await identityProvider.validateToken(queryApiKey);
+      if (tokenResult !== null) {
+        return tokenResult;
+      }
+    }
+    // Try as agent API key
     return await identityProvider.validateAgentKey(queryApiKey);
   }
 

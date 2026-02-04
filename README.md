@@ -577,28 +577,57 @@ Configuration is managed through `workers/.dev.vars` (local) or Cloudflare secre
 
 ### Mock Identity Configuration
 
-`workers/mock-identity.config.json` defines test users and agents for local development:
+The mock identity provider is configured in `workers/src/index.ts` via `DEFAULT_MOCK_CONFIG`. This defines test users and agents for local development:
 
-```json
-{
-  "users": [
+```typescript
+const DEFAULT_MOCK_CONFIG = {
+  users: [
     {
-      "id": "user-alice",
-      "email": "alice@example.com",
-      "name": "Alice Developer",
-      "siteRoles": { "site-123": "admin" }
-    }
+      id: '11111111-1111-1111-1111-111111111111',
+      email: 'alice@example.com',
+      name: 'Alice Developer',
+      siteRoles: {
+        'site-123': 'admin',
+        'b56bdbfd-512c-4c1f-82e9-e774c2a8ec22': 'admin', // Real site ID
+      },
+    },
+    // ... more users
   ],
-  "agents": [
+  agents: [
     {
-      "id": "agent-zappy",
-      "name": "Zappy AI Assistant",
-      "apiKey": "test-agent-key-zappy",
-      "siteRoles": { "site-123": "editor" }
-    }
-  ]
-}
+      id: 'a0000000-0000-0000-0000-000000000001',
+      name: 'Zappy AI Assistant',
+      apiKey: 'test-agent-key-zappy',
+      siteRoles: {
+        'site-123': 'editor',
+        'b56bdbfd-512c-4c1f-82e9-e774c2a8ec22': 'admin', // Real site ID
+      },
+    },
+    // ... more agents
+  ],
+};
 ```
+
+#### Adding New Sites for Local Development
+
+When testing with a new site, you must add the site's UUID to the `siteRoles` for each mock user/agent that needs access:
+
+1. Get your site ID from the database or API
+2. Edit `workers/src/index.ts` and add the site ID to `siteRoles` for relevant users/agents
+3. Restart the backend: `cd workers && pnpm dev`
+4. **Important**: Log out and log back in to get a new JWT token with updated site roles
+
+Without the site ID in `siteRoles`, presence and other authorization-protected endpoints will return 403 Forbidden.
+
+#### Available Roles
+
+| Role | Permissions |
+|------|-------------|
+| `admin` | Full access (read, write, delete, manage) |
+| `developer` | Read and write access |
+| `editor` | Read and write access |
+| `team_member` | Read access with limited write |
+| `viewer` | Read-only access |
 
 ---
 

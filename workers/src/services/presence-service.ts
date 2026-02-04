@@ -38,29 +38,54 @@ export interface RegisterPresenceOptions {
 }
 
 /**
- * Checks if two JSON paths overlap (one is a parent/child of the other or equal).
+ * Normalize a region path to JSON Pointer format for consistent comparison.
+ * Converts dot-notation (content.0.props) to JSON Pointer format (/content/0/props).
+ * Handles mixed formats and ensures leading slash.
  *
- * @param path1 - First JSON path (e.g., '/content/0')
- * @param path2 - Second JSON path (e.g., '/content/0/props')
+ * @param path - Path in any format
+ * @returns Normalized path in JSON Pointer format
+ */
+function normalizeRegionPath(path: string): string {
+  // If path contains dots and no slashes, it's dot-notation
+  if (path.includes('.') && !path.includes('/')) {
+    return '/' + path.split('.').join('/');
+  }
+  // If path doesn't start with /, add it
+  if (!path.startsWith('/')) {
+    return '/' + path;
+  }
+  return path;
+}
+
+/**
+ * Checks if two JSON paths overlap (one is a parent/child of the other or equal).
+ * Handles both JSON Pointer format (/content/0) and dot-notation (content.0).
+ *
+ * @param path1 - First JSON path (e.g., '/content/0' or 'content.0')
+ * @param path2 - Second JSON path (e.g., '/content/0/props' or 'content.0.props')
  * @returns true if paths overlap, false otherwise
  */
 export function regionsOverlap(path1: string, path2: string): boolean {
+  // Normalize both paths to JSON Pointer format
+  const normalized1 = normalizeRegionPath(path1);
+  const normalized2 = normalizeRegionPath(path2);
+
   // Exact match
-  if (path1 === path2) {
+  if (normalized1 === normalized2) {
     return true;
   }
 
   // Check if one path is a prefix of the other
   // Ensure we're matching complete path segments by checking for '/' boundary
-  if (path1.startsWith(path2)) {
+  if (normalized1.startsWith(normalized2)) {
     // path2 is parent of path1
-    const remainder = path1.slice(path2.length);
+    const remainder = normalized1.slice(normalized2.length);
     return remainder === '' || remainder.startsWith('/');
   }
 
-  if (path2.startsWith(path1)) {
+  if (normalized2.startsWith(normalized1)) {
     // path1 is parent of path2
-    const remainder = path2.slice(path1.length);
+    const remainder = normalized2.slice(normalized1.length);
     return remainder === '' || remainder.startsWith('/');
   }
 
