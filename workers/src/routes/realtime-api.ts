@@ -12,6 +12,7 @@
  * - POST /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/agent-edit-start - Start agent edit
  * - POST /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/agent-edit-complete - Complete agent edit
  * - POST /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/agent-edit-abort - Abort agent edit
+ * - POST /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/agent-stop - Stop agent (human-initiated)
  * - OPTIONS /api/sites/{siteId}/branches/{branchId}/documents/* - CORS preflight
  *
  * Phase 7.3: Agent Context Headers Integration
@@ -61,7 +62,7 @@ interface RouteParams {
   siteId: string;
   branchId: string;
   documentPath: string;
-  action?: 'edits' | 'connect' | 'can-agent-edit' | 'agent-edit-start' | 'agent-edit-complete' | 'agent-edit-abort' | 'focus-regions';
+  action?: 'edits' | 'connect' | 'can-agent-edit' | 'agent-edit-start' | 'agent-edit-complete' | 'agent-edit-abort' | 'agent-stop' | 'focus-regions';
 }
 
 /** Default allowed origins for development */
@@ -126,7 +127,7 @@ function validateParamLengths(params: RouteParams): string | null {
 function parseRoute(pathname: string): RouteParams | null {
   // Pattern: /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}[/action]
   // Actions: edits, connect, can-agent-edit, agent-edit-start, agent-edit-complete, agent-edit-abort, focus-regions
-  const actionPattern = 'edits|connect|can-agent-edit|agent-edit-start|agent-edit-complete|agent-edit-abort|focus-regions';
+  const actionPattern = 'edits|connect|can-agent-edit|agent-edit-start|agent-edit-complete|agent-edit-abort|agent-stop|focus-regions';
   const pattern = new RegExp(
     `^/api/sites/([^/]+)/branches/([^/]+)/documents/(.+?)(?:/(${actionPattern}))?$`,
   );
@@ -571,6 +572,67 @@ async function validateEditSessionBody(
 }
 
 /**
+ * Validate POST request body for /agent-stop endpoint (human-initiated stop)
+ * Returns parsed body or error response
+ */
+async function validateAgentStopBody(
+  request: Request,
+  origin: string | null,
+  allowedOrigins: string[],
+): Promise<{ agentId: string; reason?: string } | Response> {
+  // Check Content-Type
+  const contentType = request.headers.get('Content-Type');
+  const isJsonContentType = contentType?.includes('application/json') === true;
+  if (!isJsonContentType) {
+    return errorResponse(415, 'Content-Type must be application/json', origin, allowedOrigins);
+  }
+
+  // Parse JSON body
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse(400, 'Invalid JSON in request body', origin, allowedOrigins);
+  }
+
+  // Validate body structure
+  if (typeof body !== 'object' || body === null) {
+    return errorResponse(400, 'Request body must be an object', origin, allowedOrigins);
+  }
+
+  const bodyObj = body as Record<string, unknown>;
+
+  // Validate required fields
+  if (!('agentId' in bodyObj) || typeof bodyObj.agentId !== 'string' || bodyObj.agentId === '') {
+    return errorResponse(400, 'Missing or invalid required field: agentId', origin, allowedOrigins);
+  }
+
+  if (bodyObj.agentId.length > MAX_AGENT_ID_LENGTH) {
+    return errorResponse(
+      400,
+      `agentId must be 1-${String(MAX_AGENT_ID_LENGTH)} characters`,
+      origin,
+      allowedOrigins,
+    );
+  }
+
+  // Validate reason length if provided
+  if (typeof bodyObj.reason === 'string' && bodyObj.reason.length > MAX_REASON_LENGTH) {
+    return errorResponse(
+      400,
+      `reason must be at most ${String(MAX_REASON_LENGTH)} characters`,
+      origin,
+      allowedOrigins,
+    );
+  }
+
+  return {
+    agentId: bodyObj.agentId,
+    reason: typeof bodyObj.reason === 'string' ? bodyObj.reason : undefined,
+  };
+}
+
+/**
  * Validate POST request body for /focus-regions endpoint
  * Returns parsed body or error response
  */
@@ -852,6 +914,26 @@ export async function handleRealtimeRoutes(
     }
 
     targetEndpoint = '/agent-edit-abort';
+
+    // Forward with validated body and original headers
+    forwardedRequest = new Request(`http://internal${targetEndpoint}`, {
+      method: 'POST',
+      headers: request.headers,
+      body: JSON.stringify(bodyResult),
+    });
+  } else if (params.action === 'agent-stop') {
+    // Stop agent edit endpoint (human-initiated)
+    if (request.method !== 'POST') {
+      return errorResponse(405, 'Method not allowed. Use POST for agent-stop.', origin, allowedOrigins);
+    }
+
+    // Validate request body - requires agentId
+    const bodyResult = await validateAgentStopBody(request, origin, allowedOrigins);
+    if (bodyResult instanceof Response) {
+      return bodyResult;
+    }
+
+    targetEndpoint = '/agent-stop';
 
     // Forward with validated body and original headers
     forwardedRequest = new Request(`http://internal${targetEndpoint}`, {
