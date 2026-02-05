@@ -1003,6 +1003,24 @@ VITE_CSS_ENABLE_REALTIME=true
 VITE_CSS_WS_BASE_URL=ws://<SERVER>:<PORT>
 ```
 
+### Backend Site Roles Configuration
+
+When using JWT authentication with presence features, the CSS backend must have your site ID configured in the mock identity provider's `siteRoles`. Without this, presence and other authorization-protected endpoints will return 403 Forbidden.
+
+To configure:
+
+1. Edit `collaborative-state-system/workers/src/index.ts`
+2. Add your site ID to `DEFAULT_MOCK_CONFIG.users[].siteRoles` and `DEFAULT_MOCK_CONFIG.agents[].siteRoles`:
+   ```typescript
+   siteRoles: {
+     'your-site-uuid-here': 'admin',
+   }
+   ```
+3. Restart the CSS backend: `cd workers && pnpm dev`
+4. Log out and log back in to refresh your JWT token
+
+See the CSS backend README for more details on mock identity configuration.
+
 ## Development
 
 ### Prerequisites

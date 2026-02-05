@@ -14,6 +14,7 @@ import '@puckeditor/core/puck.css';
 import {
   CSSClient,
   Checkpoint,
+  ActorPresence,
 } from '@pantheon/css-client';
 
 import {
@@ -43,22 +44,61 @@ import { puckConfig } from './puck.config';
 const config = {
   baseUrl: import.meta.env.VITE_CSS_BASE_URL || 'http://localhost:8787',
   wsBaseUrl: import.meta.env.VITE_CSS_WS_BASE_URL || 'ws://localhost:8787',
-  apiKey: import.meta.env.VITE_CSS_API_KEY || '',
   siteId: import.meta.env.VITE_CSS_SITE_ID || '',
   branchId: import.meta.env.VITE_CSS_BRANCH_ID as string | undefined, // Optional - defaults to main
-  userId: import.meta.env.VITE_CSS_USER_ID || 'demo-user',
-  userName: import.meta.env.VITE_CSS_USER_NAME || 'Demo User',
   enableRealtime: import.meta.env.VITE_CSS_ENABLE_REALTIME !== 'false', // Default to true
   enablePresence: import.meta.env.VITE_CSS_ENABLE_PRESENCE !== 'false', // Default to true
 };
 
 // Demo users for testing presence
+// User IDs must be valid UUIDs matching the CSS backend user registry
 const DEMO_USERS = [
-  { id: 'alice', name: 'Alice Johnson' },
-  { id: 'bob', name: 'Bob Smith' },
-  { id: 'charlie', name: 'Charlie Brown' },
-  { id: 'diana', name: 'Diana Prince' },
+  { id: '11111111-1111-1111-1111-111111111111', name: 'Alice Developer' },
+  { id: '22222222-2222-2222-2222-222222222222', name: 'Bob Teammate' },
+  { id: '33333333-3333-3333-3333-333333333333', name: 'Carol Coder' },
 ];
+
+// Token storage key (matches CSS Admin frontend pattern)
+const TOKEN_KEY = 'css_auth_token';
+
+/**
+ * Get stored auth token
+ */
+function getStoredToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+/**
+ * Store auth token
+ */
+function setStoredToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+/**
+ * Clear stored token
+ */
+function clearStoredToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+/**
+ * Login as a user and get a JWT token from the CSS backend
+ */
+async function loginAsUser(userId: string): Promise<{ token: string; user: { id: string; name: string; email: string } }> {
+  const response = await fetch(`${config.baseUrl}/api/auth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Login failed' }));
+    throw new Error(error.error || 'Login failed');
+  }
+
+  return response.json();
+}
 
 /**
  * Generate a consistent hash from a string.
@@ -170,9 +210,7 @@ function ConfigWarning() {
       <p>Please set the following environment variables in your .env file:</p>
       <pre>
 {`VITE_CSS_BASE_URL=http://localhost:8787
-VITE_CSS_API_KEY=your-api-key-here
 VITE_CSS_SITE_ID=your-site-id
-VITE_CSS_USER_ID=demo-user-id
 
 # Optional - defaults to main branch if not set:
 # VITE_CSS_BRANCH_ID=your-branch-id`}
@@ -180,12 +218,6 @@ VITE_CSS_USER_ID=demo-user-id
     </div>
   );
 }
-
-// Create CSS client
-const cssClient = new CSSClient({
-  baseUrl: config.baseUrl,
-  apiKey: config.apiKey,
-});
 
 /**
  * Main Application Content
@@ -393,6 +425,36 @@ function AppContent() {
     alert(`Publish failed: ${err.message}`);
   }, []);
 
+  // Handle stop agent - called when user clicks "Stop Agent" button
+  const handleStopAgent = useCallback(async (agent: ActorPresence) => {
+    if (!currentDocument?.path) {
+      console.error('[StopAgent] No document path available');
+      return;
+    }
+
+    try {
+      console.log(`[StopAgent] Stopping agent ${agent.name} (${agent.actorId})`);
+      const result = await client.agentEdit.stopAgent(
+        siteId,
+        branchId,
+        currentDocument.path,
+        agent.actorId
+      );
+
+      if (result.success) {
+        if (result.rolledBack) {
+          console.log(`[StopAgent] Agent stopped and changes rolled back`);
+        } else {
+          console.log(`[StopAgent] Agent stopped: ${result.message ?? 'No active session'}`);
+        }
+      } else {
+        console.error('[StopAgent] Failed to stop agent');
+      }
+    } catch (err) {
+      console.error('[StopAgent] Error stopping agent:', err);
+    }
+  }, [client, siteId, branchId, currentDocument?.path]);
+
   // Handle version selection - loads the selected version into the editor
   const handleVersionSelect = useCallback((version: DocumentVersion) => {
     // Check if this is the latest version (first in the sorted list)
@@ -495,7 +557,8 @@ function AppContent() {
     showAgentActivityBanner: !!presence?.hasActiveAgents,
     activeAgents: presence?.agents ?? [],
     isAgentEditing: presence?.hasActiveAgents ?? false,
-  }), [getSaveStatus, getLastSaved, getSaveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError, pauseAutoSave, isViewingHistoricalVersion, viewingVersion, returnToLatest, presence]);
+    onStopAgent: handleStopAgent,
+  }), [getSaveStatus, getLastSaved, getSaveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError, pauseAutoSave, isViewingHistoricalVersion, viewingVersion, returnToLatest, presence, handleStopAgent]);
 
   // Loading state
   if (loading) {
@@ -570,20 +633,82 @@ export function App() {
     name: DEMO_USERS[0].name,
   });
 
-  // Handle user change - this will remount the provider with new user
+  // Auth state
+  const [authToken, setAuthToken] = useState<string | null>(getStoredToken());
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+
+  // Login function - gets JWT token from backend
+  const performLogin = useCallback(async (userId: string) => {
+    setIsLoggingIn(true);
+    setLoginError(null);
+
+    try {
+      const response = await loginAsUser(userId);
+      setStoredToken(response.token);
+      setAuthToken(response.token);
+    } catch (err) {
+      setLoginError(err instanceof Error ? err.message : 'Login failed');
+      clearStoredToken();
+      setAuthToken(null);
+    } finally {
+      setIsLoggingIn(false);
+    }
+  }, []);
+
+  // Login on mount if no token, or when user changes
+  useEffect(() => {
+    // Always login as the current user to get a fresh token
+    void performLogin(currentUser.id);
+  }, [currentUser.id, performLogin]);
+
+  // Handle user change - this will trigger re-login via useEffect
   const handleUserChange = useCallback((userId: string, userName: string) => {
+    // Clear old token first
+    clearStoredToken();
+    setAuthToken(null);
     setCurrentUser({ id: userId, name: userName });
   }, []);
 
+  // Create CSS client with JWT auth provider
+  // Recreates when token changes
+  const cssClient = useMemo(() => {
+    if (!authToken) return null;
+
+    return new CSSClient({
+      baseUrl: config.baseUrl,
+      authProvider: async () => `Bearer ${authToken}`,
+    });
+  }, [authToken]);
+
   // Check for required configuration (branchId is optional - defaults to main)
-  if (!config.apiKey || !config.siteId) {
+  if (!config.siteId) {
     return <ConfigWarning />;
+  }
+
+  // Show loading during login
+  if (isLoggingIn) {
+    return (
+      <div className="app app--fullscreen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div>Logging in as {currentUser.name}...</div>
+      </div>
+    );
+  }
+
+  // Show error if login failed
+  if (loginError || !cssClient) {
+    return (
+      <div className="app app--fullscreen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ color: 'red' }}>Login failed: {loginError || 'No auth token'}</div>
+        <button onClick={() => void performLogin(currentUser.id)}>Retry</button>
+      </div>
+    );
   }
 
   return (
     <>
       <CSSPuckProvider
-        key={currentUser.id} // Force remount on user change to reset connections
+        key={`${currentUser.id}-${authToken}`} // Force remount on user/token change to reset connections
         client={cssClient}
         siteId={config.siteId}
         branchId={config.branchId}
@@ -593,8 +718,9 @@ export function App() {
         maxRetries={3}
         enableRealtime={config.enableRealtime}
         wsBaseUrl={config.wsBaseUrl}
-        realtimeApiKey={config.apiKey}
+        realtimeApiKey={authToken ?? undefined}
         presenceEnabled={config.enablePresence}
+        userNameResolver={(id) => DEMO_USERS.find(u => u.id === id)?.name}
       >
         <AppContent />
       </CSSPuckProvider>

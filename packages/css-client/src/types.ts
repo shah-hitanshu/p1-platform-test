@@ -461,6 +461,16 @@ export interface AgentEditAbortResult {
   checkpointId?: string;
 }
 
+/**
+ * Result of stopping an agent (human-initiated).
+ * Server looks up the agent's session and performs rollback if needed.
+ */
+export interface AgentStopResult {
+  success: boolean;
+  rolledBack: boolean;
+  message?: string;
+}
+
 // =============================================================================
 // Focus Region Types
 // =============================================================================

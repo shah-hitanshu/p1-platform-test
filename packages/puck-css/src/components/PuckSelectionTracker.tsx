@@ -24,20 +24,32 @@ export interface PuckSelectionTrackerProps {
 }
 
 /**
- * Convert Puck's zone/index selector to a JSON path.
+ * Convert Puck's zone/index selector to a JSON path that matches
+ * the document structure.
  *
- * Puck uses format: { zone: "content" | "zones:Header:left", index: 0 }
- * We convert to: "/content/0" or "/zones/Header/left/0"
+ * Puck's itemSelector format:
+ * - Root zone: { zone: "root:default-zone", index: N } → data.content[N]
+ * - Nested zone: { zone: "{componentId}:{zoneName}", index: M } → data.zones[...][M]
+ *
+ * We convert to document paths that the backend can use for conflict detection:
+ * - Root zone → "/content/{index}"
+ * - Nested zone → "/zones/{componentId}:{zoneName}/{index}"
  */
 function selectorToPath(zone: string, index: number): string {
-  // Handle zone format: "content" or "zones:Parent:zone"
+  // Root zone: "root:default-zone" maps to data.content array
+  if (zone === 'root:default-zone') {
+    return `/content/${index}`;
+  }
+
+  // Legacy format: "content" also maps to data.content array
   if (zone === 'content') {
     return `/content/${index}`;
   }
 
-  // Convert "zones:Header:left" to "/zones/Header/left/index"
-  const parts = zone.split(':');
-  return `/${parts.join('/')}/${index}`;
+  // Nested zones: "{componentId}:{zoneName}" format
+  // These map to data.zones["{componentId}:{zoneName}"]
+  // We preserve the zone compound as-is for conflict detection
+  return `/zones/${zone}/${index}`;
 }
 
 /**

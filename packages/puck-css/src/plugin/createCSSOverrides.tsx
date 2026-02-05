@@ -109,6 +109,8 @@ export interface CSSOverridesOptions {
   activeAgents?: ActorPresence[];
   /** Whether any agent is currently editing */
   isAgentEditing?: boolean;
+  /** Callback when stop agent button is clicked */
+  onStopAgent?: (agent: ActorPresence) => void;
 }
 
 /**
@@ -192,6 +194,7 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
     showAgentActivityBanner = false,
     activeAgents = [],
     isAgentEditing = false,
+    onStopAgent,
   } = options;
 
   // Suppress unused variable warnings for deprecated props
@@ -227,7 +230,7 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
             instead, which renders inside Puck's context. */}
         {/* Agent Activity Banner - shown when agent is editing */}
         {showAgentActivityBanner && isAgentEditing && firstActiveAgent && (
-          <AgentActivityBanner agent={firstActiveAgent} showIdle />
+          <AgentActivityBanner agent={firstActiveAgent} showIdle onStopAgent={onStopAgent} />
         )}
         {/* Collaborator Avatars */}
         {showCollaboratorAvatars && presence.length > 0 && (

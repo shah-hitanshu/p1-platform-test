@@ -220,4 +220,17 @@ describe('createCSSOverrides with presence/agent features', () => {
     });
     expect(overrides).toBeDefined();
   });
+
+  it('should accept onStopAgent callback option', () => {
+    const handleStopAgent = vi.fn();
+    const overrides = createCSSOverrides({
+      ...baseOptions,
+      showAgentActivityBanner: true,
+      activeAgents: [mockAgentPresence],
+      isAgentEditing: true,
+      onStopAgent: handleStopAgent,
+    });
+    expect(overrides).toBeDefined();
+    expect(overrides.headerActions).toBeDefined();
+  });
 });

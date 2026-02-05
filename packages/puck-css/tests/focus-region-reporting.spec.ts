@@ -758,7 +758,7 @@ describe('PuckSelectionTracker', () => {
 
     render(React.createElement(PuckSelectionTracker, { onSelectionChange }));
 
-    expect(onSelectionChange).toHaveBeenCalledWith('/zones/Header/left/2', 'btn-1');
+    expect(onSelectionChange).toHaveBeenCalledWith('/zones/zones:Header:left/2', 'btn-1');
   });
 
   it('should handle root content zone', () => {

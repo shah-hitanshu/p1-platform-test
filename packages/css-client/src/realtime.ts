@@ -184,6 +184,7 @@ export class RealtimeClient {
   private hasConnectedOnce = false;
   private lastReportedRetryCount = 0;
   private reconnectCheckInterval: ReturnType<typeof setInterval> | null = null;
+  private visibilityHandler: (() => void) | null = null;
 
   constructor(config: RealtimeClientConfig) {
     this.config = config;
@@ -262,10 +263,23 @@ export class RealtimeClient {
     // Start monitoring for reconnection attempts
     this.startReconnectMonitoring();
 
+    // Start visibility change monitoring to handle tab backgrounding
+    this.startVisibilityMonitoring();
+
     this.ws.addEventListener('open', () => {
       /* TODO: Remove console.log */
       console.log('[Realtime] WebSocket connected');
       this.connected = true;
+
+      // On reconnect, send local state to ensure bidirectional sync.
+      // This ensures any edits made while disconnected are sent to the server,
+      // where Yjs will merge them with the server's state and broadcast to other clients.
+      if (this.hasConnectedOnce && this.ws) {
+        const localState = Y.encodeStateAsUpdate(this.ydoc);
+        console.log('[Realtime] Reconnect detected, sending local state, size:', localState.length);
+        this.ws.send(localState);
+      }
+
       this.hasConnectedOnce = true;
       this.lastReportedRetryCount = 0;
       this.config.onConnect?.();
@@ -372,6 +386,45 @@ export class RealtimeClient {
   }
 
   /**
+   * Start monitoring for page visibility changes.
+   * When the page becomes visible after being hidden, check connection health
+   * and force a reconnection sync if needed.
+   */
+  private startVisibilityMonitoring(): void {
+    this.stopVisibilityMonitoring();
+
+    // Only set up if document is available (browser environment)
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    this.visibilityHandler = () => {
+      if (document.visibilityState === 'visible' && !this.intentionalDisconnect && this.ws) {
+        console.log('[Realtime] Page became visible, forcing reconnection to ensure fresh connection');
+
+        // Force a reconnection by calling reconnect() on PartySocket.
+        // This ensures we get a fresh connection even if the old one appears open
+        // but is actually stale (server closed it while tab was backgrounded).
+        // PartySocket's reconnect() will close the current connection and open a new one.
+        // The 'open' event handler will then send local state for bidirectional sync.
+        this.ws.reconnect();
+      }
+    };
+
+    document.addEventListener('visibilitychange', this.visibilityHandler);
+  }
+
+  /**
+   * Stop visibility change monitoring.
+   */
+  private stopVisibilityMonitoring(): void {
+    if (this.visibilityHandler && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.visibilityHandler);
+      this.visibilityHandler = null;
+    }
+  }
+
+  /**
    * Disconnect from the current session.
    * This permanently closes the connection and stops any reconnection attempts.
    */
@@ -379,6 +432,7 @@ export class RealtimeClient {
     if (this.ws) {
       this.intentionalDisconnect = true;
       this.stopReconnectMonitoring();
+      this.stopVisibilityMonitoring();
       this.ws.close();
       this.ws = null;
       this.connected = false;
@@ -434,7 +488,9 @@ export class RealtimeClient {
    * @returns true if message was sent, false if not connected
    */
   sendFocusRegions(focusRegions: string[]): boolean {
+    console.log('[Realtime] sendFocusRegions called:', focusRegions, 'ws:', !!this.ws, 'readyState:', this.ws?.readyState);
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.log('[Realtime] Cannot send focus regions - WebSocket not ready');
       return false;
     }
 
@@ -444,6 +500,7 @@ export class RealtimeClient {
       timestamp: Date.now(),
     };
 
+    console.log('[Realtime] Sending focus_region_update:', JSON.stringify(message));
     this.ws.send(JSON.stringify(message));
     return true;
   }

@@ -105,6 +105,14 @@ export interface CSSPuckConfig {
    */
   userAvatar?: string;
 
+  /**
+   * Resolver function to get display names for actors by their ID.
+   * Used to display user names in presence indicators when the backend only provides UUIDs.
+   * @param actorId - The actor's UUID
+   * @returns The display name, or undefined to use the default (actorId)
+   */
+  userNameResolver?: (actorId: string) => string | undefined;
+
   // =========================================================================
   // Agent Mode Props (Phase 9)
   // =========================================================================

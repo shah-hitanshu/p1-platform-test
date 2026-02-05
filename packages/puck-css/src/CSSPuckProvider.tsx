@@ -95,6 +95,7 @@ function CSSPuckProviderInner({
   presencePollingInterval = 5000,
   userName: _userName,
   userAvatar: _userAvatar,
+  userNameResolver,
   // Phase 9: Agent mode props
   agentModeEnabled = false,
   agentId,
@@ -173,6 +174,15 @@ function CSSPuckProviderInner({
   const [wsPresenceActors, setWsPresenceActors] = useState<ActorPresence[]>([]);
   const wsPresenceActiveRef = useRef(false);
 
+  // Helper to enrich actors with display names from the resolver
+  const enrichActorsWithNames = useCallback((actors: ActorPresence[]): ActorPresence[] => {
+    if (!userNameResolver) return actors;
+    return actors.map((actor) => {
+      const resolvedName = userNameResolver(actor.actorId);
+      return resolvedName ? { ...actor, name: resolvedName } : actor;
+    });
+  }, [userNameResolver]);
+
   // Real-time collaboration hook
   const realtime = useRealtime({
     baseUrl: wsBaseUrl ?? '',
@@ -187,9 +197,10 @@ function CSSPuckProviderInner({
     onPresenceUpdate: (actors) => {
       // Mark WebSocket presence as active
       wsPresenceActiveRef.current = true;
-      // Filter out self and update state
+      // Filter out self, enrich with names, and update state
       const filtered = actors.filter((a) => a.actorId !== userId);
-      setWsPresenceActors(filtered);
+      const enriched = enrichActorsWithNames(filtered);
+      setWsPresenceActors(enriched);
     },
     onFocusRegionBroadcast: (actorId, focusRegions) => {
       // Update focus regions for the specific actor
@@ -601,27 +612,28 @@ function CSSPuckProviderInner({
     try {
       const branchPresence = await userClient.presence.getBranchPresence(siteId, branchId);
 
-      // Filter out self
+      // Filter out self and enrich with names
       const filteredActors = branchPresence.actors.filter(
         (actor) => actor.actorId !== userId
       );
+      const enrichedActors = enrichActorsWithNames(filteredActors);
 
-      setPresenceActors(filteredActors);
+      setPresenceActors(enrichedActors);
 
       // Call onPresenceChange if actors changed
       if (onPresenceChange) {
         const actorsChanged =
-          JSON.stringify(filteredActors.map((a) => a.id).sort()) !==
+          JSON.stringify(enrichedActors.map((a) => a.id).sort()) !==
           JSON.stringify(prevActorsRef.current.map((a) => a.id).sort());
         if (actorsChanged) {
-          onPresenceChange(filteredActors);
-          prevActorsRef.current = filteredActors;
+          onPresenceChange(enrichedActors);
+          prevActorsRef.current = enrichedActors;
         }
       }
     } catch (error) {
       console.error('Failed to fetch presence:', error);
     }
-  }, [presenceEnabled, branchId, siteId, userId, userClient, onPresenceChange]);
+  }, [presenceEnabled, branchId, siteId, userId, userClient, onPresenceChange, enrichActorsWithNames]);
 
   // Keep fetchPresence in a ref to avoid restarting the interval when callback changes
   const fetchPresenceRef = useRef(fetchPresence);

@@ -31,11 +31,17 @@ interface PuckRootData {
 const LOCAL_ORIGIN = 'local';
 
 /**
- * Flag to track if we're currently applying a local change.
- * Used to prevent the observer from firing during local changes,
- * even if there are edge cases with transaction origins.
+ * Binding state interface - encapsulates instance-specific state
+ * to prevent interference between multiple binding instances.
  */
-let isApplyingLocalChange = false;
+interface BindingState {
+  /**
+   * Flag to track if we're currently applying a local change.
+   * Used to prevent the observer from firing during local changes,
+   * even if there are edge cases with transaction origins.
+   */
+  isApplyingLocalChange: boolean;
+}
 
 /**
  * Convert a Puck data structure to a Yjs Y.Map.
@@ -126,14 +132,21 @@ export function createPuckYjsBinding(
 ): { applyLocalChange: (data: PuckData) => void; destroy: () => void } {
   const root = ydoc.getMap('root');
 
+  // Instance-specific state to prevent interference between multiple bindings
+  // Previously this was a module-level variable which caused race conditions
+  // when multiple binding instances existed in the same browser window
+  const bindingState: BindingState = {
+    isApplyingLocalChange: false,
+  };
+
   // Observer for remote changes
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const observer = (_events: any[], txn: Y.Transaction): void => {
-    console.log('[puckYjsBinding] Observer called, origin:', txn.origin, 'isApplyingLocalChange:', isApplyingLocalChange);
+    console.log('[puckYjsBinding] Observer called, origin:', txn.origin, 'isApplyingLocalChange:', bindingState.isApplyingLocalChange);
 
     // Double-check: skip if we're in the middle of applying a local change
     // This handles any edge cases where transaction origin might not be set correctly
-    if (isApplyingLocalChange) {
+    if (bindingState.isApplyingLocalChange) {
       console.log('[puckYjsBinding] Ignoring change - local change in progress (flag)');
       return;
     }
@@ -160,11 +173,11 @@ export function createPuckYjsBinding(
      * Also sets isApplyingLocalChange flag as a backup mechanism.
      */
     applyLocalChange: (data: PuckData) => {
-      isApplyingLocalChange = true;
+      bindingState.isApplyingLocalChange = true;
       try {
         puckDataToYMap(data, root);
       } finally {
-        isApplyingLocalChange = false;
+        bindingState.isApplyingLocalChange = false;
       }
     },
 

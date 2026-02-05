@@ -682,6 +682,107 @@ describe('Agent Politeness Endpoints', () => {
         );
       });
     });
+
+    describe('stopAgent', () => {
+      it('should stop an agent and rollback changes', async () => {
+        const mockResponse = {
+          success: true,
+          rolledBack: true,
+        };
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => mockResponse,
+        });
+
+        const client = new CSSClient({ baseUrl, apiKey });
+        const result = await client.agentEdit.stopAgent(
+          'site-1',
+          'branch-1',
+          '/home',
+          'agent-1'
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.rolledBack).toBe(true);
+        expect(mockFetch).toHaveBeenCalledWith(
+          `${baseUrl}/api/sites/site-1/branches/branch-1/documents/%2Fhome/agent-stop`,
+          expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({ agentId: 'agent-1' }),
+          })
+        );
+      });
+
+      it('should return success without rollback when agent has no active session', async () => {
+        const mockResponse = {
+          success: true,
+          rolledBack: false,
+          message: 'No active session for agent',
+        };
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => mockResponse,
+        });
+
+        const client = new CSSClient({ baseUrl, apiKey });
+        const result = await client.agentEdit.stopAgent(
+          'site-1',
+          'branch-1',
+          '/home',
+          'agent-1'
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.rolledBack).toBe(false);
+        expect(result.message).toBe('No active session for agent');
+      });
+
+      it('should handle document paths with special characters', async () => {
+        const mockResponse = {
+          success: true,
+          rolledBack: true,
+        };
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => mockResponse,
+        });
+
+        const client = new CSSClient({ baseUrl, apiKey });
+        await client.agentEdit.stopAgent(
+          'site-1',
+          'branch-1',
+          '/pages/about-us',
+          'agent-1'
+        );
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          `${baseUrl}/api/sites/site-1/branches/branch-1/documents/%2Fpages%2Fabout-us/agent-stop`,
+          expect.objectContaining({
+            method: 'POST',
+          })
+        );
+      });
+
+      it('should throw error when server returns failure', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          json: async () => ({ error: 'Internal server error' }),
+        });
+
+        const client = new CSSClient({ baseUrl, apiKey });
+
+        await expect(
+          client.agentEdit.stopAgent('site-1', 'branch-1', '/home', 'agent-1')
+        ).rejects.toThrow();
+      });
+    });
   });
 
   // ===========================================================================
@@ -715,6 +816,7 @@ describe('Agent Politeness Endpoints', () => {
       expect(typeof client.agentEdit.startEdit).toBe('function');
       expect(typeof client.agentEdit.completeEdit).toBe('function');
       expect(typeof client.agentEdit.abortEdit).toBe('function');
+      expect(typeof client.agentEdit.stopAgent).toBe('function');
     });
 
     it('should pass principal to new endpoints', async () => {

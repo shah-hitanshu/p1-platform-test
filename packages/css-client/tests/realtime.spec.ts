@@ -719,5 +719,82 @@ describe('Phase 2.1: RealtimeClient', () => {
 
       client.disconnect();
     });
+
+    it('should send local state to server on reconnect for bidirectional sync', async () => {
+      vi.useFakeTimers();
+      const { RealtimeClient } = await import('../src/realtime.js');
+      const Y = await import('yjs');
+
+      const client = new RealtimeClient({
+        baseUrl: 'ws://localhost:8787',
+      });
+
+      client.connect({
+        siteId: 'site-123',
+        branchId: 'branch-456',
+        documentPath: 'pages/home',
+        actorId: 'user-789',
+        actorType: 'user',
+      });
+
+      // Initial connection
+      await vi.advanceTimersByTimeAsync(10);
+      expect(client.isConnected()).toBe(true);
+
+      // Record send calls after initial connection
+      const initialSendCount = mockWSInstances[0].send.mock.calls.length;
+
+      // Make a local edit to the Y.Doc (simulating offline edit)
+      const ydoc = client.getYDoc();
+      const root = ydoc.getMap('root');
+      root.set('offlineEdit', 'made while disconnected');
+
+      // Simulate reconnection (connection drops and reopens)
+      mockWSInstances[0].simulateOpen();
+
+      // Check that local state was sent on reconnect
+      expect(mockWSInstances[0].send.mock.calls.length).toBeGreaterThan(initialSendCount);
+
+      // Verify the sent data is a valid Yjs update containing our edit
+      const lastSendCall = mockWSInstances[0].send.mock.calls[mockWSInstances[0].send.mock.calls.length - 1];
+      const sentData = lastSendCall[0] as Uint8Array;
+
+      // Apply the sent update to a new doc to verify it contains our edit
+      const verifyDoc = new Y.Doc();
+      Y.applyUpdate(verifyDoc, sentData);
+      const verifyRoot = verifyDoc.getMap('root');
+      expect(verifyRoot.get('offlineEdit')).toBe('made while disconnected');
+
+      client.disconnect();
+    });
+
+    it('should not send local state on initial connection (only on reconnect)', async () => {
+      vi.useFakeTimers();
+      const { RealtimeClient } = await import('../src/realtime.js');
+
+      const client = new RealtimeClient({
+        baseUrl: 'ws://localhost:8787',
+      });
+
+      client.connect({
+        siteId: 'site-123',
+        branchId: 'branch-456',
+        documentPath: 'pages/home',
+        actorId: 'user-789',
+        actorType: 'user',
+      });
+
+      // Wait for initial connection
+      await vi.advanceTimersByTimeAsync(10);
+      expect(client.isConnected()).toBe(true);
+
+      // On initial connection, no state should be sent (doc is empty anyway,
+      // and we want to receive server state first)
+      // The only send calls should be from explicit user actions, not from
+      // the connection handler
+      expect(mockWSInstances[0].send).not.toHaveBeenCalled();
+
+      client.disconnect();
+    });
   });
 });

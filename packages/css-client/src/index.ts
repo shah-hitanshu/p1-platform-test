@@ -59,6 +59,7 @@ export type {
   AgentEditSession,
   AgentEditCompleteResult,
   AgentEditAbortResult,
+  AgentStopResult,
   // Focus region types
   UpdateFocusRegionsResponse,
 } from './types.js';

@@ -771,6 +771,163 @@ All phases completed across both repositories:
      - "passive viewer should receive complete text without truncation" - Verifies full sync to viewer
    - All 507 unit tests + 15 E2E tests passing
 
+5. **Agent Activity Banner Not Displaying** (2026-01-30)
+   - **Problem**: The AgentActivityBanner was not displaying when agents made edits
+   - **Root cause**: Server-side bug in `collaborative-state-system`
+     - When agents called `/agent-edit-start`, they were registered with `state: 'active'` instead of `state: 'editing'`
+     - Client filters for `hasActiveAgents` using `state === 'active' || state === 'editing'`
+     - Client only shows banner when `isAgentEditing` is true (agents in 'editing' state)
+     - Additionally, no `presence_update` was broadcast to WebSocket clients when agents started editing
+   - **Solution** (commit `11d1dab` in collaborative-state-system):
+     - Added optional `state` parameter to `PresenceManager.register()` in `presence-service.ts`
+     - Updated `handleAgentEditStart` to pass `state: 'editing'` and `intent` when registering agents
+     - Added `broadcastPresenceUpdate()` calls after agent-edit-start, complete, abort, and kick operations
+     - All WebSocket clients now receive instant presence updates when agents start/stop editing
+   - **Files modified (server)**:
+     - `workers/src/services/presence-service.ts` - Added state parameter to register
+     - `workers/src/durable-objects/document-session.ts` - Set editing state and broadcast updates
+   - **Tests**: All 42 presence service tests + 35 agent politeness tests + 18 WS presence tests passing
+
+### Agent Activity Region Highlighting Verification (2026-01-30) ✅
+
+**Feature:** Show visual highlights on document regions where agents are actively editing, using the same highlighting system as human focus regions.
+
+**Verification Summary:**
+
+The feature was already fully implemented. Verification confirmed the complete flow:
+
+**MCP → Server Flow:**
+1. ✅ MCP tool `start_edit_session` receives `target_regions` from Claude
+2. ✅ API client sends `X-Agent-Target-Regions` header (`api-client.ts:238`)
+3. ✅ Server parses header into `targetRegions`
+4. ✅ Server calls `presenceManager.register({ focusRegions: targetRegions })` (`document-session.ts:2367`)
+5. ✅ Server broadcasts `presence_update` to WebSocket clients (`document-session.ts:2372`)
+
+**Client Display Flow:**
+1. ✅ Client receives `presence_update` with agent's `focusRegions`
+2. ✅ Demo app creates `focusMap` from all actors including agents (`App.tsx:286-287`)
+3. ✅ `createFocusHighlightConfig` wraps Puck components with highlights
+4. ✅ Agent's focused regions highlighted with consistent hash-based color
+
+**Test Coverage:**
+- 30 focusRegionMap tests (including agent actor `agent-optimizer`)
+- 12 focusHighlightConfig tests
+- All 618 unit tests passing
+
+**Design Decision:** Agents use the same hash-based color scheme as humans (no visual differentiation) per user preference.
+
+**E2E Tests Added (commit `TBD`):**
+- Created `e2e/agent-highlighting.spec.ts` with 8 comprehensive tests:
+  1. Agent presence should be registered when starting edit session
+  2. Agent highlight should appear in human user browser
+  3. Agent highlight should disappear when agent completes editing
+  4. Multiple region highlights should appear for multi-region agent edit
+  5. Agent highlight should have consistent hash-based color
+  6. Debug: verify human and agent highlights work the same
+  7. Debug: check presence API response
+  8. Debug: check WebSocket presence broadcast
+- Uses two test agents to avoid session conflicts:
+  - Primary: `a0000000-0000-0000-0000-000000000001` (Zappy AI Assistant)
+  - Secondary: `a0000000-0000-0000-0000-000000000002` (Helper Bot)
+- Tests verify:
+  - Agent starts edit session via `/agent-edit-start` API
+  - Agent appears in branch presence with correct `focusRegions` and `state: 'editing'`
+  - Focus highlight appears inside Puck iframe with `data-actor-id` attribute
+  - `AgentActivityBanner` appears in main page
+  - Highlight uses hash-based color matching avatar system
+
+---
+
+### Presence User Name Resolution (2026-02-03) ✅
+
+**Problem:** Presence indicators (avatars, activity banners) showed the first character of user UUIDs instead of user names, since the backend only stores and returns actor UUIDs.
+
+**Solution:** Added `userNameResolver` prop to allow frontend-side name resolution.
+
+**Implementation:**
+
+1. **Types** (`types.ts`):
+   - Added `userNameResolver?: (actorId: string) => string | undefined` to `CSSPuckConfig`
+   - Called with actor's UUID, returns display name or undefined to use default
+
+2. **Provider** (`CSSPuckProvider.tsx`):
+   - Added `enrichActorsWithNames` helper function
+   - Applied to both WebSocket presence updates and HTTP polling responses
+   - Enriched actors have `name` property set from resolver
+
+3. **Demo App** (`App.tsx`):
+   - Added resolver that looks up names from `DEMO_USERS` array:
+     ```typescript
+     userNameResolver={(id) => DEMO_USERS.find(u => u.id === id)?.name}
+     ```
+
+**Design Decision:** Keep UUID-only transport at the API level; name resolution is a UI concern handled at the integration layer.
+
+---
+
+### Stop Agent Feature (2026-02-04) ✅
+
+**Feature:** Allow human users to stop an agent's current edit session, rolling back any changes the agent made since starting the session.
+
+**Status:** Complete (frontend + backend)
+
+**Implementation:**
+
+1. **css-client** (commits `4662ef7` tests, `38b829b` impl):
+   - Added `AgentStopResult` type: `{ success: boolean, rolledBack: boolean, message?: string }`
+   - Added `stopAgent(siteId, branchId, documentPath, agentId)` method to `AgentEditEndpoint`
+   - Calls `POST /api/sites/{siteId}/branches/{branchId}/documents/{path}/agent-stop`
+
+2. **puck-css** (commits `ad44268` tests, `8b82ae0` impl):
+   - Added `onStopAgent?: (agent: ActorPresence) => void` to `CSSOverridesOptions`
+   - Wired callback through to `AgentActivityBanner` component
+   - Button already existed in component; now receives the callback
+
+3. **demo app** (commit `13bcd8e`):
+   - Added `handleStopAgent` callback in `AppContent`
+   - Calls `client.agentEdit.stopAgent()` when user clicks "Stop Agent" button
+   - Logs result to console
+
+4. **Backend** (collaborative-state-system):
+   - **DocumentSession DO** (`document-session.ts`):
+     - Added `/agent-stop` route handler
+     - Added `handleAgentStop()` method that finds session by agentId and rolls back
+   - **Worker Router** (`index.ts`):
+     - Added `agent-stop` to `realtimeActions` regex pattern
+   - **Realtime API Routes** (`realtime-api.ts`) - Bug fix 2026-02-04:
+     - Added `agent-stop` to `actionPattern` string (was missing, causing 405 errors)
+     - Added `agent-stop` to `RouteParams.action` type
+     - Added `validateAgentStopBody()` validation function
+     - Added handler for `params.action === 'agent-stop'`
+
+**Endpoint:**
+
+```
+POST /api/sites/{siteId}/branches/{branchId}/documents/{path}/agent-stop
+Body: { agentId: string, reason?: string }
+Response: { success: boolean, rolledBack: boolean, message?: string }
+```
+
+Server logic:
+1. Look up agent's active session by `agentId`
+2. If no session: return `{ success: true, rolledBack: false, message: "No active session" }`
+3. If session exists:
+   - Retrieve stored `checkpointId`
+   - Roll back document to checkpoint
+   - Clear agent's session and presence
+   - Broadcast presence update
+   - Return `{ success: true, rolledBack: true }`
+
+**Tests:**
+- 5 new tests in `agent-politeness.spec.ts` for `stopAgent` method (all passing)
+- 1 new test in `plugin-integration.spec.tsx` for `onStopAgent` option
+- 5 new E2E tests in `e2e/agent-highlighting.spec.ts` - "Stop Agent Feature" describe block:
+  - `Stop Agent button appears when agent is editing`
+  - `clicking Stop Agent button removes agent banner and stops session`
+  - `Stop Agent API returns success with rolledBack=true for active session`
+  - `Stop Agent API returns success with rolledBack=false when no active session`
+  - `agent highlight disappears after Stop Agent`
+
 ---
 
 ## Test Summary
@@ -779,8 +936,10 @@ All phases completed across both repositories:
 |---------|-------|--------|
 | @pantheon/css-client | 111 | ✅ Passing |
 | @pantheon/puck-css | 507 | ✅ Passing |
-| E2E (Playwright) | 15 | ✅ Passing |
-| **Total** | **633** | ✅ **All Passing** |
+| E2E (Playwright) | 23 | ✅ Passing |
+| **Total** | **641** | ✅ **All Passing** |
+
+*E2E test breakdown: 15 existing + 8 agent-highlighting tests*
 
 ### Test Coverage (2026-01-25)
 
