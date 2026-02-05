@@ -32,7 +32,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pantheon/css-client": "^0.1.0",
+    "@pantheon/css-client": "workspace:*",
     "yjs": "^13.6.0"
   },
   "devDependencies": {
