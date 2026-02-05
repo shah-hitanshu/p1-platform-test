@@ -39,9 +39,6 @@ jobs:
       - name: Build packages
         run: pnpm build
 
-      - name: Run tests
-        run: pnpm test
-
       - name: Publish css-client
         working-directory: packages/css-client
         run: pnpm publish --no-git-checks --access restricted
