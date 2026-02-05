@@ -1,6 +1,6 @@
 {
   "name": "@pantheon/puck-css",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Puck editor integration with Collaborative State System",
   "repository": {
     "type": "git",
@@ -32,7 +32,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pantheon/css-client": "^0.0.1",
+    "@pantheon/css-client": "^0.1.0",
     "yjs": "^13.6.0"
   },
   "devDependencies": {
