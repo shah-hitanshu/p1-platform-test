@@ -146,10 +146,27 @@ export interface DocumentDiff {
   diffOperations: DiffOperation[];
 }
 
+/**
+ * A document that was modified on a branch since the merge base.
+ */
+export interface ModifiedDocument {
+  documentId: string;
+  documentPath: string;
+  latestVersionId: string | null;
+  latestVersionNumber: number | null;
+  baseVersionId: string | null;
+  baseVersionNumber: number | null;
+  isDeleted?: boolean;
+}
+
 export interface MergePreview {
   canMerge: boolean;
   hasConflicts: boolean;
   conflicts: ConflictDetails;
+  /** Documents modified on the source branch since the merge base. */
+  sourceChanges?: ModifiedDocument[];
+  /** Documents modified on the target branch since the merge base. */
+  targetChanges?: ModifiedDocument[];
   /** Document diffs with snapshots and operations. Only included when includeContent=true. */
   documentDiffs?: DocumentDiff[];
 }

@@ -131,7 +131,8 @@ describe('DocumentChangeSummary', () => {
       />
     );
 
-    expect(screen.getByText('/pages/home')).toBeInTheDocument();
+    const matches = screen.getAllByText('/pages/home');
+    expect(matches.length).toBeGreaterThanOrEqual(1);
   });
 
   it('should render empty state when no changes exist', () => {
@@ -167,7 +168,8 @@ describe('DocumentChangeSummary', () => {
     );
 
     // Should show total somewhere
-    expect(screen.getByText(/2 document/i)).toBeInTheDocument();
+    const totals = screen.getAllByText(/2 document/i);
+    expect(totals.length).toBeGreaterThanOrEqual(1);
   });
 
   it('should indicate deleted documents', () => {

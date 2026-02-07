@@ -10,7 +10,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   categorizeChanges,
-  type DocumentChangeSummaryResult,
 } from '../../components/document-change-summary/categorizeChanges';
 import type { ModifiedDocument, DocumentConflict } from '../../types';
 
