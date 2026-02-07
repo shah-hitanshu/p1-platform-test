@@ -340,11 +340,11 @@ Branch Lineage:
 
 ### Decision 7: PostgreSQL for Version Control, Durable Objects for Real-Time
 
-**Choice:** PostgreSQL (CloudSQL) stores site metadata, branches, checkpoints, and document snapshots. Cloudflare Durable Objects host live CRDT sessions.
+**Choice:** PostgreSQL (CloudSQL) stores site metadata, branches, checkpoints, and document snapshots. Cloudflare Durable Objects host live CRDT sessions **and** presence aggregation. No additional real-time storage layer (e.g., Firestore) is used.
 
-**Rationale:** PostgreSQL provides transactional guarantees, relational queries, and recursive CTEs for graph traversal (merge-base calculation). Durable Objects provide WebSocket termination, in-memory CRDT state, and automatic persistence—ideal for real-time collaboration.
+**Rationale:** PostgreSQL provides transactional guarantees, relational queries, and recursive CTEs for graph traversal (merge-base calculation). Durable Objects provide WebSocket termination, in-memory CRDT state, and automatic persistence—ideal for real-time collaboration. Presence aggregation across documents is handled by dedicated `BranchPresence` Durable Objects rather than a third storage system, keeping the architecture to two storage tiers. Durable Object storage is replicated across multiple Cloudflare data centers for durability; cross-region active-active access is unnecessary for presence data since it is inherently ephemeral and tied to live WebSocket connections.
 
-**Tradeoff:** Two storage systems to maintain. The clear separation of concerns (version control vs. real-time) justifies this.
+**Tradeoff:** Two storage systems to maintain. The clear separation of concerns (version control vs. real-time) justifies this. Presence rollups require inter-DO communication (document session DOs notifying the branch presence DO), but this is straightforward internal fetch calls within Cloudflare's network.
 
 ### Decision 8: Site Structures with Branch-Versioned Metadata Schemas
 
@@ -709,24 +709,6 @@ CREATE TABLE app.approval_requests (
 CREATE INDEX idx_approval_requests_mr ON app.approval_requests(merge_request_id);
 CREATE INDEX idx_approval_requests_token ON app.approval_requests(token_hash) WHERE token_hash IS NOT NULL;
 CREATE INDEX idx_approval_requests_status ON app.approval_requests(status);
-```
-
-### Firestore Schema (Real-Time Layer)
-
-Firestore handles real-time collaboration state. This is complementary to PostgreSQL, not a replacement.
-
-```
-/sites/{siteId}/
-  /branches/{branchId}/
-    /documents/{documentId}/
-      - crdtState: bytes        # Yjs encoded state
-      - lastModified: timestamp
-      - activeEditors: map      # userId -> cursor position
-
-    /presence/
-      /{odId}/                 # Durable Object ID
-        - connectedUsers: []
-        - lastHeartbeat: timestamp
 ```
 
 ### TypeScript Types
@@ -1197,6 +1179,199 @@ async function getOrCreateDocumentSession(
     return env.DOCUMENT_SESSIONS.get(id);
 }
 ```
+
+### Durable Object: Branch Presence
+
+Each branch has a dedicated `BranchPresence` Durable Object that aggregates presence from all `DocumentSession` DOs on that branch. This replaces the Firestore presence layer with a solution that stays within the Cloudflare platform.
+
+**Session Identifier:** `presence:{siteId}:{branchId}`
+
+```typescript
+export class BranchPresence {
+    private state: DurableObjectState;
+    private env: Env;
+
+    // Aggregated presence: documentId -> actorId -> ActorPresence
+    private documentPresence: Map<string, Map<string, ActorPresence>>;
+
+    // WebSocket subscribers for branch-level presence updates
+    private subscribers: Map<WebSocket, ConnectionMeta>;
+
+    constructor(state: DurableObjectState, env: Env) {
+        this.state = state;
+        this.env = env;
+        this.documentPresence = new Map();
+        this.subscribers = new Map();
+    }
+
+    async fetch(request: Request): Promise<Response> {
+        const url = new URL(request.url);
+
+        switch (url.pathname) {
+            case '/subscribe':
+                return this.handleSubscribe(request);
+            case '/update':
+                return this.handlePresenceUpdate(request);
+            case '/query':
+                return this.handleQuery(request);
+            case '/remove':
+                return this.handleActorRemove(request);
+            default:
+                return new Response('Not found', { status: 404 });
+        }
+    }
+
+    // Called by DocumentSession DOs when actors join, leave, or change state
+    private async handlePresenceUpdate(request: Request): Promise<Response> {
+        const { documentId, actor, event } = await request.json() as {
+            documentId: string;
+            actor: ActorPresence;
+            event: 'join' | 'leave' | 'update';
+        };
+
+        if (!this.documentPresence.has(documentId)) {
+            this.documentPresence.set(documentId, new Map());
+        }
+        const docActors = this.documentPresence.get(documentId)!;
+
+        switch (event) {
+            case 'join':
+            case 'update':
+                docActors.set(actor.actorId, actor);
+                break;
+            case 'leave':
+                docActors.delete(actor.actorId);
+                if (docActors.size === 0) {
+                    this.documentPresence.delete(documentId);
+                }
+                break;
+        }
+
+        // Broadcast to branch-level subscribers
+        const snapshot = this.buildBranchSnapshot();
+        const message = JSON.stringify({ type: 'presence', data: snapshot });
+        for (const [ws, _] of this.subscribers) {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(message);
+            }
+        }
+
+        return Response.json({ success: true });
+    }
+
+    // WebSocket subscription for branch-level presence updates
+    private async handleSubscribe(request: Request): Promise<Response> {
+        const [client, server] = Object.values(new WebSocketPair());
+        server.accept();
+
+        const meta: ConnectionMeta = {
+            actorId: request.headers.get('X-Actor-Id')!,
+            actorType: request.headers.get('X-Actor-Type') as 'user' | 'agent',
+        };
+        this.subscribers.set(server, meta);
+
+        // Send current branch presence snapshot
+        const snapshot = this.buildBranchSnapshot();
+        server.send(JSON.stringify({ type: 'presence', data: snapshot }));
+
+        server.addEventListener('close', () => {
+            this.subscribers.delete(server);
+        });
+
+        return new Response(null, { status: 101, webSocket: client });
+    }
+
+    // HTTP query for current branch presence (used by API endpoints)
+    private async handleQuery(request: Request): Promise<Response> {
+        const snapshot = this.buildBranchSnapshot();
+        return Response.json(snapshot);
+    }
+
+    // Remove an actor from all documents (e.g., agent kill switch)
+    private async handleActorRemove(request: Request): Promise<Response> {
+        const { actorId } = await request.json() as { actorId: string };
+
+        for (const [docId, actors] of this.documentPresence) {
+            actors.delete(actorId);
+            if (actors.size === 0) {
+                this.documentPresence.delete(docId);
+            }
+        }
+
+        // Broadcast updated presence
+        const snapshot = this.buildBranchSnapshot();
+        const message = JSON.stringify({ type: 'presence', data: snapshot });
+        for (const [ws, _] of this.subscribers) {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(message);
+            }
+        }
+
+        return Response.json({ success: true });
+    }
+
+    private buildBranchSnapshot(): BranchPresenceSnapshot {
+        const documents: DocumentPresenceSummary[] = [];
+        const allActors = new Map<string, ActorPresence>();
+
+        for (const [documentId, actors] of this.documentPresence) {
+            const actorList = Array.from(actors.values());
+            documents.push({ documentId, actors: actorList });
+            for (const actor of actorList) {
+                allActors.set(actor.actorId, actor);
+            }
+        }
+
+        return {
+            actors: Array.from(allActors.values()),
+            documents,
+            lastUpdatedAt: new Date(),
+        };
+    }
+}
+
+interface BranchPresenceSnapshot {
+    actors: ActorPresence[];  // Deduplicated across all documents
+    documents: DocumentPresenceSummary[];
+    lastUpdatedAt: Date;
+}
+
+interface DocumentPresenceSummary {
+    documentId: string;
+    actors: ActorPresence[];
+}
+```
+
+**Integration with DocumentSession:**
+
+When actors join, leave, or update state in a `DocumentSession`, it notifies the corresponding `BranchPresence` DO:
+
+```typescript
+// In DocumentSession, after connection changes
+private async notifyBranchPresence(
+    event: 'join' | 'leave' | 'update',
+    actor: ActorPresence
+): Promise<void> {
+    const presenceId = this.env.BRANCH_PRESENCE.idFromName(
+        `presence:${this.siteId}:${this.branchId}`
+    );
+    const presenceDO = this.env.BRANCH_PRESENCE.get(presenceId);
+
+    await presenceDO.fetch(new Request('https://internal/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            documentId: this.documentId,
+            actor,
+            event,
+        }),
+    }));
+}
+```
+
+**Site-Level Rollups:**
+
+Site-level presence (all actors across all branches) is computed on demand by the API server querying multiple `BranchPresence` DOs. Since site-level presence is a dashboard concern rather than a real-time collaboration requirement, the slightly higher latency of fan-out queries is acceptable.
 
 ---
 
@@ -1775,9 +1950,9 @@ Response: 204 No Content
 | Component | Technology | Purpose |
 |-----------|------------|---------|
 | API Server | Cloudflare Workers or Node.js | HTTP API, orchestration |
-| Real-time Sessions | Cloudflare Durable Objects | CRDT state, WebSocket connections |
+| Real-time Sessions | Cloudflare Durable Objects (`DocumentSession`) | CRDT state, WebSocket connections |
+| Presence Aggregation | Cloudflare Durable Objects (`BranchPresence`) | Branch/site-level presence rollups |
 | Primary Database | PostgreSQL (CloudSQL) | Version control metadata, snapshots |
-| Presence Sync | Firestore (optional) | Real-time presence coordination across DOs |
 
 ### Cloudflare Workers Configuration
 
@@ -1791,9 +1966,13 @@ compatibility_date = "2024-01-01"
 name = "DOCUMENT_SESSIONS"
 class_name = "DocumentSession"
 
+[[durable_objects.bindings]]
+name = "BRANCH_PRESENCE"
+class_name = "BranchPresence"
+
 [[migrations]]
 tag = "v1"
-new_classes = ["DocumentSession"]
+new_classes = ["DocumentSession", "BranchPresence"]
 
 [vars]
 DATABASE_URL = "postgresql://..."
@@ -2952,7 +3131,7 @@ The following tables remain in this service but are flagged as candidates for ex
 | **Live State** | Current CRDT state of documents on a branch |
 | **CRDT** | Conflict-free Replicated Data Type; enables automatic merge |
 | **Merge Base** | Common ancestor checkpoint of two branches |
-| **Durable Object** | Cloudflare edge compute with persistent state |
+| **Durable Object** | Cloudflare edge compute with persistent state; used for both `DocumentSession` (CRDT editing) and `BranchPresence` (presence aggregation) |
 | **Audit Log** | Append-only record of all system actions |
 | **Notification** | Alert to human or agent about workflow event |
 | **Agent Task** | Work item assigned to an AI agent for processing |
