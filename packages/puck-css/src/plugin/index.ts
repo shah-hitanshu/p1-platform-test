@@ -10,3 +10,6 @@ export type { CSSPluginOptions, PuckPlugin } from './CSSPlugin.js';
 
 export { createCSSOverrides } from './createCSSOverrides.js';
 export type { CSSOverridesOptions, PuckOverrides } from './createCSSOverrides.js';
+
+export { createMergePreviewPlugin } from './mergePreviewPlugin.js';
+export type { MergePreviewPluginOptions } from './mergePreviewPlugin.js';

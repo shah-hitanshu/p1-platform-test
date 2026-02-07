@@ -114,6 +114,19 @@ export type {
   DocumentDiffListProps,
 } from './components/version-compare/index.js';
 
+// Merge Preview Components (Phase 5)
+export {
+  ViewModeSelector,
+  MergePreviewRenderer,
+  MergePreviewPanel,
+} from './components/merge-preview/index.js';
+export type {
+  ViewModeSelectorProps,
+  ViewMode,
+  MergePreviewRendererProps,
+  MergePreviewPanelProps,
+} from './components/merge-preview/index.js';
+
 // Conflict Resolution Components (Puck-aware)
 export {
   PuckFieldResolutionPanel,
@@ -150,12 +163,13 @@ export type {
 } from './components/conflict-notifications/index.js';
 
 // Puck Plugin Integration
-export { createCSSPlugin, createCSSOverrides } from './plugin/index.js';
+export { createCSSPlugin, createCSSOverrides, createMergePreviewPlugin } from './plugin/index.js';
 export type {
   CSSPluginOptions,
   PuckPlugin,
   CSSOverridesOptions,
   PuckOverrides,
+  MergePreviewPluginOptions,
 } from './plugin/index.js';
 
 // Utilities
