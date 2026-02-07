@@ -14,6 +14,9 @@ import type { ContentChange, ContentSection } from './types';
 /**
  * Heuristically detect Puck editor data structure.
  * Checks for `content` array with `{type, props: {id}}` pattern + `root` object.
+ *
+ * @param data - The data object to inspect.
+ * @returns True if the data matches the Puck editor structure.
  */
 export function isPuckData(data: unknown): boolean {
   if (data === null || typeof data !== 'object') return false;
@@ -35,6 +38,9 @@ export function isPuckData(data: unknown): boolean {
 /**
  * Generate a human-readable label from a JSON Pointer path segment.
  * Converts camelCase and snake_case to Title Case.
+ *
+ * @param path - A JSON Pointer path (e.g. "/root/props/backgroundColor").
+ * @returns A human-readable label (e.g. "Background Color").
  */
 export function generateFieldLabel(path: string): string {
   // Get the last meaningful segment (skip array indices)
@@ -109,7 +115,13 @@ function getTopLevelKey(path: string): string {
 }
 
 /**
- * Transform diff operations into grouped content sections.
+ * Transform RFC 6902 diff operations into grouped, human-readable content sections.
+ * Detects Puck data structures and groups changes by component; falls back to top-level key grouping.
+ *
+ * @param sourceData - The source (before) snapshot, or null.
+ * @param targetData - The target (after) snapshot, or null.
+ * @param operations - The RFC 6902 diff operations to transform.
+ * @returns An array of content sections with labeled, grouped changes.
  */
 export function transformDiffOperations(
   sourceData: Record<string, unknown> | null,

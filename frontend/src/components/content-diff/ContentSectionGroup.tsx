@@ -10,11 +10,18 @@ import { useState } from 'react';
 import type { ContentSection } from './types';
 import { ContentChangeRow } from './ContentChangeRow';
 
+/** Props for the {@link ContentSectionGroup} component. */
 interface ContentSectionGroupProps {
+  /** The content section to render. */
   section: ContentSection;
+  /** Whether the section is expanded on initial render. Defaults to true. */
   defaultExpanded?: boolean;
 }
 
+/**
+ * Renders a collapsible group of content changes under a section heading.
+ * Shows a toggle button, the section label, and a change count badge.
+ */
 export function ContentSectionGroup({
   section,
   defaultExpanded = true,

@@ -93,10 +93,14 @@ function collectPaths(
 }
 
 /**
- * Classify fields between source and target snapshots.
+ * Classify fields between source and target snapshots relative to an optional base.
+ * With a base snapshot, determines which branch changed each field (source-only, target-only, or conflicting).
+ * Without a base, all differing fields are classified as conflicting.
  *
- * With base: determines which branch changed each field.
- * Without base: all differing fields are classified as conflicting.
+ * @param source - The source branch snapshot.
+ * @param target - The target branch snapshot.
+ * @param base - The common ancestor snapshot, or null if unavailable.
+ * @returns An array of classified fields with their values from each snapshot.
  */
 export function classifyFields(
   source: Record<string, unknown>,

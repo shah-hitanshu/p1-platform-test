@@ -251,6 +251,10 @@ async function resolveWithTakeTarget(
 /**
  * Resolve conflict by using a client-provided merged snapshot.
  * Creates a new version on the target branch with the provided snapshot.
+ *
+ * @param params - Resolution parameters; `resolvedSnapshot` is required for this strategy.
+ * @returns The resolution result containing the new version ID.
+ * @throws {ManualResolutionError} If `resolvedSnapshot` is not provided.
  */
 async function resolveWithManual(
   params: ResolveConflictParams,

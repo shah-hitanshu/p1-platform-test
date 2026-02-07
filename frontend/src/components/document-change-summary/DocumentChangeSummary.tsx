@@ -10,11 +10,17 @@ import type { ModifiedDocument, DocumentConflict } from '../../types';
 import { categorizeChanges } from './categorizeChanges';
 import './DocumentChangeSummary.css';
 
+/** Props for the {@link DocumentChangeSummary} component. */
 interface DocumentChangeSummaryProps {
+  /** Documents modified on the source branch. */
   sourceChanges: ModifiedDocument[];
+  /** Documents modified on the target branch. */
   targetChanges: ModifiedDocument[];
+  /** Documents with conflicting changes. */
   conflicts: DocumentConflict[];
+  /** Display name for the source branch. */
   sourceBranchName: string;
+  /** Display name for the target branch. */
   targetBranchName: string;
 }
 
@@ -27,6 +33,10 @@ function DocumentPath({ doc }: { doc: ModifiedDocument }) {
   );
 }
 
+/**
+ * Renders categorized document-level changes from merge preview data.
+ * Shows source-only, target-only, and conflicting documents with counts and paths.
+ */
 export function DocumentChangeSummary({
   sourceChanges,
   targetChanges,

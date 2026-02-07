@@ -12,14 +12,24 @@ import { transformDiffOperations } from './transformDiffOperations';
 import { ContentSectionGroup } from './ContentSectionGroup';
 import './ContentDiffViewer.css';
 
+/** Props for the {@link ContentDiffViewer} component. */
 interface ContentDiffViewerProps {
+  /** The source (before) snapshot, or null. */
   sourceData: Record<string, unknown> | null;
+  /** The target (after) snapshot, or null. */
   targetData: Record<string, unknown> | null;
+  /** The RFC 6902 diff operations to visualize. */
   diffOperations: DiffOperation[];
+  /** Optional label for the source side. */
   sourceLabel?: string;
+  /** Optional label for the target side. */
   targetLabel?: string;
 }
 
+/**
+ * Human-readable content diff viewer that groups property-level changes by
+ * Puck component or top-level JSON key, without exposing raw JSON syntax.
+ */
 export function ContentDiffViewer({
   sourceData,
   targetData,

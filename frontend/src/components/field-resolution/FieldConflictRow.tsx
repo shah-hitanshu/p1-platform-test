@@ -7,11 +7,17 @@
 
 import type { FieldClassification, FieldChoice } from './types';
 
+/** Props for the {@link FieldConflictRow} component. */
 interface FieldConflictRowProps {
+  /** The classified field with conflict details. */
   field: FieldClassification;
+  /** Display name for the source branch. */
   sourceBranchName: string;
+  /** Display name for the target branch. */
   targetBranchName: string;
+  /** The user's current resolution choice, or null if unresolved. */
   choice: FieldChoice | null;
+  /** Callback when the user selects a resolution for this field. */
   onChoiceChange: (fieldPath: string, choice: FieldChoice) => void;
 }
 
@@ -22,6 +28,10 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
+/**
+ * Displays a single conflicting field with radio buttons to choose
+ * between the source branch value and the target branch value.
+ */
 export function FieldConflictRow({
   field,
   sourceBranchName,

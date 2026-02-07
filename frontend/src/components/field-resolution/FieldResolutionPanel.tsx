@@ -13,15 +13,27 @@ import { FieldConflictRow } from './FieldConflictRow';
 import type { FieldChoice, FieldSelection } from './types';
 import './FieldResolutionPanel.css';
 
+/** Props for the {@link FieldResolutionPanel} component. */
 interface FieldResolutionPanelProps {
+  /** The source branch document snapshot. */
   sourceSnapshot: Record<string, unknown>;
+  /** The target branch document snapshot. */
   targetSnapshot: Record<string, unknown>;
+  /** The common ancestor snapshot, or null if unavailable. */
   baseSnapshot: Record<string, unknown> | null;
+  /** Display name for the source branch. */
   sourceBranchName: string;
+  /** Display name for the target branch. */
   targetBranchName: string;
+  /** Callback invoked with the merged snapshot when the user applies their resolution. */
   onResolve: (mergedSnapshot: Record<string, unknown>) => void;
 }
 
+/**
+ * Main UI panel for field-by-field conflict resolution.
+ * Shows auto-merged (non-conflicting) fields, conflicting fields with resolution radio buttons,
+ * and an apply button that produces the merged snapshot.
+ */
 export function FieldResolutionPanel({
   sourceSnapshot,
   targetSnapshot,

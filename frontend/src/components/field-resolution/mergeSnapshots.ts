@@ -32,8 +32,12 @@ function getAtPath(obj: Record<string, unknown>, path: string): unknown {
   return current;
 }
 
+/** Dangerous property names that could lead to prototype pollution. */
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 /**
  * Set a value at a JSON pointer path, creating intermediate objects as needed.
+ * Rejects paths containing prototype-polluting keys.
  */
 function setAtPath(
   obj: Record<string, unknown>,
@@ -41,6 +45,7 @@ function setAtPath(
   value: unknown
 ): void {
   const segments = path.split('/').filter(Boolean);
+  if (segments.some((seg) => UNSAFE_KEYS.has(seg))) return;
   let current: Record<string, unknown> = obj;
   for (let i = 0; i < segments.length - 1; i++) {
     const seg = segments[i];
@@ -55,9 +60,11 @@ function setAtPath(
 
 /**
  * Delete a value at a JSON pointer path.
+ * Rejects paths containing prototype-polluting keys.
  */
 function deleteAtPath(obj: Record<string, unknown>, path: string): void {
   const segments = path.split('/').filter(Boolean);
+  if (segments.some((seg) => UNSAFE_KEYS.has(seg))) return;
   let current: Record<string, unknown> = obj;
   for (let i = 0; i < segments.length - 1; i++) {
     const seg = segments[i];
@@ -87,12 +94,14 @@ function hasPath(obj: Record<string, unknown>, path: string): boolean {
 }
 
 /**
- * Merge two snapshots using field-level selections.
+ * Merge two snapshots using field-level selections to produce a resolved snapshot.
+ * Starts with a deep clone of the target, then applies each user selection
+ * ('source', 'target', or 'custom') to the corresponding field path.
  *
- * Starts with a deep clone of target, then applies user selections:
- * - 'source': copies the value from source snapshot
- * - 'target': keeps the value from target snapshot (no-op)
- * - 'custom': uses the provided customValue
+ * @param source - The source branch snapshot.
+ * @param target - The target branch snapshot (used as the merge base).
+ * @param selections - Per-field resolution choices from the user.
+ * @returns A new merged snapshot with all selections applied.
  */
 export function mergeSnapshots(
   source: Record<string, unknown>,

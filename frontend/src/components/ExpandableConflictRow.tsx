@@ -30,11 +30,11 @@ interface ExpandableConflictRowProps {
 function getConflictTypeLabel(type: DocumentConflictType): string {
   switch (type) {
     case 'both-modified':
-      return 'Both Modified';
+      return 'Both modified';
     case 'deleted-in-source':
-      return 'Deleted in Source';
+      return 'Deleted in source';
     case 'deleted-in-target':
-      return 'Deleted in Target';
+      return 'Deleted in target';
     default:
       return type;
   }
@@ -43,11 +43,11 @@ function getConflictTypeLabel(type: DocumentConflictType): string {
 function getResolutionLabel(strategy: ConflictResolutionStrategy): string {
   switch (strategy) {
     case 'take-source':
-      return 'Take Source';
+      return 'Take source';
     case 'take-target':
-      return 'Take Target';
+      return 'Take target';
     case 'merge-crdt':
-      return 'CRDT Merge';
+      return 'CRDT merge';
     case 'manual':
       return 'Choose field by field';
     default:
@@ -92,7 +92,7 @@ export function ExpandableConflictRow({
           aria-label={isExpanded ? 'Collapse diff view' : 'Expand diff view'}
           data-testid={`expand-toggle-${conflict.documentId}`}
         >
-          {isExpanded ? 'Hide Diff' : 'Show Diff'}
+          {isExpanded ? 'Hide diff' : 'Show diff'}
         </Button>
       </div>
 
@@ -120,16 +120,16 @@ export function ExpandableConflictRow({
               sourceData={diff.sourceSnapshot}
               targetData={diff.targetSnapshot}
               diffOperations={diff.diffOperations}
-              sourceLabel="Source Branch"
-              targetLabel="Target Branch"
+              sourceLabel="Source branch"
+              targetLabel="Target branch"
             />
           ) : (
             <ContentDiffViewer
               sourceData={diff.sourceSnapshot}
               targetData={diff.targetSnapshot}
               diffOperations={diff.diffOperations}
-              sourceLabel="Source Branch"
-              targetLabel="Target Branch"
+              sourceLabel="Source branch"
+              targetLabel="Target branch"
             />
           )}
         </div>

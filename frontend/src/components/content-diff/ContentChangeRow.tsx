@@ -7,7 +7,9 @@
 
 import type { ContentChange } from './types';
 
+/** Props for the {@link ContentChangeRow} component. */
 interface ContentChangeRowProps {
+  /** The content change to display. */
   change: ContentChange;
 }
 
@@ -18,6 +20,10 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
+/**
+ * Displays a single field-level change with the field label, old value, and new value.
+ * Color-coded by change type (add, replace, remove).
+ */
 export function ContentChangeRow({ change }: ContentChangeRowProps) {
   const cssClass = `content-change-row change-${change.type}`;
 

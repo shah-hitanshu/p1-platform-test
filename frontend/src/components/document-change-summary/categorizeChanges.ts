@@ -10,13 +10,27 @@
 
 import type { ModifiedDocument, DocumentConflict } from '../../types';
 
+/** Categorized document-level changes from a merge preview. */
 export interface DocumentChangeSummaryResult {
+  /** Documents changed only in the source branch. */
   sourceOnly: ModifiedDocument[];
+  /** Documents changed only in the target branch. */
   targetOnly: ModifiedDocument[];
+  /** Documents changed in both branches with conflicting edits. */
   conflicting: DocumentConflict[];
+  /** Total number of changed documents across all categories. */
   totalChanges: number;
 }
 
+/**
+ * Categorize merge preview changes into source-only, target-only, and conflicting groups.
+ * Excludes documents that appear in the conflicts list from the source-only and target-only results.
+ *
+ * @param sourceChanges - Documents modified on the source branch.
+ * @param targetChanges - Documents modified on the target branch.
+ * @param conflicts - Documents with conflicting changes across both branches.
+ * @returns A categorized summary with totals.
+ */
 export function categorizeChanges(
   sourceChanges: ModifiedDocument[],
   targetChanges: ModifiedDocument[],

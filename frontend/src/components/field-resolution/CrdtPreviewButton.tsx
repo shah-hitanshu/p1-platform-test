@@ -7,14 +7,24 @@
 
 import { useState, useCallback } from 'react';
 
+/** Props for the {@link CrdtPreviewButton} component. */
 interface CrdtPreviewButtonProps {
+  /** The site ID owning the document. */
   siteId: string;
+  /** The document ID to auto-merge. */
   documentId: string;
+  /** The source branch ID for the merge. */
   sourceBranchId: string;
+  /** The target branch ID for the merge. */
   targetBranchId: string;
+  /** Callback invoked with the CRDT-merged snapshot on success. */
   onResult: (mergedSnapshot: Record<string, unknown>) => void;
 }
 
+/**
+ * Button that triggers a CRDT auto-merge via the API and passes the
+ * resulting merged snapshot to the parent for review.
+ */
 export function CrdtPreviewButton({
   siteId,
   documentId,
@@ -42,13 +52,13 @@ export function CrdtPreviewButton({
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error || 'Auto-merge failed');
+        setError(data.error || 'Unable to auto-merge these changes. Try resolving conflicts manually.');
         return;
       }
 
       onResult(data.snapshot);
     } catch {
-      setError('Auto-merge failed');
+      setError('Unable to auto-merge. Check your connection and try again.');
     } finally {
       setLoading(false);
     }

@@ -7,7 +7,9 @@
 
 import type { FieldClassification } from './types';
 
+/** Props for the {@link AutoMergedFields} component. */
 interface AutoMergedFieldsProps {
+  /** Non-conflicting classified fields that were auto-merged. */
   fields: FieldClassification[];
 }
 
@@ -18,6 +20,10 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
+/**
+ * Displays non-conflicting fields that were automatically merged,
+ * grouped by source-only and target-only changes.
+ */
 export function AutoMergedFields({
   fields,
 }: AutoMergedFieldsProps) {

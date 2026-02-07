@@ -28,11 +28,11 @@ interface ExpandableDiffRowProps {
 function getConflictTypeLabel(type: DocumentConflictType): string {
   switch (type) {
     case 'both-modified':
-      return 'Both Modified';
+      return 'Both modified';
     case 'deleted-in-source':
-      return 'Deleted in Source';
+      return 'Deleted in source';
     case 'deleted-in-target':
-      return 'Deleted in Target';
+      return 'Deleted in target';
     default:
       return type;
   }
@@ -94,7 +94,7 @@ export function ExpandableDiffRow({
           aria-label={isExpanded ? 'Hide diff view' : 'Show diff view'}
           data-testid={`expand-diff-toggle-${conflict.documentId}`}
         >
-          {isLoading ? 'Loading...' : isExpanded ? 'Hide Diff' : 'Show Diff'}
+          {isLoading ? 'Loading...' : isExpanded ? 'Hide diff' : 'Show diff'}
         </Button>
       </div>
 
@@ -122,16 +122,16 @@ export function ExpandableDiffRow({
               sourceData={diff.sourceSnapshot}
               targetData={diff.targetSnapshot}
               diffOperations={diff.diffOperations}
-              sourceLabel="Source Branch"
-              targetLabel="Target Branch"
+              sourceLabel="Source branch"
+              targetLabel="Target branch"
             />
           ) : (
             <ContentDiffViewer
               sourceData={diff.sourceSnapshot}
               targetData={diff.targetSnapshot}
               diffOperations={diff.diffOperations}
-              sourceLabel="Source Branch"
-              targetLabel="Target Branch"
+              sourceLabel="Source branch"
+              targetLabel="Target branch"
             />
           )}
         </div>
