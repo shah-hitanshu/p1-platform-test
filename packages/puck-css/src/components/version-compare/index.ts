@@ -27,3 +27,12 @@ export type { VersionComparePageProps } from './VersionComparePage.js';
 
 export { VisualVersionCompare } from './VisualVersionCompare.js';
 export type { VisualVersionCompareProps } from './VisualVersionCompare.js';
+
+export { BranchDiffHeader } from './BranchDiffHeader.js';
+export type { BranchDiffHeaderProps } from './BranchDiffHeader.js';
+
+export { BranchMergeCompare } from './BranchMergeCompare.js';
+export type { BranchMergeCompareProps } from './BranchMergeCompare.js';
+
+export { DocumentDiffList } from './DocumentDiffList.js';
+export type { DocumentDiffListProps } from './DocumentDiffList.js';
