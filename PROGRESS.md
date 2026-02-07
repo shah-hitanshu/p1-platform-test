@@ -2853,7 +2853,7 @@ Following Pantheon testing practices:
 | Checkpoint Structure Capture | 11 | - |
 | Branch Structure Copy | 7 | - |
 | Metadata Service | 29 | - |
-| Branch API Routes | 13 | - |
+| Branch API Routes | 16 | - |
 | Checkpoint API Routes | 13 | - |
 | Merge API Routes | 13 | - |
 | Grant API Routes | 10 | - |
@@ -2880,11 +2880,11 @@ Following Pantheon testing practices:
 | Realtime API Focus Regions | 11 | - |
 | WebSocket Message Types | 18 | - |
 | DocumentSession WS Presence | 29 | - |
-| **Total** | **1716** | **52** |
+| **Total** | **1741** | **52** |
 
 ---
 
-*Last updated: 2026-02-02 (PR #5 Security Fixes)*
+*Last updated: 2026-02-07 (Fresh checkpoint on branch creation)*
 ## Change History
 
 | Date | Phase | Summary |
@@ -2984,3 +2984,4 @@ Following Pantheon testing practices:
 | 2026-02-07 | Phase 5 (puck-css) | Merge Preview Plugin: createMergePreviewPlugin factory (Puck plugin with name/label/icon/render); ViewModeSelector (side-by-side/overlay/slider toggle with active class); MergePreviewRenderer (three view modes using createHighlightedConfig for diff overlays, change count summary, branch labels); MergePreviewPanel (document list with expandable comparison, diff computation via createBranchDocumentComparison); 20 tests in puck-css-integration repo; 593 total tests pass |
 | 2026-02-07 | Phase 6 (E2E Tests) | CSS Admin E2E: content-diff-viewer.spec.ts (4 tests: JSON/Content view toggle on diff/conflict rows, content section collapse/expand); document-change-summary.spec.ts (5 tests: document categories with branch labels, count badges, document paths, conflict category); field-resolution.spec.ts (7 tests: "Choose field by field" option, FieldResolutionPanel, auto-merged fields, conflict radio buttons, apply button validation, strategy switching). puck-css E2E: merge-preview-integration.spec.ts (10 tests: Puck+CSS plugin loading, document rendering, version comparison API access, branch data, Puck data structure validation, diff highlighting, presence indicators, focus region stability) |
 | 2026-02-07 | Phase 7 (Docs & Cleanup) | JSDoc: Added @param/@returns to all public exports across both repos (25 files total: 13 CSS admin, 12 puck-css). UX Writing: Fixed 18 title case violations to sentence case per Pantheon guidelines; improved 2 error messages in CrdtPreviewButton to be actionable. Security: Added __proto__/constructor/prototype guards in mergeSnapshots.ts setAtPath/deleteAtPath (prototype pollution fix). Security review identified 15 findings (1 HIGH input validation, 4 MEDIUM, 6 LOW, 4 INFO); prototype pollution auto-resolved, remaining findings documented for future work. All tests pass: 94 frontend, 593 puck-css. |
+| 2026-02-07 | Bugfix (Branching) | Fresh checkpoint on branch creation: Branch API route now always creates a fresh checkpoint via createCheckpoint() instead of reusing the latest existing checkpoint via getLatestCheckpoint(). Fixes stale merge base and incorrect document copies when the source branch had edits since its last checkpoint. Updated 4 test mocks from getLatestCheckpoint to createCheckpoint (returning CreateCheckpointResult shape). Removed unused getLatestCheckpoint import from branch-api.ts. 1741 tests pass. |
