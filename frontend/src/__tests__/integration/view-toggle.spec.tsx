@@ -49,7 +49,8 @@ describe('ExpandableDiffRow - view toggle', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: /content view|json view/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Content view' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'JSON view' })).toBeInTheDocument();
   });
 
   it('should switch to content view when toggle is clicked', () => {
@@ -84,6 +85,7 @@ describe('ExpandableConflictRow - view toggle', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: /content view|json view/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Content view' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'JSON view' })).toBeInTheDocument();
   });
 });

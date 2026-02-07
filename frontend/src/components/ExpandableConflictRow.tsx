@@ -6,9 +6,11 @@
  * the FieldResolutionPanel for granular conflict resolution.
  */
 
+import { useState } from 'react';
 import { Button } from '@pantheon-systems/design-toolkit-react';
 import type { DocumentConflict, DocumentConflictType, ConflictResolutionStrategy, DocumentDiff } from '../types';
 import { JsonDiffViewer } from './JsonDiffViewer';
+import { ContentDiffViewer } from './content-diff/ContentDiffViewer';
 import { FieldResolutionPanel } from './field-resolution/FieldResolutionPanel';
 import './ExpandableConflictRow.css';
 
@@ -67,6 +69,7 @@ export function ExpandableConflictRow({
   targetBranchName = 'Target',
   disabled = false,
 }: ExpandableConflictRowProps) {
+  const [viewMode, setViewMode] = useState<'json' | 'content'>('json');
   const isBothModified = conflict.conflictType === 'both-modified';
   const resolutionOptions = isBothModified
     ? [...BASE_RESOLUTION_OPTIONS, 'manual' as ConflictResolutionStrategy]
@@ -95,13 +98,40 @@ export function ExpandableConflictRow({
 
       {isExpanded && diff != null && resolution !== 'manual' && (
         <div className="conflict-row-diff">
-          <JsonDiffViewer
-            sourceData={diff.sourceSnapshot}
-            targetData={diff.targetSnapshot}
-            diffOperations={diff.diffOperations}
-            sourceLabel="Source Branch"
-            targetLabel="Target Branch"
-          />
+          <div className="diff-view-toggle">
+            <button
+              className={`view-toggle-btn ${viewMode === 'json' ? 'active' : ''}`}
+              onClick={() => setViewMode('json')}
+              aria-label="JSON view"
+            >
+              JSON view
+            </button>
+            <button
+              className={`view-toggle-btn ${viewMode === 'content' ? 'active' : ''}`}
+              onClick={() => setViewMode('content')}
+              aria-label="Content view"
+            >
+              Content view
+            </button>
+          </div>
+
+          {viewMode === 'json' ? (
+            <JsonDiffViewer
+              sourceData={diff.sourceSnapshot}
+              targetData={diff.targetSnapshot}
+              diffOperations={diff.diffOperations}
+              sourceLabel="Source Branch"
+              targetLabel="Target Branch"
+            />
+          ) : (
+            <ContentDiffViewer
+              sourceData={diff.sourceSnapshot}
+              targetData={diff.targetSnapshot}
+              diffOperations={diff.diffOperations}
+              sourceLabel="Source Branch"
+              targetLabel="Target Branch"
+            />
+          )}
         </div>
       )}
 
