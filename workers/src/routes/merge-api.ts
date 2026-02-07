@@ -73,6 +73,8 @@ interface MergeExecuteBody {
   conflictResolutions?: {
     documentId: string;
     strategy: ConflictResolutionStrategy;
+    /** Required when strategy is 'manual'. The client-provided merged snapshot. */
+    resolvedSnapshot?: Record<string, unknown>;
   }[];
 }
 
@@ -339,6 +341,8 @@ interface ExecuteMergeRequestBody {
   resolutions?: {
     documentId: string;
     strategy: ConflictResolutionStrategy;
+    /** Required when strategy is 'manual'. The client-provided merged snapshot. */
+    resolvedSnapshot?: Record<string, unknown>;
   }[];
 }
 

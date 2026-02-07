@@ -30,6 +30,8 @@ export interface ResolveConflictParams {
   strategy: ConflictResolutionStrategy;
   resolvedById: string;
   resolvedByType: 'user' | 'agent';
+  /** Required when strategy is 'manual'. The client-provided merged snapshot. */
+  resolvedSnapshot?: Record<string, unknown>;
 }
 
 /**
@@ -126,6 +128,18 @@ export class UnsupportedStrategyError extends Error {
   }
 }
 
+/**
+ * Error thrown when manual resolution is requested without a resolvedSnapshot.
+ */
+export class ManualResolutionError extends Error {
+  public readonly name = 'ManualResolutionError';
+
+  constructor() {
+    super('Manual resolution strategy requires a resolvedSnapshot.');
+    Object.setPrototypeOf(this, ManualResolutionError.prototype);
+  }
+}
+
 // =============================================================================
 // Conflict Resolution Functions
 // =============================================================================
@@ -144,12 +158,13 @@ export async function resolveConflict(
   const { strategy } = params;
 
   // Validate strategy - reject unsupported strategies
-  if (strategy === 'manual') {
-    throw new UnsupportedStrategyError('manual');
-  }
-
   if (strategy === 'merge-crdt') {
     throw new UnsupportedStrategyError('merge-crdt');
+  }
+
+  // Handle manual strategy
+  if (strategy === 'manual') {
+    return resolveWithManual(params);
   }
 
   // Handle supported strategies
@@ -228,6 +243,45 @@ async function resolveWithTakeTarget(
     documentId,
     strategy: 'take-target',
     resultVersionId: targetVersionId,
+    resolvedById,
+    resolvedByType,
+  };
+}
+
+/**
+ * Resolve conflict by using a client-provided merged snapshot.
+ * Creates a new version on the target branch with the provided snapshot.
+ */
+async function resolveWithManual(
+  params: ResolveConflictParams,
+): Promise<ConflictResolutionResult> {
+  const {
+    documentId,
+    targetBranchId,
+    resolvedById,
+    resolvedByType,
+    resolvedSnapshot,
+  } = params;
+
+  if (resolvedSnapshot === undefined) {
+    throw new ManualResolutionError();
+  }
+
+  // Create new version on target branch with the provided snapshot
+  const newVersion = await createDocumentVersion({
+    documentId,
+    branchId: targetBranchId,
+    snapshot: resolvedSnapshot,
+    source: 'merge',
+    createdById: resolvedById,
+    createdByType: resolvedByType,
+  });
+
+  return {
+    resolved: true,
+    documentId,
+    strategy: 'manual',
+    resultVersionId: newVersion.id,
     resolvedById,
     resolvedByType,
   };
