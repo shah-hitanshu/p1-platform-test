@@ -49,6 +49,7 @@ interface MergePreviewParams {
 interface ConflictResolution {
   documentId: string;
   strategy: ConflictResolutionStrategy;
+  resolvedSnapshot?: Record<string, unknown>;
 }
 
 interface ExecuteMergeParams {

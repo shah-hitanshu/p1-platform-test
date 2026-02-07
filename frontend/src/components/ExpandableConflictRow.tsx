@@ -2,11 +2,14 @@
  * Expandable Conflict Row Component
  *
  * Displays a conflict with expand/collapse functionality to show the JsonDiffViewer.
+ * For both-modified conflicts, offers a "Choose field by field" option that shows
+ * the FieldResolutionPanel for granular conflict resolution.
  */
 
 import { Button } from '@pantheon-systems/design-toolkit-react';
 import type { DocumentConflict, DocumentConflictType, ConflictResolutionStrategy, DocumentDiff } from '../types';
 import { JsonDiffViewer } from './JsonDiffViewer';
+import { FieldResolutionPanel } from './field-resolution/FieldResolutionPanel';
 import './ExpandableConflictRow.css';
 
 interface ExpandableConflictRowProps {
@@ -16,6 +19,9 @@ interface ExpandableConflictRowProps {
   onToggle: () => void;
   resolution: ConflictResolutionStrategy;
   onResolutionChange: (strategy: ConflictResolutionStrategy) => void;
+  onResolvedSnapshot?: (snapshot: Record<string, unknown>) => void;
+  sourceBranchName?: string;
+  targetBranchName?: string;
   disabled?: boolean;
 }
 
@@ -40,12 +46,14 @@ function getResolutionLabel(strategy: ConflictResolutionStrategy): string {
       return 'Take Target';
     case 'merge-crdt':
       return 'CRDT Merge';
+    case 'manual':
+      return 'Choose field by field';
     default:
       return strategy;
   }
 }
 
-const RESOLUTION_OPTIONS: ConflictResolutionStrategy[] = ['take-source', 'take-target', 'merge-crdt'];
+const BASE_RESOLUTION_OPTIONS: ConflictResolutionStrategy[] = ['take-source', 'take-target', 'merge-crdt'];
 
 export function ExpandableConflictRow({
   conflict,
@@ -54,8 +62,16 @@ export function ExpandableConflictRow({
   onToggle,
   resolution,
   onResolutionChange,
+  onResolvedSnapshot,
+  sourceBranchName = 'Source',
+  targetBranchName = 'Target',
   disabled = false,
 }: ExpandableConflictRowProps) {
+  const isBothModified = conflict.conflictType === 'both-modified';
+  const resolutionOptions = isBothModified
+    ? [...BASE_RESOLUTION_OPTIONS, 'manual' as ConflictResolutionStrategy]
+    : BASE_RESOLUTION_OPTIONS;
+
   return (
     <div className={`expandable-conflict-row ${isExpanded ? 'expanded' : ''}`}>
       <div className="conflict-row-header" onClick={onToggle} role="button" tabIndex={0}>
@@ -77,7 +93,7 @@ export function ExpandableConflictRow({
         </Button>
       </div>
 
-      {isExpanded && diff != null && (
+      {isExpanded && diff != null && resolution !== 'manual' && (
         <div className="conflict-row-diff">
           <JsonDiffViewer
             sourceData={diff.sourceSnapshot}
@@ -95,10 +111,23 @@ export function ExpandableConflictRow({
         </div>
       )}
 
+      {resolution === 'manual' && diff != null && diff.sourceSnapshot != null && diff.targetSnapshot != null && (
+        <div className="conflict-row-field-resolution">
+          <FieldResolutionPanel
+            sourceSnapshot={diff.sourceSnapshot}
+            targetSnapshot={diff.targetSnapshot}
+            baseSnapshot={null}
+            sourceBranchName={sourceBranchName}
+            targetBranchName={targetBranchName}
+            onResolve={(snapshot) => onResolvedSnapshot?.(snapshot)}
+          />
+        </div>
+      )}
+
       <div className="conflict-row-resolution">
         <span className="resolution-label">Resolution:</span>
         <div className="resolution-options">
-          {RESOLUTION_OPTIONS.map((strategy) => (
+          {resolutionOptions.map((strategy) => (
             <label key={strategy} className="resolution-option">
               <input
                 type="radio"

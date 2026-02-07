@@ -75,17 +75,18 @@ describe('ConflictResolutionPanel - manual strategy', () => {
       fireEvent.click(radio);
     }
 
-    // Resolve the field conflicts - find field-level radios
+    // Resolve ALL field conflicts - find field-level radios
     const allRadios = screen.getAllByRole('radio');
     const fieldRadios = allRadios.filter(
       (r) => (r as HTMLInputElement).name.startsWith('field-')
     );
-    if (fieldRadios.length > 0) {
-      fireEvent.click(fieldRadios[0]);
+    // Click the first radio option for each conflict (one per field pair)
+    for (let i = 0; i < fieldRadios.length; i += 2) {
+      fireEvent.click(fieldRadios[i]);
     }
 
-    // Click apply in the FieldResolutionPanel
-    const applyResolutionBtn = screen.getByRole('button', { name: /apply resolution/i });
+    // Click apply in the FieldResolutionPanel (exact match to avoid matching outer button)
+    const applyResolutionBtn = screen.getByRole('button', { name: 'Apply resolution' });
     fireEvent.click(applyResolutionBtn);
 
     // Now submit the overall resolutions

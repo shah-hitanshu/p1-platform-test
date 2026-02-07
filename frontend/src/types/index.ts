@@ -123,7 +123,7 @@ export interface MergeRequest {
   mergedById?: string;
 }
 
-export type ConflictResolutionStrategy = 'take-source' | 'take-target' | 'merge-crdt';
+export type ConflictResolutionStrategy = 'take-source' | 'take-target' | 'merge-crdt' | 'manual';
 
 /**
  * RFC 6902 JSON Patch operation.

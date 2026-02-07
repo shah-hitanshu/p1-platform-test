@@ -109,19 +109,19 @@ describe('ExpandableConflictRow - field-by-field option', () => {
       />
     );
 
-    // Select a resolution for the conflicting fields
+    // Select a resolution for ALL conflicting fields (title and body both differ)
     const radioButtons = screen.getAllByRole('radio');
     // Find field-level radio buttons (not the strategy radios)
     const fieldRadios = radioButtons.filter(
       (r) => (r as HTMLInputElement).name.startsWith('field-')
     );
-    // Click the first field radio to resolve a conflict
-    if (fieldRadios.length > 0) {
-      fireEvent.click(fieldRadios[0]);
+    // Click the first radio option for each conflict (one per field pair)
+    for (let i = 0; i < fieldRadios.length; i += 2) {
+      fireEvent.click(fieldRadios[i]);
     }
 
-    // Click apply resolution
-    const applyButton = screen.getByRole('button', { name: /apply resolution/i });
+    // Click apply resolution (exact match to avoid matching strategy radios)
+    const applyButton = screen.getByRole('button', { name: 'Apply resolution' });
     fireEvent.click(applyButton);
 
     expect(onResolvedSnapshot).toHaveBeenCalledWith(
