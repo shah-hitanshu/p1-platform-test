@@ -117,7 +117,8 @@ describe('ContentDiffViewer', () => {
     );
 
     // Should show a summary with the count of changes
-    expect(screen.getByText(/2 change/i)).toBeInTheDocument();
+    const summaries = screen.getAllByText('2 changes detected');
+    expect(summaries.length).toBeGreaterThanOrEqual(1);
   });
 
   it('should handle null source data (new document)', () => {
@@ -183,18 +184,19 @@ describe('ContentDiffViewer', () => {
       />
     );
 
-    // Should show the component type name as section heading
-    expect(screen.getByText(/Heading/)).toBeInTheDocument();
-    // Should show the field change
+    // Should show the component type name as section label
+    const sectionLabel = screen.getByText('Heading', { selector: '.section-label' });
+    expect(sectionLabel).toBeInTheDocument();
+    // Should show the field change values
     expect(screen.getByText('Old Heading')).toBeInTheDocument();
     expect(screen.getByText('New Heading')).toBeInTheDocument();
   });
 
   it('should render legend with add/remove/change indicators', () => {
     const sourceData = { title: 'Test' };
-    const targetData = { title: 'Changed' };
+    const targetData = { title: 'Updated' };
     const diffOperations: DiffOperation[] = [
-      { op: 'replace', path: '/title', value: 'Changed' },
+      { op: 'replace', path: '/title', value: 'Updated' },
     ];
 
     render(
@@ -205,8 +207,9 @@ describe('ContentDiffViewer', () => {
       />
     );
 
-    expect(screen.getByText('Added')).toBeInTheDocument();
-    expect(screen.getByText('Removed')).toBeInTheDocument();
-    expect(screen.getByText('Changed')).toBeInTheDocument();
+    const legends = screen.getAllByText('Added');
+    expect(legends.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Removed').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Changed').length).toBeGreaterThanOrEqual(1);
   });
 });

@@ -109,8 +109,8 @@ describe('ContentChangeRow', () => {
     render(<ContentChangeRow change={change} />);
 
     // Should render JSON stringified values
-    expect(screen.getByText(/old/)).toBeInTheDocument();
-    expect(screen.getByText(/new/)).toBeInTheDocument();
+    expect(screen.getByText('{"key":"old"}')).toBeInTheDocument();
+    expect(screen.getByText('{"key":"new"}')).toBeInTheDocument();
   });
 
   it('should handle boolean values', () => {

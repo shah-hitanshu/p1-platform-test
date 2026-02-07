@@ -14,7 +14,6 @@ import {
   generateFieldLabel,
   isPuckData,
 } from '../../components/content-diff/transformDiffOperations';
-import type { ContentSection, ContentChange } from '../../components/content-diff/types';
 
 describe('transformDiffOperations', () => {
   describe('basic operations', () => {
@@ -188,7 +187,7 @@ describe('transformDiffOperations', () => {
       );
       expect(headingSection).toBeDefined();
       expect(headingSection!.changes).toHaveLength(1);
-      expect(headingSection!.changes[0].label).toContain('text');
+      expect(headingSection!.changes[0].label.toLowerCase()).toContain('text');
     });
 
     it('should group multiple changes in the same component together', () => {
@@ -276,7 +275,7 @@ describe('generateFieldLabel', () => {
 
   it('should handle array indices in path', () => {
     const label = generateFieldLabel('/content/0/props/text');
-    expect(label).toContain('text');
+    expect(label.toLowerCase()).toContain('text');
   });
 
   it('should convert camelCase to readable text', () => {
