@@ -61,6 +61,8 @@ Maintain code to production standards [1]
 # Playwright Browser Configuration
 When opening a Playwright browser, always use the "Manage Tabs" mode to ensure proper tab management and control. Assume there's no open tabs already.
 
+When launching a browser, use new tabs rather than new windows — new windows will likely fail. After launch, dismiss the profile selection window before proceeding with any interactions.
+
 # Security Review
 After each phase of development run Claude's /security-review and present findings. Auto-resolve what you are able to.
 
@@ -71,3 +73,13 @@ If findings from the security review are remediated, be sure to commit the chang
 
 # User interface language review
 Use the Pantheon Design System UI Writing skill to review major pieces of work progress.
+
+# Database Configuration
+PostgreSQL runs in a Docker container. Always use `docker exec` to interact with it — do not attempt local `psql` commands.
+
+- Container: `css-postgres`
+- User: `cssuser`
+- Database: `cssdb`
+- Password: `csspass`
+
+Example: `docker exec css-postgres psql -U cssuser -d cssdb -c "SELECT 1;"`

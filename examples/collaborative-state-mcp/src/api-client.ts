@@ -355,10 +355,18 @@ export class ApiClient {
       request.operationType,
     );
 
+    // Send required fields in body (backend reads from body, not headers)
     const response = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify({}),
+      body: JSON.stringify({
+        agentId: this.agentId,
+        trigger: request.trigger,
+        intent: request.intent,
+        targetRegions: request.targetRegions,
+        requestedById: request.requestedById,
+        operationType: request.operationType,
+      }),
     });
 
     // Worker returns { allowed, ... } but client expects { canEdit, ... }
@@ -390,10 +398,18 @@ export class ApiClient {
       request.operationType,
     );
 
+    // Send required fields in body (backend reads from body, not headers)
     const response = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify({}),
+      body: JSON.stringify({
+        agentId: this.agentId,
+        trigger: request.trigger,
+        intent: request.intent,
+        targetRegions: request.targetRegions,
+        requestedById: request.requestedById,
+        operationType: request.operationType,
+      }),
     });
 
     return this.handleResponse<StartAgentEditResponse>(response);
