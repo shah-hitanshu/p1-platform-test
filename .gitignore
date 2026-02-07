@@ -28,6 +28,12 @@ pnpm-debug.log*
 # Test coverage
 coverage/
 
+# Playwright reports
+playwright-report/
+
+# Packed packages
+*.tgz
+
 # Misc
 *.local
 
