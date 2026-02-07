@@ -195,4 +195,128 @@ describe('DocumentChangeSummary', () => {
 
     expect(screen.getByText(/deleted/i)).toBeInTheDocument();
   });
+
+  it('should render deleted documents with "Deleted" badge', () => {
+    const sourceChanges: ModifiedDocument[] = [
+      makeModifiedDoc({
+        documentId: 'del-1',
+        documentPath: '/pages/removed',
+        isDeleted: true,
+        latestVersionId: null,
+        latestVersionNumber: null,
+      }),
+    ];
+
+    const { container } = render(
+      <DocumentChangeSummary
+        sourceChanges={sourceChanges}
+        targetChanges={[]}
+        conflicts={[]}
+        sourceBranchName="feature"
+        targetBranchName="main"
+      />
+    );
+
+    const deletedBadge = container.querySelector('.deleted-badge');
+    expect(deletedBadge).toBeInTheDocument();
+    expect(deletedBadge?.textContent?.toLowerCase()).toContain('deleted');
+  });
+
+  it('should render added documents with "Added" badge', () => {
+    const sourceChanges: ModifiedDocument[] = [
+      makeModifiedDoc({
+        documentId: 'add-1',
+        documentPath: '/pages/new-page',
+        baseVersionId: null,
+        baseVersionNumber: null,
+        isDeleted: false,
+      }),
+    ];
+
+    const { container } = render(
+      <DocumentChangeSummary
+        sourceChanges={sourceChanges}
+        targetChanges={[]}
+        conflicts={[]}
+        sourceBranchName="feature"
+        targetBranchName="main"
+      />
+    );
+
+    const addedBadge = container.querySelector('.added-badge');
+    expect(addedBadge).toBeInTheDocument();
+    expect(addedBadge?.textContent?.toLowerCase()).toContain('added');
+  });
+
+  it('should render modified documents with "Modified" badge', () => {
+    const sourceChanges: ModifiedDocument[] = [
+      makeModifiedDoc({
+        documentId: 'mod-1',
+        documentPath: '/pages/updated',
+        latestVersionNumber: 3,
+        baseVersionId: 'v-base',
+        baseVersionNumber: 1,
+        isDeleted: false,
+      }),
+    ];
+
+    const { container } = render(
+      <DocumentChangeSummary
+        sourceChanges={sourceChanges}
+        targetChanges={[]}
+        conflicts={[]}
+        sourceBranchName="feature"
+        targetBranchName="main"
+      />
+    );
+
+    const modifiedBadge = container.querySelector('.modified-badge');
+    expect(modifiedBadge).toBeInTheDocument();
+    expect(modifiedBadge?.textContent?.toLowerCase()).toContain('modified');
+  });
+
+  it('should group sub-categories correctly within branch sections', () => {
+    const sourceChanges: ModifiedDocument[] = [
+      makeModifiedDoc({
+        documentId: 'del-1',
+        documentPath: '/pages/removed',
+        isDeleted: true,
+        latestVersionId: null,
+        latestVersionNumber: null,
+      }),
+      makeModifiedDoc({
+        documentId: 'add-1',
+        documentPath: '/pages/new-page',
+        baseVersionId: null,
+        baseVersionNumber: null,
+        isDeleted: false,
+      }),
+      makeModifiedDoc({
+        documentId: 'mod-1',
+        documentPath: '/pages/updated',
+        latestVersionNumber: 3,
+        baseVersionId: 'v-base',
+        baseVersionNumber: 1,
+        isDeleted: false,
+      }),
+    ];
+
+    const { container } = render(
+      <DocumentChangeSummary
+        sourceChanges={sourceChanges}
+        targetChanges={[]}
+        conflicts={[]}
+        sourceBranchName="feature"
+        targetBranchName="main"
+      />
+    );
+
+    // All three badge types should be present
+    expect(container.querySelector('.deleted-badge')).toBeInTheDocument();
+    expect(container.querySelector('.added-badge')).toBeInTheDocument();
+    expect(container.querySelector('.modified-badge')).toBeInTheDocument();
+
+    // Should show 3 documents total
+    expect(screen.getByText(/3 document/i)).toBeInTheDocument();
+  });
 });
