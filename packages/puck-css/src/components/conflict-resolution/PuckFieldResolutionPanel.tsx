@@ -15,6 +15,9 @@ import {
 import type { PuckFieldClassification } from '../../utils/puckFieldClassifier.js';
 import { ComponentConflictGroup } from './ComponentConflictGroup.js';
 
+/**
+ * Props for the PuckFieldResolutionPanel component.
+ */
 export interface PuckFieldResolutionPanelProps {
   /** The source branch snapshot */
   sourceSnapshot: PuckData;
@@ -135,6 +138,10 @@ function buildMergedSnapshot(
  * auto-merged fields from true conflicts, and renders radio-button
  * resolution UI grouped by component.
  *
+ * @param props - {@link PuckFieldResolutionPanelProps}
+ * @returns A React element containing the resolution UI with auto-merge summary,
+ *          conflict groups, and an apply button.
+ *
  * @example
  * ```tsx
  * <PuckFieldResolutionPanel
@@ -218,7 +225,7 @@ export function PuckFieldResolutionPanel({
 
   return (
     <div className={baseClass}>
-      <h2 className={`${baseClass}__title`}>Resolve Field Conflicts</h2>
+      <h2 className={`${baseClass}__title`}>Resolve field conflicts</h2>
 
       {/* Auto-merged fields summary */}
       {autoMergedFields.length > 0 && (
@@ -234,7 +241,7 @@ export function PuckFieldResolutionPanel({
       {conflictGroups.length > 0 && (
         <div className={`${baseClass}__conflicts`}>
           <h3 className={`${baseClass}__conflicts-title`}>
-            Conflicts Requiring Resolution
+            Conflicts requiring resolution
           </h3>
           {conflictGroups.map((group) => (
             <ComponentConflictGroup
@@ -272,7 +279,7 @@ export function PuckFieldResolutionPanel({
           disabled={!allResolved}
           onClick={handleApply}
         >
-          Apply Resolution
+          Apply resolution
         </button>
       </div>
     </div>

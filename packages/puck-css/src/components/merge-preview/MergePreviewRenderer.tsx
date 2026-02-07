@@ -229,6 +229,9 @@ function SliderView({
  * - **overlay**: Layered view of both versions
  * - **slider**: Range slider to blend between source and target
  *
+ * @param props - {@link MergePreviewRendererProps}
+ * @returns A React element rendering the diff-highlighted comparison in the chosen view mode.
+ *
  * @example
  * ```tsx
  * <MergePreviewRenderer

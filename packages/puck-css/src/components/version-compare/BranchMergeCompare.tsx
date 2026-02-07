@@ -13,6 +13,9 @@ import { BranchDiffHeader } from './BranchDiffHeader.js';
 import { ComponentTree } from './ComponentTree.js';
 import { PropDiffPanel } from './PropDiffPanel.js';
 
+/**
+ * Props for the BranchMergeCompare component.
+ */
 export interface BranchMergeCompareProps {
   /**
    * Name of the source branch.
@@ -63,6 +66,9 @@ function countDiffs(diffs: ComponentDiffWithPosition[]): {
  * Renders a full-page branch merge comparison view with branch names,
  * component trees for both sides, and a prop diff panel for selected
  * components.
+ *
+ * @param props - {@link BranchMergeCompareProps}
+ * @returns A React element with header, side-by-side component trees, and detail panel.
  */
 export function BranchMergeCompare({
   sourceBranchName,

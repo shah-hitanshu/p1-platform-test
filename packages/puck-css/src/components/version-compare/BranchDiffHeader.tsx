@@ -7,6 +7,9 @@
 
 import React from 'react';
 
+/**
+ * Props for the BranchDiffHeader component.
+ */
 export interface BranchDiffHeaderProps {
   /**
    * Name of the source branch.
@@ -52,6 +55,9 @@ export interface BranchDiffHeaderProps {
 /**
  * Renders a header bar for branch merge comparison with branch names
  * and change count summary.
+ *
+ * @param props - {@link BranchDiffHeaderProps}
+ * @returns A React element containing branch labels, change badges, and a close button.
  */
 export function BranchDiffHeader({
   sourceBranchName,

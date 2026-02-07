@@ -8,6 +8,9 @@
 import React from 'react';
 import type { PuckFieldClassification } from '../../utils/puckFieldClassifier.js';
 
+/**
+ * Props for the ComponentConflictGroup component.
+ */
 export interface ComponentConflictGroupProps {
   /** The Puck component type name (e.g. "Heading", "Text") */
   componentType: string;
@@ -48,6 +51,9 @@ function formatValue(value: unknown): string {
  * Shows the component type as a header, a conflict count badge, and
  * for each field: the prop name, source/target values, and radio
  * buttons to choose which side to keep.
+ *
+ * @param props - {@link ComponentConflictGroupProps}
+ * @returns A React element displaying the conflict group with resolution controls.
  *
  * @example
  * ```tsx

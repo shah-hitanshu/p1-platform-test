@@ -10,6 +10,9 @@ import React, { useState } from 'react';
 import type { BranchDocumentComparison } from '../../utils/branchDiff.js';
 import { ComponentTree } from './ComponentTree.js';
 
+/**
+ * Props for the DocumentDiffList component.
+ */
 export interface DocumentDiffListProps {
   /**
    * Array of document comparisons to display.
@@ -35,6 +38,9 @@ export interface DocumentDiffListProps {
 /**
  * Renders a list of documents with change count badges and expandable
  * rows for viewing component-level diffs per document.
+ *
+ * @param props - {@link DocumentDiffListProps}
+ * @returns A React element with expandable document rows and change count badges.
  */
 export function DocumentDiffList({
   documents,

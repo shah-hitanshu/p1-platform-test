@@ -41,6 +41,9 @@ export interface MergePreviewPanelProps {
  * Shows a list of documents with their paths. Clicking a document expands
  * it to show a view mode selector and the rendered diff preview.
  *
+ * @param props - {@link MergePreviewPanelProps}
+ * @returns A React element with a document list and expandable merge preview per document.
+ *
  * @example
  * ```tsx
  * <MergePreviewPanel
@@ -87,7 +90,7 @@ export function MergePreviewPanel({
 
   return (
     <div className="merge-preview-panel">
-      <h3 className="merge-preview-panel__title">Merge Preview</h3>
+      <h3 className="merge-preview-panel__title">Merge preview</h3>
       <div className="merge-preview-panel__branch-info">
         <span className="merge-preview-panel__branch">{sourceBranchName}</span>
         <span className="merge-preview-panel__arrow">{'\u2192'}</span>

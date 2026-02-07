@@ -8,6 +8,9 @@
 import React from 'react';
 import type { PuckData } from '@pantheon/css-client';
 
+/**
+ * Props for the RenderedResolutionPreview component.
+ */
 export interface RenderedResolutionPreviewProps {
   /** The merged PuckData to preview */
   mergedData: PuckData;
@@ -33,6 +36,9 @@ function formatPreviewValue(value: unknown): string {
  * Currently renders a key-value summary of all components and their
  * props. Can be extended later to render a full Puck preview when
  * a Puck config is available.
+ *
+ * @param props - {@link RenderedResolutionPreviewProps}
+ * @returns A React element displaying root props, content components, and zones.
  *
  * @example
  * ```tsx

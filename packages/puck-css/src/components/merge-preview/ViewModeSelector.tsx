@@ -39,6 +39,9 @@ const VIEW_MODE_BUTTONS: ViewModeButton[] = [
 /**
  * Renders a toggle bar to switch between merge preview view modes.
  *
+ * @param props - {@link ViewModeSelectorProps}
+ * @returns A React element with toggle buttons for each view mode.
+ *
  * @example
  * ```tsx
  * <ViewModeSelector

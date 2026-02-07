@@ -61,6 +61,9 @@ function MergePreviewIcon(): React.ReactElement {
  * Selecting a document shows a visual comparison using side-by-side,
  * overlay, or slider view modes.
  *
+ * @param options - {@link MergePreviewPluginOptions} configuring documents, branches, and callbacks.
+ * @returns A {@link PuckPlugin} that can be passed to the Puck editor's `plugins` array.
+ *
  * @example
  * ```tsx
  * import { createMergePreviewPlugin } from '@pantheon/puck-css';
