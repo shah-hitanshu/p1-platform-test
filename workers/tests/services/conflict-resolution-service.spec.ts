@@ -165,8 +165,8 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
       ).rejects.toThrow(VersionNotFoundError);
     });
 
-    it('should throw UnsupportedStrategyError for manual strategy', async () => {
-      const { resolveConflict, UnsupportedStrategyError } = await import(
+    it('should throw ManualResolutionError for manual strategy without resolvedSnapshot', async () => {
+      const { resolveConflict, ManualResolutionError } = await import(
         '../../src/services/conflict-resolution-service'
       );
 
@@ -181,7 +181,7 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
           resolvedById: 'resolver-user',
           resolvedByType: 'user',
         }),
-      ).rejects.toThrow(UnsupportedStrategyError);
+      ).rejects.toThrow(ManualResolutionError);
     });
 
     it('should include resolution metadata in result', async () => {
@@ -502,6 +502,112 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
 
       expect(result.resolved).toBe(true);
       expect(result.action).toBe('kept-deleted');
+    });
+  });
+
+  describe('resolveConflict with manual strategy', () => {
+    it('should create a version with the provided resolvedSnapshot', async () => {
+      const { resolveConflict } = await import('../../src/services/conflict-resolution-service');
+      const docVersionService = await import('../../src/services/document-version-service');
+
+      const resolvedSnapshot = { title: 'Manually Merged Title', body: 'Custom content' };
+
+      // Mock version creation
+      vi.mocked(docVersionService.createDocumentVersion).mockResolvedValueOnce({
+        id: 'manual-version-id',
+        documentId: 'doc-1',
+        branchId: 'target-branch',
+        versionNumber: 5,
+        snapshot: resolvedSnapshot,
+        createdAt: '2026-01-20T12:00:00.000Z',
+        createdById: 'resolver-user',
+        createdByType: 'user',
+        source: 'merge',
+      });
+
+      const result = await resolveConflict({
+        documentId: 'doc-1',
+        sourceBranchId: 'source-branch',
+        targetBranchId: 'target-branch',
+        sourceVersionId: 'source-version-id',
+        targetVersionId: 'target-version-id',
+        strategy: 'manual',
+        resolvedById: 'resolver-user',
+        resolvedByType: 'user',
+        resolvedSnapshot,
+      });
+
+      expect(result.resolved).toBe(true);
+      expect(result.resultVersionId).toBe('manual-version-id');
+      expect(result.strategy).toBe('manual');
+
+      // Should NOT fetch source or target version - uses provided snapshot directly
+      expect(docVersionService.getDocumentVersion).not.toHaveBeenCalled();
+
+      // Should create new version on target branch with the provided snapshot
+      expect(docVersionService.createDocumentVersion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          documentId: 'doc-1',
+          branchId: 'target-branch',
+          snapshot: resolvedSnapshot,
+          source: 'merge',
+        }),
+      );
+    });
+
+    it('should reject manual strategy without resolvedSnapshot', async () => {
+      const { resolveConflict, ManualResolutionError } = await import(
+        '../../src/services/conflict-resolution-service'
+      );
+
+      await expect(
+        resolveConflict({
+          documentId: 'doc-1',
+          sourceBranchId: 'source-branch',
+          targetBranchId: 'target-branch',
+          sourceVersionId: 'source-version-id',
+          targetVersionId: 'target-version-id',
+          strategy: 'manual',
+          resolvedById: 'resolver-user',
+          resolvedByType: 'user',
+          // No resolvedSnapshot provided
+        }),
+      ).rejects.toThrow(ManualResolutionError);
+    });
+
+    it('should include resolution metadata in manual result', async () => {
+      const { resolveConflict } = await import('../../src/services/conflict-resolution-service');
+      const docVersionService = await import('../../src/services/document-version-service');
+
+      const resolvedSnapshot = { title: 'Resolved' };
+
+      vi.mocked(docVersionService.createDocumentVersion).mockResolvedValueOnce({
+        id: 'new-version-id',
+        documentId: 'doc-1',
+        branchId: 'target-branch',
+        versionNumber: 4,
+        snapshot: resolvedSnapshot,
+        createdAt: '2026-01-20T12:00:00.000Z',
+        createdById: 'resolver-agent',
+        createdByType: 'agent',
+        source: 'merge',
+      });
+
+      const result = await resolveConflict({
+        documentId: 'doc-1',
+        sourceBranchId: 'source-branch',
+        targetBranchId: 'target-branch',
+        sourceVersionId: 'source-version-id',
+        targetVersionId: 'target-version-id',
+        strategy: 'manual',
+        resolvedById: 'resolver-agent',
+        resolvedByType: 'agent',
+        resolvedSnapshot,
+      });
+
+      expect(result.resolvedById).toBe('resolver-agent');
+      expect(result.resolvedByType).toBe('agent');
+      expect(result.documentId).toBe('doc-1');
     });
   });
 
