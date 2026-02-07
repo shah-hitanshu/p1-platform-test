@@ -70,6 +70,10 @@ function createRealDatabaseConnection(connectionString: string): {
       // Automatically parse JSONB columns
       undefined: null,
     },
+    // Use max: 1 to ensure all queries use the same connection.
+    // This is required for manual transaction handling (BEGIN/COMMIT/ROLLBACK)
+    // to work correctly, as transactions are connection-scoped.
+    max: 1,
   });
 
   const connection: DatabaseConnection = {
@@ -463,28 +467,30 @@ describe('Phase 3.1: Integration Tests - Site and Document CRUD', () => {
   });
 
   describe('Site Deletion Behavior', () => {
-    it('should fail to delete site with documents (FK constraint)', async () => {
+    it('should cascade delete documents when deleting site', async () => {
       // Create a new site with documents
       const site = await createSite({
-        pantheonSiteId: `fk-test-${String(Date.now())}`,
-        name: 'FK Constraint Test Site',
+        pantheonSiteId: `cascade-test-${String(Date.now())}`,
+        name: 'Cascade Delete Test Site',
       });
 
       const doc1 = await createDocument({
         siteId: site.id,
-        path: 'fk-test/doc1',
+        path: 'cascade-test/doc1',
       });
 
-      // Attempting to delete site should fail due to FK constraint
-      await expect(deleteSite(site.id)).rejects.toThrow();
+      // Verify document exists
+      expect(await getDocument(doc1.id)).not.toBeNull();
 
-      // Verify site still exists
-      expect(await getSite(site.id)).not.toBeNull();
-
-      // Clean up: delete document first, then site
-      await deleteDocument(doc1.id);
+      // deleteSite should succeed and cascade delete all related data
       const deleted = await deleteSite(site.id);
       expect(deleted).toBe(true);
+
+      // Verify site is deleted
+      expect(await getSite(site.id)).toBeNull();
+
+      // Verify document is also deleted (cascaded by deleteSite)
+      expect(await getDocument(doc1.id)).toBeNull();
     });
 
     it('should delete site after documents are removed', async () => {

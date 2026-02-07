@@ -7,7 +7,7 @@
  * @see collaborative-state-system-architecture-v2.2.md Section "Role System"
  */
 
-import type { RoleName, RolePermissions, PantheonRole } from '../types';
+import type { RoleName, RolePermissions, PantheonRole, AgentSiteRole } from '../types';
 
 /**
  * Role definitions with their associated permissions.
@@ -88,6 +88,31 @@ export function mapPantheonRole(pantheonRole: PantheonRole | undefined): RoleNam
     case 'developer':
     case 'team_member':
       return 'EDITOR';
+    default:
+      return 'NO_ACCESS';
+  }
+}
+
+/**
+ * Maps an agent site role to the corresponding system role name.
+ *
+ * Agent roles map as follows:
+ * - admin -> ADMIN
+ * - editor -> EDITOR
+ * - viewer -> VIEWER
+ * - undefined/unknown -> NO_ACCESS
+ *
+ * @param agentRole - The agent site role (admin, editor, viewer)
+ * @returns The corresponding system role name
+ */
+export function mapAgentRole(agentRole: AgentSiteRole | undefined): RoleName {
+  switch (agentRole) {
+    case 'admin':
+      return 'ADMIN';
+    case 'editor':
+      return 'EDITOR';
+    case 'viewer':
+      return 'VIEWER';
     default:
       return 'NO_ACCESS';
   }

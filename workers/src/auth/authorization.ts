@@ -10,9 +10,15 @@
  * @see collaborative-state-system-architecture-v2.2.md Section "Branch-Level Authorization"
  */
 
-import type { AuthenticatedPrincipal, RoleName, RolePermissions } from '../types';
+import type {
+  AuthenticatedPrincipal,
+  RoleName,
+  RolePermissions,
+  AgentSiteRole,
+  PantheonRole,
+} from '../types';
 import { query } from '../db';
-import { ROLES, mapPantheonRole, maxRole } from './roles';
+import { ROLES, mapPantheonRole, mapAgentRole, maxRole } from './roles';
 
 /**
  * Result of an effective role calculation.
@@ -40,10 +46,51 @@ export class AuthorizationError extends Error {
 }
 
 /**
+ * Gets the site-level role for a principal from the database.
+ * Falls back to JWT-embedded roles for backwards compatibility.
+ *
+ * @param principal - The authenticated principal
+ * @param siteId - The site ID
+ * @returns The system role name for this principal on this site
+ */
+async function getSiteRole(
+  principal: AuthenticatedPrincipal,
+  siteId: string,
+): Promise<RoleName> {
+  if (principal.type === 'agent') {
+    // Query agent_site_roles table
+    const result = await query<{ role: AgentSiteRole }>(
+      `SELECT role FROM agent_site_roles
+       WHERE agent_id = $1 AND site_id = $2`,
+      [principal.id, siteId],
+    );
+
+    if (result.rows[0]) {
+      return mapAgentRole(result.rows[0].role);
+    }
+  } else {
+    // Query user_site_roles table
+    const result = await query<{ role: PantheonRole }>(
+      `SELECT role FROM user_site_roles
+       WHERE user_id = $1 AND site_id = $2`,
+      [principal.id, siteId],
+    );
+
+    if (result.rows[0]) {
+      return mapPantheonRole(result.rows[0].role);
+    }
+  }
+
+  // Fallback to JWT-embedded roles for backwards compatibility
+  const jwtRole = principal.pantheonSiteRoles[siteId];
+  return mapPantheonRole(jwtRole);
+}
+
+/**
  * Calculates the effective role for a principal on a specific branch.
  *
  * The effective role is calculated as the maximum of:
- * 1. The principal's Pantheon site role (mapped to system role)
+ * 1. The principal's site role (from database or JWT fallback)
  * 2. Any branch-level grant for this principal on this branch
  *
  * Branch grants can elevate access but never restrict it.
@@ -66,9 +113,8 @@ export async function getEffectiveRole(
   siteId: string,
   branchId: string,
 ): Promise<EffectiveRoleResult> {
-  // Step 1: Get Pantheon baseline role for this site
-  const pantheonRole = principal.pantheonSiteRoles[siteId];
-  const baselineRoleName = mapPantheonRole(pantheonRole);
+  // Step 1: Get baseline role from database (with JWT fallback)
+  const baselineRoleName = await getSiteRole(principal, siteId);
 
   // Step 2: Check for branch-level elevation
   const branchGrant = await query<{ role: RoleName }>(

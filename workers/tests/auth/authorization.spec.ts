@@ -178,10 +178,11 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
           pantheonSiteRoles: { 'site-1': 'admin' }, // ADMIN baseline
         });
 
-        // Branch grant is only VIEWER (lower)
-        vi.mocked(db.query).mockResolvedValue({
-          rows: [{ role: 'VIEWER' }],
-        });
+        // First query: user_site_roles returns empty (fall back to JWT)
+        // Second query: branch_grants returns VIEWER (lower than ADMIN)
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] }) // user_site_roles - no entry
+          .mockResolvedValueOnce({ rows: [{ role: 'VIEWER' }] }); // branch_grants
 
         const result = await getEffectiveRole(principal, 'site-1', 'branch-1');
 

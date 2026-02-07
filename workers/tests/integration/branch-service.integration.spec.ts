@@ -80,6 +80,10 @@ function createRealDatabaseConnection(connectionString: string): {
     transform: {
       undefined: null,
     },
+    // Use max: 1 to ensure all queries use the same connection.
+    // This is required for manual transaction handling (BEGIN/COMMIT/ROLLBACK)
+    // to work correctly, as transactions are connection-scoped.
+    max: 1,
   });
 
   const connection: DatabaseConnection = {
