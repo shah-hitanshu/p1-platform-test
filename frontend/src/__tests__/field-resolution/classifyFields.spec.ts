@@ -11,7 +11,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   classifyFields,
-  type FieldClassification,
 } from '../../components/field-resolution/classifyFields';
 
 describe('classifyFields', () => {
