@@ -85,6 +85,13 @@ export function MergeRequestDetailPage() {
     }
   }, [siteId, mergeRequest]);
 
+  // Auto-show resolution panel when merge request is conflicted
+  useEffect(() => {
+    if (mergeRequest?.status === 'conflicted' && mergeRequest.hasConflicts) {
+      setShowResolutionPanel(true);
+    }
+  }, [mergeRequest?.status, mergeRequest?.hasConflicts]);
+
   // Fetch document diffs when resolution panel is shown
   useEffect(() => {
     if (showResolutionPanel && documentDiffs === undefined && !diffsLoadedRef.current) {
@@ -136,6 +143,9 @@ export function MergeRequestDetailPage() {
     if (!siteId || !requestId) return;
     const result = await execMerge(siteId, { mergeRequestId: requestId });
     if (result && result.success) {
+      fetchMergeRequest(siteId, requestId);
+    } else {
+      // Re-fetch to pick up conflict details and status changes
       fetchMergeRequest(siteId, requestId);
     }
   };
@@ -405,6 +415,11 @@ export function MergeRequestDetailPage() {
               documentDiffs={documentDiffs}
               onResolve={handleResolveConflicts}
               isResolving={isMerging || diffsLoading}
+              sourceBranchName={getBranchName(mergeRequest.sourceBranchId)}
+              targetBranchName={getBranchName(mergeRequest.targetBranchId)}
+              siteId={siteId}
+              sourceBranchId={mergeRequest.sourceBranchId}
+              targetBranchId={mergeRequest.targetBranchId}
             />
           )}
         </section>

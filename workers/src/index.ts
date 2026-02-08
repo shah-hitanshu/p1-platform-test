@@ -511,7 +511,8 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
   // Realtime routes (must come before document routes)
   // /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}[/action]
   // Note: These routes handle WebSocket connections, real-time document access, and agent edit workflows
-  // Actions: edits, connect, can-agent-edit, agent-edit-start, agent-edit-complete, agent-edit-abort, agent-stop, focus-regions
+  // Actions: edits, connect, can-agent-edit, agent-edit-start,
+  // agent-edit-complete, agent-edit-abort, agent-stop, focus-regions
   const realtimeActions = 'edits|connect|can-agent-edit|agent-edit-start|agent-edit-complete|agent-edit-abort|agent-stop|focus-regions';
   const realtimeRe = new RegExp(
     `^/api/sites/([^/]+)/branches/([^/]+)/documents/(.+?)/(${realtimeActions})$`,
@@ -867,7 +868,7 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
 
   // Merge routes
   // /api/sites/{siteId}/merge/{operation}
-  const mergeOpMatch = /^\/api\/sites\/([^/]+)\/merge\/(check|execute|preview)$/.exec(normalizedPath);
+  const mergeOpMatch = /^\/api\/sites\/([^/]+)\/merge\/(check|execute|preview|crdt-preview)$/.exec(normalizedPath);
   if (mergeOpMatch) {
     return {
       handler: 'merge',
@@ -1132,8 +1133,8 @@ async function handleRequest(
       case 'merge':
         response = await handleMergeRoutes(request, {
           siteId: route.params.siteId ?? '',
-          operation: ['check', 'execute', 'preview'].includes(route.params.action ?? '')
-            ? (route.params.action as 'check' | 'execute' | 'preview')
+          operation: ['check', 'execute', 'preview', 'crdt-preview'].includes(route.params.action ?? '')
+            ? (route.params.action as 'check' | 'execute' | 'preview' | 'crdt-preview')
             : undefined,
           mergeRequests: route.params.action === 'requests',
           executeRequest: route.params.action === 'execute-request',

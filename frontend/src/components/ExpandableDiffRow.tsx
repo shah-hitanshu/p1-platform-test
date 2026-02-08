@@ -3,8 +3,10 @@
  *
  * A read-only expandable row that shows document diffs.
  * Unlike ExpandableConflictRow, this does not include resolution radio buttons.
+ * Supports toggling between JSON and Content diff views.
  */
 
+import { useState } from 'react';
 import { Button } from '@pantheon-systems/design-toolkit-react';
 import type {
   DocumentConflict,
@@ -12,6 +14,7 @@ import type {
   DocumentDiff,
 } from '../types';
 import { JsonDiffViewer } from './JsonDiffViewer';
+import { ContentDiffViewer } from './content-diff/ContentDiffViewer';
 import './ExpandableDiffRow.css';
 
 interface ExpandableDiffRowProps {
@@ -25,11 +28,11 @@ interface ExpandableDiffRowProps {
 function getConflictTypeLabel(type: DocumentConflictType): string {
   switch (type) {
     case 'both-modified':
-      return 'Both Modified';
+      return 'Both modified';
     case 'deleted-in-source':
-      return 'Deleted in Source';
+      return 'Deleted in source';
     case 'deleted-in-target':
-      return 'Deleted in Target';
+      return 'Deleted in target';
     default:
       return type;
   }
@@ -42,6 +45,8 @@ export function ExpandableDiffRow({
   onToggle,
   isLoading = false,
 }: ExpandableDiffRowProps) {
+  const [viewMode, setViewMode] = useState<'json' | 'content'>('json');
+
   return (
     <div
       className={`expandable-diff-row ${isExpanded ? 'expanded' : ''}`}
@@ -89,19 +94,46 @@ export function ExpandableDiffRow({
           aria-label={isExpanded ? 'Hide diff view' : 'Show diff view'}
           data-testid={`expand-diff-toggle-${conflict.documentId}`}
         >
-          {isLoading ? 'Loading...' : isExpanded ? 'Hide Diff' : 'Show Diff'}
+          {isLoading ? 'Loading...' : isExpanded ? 'Hide diff' : 'Show diff'}
         </Button>
       </div>
 
       {isExpanded && diff != null && (
         <div className="diff-row-content">
-          <JsonDiffViewer
-            sourceData={diff.sourceSnapshot}
-            targetData={diff.targetSnapshot}
-            diffOperations={diff.diffOperations}
-            sourceLabel="Source Branch"
-            targetLabel="Target Branch"
-          />
+          <div className="diff-view-toggle">
+            <button
+              className={`view-toggle-btn ${viewMode === 'json' ? 'active' : ''}`}
+              onClick={() => setViewMode('json')}
+              aria-label="JSON view"
+            >
+              JSON view
+            </button>
+            <button
+              className={`view-toggle-btn ${viewMode === 'content' ? 'active' : ''}`}
+              onClick={() => setViewMode('content')}
+              aria-label="Content view"
+            >
+              Content view
+            </button>
+          </div>
+
+          {viewMode === 'json' ? (
+            <JsonDiffViewer
+              sourceData={diff.sourceSnapshot}
+              targetData={diff.targetSnapshot}
+              diffOperations={diff.diffOperations}
+              sourceLabel="Source branch"
+              targetLabel="Target branch"
+            />
+          ) : (
+            <ContentDiffViewer
+              sourceData={diff.sourceSnapshot}
+              targetData={diff.targetSnapshot}
+              diffOperations={diff.diffOperations}
+              sourceLabel="Source branch"
+              targetLabel="Target branch"
+            />
+          )}
         </div>
       )}
 

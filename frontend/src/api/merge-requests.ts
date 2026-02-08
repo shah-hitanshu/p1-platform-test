@@ -49,6 +49,7 @@ interface MergePreviewParams {
 interface ConflictResolution {
   documentId: string;
   strategy: ConflictResolutionStrategy;
+  resolvedSnapshot?: Record<string, unknown>;
 }
 
 interface ExecuteMergeParams {
@@ -175,6 +176,34 @@ export async function executeMerge(
   );
 }
 
+/**
+ * Result of a CRDT merge preview
+ */
+interface CrdtPreviewResult {
+  success: boolean;
+  snapshot: Record<string, unknown>;
+  error?: string;
+}
+
+interface CrdtPreviewParams {
+  documentId: string;
+  sourceBranchId: string;
+  targetBranchId: string;
+}
+
+/**
+ * Preview CRDT merge result without committing
+ */
+export async function previewCrdtMerge(
+  siteId: string,
+  params: CrdtPreviewParams
+): Promise<CrdtPreviewResult> {
+  return apiPost<CrdtPreviewResult>(
+    `/api/sites/${siteId}/merge/crdt-preview`,
+    params
+  );
+}
+
 export type {
   CreateMergeRequestParams,
   UpdateMergeRequestParams,
@@ -183,4 +212,6 @@ export type {
   MergePreviewParams,
   ExecuteMergeParams,
   ConflictResolution,
+  CrdtPreviewResult,
+  CrdtPreviewParams,
 };

@@ -73,14 +73,17 @@ describe('Phase 7.1a: Branch API Routes', () => {
         createdByType: 'user',
       });
 
-      vi.mocked(services.getLatestCheckpoint).mockResolvedValueOnce({
-        id: 'checkpoint-1',
-        branchId: 'main-branch-id',
-        name: 'Latest',
-        type: 'manual',
-        createdAt: '2026-01-24T10:00:00.000Z',
-        createdById: 'user-1',
-        createdByType: 'user',
+      vi.mocked(services.createCheckpoint).mockResolvedValueOnce({
+        checkpoint: {
+          id: 'checkpoint-1',
+          branchId: 'main-branch-id',
+          name: 'Auto-created for branching',
+          type: 'auto',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          createdById: 'user-1',
+          createdByType: 'user',
+        },
+        documentCount: 0,
       });
 
       vi.mocked(services.createBranch).mockResolvedValueOnce({
@@ -165,14 +168,17 @@ describe('Phase 7.1a: Branch API Routes', () => {
         createdByType: 'user',
       });
 
-      vi.mocked(services.getLatestCheckpoint).mockResolvedValueOnce({
-        id: 'checkpoint-1',
-        branchId: 'main-branch-id',
-        name: 'Latest',
-        type: 'manual',
-        createdAt: '2026-01-24T10:00:00.000Z',
-        createdById: 'user-1',
-        createdByType: 'user',
+      vi.mocked(services.createCheckpoint).mockResolvedValueOnce({
+        checkpoint: {
+          id: 'checkpoint-1',
+          branchId: 'main-branch-id',
+          name: 'Auto-created for branching',
+          type: 'auto',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          createdById: 'user-1',
+          createdByType: 'user',
+        },
+        documentCount: 0,
       });
 
       vi.mocked(services.createBranch).mockResolvedValueOnce({
@@ -235,14 +241,17 @@ describe('Phase 7.1a: Branch API Routes', () => {
         createdByType: 'user',
       });
 
-      vi.mocked(services.getLatestCheckpoint).mockResolvedValueOnce({
-        id: 'checkpoint-2',
-        branchId: 'feature-branch-id',
-        name: 'Latest on feature',
-        type: 'manual',
-        createdAt: '2026-01-24T10:30:00.000Z',
-        createdById: 'user-1',
-        createdByType: 'user',
+      vi.mocked(services.createCheckpoint).mockResolvedValueOnce({
+        checkpoint: {
+          id: 'checkpoint-2',
+          branchId: 'feature-branch-id',
+          name: 'Auto-created for branching',
+          type: 'auto',
+          createdAt: '2026-01-24T10:30:00.000Z',
+          createdById: 'user-1',
+          createdByType: 'user',
+        },
+        documentCount: 0,
       });
 
       vi.mocked(services.createBranch).mockResolvedValueOnce({
@@ -336,14 +345,17 @@ describe('Phase 7.1a: Branch API Routes', () => {
         createdByType: 'user',
       });
 
-      vi.mocked(services.getLatestCheckpoint).mockResolvedValueOnce({
-        id: 'checkpoint-1',
-        branchId: 'main-branch-id',
-        name: 'Latest',
-        type: 'manual',
-        createdAt: '2026-01-24T10:00:00.000Z',
-        createdById: 'user-1',
-        createdByType: 'user',
+      vi.mocked(services.createCheckpoint).mockResolvedValueOnce({
+        checkpoint: {
+          id: 'checkpoint-1',
+          branchId: 'main-branch-id',
+          name: 'Auto-created for branching',
+          type: 'auto',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          createdById: 'user-1',
+          createdByType: 'user',
+        },
+        documentCount: 0,
       });
 
       vi.mocked(services.createBranch).mockRejectedValueOnce(

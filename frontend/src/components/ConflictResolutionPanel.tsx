@@ -2,6 +2,7 @@
  * Conflict Resolution Panel Component
  *
  * Allows users to select resolution strategies for each conflict.
+ * Supports manual field-by-field resolution with resolvedSnapshot.
  */
 
 import { useState } from 'react';
@@ -16,10 +17,19 @@ interface ConflictResolutionPanelProps {
   documentDiffs?: DocumentDiff[];
   onResolve: (resolutions: ConflictResolution[]) => void;
   isResolving: boolean;
+  sourceBranchName?: string;
+  targetBranchName?: string;
+  siteId?: string;
+  sourceBranchId?: string;
+  targetBranchId?: string;
 }
 
 interface ResolutionState {
   [documentId: string]: ConflictResolutionStrategy;
+}
+
+interface ResolvedSnapshotState {
+  [documentId: string]: Record<string, unknown>;
 }
 
 interface ExpandedState {
@@ -34,6 +44,8 @@ function getResolutionLabel(strategy: ConflictResolutionStrategy): string {
       return 'Take Target';
     case 'merge-crdt':
       return 'CRDT Merge';
+    case 'manual':
+      return 'Choose field by field';
     default:
       return strategy;
   }
@@ -46,6 +58,11 @@ export function ConflictResolutionPanel({
   documentDiffs,
   onResolve,
   isResolving,
+  sourceBranchName = 'Source',
+  targetBranchName = 'Target',
+  siteId,
+  sourceBranchId,
+  targetBranchId,
 }: ConflictResolutionPanelProps) {
   const [resolutions, setResolutions] = useState<ResolutionState>(() => {
     // Initialize with 'take-source' as default for all conflicts
@@ -56,6 +73,7 @@ export function ConflictResolutionPanel({
     return initial;
   });
 
+  const [resolvedSnapshots, setResolvedSnapshots] = useState<ResolvedSnapshotState>({});
   const [expanded, setExpanded] = useState<ExpandedState>({});
 
   // Build a map for quick diff lookup
@@ -70,6 +88,13 @@ export function ConflictResolutionPanel({
     setResolutions((prev) => ({
       ...prev,
       [documentId]: strategy,
+    }));
+  };
+
+  const handleResolvedSnapshot = (documentId: string, snapshot: Record<string, unknown>) => {
+    setResolvedSnapshots((prev) => ({
+      ...prev,
+      [documentId]: snapshot,
     }));
   };
 
@@ -106,10 +131,13 @@ export function ConflictResolutionPanel({
 
   const handleSubmit = () => {
     const resolutionList: ConflictResolution[] = Object.entries(resolutions).map(
-      ([documentId, strategy]) => ({
-        documentId,
-        strategy,
-      })
+      ([documentId, strategy]) => {
+        const resolution: ConflictResolution = { documentId, strategy };
+        if (strategy === 'manual' && resolvedSnapshots[documentId]) {
+          resolution.resolvedSnapshot = resolvedSnapshots[documentId];
+        }
+        return resolution;
+      }
     );
     onResolve(resolutionList);
   };
@@ -180,7 +208,13 @@ export function ConflictResolutionPanel({
             onToggle={() => handleToggleExpanded(conflict.documentId)}
             resolution={resolutions[conflict.documentId]}
             onResolutionChange={(strategy) => handleResolutionChange(conflict.documentId, strategy)}
+            onResolvedSnapshot={(snapshot) => handleResolvedSnapshot(conflict.documentId, snapshot)}
+            sourceBranchName={sourceBranchName}
+            targetBranchName={targetBranchName}
             disabled={isResolving}
+            siteId={siteId}
+            sourceBranchId={sourceBranchId}
+            targetBranchId={targetBranchId}
           />
         ))}
       </div>

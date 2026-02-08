@@ -256,6 +256,146 @@ describe('Phase 5.1b: Merge Base Service', () => {
       expect(result).toHaveLength(1);
       expect(result[0].isDeleted).toBe(true);
     });
+
+    it('should exclude documents with only source=branch versions (unmodified copies)', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      // The SQL should filter out branch-copy rows. We verify by checking
+      // that the SQL includes the source column and exclusion filter.
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          // Only genuinely modified doc should be returned
+          {
+            document_id: 'doc-edited',
+            document_path: 'pages/edited',
+            latest_version_id: 'v-edited',
+            latest_version_number: 2,
+            base_version_id: 'v-base',
+            base_version_number: 1,
+            is_deleted: false,
+          },
+        ],
+      });
+
+      const result = await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
+
+      // Verify the SQL query includes source column and branch-copy exclusion
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      expect(sqlArg).toContain('dv.source');
+      expect(sqlArg).toContain('cv.source');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].documentId).toBe('doc-edited');
+    });
+
+    it('should include documents with source=edit versions (genuinely modified)', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            document_id: 'doc-edited',
+            document_path: 'pages/edited',
+            latest_version_id: 'v-edited',
+            latest_version_number: 3,
+            base_version_id: 'v-base',
+            base_version_number: 1,
+            is_deleted: false,
+          },
+        ],
+      });
+
+      const result = await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].documentId).toBe('doc-edited');
+      expect(result[0].latestVersionNumber).toBe(3);
+    });
+
+    it('should mark archived documents as isDeleted true', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            document_id: 'doc-archived',
+            document_path: 'pages/archived-page',
+            latest_version_id: 'v-latest',
+            latest_version_number: 2,
+            base_version_id: 'v-base',
+            base_version_number: 1,
+            is_deleted: true,
+          },
+        ],
+      });
+
+      const result = await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].isDeleted).toBe(true);
+      expect(result[0].documentPath).toBe('pages/archived-page');
+
+      // Verify the SQL checks archived_at for deletion detection
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      expect(sqlArg).toContain('archived_at');
+    });
+
+    it('should include documents in checkpoint but not on branch as deleted', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            document_id: 'doc-missing',
+            document_path: 'pages/removed',
+            latest_version_id: null,
+            latest_version_number: null,
+            base_version_id: 'v-base',
+            base_version_number: 1,
+            is_deleted: true,
+          },
+        ],
+      });
+
+      const result = await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].documentId).toBe('doc-missing');
+      expect(result[0].isDeleted).toBe(true);
+      expect(result[0].latestVersionId).toBeNull();
+    });
+
+    it('should use SQL that filters out unmodified branch copies', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
+
+      // Verify the SQL excludes branch copies that are not archived and exist in checkpoint
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      expect(sqlArg).toMatch(/cv\.source\s*=\s*'branch'/);
+      expect(sqlArg).toContain('archived_at');
+    });
+
+    it('should exclude archived documents not in checkpoint (created then deleted, net-zero)', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      // The SQL should filter out documents created after checkpoint and then archived
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
+
+      // Verify the SQL excludes net-zero archived documents
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      expect(sqlArg).toMatch(/cd\.document_id IS NULL AND d\.archived_at IS NOT NULL/);
+    });
   });
 
   describe('getDocumentsAtCheckpoint', () => {

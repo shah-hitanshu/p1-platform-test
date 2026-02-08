@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Alert } from '@pantheon-systems/design-toolkit-react';
 import { previewMerge } from '../api/merge-requests';
 import { ExpandableConflictList } from './ExpandableConflictList';
+import { DocumentChangeSummary } from './document-change-summary';
 import type { MergePreview, DocumentDiff } from '../types';
 import './MergePreviewPanel.css';
 
@@ -175,6 +176,18 @@ export function MergePreviewPanel({
               </Alert>
             )}
           </div>
+
+          {(preview.sourceChanges || preview.targetChanges) && (
+            <div className="preview-change-summary">
+              <DocumentChangeSummary
+                sourceChanges={preview.sourceChanges ?? []}
+                targetChanges={preview.targetChanges ?? []}
+                conflicts={preview.conflicts.documentConflicts}
+                sourceBranchName={sourceBranchName}
+                targetBranchName={targetBranchName}
+              />
+            </div>
+          )}
 
           {preview.hasConflicts && preview.conflicts.documentConflicts.length > 0 && (
             <div className="preview-conflicts">

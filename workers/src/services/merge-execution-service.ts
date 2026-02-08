@@ -55,11 +55,24 @@ export interface ExecuteMergeResult {
 }
 
 /**
+ * Per-document resolution instruction.
+ */
+export interface DocumentResolution {
+  documentId: string;
+  strategy: 'take-source' | 'take-target' | 'merge-crdt' | 'manual';
+  /** Required when strategy is 'manual'. The client-provided merged snapshot. */
+  resolvedSnapshot?: Record<string, unknown>;
+}
+
+/**
  * Parameters for executing a merge with conflict resolution.
  */
 export interface ExecuteMergeWithResolutionParams {
   mergeRequestId: string;
+  /** Default strategy applied to conflicts without a per-document resolution. */
   resolutionStrategy: 'take-source' | 'take-target' | 'merge-crdt';
+  /** Optional per-document resolutions that override the default strategy. */
+  resolutions?: DocumentResolution[];
   mergedById: string;
   mergedByType: 'user' | 'agent';
 }
@@ -192,12 +205,12 @@ export async function executeMerge(
     mergeRequest.targetBranchId,
   );
 
-  // 4. If conflicts exist, update merge request and throw error
+  // 4. If conflicts exist, update merge request status and throw error
   if (detectionResult.hasConflicts) {
-    await updateMergeRequestConflicts(mergeRequestId, {
-      hasConflicts: true,
-      conflictDetails: detectionResult.conflicts,
-    });
+    await updateMergeRequestConflicts(mergeRequestId, detectionResult.conflicts);
+
+    // Transition to 'conflicted' status so the UI can show resolution options
+    await updateMergeRequestStatus(mergeRequestId, 'conflicted');
 
     throw new MergeConflictsError(
       mergeRequestId,
@@ -238,15 +251,15 @@ export async function executeMerge(
 }
 
 /**
- * Execute a merge with automatic conflict resolution.
+ * Execute a merge with conflict resolution.
  *
- * Applies the specified resolution strategy to all conflicts,
- * then executes the merge.
+ * Supports per-document resolution strategies including 'manual' (client-provided snapshot).
+ * Falls back to the default `resolutionStrategy` for any conflict without a specific resolution.
  */
 export async function executeMergeWithResolution(
   params: ExecuteMergeWithResolutionParams,
 ): Promise<ExecuteMergeWithResolutionResult> {
-  const { mergeRequestId, resolutionStrategy, mergedById, mergedByType } =
+  const { mergeRequestId, resolutionStrategy, resolutions, mergedById, mergedByType } =
     params;
 
   // 1. Fetch merge request
@@ -255,12 +268,12 @@ export async function executeMergeWithResolution(
     throw new MergeRequestNotFoundError(mergeRequestId);
   }
 
-  // 2. Validate status is approved
-  if (mergeRequest.status !== 'approved') {
+  // 2. Validate status is approved or conflicted
+  if (mergeRequest.status !== 'approved' && mergeRequest.status !== 'conflicted') {
     throw new MergeNotAllowedError(
       mergeRequestId,
       mergeRequest.status,
-      'Merge request must be approved',
+      'Merge request must be approved or conflicted',
     );
   }
 
@@ -272,18 +285,46 @@ export async function executeMergeWithResolution(
 
   let conflictsResolved = 0;
 
+  // Build a map of per-document resolutions for quick lookup
+  const resolutionMap = new Map<string, DocumentResolution>();
+  if (resolutions !== undefined) {
+    for (const r of resolutions) {
+      resolutionMap.set(r.documentId, r);
+    }
+  }
+
   // 4. Resolve conflicts if any
   if (detectionResult.hasConflicts) {
-    if (resolutionStrategy === 'merge-crdt') {
-      // Use CRDT merge for each conflict
-      for (const conflict of detectionResult.conflicts.documentConflicts) {
-        const sourceChange = detectionResult.sourceChanges.find(
-          (c) => c.documentId === conflict.documentId,
-        );
-        const targetChange = detectionResult.targetChanges.find(
-          (c) => c.documentId === conflict.documentId,
-        );
+    for (const conflict of detectionResult.conflicts.documentConflicts) {
+      const docResolution = resolutionMap.get(conflict.documentId);
+      const strategy = docResolution?.strategy ?? resolutionStrategy;
 
+      const sourceChange = detectionResult.sourceChanges.find(
+        (c) => c.documentId === conflict.documentId,
+      );
+      const targetChange = detectionResult.targetChanges.find(
+        (c) => c.documentId === conflict.documentId,
+      );
+
+      if (strategy === 'manual') {
+        // Manual resolution: use client-provided snapshot
+        if (docResolution?.resolvedSnapshot === undefined) {
+          throw new MergeExecutionError(
+            mergeRequestId,
+            `Manual resolution for document "${conflict.documentId}" requires a resolvedSnapshot`,
+          );
+        }
+        await createDocumentVersion({
+          documentId: conflict.documentId,
+          branchId: mergeRequest.targetBranchId,
+          snapshot: docResolution.resolvedSnapshot,
+          source: 'merge',
+          createdById: mergedById,
+          createdByType: mergedByType,
+          skipDuplicateCheck: true,
+        });
+        conflictsResolved++;
+      } else if (strategy === 'merge-crdt') {
         if (
           sourceChange !== undefined &&
           sourceChange.latestVersionId !== null &&
@@ -303,17 +344,22 @@ export async function executeMergeWithResolution(
           });
           conflictsResolved++;
         }
+      } else {
+        // take-source or take-target: resolve individually
+        const resolutionResult = await resolveAllConflicts({
+          mergeRequestId,
+          conflicts: [{
+            documentId: conflict.documentId,
+            conflictType: conflict.conflictType,
+            sourceVersionId: sourceChange?.latestVersionId ?? '',
+            targetVersionId: targetChange?.latestVersionId ?? '',
+          }],
+          strategy,
+          resolvedById: mergedById,
+          resolvedByType: mergedByType,
+        });
+        conflictsResolved += resolutionResult.resolvedCount;
       }
-    } else {
-      // Use take-source or take-target
-      const resolutionResult = await resolveAllConflicts({
-        mergeRequestId,
-        conflicts: buildConflictsWithVersions(detectionResult),
-        strategy: resolutionStrategy,
-        resolvedById: mergedById,
-        resolvedByType: mergedByType,
-      });
-      conflictsResolved = resolutionResult.resolvedCount;
     }
   }
 
@@ -420,6 +466,7 @@ async function copySourceChangesToTarget(
     }
 
     // Create version on target branch
+    // Always create for merge operations — the source='merge' marker matters for history.
     await createDocumentVersion({
       documentId: change.documentId,
       branchId: mergeRequest.targetBranchId,
@@ -428,6 +475,7 @@ async function copySourceChangesToTarget(
       source: 'merge',
       createdById: mergedById,
       createdByType: mergedByType,
+      skipDuplicateCheck: true,
     });
 
     documentsUpdated++;
@@ -436,30 +484,3 @@ async function copySourceChangesToTarget(
   return documentsUpdated;
 }
 
-/**
- * Build conflict objects with version information for resolution.
- */
-function buildConflictsWithVersions(
-  detectionResult: ConflictDetectionResult,
-): {
-  documentId: string;
-  conflictType: string;
-  sourceVersionId: string;
-  targetVersionId: string;
-}[] {
-  return detectionResult.conflicts.documentConflicts.map((conflict) => {
-    const sourceChange = detectionResult.sourceChanges.find(
-      (c) => c.documentId === conflict.documentId,
-    );
-    const targetChange = detectionResult.targetChanges.find(
-      (c) => c.documentId === conflict.documentId,
-    );
-
-    return {
-      documentId: conflict.documentId,
-      conflictType: conflict.conflictType,
-      sourceVersionId: sourceChange?.latestVersionId ?? '',
-      targetVersionId: targetChange?.latestVersionId ?? '',
-    };
-  });
-}
