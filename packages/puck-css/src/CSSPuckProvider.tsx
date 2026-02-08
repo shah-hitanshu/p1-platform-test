@@ -127,6 +127,9 @@ function CSSPuckProviderInner({
   const currentDocumentRef = useRef<Document | null>(null);
   const initializedRef = useRef(false);
 
+  // Track realtime connection state for use in performSave (avoids stale closure)
+  const realtimeConnectedRef = useRef(false);
+
   // Auto-save pause state
   const [autoSavePaused, setAutoSavePaused] = useState(false);
 
@@ -282,6 +285,11 @@ function CSSPuckProviderInner({
     viewingVersionRef.current = viewingVersion;
   }, [viewingVersion]);
 
+  // Keep realtime connection ref in sync (used by performSave to avoid stale closure)
+  useEffect(() => {
+    realtimeConnectedRef.current = realtime.connected;
+  }, [realtime.connected]);
+
   // Create client with user principal
   const userClient = useMemo(
     () => client.withPrincipal({ id: userId, type: 'user' }),
@@ -336,6 +344,18 @@ function CSSPuckProviderInner({
       return;
     }
 
+    // When realtime is connected, the DO handles persistence via WebSocket sync.
+    // Skip REST API save to avoid creating duplicate versions without CRDT state.
+    if (enableRealtime && realtimeConnectedRef.current) {
+      // The data is already being sent via realtime.applyLocalChange in saveData.
+      // Mark as saved since the DO will persist it.
+      pendingDataRef.current = null;
+      setSaveStatus('saved');
+      setLastSaved(new Date());
+      return;
+    }
+
+    // Fallback: REST API save when realtime is disabled or disconnected
     setSaveStatus('saving');
     setSaveError(null);
 
@@ -372,7 +392,7 @@ function CSSPuckProviderInner({
         );
       }
     }
-  }, [userClient, siteId, branchId, maxRetries, showErrorNotifications, notificationContext]);
+  }, [userClient, siteId, branchId, maxRetries, showErrorNotifications, notificationContext, enableRealtime]);
 
   // Debounced save
   const debouncedSave = useMemo(
@@ -444,8 +464,18 @@ function CSSPuckProviderInner({
   // Force immediate save
   const saveNow = useCallback(async () => {
     debouncedSave.cancel();
+
+    // When realtime is connected, ensure the latest data is sent via WebSocket
+    if (enableRealtime && realtimeConnectedRef.current && pendingDataRef.current) {
+      realtime.applyLocalChange(pendingDataRef.current);
+      pendingDataRef.current = null;
+      setSaveStatus('saved');
+      setLastSaved(new Date());
+      return;
+    }
+
     await performSave();
-  }, [debouncedSave, performSave]);
+  }, [debouncedSave, performSave, enableRealtime, realtime]);
 
   // Load document by path
   const loadDocument = useCallback(
@@ -900,8 +930,16 @@ function CSSPuckProviderInner({
     async (name?: string): Promise<Checkpoint> => {
       // Save any pending changes first
       if (pendingDataRef.current) {
-        debouncedSave.cancel();
-        await performSave();
+        if (enableRealtime && realtimeConnectedRef.current) {
+          // Send latest data through WebSocket
+          realtime.applyLocalChange(pendingDataRef.current);
+          pendingDataRef.current = null;
+          // Brief delay to allow DO sync to complete
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } else {
+          debouncedSave.cancel();
+          await performSave();
+        }
       }
 
       const checkpoint = await userClient.checkpoints.create(siteId, {
@@ -912,7 +950,7 @@ function CSSPuckProviderInner({
 
       return checkpoint;
     },
-    [userClient, siteId, branchId, debouncedSave, performSave]
+    [userClient, siteId, branchId, debouncedSave, performSave, enableRealtime, realtime]
   );
 
   // Switch branch

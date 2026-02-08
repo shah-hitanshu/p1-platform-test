@@ -242,6 +242,9 @@ describe('CSSPuckProvider Save Path - Realtime vs REST', () => {
     // REST API should NOT have been called
     expect(client.versions.create).not.toHaveBeenCalled();
 
+    // CRDT path should have been used — applyLocalChange called in saveData
+    expect(mockApplyLocalChange).toHaveBeenCalledWith(mockPuckData);
+
     // Save status should be 'saved' (realtime path marks it saved)
     expect(result.current.saveStatus).toBe('saved');
   });
@@ -297,6 +300,9 @@ describe('CSSPuckProvider Save Path - Realtime vs REST', () => {
 
     // REST API SHOULD be called when realtime is disabled
     expect(client.versions.create).toHaveBeenCalled();
+
+    // CRDT path should NOT have been used (realtime is disabled)
+    expect(mockApplyLocalChange).not.toHaveBeenCalled();
   });
 
   // =========================================================================
