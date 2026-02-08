@@ -428,35 +428,38 @@ function CSSPuckProviderInner({
   const saveData = useCallback(
     (data: PuckData) => {
       pendingDataRef.current = data;
+
+      // When realtime is enabled, detect whether this onChange came from a remote
+      // sync (Yjs update from another client) vs. a local user edit.
+      // Remote updates should NOT trigger a REST save — the DO handles persistence.
+      if (enableRealtime && realtime.connected) {
+        if (isApplyingRemoteSyncRef.current) {
+          // We're in the middle of applying a remote sync, skip everything
+          if (pendingRemoteUpdatesRef.current > 0) {
+            pendingRemoteUpdatesRef.current -= 1;
+          }
+          return;
+        } else if (pendingRemoteUpdatesRef.current > 0) {
+          // Counter indicates this onChange is from a recent remote update
+          pendingRemoteUpdatesRef.current -= 1;
+          return;
+        } else if (viewingVersionRef.current !== null) {
+          // User is viewing historical version - don't broadcast or save
+          return;
+        } else {
+          // Local user edit — send via WebSocket (DO handles persistence)
+          realtime.applyLocalChange(data);
+          // Still trigger debounced save as fallback, but performSave will
+          // skip the REST call when realtimeConnectedRef is true.
+        }
+      }
+
       // Resume on next edit if paused
       if (debouncedSave.isPaused()) {
         debouncedSave.resume();
         setAutoSavePaused(false);
       }
       debouncedSave();
-
-      // Send changes via WebSocket for real-time collaboration
-      // Skip if:
-      // 1. We're currently applying a remote sync (flag-based, prevents bounce-back loop)
-      // 2. This change originated from a remote update counter (backup check)
-      // 3. We're viewing a historical version (prevents broadcasting historical data)
-      if (enableRealtime && realtime.connected) {
-        if (isApplyingRemoteSyncRef.current) {
-          // We're in the middle of applying a remote sync, skip to prevent echo
-          // Decrement counter if it was incremented (for cleanup)
-          if (pendingRemoteUpdatesRef.current > 0) {
-            pendingRemoteUpdatesRef.current -= 1;
-          }
-        } else if (pendingRemoteUpdatesRef.current > 0) {
-          // Backup: counter indicates this onChange is from a recent remote update
-          pendingRemoteUpdatesRef.current -= 1;
-        } else if (viewingVersionRef.current !== null) {
-          // User is viewing historical version - don't broadcast historical data
-          // This prevents other users from seeing historical content
-        } else {
-          realtime.applyLocalChange(data);
-        }
-      }
     },
     [debouncedSave, enableRealtime, realtime]
   );
