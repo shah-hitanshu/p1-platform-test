@@ -96,6 +96,9 @@ export {
   DiffHeader,
   VersionComparePage,
   VisualVersionCompare,
+  BranchDiffHeader,
+  BranchMergeCompare,
+  DocumentDiffList,
 } from './components/version-compare/index.js';
 export type {
   PropValueDisplayProps,
@@ -106,7 +109,35 @@ export type {
   DiffHeaderProps,
   VersionComparePageProps,
   VisualVersionCompareProps,
+  BranchDiffHeaderProps,
+  BranchMergeCompareProps,
+  DocumentDiffListProps,
 } from './components/version-compare/index.js';
+
+// Merge Preview Components (Phase 5)
+export {
+  ViewModeSelector,
+  MergePreviewRenderer,
+  MergePreviewPanel,
+} from './components/merge-preview/index.js';
+export type {
+  ViewModeSelectorProps,
+  ViewMode,
+  MergePreviewRendererProps,
+  MergePreviewPanelProps,
+} from './components/merge-preview/index.js';
+
+// Conflict Resolution Components (Puck-aware)
+export {
+  PuckFieldResolutionPanel,
+  ComponentConflictGroup,
+  RenderedResolutionPreview,
+} from './components/conflict-resolution/index.js';
+export type {
+  PuckFieldResolutionPanelProps,
+  ComponentConflictGroupProps,
+  RenderedResolutionPreviewProps,
+} from './components/conflict-resolution/index.js';
 
 // Version History Components (Phase 6)
 export {
@@ -132,12 +163,13 @@ export type {
 } from './components/conflict-notifications/index.js';
 
 // Puck Plugin Integration
-export { createCSSPlugin, createCSSOverrides } from './plugin/index.js';
+export { createCSSPlugin, createCSSOverrides, createMergePreviewPlugin } from './plugin/index.js';
 export type {
   CSSPluginOptions,
   PuckPlugin,
   CSSOverridesOptions,
   PuckOverrides,
+  MergePreviewPluginOptions,
 } from './plugin/index.js';
 
 // Utilities
@@ -158,6 +190,30 @@ export {
   createHistoricalVersionConfig,
 } from './utils/highlightConfig.js';
 export type { PuckConfig } from './utils/highlightConfig.js';
+
+// Puck Field Classification (Conflict Resolution)
+export {
+  isPuckData as isPuckDataClassifier,
+  classifyPuckFields,
+  getReadablePropPath,
+  groupFieldsByComponent,
+} from './utils/puckFieldClassifier.js';
+export type {
+  PuckFieldClassification,
+  PuckComponentConflict,
+} from './utils/puckFieldClassifier.js';
+
+// Branch Diff Utilities
+export {
+  isPuckData,
+  createBranchDocumentComparison,
+  createBranchMergeComparison,
+} from './utils/branchDiff.js';
+export type {
+  BranchDocumentComparison,
+  BranchMergeComparison,
+  DocumentDiffSummary,
+} from './utils/branchDiff.js';
 
 // Focus Region Highlighting (Collaborative Editing)
 export {

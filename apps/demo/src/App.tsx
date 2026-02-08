@@ -7,7 +7,7 @@
  */
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { Puck } from '@puckeditor/core';
 import '@puckeditor/core/puck.css';
 
@@ -191,13 +191,20 @@ function UserSwitcher({ currentUserId, onUserChange }: UserSwitcherProps) {
           </option>
         ))}
       </select>
-      <div style={{
-        fontSize: '12px',
-        color: '#666',
-        maxWidth: '200px',
-      }}>
-        Switch users to see presence avatars
-      </div>
+      <Link
+        to="/merge"
+        style={{
+          fontSize: '13px',
+          color: '#0066cc',
+          textDecoration: 'none',
+          padding: '6px 12px',
+          borderRadius: '6px',
+          border: '1px solid #0066cc',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        Merge review
+      </Link>
     </div>
   );
 }

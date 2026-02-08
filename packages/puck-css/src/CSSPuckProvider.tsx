@@ -127,6 +127,9 @@ function CSSPuckProviderInner({
   const currentDocumentRef = useRef<Document | null>(null);
   const initializedRef = useRef(false);
 
+  // Track realtime connection state for use in performSave (avoids stale closure)
+  const realtimeConnectedRef = useRef(false);
+
   // Auto-save pause state
   const [autoSavePaused, setAutoSavePaused] = useState(false);
 
@@ -282,6 +285,11 @@ function CSSPuckProviderInner({
     viewingVersionRef.current = viewingVersion;
   }, [viewingVersion]);
 
+  // Keep realtime connection ref in sync (used by performSave to avoid stale closure)
+  useEffect(() => {
+    realtimeConnectedRef.current = realtime.connected;
+  }, [realtime.connected]);
+
   // Create client with user principal
   const userClient = useMemo(
     () => client.withPrincipal({ id: userId, type: 'user' }),
@@ -336,6 +344,18 @@ function CSSPuckProviderInner({
       return;
     }
 
+    // When realtime is connected, the DO handles persistence via WebSocket sync.
+    // Skip REST API save to avoid creating duplicate versions without CRDT state.
+    if (enableRealtime && realtimeConnectedRef.current) {
+      // The data is already being sent via realtime.applyLocalChange in saveData.
+      // Mark as saved since the DO will persist it.
+      pendingDataRef.current = null;
+      setSaveStatus('saved');
+      setLastSaved(new Date());
+      return;
+    }
+
+    // Fallback: REST API save when realtime is disabled or disconnected
     setSaveStatus('saving');
     setSaveError(null);
 
@@ -372,7 +392,7 @@ function CSSPuckProviderInner({
         );
       }
     }
-  }, [userClient, siteId, branchId, maxRetries, showErrorNotifications, notificationContext]);
+  }, [userClient, siteId, branchId, maxRetries, showErrorNotifications, notificationContext, enableRealtime]);
 
   // Debounced save
   const debouncedSave = useMemo(
@@ -408,35 +428,38 @@ function CSSPuckProviderInner({
   const saveData = useCallback(
     (data: PuckData) => {
       pendingDataRef.current = data;
+
+      // When realtime is enabled, detect whether this onChange came from a remote
+      // sync (Yjs update from another client) vs. a local user edit.
+      // Remote updates should NOT trigger a REST save — the DO handles persistence.
+      if (enableRealtime && realtime.connected) {
+        if (isApplyingRemoteSyncRef.current) {
+          // We're in the middle of applying a remote sync, skip everything
+          if (pendingRemoteUpdatesRef.current > 0) {
+            pendingRemoteUpdatesRef.current -= 1;
+          }
+          return;
+        } else if (pendingRemoteUpdatesRef.current > 0) {
+          // Counter indicates this onChange is from a recent remote update
+          pendingRemoteUpdatesRef.current -= 1;
+          return;
+        } else if (viewingVersionRef.current !== null) {
+          // User is viewing historical version - don't broadcast or save
+          return;
+        } else {
+          // Local user edit — send via WebSocket (DO handles persistence)
+          realtime.applyLocalChange(data);
+          // Still trigger debounced save as fallback, but performSave will
+          // skip the REST call when realtimeConnectedRef is true.
+        }
+      }
+
       // Resume on next edit if paused
       if (debouncedSave.isPaused()) {
         debouncedSave.resume();
         setAutoSavePaused(false);
       }
       debouncedSave();
-
-      // Send changes via WebSocket for real-time collaboration
-      // Skip if:
-      // 1. We're currently applying a remote sync (flag-based, prevents bounce-back loop)
-      // 2. This change originated from a remote update counter (backup check)
-      // 3. We're viewing a historical version (prevents broadcasting historical data)
-      if (enableRealtime && realtime.connected) {
-        if (isApplyingRemoteSyncRef.current) {
-          // We're in the middle of applying a remote sync, skip to prevent echo
-          // Decrement counter if it was incremented (for cleanup)
-          if (pendingRemoteUpdatesRef.current > 0) {
-            pendingRemoteUpdatesRef.current -= 1;
-          }
-        } else if (pendingRemoteUpdatesRef.current > 0) {
-          // Backup: counter indicates this onChange is from a recent remote update
-          pendingRemoteUpdatesRef.current -= 1;
-        } else if (viewingVersionRef.current !== null) {
-          // User is viewing historical version - don't broadcast historical data
-          // This prevents other users from seeing historical content
-        } else {
-          realtime.applyLocalChange(data);
-        }
-      }
     },
     [debouncedSave, enableRealtime, realtime]
   );
@@ -444,8 +467,18 @@ function CSSPuckProviderInner({
   // Force immediate save
   const saveNow = useCallback(async () => {
     debouncedSave.cancel();
+
+    // When realtime is connected, ensure the latest data is sent via WebSocket
+    if (enableRealtime && realtimeConnectedRef.current && pendingDataRef.current) {
+      realtime.applyLocalChange(pendingDataRef.current);
+      pendingDataRef.current = null;
+      setSaveStatus('saved');
+      setLastSaved(new Date());
+      return;
+    }
+
     await performSave();
-  }, [debouncedSave, performSave]);
+  }, [debouncedSave, performSave, enableRealtime, realtime]);
 
   // Load document by path
   const loadDocument = useCallback(
@@ -900,8 +933,16 @@ function CSSPuckProviderInner({
     async (name?: string): Promise<Checkpoint> => {
       // Save any pending changes first
       if (pendingDataRef.current) {
-        debouncedSave.cancel();
-        await performSave();
+        if (enableRealtime && realtimeConnectedRef.current) {
+          // Send latest data through WebSocket
+          realtime.applyLocalChange(pendingDataRef.current);
+          pendingDataRef.current = null;
+          // Brief delay to allow DO sync to complete
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } else {
+          debouncedSave.cancel();
+          await performSave();
+        }
       }
 
       const checkpoint = await userClient.checkpoints.create(siteId, {
@@ -912,7 +953,7 @@ function CSSPuckProviderInner({
 
       return checkpoint;
     },
-    [userClient, siteId, branchId, debouncedSave, performSave]
+    [userClient, siteId, branchId, debouncedSave, performSave, enableRealtime, realtime]
   );
 
   // Switch branch
