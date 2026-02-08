@@ -274,6 +274,8 @@ export async function resolveWithCrdtMerge(
   }
 
   // Create new version with merged content
+  // Always create a new version for merge operations, even if snapshot matches.
+  // The source='merge' marker is semantically important for history tracking.
   const newVersion = await createDocumentVersion({
     documentId,
     branchId: targetBranchId,
@@ -282,6 +284,7 @@ export async function resolveWithCrdtMerge(
     source: 'merge',
     createdById: resolvedById,
     createdByType: resolvedByType,
+    skipDuplicateCheck: true,
   });
 
   return {

@@ -167,8 +167,8 @@ export class CannotDeleteMergedRequestError extends Error {
  */
 const VALID_STATUS_TRANSITIONS: Record<MergeRequestStatus, MergeRequestStatus[]> = {
   open: ['approved', 'closed', 'conflicted'],
-  approved: ['merged', 'closed', 'open'], // can go back to open if approval revoked
-  conflicted: ['open', 'closed'], // back to open after conflict resolution
+  approved: ['merged', 'closed', 'open', 'conflicted'], // can go back to open, or to conflicted if merge detects conflicts
+  conflicted: ['open', 'closed', 'merged'], // back to open after conflict resolution, or merged after resolution applied
   merged: [], // terminal state
   closed: ['open'], // can be reopened
 };

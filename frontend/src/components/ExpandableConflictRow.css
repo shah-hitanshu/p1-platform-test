@@ -75,6 +75,60 @@
   border-radius: 4px;
 }
 
+/* View Toggle */
+.diff-view-toggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: 12px;
+}
+
+.view-toggle-btn {
+  padding: 6px 14px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid #ced4da;
+  background-color: #fff;
+  color: #495057;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.view-toggle-btn:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.view-toggle-btn:last-child {
+  border-radius: 0 4px 4px 0;
+  border-left: none;
+}
+
+.view-toggle-btn:hover {
+  background-color: #e9ecef;
+}
+
+.view-toggle-btn:focus-visible {
+  outline: 2px solid #0066cc;
+  outline-offset: 1px;
+  z-index: 1;
+}
+
+.view-toggle-btn.active {
+  background-color: #0066cc;
+  color: #fff;
+  border-color: #0066cc;
+}
+
+.view-toggle-btn.active + .view-toggle-btn {
+  border-left: none;
+}
+
+/* Field Resolution Section */
+.conflict-row-field-resolution {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e9ecef;
+}
+
 /* Resolution Section */
 .conflict-row-resolution {
   margin-top: 16px;
@@ -118,4 +172,72 @@
 .option-label {
   font-size: 0.875rem;
   color: #333;
+}
+
+/* CRDT Preview Section */
+.crdt-preview-section {
+  margin-top: 16px;
+  padding: 16px;
+  border-top: 1px solid #e9ecef;
+  background-color: #f0f4f8;
+  border-radius: 4px;
+}
+
+.crdt-preview-header {
+  margin: 0 0 12px 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.crdt-preview-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* CRDT Accepted Indicator */
+.crdt-accepted-indicator {
+  margin-top: 12px;
+  padding: 8px 12px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #155724;
+  background-color: #d4edda;
+  border: 1px solid #c3e6cb;
+  border-radius: 4px;
+}
+
+/* CRDT Preview Button */
+.crdt-preview-button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.crdt-preview-button button {
+  padding: 6px 14px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid #0066cc;
+  background-color: #fff;
+  color: #0066cc;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.crdt-preview-button button:hover:not(:disabled) {
+  background-color: #0066cc;
+  color: #fff;
+}
+
+.crdt-preview-button button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.crdt-error {
+  font-size: 0.8125rem;
+  color: #dc3545;
 }

@@ -16,10 +16,16 @@ import {
   updateMergeRequest,
   updateMergeRequestStatus,
   deleteMergeRequest,
+  getLatestDocumentVersion,
+  mergeCrdtStates,
   MergeRequestNotFoundError,
   SourceBranchNotFoundError,
   TargetBranchNotFoundError,
   MergeConflictsError,
+  MergeNotAllowedError,
+  MergeExecutionError,
+  InvalidCrdtStateError,
+  MissingCrdtStateError,
 } from '../services';
 
 /**
@@ -27,7 +33,7 @@ import {
  */
 export interface MergeRouteContext {
   siteId: string;
-  operation?: 'check' | 'execute' | 'preview';
+  operation?: 'check' | 'execute' | 'preview' | 'crdt-preview';
   mergeRequests?: boolean;
   executeRequest?: boolean;
   mergeRequestId?: string;
@@ -61,6 +67,15 @@ interface MergePreviewBody {
   targetBranchId?: string;
   /** When true, includes full document snapshots and diff operations */
   includeContent?: boolean;
+}
+
+/**
+ * Request body for CRDT merge preview
+ */
+interface CrdtPreviewBody {
+  documentId?: string;
+  sourceBranchId?: string;
+  targetBranchId?: string;
 }
 
 /**
@@ -203,6 +218,56 @@ async function handlePreviewMerge(
   );
 
   return jsonResponse(result);
+}
+
+/**
+ * Handle POST /api/sites/{siteId}/merge/crdt-preview - Preview CRDT Merge
+ *
+ * Returns a merged snapshot without committing any changes.
+ */
+async function handleCrdtPreview(
+  request: Request,
+): Promise<Response> {
+  const body = await parseJsonBody<CrdtPreviewBody>(request);
+
+  if (body.documentId === undefined || body.documentId === '') {
+    return errorResponse('documentId is required', 400);
+  }
+
+  if (body.sourceBranchId === undefined || body.targetBranchId === undefined) {
+    return errorResponse('Both sourceBranchId and targetBranchId are required', 400);
+  }
+
+  // Get latest document versions on each branch
+  const sourceVersion = await getLatestDocumentVersion(body.documentId, body.sourceBranchId);
+  if (sourceVersion === null) {
+    return errorResponse('Source document version not found', 404);
+  }
+
+  const targetVersion = await getLatestDocumentVersion(body.documentId, body.targetBranchId);
+  if (targetVersion === null) {
+    return errorResponse('Target document version not found', 404);
+  }
+
+  // Validate both have CRDT state
+  if (sourceVersion.crdtState === undefined || sourceVersion.crdtState === '') {
+    return errorResponse('Source version is missing CRDT state required for merge', 422);
+  }
+
+  if (targetVersion.crdtState === undefined || targetVersion.crdtState === '') {
+    return errorResponse('Target version is missing CRDT state required for merge', 422);
+  }
+
+  // Merge CRDT states — pure function, no commit
+  const mergeResult = mergeCrdtStates({
+    sourceState: sourceVersion.crdtState,
+    targetState: targetVersion.crdtState,
+  });
+
+  return jsonResponse({
+    success: mergeResult.success,
+    snapshot: mergeResult.mergedSnapshot,
+  });
 }
 
 /**
@@ -386,7 +451,12 @@ async function handleExecuteMergeRequest(
   if (resolutions !== undefined && resolutions.length > 0) {
     result = await executeMergeWithResolution({
       mergeRequestId: context.mergeRequestId,
-      resolutionStrategy: 'take-source', // Default strategy; individual resolutions override
+      resolutionStrategy: 'take-source', // Default for any conflicts without a per-document resolution
+      resolutions: resolutions.map((r) => ({
+        documentId: r.documentId,
+        strategy: r.strategy as 'take-source' | 'take-target' | 'merge-crdt' | 'manual',
+        resolvedSnapshot: r.resolvedSnapshot,
+      })),
       mergedById: context.principal.id,
       mergedByType: context.principal.type,
     });
@@ -426,6 +496,8 @@ export async function handleMergeRoutes(
           return await handleExecuteMerge(request, context);
         case 'preview':
           return await handlePreviewMerge(request);
+        case 'crdt-preview':
+          return await handleCrdtPreview(request);
         default:
           return errorResponse('Unknown operation', 400);
       }
@@ -482,6 +554,28 @@ export async function handleMergeRoutes(
       return errorResponse('Merge has unresolved conflicts', 409, {
         mergeRequestId: error.mergeRequestId,
         conflictCount: error.conflictCount,
+      });
+    }
+    if (error instanceof MergeNotAllowedError) {
+      return errorResponse(error.message, 400, {
+        mergeRequestId: error.mergeRequestId,
+        currentStatus: error.currentStatus,
+      });
+    }
+    if (error instanceof MergeExecutionError) {
+      return errorResponse(error.message, 500, {
+        mergeRequestId: error.mergeRequestId,
+      });
+    }
+    if (error instanceof InvalidCrdtStateError) {
+      return errorResponse(error.message, 422, {
+        source: error.source,
+        reason: error.reason,
+      });
+    }
+    if (error instanceof MissingCrdtStateError) {
+      return errorResponse(error.message, 422, {
+        versionId: error.versionId,
       });
     }
 

@@ -104,6 +104,28 @@
   background: var(--diff-removed-bg, #fee2e2);
 }
 
+.added-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #166534;
+  background: #dcfce7;
+}
+
+.modified-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #1e40af;
+  background: #dbeafe;
+}
+
 .conflict-type-badge {
   display: inline-block;
   padding: 1px 6px;

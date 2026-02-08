@@ -113,6 +113,7 @@ interface ModifiedDocumentRow {
   base_version_id: string | null;
   base_version_number: number | null;
   is_deleted?: boolean;
+  source?: string;
 }
 
 interface CheckpointDocumentRow {
@@ -314,7 +315,8 @@ export async function getModifiedDocumentsSince(
       SELECT DISTINCT ON (dv.document_id)
         dv.document_id,
         dv.id AS version_id,
-        dv.version_number
+        dv.version_number,
+        dv.source
       FROM app.document_versions dv
       WHERE dv.branch_id = $1
       ORDER BY dv.document_id, dv.version_number DESC
@@ -327,17 +329,28 @@ export async function getModifiedDocumentsSince(
       cv.version_number AS latest_version_number,
       cd.document_version_id AS base_version_id,
       cd.version_number AS base_version_number,
-      CASE WHEN cv.version_id IS NULL AND cd.document_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_deleted
+      cv.source,
+      CASE
+        WHEN cv.version_id IS NULL AND cd.document_id IS NOT NULL THEN TRUE
+        WHEN d.archived_at IS NOT NULL AND cd.document_id IS NOT NULL THEN TRUE
+        ELSE FALSE
+      END AS is_deleted
     FROM current_versions cv
     FULL OUTER JOIN checkpoint_docs cd ON cv.document_id = cd.document_id
     INNER JOIN app.documents d ON d.id = COALESCE(cv.document_id, cd.document_id)
     WHERE
-      -- Modified: version numbers differ
-      (cv.version_number IS DISTINCT FROM cd.version_number)
-      -- Or new document (not in checkpoint)
-      OR (cd.document_id IS NULL)
-      -- Or deleted (not in current versions)
-      OR (cv.version_id IS NULL)
+      (
+        -- Modified: version numbers differ
+        (cv.version_number IS DISTINCT FROM cd.version_number)
+        -- Or new document (not in checkpoint)
+        OR (cd.document_id IS NULL)
+        -- Or deleted (not in current versions)
+        OR (cv.version_id IS NULL)
+      )
+      -- Exclude unmodified branch copies (created when branch was forked)
+      AND NOT (cv.source = 'branch' AND cd.document_id IS NOT NULL AND d.archived_at IS NULL)
+      -- Exclude documents created after the checkpoint and then archived (net-zero change)
+      AND NOT (cd.document_id IS NULL AND d.archived_at IS NOT NULL)
   `;
 
   const result = await query<ModifiedDocumentRow>(sql, [branchId, checkpointId]);

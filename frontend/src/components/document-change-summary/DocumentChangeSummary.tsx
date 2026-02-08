@@ -24,11 +24,18 @@ interface DocumentChangeSummaryProps {
   targetBranchName: string;
 }
 
+function getChangeType(doc: ModifiedDocument): 'deleted' | 'added' | 'modified' {
+  if (doc.isDeleted) return 'deleted';
+  if (doc.baseVersionId === null) return 'added';
+  return 'modified';
+}
+
 function DocumentPath({ doc }: { doc: ModifiedDocument }) {
+  const changeType = getChangeType(doc);
   return (
     <div className="document-path-item">
       <code>{doc.documentPath}</code>
-      {doc.isDeleted && <span className="deleted-badge">deleted</span>}
+      <span className={`${changeType}-badge`}>{changeType}</span>
     </div>
   );
 }

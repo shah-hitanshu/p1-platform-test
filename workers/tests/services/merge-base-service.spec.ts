@@ -281,7 +281,7 @@ describe('Phase 5.1b: Merge Base Service', () => {
       const result = await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
 
       // Verify the SQL query includes source column and branch-copy exclusion
-      const sqlArg = vi.mocked(db.query).mock.calls[0][0] as string;
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
       expect(sqlArg).toContain('dv.source');
       expect(sqlArg).toContain('cv.source');
 
@@ -339,7 +339,7 @@ describe('Phase 5.1b: Merge Base Service', () => {
       expect(result[0].documentPath).toBe('pages/archived-page');
 
       // Verify the SQL checks archived_at for deletion detection
-      const sqlArg = vi.mocked(db.query).mock.calls[0][0] as string;
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
       expect(sqlArg).toContain('archived_at');
     });
 
@@ -378,9 +378,23 @@ describe('Phase 5.1b: Merge Base Service', () => {
       await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
 
       // Verify the SQL excludes branch copies that are not archived and exist in checkpoint
-      const sqlArg = vi.mocked(db.query).mock.calls[0][0] as string;
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
       expect(sqlArg).toMatch(/cv\.source\s*=\s*'branch'/);
       expect(sqlArg).toContain('archived_at');
+    });
+
+    it('should exclude archived documents not in checkpoint (created then deleted, net-zero)', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      // The SQL should filter out documents created after checkpoint and then archived
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
+
+      // Verify the SQL excludes net-zero archived documents
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      expect(sqlArg).toMatch(/cd\.document_id IS NULL AND d\.archived_at IS NOT NULL/);
     });
   });
 

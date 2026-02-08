@@ -1,15 +1,20 @@
 /**
- * Phase 3b: Field-Level Conflict Resolution - CrdtPreviewButton Tests (TDD)
+ * CrdtPreviewButton Tests
  *
- * Tests for the "Try auto-merge" button that calls the CRDT merge API
+ * Tests for the "Try auto-merge" button that calls the CRDT merge preview API
  * and shows the result for review.
- *
- * Written BEFORE implementation following TDD methodology.
  */
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { CrdtPreviewButton } from '../../components/field-resolution/CrdtPreviewButton';
+
+// Mock the API module
+vi.mock('../../api/merge-requests', () => ({
+  previewCrdtMerge: vi.fn(),
+}));
+
+import { previewCrdtMerge } from '../../api/merge-requests';
 
 describe('CrdtPreviewButton', () => {
   it('should render a button to try auto-merge', () => {
@@ -28,9 +33,8 @@ describe('CrdtPreviewButton', () => {
   });
 
   it('should show loading state while fetching', async () => {
-    // Mock fetch to delay
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn().mockImplementation(
+    // Mock to never resolve
+    vi.mocked(previewCrdtMerge).mockImplementation(
       () => new Promise(() => {/* never resolves */}),
     );
 
@@ -50,18 +54,45 @@ describe('CrdtPreviewButton', () => {
     await waitFor(() => {
       expect(screen.getByText(/loading|merging/i)).toBeInTheDocument();
     });
+  });
 
-    globalThis.fetch = originalFetch;
+  it('should call the correct API endpoint with documentId in the body', async () => {
+    const mergedSnapshot = { title: 'CRDT Merged', body: 'Merged content' };
+
+    vi.mocked(previewCrdtMerge).mockResolvedValueOnce({
+      success: true,
+      snapshot: mergedSnapshot,
+    });
+
+    render(
+      <CrdtPreviewButton
+        siteId="site-1"
+        documentId="doc-1"
+        sourceBranchId="source-branch"
+        targetBranchId="target-branch"
+        onResult={vi.fn()}
+      />
+    );
+
+    const button = screen.getByRole('button', { name: /auto-merge/i });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(previewCrdtMerge).toHaveBeenCalledWith('site-1', {
+        documentId: 'doc-1',
+        sourceBranchId: 'source-branch',
+        targetBranchId: 'target-branch',
+      });
+    });
   });
 
   it('should call onResult with merged data on success', async () => {
     const mergedSnapshot = { title: 'CRDT Merged', body: 'Merged content' };
     const onResult = vi.fn();
 
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ snapshot: mergedSnapshot }),
+    vi.mocked(previewCrdtMerge).mockResolvedValueOnce({
+      success: true,
+      snapshot: mergedSnapshot,
     });
 
     render(
@@ -80,15 +111,34 @@ describe('CrdtPreviewButton', () => {
     await waitFor(() => {
       expect(onResult).toHaveBeenCalledWith(mergedSnapshot);
     });
-
-    globalThis.fetch = originalFetch;
   });
 
   it('should show error message on failure', async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn().mockResolvedValueOnce({
-      ok: false,
-      json: () => Promise.resolve({ error: 'CRDT merge failed' }),
+    vi.mocked(previewCrdtMerge).mockRejectedValueOnce(new Error('Network error'));
+
+    render(
+      <CrdtPreviewButton
+        siteId="site-1"
+        documentId="doc-1"
+        sourceBranchId="source-branch"
+        targetBranchId="target-branch"
+        onResult={vi.fn()}
+      />
+    );
+
+    const button = screen.getByRole('button', { name: /auto-merge/i });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByText(/unable to auto-merge/i)).toBeInTheDocument();
+    });
+  });
+
+  it('should show error when API returns success: false', async () => {
+    vi.mocked(previewCrdtMerge).mockResolvedValueOnce({
+      success: false,
+      snapshot: {},
+      error: 'CRDT merge failed',
     });
 
     render(
@@ -105,9 +155,7 @@ describe('CrdtPreviewButton', () => {
     fireEvent.click(button);
 
     await waitFor(() => {
-      expect(screen.getByText(/failed|error/i)).toBeInTheDocument();
+      expect(screen.getByText(/CRDT merge failed/i)).toBeInTheDocument();
     });
-
-    globalThis.fetch = originalFetch;
   });
 });

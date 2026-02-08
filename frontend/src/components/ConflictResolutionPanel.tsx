@@ -19,6 +19,9 @@ interface ConflictResolutionPanelProps {
   isResolving: boolean;
   sourceBranchName?: string;
   targetBranchName?: string;
+  siteId?: string;
+  sourceBranchId?: string;
+  targetBranchId?: string;
 }
 
 interface ResolutionState {
@@ -57,6 +60,9 @@ export function ConflictResolutionPanel({
   isResolving,
   sourceBranchName = 'Source',
   targetBranchName = 'Target',
+  siteId,
+  sourceBranchId,
+  targetBranchId,
 }: ConflictResolutionPanelProps) {
   const [resolutions, setResolutions] = useState<ResolutionState>(() => {
     // Initialize with 'take-source' as default for all conflicts
@@ -206,6 +212,9 @@ export function ConflictResolutionPanel({
             sourceBranchName={sourceBranchName}
             targetBranchName={targetBranchName}
             disabled={isResolving}
+            siteId={siteId}
+            sourceBranchId={sourceBranchId}
+            targetBranchId={targetBranchId}
           />
         ))}
       </div>
