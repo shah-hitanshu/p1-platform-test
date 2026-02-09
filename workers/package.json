@@ -12,6 +12,7 @@
     "dev": "wrangler dev --local",
     "dev:watch": "node scripts/dev-watch.js",
     "dev:remote": "wrangler dev",
+    "deploy:sandbox": "wrangler deploy --env sandbox",
     "deploy:sbx1": "wrangler deploy --env sbx1",
     "deploy:production": "wrangler deploy --env production",
     "test": "vitest run",

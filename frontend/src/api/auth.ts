@@ -5,12 +5,13 @@
  */
 
 import type { LoginResponse, UsersResponse, HealthResponse } from '../types';
+import { API_BASE_URL } from './client';
 
 /**
  * Get list of available users and agents for login
  */
 export async function getUsers(): Promise<UsersResponse> {
-  const response = await fetch('/api/auth/users');
+  const response = await fetch(`${API_BASE_URL}/api/auth/users`);
 
   if (!response.ok) {
     throw new Error('Failed to fetch users');
@@ -23,7 +24,7 @@ export async function getUsers(): Promise<UsersResponse> {
  * Login as a user and get a JWT token
  */
 export async function loginAsUser(userId: string): Promise<LoginResponse> {
-  const response = await fetch('/api/auth/token', {
+  const response = await fetch(`${API_BASE_URL}/api/auth/token`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -43,7 +44,7 @@ export async function loginAsUser(userId: string): Promise<LoginResponse> {
  * Get health status
  */
 export async function getHealth(): Promise<HealthResponse> {
-  const response = await fetch('/health');
+  const response = await fetch(`${API_BASE_URL}/health`);
 
   if (!response.ok) {
     throw new Error('Health check failed');

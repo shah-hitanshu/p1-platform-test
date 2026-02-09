@@ -223,7 +223,9 @@ describe('addCorsHeaders', () => {
   it('should skip WebSocket upgrade responses', () => {
     const patterns = parseOriginPatterns('https://example.com');
     // Simulate a WebSocket response by adding webSocket property
-    const response = new Response(null, { status: 101 });
+    // In CF Workers, WebSocket upgrade responses have status 101 and a webSocket property.
+    // Standard Response doesn't allow 101, so we use 200 and attach the webSocket property.
+    const response = new Response(null, { status: 200 });
     Object.defineProperty(response, 'webSocket', { value: {}, writable: false });
 
     const result = addCorsHeaders(response, 'https://example.com', patterns);
