@@ -268,11 +268,19 @@ function CSSPuckProviderInner({
 
           pendingRemoteDataRef.current = null;
 
-          // Clear the flag after a short delay to ensure all onChange events are captured.
-          // React may batch state updates and fire onChange asynchronously.
-          // 100ms should be enough for React to process the state changes.
+          // Clear the flag and reset the counter after a short delay to ensure
+          // all onChange events are captured. React may batch state updates and
+          // fire onChange asynchronously. 100ms should be enough for React to
+          // process the state changes.
+          //
+          // IMPORTANT: Also reset pendingRemoteUpdatesRef to 0. If the remote
+          // data is identical to the current editor state (e.g. the initial Yjs
+          // sync matches the REST API data), Puck will NOT fire onChange, so the
+          // counter will never be decremented naturally. Leaving it > 0 would
+          // cause subsequent local edits to be silently dropped.
           setTimeout(() => {
             isApplyingRemoteSyncRef.current = false;
+            pendingRemoteUpdatesRef.current = 0;
           }, 100);
         }
         remoteSyncTimerRef.current = null;
