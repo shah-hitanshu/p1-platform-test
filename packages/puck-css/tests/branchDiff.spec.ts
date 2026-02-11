@@ -14,11 +14,6 @@ import {
   createBranchDocumentComparison,
   createBranchMergeComparison,
 } from '../src/utils/branchDiff.js';
-import type {
-  BranchDocumentComparison,
-  BranchMergeComparison,
-  DocumentDiffSummary,
-} from '../src/utils/branchDiff.js';
 
 describe('isPuckData (branchDiff)', () => {
   it('should return true for valid Puck data', () => {
@@ -99,7 +94,9 @@ describe('createBranchDocumentComparison', () => {
     expect(comparison.documentId).toBe('doc-1');
     expect(comparison.isPuckData).toBe(true);
     expect(comparison.diffs.length).toBeGreaterThan(0);
-    expect(comparison.counts.added).toBe(1);
+    // Source (feature) is null, target (main) has data.
+    // before = target, after = source (empty) → components are "removed".
+    expect(comparison.counts.removed).toBe(1);
   });
 
   it('should handle null target snapshot (document only in source)', () => {
@@ -120,7 +117,9 @@ describe('createBranchDocumentComparison', () => {
     expect(comparison.documentId).toBe('doc-1');
     expect(comparison.isPuckData).toBe(true);
     expect(comparison.diffs.length).toBeGreaterThan(0);
-    expect(comparison.counts.removed).toBe(1);
+    // Source (feature) has data, target (main) is null.
+    // before = target (empty), after = source → components are "added".
+    expect(comparison.counts.added).toBe(1);
   });
 
   it('should handle non-Puck data gracefully', () => {

@@ -218,6 +218,19 @@ function CSSPuckProviderInner({
         return;
       }
 
+      // Reject empty data that would overwrite real editor content.
+      // During initial Yjs sync, the remote doc may be empty, producing
+      // { content: [], root: { props: {} } }. Applying this would clear
+      // the editor and trigger a save loop.
+      const rootProps = data.root.props;
+      if (
+        data.content.length === 0 &&
+        (!rootProps || Object.keys(rootProps).length === 0) &&
+        !data.zones
+      ) {
+        return;
+      }
+
       // Store the latest data - will be used when debounce fires
       pendingRemoteDataRef.current = data;
 

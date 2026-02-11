@@ -148,11 +148,11 @@ function countDiffs(diffs: ComponentDiffWithPosition[]): {
  * Behaviour varies depending on the snapshot values:
  *
  * - **Both PuckData** -- uses `diffPuckDataWithPositions` to compute
- *   component-level diffs.
- * - **Source is null, target is PuckData** -- produces synthetic diffs
- *   where all components in the target are marked as `added`.
- * - **Target is null, source is PuckData** -- produces synthetic diffs
- *   where all components in the source are marked as `removed`.
+ *   component-level diffs (target as baseline, source as changed state).
+ * - **Source has data, target is null** -- produces synthetic diffs
+ *   where all source components are marked as `added` (new document).
+ * - **Target has data, source is null** -- produces synthetic diffs
+ *   where all target components are marked as `removed` (deleted document).
  * - **Neither is PuckData / both null** -- returns empty diffs with
  *   `isPuckData: false`.
  *
@@ -193,13 +193,14 @@ export function createBranchDocumentComparison(
     };
   }
 
-  // Determine the effective before / after PuckData, substituting the
-  // empty placeholder when one side is null.
-  const before: PuckData = sourceIsPuck
-    ? (sourceSnapshot as PuckData)
-    : EMPTY_PUCK_DATA;
-  const after: PuckData = targetIsPuck
+  // The diff compares before (old) → after (new).
+  // Target is the baseline (main), source is the changed state (feature branch).
+  // So before = target, after = source.
+  const before: PuckData = targetIsPuck
     ? (targetSnapshot as PuckData)
+    : EMPTY_PUCK_DATA;
+  const after: PuckData = sourceIsPuck
+    ? (sourceSnapshot as PuckData)
     : EMPTY_PUCK_DATA;
 
   const diffs = diffPuckDataWithPositions(before, after);

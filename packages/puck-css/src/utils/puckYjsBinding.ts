@@ -142,24 +142,28 @@ export function createPuckYjsBinding(
   // Observer for remote changes
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const observer = (_events: any[], txn: Y.Transaction): void => {
-    console.log('[puckYjsBinding] Observer called, origin:', txn.origin, 'isApplyingLocalChange:', bindingState.isApplyingLocalChange);
-
     // Double-check: skip if we're in the middle of applying a local change
     // This handles any edge cases where transaction origin might not be set correctly
     if (bindingState.isApplyingLocalChange) {
-      console.log('[puckYjsBinding] Ignoring change - local change in progress (flag)');
       return;
     }
 
     // Ignore local changes by transaction origin
     if (txn.origin === LOCAL_ORIGIN) {
-      console.log('[puckYjsBinding] Ignoring local change (origin)');
       return;
     }
 
     // Convert Y.Map to PuckData and notify
     const puckData = yMapToPuckData(root);
-    console.log('[puckYjsBinding] Calling onRemoteUpdate with title:', puckData.root?.props?.title);
+
+    // Guard against empty Yjs initial sync state. When a new Yjs document
+    // connects, the first sync may produce an empty snapshot ({} or
+    // { content: [], root: { props: {} } }). Applying this would overwrite
+    // real editor content and trigger a save loop.
+    if (puckData.content.length === 0 && Object.keys(puckData.root.props).length === 0 && !puckData.zones) {
+      return;
+    }
+
     onRemoteUpdate(puckData);
   };
 

@@ -72,7 +72,7 @@ export function VisualBranchCompare({
   const classes = [baseClass, className].filter(Boolean).join(' ');
 
   // Compute comparisons for all documents
-  const comparisons = useMemo(() => {
+  const allComparisons = useMemo(() => {
     return documents.map((doc) =>
       createBranchDocumentComparison(
         doc.documentId,
@@ -83,23 +83,27 @@ export function VisualBranchCompare({
     );
   }, [documents]);
 
-  // Find first document with changes, default to first document
-  const firstChangedIndex = comparisons.findIndex(
-    (c) => c.diffs.some((d) => d.type !== 'unchanged')
-  );
-  const defaultIndex = firstChangedIndex >= 0 ? firstChangedIndex : 0;
+  // Filter to only documents with actual changes (new, deleted, or modified)
+  const changedEntries = useMemo(() => {
+    const entries: { doc: DocumentDiffSummary; comparison: typeof allComparisons[number] }[] = [];
+    for (let i = 0; i < documents.length; i++) {
+      const doc = documents[i]!;
+      const comp = allComparisons[i]!;
+      const hasChanges = comp.diffs.some((d) => d.type !== 'unchanged');
+      const isNew = doc.sourceSnapshot != null && doc.targetSnapshot == null;
+      const isDeleted = doc.sourceSnapshot == null && doc.targetSnapshot != null;
+      if (hasChanges || isNew || isDeleted) {
+        entries.push({ doc, comparison: comp });
+      }
+    }
+    return entries;
+  }, [documents, allComparisons]);
 
-  const [selectedIndex, setSelectedIndex] = useState(defaultIndex);
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
-  const selectedComparison = comparisons[selectedIndex];
-  const selectedDocument = documents[selectedIndex];
-
-  // Compute total change counts across selected document
-  const counts = selectedComparison
-    ? selectedComparison.counts
-    : { added: 0, removed: 0, modified: 0, unchanged: 0 };
-
-  const totalChanges = counts.added + counts.removed + counts.modified;
+  const selected = changedEntries[selectedIndex];
+  const selectedComparison = selected?.comparison ?? null;
+  const selectedDocument = selected?.doc ?? null;
 
   // Create diff map and highlighted configs for the selected document
   const diffMap = useMemo(
@@ -107,12 +111,13 @@ export function VisualBranchCompare({
     [selectedComparison]
   );
 
+  // Source is the "after" (new/changed state), target is the "before" (baseline)
   const sourceConfig = useMemo(
-    () => createHighlightedConfig(config, diffMap, 'before'),
+    () => createHighlightedConfig(config, diffMap, 'after'),
     [config, diffMap]
   );
   const targetConfig = useMemo(
-    () => createHighlightedConfig(config, diffMap, 'after'),
+    () => createHighlightedConfig(config, diffMap, 'before'),
     [config, diffMap]
   );
 
@@ -122,34 +127,56 @@ export function VisualBranchCompare({
 
   const emptyData: PuckData = { content: [], root: { props: {} } };
 
+  // Determine document status for the selected entry
+  const isNewDocument = sourceData != null && targetData == null;
+  const isDeletedDocument = sourceData == null && targetData != null;
+
+  // Aggregate change counts across all changed documents for the header
+  const totalCounts = useMemo(() => {
+    const totals = { added: 0, removed: 0, modified: 0 };
+    for (const entry of changedEntries) {
+      totals.added += entry.comparison.counts.added;
+      totals.removed += entry.comparison.counts.removed;
+      totals.modified += entry.comparison.counts.modified;
+    }
+    return totals;
+  }, [changedEntries]);
+
   return (
     <div className={classes}>
       <BranchDiffHeader
         sourceBranchName={sourceBranchName}
         targetBranchName={targetBranchName}
-        added={counts.added}
-        removed={counts.removed}
-        modified={counts.modified}
+        added={totalCounts.added}
+        removed={totalCounts.removed}
+        modified={totalCounts.modified}
         onClose={onClose}
       />
 
       {/* Document selector and legend bar */}
       <div className={`${baseClass}__legend`}>
-        {documents.length > 1 && (
+        {changedEntries.length > 1 && (
           <select
             className="css-plugin-select"
             style={{ width: 'auto', maxWidth: '300px', marginRight: '1rem', padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
             value={selectedIndex}
             onChange={(e) => setSelectedIndex(Number(e.target.value))}
           >
-            {documents.map((doc, i) => {
-              const comp = comparisons[i];
-              const docChanges = comp
-                ? comp.counts.added + comp.counts.removed + comp.counts.modified
-                : 0;
+            {changedEntries.map((entry, i) => {
+              const isNew = entry.doc.sourceSnapshot != null && entry.doc.targetSnapshot == null;
+              const isDel = entry.doc.sourceSnapshot == null && entry.doc.targetSnapshot != null;
+              const docChanges = entry.comparison.counts.added + entry.comparison.counts.removed + entry.comparison.counts.modified;
+              let label = entry.doc.documentPath;
+              if (isNew) {
+                label += ' (new)';
+              } else if (isDel) {
+                label += ' (deleted)';
+              } else if (docChanges > 0) {
+                label += ` (${docChanges} change${docChanges !== 1 ? 's' : ''})`;
+              }
               return (
-                <option key={doc.documentId} value={i}>
-                  {doc.documentPath}{docChanges > 0 ? ` (${docChanges} change${docChanges !== 1 ? 's' : ''})` : ''}
+                <option key={entry.doc.documentId} value={i}>
+                  {label}
                 </option>
               );
             })}
@@ -167,35 +194,43 @@ export function VisualBranchCompare({
       </div>
 
       <div className={`${baseClass}__content`}>
-        {totalChanges === 0 ? (
+        {changedEntries.length === 0 ? (
           <div className={`${baseClass}__empty`}>No changes between branches</div>
         ) : (
           <div className={`${baseClass}__panels`}>
-            {/* Source Branch Panel */}
+            {/* After panel (source branch - current changes) */}
             <div className={`${baseClass}__panel ${baseClass}__panel--before`}>
               <div className={`${baseClass}__panel-header`}>
-                <span className={`${baseClass}__panel-label`}>Source branch</span>
+                <span className={`${baseClass}__panel-label`}>New Changes</span>
                 <span className={`${baseClass}__panel-version`}>{sourceBranchName}</span>
               </div>
               <div className={`${baseClass}__panel-content`}>
-                <Render
-                  config={sourceConfig as Parameters<typeof Render>[0]['config']}
-                  data={(sourceData ?? emptyData) as Parameters<typeof Render>[0]['data']}
-                />
+                {isDeletedDocument ? (
+                  <div className={`${baseClass}__empty`}>Document deleted in this branch</div>
+                ) : (
+                  <Render
+                    config={sourceConfig as Parameters<typeof Render>[0]['config']}
+                    data={(sourceData ?? emptyData) as Parameters<typeof Render>[0]['data']}
+                  />
+                )}
               </div>
             </div>
 
-            {/* Target Branch Panel */}
+            {/* Before panel (target branch - main) */}
             <div className={`${baseClass}__panel ${baseClass}__panel--after`}>
               <div className={`${baseClass}__panel-header`}>
-                <span className={`${baseClass}__panel-label`}>Target branch</span>
+                <span className={`${baseClass}__panel-label`}>Current State</span>
                 <span className={`${baseClass}__panel-version`}>{targetBranchName}</span>
               </div>
               <div className={`${baseClass}__panel-content`}>
-                <Render
-                  config={targetConfig as Parameters<typeof Render>[0]['config']}
-                  data={(targetData ?? emptyData) as Parameters<typeof Render>[0]['data']}
-                />
+                {isNewDocument ? (
+                  <div className={`${baseClass}__empty`}>Document does not exist on this branch</div>
+                ) : (
+                  <Render
+                    config={targetConfig as Parameters<typeof Render>[0]['config']}
+                    data={(targetData ?? emptyData) as Parameters<typeof Render>[0]['data']}
+                  />
+                )}
               </div>
             </div>
           </div>

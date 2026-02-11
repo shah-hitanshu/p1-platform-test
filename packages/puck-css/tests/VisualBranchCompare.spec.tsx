@@ -89,7 +89,7 @@ const multipleDocuments: DocumentDiffSummary[] = [
     documentPath: 'about',
     sourceSnapshot: {
       content: [
-        { type: 'Heading', props: { id: 'h2', text: 'About Us' } },
+        { type: 'Heading', props: { id: 'h2', text: 'About Us Updated' } },
       ],
       root: { props: {} },
     },
@@ -118,7 +118,7 @@ describe('VisualBranchCompare', () => {
     expect(screen.getAllByText('main').length).toBeGreaterThan(0);
   });
 
-  it('should render two preview panels with Source and Target labels', () => {
+  it('should render two preview panels with New Changes and Current State labels', () => {
     render(
       <VisualBranchCompare
         sourceBranchName="feature-branch"
@@ -129,8 +129,8 @@ describe('VisualBranchCompare', () => {
       />
     );
 
-    expect(screen.getByText('Source branch')).toBeInTheDocument();
-    expect(screen.getByText('Target branch')).toBeInTheDocument();
+    expect(screen.getByText('New Changes')).toBeInTheDocument();
+    expect(screen.getByText('Current State')).toBeInTheDocument();
   });
 
   it('should render Puck content in both panels', () => {
@@ -261,10 +261,11 @@ describe('VisualBranchCompare - Document Selector', () => {
     const options = container.querySelectorAll('option');
     expect(options.length).toBe(2);
 
-    // First doc has changes, second does not
+    // Both docs have changes
     expect(options[0].textContent).toContain('homepage');
     expect(options[0].textContent).toMatch(/\d+ change/);
     expect(options[1].textContent).toContain('about');
+    expect(options[1].textContent).toMatch(/\d+ change/);
   });
 
   it('should switch displayed document when selector changes', () => {
@@ -280,14 +281,15 @@ describe('VisualBranchCompare - Document Selector', () => {
 
     const select = screen.getByRole('combobox');
 
-    // Switch to second document (about page, no changes)
+    // Switch to second document (about page)
     fireEvent.change(select, { target: { value: '1' } });
 
-    // Should show no changes for the about page
-    expect(screen.getByText(/no changes/i)).toBeInTheDocument();
+    // Should render the about page content (both panels have puck-render areas)
+    const renderAreas = screen.getAllByTestId('puck-render');
+    expect(renderAreas).toHaveLength(2);
   });
 
-  it('should default to first document with changes', () => {
+  it('should default to first document with changes and filter unchanged', () => {
     const docsWithChangesSecond: DocumentDiffSummary[] = [
       {
         documentId: 'doc-no-change',
@@ -303,7 +305,7 @@ describe('VisualBranchCompare - Document Selector', () => {
       },
     ];
 
-    const { container } = render(
+    render(
       <VisualBranchCompare
         sourceBranchName="feature-branch"
         targetBranchName="main"
@@ -313,14 +315,18 @@ describe('VisualBranchCompare - Document Selector', () => {
       />
     );
 
-    const select = container.querySelector('select');
-    expect(select).toBeTruthy();
-    expect((select as HTMLSelectElement).value).toBe('1');
+    // Only one document has changes, so no selector is shown
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    // But the changed document's content should be rendered
+    const renderAreas = screen.getAllByTestId('puck-render');
+    expect(renderAreas).toHaveLength(2);
   });
 });
 
 describe('VisualBranchCompare - Diff Highlighting', () => {
-  it('should mark added components with added indicator', () => {
+  it('should mark removed components with removed indicator', () => {
+    // In singleDocuments, t2 exists in target (main) but not source (feature),
+    // so it's "removed" (was in baseline, not in changed state).
     const { container } = render(
       <VisualBranchCompare
         sourceBranchName="feature-branch"
@@ -331,8 +337,8 @@ describe('VisualBranchCompare - Diff Highlighting', () => {
       />
     );
 
-    const addedIndicators = container.querySelectorAll('[data-diff-type="added"]');
-    expect(addedIndicators.length).toBeGreaterThan(0);
+    const removedIndicators = container.querySelectorAll('[data-diff-type="removed"]');
+    expect(removedIndicators.length).toBeGreaterThan(0);
   });
 
   it('should mark modified components with modified indicator', () => {
