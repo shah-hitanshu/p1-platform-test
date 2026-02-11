@@ -99,6 +99,7 @@ export {
   BranchDiffHeader,
   BranchMergeCompare,
   DocumentDiffList,
+  VisualBranchCompare,
 } from './components/version-compare/index.js';
 export type {
   PropValueDisplayProps,
@@ -112,6 +113,7 @@ export type {
   BranchDiffHeaderProps,
   BranchMergeCompareProps,
   DocumentDiffListProps,
+  VisualBranchCompareProps,
 } from './components/version-compare/index.js';
 
 // Merge Preview Components (Phase 5)

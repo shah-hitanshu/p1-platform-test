@@ -63,6 +63,8 @@ interface CSSPluginPanelProps {
   showFocusRegions?: boolean;
   /** Regions being edited by agents */
   agentEditingRegions?: string[];
+  /** Callback when "Compare with main" is clicked. Receives the main branch ID. */
+  onMergeCompare?: (targetBranchId: string) => void;
 }
 
 /**
@@ -107,6 +109,7 @@ function CSSPluginPanel({
   // Focus regions are shown within AgentActivityBanner
   showFocusRegions: _showFocusRegions = false,
   agentEditingRegions: _agentEditingRegions = [],
+  onMergeCompare,
 }: CSSPluginPanelProps): React.ReactElement {
   // Suppress unused variable warnings - these are passed through for future use
   void _showFocusRegions;
@@ -175,6 +178,20 @@ function CSSPluginPanel({
             </option>
           ))}
         </select>
+        {onMergeCompare && currentBranch && !currentBranch.isMain && (() => {
+          const mainBranch = branches.find((b) => b.isMain);
+          if (!mainBranch) return null;
+          return (
+            <button
+              type="button"
+              className="css-plugin-btn css-plugin-btn-compare"
+              onClick={() => onMergeCompare(mainBranch.id)}
+              style={{ marginTop: 8 }}
+            >
+              Compare with main
+            </button>
+          );
+        })()}
       </div>
 
       {/* Document Management */}
@@ -534,6 +551,8 @@ export interface CSSPluginOptions {
   showFocusRegions?: boolean;
   /** Regions currently being edited by agents */
   agentEditingRegions?: string[];
+  /** Callback when "Compare with main" is clicked. Receives the main branch ID. */
+  onMergeCompare?: (targetBranchId: string) => void;
   // Focus Region Reporting
   /**
    * Callback when user selection changes in the Puck editor.
@@ -632,6 +651,7 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
           onAgentAction={options.onAgentAction}
           showFocusRegions={options.showFocusRegions}
           agentEditingRegions={options.agentEditingRegions}
+          onMergeCompare={options.onMergeCompare}
         />
       </>
     ),

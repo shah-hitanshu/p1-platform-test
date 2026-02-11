@@ -36,3 +36,6 @@ export type { BranchMergeCompareProps } from './BranchMergeCompare.js';
 
 export { DocumentDiffList } from './DocumentDiffList.js';
 export type { DocumentDiffListProps } from './DocumentDiffList.js';
+
+export { VisualBranchCompare } from './VisualBranchCompare.js';
+export type { VisualBranchCompareProps } from './VisualBranchCompare.js';

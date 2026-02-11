@@ -119,6 +119,94 @@
 }
 
 /* ============================================
+   BranchDiffHeader
+   ============================================ */
+.branch-diff-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--puck-css-bg);
+  border-bottom: 1px solid var(--puck-css-border);
+}
+
+.branch-diff-header__branches {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.branch-diff-header__branch {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.branch-diff-header__branch--source {
+  background: var(--puck-css-diff-removed-bg);
+  color: var(--puck-css-diff-removed);
+}
+
+.branch-diff-header__branch--target {
+  background: var(--puck-css-diff-added-bg);
+  color: var(--puck-css-diff-added);
+}
+
+.branch-diff-header__arrow {
+  color: var(--puck-css-text-secondary);
+}
+
+.branch-diff-header__summary {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.branch-diff-header__stat {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.branch-diff-header__stat--added {
+  background: var(--puck-css-diff-added-bg);
+  color: var(--puck-css-diff-added);
+}
+
+.branch-diff-header__stat--removed {
+  background: var(--puck-css-diff-removed-bg);
+  color: var(--puck-css-diff-removed);
+}
+
+.branch-diff-header__stat--modified {
+  background: var(--puck-css-diff-modified-bg);
+  color: var(--puck-css-diff-modified);
+}
+
+.branch-diff-header__stat--reordered {
+  background: var(--puck-css-diff-reordered-bg);
+  color: var(--puck-css-diff-reordered);
+}
+
+.branch-diff-header__close {
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: transparent;
+  font-size: 1.25rem;
+  color: var(--puck-css-text-secondary);
+  cursor: pointer;
+  border-radius: 0.25rem;
+  line-height: 1;
+}
+
+.branch-diff-header__close:hover {
+  background: var(--puck-css-bg-secondary);
+  color: var(--puck-css-text);
+}
+
+/* ============================================
    VersionComparePage
    ============================================ */
 .version-compare-page {
@@ -944,6 +1032,36 @@
   background: var(--puck-css-diff-added-bg);
   color: var(--puck-css-diff-added);
   border-radius: 3px;
+}
+
+.css-plugin-btn {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--puck-css-border);
+  border-radius: 6px;
+  background: var(--puck-css-bg);
+  color: var(--puck-css-text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.css-plugin-btn:hover {
+  background: var(--puck-css-bg-secondary);
+  border-color: var(--puck-css-text-secondary);
+}
+
+.css-plugin-btn-compare {
+  background: var(--puck-css-bg);
+  border-color: var(--puck-css-primary);
+  color: var(--puck-css-primary);
+}
+
+.css-plugin-btn-compare:hover {
+  background: var(--puck-css-primary);
+  color: white;
+  border-color: var(--puck-css-primary);
 }
 
 /* ============================================
