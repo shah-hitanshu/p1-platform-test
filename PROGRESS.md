@@ -2744,6 +2744,19 @@ Template for future decisions:
 **Files Changed:**
 - `workers/src/services/document-service.ts` - Updated `getDocumentByPath` query
 
+### CRDT State Initialization Parameter Mismatch (Fixed 2026-02-16)
+
+**Issue:** The MCP `get_document` tool returned `{}` for all documents on branches that had never been accessed via WebSocket on the current worker instance. Documents on the main branch (which had active WebSocket sessions) worked fine.
+
+**Root Cause:** In `DocumentSession.initializeFromPostgres()`, the Durable Object sent the query parameter `documentPath` when calling the internal `/internal/crdt-state` endpoint, but the handler expected `documentId`. This caused a 400 response, so the DO fell back to an empty Y.Doc and returned `{"snapshot": {}}`. Branches with prior WebSocket activity were unaffected because their state was already cached in Durable Object storage (priority 1 in the initialization flow).
+
+**Solution:** Changed `url.searchParams.set('documentPath', documentId)` to `url.searchParams.set('documentId', documentId)` in `document-session.ts:581`.
+
+**Files Changed:**
+- `workers/src/durable-objects/document-session.ts` - Fixed query parameter name
+
+**Commits:** `c5e6000` (feature branch), `6b74b32` (cherry-picked to main)
+
 ### GitHub Advanced Security Alerts (Fixed 2026-01-25)
 
 **Issue:** GitHub Advanced Security identified 3 code scanning alerts:
