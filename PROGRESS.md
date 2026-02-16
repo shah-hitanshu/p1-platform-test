@@ -2782,17 +2782,16 @@ Template for future decisions:
 
 ### CORS Configuration for Multi-Tenant Frontends
 
-**Issue:** Currently, allowed CORS origins must be manually added to `wrangler.jsonc` for each frontend that needs to access the CSS API. This doesn't scale for a multi-tenant platform where customers deploy arbitrary frontends.
+**Status:** Resolved (wildcard subdomain matching) — PR #11, merged 2026-02-16
 
-**Current Workaround:** Manually add each localhost port or domain to `CORS_ORIGINS` in `workers/wrangler.jsonc`.
+**Original Issue:** Allowed CORS origins had to be manually added to `wrangler.jsonc` for each frontend, which doesn't scale for multi-tenant deployments.
 
-**Proposed Solutions:**
-1. **Wildcard subdomain matching:** Allow `*.pantheonsite.io` to cover all customer sites
-2. **Dynamic origin validation:** Validate origins against the site's configuration stored in the database (e.g., `site.allowedOrigins` field)
-3. **Authentication-based CORS:** Automatically allow origins that provide valid API keys associated with the site
-4. **Same-origin proxy:** Frontends proxy through their own backend, eliminating browser CORS
+**Solution Implemented:** Wildcard subdomain pattern matching via shared CORS utility (`workers/src/utils/cors.ts`). Patterns like `https://*.pantheonsite.io` now cover all customer subdomains. Configured per environment in `wrangler.jsonc`.
 
-**Priority:** Medium - Required before production multi-tenant deployment
+**Future options if needed:**
+- Dynamic origin validation against the database (e.g., `site.allowedOrigins` field)
+- Authentication-based CORS (auto-allow origins with valid API keys)
+- Same-origin proxy (frontends proxy through their own backend)
 
 ---
 
