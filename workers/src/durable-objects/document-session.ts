@@ -578,7 +578,7 @@ export class DocumentSession {
 
     const url = new URL(`${this.env.INTERNAL_API_URL}/internal/crdt-state`);
     url.searchParams.set('siteId', siteId);
-    url.searchParams.set('documentPath', documentId);
+    url.searchParams.set('documentId', documentId);
     url.searchParams.set('branchId', branchId);
 
     const response = await fetch(url.toString(), {
