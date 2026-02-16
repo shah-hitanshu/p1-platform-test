@@ -258,12 +258,16 @@ dev-full: ## Start full stack (Docker + Worker + Frontend)
 	@echo "$(GREEN)Starting full stack development environment...$(NC)"
 	@$(MAKE) docker-up
 	@echo ""
-	@echo "$(GREEN)Starting backend worker...$(NC)"
-	@cd workers && pnpm dev &
-	@sleep 3
-	@echo ""
-	@echo "$(GREEN)Starting frontend...$(NC)"
-	@cd frontend && pnpm dev
+	@echo "$(GREEN)Starting backend worker and frontend...$(NC)"
+	@echo "$(YELLOW)Press Ctrl+C to stop all services.$(NC)"
+	@cd workers && pnpm dev & WORKER_PID=$$!; \
+	trap "kill $$WORKER_PID 2>/dev/null; cd workers && pnpm cleanup:dev; exit 0" INT TERM EXIT; \
+	sleep 3; \
+	echo ""; \
+	echo "$(GREEN)Starting frontend...$(NC)"; \
+	cd frontend && pnpm dev; \
+	kill $$WORKER_PID 2>/dev/null; \
+	cd workers && pnpm cleanup:dev
 
 .PHONY: install-all
 install-all: worker-install frontend-install ## Install all dependencies

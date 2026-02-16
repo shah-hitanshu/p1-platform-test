@@ -99,6 +99,29 @@
       ]
     },
 
+    // Personal sandbox environment (independent CF/GCP account)
+    // Deploy with: pnpm deploy:sandbox
+    // Setup with: ./scripts/setup-sandbox.sh
+    "sandbox": {
+      "name": "collaborative-state-worker-sandbox",
+      "vars": {
+        "ENVIRONMENT": "sandbox",
+        "LOG_LEVEL": "debug",
+        "CORS_ORIGINS": "http://localhost:5173",
+        "METRICS_ENABLED": "false",
+        "INTERNAL_API_URL": "REPLACE_WITH_WORKER_URL"
+      },
+      "kv_namespaces": [
+        { "binding": "CONFIG_KV", "id": "REPLACE_WITH_SANDBOX_CONFIG_KV_ID" },
+        { "binding": "SESSION_KV", "id": "REPLACE_WITH_SANDBOX_SESSION_KV_ID" }
+      ],
+      // Hyperdrive for PostgreSQL connection pooling via GCP CloudSQL
+      // Create with: npx wrangler hyperdrive create css-postgres-sandbox --connection-string="<connection-string>"
+      "hyperdrive": [
+        { "binding": "HYPERDRIVE", "id": "REPLACE_WITH_SANDBOX_HYPERDRIVE_ID" }
+      ]
+    },
+
     // Production environment
     "production": {
       "name": "collaborative-state-worker-prod",

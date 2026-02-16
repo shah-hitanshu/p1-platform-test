@@ -32,6 +32,13 @@ import {
   type AgentContext,
 } from '../services/agent-context-service';
 import {
+  parseOriginPatterns,
+  isOriginAllowed,
+  getCorsHeaders as sharedGetCorsHeaders,
+  addCorsHeaders as sharedAddCorsHeaders,
+  type CorsPattern,
+} from '../utils/cors';
+import {
   MAX_ACTOR_ID_LENGTH as MAX_AGENT_ID_LENGTH,
   MAX_INTENT_LENGTH,
   MAX_TARGET_REGIONS,
@@ -68,39 +75,34 @@ interface RouteParams {
 /** Default allowed origins for development */
 const DEFAULT_CORS_ORIGINS = 'http://localhost:3000,http://localhost:8787';
 
-/**
- * Get CORS headers for a specific origin
- */
-function getCorsHeaders(origin: string | null, allowedOrigins: string[]): Record<string, string> {
-  // Check if origin is in allowed list
-  const allowedOrigin = origin !== null && allowedOrigins.includes(origin) ? origin : '';
+/** Allowed headers for realtime API routes (includes agent context headers) */
+const REALTIME_ALLOWED_HEADERS = [
+  'Content-Type',
+  'X-Actor-Id',
+  'X-Actor-Type',
+  'Upgrade',
+  // Phase 7.3: Agent context headers
+  'X-Agent-Id',
+  'X-Agent-Trigger',
+  'X-Agent-Requested-By',
+  'X-Agent-Intent',
+  'X-Agent-Operation-Type',
+  'X-Agent-Target-Regions',
+].join(', ');
 
-  return {
-    'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': [
-      'Content-Type',
-      'X-Actor-Id',
-      'X-Actor-Type',
-      'Upgrade',
-      // Phase 7.3: Agent context headers
-      'X-Agent-Id',
-      'X-Agent-Trigger',
-      'X-Agent-Requested-By',
-      'X-Agent-Intent',
-      'X-Agent-Operation-Type',
-      'X-Agent-Target-Regions',
-    ].join(', '),
-    'Access-Control-Max-Age': '86400',
-  };
+/**
+ * Get CORS headers for a specific origin using shared utility
+ */
+function getCorsHeaders(origin: string | null, patterns: CorsPattern[]): Record<string, string> {
+  return sharedGetCorsHeaders(origin, patterns, REALTIME_ALLOWED_HEADERS);
 }
 
 /**
- * Parse allowed origins from environment variable
+ * Parse CORS origin patterns from environment variable
  */
-function parseAllowedOrigins(corsOrigins: string | undefined): string[] {
+function parseCorsPatterns(corsOrigins: string | undefined): CorsPattern[] {
   const origins = corsOrigins ?? DEFAULT_CORS_ORIGINS;
-  return origins.split(',').map((o) => o.trim()).filter((o) => o !== '');
+  return parseOriginPatterns(origins);
 }
 
 /**
@@ -171,30 +173,14 @@ function generateSessionId(siteId: string, documentId: string, branchId: string)
 }
 
 /**
- * Add CORS headers to a response
+ * Add CORS headers to a response using shared utility
  */
 function addCorsHeaders(
   response: Response,
   origin: string | null,
-  allowedOrigins: string[],
+  patterns: CorsPattern[],
 ): Response {
-  // WebSocket upgrade responses cannot be modified
-  // Return them as-is since CORS doesn't apply to WebSocket connections
-  // Note: Cloudflare Workers Response has a webSocket property for WebSocket upgrades
-  if ('webSocket' in response && (response as { webSocket: unknown }).webSocket != null) {
-    return response;
-  }
-
-  const corsHeaders = getCorsHeaders(origin, allowedOrigins);
-  const headers = new Headers(response.headers);
-  for (const [key, value] of Object.entries(corsHeaders)) {
-    headers.set(key, value);
-  }
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
+  return sharedAddCorsHeaders(response, origin, patterns, REALTIME_ALLOWED_HEADERS);
 }
 
 /**
@@ -204,9 +190,9 @@ function errorResponse(
   status: number,
   error: string,
   origin: string | null,
-  allowedOrigins: string[],
+  patterns: CorsPattern[],
 ): Response {
-  const corsHeaders = getCorsHeaders(origin, allowedOrigins);
+  const corsHeaders = getCorsHeaders(origin, patterns);
   return new Response(JSON.stringify({ error }), {
     status,
     headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -214,10 +200,12 @@ function errorResponse(
 }
 
 /**
- * Handle CORS preflight OPTIONS request
+ * Handle CORS preflight OPTIONS request.
+ * Always returns 204 with CORS headers (empty Allow-Origin if disallowed).
+ * This matches the original realtime-api behavior where preflight never fails.
  */
-function handleOptions(origin: string | null, allowedOrigins: string[]): Response {
-  const corsHeaders = getCorsHeaders(origin, allowedOrigins);
+function handleOptions(origin: string | null, patterns: CorsPattern[]): Response {
+  const corsHeaders = getCorsHeaders(origin, patterns);
   return new Response(null, {
     status: 204,
     headers: corsHeaders,
@@ -231,13 +219,13 @@ function handleOptions(origin: string | null, allowedOrigins: string[]): Respons
  *
  * @param agentId - Agent ID to validate (may be undefined/empty)
  * @param origin - Request origin for CORS headers
- * @param allowedOrigins - List of allowed CORS origins
+ * @param patterns - Parsed CORS patterns
  * @returns Error response if agent rejected, or null to allow through
  */
 async function validateAgentStatusForEdit(
   agentId: string | undefined,
   origin: string | null,
-  allowedOrigins: string[],
+  patterns: CorsPattern[],
 ): Promise<Response | null> {
   // No agent ID - no validation needed
   if (agentId === undefined || agentId === '') {
@@ -274,7 +262,7 @@ async function validateAgentStatusForEdit(
     status,
     result.message ?? 'Agent access denied',
     origin,
-    allowedOrigins,
+    patterns,
   );
 }
 
@@ -285,13 +273,13 @@ async function validateAgentStatusForEdit(
 async function validateEditsBody(
   request: Request,
   origin: string | null,
-  allowedOrigins: string[],
+  patterns: CorsPattern[],
 ): Promise<{ operations: unknown[]; actorId: string; editSessionId?: string } | Response> {
   // Check Content-Type
   const contentType = request.headers.get('Content-Type');
   const isJsonContentType = contentType?.includes('application/json') === true;
   if (!isJsonContentType) {
-    return errorResponse(415, 'Content-Type must be application/json', origin, allowedOrigins);
+    return errorResponse(415, 'Content-Type must be application/json', origin, patterns);
   }
 
   // Parse JSON body
@@ -299,28 +287,28 @@ async function validateEditsBody(
   try {
     body = await request.json();
   } catch {
-    return errorResponse(400, 'Invalid JSON in request body', origin, allowedOrigins);
+    return errorResponse(400, 'Invalid JSON in request body', origin, patterns);
   }
 
   // Validate body structure
   if (typeof body !== 'object' || body === null) {
-    return errorResponse(400, 'Request body must be an object', origin, allowedOrigins);
+    return errorResponse(400, 'Request body must be an object', origin, patterns);
   }
 
   const bodyObj = body as Record<string, unknown>;
 
   // Validate operations field
   if (!('operations' in bodyObj)) {
-    return errorResponse(400, 'Missing required field: operations', origin, allowedOrigins);
+    return errorResponse(400, 'Missing required field: operations', origin, patterns);
   }
 
   if (!Array.isArray(bodyObj.operations)) {
-    return errorResponse(400, 'operations must be an array', origin, allowedOrigins);
+    return errorResponse(400, 'operations must be an array', origin, patterns);
   }
 
   // Validate actorId field
   if (!('actorId' in bodyObj) || typeof bodyObj.actorId !== 'string' || bodyObj.actorId === '') {
-    return errorResponse(400, 'Missing required field: actorId', origin, allowedOrigins);
+    return errorResponse(400, 'Missing required field: actorId', origin, patterns);
   }
 
   // Pass through editSessionId if present (required for agents)
@@ -359,13 +347,13 @@ interface AgentEditRequestBody {
 async function validateAgentEditBody(
   request: Request,
   origin: string | null,
-  allowedOrigins: string[],
+  patterns: CorsPattern[],
 ): Promise<AgentEditRequestBody | Response> {
   // Check Content-Type
   const contentType = request.headers.get('Content-Type');
   const isJsonContentType = contentType?.includes('application/json') === true;
   if (!isJsonContentType) {
-    return errorResponse(415, 'Content-Type must be application/json', origin, allowedOrigins);
+    return errorResponse(415, 'Content-Type must be application/json', origin, patterns);
   }
 
   // Parse JSON body
@@ -373,12 +361,12 @@ async function validateAgentEditBody(
   try {
     body = await request.json();
   } catch {
-    return errorResponse(400, 'Invalid JSON in request body', origin, allowedOrigins);
+    return errorResponse(400, 'Invalid JSON in request body', origin, patterns);
   }
 
   // Validate body structure
   if (typeof body !== 'object' || body === null) {
-    return errorResponse(400, 'Request body must be an object', origin, allowedOrigins);
+    return errorResponse(400, 'Request body must be an object', origin, patterns);
   }
 
   const bodyObj = body as Record<string, unknown>;
@@ -419,7 +407,7 @@ async function validateAgentEditBody(
 
   // Validate required fields after merge
   if (agentId === undefined || agentId === '') {
-    return errorResponse(400, 'Missing or invalid required field: agentId', origin, allowedOrigins);
+    return errorResponse(400, 'Missing or invalid required field: agentId', origin, patterns);
   }
 
   if (agentId.length > MAX_AGENT_ID_LENGTH) {
@@ -427,12 +415,12 @@ async function validateAgentEditBody(
       400,
       `agentId must be 1-${String(MAX_AGENT_ID_LENGTH)} characters`,
       origin,
-      allowedOrigins,
+      patterns,
     );
   }
 
   if (trigger === undefined || trigger === '') {
-    return errorResponse(400, 'Missing or invalid required field: trigger', origin, allowedOrigins);
+    return errorResponse(400, 'Missing or invalid required field: trigger', origin, patterns);
   }
 
   if (!VALID_TRIGGERS.includes(trigger as typeof VALID_TRIGGERS[number])) {
@@ -440,12 +428,12 @@ async function validateAgentEditBody(
       400,
       'Invalid trigger value. Must be "human_requested" or "autonomous"',
       origin,
-      allowedOrigins,
+      patterns,
     );
   }
 
   if (intent === undefined || intent === '') {
-    return errorResponse(400, 'Missing or invalid required field: intent', origin, allowedOrigins);
+    return errorResponse(400, 'Missing or invalid required field: intent', origin, patterns);
   }
 
   if (intent.length > MAX_INTENT_LENGTH) {
@@ -453,7 +441,7 @@ async function validateAgentEditBody(
       400,
       `intent must be 1-${String(MAX_INTENT_LENGTH)} characters`,
       origin,
-      allowedOrigins,
+      patterns,
     );
   }
 
@@ -462,13 +450,13 @@ async function validateAgentEditBody(
       400,
       `operationType must be at most ${String(MAX_OPERATION_TYPE_LENGTH)} characters`,
       origin,
-      allowedOrigins,
+      patterns,
     );
   }
 
   // Validate targetRegions is provided (required field)
   if (targetRegions === undefined) {
-    return errorResponse(400, 'Missing or invalid required field: targetRegions', origin, allowedOrigins);
+    return errorResponse(400, 'Missing or invalid required field: targetRegions', origin, patterns);
   }
 
   // Validate targetRegions array size
@@ -477,21 +465,21 @@ async function validateAgentEditBody(
       400,
       `targetRegions cannot exceed ${String(MAX_TARGET_REGIONS)} entries`,
       origin,
-      allowedOrigins,
+      patterns,
     );
   }
 
   // Validate each region is a string with valid length
   for (const region of targetRegions) {
     if (typeof region !== 'string') {
-      return errorResponse(400, 'Each targetRegion must be a string', origin, allowedOrigins);
+      return errorResponse(400, 'Each targetRegion must be a string', origin, patterns);
     }
     if (region.length > MAX_REGION_PATH_LENGTH) {
       return errorResponse(
         400,
         `Each targetRegion must be at most ${String(MAX_REGION_PATH_LENGTH)} characters`,
         origin,
-        allowedOrigins,
+        patterns,
       );
     }
   }
@@ -512,14 +500,14 @@ async function validateAgentEditBody(
 async function validateEditSessionBody(
   request: Request,
   origin: string | null,
-  allowedOrigins: string[],
+  patterns: CorsPattern[],
   requireReason = false,
 ): Promise<{ editSessionId: string; reason?: string } | Response> {
   // Check Content-Type
   const contentType = request.headers.get('Content-Type');
   const isJsonContentType = contentType?.includes('application/json') === true;
   if (!isJsonContentType) {
-    return errorResponse(415, 'Content-Type must be application/json', origin, allowedOrigins);
+    return errorResponse(415, 'Content-Type must be application/json', origin, patterns);
   }
 
   // Parse JSON body
@@ -527,19 +515,19 @@ async function validateEditSessionBody(
   try {
     body = await request.json();
   } catch {
-    return errorResponse(400, 'Invalid JSON in request body', origin, allowedOrigins);
+    return errorResponse(400, 'Invalid JSON in request body', origin, patterns);
   }
 
   // Validate body structure
   if (typeof body !== 'object' || body === null) {
-    return errorResponse(400, 'Request body must be an object', origin, allowedOrigins);
+    return errorResponse(400, 'Request body must be an object', origin, patterns);
   }
 
   const bodyObj = body as Record<string, unknown>;
 
   // Validate required fields
   if (!('editSessionId' in bodyObj) || typeof bodyObj.editSessionId !== 'string') {
-    return errorResponse(400, 'Missing or invalid required field: editSessionId', origin, allowedOrigins);
+    return errorResponse(400, 'Missing or invalid required field: editSessionId', origin, patterns);
   }
 
   if (bodyObj.editSessionId.length === 0 || bodyObj.editSessionId.length > MAX_EDIT_SESSION_ID_LENGTH) {
@@ -547,12 +535,12 @@ async function validateEditSessionBody(
       400,
       `editSessionId must be 1-${String(MAX_EDIT_SESSION_ID_LENGTH)} characters`,
       origin,
-      allowedOrigins,
+      patterns,
     );
   }
 
   if (requireReason && (!('reason' in bodyObj) || typeof bodyObj.reason !== 'string')) {
-    return errorResponse(400, 'Missing or invalid required field: reason', origin, allowedOrigins);
+    return errorResponse(400, 'Missing or invalid required field: reason', origin, patterns);
   }
 
   // Validate reason length if provided
@@ -561,7 +549,7 @@ async function validateEditSessionBody(
       400,
       `reason must be at most ${String(MAX_REASON_LENGTH)} characters`,
       origin,
-      allowedOrigins,
+      patterns,
     );
   }
 
@@ -578,13 +566,13 @@ async function validateEditSessionBody(
 async function validateAgentStopBody(
   request: Request,
   origin: string | null,
-  allowedOrigins: string[],
+  patterns: CorsPattern[],
 ): Promise<{ agentId: string; reason?: string } | Response> {
   // Check Content-Type
   const contentType = request.headers.get('Content-Type');
   const isJsonContentType = contentType?.includes('application/json') === true;
   if (!isJsonContentType) {
-    return errorResponse(415, 'Content-Type must be application/json', origin, allowedOrigins);
+    return errorResponse(415, 'Content-Type must be application/json', origin, patterns);
   }
 
   // Parse JSON body
@@ -592,19 +580,19 @@ async function validateAgentStopBody(
   try {
     body = await request.json();
   } catch {
-    return errorResponse(400, 'Invalid JSON in request body', origin, allowedOrigins);
+    return errorResponse(400, 'Invalid JSON in request body', origin, patterns);
   }
 
   // Validate body structure
   if (typeof body !== 'object' || body === null) {
-    return errorResponse(400, 'Request body must be an object', origin, allowedOrigins);
+    return errorResponse(400, 'Request body must be an object', origin, patterns);
   }
 
   const bodyObj = body as Record<string, unknown>;
 
   // Validate required fields
   if (!('agentId' in bodyObj) || typeof bodyObj.agentId !== 'string' || bodyObj.agentId === '') {
-    return errorResponse(400, 'Missing or invalid required field: agentId', origin, allowedOrigins);
+    return errorResponse(400, 'Missing or invalid required field: agentId', origin, patterns);
   }
 
   if (bodyObj.agentId.length > MAX_AGENT_ID_LENGTH) {
@@ -612,7 +600,7 @@ async function validateAgentStopBody(
       400,
       `agentId must be 1-${String(MAX_AGENT_ID_LENGTH)} characters`,
       origin,
-      allowedOrigins,
+      patterns,
     );
   }
 
@@ -622,7 +610,7 @@ async function validateAgentStopBody(
       400,
       `reason must be at most ${String(MAX_REASON_LENGTH)} characters`,
       origin,
-      allowedOrigins,
+      patterns,
     );
   }
 
@@ -639,7 +627,7 @@ async function validateAgentStopBody(
 async function validateFocusRegionsBody(
   request: Request,
   origin: string | null,
-  allowedOrigins: string[],
+  patterns: CorsPattern[],
 ): Promise<{ actorId: string; focusRegions: string[] } | Response> {
   // Check X-Actor-Type header - must be 'user'
   const actorType = request.headers.get('X-Actor-Type');
@@ -648,7 +636,7 @@ async function validateFocusRegionsBody(
       403,
       'Only users can update focus regions. Agents should use /agent-edit-start.',
       origin,
-      allowedOrigins,
+      patterns,
     );
   }
 
@@ -656,7 +644,7 @@ async function validateFocusRegionsBody(
   const contentType = request.headers.get('Content-Type');
   const isJsonContentType = contentType?.includes('application/json') === true;
   if (!isJsonContentType) {
-    return errorResponse(415, 'Content-Type must be application/json', origin, allowedOrigins);
+    return errorResponse(415, 'Content-Type must be application/json', origin, patterns);
   }
 
   // Parse JSON body
@@ -664,24 +652,24 @@ async function validateFocusRegionsBody(
   try {
     body = await request.json();
   } catch {
-    return errorResponse(400, 'Invalid JSON in request body', origin, allowedOrigins);
+    return errorResponse(400, 'Invalid JSON in request body', origin, patterns);
   }
 
   // Validate body structure
   if (typeof body !== 'object' || body === null) {
-    return errorResponse(400, 'Request body must be an object', origin, allowedOrigins);
+    return errorResponse(400, 'Request body must be an object', origin, patterns);
   }
 
   const bodyObj = body as Record<string, unknown>;
 
   // Validate actorId
   if (typeof bodyObj.actorId !== 'string' || bodyObj.actorId === '') {
-    return errorResponse(400, 'Missing or invalid required field: actorId', origin, allowedOrigins);
+    return errorResponse(400, 'Missing or invalid required field: actorId', origin, patterns);
   }
 
   // Validate focusRegions
   if (!Array.isArray(bodyObj.focusRegions)) {
-    return errorResponse(400, 'Missing or invalid required field: focusRegions', origin, allowedOrigins);
+    return errorResponse(400, 'Missing or invalid required field: focusRegions', origin, patterns);
   }
 
   const focusRegions = bodyObj.focusRegions as unknown[];
@@ -689,7 +677,7 @@ async function validateFocusRegionsBody(
   // Validate each region is a string
   for (const region of focusRegions) {
     if (typeof region !== 'string') {
-      return errorResponse(400, 'Each focusRegion must be a string', origin, allowedOrigins);
+      return errorResponse(400, 'Each focusRegion must be a string', origin, patterns);
     }
   }
 
@@ -701,7 +689,7 @@ async function validateFocusRegionsBody(
       400,
       `focusRegions cannot exceed ${String(MAX_FOCUS_REGIONS_PER_REQUEST)} entries`,
       origin,
-      allowedOrigins,
+      patterns,
     );
   }
 
@@ -727,7 +715,7 @@ export async function handleRealtimeRoutes(
 
   // Parse CORS configuration
   const origin = request.headers.get('Origin');
-  const allowedOrigins = parseAllowedOrigins(env.CORS_ORIGINS);
+  const patterns = parseCorsPatterns(env.CORS_ORIGINS);
 
   // Parse route parameters
   const params = parseRoute(pathname);
@@ -738,19 +726,19 @@ export async function handleRealtimeRoutes(
 
   // Handle CORS preflight
   if (request.method === 'OPTIONS') {
-    return handleOptions(origin, allowedOrigins);
+    return handleOptions(origin, patterns);
   }
 
   // Validate parameter lengths (security: prevent oversized inputs)
   const paramError = validateParamLengths(params);
   if (paramError !== null) {
-    return errorResponse(400, paramError, origin, allowedOrigins);
+    return errorResponse(400, paramError, origin, patterns);
   }
 
   // Validate WebSocket origin for connect endpoint
   if (params.action === 'connect' && origin !== null) {
-    if (!allowedOrigins.includes(origin)) {
-      return errorResponse(403, 'Origin not allowed', origin, allowedOrigins);
+    if (!isOriginAllowed(origin, patterns)) {
+      return errorResponse(403, 'Origin not allowed', origin, patterns);
     }
   }
 
@@ -761,7 +749,7 @@ export async function handleRealtimeRoutes(
   if (params.action === 'connect') {
     // WebSocket connect endpoint
     if (request.method !== 'GET') {
-      return errorResponse(405, 'Method not allowed. Use GET for WebSocket connection.', origin, allowedOrigins);
+      return errorResponse(405, 'Method not allowed. Use GET for WebSocket connection.', origin, patterns);
     }
     targetEndpoint = '/connect';
 
@@ -778,11 +766,11 @@ export async function handleRealtimeRoutes(
   } else if (params.action === 'edits') {
     // Apply edits endpoint
     if (request.method !== 'POST') {
-      return errorResponse(405, 'Method not allowed. Use POST for edits.', origin, allowedOrigins);
+      return errorResponse(405, 'Method not allowed. Use POST for edits.', origin, patterns);
     }
 
     // Validate request body
-    const bodyResult = await validateEditsBody(request, origin, allowedOrigins);
+    const bodyResult = await validateEditsBody(request, origin, patterns);
     if (bodyResult instanceof Response) {
       return bodyResult;
     }
@@ -798,11 +786,11 @@ export async function handleRealtimeRoutes(
   } else if (params.action === 'can-agent-edit') {
     // Check if agent can edit endpoint
     if (request.method !== 'POST') {
-      return errorResponse(405, 'Method not allowed. Use POST for can-agent-edit.', origin, allowedOrigins);
+      return errorResponse(405, 'Method not allowed. Use POST for can-agent-edit.', origin, patterns);
     }
 
     // Validate request body
-    const bodyResult = await validateAgentEditBody(request, origin, allowedOrigins);
+    const bodyResult = await validateAgentEditBody(request, origin, patterns);
     if (bodyResult instanceof Response) {
       return bodyResult;
     }
@@ -811,7 +799,7 @@ export async function handleRealtimeRoutes(
     const statusError = await validateAgentStatusForEdit(
       bodyResult.agentId,
       origin,
-      allowedOrigins,
+      patterns,
     );
     if (statusError !== null) {
       return statusError;
@@ -828,11 +816,11 @@ export async function handleRealtimeRoutes(
   } else if (params.action === 'agent-edit-start') {
     // Start agent edit endpoint
     if (request.method !== 'POST') {
-      return errorResponse(405, 'Method not allowed. Use POST for agent-edit-start.', origin, allowedOrigins);
+      return errorResponse(405, 'Method not allowed. Use POST for agent-edit-start.', origin, patterns);
     }
 
     // Validate request body
-    const bodyResult = await validateAgentEditBody(request, origin, allowedOrigins);
+    const bodyResult = await validateAgentEditBody(request, origin, patterns);
     if (bodyResult instanceof Response) {
       return bodyResult;
     }
@@ -841,7 +829,7 @@ export async function handleRealtimeRoutes(
     const statusError = await validateAgentStatusForEdit(
       bodyResult.agentId,
       origin,
-      allowedOrigins,
+      patterns,
     );
     if (statusError !== null) {
       return statusError;
@@ -858,11 +846,11 @@ export async function handleRealtimeRoutes(
   } else if (params.action === 'agent-edit-complete') {
     // Complete agent edit endpoint
     if (request.method !== 'POST') {
-      return errorResponse(405, 'Method not allowed. Use POST for agent-edit-complete.', origin, allowedOrigins);
+      return errorResponse(405, 'Method not allowed. Use POST for agent-edit-complete.', origin, patterns);
     }
 
     // Validate request body
-    const bodyResult = await validateEditSessionBody(request, origin, allowedOrigins);
+    const bodyResult = await validateEditSessionBody(request, origin, patterns);
     if (bodyResult instanceof Response) {
       return bodyResult;
     }
@@ -873,7 +861,7 @@ export async function handleRealtimeRoutes(
       const statusError = await validateAgentStatusForEdit(
         headerAgentId,
         origin,
-        allowedOrigins,
+        patterns,
       );
       if (statusError !== null) {
         return statusError;
@@ -891,11 +879,11 @@ export async function handleRealtimeRoutes(
   } else if (params.action === 'agent-edit-abort') {
     // Abort agent edit endpoint
     if (request.method !== 'POST') {
-      return errorResponse(405, 'Method not allowed. Use POST for agent-edit-abort.', origin, allowedOrigins);
+      return errorResponse(405, 'Method not allowed. Use POST for agent-edit-abort.', origin, patterns);
     }
 
     // Validate request body (reason is optional)
-    const bodyResult = await validateEditSessionBody(request, origin, allowedOrigins, false);
+    const bodyResult = await validateEditSessionBody(request, origin, patterns, false);
     if (bodyResult instanceof Response) {
       return bodyResult;
     }
@@ -906,7 +894,7 @@ export async function handleRealtimeRoutes(
       const statusError = await validateAgentStatusForEdit(
         headerAgentId,
         origin,
-        allowedOrigins,
+        patterns,
       );
       if (statusError !== null) {
         return statusError;
@@ -924,11 +912,11 @@ export async function handleRealtimeRoutes(
   } else if (params.action === 'agent-stop') {
     // Stop agent edit endpoint (human-initiated)
     if (request.method !== 'POST') {
-      return errorResponse(405, 'Method not allowed. Use POST for agent-stop.', origin, allowedOrigins);
+      return errorResponse(405, 'Method not allowed. Use POST for agent-stop.', origin, patterns);
     }
 
     // Validate request body - requires agentId
-    const bodyResult = await validateAgentStopBody(request, origin, allowedOrigins);
+    const bodyResult = await validateAgentStopBody(request, origin, patterns);
     if (bodyResult instanceof Response) {
       return bodyResult;
     }
@@ -944,11 +932,11 @@ export async function handleRealtimeRoutes(
   } else if (params.action === 'focus-regions') {
     // Update focus regions endpoint
     if (request.method !== 'POST') {
-      return errorResponse(405, 'Method not allowed. Use POST for focus-regions.', origin, allowedOrigins);
+      return errorResponse(405, 'Method not allowed. Use POST for focus-regions.', origin, patterns);
     }
 
     // Validate request body
-    const bodyResult = await validateFocusRegionsBody(request, origin, allowedOrigins);
+    const bodyResult = await validateFocusRegionsBody(request, origin, patterns);
     if (bodyResult instanceof Response) {
       return bodyResult;
     }
@@ -964,7 +952,7 @@ export async function handleRealtimeRoutes(
   } else {
     // Get document state endpoint
     if (request.method !== 'GET') {
-      return errorResponse(405, 'Method not allowed. Use GET to retrieve document state.', origin, allowedOrigins);
+      return errorResponse(405, 'Method not allowed. Use GET to retrieve document state.', origin, patterns);
     }
     targetEndpoint = '/snapshot';
 
@@ -978,7 +966,7 @@ export async function handleRealtimeRoutes(
   // This ensures session IDs survive document renames and match presence-rollup-service
   const document = await getDocumentByPath(params.siteId, params.documentPath);
   if (document === null) {
-    return errorResponse(404, `Document not found: ${params.documentPath}`, origin, allowedOrigins);
+    return errorResponse(404, `Document not found: ${params.documentPath}`, origin, patterns);
   }
 
   // Generate Durable Object ID and get stub using document UUID
@@ -1024,14 +1012,14 @@ export async function handleRealtimeRoutes(
   // Forward request to Durable Object
   try {
     const response = await stub.fetch(requestWithSessionId);
-    return addCorsHeaders(response, origin, allowedOrigins);
+    return addCorsHeaders(response, origin, patterns);
   } catch (error) {
     console.error('Durable Object error:', error);
     return errorResponse(
       503,
       'Service temporarily unavailable. Please try again.',
       origin,
-      allowedOrigins,
+      patterns,
     );
   }
 }

@@ -9,7 +9,7 @@
  * Or:    pnpm dev:watch
  */
 
-import { spawn } from 'child_process';
+import { spawn, execFileSync } from 'child_process';
 import { watch } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -54,7 +54,7 @@ function startWrangler() {
   wranglerProcess = spawn('pnpm', ['exec', 'wrangler', 'dev', '--local'], {
     cwd: rootDir,
     stdio: 'inherit',
-    shell: true,
+    detached: true,
   });
 
   wranglerProcess.on('error', (err) => {
@@ -94,6 +94,12 @@ async function stopWrangler() {
         } catch {
           wranglerProcess.kill('SIGKILL');
         }
+      }
+      // Fallback: clean up any orphaned workerd processes
+      try {
+        execFileSync('pkill', ['-9', '-f', 'workerd.*serve'], { stdio: 'ignore' });
+      } catch {
+        // No orphans found, that's fine
       }
       resolve();
     }, 3000);

@@ -26,6 +26,13 @@ import { handleRealtimeRoutes } from './routes/realtime-api';
 import { handleInternalRoutes } from './routes/internal-api';
 import { handlePresenceRoutes } from './routes/presence-api';
 
+// CORS
+import {
+  parseOriginPatterns,
+  addCorsHeaders as sharedAddCorsHeaders,
+  handlePreflight as sharedHandlePreflight,
+} from './utils/cors';
+
 // Metrics
 import {
   initializeMetrics,
@@ -204,68 +211,31 @@ function errorResponse(
   return jsonResponse({ error, details }, status);
 }
 
-/**
- * Check if origin is allowed for CORS.
- */
-function isOriginAllowed(origin: string | null, corsOrigins: string): boolean {
-  if (origin === null || origin === '') return false;
-  const allowedOrigins = corsOrigins.split(',').map((o) => o.trim());
-  return allowedOrigins.includes(origin) || allowedOrigins.includes('*');
-}
+/** Allowed headers for main API routes */
+const MAIN_ALLOWED_HEADERS =
+  'Content-Type, Authorization, X-API-Key, X-Principal-Id, X-Principal-Type, X-Actor-Id, X-Actor-Type';
 
 /**
  * Add CORS headers to response based on request origin.
+ * Delegates to shared CORS utility with wildcard pattern support.
  */
 function addCorsHeaders(
   response: Response,
   origin: string | null,
   env: Env,
 ): Response {
-  // WebSocket upgrade responses cannot be modified
-  // Return them as-is since CORS doesn't apply to WebSocket connections
-  // Note: Cloudflare Workers Response has a webSocket property for WebSocket upgrades
-  if ('webSocket' in response && (response as { webSocket: unknown }).webSocket != null) {
-    return response;
-  }
-
-  if (origin === null || origin === '' || !isOriginAllowed(origin, env.CORS_ORIGINS)) {
-    return response;
-  }
-
-  const headers = new Headers(response.headers);
-  headers.set('Access-Control-Allow-Origin', origin);
-  headers.set('Access-Control-Allow-Credentials', 'true');
-  headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key, X-Principal-Id, X-Principal-Type, X-Actor-Id, X-Actor-Type');
-  headers.set('Access-Control-Max-Age', '86400');
-
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
+  const patterns = parseOriginPatterns(env.CORS_ORIGINS);
+  return sharedAddCorsHeaders(response, origin, patterns, MAIN_ALLOWED_HEADERS);
 }
 
 /**
  * Handle CORS preflight requests.
+ * Delegates to shared CORS utility with wildcard pattern support.
  */
 function handlePreflight(request: Request, env: Env): Response {
   const origin = request.headers.get('Origin');
-
-  if (origin === null || origin === '' || !isOriginAllowed(origin, env.CORS_ORIGINS)) {
-    return new Response(null, { status: 403 });
-  }
-
-  return new Response(null, {
-    status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, X-Principal-Id, X-Principal-Type, X-Actor-Id, X-Actor-Type',
-      'Access-Control-Allow-Credentials': 'true',
-      'Access-Control-Max-Age': '86400',
-    },
-  });
+  const patterns = parseOriginPatterns(env.CORS_ORIGINS);
+  return sharedHandlePreflight(origin, patterns, MAIN_ALLOWED_HEADERS);
 }
 
 /**

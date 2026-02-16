@@ -6,6 +6,14 @@
 
 import type { ApiError } from '../types';
 
+/**
+ * Base URL for API requests.
+ * When VITE_API_BASE_URL is set (deployed frontend), all API calls
+ * are prefixed with this URL. When unset (local dev with Vite proxy),
+ * this is empty and relative paths work via the proxy.
+ */
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+
 const TOKEN_KEY = 'css_auth_token';
 
 /**
@@ -69,7 +77,7 @@ async function fetchWithAuth(
     headers.set('Content-Type', 'application/json');
   }
 
-  return fetch(url, {
+  return fetch(`${API_BASE_URL}${url}`, {
     ...options,
     headers,
   });

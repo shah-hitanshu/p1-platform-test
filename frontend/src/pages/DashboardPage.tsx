@@ -9,6 +9,7 @@ import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { ApiResponse } from '../components/ApiResponse';
 import { Button } from '@pantheon-systems/design-toolkit-react';
+import { API_BASE_URL } from '../api/client';
 import './DashboardPage.css';
 
 interface HealthResponse {
@@ -18,7 +19,7 @@ interface HealthResponse {
 }
 
 async function fetchHealth(): Promise<HealthResponse> {
-  const response = await fetch('/health');
+  const response = await fetch(`${API_BASE_URL}/health`);
   if (!response.ok) {
     throw new Error(`Health check failed: ${response.status}`);
   }
