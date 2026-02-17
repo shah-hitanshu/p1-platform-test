@@ -99,6 +99,10 @@ async function handleCreateStructure(
   request: Request,
   context: StructureRouteContext,
 ): Promise<Response> {
+  if (context.branchId === undefined) {
+    return errorResponse('Branch ID is required', 400);
+  }
+
   const body = await parseJsonBody<CreateStructureBody>(request);
 
   // Validate required fields
@@ -118,6 +122,7 @@ async function handleCreateStructure(
 
   const structure = await createStructure({
     siteId: context.siteId,
+    branchId: context.branchId,
     name: body.name,
     slug: body.slug,
     description: body.description,
