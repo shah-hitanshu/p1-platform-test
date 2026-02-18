@@ -61,6 +61,14 @@ import { isWsFocusRegionUpdate, isWsPresenceHeartbeat } from '../types/websocket
 const YDOC_STORAGE_KEY = 'ydoc';
 
 /**
+ * Storage key for persisted edit sessions.
+ * Edit sessions are stored in DO storage so they survive DO eviction/re-instantiation.
+ * In Miniflare (local dev), DOs can be evicted after ~5-10 seconds of inactivity.
+ * In production Cloudflare, DOs can be evicted after ~30 seconds of inactivity.
+ */
+const EDIT_SESSIONS_STORAGE_KEY = 'editSessions';
+
+/**
  * Valid edit operation types
  */
 const VALID_OPERATION_TYPES = ['set', 'delete', 'insert', 'move', 'replace'] as const;
@@ -485,28 +493,73 @@ export class DocumentSession {
         this.initialized = true;
         // Set initial state vector hash to prevent unnecessary syncs
         this.lastSyncedStateVectorHash = this.computeStateVectorHash();
-        // Load org settings after initialization
-        await this.loadOrgSettingsIfNeeded();
-        return;
       } catch (error) {
         // Invalid stored data - log and try PostgreSQL fallback
         console.warn('Failed to restore CRDT state from storage:', error);
       }
     }
 
-    // Priority 2: Try to load from PostgreSQL if configured
-    if (this.env.INTERNAL_API_URL !== undefined && this.env.INTERNAL_SECRET !== undefined) {
-      try {
-        await this.initializeFromPostgres();
-      } catch (error) {
-        console.warn('Failed to initialize from PostgreSQL:', error);
-        // Continue with empty state
+    // Priority 2: Try to load from PostgreSQL if DO storage was empty or invalid
+    if (!this.initialized) {
+      if (this.env.INTERNAL_API_URL !== undefined && this.env.INTERNAL_SECRET !== undefined) {
+        try {
+          await this.initializeFromPostgres();
+        } catch (error) {
+          console.warn('Failed to initialize from PostgreSQL:', error);
+          // Continue with empty state
+        }
       }
+      this.initialized = true;
     }
 
-    this.initialized = true;
     // Load org settings after initialization
     await this.loadOrgSettingsIfNeeded();
+
+    // Restore persisted edit sessions from DO storage
+    // Sessions are persisted so they survive DO eviction/re-instantiation
+    await this.restoreEditSessions();
+  }
+
+  /**
+   * Persist all edit sessions to DO storage.
+   * Called whenever sessions are created, modified, or removed.
+   */
+  private async persistEditSessions(): Promise<void> {
+    const sessions: Record<string, AgentEditSession> = {};
+    for (const [key, session] of this.editSessions) {
+      sessions[key] = session;
+    }
+    await this.state.storage.put(EDIT_SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
+  }
+
+  /**
+   * Restore edit sessions from DO storage into the in-memory Map.
+   * Called during initialization to recover sessions after DO eviction.
+   */
+  private async restoreEditSessions(): Promise<void> {
+    try {
+      const stored = await this.state.storage.get(EDIT_SESSIONS_STORAGE_KEY);
+      if (typeof stored !== 'string') {
+        return;
+      }
+
+      const sessions = JSON.parse(stored) as Record<string, AgentEditSession>;
+      const now = Date.now();
+
+      for (const [key, session] of Object.entries(sessions)) {
+        // Skip sessions that have exceeded the maximum age
+        if (now - session.startedAt > MAX_EDIT_SESSION_AGE_MS) {
+          continue;
+        }
+        this.editSessions.set(key, session);
+      }
+
+      if (this.editSessions.size > 0) {
+        console.log(`Restored ${String(this.editSessions.size)} edit session(s) from storage`);
+      }
+    } catch (error) {
+      console.warn('Failed to restore edit sessions from storage:', error);
+    }
   }
 
   /**
@@ -1027,7 +1080,12 @@ export class DocumentSession {
     if (this.connections.size === 0) {
       // Run one final cleanup before syncing
       // (Cleanup alarm will self-stop if no data to track)
-      this.runCleanup();
+      const cleanupStats = this.runCleanup();
+
+      // Persist edit sessions if any were cleared during cleanup
+      if (cleanupStats.sessionsCleared > 0) {
+        void this.persistEditSessions();
+      }
 
       // Compact CRDT state to free memory from deleted content
       this.compactCrdtState();
@@ -1601,6 +1659,11 @@ export class DocumentSession {
 
     // Run cleanup
     const cleanupStats = this.runCleanup();
+
+    // Persist edit sessions if any were cleared during cleanup
+    if (cleanupStats.sessionsCleared > 0) {
+      await this.persistEditSessions();
+    }
 
     // Record metrics if enabled
     if (metricsEnabled) {
@@ -2450,6 +2513,7 @@ export class DocumentSession {
     };
 
     this.editSessions.set(editSessionId, newSession);
+    await this.persistEditSessions();
 
     // Register agent presence with focus regions and editing state
     this.presenceManager.register({
@@ -2509,6 +2573,7 @@ export class DocumentSession {
 
     // Remove the edit session
     this.editSessions.delete(parsed.editSessionId);
+    await this.persistEditSessions();
 
     // Broadcast presence update to all connected clients
     this.broadcastPresenceUpdate();
@@ -2561,6 +2626,7 @@ export class DocumentSession {
 
     // Remove the edit session
     this.editSessions.delete(parsed.editSessionId);
+    await this.persistEditSessions();
 
     // Broadcast presence update to all connected clients
     this.broadcastPresenceUpdate();
@@ -2631,6 +2697,7 @@ export class DocumentSession {
 
     // Remove the edit session
     this.editSessions.delete(sessionId);
+    await this.persistEditSessions();
 
     // Broadcast presence update to all connected clients
     this.broadcastPresenceUpdate();
@@ -2759,6 +2826,7 @@ export class DocumentSession {
 
     // Remove the edit session
     this.editSessions.delete(sessionKey);
+    await this.persistEditSessions();
 
     // Clear agent's presence
     this.presenceManager.unregisterByActorId(parsed.agentId);
@@ -2806,6 +2874,7 @@ export class DocumentSession {
 
     // Clear all edit sessions
     this.editSessions.clear();
+    await this.persistEditSessions();
 
     // Clear all agent presences
     for (const agentId of kickedAgents) {
