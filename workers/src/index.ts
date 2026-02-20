@@ -1217,6 +1217,8 @@ async function handleRequest(
         );
       }
 
+      // Use the DB user ID for downstream authorization (role tables reference users.id)
+      principal.id = userRow.id;
       // Attach system role to principal for downstream use
       principal.systemRole = userRow.system_role;
     }
