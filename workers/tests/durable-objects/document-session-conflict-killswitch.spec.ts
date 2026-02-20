@@ -73,6 +73,8 @@ interface MockDurableObjectState {
   id: { toString: () => string; name: string };
   storage: MockDurableObjectStorage;
   blockConcurrencyWhile: Mock<(callback: () => Promise<void>) => Promise<void>>;
+  acceptWebSocket: Mock;
+  getWebSockets: Mock;
 }
 
 /**
@@ -90,6 +92,9 @@ function createMockState(
     setAlarm: vi.fn().mockResolvedValue(undefined),
   };
 
+  // Track accepted WebSockets for Hibernatable WebSocket API
+  const acceptedWebSockets: WebSocket[] = [];
+
   return {
     id: { toString: () => sessionId, name: sessionId },
     storage,
@@ -98,6 +103,12 @@ function createMockState(
       .mockImplementation(async (cb: () => Promise<void>) => {
         await cb();
       }),
+    acceptWebSocket: vi.fn().mockImplementation((ws: WebSocket) => {
+      acceptedWebSockets.push(ws);
+    }),
+    getWebSockets: vi.fn().mockImplementation(() => {
+      return acceptedWebSockets.filter(ws => ws.readyState === WebSocket.OPEN);
+    }),
   };
 }
 
