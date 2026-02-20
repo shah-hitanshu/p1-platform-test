@@ -5,6 +5,7 @@
  * Includes soft-delete with archive/restore functionality.
  */
 
+import type { AuthenticatedPrincipal } from '../types';
 import {
   createDocument,
   getDocument,
@@ -19,6 +20,7 @@ import {
   documentExistsOnBranch,
   deleteDocumentOnBranch,
   getBranch,
+  getMainBranch,
   // Document version operations
   getLatestDocumentVersion,
   getDocumentVersion,
@@ -31,6 +33,7 @@ import {
   DocumentPathConflictError,
   InvalidDocumentVersionParamsError,
 } from '../services';
+import { assertPermission, AuthorizationError } from '../auth/authorization';
 import { validatePagination } from './validation';
 
 /**
@@ -45,10 +48,7 @@ export interface DocumentRouteContext {
   versionsPath?: boolean;
   versionAction?: 'latest' | 'by-id';
   versionId?: string;
-  principal: {
-    id: string;
-    type: 'user' | 'agent';
-  };
+  principal: AuthenticatedPrincipal;
 }
 
 /**
@@ -273,7 +273,7 @@ async function handleCreateDocumentOnBranch(
   request: Request,
   siteId: string,
   branchId: string,
-  principal: { id: string; type: 'user' | 'agent' },
+  principal: AuthenticatedPrincipal,
 ): Promise<Response> {
   const body = await parseJsonBody<CreateDocumentBody>(request);
 
@@ -287,7 +287,7 @@ async function handleCreateDocumentOnBranch(
     path: body.path,
     snapshot: body.snapshot,
     createdById: principal.id,
-    createdByType: principal.type,
+    createdByType: principal.type as 'user' | 'agent',
   });
 
   return jsonResponse(result, 201);
@@ -321,13 +321,13 @@ async function handleGetDocumentOnBranch(
 async function handleDeleteDocumentOnBranch(
   documentId: string,
   branchId: string,
-  principal: { id: string; type: 'user' | 'agent' },
+  principal: AuthenticatedPrincipal,
 ): Promise<Response> {
   await deleteDocumentOnBranch({
     documentId,
     branchId,
     deletedById: principal.id,
-    deletedByType: principal.type,
+    deletedByType: principal.type as 'user' | 'agent',
   });
 
   return new Response(null, { status: 204 });
@@ -395,7 +395,7 @@ async function handleCreateDocumentVersion(
   request: Request,
   documentId: string,
   branchId: string,
-  principal: { id: string; type: 'user' | 'agent' },
+  principal: AuthenticatedPrincipal,
 ): Promise<Response> {
   const body = await parseJsonBody<CreateVersionBody>(request);
 
@@ -415,7 +415,7 @@ async function handleCreateDocumentVersion(
     snapshot: body.snapshot,
     source: 'edit',
     createdById: principal.id,
-    createdByType: principal.type,
+    createdByType: principal.type as 'user' | 'agent',
   });
 
   return jsonResponse(version, 201);
@@ -436,6 +436,13 @@ async function handleDocumentVersionRoutes(
   const exists = await documentExistsOnBranch(documentId, branchId);
   if (!exists) {
     return errorResponse('Document not found on this branch', 404);
+  }
+
+  // Authorization for version routes
+  if (method === 'GET') {
+    await assertPermission(context.principal, context.siteId, branchId, 'canView');
+  } else if (method === 'POST') {
+    await assertPermission(context.principal, context.siteId, branchId, 'canEditDocuments');
   }
 
   // GET /versions/latest
@@ -486,9 +493,16 @@ async function handleBranchScopedDocumentRoutes(
     return errorResponse('Branch not found', 404);
   }
 
-  // Handle document version routes
+  // Handle document version routes (authorization is handled inside handleDocumentVersionRoutes)
   if (context.versionsPath === true && context.documentId !== undefined) {
     return await handleDocumentVersionRoutes(request, context.documentId, branchId, context);
+  }
+
+  // Authorization for branch-scoped document routes
+  if (method === 'GET') {
+    await assertPermission(context.principal, context.siteId, branchId, 'canView');
+  } else if (method === 'POST' || method === 'DELETE') {
+    await assertPermission(context.principal, context.siteId, branchId, 'canEditDocuments');
   }
 
   // Routes with documentId
@@ -524,9 +538,22 @@ export async function handleDocumentRoutes(
   const method = request.method;
 
   try {
-    // Handle branch-scoped routes first
+    // Handle branch-scoped routes first (authorization handled inside)
     if (context.branchId !== undefined) {
       return await handleBranchScopedDocumentRoutes(request, context);
+    }
+
+    // Site-scoped routes: look up main branch for authorization
+    const mainBranch = await getMainBranch(context.siteId);
+    if (mainBranch === null) {
+      return errorResponse('Site not found', 404);
+    }
+
+    // Authorization for site-scoped document routes
+    if (method === 'GET') {
+      await assertPermission(context.principal, context.siteId, mainBranch.id, 'canView');
+    } else {
+      await assertPermission(context.principal, context.siteId, mainBranch.id, 'canEditDocuments');
     }
 
     // Handle restore action
@@ -570,6 +597,9 @@ export async function handleDocumentRoutes(
     }
   } catch (error) {
     // Handle known errors
+    if (error instanceof AuthorizationError) {
+      return errorResponse(error.message, 403);
+    }
     if (error instanceof SiteNotFoundError) {
       return errorResponse('Site not found', 404);
     }

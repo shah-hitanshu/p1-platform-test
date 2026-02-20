@@ -4,7 +4,7 @@
  * REST API endpoints for branch operations.
  */
 
-import type { BranchStatus } from '../types';
+import type { BranchStatus, AuthenticatedPrincipal } from '../types';
 import {
   createBranch,
   getBranch,
@@ -18,6 +18,7 @@ import {
   SiteNotFoundError,
   DuplicateBranchNameError,
 } from '../services';
+import { assertPermission, AuthorizationError } from '../auth/authorization';
 
 /**
  * Request context for branch routes
@@ -25,10 +26,7 @@ import {
 export interface BranchRouteContext {
   siteId: string;
   branchId?: string;
-  principal: {
-    id: string;
-    type: 'user' | 'agent';
-  };
+  principal: AuthenticatedPrincipal;
 }
 
 /**
@@ -118,13 +116,21 @@ async function handleCreateBranch(
     }
   }
 
+  // Authorize branch creation against the main branch
+  const mainBranchForAuth = sourceBranch.isMain
+    ? sourceBranch
+    : await getMainBranch(context.siteId);
+  if (mainBranchForAuth != null) {
+    await assertPermission(context.principal, context.siteId, mainBranchForAuth.id, 'canCreateBranch');
+  }
+
   // Always create a fresh checkpoint to capture the source branch's current state
   const { checkpoint } = await createCheckpoint({
     branchId: sourceBranch.id,
     name: 'Auto-created for branching',
     checkpointType: 'auto',
     createdById: context.principal.id,
-    createdByType: context.principal.type,
+    createdByType: context.principal.type as 'user' | 'agent',
   });
 
   const branch = await createBranch({
@@ -134,7 +140,7 @@ async function handleCreateBranch(
     sourceBranchId: sourceBranch.id,
     sourceCheckpointId: checkpoint.id,
     createdById: context.principal.id,
-    createdByType: context.principal.type,
+    createdByType: context.principal.type as 'user' | 'agent',
   });
 
   return jsonResponse(branch, 201);
@@ -147,6 +153,12 @@ async function handleListBranches(
   request: Request,
   context: BranchRouteContext,
 ): Promise<Response> {
+  // Authorize against main branch for collection-level access
+  const mainBranch = await getMainBranch(context.siteId);
+  if (mainBranch != null) {
+    await assertPermission(context.principal, context.siteId, mainBranch.id, 'canView');
+  }
+
   const url = new URL(request.url);
   const statusParam = url.searchParams.get('status');
   const status = statusParam as BranchStatus | null;
@@ -233,10 +245,13 @@ export async function handleBranchRoutes(
     if (context.branchId !== undefined) {
       switch (method) {
         case 'GET':
+          await assertPermission(context.principal, context.siteId, context.branchId, 'canView');
           return await handleGetBranch(context);
         case 'PATCH':
+          await assertPermission(context.principal, context.siteId, context.branchId, 'canCreateBranch');
           return await handleUpdateBranch(request, context);
         case 'DELETE':
+          await assertPermission(context.principal, context.siteId, context.branchId, 'canManageGrants');
           return await handleDeleteBranch(context);
         default:
           return errorResponse('Method not allowed', 405);
@@ -254,6 +269,9 @@ export async function handleBranchRoutes(
     }
   } catch (error) {
     // Handle known errors
+    if (error instanceof AuthorizationError) {
+      return errorResponse(error.message, 403);
+    }
     if (error instanceof BranchNotFoundError) {
       return errorResponse('Branch not found', 404);
     }

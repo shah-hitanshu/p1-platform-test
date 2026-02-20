@@ -63,11 +63,22 @@ vi.mock('../../src/services', () => ({
   InvalidDocumentVersionParamsError: class InvalidDocumentVersionParamsError extends Error {
     override name = 'InvalidDocumentVersionParamsError';
   },
+  getMainBranch: vi.fn(),
 }));
 
 // Mock authorization
-vi.mock('../../src/auth/middleware', () => ({
-  requirePermission: vi.fn(() => vi.fn()),
+vi.mock('../../src/auth/authorization', () => ({
+  assertPermission: vi.fn(),
+  AuthorizationError: class AuthorizationError extends Error {
+    override name = 'AuthorizationError';
+    constructor(
+      message: string,
+      public requiredPermission: string,
+      public roleName: string,
+    ) {
+      super(message);
+    }
+  },
 }));
 
 describe('Phase 7.1.1b: Document CRUD API Routes', () => {
@@ -87,6 +98,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.createDocument).mockResolvedValueOnce({
         id: 'doc-uuid',
         siteId: 'site-1',
@@ -120,6 +141,18 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const { handleDocumentRoutes } = await import(
         '../../src/routes/document-api'
       );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/documents',
@@ -146,6 +179,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.createDocument).mockRejectedValueOnce(
         new services.SiteNotFoundError('nonexistent'),
       );
@@ -175,6 +218,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.createDocument).mockRejectedValueOnce(
         new services.DuplicateDocumentPathError('pages/about-us'),
       );
@@ -210,6 +263,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.listDocuments).mockResolvedValueOnce([
         {
           id: 'doc-1',
@@ -246,6 +309,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.listDocuments).mockResolvedValueOnce([]);
 
       const request = new Request(
@@ -271,6 +344,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.listDocuments).mockResolvedValueOnce([]);
 
       const request = new Request(
@@ -296,6 +379,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.listDocuments).mockResolvedValueOnce([]);
 
       const request = new Request(
@@ -327,6 +420,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.getDocument).mockResolvedValueOnce({
         id: 'doc-1',
         siteId: 'site-1',
@@ -357,6 +460,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.getDocument).mockResolvedValueOnce(null);
 
       const request = new Request(
@@ -385,6 +498,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-1',
         siteId: 'site-1',
@@ -414,6 +537,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.getDocumentByPath).mockResolvedValueOnce(null);
 
       const request = new Request(
@@ -442,6 +575,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.updateDocumentPath).mockResolvedValueOnce({
         id: 'doc-1',
         siteId: 'site-1',
@@ -477,6 +620,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.updateDocumentPath).mockResolvedValueOnce(null);
 
       const request = new Request(
@@ -505,6 +658,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.updateDocumentPath).mockRejectedValueOnce(
         new services.DuplicateDocumentPathError('pages/existing'),
       );
@@ -541,6 +704,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.archiveDocument).mockResolvedValueOnce(true);
 
       const request = new Request(
@@ -564,6 +737,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.archiveDocument).mockResolvedValueOnce(false);
 
       const request = new Request(
@@ -592,6 +775,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.restoreDocument).mockResolvedValueOnce({
         id: 'doc-1',
         siteId: 'site-1',
@@ -622,6 +815,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.restoreDocument).mockRejectedValueOnce(
         new services.DocumentNotFoundError('nonexistent'),
       );
@@ -647,6 +850,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.restoreDocument).mockRejectedValueOnce(
         new services.DocumentPathConflictError('pages/about-us'),
       );
@@ -676,6 +889,18 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const { handleDocumentRoutes } = await import(
         '../../src/routes/document-api'
       );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/documents',
@@ -696,6 +921,16 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
       vi.mocked(services.listDocuments).mockRejectedValueOnce(
         new Error('Database connection failed'),
       );
@@ -1871,6 +2106,206 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const body = await response.json();
         expect(body.snapshot).toEqual(puckSnapshot);
       });
+    });
+  });
+
+  // ===========================================================================
+  // Authorization
+  // ===========================================================================
+
+  describe('Authorization', () => {
+    const authPrincipal = {
+      id: 'user-1',
+      type: 'user' as const,
+      email: 'alice@example.com',
+      pantheonSiteRoles: { 'site-1': 'admin' as const },
+      tokenExpiry: '2026-01-24T10:00:00.000Z',
+    };
+
+    it('should check canView permission for branch-scoped GET list documents', async () => {
+      const { handleDocumentRoutes } = await import(
+        '../../src/routes/document-api'
+      );
+      const services = await import('../../src/services');
+      const { assertPermission } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1',
+        siteId: 'site-1',
+        name: 'feature',
+        isMain: false,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      vi.mocked(services.listDocumentsOnBranch).mockResolvedValueOnce([]);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/documents',
+        { method: 'GET' },
+      );
+
+      await handleDocumentRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        principal: authPrincipal,
+      });
+
+      expect(assertPermission).toHaveBeenCalledWith(
+        authPrincipal,
+        'site-1',
+        'branch-1',
+        'canView',
+      );
+    });
+
+    it('should check canEditDocuments permission for branch-scoped POST create document', async () => {
+      const { handleDocumentRoutes } = await import(
+        '../../src/routes/document-api'
+      );
+      const services = await import('../../src/services');
+      const { assertPermission } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1',
+        siteId: 'site-1',
+        name: 'feature',
+        isMain: false,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      vi.mocked(services.createDocumentOnBranch).mockResolvedValueOnce({
+        document: {
+          id: 'doc-new',
+          siteId: 'site-1',
+          path: '/test',
+          createdAt: '2026-01-24T12:00:00.000Z',
+        },
+        version: {
+          id: 'version-1',
+          documentId: 'doc-new',
+          branchId: 'branch-1',
+          versionNumber: 1,
+          snapshot: {},
+          source: 'edit',
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T12:00:00.000Z',
+        },
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/documents',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: '/test' }),
+        },
+      );
+
+      await handleDocumentRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        principal: authPrincipal,
+      });
+
+      expect(assertPermission).toHaveBeenCalledWith(
+        authPrincipal,
+        'site-1',
+        'branch-1',
+        'canEditDocuments',
+      );
+    });
+
+    it('should check canView permission for site-scoped GET list documents', async () => {
+      const { handleDocumentRoutes } = await import(
+        '../../src/routes/document-api'
+      );
+      const services = await import('../../src/services');
+      const { assertPermission } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      vi.mocked(services.listDocuments).mockResolvedValueOnce([]);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/documents',
+        { method: 'GET' },
+      );
+
+      await handleDocumentRoutes(request, {
+        siteId: 'site-1',
+        principal: authPrincipal,
+      });
+
+      expect(assertPermission).toHaveBeenCalledWith(
+        authPrincipal,
+        'site-1',
+        'main-branch-id',
+        'canView',
+      );
+    });
+
+    it('should return 403 when principal lacks permission', async () => {
+      const { handleDocumentRoutes } = await import(
+        '../../src/routes/document-api'
+      );
+      const services = await import('../../src/services');
+      const { assertPermission, AuthorizationError } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1',
+        siteId: 'site-1',
+        name: 'feature',
+        isMain: false,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      vi.mocked(assertPermission).mockImplementationOnce(() => {
+        throw new AuthorizationError(
+          'Permission denied',
+          'canView',
+          'viewer',
+        );
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/documents',
+        { method: 'GET' },
+      );
+
+      const response = await handleDocumentRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        principal: authPrincipal,
+      });
+
+      expect(response.status).toBe(403);
     });
   });
 });

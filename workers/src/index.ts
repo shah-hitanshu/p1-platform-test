@@ -10,7 +10,14 @@ import {
   query,
 } from './db';
 import { MockIdentityProvider } from './auth/mock-identity-provider';
+import {
+  MultiProviderIdentityProvider,
+  MockIdentityProviderAdapter,
+} from './auth/identity-provider';
+import { GoogleIdentityProvider } from './auth/google-identity-provider';
+import { Auth0IdentityProvider } from './auth/auth0-identity-provider';
 import type { AuthenticatedPrincipal, MockIdentityConfig } from './types';
+import { AuthorizationError } from './auth/authorization';
 
 // Route handlers
 import { handleSiteRoutes } from './routes/site-api';
@@ -19,12 +26,17 @@ import { handleDocumentRoutes } from './routes/document-api';
 import { handleCheckpointRoutes } from './routes/checkpoint-api';
 import { handleMergeRoutes } from './routes/merge-api';
 import { handleGrantRoutes } from './routes/grant-api';
+import { handleCollaboratorRoutes } from './routes/collaborator-api';
+import { handleUsersRoutes } from './routes/users-api';
 import { handleStructureRoutes } from './routes/structure-api';
 import { handleNodeRoutes } from './routes/node-api';
 import { handleMetadataRoutes } from './routes/metadata-api';
 import { handleRealtimeRoutes } from './routes/realtime-api';
 import { handleInternalRoutes } from './routes/internal-api';
 import { handlePresenceRoutes } from './routes/presence-api';
+
+// MAS client
+import { MASClient } from './services/mas-client';
 
 // CORS
 import {
@@ -72,6 +84,18 @@ export interface Env {
   // Mock Identity Provider (local development only)
   MOCK_JWT_SECRET?: string;
 
+  // Auth providers (Phase 2/3 - future)
+  GOOGLE_CLIENT_ID?: string;
+  AUTH0_ISSUER_BASE_URL?: string;
+  AUTH0_NEW_ISSUER_BASE_URL?: string;
+  AUTH0_AUDIENCE?: string;
+
+  // MAS (Membership Authorization Service) integration
+  MAS_ENABLED?: string;
+  MAS_BASE_URL?: string;
+  MAS_GCP_SERVICE_ACCOUNT_KEY?: string;
+  MAS_CACHE_TTL_SECONDS?: string;
+
   // Internal API secret for Durable Object to PostgreSQL sync
   INTERNAL_SECRET?: string;
 
@@ -101,15 +125,6 @@ interface HealthResponse {
     latencyMs?: number;
     error?: string;
   };
-}
-
-/**
- * Principal context passed to route handlers.
- */
-interface Principal {
-  id: string;
-  type: 'user' | 'agent';
-  email?: string;
 }
 
 /**
@@ -173,13 +188,63 @@ const DEFAULT_MOCK_CONFIG: MockIdentityConfig = {
 };
 
 /**
- * Get or create the MockIdentityProvider instance.
+ * Build a MultiProviderIdentityProvider with registered providers.
+ * Mock provider is always available in non-production environments.
+ * Google and Auth0 providers will be added in Phases 2 and 3.
  */
-function getIdentityProvider(env: Env): MockIdentityProvider {
-  return new MockIdentityProvider({
-    config: DEFAULT_MOCK_CONFIG,
-    jwtSecret: env.MOCK_JWT_SECRET ?? 'development-secret-must-be-at-least-32-characters',
-    tokenExpiry: '24h',
+function getIdentityProvider(env: Env): MultiProviderIdentityProvider {
+  const providers = [];
+
+  // Mock provider (always available in non-production, fallback for local dev)
+  if (env.ENVIRONMENT !== 'production') {
+    providers.push(new MockIdentityProviderAdapter(
+      new MockIdentityProvider({
+        config: DEFAULT_MOCK_CONFIG,
+        jwtSecret: env.MOCK_JWT_SECRET ?? 'development-secret-must-be-at-least-32-characters',
+        tokenExpiry: '24h',
+      }),
+    ));
+  }
+
+  // Google OAuth provider (activated when client ID is configured)
+  if (env.GOOGLE_CLIENT_ID !== undefined && env.GOOGLE_CLIENT_ID !== '') {
+    providers.push(new GoogleIdentityProvider({
+      clientId: env.GOOGLE_CLIENT_ID,
+    }));
+  }
+
+  // Auth0 provider (activated when issuer and audience are configured)
+  if (
+    env.AUTH0_ISSUER_BASE_URL !== undefined &&
+    env.AUTH0_ISSUER_BASE_URL !== '' &&
+    env.AUTH0_AUDIENCE !== undefined &&
+    env.AUTH0_AUDIENCE !== ''
+  ) {
+    providers.push(new Auth0IdentityProvider({
+      issuerBaseUrl: env.AUTH0_ISSUER_BASE_URL,
+      newIssuerBaseUrl: env.AUTH0_NEW_ISSUER_BASE_URL,
+      audience: env.AUTH0_AUDIENCE,
+    }));
+  }
+
+  return new MultiProviderIdentityProvider(providers);
+}
+
+/**
+ * Create a MASClient instance when MAS integration is enabled.
+ * Returns undefined when MAS_ENABLED is not 'true' or MAS_BASE_URL is missing.
+ */
+function getMASClient(env: Env): MASClient | undefined {
+  if (env.MAS_ENABLED !== 'true' || env.MAS_BASE_URL === undefined || env.MAS_BASE_URL === '') {
+    return undefined;
+  }
+
+  return new MASClient({
+    baseUrl: env.MAS_BASE_URL,
+    gcpServiceAccountKey: env.MAS_GCP_SERVICE_ACCOUNT_KEY,
+    cacheTtlSeconds: env.MAS_CACHE_TTL_SECONDS !== undefined && env.MAS_CACHE_TTL_SECONDS !== ''
+      ? parseInt(env.MAS_CACHE_TTL_SECONDS, 10)
+      : undefined,
   });
 }
 
@@ -334,6 +399,18 @@ async function handleHealth(env: Env): Promise<Response> {
 }
 
 /**
+ * Get the MockIdentityProvider for development-only auth endpoints.
+ * These endpoints (token issuance, user listing) are mock-specific.
+ */
+function getMockIdentityProvider(env: Env): MockIdentityProvider {
+  return new MockIdentityProvider({
+    config: DEFAULT_MOCK_CONFIG,
+    jwtSecret: env.MOCK_JWT_SECRET ?? 'development-secret-must-be-at-least-32-characters',
+    tokenExpiry: '24h',
+  });
+}
+
+/**
  * Handle mock auth endpoints for frontend login (development only).
  */
 async function handleAuthRoutes(
@@ -341,7 +418,7 @@ async function handleAuthRoutes(
   path: string,
   env: Env,
 ): Promise<Response | null> {
-  const identityProvider = getIdentityProvider(env);
+  const mockProvider = getMockIdentityProvider(env);
 
   // GET /api/auth/users - List available users
   if (path === '/api/auth/users' && request.method === 'GET') {
@@ -367,11 +444,11 @@ async function handleAuthRoutes(
 
     // Try user token
     if (typeof body.userId === 'string' && body.userId.length > 0) {
-      const user = identityProvider.getUser(body.userId);
+      const user = mockProvider.getUser(body.userId);
       if (user === undefined) {
         return errorResponse('User not found', 404);
       }
-      const token = await identityProvider.issueToken(body.userId);
+      const token = await mockProvider.issueToken(body.userId);
       return jsonResponse({
         token,
         user: {
@@ -401,6 +478,7 @@ interface RouteParams {
   structureId?: string;
   nodeId?: string;
   grantId?: string;
+  userId?: string;
   mergeRequestId?: string;
   action?: string;
   versionsPath?: string;
@@ -417,6 +495,15 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
   // Auth routes (no authentication required)
   if (normalizedPath.startsWith('/api/auth')) {
     return { handler: 'auth', params: {} };
+  }
+
+  // Admin users routes
+  const adminUsersMatch = /^\/api\/admin\/users(?:\/([^/]+))?$/.exec(normalizedPath);
+  if (adminUsersMatch) {
+    return {
+      handler: 'admin-users',
+      params: { userId: adminUsersMatch[1] },
+    };
   }
 
   // Site routes
@@ -823,6 +910,19 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
     };
   }
 
+  // Collaborator routes
+  // /api/sites/{siteId}/collaborators/{userId}?
+  const collaboratorMatch = /^\/api\/sites\/([^/]+)\/collaborators(?:\/([^/]+))?$/.exec(normalizedPath);
+  if (collaboratorMatch) {
+    return {
+      handler: 'collaborators',
+      params: {
+        siteId: collaboratorMatch[1],
+        userId: collaboratorMatch[2],
+      },
+    };
+  }
+
   // Branch routes
   // /api/sites/{siteId}/branches/{branchId}?
   const branchMatch = /^\/api\/sites\/([^/]+)\/branches(?:\/([^/]+))?$/.exec(normalizedPath);
@@ -1006,6 +1106,32 @@ async function handleRequest(
     return addCorsHeaders(response, origin, env);
   }
 
+  // GET /api/auth/me - Return authenticated principal info (requires auth)
+  if (path === '/api/auth/me' && request.method === 'GET') {
+    const principal = await authenticate(request, env);
+    if (!principal) {
+      return addCorsHeaders(
+        errorResponse('Authentication required', 401),
+        origin,
+        env,
+      );
+    }
+    return addCorsHeaders(
+      jsonResponse({
+        id: principal.id,
+        type: principal.type,
+        email: principal.email,
+        name: principal.name,
+        avatarUrl: principal.avatarUrl,
+        authProvider: principal.authProvider,
+        tokenExpiry: principal.tokenExpiry,
+        providerSubjectId: principal.providerSubjectId,
+      }),
+      origin,
+      env,
+    );
+  }
+
   // Auth endpoints (no auth required)
   if (path.startsWith('/api/auth')) {
     const response = await handleAuthRoutes(request, path, env);
@@ -1030,7 +1156,7 @@ async function handleRequest(
         {
           error: 'Not Found',
           message: `No handler for ${request.method} ${path}`,
-          availableEndpoints: ['/health', '/api/sites', '/api/auth/users', '/api/auth/token'],
+          availableEndpoints: ['/health', '/api/sites', '/api/admin/users', '/api/auth/me', '/api/auth/users', '/api/auth/token'],
         },
         404,
       ),
@@ -1049,12 +1175,55 @@ async function handleRequest(
     );
   }
 
-  // Create principal context for route handlers
-  const principalContext: Principal = {
-    id: principal.id,
-    type: principal.type as 'user' | 'agent',
-    email: principal.email,
-  };
+  // Allowlist check: if users table has entries, only listed users can access
+  // Skip for mock auth mode (development ergonomics)
+  const isMockOnly = env.MOCK_JWT_SECRET !== undefined
+    && env.MOCK_JWT_SECRET !== ''
+    && (env.GOOGLE_CLIENT_ID === undefined || env.GOOGLE_CLIENT_ID === '')
+    && (env.AUTH0_ISSUER_BASE_URL === undefined || env.AUTH0_ISSUER_BASE_URL === '');
+
+  if (!isMockOnly && principal.email !== undefined) {
+    const userCountResult = await query<{ count: string }>(
+      'SELECT COUNT(*) as count FROM app.users',
+    );
+    const countRow = userCountResult.rows[0];
+    const userCount = countRow !== undefined ? parseInt(countRow.count, 10) : 0;
+
+    if (userCount > 0) {
+      const userResult = await query<{
+        id: string;
+        principal_id: string | null;
+        system_role: string;
+        is_active: boolean;
+      }>(
+        'SELECT id, principal_id, system_role, is_active FROM app.users WHERE email = $1',
+        [principal.email.toLowerCase()],
+      );
+
+      const userRow = userResult.rows[0];
+      if (userRow?.is_active !== true) {
+        return addCorsHeaders(
+          errorResponse('User not authorized', 403),
+          origin,
+          env,
+        );
+      }
+
+      // Link principal_id on first login, and update name/avatar_url
+      if (userRow.principal_id === null) {
+        await query(
+          'UPDATE app.users SET principal_id = $1, auth_provider = $2, name = COALESCE($3, name), avatar_url = $4, updated_at = NOW() WHERE id = $5',
+          [principal.id, principal.authProvider ?? 'unknown', principal.name ?? null, principal.avatarUrl ?? null, userRow.id],
+        );
+      }
+
+      // Attach system role to principal for downstream use
+      principal.systemRole = userRow.system_role;
+    }
+  }
+
+  // Initialize MAS client (undefined when not enabled)
+  const masClient = getMASClient(env);
 
   try {
     let response: Response;
@@ -1063,7 +1232,7 @@ async function handleRequest(
       case 'sites':
         response = await handleSiteRoutes(request, {
           siteId: route.params.siteId,
-          principal: principalContext,
+          principal,
         });
         break;
 
@@ -1071,7 +1240,7 @@ async function handleRequest(
         response = await handleBranchRoutes(request, {
           siteId: route.params.siteId ?? '',
           branchId: route.params.branchId,
-          principal: principalContext,
+          principal,
         });
         break;
 
@@ -1085,7 +1254,7 @@ async function handleRequest(
           versionsPath: route.params.versionsPath === 'true',
           versionAction: route.params.versionAction as 'latest' | 'by-id' | undefined,
           versionId: route.params.versionId,
-          principal: principalContext,
+          principal,
         });
         break;
 
@@ -1096,7 +1265,7 @@ async function handleRequest(
           checkpointId: route.params.checkpointId,
           documentsPath: route.params.action === 'documents',
           revert: route.params.action === 'revert',
-          principal: principalContext,
+          principal,
         });
         break;
 
@@ -1109,7 +1278,7 @@ async function handleRequest(
           mergeRequests: route.params.action === 'requests',
           executeRequest: route.params.action === 'execute-request',
           mergeRequestId: route.params.mergeRequestId,
-          principal: principalContext,
+          principal,
         });
         break;
 
@@ -1118,7 +1287,23 @@ async function handleRequest(
           siteId: route.params.siteId ?? '',
           branchId: route.params.branchId ?? '',
           grantId: route.params.grantId,
-          principal: principalContext,
+          principal,
+        });
+        break;
+
+      case 'admin-users':
+        response = await handleUsersRoutes(request, {
+          userId: route.params.userId,
+          principal,
+        });
+        break;
+
+      case 'collaborators':
+        response = await handleCollaboratorRoutes(request, {
+          siteId: route.params.siteId ?? '',
+          userId: route.params.userId,
+          principal,
+          masClient,
         });
         break;
 
@@ -1128,7 +1313,7 @@ async function handleRequest(
           branchId: route.params.branchId,
           checkpointId: route.params.checkpointId,
           structureId: route.params.structureId,
-          principal: principalContext,
+          principal,
         });
         break;
 
@@ -1139,7 +1324,7 @@ async function handleRequest(
           structureId: route.params.structureId ?? '',
           nodeId: route.params.nodeId,
           action: route.params.action as 'move' | 'reorder' | 'navigation' | undefined,
-          principal: principalContext,
+          principal,
         });
         break;
 
@@ -1150,12 +1335,14 @@ async function handleRequest(
           structureId: route.params.structureId ?? '',
           documentId: route.params.documentId,
           action: route.params.action as 'state' | 'schema' | 'validate' | 'list' | undefined,
-          principal: principalContext,
+          principal,
         });
         break;
 
       case 'realtime':
-        response = await handleRealtimeRoutes(request, env) ?? errorResponse('Not found', 404);
+        response = await handleRealtimeRoutes(request, env, {
+          principal,
+        }) ?? errorResponse('Not found', 404);
         break;
 
       case 'presence':
@@ -1179,6 +1366,9 @@ async function handleRequest(
 
     return addCorsHeaders(response, origin, env);
   } catch (error) {
+    if (error instanceof AuthorizationError) {
+      return addCorsHeaders(errorResponse(error.message, 403), origin, env);
+    }
     console.error('Request handler error:', error);
     return addCorsHeaders(
       errorResponse('Internal server error', 500),

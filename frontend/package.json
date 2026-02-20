@@ -15,7 +15,9 @@
     "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
+    "@auth0/auth0-react": "^2.15.0",
     "@pantheon-systems/design-toolkit-react": "^24.1.1",
+    "@react-oauth/google": "^0.13.4",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "react-router-dom": "6.30.3"

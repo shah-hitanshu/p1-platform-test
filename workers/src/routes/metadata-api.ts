@@ -5,6 +5,7 @@
  * Metadata is branch-scoped via structure association.
  */
 
+import type { AuthenticatedPrincipal } from '../types';
 import {
   getBranchStructureState,
   updateBranchStructureState,
@@ -20,6 +21,7 @@ import {
   SchemaValidationError,
 } from '../services';
 import { validateJsonSize, SIZE_LIMITS } from './validation';
+import { assertPermission, AuthorizationError } from '../auth/authorization';
 
 /**
  * Request context for metadata routes
@@ -30,10 +32,7 @@ export interface MetadataRouteContext {
   structureId: string;
   documentId?: string;
   action?: 'state' | 'schema' | 'validate' | 'list';
-  principal: {
-    id: string;
-    type: 'user' | 'agent';
-  };
+  principal: AuthenticatedPrincipal;
 }
 
 /**
@@ -259,24 +258,28 @@ export async function handleMetadataRoutes(
         if (method !== 'GET') {
           return errorResponse('Method not allowed', 405);
         }
+        await assertPermission(context.principal, context.siteId, context.branchId, 'canView');
         return await handleGetStructureState(context);
 
       case 'schema':
         if (method !== 'PUT') {
           return errorResponse('Method not allowed', 405);
         }
+        await assertPermission(context.principal, context.siteId, context.branchId, 'canEdit');
         return await handleUpdateSchema(request, context);
 
       case 'validate':
         if (method !== 'POST') {
           return errorResponse('Method not allowed', 405);
         }
+        await assertPermission(context.principal, context.siteId, context.branchId, 'canView');
         return await handleValidateDocuments(context);
 
       case 'list':
         if (method !== 'GET') {
           return errorResponse('Method not allowed', 405);
         }
+        await assertPermission(context.principal, context.siteId, context.branchId, 'canView');
         return await handleListDocumentMetadata(request, context);
     }
 
@@ -284,10 +287,13 @@ export async function handleMetadataRoutes(
     if (context.documentId !== undefined) {
       switch (method) {
         case 'GET':
+          await assertPermission(context.principal, context.siteId, context.branchId, 'canView');
           return await handleGetDocumentMetadata(context);
         case 'PUT':
+          await assertPermission(context.principal, context.siteId, context.branchId, 'canEditDocuments');
           return await handleUpdateDocumentMetadata(request, context);
         case 'DELETE':
+          await assertPermission(context.principal, context.siteId, context.branchId, 'canEditDocuments');
           return await handleDeleteDocumentMetadata(context);
         default:
           return errorResponse('Method not allowed', 405);
@@ -297,6 +303,9 @@ export async function handleMetadataRoutes(
     return errorResponse('Invalid route', 400);
   } catch (error) {
     // Handle known errors
+    if (error instanceof AuthorizationError) {
+      return errorResponse(error.message, 403);
+    }
     if (error instanceof StructureNotFoundError) {
       return errorResponse('Structure not found', 404);
     }

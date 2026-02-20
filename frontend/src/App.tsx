@@ -16,6 +16,7 @@ import { DocumentPage } from './pages/DocumentPage';
 import { MergeRequestsPage } from './pages/MergeRequestsPage';
 import { CreateMergeRequestPage } from './pages/CreateMergeRequestPage';
 import { MergeRequestDetailPage } from './pages/MergeRequestDetailPage';
+import { UsersPage } from './pages/UsersPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -79,6 +80,7 @@ function App() {
         >
           <Route path="/" element={<DashboardPage />} />
           <Route path="/sites" element={<SitesPage />} />
+          <Route path="/users" element={<UsersPage />} />
           <Route path="/sites/:siteId" element={<SiteDetailPage />} />
           <Route path="/sites/:siteId/merge-requests" element={<MergeRequestsPage />} />
           <Route path="/sites/:siteId/merge-requests/new" element={<CreateMergeRequestPage />} />

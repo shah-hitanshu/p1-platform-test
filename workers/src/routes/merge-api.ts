@@ -4,7 +4,7 @@
  * REST API endpoints for merge operations.
  */
 
-import type { ConflictResolutionStrategy, MergeRequestStatus } from '../types';
+import type { ConflictResolutionStrategy, MergeRequestStatus, AuthenticatedPrincipal } from '../types';
 import {
   checkMergeability,
   executeMerge,
@@ -17,6 +17,7 @@ import {
   updateMergeRequestStatus,
   deleteMergeRequest,
   getLatestDocumentVersion,
+  getMainBranch,
   mergeCrdtStates,
   MergeRequestNotFoundError,
   SourceBranchNotFoundError,
@@ -27,6 +28,7 @@ import {
   InvalidCrdtStateError,
   MissingCrdtStateError,
 } from '../services';
+import { assertPermission, AuthorizationError } from '../auth/authorization';
 
 /**
  * Request context for merge routes
@@ -37,10 +39,7 @@ export interface MergeRouteContext {
   mergeRequests?: boolean;
   executeRequest?: boolean;
   mergeRequestId?: string;
-  principal: {
-    id: string;
-    type: 'user' | 'agent';
-  };
+  principal: AuthenticatedPrincipal;
 }
 
 /**
@@ -145,12 +144,15 @@ function errorResponse(
  */
 async function handleCheckMergeability(
   request: Request,
+  context: MergeRouteContext,
 ): Promise<Response> {
   const body = await parseJsonBody<MergeCheckBody>(request);
 
   if (body.sourceBranchId === undefined || body.targetBranchId === undefined) {
     return errorResponse('Both sourceBranchId and targetBranchId are required', 400);
   }
+
+  await assertPermission(context.principal, context.siteId, body.sourceBranchId, 'canView');
 
   const result = await checkMergeability(
     body.sourceBranchId,
@@ -173,6 +175,8 @@ async function handleExecuteMerge(
     return errorResponse('Both sourceBranchId and targetBranchId are required', 400);
   }
 
+  await assertPermission(context.principal, context.siteId, body.sourceBranchId, 'canMerge');
+
   // If conflict resolutions are provided, use executeMergeWithResolution
   if (body.conflictResolutions !== undefined && body.conflictResolutions.length > 0) {
     const result = await executeMergeWithResolution({
@@ -181,7 +185,7 @@ async function handleExecuteMerge(
       message: body.message ?? 'Merge with resolutions',
       resolutions: body.conflictResolutions,
       createdById: context.principal.id,
-      createdByType: context.principal.type,
+      createdByType: context.principal.type as 'user' | 'agent',
     });
 
     return jsonResponse(result);
@@ -193,7 +197,7 @@ async function handleExecuteMerge(
     targetBranchId: body.targetBranchId,
     message: body.message ?? 'Merge',
     createdById: context.principal.id,
-    createdByType: context.principal.type,
+    createdByType: context.principal.type as 'user' | 'agent',
   });
 
   return jsonResponse(result);
@@ -204,12 +208,15 @@ async function handleExecuteMerge(
  */
 async function handlePreviewMerge(
   request: Request,
+  context: MergeRouteContext,
 ): Promise<Response> {
   const body = await parseJsonBody<MergePreviewBody>(request);
 
   if (body.sourceBranchId === undefined || body.targetBranchId === undefined) {
     return errorResponse('Both sourceBranchId and targetBranchId are required', 400);
   }
+
+  await assertPermission(context.principal, context.siteId, body.sourceBranchId, 'canView');
 
   const result = await previewMerge(
     body.sourceBranchId,
@@ -227,6 +234,7 @@ async function handlePreviewMerge(
  */
 async function handleCrdtPreview(
   request: Request,
+  context: MergeRouteContext,
 ): Promise<Response> {
   const body = await parseJsonBody<CrdtPreviewBody>(request);
 
@@ -237,6 +245,8 @@ async function handleCrdtPreview(
   if (body.sourceBranchId === undefined || body.targetBranchId === undefined) {
     return errorResponse('Both sourceBranchId and targetBranchId are required', 400);
   }
+
+  await assertPermission(context.principal, context.siteId, body.sourceBranchId, 'canView');
 
   // Get latest document versions on each branch
   const sourceVersion = await getLatestDocumentVersion(body.documentId, body.sourceBranchId);
@@ -287,6 +297,8 @@ async function handleCreateMergeRequest(
     return errorResponse('Title is required', 400);
   }
 
+  await assertPermission(context.principal, context.siteId, body.sourceBranchId, 'canProposeMerge');
+
   const mergeRequest = await createMergeRequest({
     siteId: context.siteId,
     sourceBranchId: body.sourceBranchId,
@@ -294,7 +306,7 @@ async function handleCreateMergeRequest(
     title: body.title,
     description: body.description,
     createdById: context.principal.id,
-    createdByType: context.principal.type,
+    createdByType: context.principal.type as 'user' | 'agent',
   });
 
   return jsonResponse(mergeRequest, 201);
@@ -317,7 +329,10 @@ const VALID_STATUSES: readonly MergeRequestStatus[] = [
 async function handleListMergeRequests(
   request: Request,
   context: MergeRouteContext,
+  mainBranchId: string,
 ): Promise<Response> {
+  await assertPermission(context.principal, context.siteId, mainBranchId, 'canView');
+
   const url = new URL(request.url);
   const statusParam = url.searchParams.get('status');
 
@@ -339,10 +354,13 @@ async function handleListMergeRequests(
  */
 async function handleGetMergeRequest(
   context: MergeRouteContext,
+  mainBranchId: string,
 ): Promise<Response> {
   if (context.mergeRequestId === undefined) {
     return errorResponse('Merge request ID is required', 400);
   }
+
+  await assertPermission(context.principal, context.siteId, mainBranchId, 'canView');
 
   const mergeRequest = await getMergeRequest(context.mergeRequestId);
 
@@ -359,10 +377,13 @@ async function handleGetMergeRequest(
 async function handleUpdateMergeRequest(
   request: Request,
   context: MergeRouteContext,
+  mainBranchId: string,
 ): Promise<Response> {
   if (context.mergeRequestId === undefined) {
     return errorResponse('Merge request ID is required', 400);
   }
+
+  await assertPermission(context.principal, context.siteId, mainBranchId, 'canMerge');
 
   const body = await parseJsonBody<UpdateMergeRequestBody>(request);
 
@@ -389,10 +410,13 @@ async function handleUpdateMergeRequest(
  */
 async function handleDeleteMergeRequest(
   context: MergeRouteContext,
+  mainBranchId: string,
 ): Promise<Response> {
   if (context.mergeRequestId === undefined) {
     return errorResponse('Merge request ID is required', 400);
   }
+
+  await assertPermission(context.principal, context.siteId, mainBranchId, 'canManageGrants');
 
   await deleteMergeRequest(context.mergeRequestId);
 
@@ -428,6 +452,8 @@ async function handleExecuteMergeRequest(
     return errorResponse('Merge request not found', 404);
   }
 
+  await assertPermission(context.principal, context.siteId, mergeRequest.sourceBranchId, 'canMerge');
+
   // Check if merge request is in a valid state for execution
   if (mergeRequest.status !== 'approved' && mergeRequest.status !== 'conflicted') {
     return errorResponse(
@@ -458,13 +484,13 @@ async function handleExecuteMergeRequest(
         resolvedSnapshot: r.resolvedSnapshot,
       })),
       mergedById: context.principal.id,
-      mergedByType: context.principal.type,
+      mergedByType: context.principal.type as 'user' | 'agent',
     });
   } else {
     result = await executeMerge({
       mergeRequestId: context.mergeRequestId,
       mergedById: context.principal.id,
-      mergedByType: context.principal.type,
+      mergedByType: context.principal.type as 'user' | 'agent',
     });
   }
 
@@ -491,13 +517,13 @@ export async function handleMergeRoutes(
 
       switch (context.operation) {
         case 'check':
-          return await handleCheckMergeability(request);
+          return await handleCheckMergeability(request, context);
         case 'execute':
           return await handleExecuteMerge(request, context);
         case 'preview':
-          return await handlePreviewMerge(request);
+          return await handlePreviewMerge(request, context);
         case 'crdt-preview':
-          return await handleCrdtPreview(request);
+          return await handleCrdtPreview(request, context);
         default:
           return errorResponse('Unknown operation', 400);
       }
@@ -513,15 +539,20 @@ export async function handleMergeRoutes(
 
     // Handle merge requests CRUD
     if (context.mergeRequests === true) {
+      const mainBranch = await getMainBranch(context.siteId);
+      if (mainBranch === null) {
+        return errorResponse('Site not found', 404);
+      }
+
       // Single merge request operations
       if (context.mergeRequestId !== undefined) {
         switch (method) {
           case 'GET':
-            return await handleGetMergeRequest(context);
+            return await handleGetMergeRequest(context, mainBranch.id);
           case 'PATCH':
-            return await handleUpdateMergeRequest(request, context);
+            return await handleUpdateMergeRequest(request, context, mainBranch.id);
           case 'DELETE':
-            return await handleDeleteMergeRequest(context);
+            return await handleDeleteMergeRequest(context, mainBranch.id);
           default:
             return errorResponse('Method not allowed', 405);
         }
@@ -530,7 +561,7 @@ export async function handleMergeRoutes(
       // Collection operations
       switch (method) {
         case 'GET':
-          return await handleListMergeRequests(request, context);
+          return await handleListMergeRequests(request, context, mainBranch.id);
         case 'POST':
           return await handleCreateMergeRequest(request, context);
         default:
@@ -541,6 +572,9 @@ export async function handleMergeRoutes(
     return errorResponse('Invalid route', 400);
   } catch (error) {
     // Handle known errors
+    if (error instanceof AuthorizationError) {
+      return errorResponse(error.message, 403);
+    }
     if (error instanceof MergeRequestNotFoundError) {
       return errorResponse('Merge request not found', 404);
     }

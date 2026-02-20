@@ -55,8 +55,18 @@ vi.mock('../../src/services', () => ({
 }));
 
 // Mock authorization
-vi.mock('../../src/auth/middleware', () => ({
-  requirePermission: vi.fn(() => vi.fn()),
+vi.mock('../../src/auth/authorization', () => ({
+  assertPermission: vi.fn(),
+  AuthorizationError: class AuthorizationError extends Error {
+    override name = 'AuthorizationError';
+    constructor(
+      message: string,
+      public requiredPermission: string,
+      public roleName: string,
+    ) {
+      super(message);
+    }
+  },
 }));
 
 describe('Phase 7.1.1b: Metadata API Routes', () => {
@@ -536,6 +546,197 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
       });
 
       expect(response.status).toBe(500);
+    });
+  });
+
+  // ===========================================================================
+  // Authorization
+  // ===========================================================================
+
+  describe('Authorization', () => {
+    const authPrincipal = {
+      id: 'user-1',
+      type: 'user' as const,
+      email: 'alice@example.com',
+      pantheonSiteRoles: { 'site-1': 'admin' as const },
+      tokenExpiry: '2026-01-24T10:00:00.000Z',
+    };
+
+    it('should check canView permission for GET structure state', async () => {
+      const { handleMetadataRoutes } = await import('../../src/routes/metadata-api');
+      const services = await import('../../src/services');
+      const { assertPermission } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(services.getBranchStructureState).mockResolvedValueOnce({
+        branchId: 'branch-1',
+        structureId: 'struct-1',
+        metadataSchema: {
+          type: 'object',
+          properties: { title: { type: 'string' } },
+          required: ['title'],
+        },
+        schemaEnforcement: 'warn',
+        hasChangesSinceCheckpoint: false,
+        lastModifiedAt: '2026-01-24T10:00:00.000Z',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/structures/struct-1/state',
+        { method: 'GET' },
+      );
+
+      await handleMetadataRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        structureId: 'struct-1',
+        action: 'state',
+        principal: authPrincipal,
+      });
+
+      expect(assertPermission).toHaveBeenCalledWith(
+        authPrincipal,
+        'site-1',
+        'branch-1',
+        'canView',
+      );
+    });
+
+    it('should check canEdit permission for PUT schema', async () => {
+      const { handleMetadataRoutes } = await import('../../src/routes/metadata-api');
+      const services = await import('../../src/services');
+      const { assertPermission } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(services.updateBranchStructureState).mockResolvedValueOnce({
+        branchId: 'branch-1',
+        structureId: 'struct-1',
+        metadataSchema: {
+          type: 'object',
+          properties: { title: { type: 'string' } },
+          required: ['title'],
+        },
+        schemaEnforcement: 'strict',
+        hasChangesSinceCheckpoint: true,
+        lastModifiedAt: '2026-01-24T11:00:00.000Z',
+      });
+
+      vi.mocked(services.getSchemaValidationSummary).mockResolvedValueOnce({
+        structureId: 'struct-1',
+        totalDocuments: 10,
+        conformingDocuments: 10,
+        nonConformingDocuments: 0,
+        validationErrors: [],
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/structures/struct-1/schema',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            schema: {
+              type: 'object',
+              properties: { title: { type: 'string' } },
+              required: ['title'],
+            },
+            enforcement: 'strict',
+          }),
+        },
+      );
+
+      await handleMetadataRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        structureId: 'struct-1',
+        action: 'schema',
+        principal: authPrincipal,
+      });
+
+      expect(assertPermission).toHaveBeenCalledWith(
+        authPrincipal,
+        'site-1',
+        'branch-1',
+        'canEdit',
+      );
+    });
+
+    it('should check canEditDocuments permission for PUT document metadata', async () => {
+      const { handleMetadataRoutes } = await import('../../src/routes/metadata-api');
+      const services = await import('../../src/services');
+      const { assertPermission } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(services.setDocumentMetadata).mockResolvedValueOnce({
+        documentId: 'doc-1',
+        structureId: 'struct-1',
+        branchId: 'branch-1',
+        metadata: {
+          title: 'About Us',
+        },
+        conformsToSchema: true,
+        validationErrors: [],
+        lastModifiedAt: '2026-01-24T11:00:00.000Z',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/structures/struct-1/documents/doc-1/metadata',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: 'About Us',
+          }),
+        },
+      );
+
+      await handleMetadataRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        structureId: 'struct-1',
+        documentId: 'doc-1',
+        principal: authPrincipal,
+      });
+
+      expect(assertPermission).toHaveBeenCalledWith(
+        authPrincipal,
+        'site-1',
+        'branch-1',
+        'canEditDocuments',
+      );
+    });
+
+    it('should return 403 when principal lacks permission', async () => {
+      const { handleMetadataRoutes } = await import('../../src/routes/metadata-api');
+      const { assertPermission, AuthorizationError } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(assertPermission).mockImplementationOnce(() => {
+        throw new AuthorizationError(
+          'Permission denied',
+          'canView',
+          'viewer',
+        );
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/structures/struct-1/state',
+        { method: 'GET' },
+      );
+
+      const response = await handleMetadataRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        structureId: 'struct-1',
+        action: 'state',
+        principal: authPrincipal,
+      });
+
+      expect(response.status).toBe(403);
     });
   });
 });

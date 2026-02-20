@@ -14,8 +14,15 @@ vi.mock('../../src/services/document-service', () => ({
   getDocumentByPath: vi.fn(),
 }));
 
+vi.mock('../../src/auth/authorization', () => ({
+  hasPermission: vi.fn().mockResolvedValue(true),
+}));
+
 // Import mocked module for test setup
 import * as documentService from '../../src/services/document-service';
+import { hasPermission } from '../../src/auth/authorization';
+import type { RealtimeRouteContext } from '../../src/routes/realtime-api';
+import type { AuthenticatedPrincipal } from '../../src/types';
 
 // Mock types for Cloudflare Durable Objects
 interface MockDurableObjectStub {
@@ -38,6 +45,16 @@ interface MockEnv {
   POSTGRES_CONNECTION_STRING: string;
 }
 
+const defaultPrincipal: AuthenticatedPrincipal = {
+  id: 'test-actor',
+  type: 'user',
+  email: 'test@example.com',
+  pantheonSiteRoles: { 'site-123': 'admin' },
+  tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
+  authProvider: 'mock',
+};
+const defaultContext: RealtimeRouteContext = { principal: defaultPrincipal };
+
 describe('Real-Time API: Focus Regions Endpoint', () => {
   let mockEnv: MockEnv;
   let mockStub: MockDurableObjectStub;
@@ -46,6 +63,8 @@ describe('Real-Time API: Focus Regions Endpoint', () => {
   beforeEach(() => {
     // Reset all mocks
     vi.resetAllMocks();
+
+    vi.mocked(hasPermission).mockResolvedValue(true);
 
     // Mock getDocumentByPath to return a document by default
     vi.mocked(documentService.getDocumentByPath).mockResolvedValue({
@@ -97,7 +116,7 @@ describe('Real-Time API: Focus Regions Endpoint', () => {
         },
       );
 
-      const response = await handleRealtimeRoutes(request, mockEnv);
+      const response = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(response).not.toBeNull();
       expect(response?.status).toBe(200);
@@ -116,7 +135,7 @@ describe('Real-Time API: Focus Regions Endpoint', () => {
         },
       );
 
-      const response = await handleRealtimeRoutes(request, mockEnv);
+      const response = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(response).not.toBeNull();
       expect(response?.status).toBe(405);
@@ -142,7 +161,7 @@ describe('Real-Time API: Focus Regions Endpoint', () => {
         },
       );
 
-      const response = await handleRealtimeRoutes(request, mockEnv);
+      const response = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(response).not.toBeNull();
       expect(response?.status).toBe(403);
@@ -164,7 +183,7 @@ describe('Real-Time API: Focus Regions Endpoint', () => {
         },
       );
 
-      const response = await handleRealtimeRoutes(request, mockEnv);
+      const response = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(response).not.toBeNull();
       expect(response?.status).toBe(415);
@@ -187,7 +206,7 @@ describe('Real-Time API: Focus Regions Endpoint', () => {
         },
       );
 
-      const response = await handleRealtimeRoutes(request, mockEnv);
+      const response = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(response).not.toBeNull();
       expect(response?.status).toBe(400);
@@ -212,7 +231,7 @@ describe('Real-Time API: Focus Regions Endpoint', () => {
         },
       );
 
-      const response = await handleRealtimeRoutes(request, mockEnv);
+      const response = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(response).not.toBeNull();
       expect(response?.status).toBe(400);
@@ -243,7 +262,7 @@ describe('Real-Time API: Focus Regions Endpoint', () => {
         },
       );
 
-      const response = await handleRealtimeRoutes(request, mockEnv);
+      const response = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(response).not.toBeNull();
       expect(response?.status).toBe(400);
@@ -271,7 +290,7 @@ describe('Real-Time API: Focus Regions Endpoint', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       // Verify DO was called
       expect(mockStub.fetch).toHaveBeenCalled();
@@ -283,6 +302,8 @@ describe('Real-Time API: Focus Regions Endpoint', () => {
 
     it('should include original headers when forwarding', async () => {
       const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const userContext: RealtimeRouteContext = { principal: { ...defaultPrincipal, id: 'user-123' } };
 
       const request = new Request(
         'http://localhost/api/sites/site-1/branches/main/documents/test-doc/focus-regions',
@@ -300,7 +321,7 @@ describe('Real-Time API: Focus Regions Endpoint', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, userContext);
 
       const forwardedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       expect(forwardedRequest.headers.get('X-Actor-Type')).toBe('user');
@@ -334,7 +355,7 @@ describe('Real-Time API: Focus Regions Endpoint', () => {
         },
       );
 
-      const response = await handleRealtimeRoutes(request, mockEnv);
+      const response = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(response?.status).toBe(200);
       const body = await response?.json();
@@ -357,7 +378,7 @@ describe('Real-Time API: Focus Regions Endpoint', () => {
         },
       );
 
-      const response = await handleRealtimeRoutes(request, mockEnv);
+      const response = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(response).not.toBeNull();
       expect(response?.status).toBe(204);

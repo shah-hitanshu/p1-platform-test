@@ -254,6 +254,13 @@ describe('Phase 2.1: Mock Identity Provider', () => {
       expect(principal?.email).toBe('alice@example.com');
     });
 
+    it('should include name from JWT name claim', async () => {
+      const token = await provider.issueToken('user-alice');
+      const principal = await provider.validateToken(token);
+
+      expect(principal?.name).toBe('Alice Developer');
+    });
+
     it('should include pantheonSiteRoles in the principal', async () => {
       const token = await provider.issueToken('user-alice');
       const principal = await provider.validateToken(token);

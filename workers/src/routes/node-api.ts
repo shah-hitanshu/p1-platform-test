@@ -5,6 +5,7 @@
  * Nodes are associated with structures, which are branch-scoped.
  */
 
+import type { AuthenticatedPrincipal } from '../types';
 import {
   createNode,
   getNode,
@@ -20,6 +21,7 @@ import {
   DuplicateNodeSlugError,
   CircularReferenceError,
 } from '../services';
+import { assertPermission, AuthorizationError } from '../auth/authorization';
 
 /**
  * Request context for node routes
@@ -30,10 +32,7 @@ export interface NodeRouteContext {
   structureId: string;
   nodeId?: string;
   action?: 'move' | 'reorder' | 'navigation';
-  principal: {
-    id: string;
-    type: 'user' | 'agent';
-  };
+  principal: AuthenticatedPrincipal;
 }
 
 /**
@@ -316,6 +315,7 @@ export async function handleNodeRoutes(
       if (method !== 'POST') {
         return errorResponse('Method not allowed', 405);
       }
+      await assertPermission(context.principal, context.siteId, context.branchId, 'canEdit');
       return await handleMoveNode(request, context);
     }
 
@@ -323,6 +323,7 @@ export async function handleNodeRoutes(
       if (method !== 'POST') {
         return errorResponse('Method not allowed', 405);
       }
+      await assertPermission(context.principal, context.siteId, context.branchId, 'canEdit');
       return await handleReorderNodes(request, context);
     }
 
@@ -330,6 +331,7 @@ export async function handleNodeRoutes(
       if (method !== 'GET') {
         return errorResponse('Method not allowed', 405);
       }
+      await assertPermission(context.principal, context.siteId, context.branchId, 'canView');
       return await handleGetNavigationTree(context);
     }
 
@@ -337,10 +339,13 @@ export async function handleNodeRoutes(
     if (context.nodeId !== undefined) {
       switch (method) {
         case 'GET':
+          await assertPermission(context.principal, context.siteId, context.branchId, 'canView');
           return await handleGetNode(context);
         case 'PATCH':
+          await assertPermission(context.principal, context.siteId, context.branchId, 'canEdit');
           return await handleUpdateNode(request, context);
         case 'DELETE':
+          await assertPermission(context.principal, context.siteId, context.branchId, 'canEdit');
           return await handleDeleteNode(context);
         default:
           return errorResponse('Method not allowed', 405);
@@ -350,14 +355,19 @@ export async function handleNodeRoutes(
     // Routes without nodeId (collection operations)
     switch (method) {
       case 'GET':
+        await assertPermission(context.principal, context.siteId, context.branchId, 'canView');
         return await handleListNodes(request, context);
       case 'POST':
+        await assertPermission(context.principal, context.siteId, context.branchId, 'canEdit');
         return await handleCreateNode(request, context);
       default:
         return errorResponse('Method not allowed', 405);
     }
   } catch (error) {
     // Handle known errors
+    if (error instanceof AuthorizationError) {
+      return errorResponse(error.message, 403);
+    }
     if (error instanceof StructureNotFoundError) {
       return errorResponse('Structure not found', 404);
     }

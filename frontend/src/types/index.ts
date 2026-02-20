@@ -7,6 +7,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  avatarUrl?: string;
   siteRoles: Record<string, string>;
 }
 
@@ -218,6 +219,30 @@ export interface Structure {
   structureType: 'hierarchy' | 'collection';
   metadataSchema: Record<string, unknown> | null;
   schemaEnforcement: 'strict' | 'warn' | 'none';
+  createdAt: string;
+  updatedAt: string;
+}
+
+// System user types (admin allowlist)
+export interface SystemUser {
+  id: string;
+  email: string;
+  name: string | null;
+  principalId: string | null;
+  authProvider: string | null;
+  systemRole: 'admin' | 'member';
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Site collaborator types
+export interface Collaborator {
+  id: string;
+  userId: string;
+  siteId: string;
+  role: string;         // 'owner' | 'admin' | 'developer' | 'team_member'
+  source: string;       // 'local' | 'mas'
   createdAt: string;
   updatedAt: string;
 }

@@ -4,7 +4,7 @@
  * REST API endpoints for checkpoint operations.
  */
 
-import type { CheckpointType } from '../types';
+import type { CheckpointType, AuthenticatedPrincipal } from '../types';
 import {
   createCheckpoint,
   getCheckpoint,
@@ -16,6 +16,7 @@ import {
   CheckpointNotFoundError,
   BranchNotFoundError,
 } from '../services';
+import { assertPermission, AuthorizationError } from '../auth/authorization';
 
 /**
  * Request context for checkpoint routes
@@ -26,10 +27,7 @@ export interface CheckpointRouteContext {
   checkpointId?: string;
   documentsPath?: boolean;
   revert?: boolean;
-  principal: {
-    id: string;
-    type: 'user' | 'agent';
-  };
+  principal: AuthenticatedPrincipal;
 }
 
 /**
@@ -108,7 +106,7 @@ async function handleCreateCheckpoint(
     name: trimmedName !== undefined && trimmedName !== '' ? trimmedName : undefined,
     checkpointType: body.type ?? 'manual',
     createdById: context.principal.id,
-    createdByType: context.principal.type,
+    createdByType: context.principal.type as 'user' | 'agent',
   });
 
   return jsonResponse(result, 201);
@@ -141,25 +139,6 @@ async function handleListCheckpoints(
   );
 
   return jsonResponse({ checkpoints });
-}
-
-/**
- * Handle GET /api/sites/{siteId}/checkpoints/{checkpointId} - Get Checkpoint
- */
-async function handleGetCheckpoint(
-  context: CheckpointRouteContext,
-): Promise<Response> {
-  if (context.checkpointId === undefined) {
-    return errorResponse('Checkpoint ID is required', 400);
-  }
-
-  const checkpoint = await getCheckpoint(context.checkpointId);
-
-  if (checkpoint === null) {
-    return errorResponse('Checkpoint not found', 404);
-  }
-
-  return jsonResponse(checkpoint);
 }
 
 /**
@@ -198,7 +177,7 @@ async function handleRevertToCheckpoint(
     branchId: context.branchId,
     name: body.name ?? 'Reverted to checkpoint',
     createdById: context.principal.id,
-    createdByType: context.principal.type,
+    createdByType: context.principal.type as 'user' | 'agent',
   });
 
   return jsonResponse(result);
@@ -236,6 +215,10 @@ export async function handleCheckpointRoutes(
     // Handle revert operation
     if (context.revert === true && context.checkpointId !== undefined) {
       if (method === 'POST') {
+        if (context.branchId === undefined) {
+          return errorResponse('Branch ID is required', 400);
+        }
+        await assertPermission(context.principal, context.siteId, context.branchId, 'canCreateCheckpoint');
         return await handleRevertToCheckpoint(request, context);
       }
       return errorResponse('Method not allowed', 405);
@@ -244,6 +227,11 @@ export async function handleCheckpointRoutes(
     // Handle documents at checkpoint
     if (context.documentsPath === true && context.checkpointId !== undefined) {
       if (method === 'GET') {
+        // Look up checkpoint to get branchId for authorization
+        const checkpoint = await getCheckpoint(context.checkpointId);
+        if (checkpoint != null) {
+          await assertPermission(context.principal, context.siteId, checkpoint.branchId, 'canView');
+        }
         return await handleGetDocumentsAtCheckpoint(context);
       }
       return errorResponse('Method not allowed', 405);
@@ -251,10 +239,26 @@ export async function handleCheckpointRoutes(
 
     // Handle single checkpoint operations (with checkpointId, no branchId)
     if (context.checkpointId !== undefined && context.branchId === undefined) {
+      // Look up checkpoint to get branchId for authorization
+      const checkpoint = await getCheckpoint(context.checkpointId);
+      if (checkpoint == null) {
+        // Checkpoint not found - for GET, return 404 immediately.
+        // For DELETE, delegate to handler for consistent 404 handling.
+        if (method === 'GET') {
+          return errorResponse('Checkpoint not found', 404);
+        }
+        if (method === 'DELETE') {
+          return await handleDeleteCheckpoint(context);
+        }
+        return errorResponse('Method not allowed', 405);
+      }
       switch (method) {
         case 'GET':
-          return await handleGetCheckpoint(context);
+          await assertPermission(context.principal, context.siteId, checkpoint.branchId, 'canView');
+          // Return the already-fetched checkpoint to avoid a second getCheckpoint call
+          return jsonResponse(checkpoint);
         case 'DELETE':
+          await assertPermission(context.principal, context.siteId, checkpoint.branchId, 'canManageGrants');
           return await handleDeleteCheckpoint(context);
         default:
           return errorResponse('Method not allowed', 405);
@@ -265,8 +269,10 @@ export async function handleCheckpointRoutes(
     if (context.branchId !== undefined) {
       switch (method) {
         case 'GET':
+          await assertPermission(context.principal, context.siteId, context.branchId, 'canView');
           return await handleListCheckpoints(request, context);
         case 'POST':
+          await assertPermission(context.principal, context.siteId, context.branchId, 'canCreateCheckpoint');
           return await handleCreateCheckpoint(request, context);
         default:
           return errorResponse('Method not allowed', 405);
@@ -276,6 +282,9 @@ export async function handleCheckpointRoutes(
     return errorResponse('Invalid route', 400);
   } catch (error) {
     // Handle known errors
+    if (error instanceof AuthorizationError) {
+      return errorResponse(error.message, 403);
+    }
     if (error instanceof CheckpointNotFoundError) {
       return errorResponse('Checkpoint not found', 404);
     }

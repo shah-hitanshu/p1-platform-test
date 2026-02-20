@@ -19,6 +19,7 @@ vi.mock('../../src/services', () => ({
   updateMergeRequestStatus: vi.fn(),
   deleteMergeRequest: vi.fn(),
   getBranch: vi.fn(),
+  getMainBranch: vi.fn(),
   MergeRequestNotFoundError: class MergeRequestNotFoundError extends Error {
     name = 'MergeRequestNotFoundError';
     constructor(public requestId: string) {
@@ -55,8 +56,18 @@ vi.mock('../../src/services', () => ({
 }));
 
 // Mock authorization
-vi.mock('../../src/auth/middleware', () => ({
-  requirePermission: vi.fn(() => vi.fn()),
+vi.mock('../../src/auth/authorization', () => ({
+  assertPermission: vi.fn(),
+  AuthorizationError: class AuthorizationError extends Error {
+    override name = 'AuthorizationError';
+    constructor(
+      message: string,
+      public requiredPermission: string,
+      public roleName: string,
+    ) {
+      super(message);
+    }
+  },
 }));
 
 describe('Phase 7.1c: Merge API Routes', () => {
@@ -400,6 +411,17 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const { handleMergeRoutes } = await import('../../src/routes/merge-api');
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
       vi.mocked(services.listMergeRequests).mockResolvedValueOnce([
         {
           id: 'mr-1',
@@ -436,6 +458,17 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const { handleMergeRoutes } = await import('../../src/routes/merge-api');
       const services = await import('../../src/services');
 
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
       vi.mocked(services.getMergeRequest).mockResolvedValueOnce({
         id: 'mr-1',
         siteId: 'site-1',
@@ -468,6 +501,17 @@ describe('Phase 7.1c: Merge API Routes', () => {
     it('should return 404 for non-existent merge request', async () => {
       const { handleMergeRoutes } = await import('../../src/routes/merge-api');
       const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
 
       vi.mocked(services.getMergeRequest).mockResolvedValueOnce(null);
 
@@ -536,6 +580,146 @@ describe('Phase 7.1c: Merge API Routes', () => {
       });
 
       expect(response.status).toBe(405);
+    });
+  });
+
+  // ===========================================================================
+  // Authorization
+  // ===========================================================================
+
+  describe('Authorization', () => {
+    const authPrincipal = {
+      id: 'user-1',
+      type: 'user' as const,
+      email: 'alice@example.com',
+      pantheonSiteRoles: { 'site-1': 'admin' as const },
+      tokenExpiry: '2026-01-24T10:00:00.000Z',
+    };
+
+    it('should check canView permission for POST merge check', async () => {
+      const { handleMergeRoutes } = await import('../../src/routes/merge-api');
+      const services = await import('../../src/services');
+      const { assertPermission } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(services.checkMergeability).mockResolvedValueOnce({
+        canMerge: true,
+        conflicts: [],
+        mergeBase: {
+          checkpointId: 'checkpoint-1',
+          branchId: 'branch-2',
+          type: 'common_ancestor',
+        },
+        sourceModifications: [],
+        targetModifications: [],
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/merge/check',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceBranchId: 'branch-1',
+            targetBranchId: 'branch-2',
+          }),
+        },
+      );
+
+      await handleMergeRoutes(request, {
+        siteId: 'site-1',
+        operation: 'check',
+        principal: authPrincipal,
+      });
+
+      expect(assertPermission).toHaveBeenCalledWith(
+        authPrincipal,
+        'site-1',
+        'branch-1',
+        'canView',
+      );
+    });
+
+    it('should check canProposeMerge permission for POST create merge request', async () => {
+      const { handleMergeRoutes } = await import('../../src/routes/merge-api');
+      const services = await import('../../src/services');
+      const { assertPermission } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(services.createMergeRequest).mockResolvedValueOnce({
+        id: 'mr-1',
+        siteId: 'site-1',
+        sourceBranchId: 'branch-1',
+        targetBranchId: 'branch-2',
+        title: 'Test MR',
+        status: 'open',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/merge-requests',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceBranchId: 'branch-1',
+            targetBranchId: 'branch-2',
+            title: 'Test MR',
+          }),
+        },
+      );
+
+      await handleMergeRoutes(request, {
+        siteId: 'site-1',
+        mergeRequests: true,
+        principal: authPrincipal,
+      });
+
+      expect(assertPermission).toHaveBeenCalledWith(
+        authPrincipal,
+        'site-1',
+        'branch-1',
+        'canProposeMerge',
+      );
+    });
+
+    it('should return 403 when principal lacks permission', async () => {
+      const { handleMergeRoutes } = await import('../../src/routes/merge-api');
+      const { assertPermission, AuthorizationError } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(assertPermission).mockImplementationOnce(() => {
+        throw new AuthorizationError(
+          'Permission denied',
+          'canView',
+          'viewer',
+        );
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/merge/check',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceBranchId: 'branch-1',
+            targetBranchId: 'branch-2',
+          }),
+        },
+      );
+
+      const response = await handleMergeRoutes(request, {
+        siteId: 'site-1',
+        operation: 'check',
+        principal: authPrincipal,
+      });
+
+      expect(response.status).toBe(403);
     });
   });
 });

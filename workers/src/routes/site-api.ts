@@ -5,7 +5,7 @@
  * Includes deletion protection for sites with non-archived branches.
  */
 
-import type { WorkflowSettings } from '../types';
+import type { WorkflowSettings, AuthenticatedPrincipal } from '../types';
 import {
   createSite,
   getSite,
@@ -14,9 +14,11 @@ import {
   listSites,
   listBranches,
   createMainBranch,
+  getMainBranch,
   DuplicatePantheonSiteIdError,
   InvalidSiteParamsError,
 } from '../services';
+import { assertPermission, AuthorizationError } from '../auth/authorization';
 import { validatePagination } from './validation';
 
 /**
@@ -24,10 +26,7 @@ import { validatePagination } from './validation';
  */
 export interface SiteRouteContext {
   siteId?: string;
-  principal: {
-    id: string;
-    type: 'user' | 'agent';
-  };
+  principal: AuthenticatedPrincipal;
 }
 
 /**
@@ -115,7 +114,7 @@ async function handleCreateSite(
   await createMainBranch({
     siteId: site.id,
     createdById: context.principal.id,
-    createdByType: context.principal.type,
+    createdByType: context.principal.type as 'user' | 'agent',
   });
 
   return jsonResponse(site, 201);
@@ -234,12 +233,20 @@ export async function handleSiteRoutes(
   try {
     // Routes with siteId (single site operations)
     if (context.siteId !== undefined) {
+      const mainBranch = await getMainBranch(context.siteId);
+      if (mainBranch === null) {
+        return errorResponse('Site not found', 404);
+      }
+
       switch (method) {
         case 'GET':
+          await assertPermission(context.principal, context.siteId, mainBranch.id, 'canView');
           return await handleGetSite(context);
         case 'PATCH':
+          await assertPermission(context.principal, context.siteId, mainBranch.id, 'canManageGrants');
           return await handleUpdateSite(request, context);
         case 'DELETE':
+          await assertPermission(context.principal, context.siteId, mainBranch.id, 'canManageGrants');
           return await handleDeleteSite(context);
         default:
           return errorResponse('Method not allowed', 405);
@@ -257,6 +264,9 @@ export async function handleSiteRoutes(
     }
   } catch (error) {
     // Handle known errors
+    if (error instanceof AuthorizationError) {
+      return errorResponse(error.message, 403);
+    }
     if (error instanceof DuplicatePantheonSiteIdError) {
       return errorResponse('A site with this Pantheon site ID already exists', 409);
     }

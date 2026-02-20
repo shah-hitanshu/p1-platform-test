@@ -17,8 +17,16 @@ vi.mock('../../src/services/document-service', () => ({
   getDocumentByPath: vi.fn(),
 }));
 
-// Import mocked module for test setup
+// Mock authorization service (Auth Phase 4)
+vi.mock('../../src/auth/authorization', () => ({
+  hasPermission: vi.fn().mockResolvedValue(true),
+}));
+
+// Import mocked modules for test setup
 import * as documentService from '../../src/services/document-service';
+import { hasPermission } from '../../src/auth/authorization';
+import type { RealtimeRouteContext } from '../../src/routes/realtime-api';
+import type { AuthenticatedPrincipal } from '../../src/types';
 
 /**
  * Helper to assert a value is not null and return it as non-null type.
@@ -52,6 +60,21 @@ interface MockEnv {
   POSTGRES_CONNECTION_STRING: string;
 }
 
+/**
+ * Auth Phase 4: Default principal for existing tests.
+ * Uses 'test-actor' ID which matches actorId values used in most existing tests.
+ */
+const defaultPrincipal: AuthenticatedPrincipal = {
+  id: 'test-actor',
+  type: 'user',
+  email: 'test@example.com',
+  pantheonSiteRoles: { 'site-123': 'admin' },
+  tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
+  authProvider: 'mock',
+};
+
+const defaultContext: RealtimeRouteContext = { principal: defaultPrincipal };
+
 describe('Phase 4.2: Real-Time API Routes', () => {
   let mockEnv: MockEnv;
   let mockStub: MockDurableObjectStub;
@@ -60,6 +83,9 @@ describe('Phase 4.2: Real-Time API Routes', () => {
   beforeEach(() => {
     // Reset all mocks
     vi.resetAllMocks();
+
+    // Auth Phase 4: Restore hasPermission mock (vi.resetAllMocks clears implementations)
+    vi.mocked(hasPermission).mockResolvedValue(true);
 
     // Mock getDocumentByPath to return a document by default
     // This simulates the document lookup in realtime-api.ts
@@ -106,7 +132,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'GET' },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(result).not.toBeNull();
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalled();
@@ -126,7 +152,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(result).not.toBeNull();
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalled();
@@ -142,7 +168,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'GET' },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(result).not.toBeNull();
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalled();
@@ -157,7 +183,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         method: 'GET',
       });
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(result).toBeNull();
     });
@@ -171,7 +197,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         method: 'GET',
       });
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(result).toBeNull();
     });
@@ -188,7 +214,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'GET' },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       // The session ID should include the site ID
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalledWith(
@@ -206,7 +232,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'GET' },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       // The session ID should include the branch ID
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalledWith(
@@ -224,7 +250,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'GET' },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       // The session ID should include the document UUID (looked up from path)
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalledWith(
@@ -243,7 +269,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'GET' },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(result).not.toBeNull();
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalled();
@@ -261,7 +287,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'GET' },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       // Session ID uses document UUID (from mock) instead of path
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalledWith(
@@ -279,7 +305,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/doc',
         { method: 'GET' },
       );
-      await handleRealtimeRoutes(request1, mockEnv);
+      await handleRealtimeRoutes(request1, mockEnv, defaultContext);
 
       const firstCallArg = mockEnv.DOCUMENT_STATE.idFromName.mock.calls[0][0];
 
@@ -290,7 +316,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/doc',
         { method: 'GET' },
       );
-      await handleRealtimeRoutes(request2, mockEnv);
+      await handleRealtimeRoutes(request2, mockEnv, defaultContext);
 
       const secondCallArg = mockEnv.DOCUMENT_STATE.idFromName.mock.calls[0][0];
 
@@ -307,7 +333,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/doc',
         { method: 'GET' },
       );
-      await handleRealtimeRoutes(request1, mockEnv);
+      await handleRealtimeRoutes(request1, mockEnv, defaultContext);
 
       const firstCallArg = mockEnv.DOCUMENT_STATE.idFromName.mock.calls[0][0];
 
@@ -318,7 +344,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         'https://example.com/api/sites/site-1/branches/branch-2/documents/doc',
         { method: 'GET' },
       );
-      await handleRealtimeRoutes(request2, mockEnv);
+      await handleRealtimeRoutes(request2, mockEnv, defaultContext);
 
       const secondCallArg = mockEnv.DOCUMENT_STATE.idFromName.mock.calls[0][0];
 
@@ -352,7 +378,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
         { method: 'GET' },
       );
-      await handleRealtimeRoutes(request1, mockEnv);
+      await handleRealtimeRoutes(request1, mockEnv, defaultContext);
 
       const firstCallArg = mockEnv.DOCUMENT_STATE.idFromName.mock.calls[0][0];
 
@@ -363,7 +389,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/doc-2',
         { method: 'GET' },
       );
-      await handleRealtimeRoutes(request2, mockEnv);
+      await handleRealtimeRoutes(request2, mockEnv, defaultContext);
 
       const secondCallArg = mockEnv.DOCUMENT_STATE.idFromName.mock.calls[0][0];
 
@@ -383,7 +409,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'GET' },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(mockStub.fetch).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -401,6 +427,9 @@ describe('Phase 4.2: Real-Time API Routes', () => {
       );
 
       const operations = [{ type: 'set', path: 'title', value: 'Hello' }];
+      const userContext: RealtimeRouteContext = {
+        principal: { ...defaultPrincipal, id: 'user-123' },
+      };
       const request = new Request(
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/edits',
         {
@@ -414,7 +443,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, userContext);
 
       expect(mockStub.fetch).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -431,6 +460,9 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         '../../src/routes/realtime-api'
       );
 
+      const agentContext: RealtimeRouteContext = {
+        principal: { ...defaultPrincipal, id: 'agent-456', type: 'agent' },
+      };
       const request = new Request(
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/edits',
         {
@@ -444,7 +476,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       expect(fetchedRequest.headers.get('X-Actor-Id')).toBe('agent-456');
@@ -471,7 +503,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
@@ -503,7 +535,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'GET' },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
       const body = await response.json();
@@ -537,7 +569,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
       const body = await response.json();
@@ -566,7 +598,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
       expect(response.status).toBe(400);
@@ -587,7 +619,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(result).not.toBeNull();
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalled();
@@ -598,6 +630,9 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         '../../src/routes/realtime-api'
       );
 
+      const userContext: RealtimeRouteContext = {
+        principal: { ...defaultPrincipal, id: 'user-123' },
+      };
       const request = new Request(
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/connect',
         {
@@ -610,7 +645,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, userContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       expect(new URL(fetchedRequest.url).pathname).toBe('/connect');
@@ -622,6 +657,9 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         '../../src/routes/realtime-api'
       );
 
+      const userContext: RealtimeRouteContext = {
+        principal: { ...defaultPrincipal, id: 'user-789' },
+      };
       const request = new Request(
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/connect',
         {
@@ -634,7 +672,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, userContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       expect(fetchedRequest.headers.get('X-Actor-Id')).toBe('user-789');
@@ -667,7 +705,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       // The response is returned from the DO - we just verify it's passed through
       expect(result).not.toBeNull();
@@ -687,7 +725,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'GET' },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       // Should either return null (not match) or return 400
       if (result !== null) {
@@ -706,7 +744,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'GET' },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       if (result !== null) {
         expect(result.status).toBe(400);
@@ -724,7 +762,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'GET' },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       if (result !== null) {
         expect(result.status).toBe(400);
@@ -743,7 +781,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'GET' },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
       expect(response.status).toBe(503);
@@ -762,7 +800,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'DELETE' },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       if (result !== null) {
         expect(result.status).toBe(405);
@@ -785,7 +823,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
       expect(response.status).not.toBe(415);
@@ -805,7 +843,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
       expect(response.status).toBe(415);
@@ -823,7 +861,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'GET' },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
       expect(response.headers.get('Access-Control-Allow-Origin')).toBeDefined();
@@ -845,7 +883,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
       expect(response.status).toBe(204);
@@ -870,7 +908,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       // Rate limit headers are optional but should be present if configured
       // This test documents the expected behavior
@@ -893,7 +931,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
       expect(response.status).toBe(400);
@@ -916,7 +954,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
       expect(response.status).toBe(400);
@@ -936,7 +974,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
       expect(response.status).toBe(400);
@@ -957,7 +995,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'GET' },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalledWith(
         expect.stringContaining('my-site-with-hyphens'),
@@ -974,7 +1012,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         { method: 'GET' },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       // Session ID uses document UUID (from mock) instead of path
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalledWith(

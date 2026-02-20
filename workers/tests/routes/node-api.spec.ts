@@ -48,8 +48,18 @@ vi.mock('../../src/services', () => ({
 }));
 
 // Mock authorization
-vi.mock('../../src/auth/middleware', () => ({
-  requirePermission: vi.fn(() => vi.fn()),
+vi.mock('../../src/auth/authorization', () => ({
+  assertPermission: vi.fn(),
+  AuthorizationError: class AuthorizationError extends Error {
+    override name = 'AuthorizationError';
+    constructor(
+      message: string,
+      public requiredPermission: string,
+      public roleName: string,
+    ) {
+      super(message);
+    }
+  },
 }));
 
 describe('Phase 7.1.1b: Node API Routes', () => {
@@ -783,6 +793,143 @@ describe('Phase 7.1.1b: Node API Routes', () => {
       });
 
       expect(response.status).toBe(500);
+    });
+  });
+
+  // ===========================================================================
+  // Authorization
+  // ===========================================================================
+
+  describe('Authorization', () => {
+    const authPrincipal = {
+      id: 'user-1',
+      type: 'user' as const,
+      email: 'alice@example.com',
+      pantheonSiteRoles: { 'site-1': 'admin' as const },
+      tokenExpiry: '2026-01-24T10:00:00.000Z',
+    };
+
+    it('should check canView permission for GET list nodes', async () => {
+      const { handleNodeRoutes } = await import('../../src/routes/node-api');
+      const services = await import('../../src/services');
+      const { assertPermission } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(services.getBranchStructure).mockResolvedValueOnce({
+        id: 'struct-1',
+        siteId: 'site-1',
+        name: 'Main Nav',
+        slug: 'main-nav',
+        structureType: 'hierarchy',
+        createdAt: '2026-01-24T10:00:00.000Z',
+      });
+
+      vi.mocked(services.listNodes).mockResolvedValueOnce([]);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/structures/struct-1/nodes',
+        { method: 'GET' },
+      );
+
+      await handleNodeRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        structureId: 'struct-1',
+        principal: authPrincipal,
+      });
+
+      expect(assertPermission).toHaveBeenCalledWith(
+        authPrincipal,
+        'site-1',
+        'branch-1',
+        'canView',
+      );
+    });
+
+    it('should check canEdit permission for POST create node', async () => {
+      const { handleNodeRoutes } = await import('../../src/routes/node-api');
+      const services = await import('../../src/services');
+      const { assertPermission } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(services.getBranchStructure).mockResolvedValueOnce({
+        id: 'struct-1',
+        siteId: 'site-1',
+        name: 'Main Nav',
+        slug: 'main-nav',
+        structureType: 'hierarchy',
+        createdAt: '2026-01-24T10:00:00.000Z',
+      });
+
+      vi.mocked(services.createNode).mockResolvedValueOnce({
+        id: 'node-uuid',
+        structureId: 'struct-1',
+        parentNodeId: null,
+        name: 'Getting Started',
+        slug: 'getting-started',
+        nodeType: 'section',
+        position: 0,
+        createdAt: '2026-01-24T10:00:00.000Z',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/structures/struct-1/nodes',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Getting Started',
+            slug: 'getting-started',
+            nodeType: 'section',
+            position: 0,
+          }),
+        },
+      );
+
+      await handleNodeRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        structureId: 'struct-1',
+        principal: authPrincipal,
+      });
+
+      expect(assertPermission).toHaveBeenCalledWith(
+        authPrincipal,
+        'site-1',
+        'branch-1',
+        'canEdit',
+      );
+    });
+
+    it('should return 403 when principal lacks permission', async () => {
+      const { handleNodeRoutes } = await import('../../src/routes/node-api');
+      const { assertPermission, AuthorizationError } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(assertPermission).mockImplementationOnce(() => {
+        throw new AuthorizationError(
+          'Permission denied',
+          'canView',
+          'viewer',
+        );
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/structures/struct-1/nodes',
+        { method: 'GET' },
+      );
+
+      const response = await handleNodeRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        structureId: 'struct-1',
+        principal: authPrincipal,
+      });
+
+      expect(response.status).toBe(403);
     });
   });
 });

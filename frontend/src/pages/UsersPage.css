@@ -1,0 +1,85 @@
+/**
+ * Users Page Styles
+ *
+ * Follows the same pattern as SitesPage.css.
+ */
+
+.users-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.users-table-container {
+  background-color: var(--dt-color-white, #fff);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.users-table th,
+.users-table td {
+  padding: 14px 20px;
+  text-align: left;
+}
+
+.users-table th {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--dt-color-gray-5, #6c757d);
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.users-table td {
+  font-size: 0.9375rem;
+  color: var(--dt-color-gray-7, #333);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
+}
+
+.users-table tr:last-child td {
+  border-bottom: none;
+}
+
+.users-table tr:hover td {
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+}
+
+.user-email {
+  font-weight: 500;
+}
+
+.user-name-cell .no-value {
+  color: var(--dt-color-gray-3, #ced4da);
+}
+
+.user-login-status {
+  white-space: nowrap;
+}
+
+.role-select {
+  flex: none;
+  width: auto;
+  min-width: 100px;
+  padding: 6px 8px;
+  font-size: 0.8125rem;
+}
+
+.user-actions {
+  text-align: right;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.empty-state-hint {
+  margin-top: 8px;
+  font-size: 0.875rem;
+  color: var(--dt-color-gray-4, #adb5bd);
+}

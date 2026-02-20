@@ -21,6 +21,7 @@ vi.mock('../../src/services', () => ({
   deleteMergeRequest: vi.fn(),
   getLatestDocumentVersion: vi.fn(),
   mergeCrdtStates: vi.fn(),
+  getMainBranch: vi.fn(),
   createDocumentVersion: vi.fn(),
   MergeRequestNotFoundError: class MergeRequestNotFoundError extends Error {
     name = 'MergeRequestNotFoundError';
@@ -82,8 +83,18 @@ vi.mock('../../src/services', () => ({
 }));
 
 // Mock authorization
-vi.mock('../../src/auth/middleware', () => ({
-  requirePermission: vi.fn(() => vi.fn()),
+vi.mock('../../src/auth/authorization', () => ({
+  assertPermission: vi.fn(),
+  AuthorizationError: class AuthorizationError extends Error {
+    override name = 'AuthorizationError';
+    constructor(
+      message: string,
+      public requiredPermission: string,
+      public roleName: string,
+    ) {
+      super(message);
+    }
+  },
 }));
 
 const defaultContext = {

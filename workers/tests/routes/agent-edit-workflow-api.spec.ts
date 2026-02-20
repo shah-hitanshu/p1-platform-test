@@ -25,8 +25,15 @@ vi.mock('../../src/services/document-service', () => ({
   getDocumentByPath: vi.fn(),
 }));
 
+vi.mock('../../src/auth/authorization', () => ({
+  hasPermission: vi.fn().mockResolvedValue(true),
+}));
+
 // Import mocked modules for test setup
 import * as documentService from '../../src/services/document-service';
+import { hasPermission } from '../../src/auth/authorization';
+import type { RealtimeRouteContext } from '../../src/routes/realtime-api';
+import type { AuthenticatedPrincipal } from '../../src/types';
 
 /**
  * Helper to assert a value is not null and return it as non-null type.
@@ -87,6 +94,16 @@ interface MockEnv {
   POSTGRES_CONNECTION_STRING: string;
 }
 
+const defaultPrincipal: AuthenticatedPrincipal = {
+  id: 'agent-123',
+  type: 'agent',
+  email: 'test@example.com',
+  pantheonSiteRoles: { 'site-123': 'admin' },
+  tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
+  authProvider: 'mock',
+};
+const defaultContext: RealtimeRouteContext = { principal: defaultPrincipal };
+
 describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
   let mockEnv: MockEnv;
   let mockStub: MockDurableObjectStub;
@@ -95,6 +112,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
   beforeEach(async () => {
     // Reset all mocks
     vi.resetAllMocks();
+    vi.mocked(hasPermission).mockResolvedValue(true);
 
     // Mock getDocumentByPath to return a document by default
     vi.mocked(documentService.getDocumentByPath).mockResolvedValue({
@@ -160,7 +178,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         expect(result).not.toBeNull();
         expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalled();
@@ -176,7 +194,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           { method: 'POST' },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         expect(result).toBeNull();
       });
@@ -206,7 +224,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        await handleRealtimeRoutes(request, mockEnv);
+        await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         expect(mockStub.fetch).toHaveBeenCalled();
         const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
@@ -238,7 +256,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        await handleRealtimeRoutes(request, mockEnv);
+        await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
         const body = await fetchedRequest.json();
@@ -250,6 +268,9 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           '../../src/routes/realtime-api'
         );
 
+        const agent789Context: RealtimeRouteContext = {
+          principal: { ...defaultPrincipal, id: 'agent-789' },
+        };
         const request = new Request(
           'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
           {
@@ -268,7 +289,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        await handleRealtimeRoutes(request, mockEnv);
+        await handleRealtimeRoutes(request, mockEnv, agent789Context);
 
         const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
         expect(fetchedRequest.headers.get('X-Actor-Id')).toBe('agent-789');
@@ -303,7 +324,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         const body = await response.json();
@@ -343,7 +364,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         const body = await response.json();
@@ -385,7 +406,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         const body = await response.json();
@@ -414,7 +435,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         expect(response.status).toBe(400);
@@ -440,7 +461,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         expect(response.status).toBe(400);
@@ -466,7 +487,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         expect(response.status).toBe(400);
@@ -492,7 +513,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         expect(response.status).toBe(400);
@@ -519,7 +540,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         expect(response.status).toBe(400);
@@ -554,7 +575,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         expect(result).not.toBeNull();
         expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalled();
@@ -585,7 +606,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        await handleRealtimeRoutes(request, mockEnv);
+        await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         expect(mockStub.fetch).toHaveBeenCalled();
         const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
@@ -618,7 +639,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        await handleRealtimeRoutes(request, mockEnv);
+        await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
         const body = await fetchedRequest.json();
@@ -660,7 +681,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         const body = await response.json();
@@ -702,7 +723,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         const body = await response.json();
@@ -744,7 +765,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         expect(response.status).toBe(403);
@@ -773,7 +794,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         expect(response.status).toBe(400);
@@ -797,7 +818,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         expect(response.status).toBe(400);
@@ -827,7 +848,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         expect(result).not.toBeNull();
         expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalled();
@@ -855,7 +876,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        await handleRealtimeRoutes(request, mockEnv);
+        await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         expect(mockStub.fetch).toHaveBeenCalled();
         const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
@@ -882,7 +903,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        await handleRealtimeRoutes(request, mockEnv);
+        await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
         const body = await fetchedRequest.json();
@@ -920,7 +941,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         const body = await response.json();
@@ -957,7 +978,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         expect(response.status).toBe(404);
@@ -981,7 +1002,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         expect(response.status).toBe(400);
@@ -1014,7 +1035,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         expect(result).not.toBeNull();
         expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalled();
@@ -1043,7 +1064,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        await handleRealtimeRoutes(request, mockEnv);
+        await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         expect(mockStub.fetch).toHaveBeenCalled();
         const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
@@ -1073,7 +1094,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        await handleRealtimeRoutes(request, mockEnv);
+        await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
         const body = await fetchedRequest.json();
@@ -1113,7 +1134,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         const body = await response.json();
@@ -1153,7 +1174,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         const body = await response.json();
@@ -1191,7 +1212,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         expect(response.status).toBe(404);
@@ -1215,7 +1236,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         expect(response.status).toBe(400);
@@ -1247,7 +1268,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           },
         );
 
-        const result = await handleRealtimeRoutes(request, mockEnv);
+        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
         // Should not return 400 for missing reason
@@ -1278,7 +1299,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
       expect(response.status).toBe(503);
@@ -1298,7 +1319,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
       expect(response.status).toBe(400);
@@ -1318,7 +1339,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
       expect(response.status).toBe(415);
@@ -1345,7 +1366,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
       expect(response.headers.get('Access-Control-Allow-Origin')).toBeDefined();
@@ -1367,7 +1388,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
       expect(response.status).toBe(204);
@@ -1395,7 +1416,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       // Session ID uses document UUID (from mock) instead of path
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalledWith(

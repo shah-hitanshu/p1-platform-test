@@ -15,6 +15,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { RealtimeRouteContext } from '../../src/routes/realtime-api';
+import type { AuthenticatedPrincipal } from '../../src/types';
 
 // Phase 7.4: Mock the agent service for status validation
 vi.mock('../../src/services/agent-service', () => ({
@@ -26,8 +28,14 @@ vi.mock('../../src/services/document-service', () => ({
   getDocumentByPath: vi.fn(),
 }));
 
+// Mock authorization module for permission checks
+vi.mock('../../src/auth/authorization', () => ({
+  hasPermission: vi.fn().mockResolvedValue(true),
+}));
+
 // Import mocked modules for test setup
 import * as documentService from '../../src/services/document-service';
+import { hasPermission } from '../../src/auth/authorization';
 
 /**
  * Helper to assert a value is not null and return it as non-null type.
@@ -87,6 +95,16 @@ interface MockEnv {
   CORS_ORIGINS?: string;
 }
 
+const defaultPrincipal: AuthenticatedPrincipal = {
+  id: 'test-actor',
+  type: 'user',
+  email: 'test@example.com',
+  pantheonSiteRoles: { 'site-123': 'admin' },
+  tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
+  authProvider: 'mock',
+};
+const defaultContext: RealtimeRouteContext = { principal: defaultPrincipal };
+
 describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
   let mockEnv: MockEnv;
   let mockStub: MockDurableObjectStub;
@@ -94,6 +112,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
 
   beforeEach(async () => {
     vi.resetAllMocks();
+    vi.mocked(hasPermission).mockResolvedValue(true);
 
     // Mock getDocumentByPath to return a document by default
     vi.mocked(documentService.getDocumentByPath).mockResolvedValue({
@@ -150,7 +169,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(204);
@@ -181,7 +200,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       // Verify DO was called with merged context
       expect(mockStub.fetch).toHaveBeenCalled();
@@ -213,7 +232,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
@@ -242,7 +261,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
@@ -276,7 +295,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
@@ -308,7 +327,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
@@ -339,7 +358,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
@@ -370,7 +389,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
@@ -399,7 +418,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(400);
@@ -425,7 +444,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(400);
@@ -453,7 +472,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(400);
@@ -481,7 +500,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(400);
@@ -510,7 +529,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(400);
@@ -540,7 +559,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
@@ -568,7 +587,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
@@ -598,7 +617,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
@@ -629,7 +648,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
 
@@ -644,6 +663,10 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
   describe('/edits endpoint header support', () => {
     it('should pass X-Agent-* headers through for /edits endpoint', async () => {
       const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const editorContext: RealtimeRouteContext = {
+        principal: { ...defaultPrincipal, id: 'agent-editor' },
+      };
 
       const request = new Request(
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/edits',
@@ -666,7 +689,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, editorContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
 

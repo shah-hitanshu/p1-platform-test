@@ -468,6 +468,9 @@ export interface ApprovalRequest {
 // Identity Types
 // =============================================================================
 
+/** Authentication provider that validated the token */
+export type AuthProvider = 'auth0' | 'google' | 'mock' | 'unknown';
+
 /**
  * Pre-validated identity from Pantheon Identity Service.
  */
@@ -475,10 +478,20 @@ export interface AuthenticatedPrincipal {
   id: string;
   type: 'user' | 'agent' | 'service';
   email?: string;
+  /** Display name from the identity provider */
+  name?: string;
+  /** Profile picture URL from the identity provider */
+  avatarUrl?: string;
   organizationId?: string;
   pantheonSiteRoles: Record<string, PantheonRole>;
   tokenExpiry: string;
   scopes?: string[];
+  /** Which auth provider validated this principal */
+  authProvider?: AuthProvider;
+  /** Original subject ID from the OAuth provider (before UUIDv5 mapping) */
+  providerSubjectId?: string;
+  /** System-level role from the users allowlist ('admin' or 'member') */
+  systemRole?: string;
 }
 
 /**
@@ -626,10 +639,19 @@ export interface EditOperation {
 
 /**
  * Metadata about a WebSocket connection to a document session.
+ * Auth Phase 4: Extended with authProvider, email, and verified fields
+ * to track authenticated identity context.
  */
 export interface ConnectionMeta {
   actorId: string;
   actorType: 'user' | 'agent';
+  authProvider?: AuthProvider;
+  email?: string;
+  /** Display name for presence */
+  name?: string;
+  /** Profile picture URL for presence */
+  avatar?: string;
+  verified: boolean;
 }
 
 // =============================================================================

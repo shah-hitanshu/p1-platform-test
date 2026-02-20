@@ -53,6 +53,8 @@ import {
 } from '../constants/security-limits';
 import { checkAgentStatus } from '../middleware/agent-status-middleware';
 import { getDocumentByPath } from '../services/document-service';
+import { hasPermission } from '../auth/authorization';
+import type { AuthenticatedPrincipal, RolePermissions } from '../types';
 
 /**
  * Environment interface for Durable Object bindings
@@ -700,15 +702,45 @@ async function validateFocusRegionsBody(
 }
 
 /**
+ * Auth Phase 4: Context passed to realtime route handler.
+ * Contains the authenticated principal for authorization and identity verification.
+ */
+export interface RealtimeRouteContext {
+  principal: AuthenticatedPrincipal;
+}
+
+/**
+ * Auth Phase 4: Determine required permission for a realtime action.
+ * Read actions require canView, write actions require canEditDocuments.
+ */
+function getRequiredPermission(action: RouteParams['action']): keyof RolePermissions {
+  switch (action) {
+    case 'edits':
+    case 'agent-edit-start':
+    case 'agent-edit-complete':
+    case 'agent-edit-abort':
+    case 'agent-stop':
+    case 'can-agent-edit':
+      return 'canEditDocuments';
+    case 'connect':
+    case 'focus-regions':
+    default:
+      return 'canView';
+  }
+}
+
+/**
  * Handle real-time API routes
  *
  * @param request - Incoming request
  * @param env - Worker environment with Durable Object bindings
+ * @param context - Auth Phase 4: Authenticated principal context
  * @returns Response or null if route doesn't match
  */
 export async function handleRealtimeRoutes(
   request: Request,
   env: RealtimeEnv,
+  context: RealtimeRouteContext,
 ): Promise<Response | null> {
   const url = new URL(request.url);
   const pathname = url.pathname;
@@ -742,6 +774,27 @@ export async function handleRealtimeRoutes(
     }
   }
 
+  // ==========================================================================
+  // Auth Phase 4: Cross-validate actorId against authenticated principal
+  // ==========================================================================
+  const clientActorId = request.headers.get('X-Actor-Id')
+    ?? url.searchParams.get('actorId');
+
+  if (clientActorId !== null && clientActorId !== '' && clientActorId !== context.principal.id) {
+    return errorResponse(403, 'Actor ID does not match authenticated identity', origin, patterns);
+  }
+
+  // ==========================================================================
+  // Auth Phase 4: Authorization check using effective role
+  // ==========================================================================
+  const requiredPermission = getRequiredPermission(params.action);
+  const permitted = await hasPermission(
+    context.principal, params.siteId, params.branchId, requiredPermission,
+  );
+  if (!permitted) {
+    return errorResponse(403, `Missing permission: ${requiredPermission}`, origin, patterns);
+  }
+
   // Determine the target endpoint and validate method
   let targetEndpoint: string;
   let forwardedRequest: Request;
@@ -773,6 +826,11 @@ export async function handleRealtimeRoutes(
     const bodyResult = await validateEditsBody(request, origin, patterns);
     if (bodyResult instanceof Response) {
       return bodyResult;
+    }
+
+    // Auth Phase 4: Cross-validate body actorId against principal
+    if (bodyResult.actorId !== context.principal.id) {
+      return errorResponse(403, 'Actor ID in request body does not match authenticated identity', origin, patterns);
     }
 
     targetEndpoint = '/apply';
@@ -974,39 +1032,66 @@ export async function handleRealtimeRoutes(
   const durableObjectId = env.DOCUMENT_STATE.idFromName(sessionId);
   const stub = env.DOCUMENT_STATE.get(durableObjectId);
 
-  // Add session ID header to forwarded request so DO can parse it
-  // (state.id.name is not available in Miniflare local emulator)
-  // For WebSocket upgrade requests, we must pass the original request to preserve
-  // WebSocket-specific headers (Upgrade, Connection, Sec-WebSocket-*)
+  // ==========================================================================
+  // Auth Phase 4: Inject verified headers and strip sensitive data
+  // ==========================================================================
   const isWebSocketUpgrade = request.headers.get('Upgrade')?.toLowerCase() === 'websocket';
 
   let requestWithSessionId: Request;
   if (isWebSocketUpgrade) {
-    // For WebSocket: clone the forwarded request and add session header
-    // Using Request constructor with request object preserves WebSocket headers
-    const headersWithSession = new Headers(forwardedRequest.headers);
-    headersWithSession.set('X-Session-Id', sessionId);
-    requestWithSessionId = new Request(forwardedRequest.url, forwardedRequest);
-    // Note: We can't modify headers on a cloned request, so we need a workaround
-    // Pass session ID via URL query parameter instead for WebSocket
-    const urlWithSession = new URL(forwardedRequest.url);
-    urlWithSession.searchParams.set('_sessionId', sessionId);
-    requestWithSessionId = new Request(urlWithSession.toString(), forwardedRequest);
+    // For WebSocket: pass verified identity and session ID via query params
+    // (headers cannot be modified on cloned WebSocket requests)
+    const urlWithVerified = new URL(forwardedRequest.url);
+    urlWithVerified.searchParams.set('_sessionId', sessionId);
+    urlWithVerified.searchParams.set('_verifiedActorId', context.principal.id);
+    urlWithVerified.searchParams.set('_verifiedActorType', context.principal.type);
+    if (context.principal.authProvider !== undefined) {
+      urlWithVerified.searchParams.set('_verifiedAuthProvider', context.principal.authProvider);
+    }
+    if (context.principal.email !== undefined) {
+      urlWithVerified.searchParams.set('_verifiedEmail', context.principal.email);
+    }
+    if (context.principal.name !== undefined) {
+      urlWithVerified.searchParams.set('_verifiedName', context.principal.name);
+    }
+    if (context.principal.avatarUrl !== undefined) {
+      urlWithVerified.searchParams.set('_verifiedAvatarUrl', context.principal.avatarUrl);
+    }
+    // Auth Phase 4: Strip apiKey from query params (don't leak tokens to DO)
+    urlWithVerified.searchParams.delete('apiKey');
+    requestWithSessionId = new Request(urlWithVerified.toString(), forwardedRequest);
   } else {
-    // For regular HTTP requests: create new request with session header
-    const headersWithSession = new Headers(forwardedRequest.headers);
-    headersWithSession.set('X-Session-Id', sessionId);
+    // For regular HTTP requests: add verified headers and session ID
+    const headersWithVerified = new Headers(forwardedRequest.headers);
+    headersWithVerified.set('X-Session-Id', sessionId);
+    headersWithVerified.set('X-Verified-Actor-Id', context.principal.id);
+    headersWithVerified.set('X-Verified-Actor-Type', context.principal.type);
+    if (context.principal.authProvider !== undefined) {
+      headersWithVerified.set('X-Verified-Auth-Provider', context.principal.authProvider);
+    }
+    if (context.principal.email !== undefined) {
+      headersWithVerified.set('X-Verified-Email', context.principal.email);
+    }
+    if (context.principal.name !== undefined) {
+      headersWithVerified.set('X-Verified-Name', context.principal.name);
+    }
+    if (context.principal.avatarUrl !== undefined) {
+      headersWithVerified.set('X-Verified-Avatar-Url', context.principal.avatarUrl);
+    }
     // Note: duplex is required when request has a streaming body
     const requestInit: RequestInit = {
       method: forwardedRequest.method,
-      headers: headersWithSession,
+      headers: headersWithVerified,
       body: forwardedRequest.body,
     };
     // Add duplex option for streaming bodies (required by spec)
     if (forwardedRequest.body !== null) {
       (requestInit as RequestInit & { duplex: string }).duplex = 'half';
     }
-    requestWithSessionId = new Request(forwardedRequest.url, requestInit);
+    // Auth Phase 4: Strip apiKey from query params on non-WebSocket too
+    const cleanUrl = new URL(forwardedRequest.url);
+    cleanUrl.searchParams.delete('apiKey');
+    requestWithSessionId = new Request(cleanUrl.toString(), requestInit);
   }
 
   // Forward request to Durable Object

@@ -16,6 +16,7 @@ export function Layout() {
   const navItems = [
     { path: '/', label: 'Dashboard' },
     { path: '/sites', label: 'Sites' },
+    { path: '/users', label: 'Users' },
   ];
 
   return (

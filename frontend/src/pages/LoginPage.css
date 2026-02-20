@@ -131,6 +131,31 @@
   color: var(--dt-color-gray-5, #6c757d);
 }
 
+/* Login sections */
+.login-section {
+  padding: 16px 32px;
+}
+
+/* OAuth / mock divider */
+.login-divider {
+  display: flex;
+  align-items: center;
+  padding: 0 32px;
+  color: var(--dt-color-gray-5, #6c757d);
+  font-size: 0.8125rem;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
+}
+
+.login-divider span {
+  padding: 0 12px;
+}
+
 /* PDS Alert spacing adjustment */
 .login-form .pds-alert {
   margin-bottom: 20px;

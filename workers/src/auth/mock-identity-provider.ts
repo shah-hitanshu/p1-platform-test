@@ -155,6 +155,7 @@ export class MockIdentityProvider {
       const sub = payload.sub;
       const type = payload.type as 'user' | 'agent' | 'service' | undefined;
       const email = payload.email as string | undefined;
+      const name = payload.name as string | undefined;
       const siteRoles = payload.siteRoles as
         | Record<string, PantheonRole>
         | undefined;
@@ -171,6 +172,7 @@ export class MockIdentityProvider {
         id: sub,
         type,
         email,
+        name,
         pantheonSiteRoles: siteRoles ?? {},
         tokenExpiry,
       };

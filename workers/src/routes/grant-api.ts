@@ -4,7 +4,7 @@
  * REST API endpoints for branch grant operations.
  */
 
-import type { RoleName } from '../types';
+import type { RoleName, AuthenticatedPrincipal } from '../types';
 import {
   createGrant,
   getGrant,
@@ -15,6 +15,7 @@ import {
   DuplicateGrantError,
   BranchNotFoundError,
 } from '../services';
+import { assertPermission, AuthorizationError } from '../auth/authorization';
 
 /**
  * Request context for grant routes
@@ -23,10 +24,7 @@ export interface GrantRouteContext {
   siteId: string;
   branchId: string;
   grantId?: string;
-  principal: {
-    id: string;
-    type: 'user' | 'agent';
-  };
+  principal: AuthenticatedPrincipal;
 }
 
 /**
@@ -109,7 +107,7 @@ async function handleCreateGrant(
     actorType: body.actorType,
     role: body.role,
     grantedById: context.principal.id,
-    grantedByType: context.principal.type,
+    grantedByType: context.principal.type as 'user' | 'agent',
     reason: body.reason,
   });
 
@@ -181,8 +179,10 @@ export async function handleGrantRoutes(
     if (context.grantId !== undefined) {
       switch (method) {
         case 'GET':
+          await assertPermission(context.principal, context.siteId, context.branchId, 'canView');
           return await handleGetGrant(context);
         case 'DELETE':
+          await assertPermission(context.principal, context.siteId, context.branchId, 'canManageGrants');
           return await handleDeleteGrant(context);
         default:
           return errorResponse('Method not allowed', 405);
@@ -192,14 +192,19 @@ export async function handleGrantRoutes(
     // Collection operations
     switch (method) {
       case 'GET':
+        await assertPermission(context.principal, context.siteId, context.branchId, 'canView');
         return await handleListGrants(context);
       case 'POST':
+        await assertPermission(context.principal, context.siteId, context.branchId, 'canManageGrants');
         return await handleCreateGrant(request, context);
       default:
         return errorResponse('Method not allowed', 405);
     }
   } catch (error) {
     // Handle known errors
+    if (error instanceof AuthorizationError) {
+      return errorResponse(error.message, 403);
+    }
     if (error instanceof GrantNotFoundError) {
       return errorResponse('Grant not found', 404);
     }

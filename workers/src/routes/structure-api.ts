@@ -12,11 +12,14 @@ import {
   updateBranchStructure,
   deleteBranchStructure,
   getStructureAtCheckpoint,
+  getCheckpoint,
   BranchNotFoundError,
   StructureNotFoundError,
   DuplicateStructureSlugError,
   CheckpointNotFoundError,
 } from '../services';
+import { assertPermission, AuthorizationError } from '../auth/authorization';
+import type { AuthenticatedPrincipal } from '../types';
 import { validatePagination, validateJsonSize, SIZE_LIMITS } from './validation';
 
 /**
@@ -27,10 +30,7 @@ export interface StructureRouteContext {
   branchId?: string;
   checkpointId?: string;
   structureId?: string;
-  principal: {
-    id: string;
-    type: 'user' | 'agent';
-  };
+  principal: AuthenticatedPrincipal;
 }
 
 /**
@@ -282,17 +282,37 @@ export async function handleStructureRoutes(
       if (method !== 'GET') {
         return errorResponse('Method not allowed', 405);
       }
+      // Look up checkpoint to get branchId for authorization
+      try {
+        const checkpoint = await getCheckpoint(context.checkpointId);
+        if (checkpoint != null) {
+          await assertPermission(context.principal, context.siteId, checkpoint.branchId, 'canView');
+        }
+      } catch (error) {
+        if (error instanceof AuthorizationError) {
+          throw error;
+        }
+        // If checkpoint lookup fails, defer to handler for proper error handling
+      }
       return await handleGetStructureAtCheckpoint(context);
+    }
+
+    // All remaining routes require branchId
+    if (context.branchId === undefined) {
+      return errorResponse('Branch ID is required', 400);
     }
 
     // Routes with structureId (single structure operations)
     if (context.structureId !== undefined) {
       switch (method) {
         case 'GET':
+          await assertPermission(context.principal, context.siteId, context.branchId, 'canView');
           return await handleGetStructure(context);
         case 'PATCH':
+          await assertPermission(context.principal, context.siteId, context.branchId, 'canEdit');
           return await handleUpdateStructure(request, context);
         case 'DELETE':
+          await assertPermission(context.principal, context.siteId, context.branchId, 'canEdit');
           return await handleDeleteStructure(context);
         default:
           return errorResponse('Method not allowed', 405);
@@ -302,14 +322,19 @@ export async function handleStructureRoutes(
     // Routes without structureId (collection operations)
     switch (method) {
       case 'GET':
+        await assertPermission(context.principal, context.siteId, context.branchId, 'canView');
         return await handleListStructures(request, context);
       case 'POST':
+        await assertPermission(context.principal, context.siteId, context.branchId, 'canEdit');
         return await handleCreateStructure(request, context);
       default:
         return errorResponse('Method not allowed', 405);
     }
   } catch (error) {
     // Handle known errors
+    if (error instanceof AuthorizationError) {
+      return errorResponse(error.message, 403);
+    }
     if (error instanceof BranchNotFoundError) {
       return errorResponse('Branch not found', 404);
     }

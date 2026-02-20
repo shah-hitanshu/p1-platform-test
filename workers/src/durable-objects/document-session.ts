@@ -753,14 +753,21 @@ export class DocumentSession {
       return this.errorResponse(400, 'actorId is required');
     }
 
+    // Auth Phase 4: Cross-check body actorId against verified header
+    const verifiedActorId = request.headers.get('X-Verified-Actor-Id');
+    if (verifiedActorId !== null && verifiedActorId !== '' && body.actorId !== verifiedActorId) {
+      return this.errorResponse(403, 'Actor ID in request body does not match verified identity');
+    }
+
     // Security: Validate actorId format
     const actorIdError = this.validateActorId(body.actorId);
     if (actorIdError !== null) {
       return this.errorResponse(400, actorIdError);
     }
 
-    // Determine actorType from header (default to 'user' for backwards compatibility)
-    const actorTypeHeader = request.headers.get('X-Actor-Type');
+    // Determine actorType from verified header or client header (default to 'user')
+    const actorTypeHeader = request.headers.get('X-Verified-Actor-Type')
+      ?? request.headers.get('X-Actor-Type');
     const isAgent = actorTypeHeader === 'agent';
 
     // Agents must provide a valid editSessionId
@@ -921,10 +928,45 @@ export class DocumentSession {
    * Handle /connect endpoint for WebSocket connections
    */
   private handleWebSocket(request: Request): Response {
-    // Get actor info from headers OR query params (browsers can't send custom headers with WebSocket)
     const url = new URL(request.url);
-    const actorId = request.headers.get('X-Actor-Id') ?? url.searchParams.get('actorId');
-    const actorType = request.headers.get('X-Actor-Type') ?? url.searchParams.get('actorType');
+
+    // Auth Phase 4: Prefer verified identity from worker over client-supplied headers
+    const verifiedActorId = request.headers.get('X-Verified-Actor-Id')
+      ?? url.searchParams.get('_verifiedActorId');
+    const verifiedActorType = request.headers.get('X-Verified-Actor-Type')
+      ?? url.searchParams.get('_verifiedActorType');
+    const verifiedAuthProvider = request.headers.get('X-Verified-Auth-Provider')
+      ?? url.searchParams.get('_verifiedAuthProvider');
+    const verifiedEmail = request.headers.get('X-Verified-Email')
+      ?? url.searchParams.get('_verifiedEmail');
+    const verifiedName = request.headers.get('X-Verified-Name')
+      ?? url.searchParams.get('_verifiedName');
+    const verifiedAvatarUrl = request.headers.get('X-Verified-Avatar-Url')
+      ?? url.searchParams.get('_verifiedAvatarUrl');
+
+    let actorId: string | null;
+    let actorType: string | null;
+    let isVerified: boolean;
+    let authProvider: string | undefined;
+    let email: string | undefined;
+    let actorName: string | undefined;
+    let actorAvatar: string | undefined;
+
+    if (verifiedActorId !== null && verifiedActorId !== '') {
+      // Use verified identity from worker
+      actorId = verifiedActorId;
+      actorType = verifiedActorType;
+      isVerified = true;
+      authProvider = verifiedAuthProvider ?? undefined;
+      email = verifiedEmail ?? undefined;
+      actorName = verifiedName ?? undefined;
+      actorAvatar = verifiedAvatarUrl ?? undefined;
+    } else {
+      // Legacy/test path: use client-supplied headers
+      actorId = request.headers.get('X-Actor-Id') ?? url.searchParams.get('actorId');
+      actorType = request.headers.get('X-Actor-Type') ?? url.searchParams.get('actorType');
+      isVerified = false;
+    }
 
     if (actorId === null || actorId === '') {
       return this.errorResponse(400, 'actorId is required (via X-Actor-Id header or actorId query param)');
@@ -964,10 +1006,15 @@ export class DocumentSession {
     // Accept the WebSocket connection
     server.accept();
 
-    // Store connection metadata
+    // Store connection metadata with Auth Phase 4 fields
     const meta: ConnectionMeta = {
       actorId,
-      actorType: actorType,
+      actorType,
+      verified: isVerified,
+      authProvider: authProvider as ConnectionMeta['authProvider'],
+      email,
+      name: actorName,
+      avatar: actorAvatar,
     };
     this.connections.set(server, meta);
 
@@ -2214,7 +2261,8 @@ export class DocumentSession {
         actorId: meta.actorId,
         actorType: meta.actorType,
         role: meta.actorType === 'agent' ? 'agent' : 'human',
-        name: meta.actorId, // Use actorId as name (real name would need user lookup)
+        name: meta.name ?? meta.email ?? meta.actorId,
+        avatar: meta.avatar,
         state: 'active',
         lastActivityAt: now,
         joinedAt: now,
@@ -2999,7 +3047,8 @@ export class DocumentSession {
         actorId: meta.actorId,
         actorType: meta.actorType,
         role: meta.actorType === 'agent' ? 'agent' : 'human',
-        name: meta.actorId,
+        name: meta.name ?? meta.email ?? meta.actorId,
+        avatar: meta.avatar,
         state: 'active',
         focusRegions: validRegions,
       });
@@ -3094,7 +3143,8 @@ export class DocumentSession {
         actorId: meta.actorId,
         actorType: meta.actorType,
         role: meta.actorType === 'agent' ? 'agent' : 'human',
-        name: meta.actorId,
+        name: meta.name ?? meta.email ?? meta.actorId,
+        avatar: meta.avatar,
         state: 'active',
         lastActivityAt: now,
         joinedAt: now,

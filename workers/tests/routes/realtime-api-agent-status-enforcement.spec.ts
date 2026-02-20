@@ -26,8 +26,16 @@ vi.mock('../../src/services/document-service', () => ({
   getDocumentByPath: vi.fn(),
 }));
 
+// Mock authorization module
+vi.mock('../../src/auth/authorization', () => ({
+  hasPermission: vi.fn().mockResolvedValue(true),
+}));
+
 // Import mocked modules for test setup
 import * as documentService from '../../src/services/document-service';
+import { hasPermission } from '../../src/auth/authorization';
+import type { RealtimeRouteContext } from '../../src/routes/realtime-api';
+import type { AuthenticatedPrincipal } from '../../src/types';
 
 /**
  * Helper to assert a value is not null and return it as non-null type.
@@ -90,6 +98,16 @@ function createMockAgent(status: 'active' | 'suspended' | 'disabled', id = 'agen
   };
 }
 
+const defaultPrincipal: AuthenticatedPrincipal = {
+  id: 'test-actor',
+  type: 'user',
+  email: 'test@example.com',
+  pantheonSiteRoles: { 'site-123': 'admin' },
+  tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
+  authProvider: 'mock',
+};
+const defaultContext: RealtimeRouteContext = { principal: defaultPrincipal };
+
 describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
   let mockEnv: MockEnv;
   let mockStub: MockDurableObjectStub;
@@ -97,6 +115,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(hasPermission).mockResolvedValue(true);
 
     // Mock getDocumentByPath to return a document by default
     vi.mocked(documentService.getDocumentByPath).mockResolvedValue({
@@ -155,7 +174,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
@@ -186,7 +205,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
@@ -217,7 +236,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(404);
@@ -248,7 +267,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(500);
@@ -277,7 +296,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(200);
@@ -307,7 +326,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       // Durable Object should NOT be called
       expect(mockStub.fetch).not.toHaveBeenCalled();
@@ -338,7 +357,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
@@ -367,7 +386,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
@@ -396,7 +415,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(200);
@@ -426,7 +445,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv);
+      await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       expect(mockStub.fetch).not.toHaveBeenCalled();
     });
@@ -454,7 +473,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
@@ -481,7 +500,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
@@ -508,7 +527,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(200);
@@ -539,7 +558,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       // Should pass through to Durable Object
@@ -568,7 +587,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
@@ -598,7 +617,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
@@ -628,7 +647,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(200);
@@ -656,7 +675,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(200);
@@ -687,7 +706,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
@@ -717,7 +736,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(404);
@@ -747,7 +766,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(500);
@@ -779,7 +798,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv);
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);

@@ -7,6 +7,9 @@
  * Effective Role = max(Pantheon Site Role, Branch Grant)
  * Branch grants can elevate access but never restrict it.
  *
+ * Supports dual-source role resolution: local database roles + MAS-synced roles.
+ * When MAS client is provided, stale cached roles are refreshed from MAS.
+ *
  * @see collaborative-state-system-architecture-v2.2.md Section "Branch-Level Authorization"
  */
 
@@ -19,6 +22,7 @@ import type {
 } from '../types';
 import { query } from '../db';
 import { ROLES, mapPantheonRole, mapAgentRole, maxRole } from './roles';
+import type { MASClient } from '../services/mas-client';
 
 /**
  * Result of an effective role calculation.
@@ -46,16 +50,31 @@ export class AuthorizationError extends Error {
 }
 
 /**
+ * Checks if a principal is a Pantheon user authenticated via Auth0.
+ */
+export function isPantheonUser(principal: AuthenticatedPrincipal): boolean {
+  return principal.type === 'user' && principal.authProvider === 'auth0';
+}
+
+/**
  * Gets the site-level role for a principal from the database.
  * Falls back to JWT-embedded roles for backwards compatibility.
  *
+ * When masClient is provided and the principal is a Pantheon user,
+ * performs dual-source role resolution:
+ * 1. Queries both source='local' and source='mas' rows
+ * 2. Refreshes stale MAS cache from the MAS API
+ * 3. Returns max(localRole, masRole)
+ *
  * @param principal - The authenticated principal
  * @param siteId - The site ID
+ * @param masClient - Optional MAS client for live role fetching
  * @returns The system role name for this principal on this site
  */
 async function getSiteRole(
   principal: AuthenticatedPrincipal,
   siteId: string,
+  masClient?: MASClient,
 ): Promise<RoleName> {
   if (principal.type === 'agent') {
     // Query agent_site_roles table
@@ -68,8 +87,11 @@ async function getSiteRole(
     if (result.rows[0]) {
       return mapAgentRole(result.rows[0].role);
     }
+  } else if (masClient && isPantheonUser(principal)) {
+    // Dual-source resolution for Pantheon users with MAS
+    return await getDualSourceRole(principal, siteId, masClient);
   } else {
-    // Query user_site_roles table
+    // Query user_site_roles table (legacy single-source)
     const result = await query<{ role: PantheonRole }>(
       `SELECT role FROM user_site_roles
        WHERE user_id = $1 AND site_id = $2`,
@@ -87,6 +109,84 @@ async function getSiteRole(
 }
 
 /**
+ * Performs dual-source role resolution for Pantheon users.
+ * Queries both local and MAS-synced roles, refreshing stale MAS data.
+ */
+async function getDualSourceRole(
+  principal: AuthenticatedPrincipal,
+  siteId: string,
+  masClient: MASClient,
+): Promise<RoleName> {
+  // Query both sources in one query
+  const result = await query<{ role: PantheonRole; source: string; updated_at: string }>(
+    `SELECT role, source, updated_at FROM app.user_site_roles
+     WHERE user_id = $1 AND site_id = $2`,
+    [principal.id, siteId],
+  );
+
+  let localRole: RoleName = 'NO_ACCESS';
+  let masRole: RoleName = 'NO_ACCESS';
+  let masRow: { role: PantheonRole; updated_at: string } | null = null;
+
+  for (const row of result.rows) {
+    if (row.source === 'local') {
+      localRole = mapPantheonRole(row.role);
+    } else if (row.source === 'mas') {
+      masRow = row;
+      masRole = mapPantheonRole(row.role);
+    }
+  }
+
+  const cacheTtlSeconds = masClient.cacheTtlSeconds;
+
+  // Check if MAS data needs refresh
+  const needsRefresh = masRow === null ||
+    isMasRowStale(masRow.updated_at, cacheTtlSeconds);
+
+  if (needsRefresh) {
+    try {
+      const freshRole = await masClient.getUserSiteRole(principal.id, siteId);
+
+      if (freshRole !== null) {
+        // Upsert the MAS role
+        await query(
+          `INSERT INTO app.user_site_roles (user_id, site_id, role, source, updated_at)
+           VALUES ($1, $2, $3, 'mas', NOW())
+           ON CONFLICT (user_id, site_id, source)
+           DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()`,
+          [principal.id, siteId, freshRole],
+        );
+        masRole = mapPantheonRole(freshRole);
+      } else if (masRow === null) {
+        // No MAS data and fetch returned null - masRole stays NO_ACCESS
+        masRole = 'NO_ACCESS';
+      }
+      // If fetch failed but we have stale data, keep using stale masRole
+    } catch {
+      // MAS fetch failed - use stale cache if available, otherwise masRole stays as-is
+      console.error('MASClient: Failed to refresh MAS role, using cached data');
+    }
+  }
+
+  // If both sources are NO_ACCESS, fall back to JWT
+  if (localRole === 'NO_ACCESS' && masRole === 'NO_ACCESS') {
+    const jwtRole = principal.pantheonSiteRoles[siteId];
+    return mapPantheonRole(jwtRole);
+  }
+
+  return maxRole(localRole, masRole);
+}
+
+/**
+ * Checks if a MAS cache row is stale based on TTL.
+ */
+function isMasRowStale(updatedAt: string, cacheTtlSeconds: number): boolean {
+  const updatedTime = new Date(updatedAt).getTime();
+  const staleThreshold = Date.now() - cacheTtlSeconds * 1000;
+  return updatedTime < staleThreshold;
+}
+
+/**
  * Calculates the effective role for a principal on a specific branch.
  *
  * The effective role is calculated as the maximum of:
@@ -98,6 +198,7 @@ async function getSiteRole(
  * @param principal - The authenticated principal
  * @param siteId - The site ID
  * @param branchId - The branch ID
+ * @param masClient - Optional MAS client for live role fetching
  * @returns The effective role and role name
  *
  * @example
@@ -112,9 +213,18 @@ export async function getEffectiveRole(
   principal: AuthenticatedPrincipal,
   siteId: string,
   branchId: string,
+  masClient?: MASClient,
 ): Promise<EffectiveRoleResult> {
+  // System admins have full access to all sites
+  if (principal.systemRole === 'admin') {
+    return {
+      role: ROLES.ADMIN,
+      roleName: 'ADMIN',
+    };
+  }
+
   // Step 1: Get baseline role from database (with JWT fallback)
-  const baselineRoleName = await getSiteRole(principal, siteId);
+  const baselineRoleName = await getSiteRole(principal, siteId, masClient);
 
   // Step 2: Check for branch-level elevation
   const branchGrant = await query<{ role: RoleName }>(
@@ -141,6 +251,7 @@ export async function getEffectiveRole(
  * @param siteId - The site ID
  * @param branchId - The branch ID
  * @param permission - The permission to check
+ * @param masClient - Optional MAS client for live role fetching
  * @returns True if the principal has the permission
  *
  * @example
@@ -153,8 +264,9 @@ export async function hasPermission(
   siteId: string,
   branchId: string,
   permission: keyof RolePermissions,
+  masClient?: MASClient,
 ): Promise<boolean> {
-  const { role } = await getEffectiveRole(principal, siteId, branchId);
+  const { role } = await getEffectiveRole(principal, siteId, branchId, masClient);
   return role[permission];
 }
 
@@ -166,6 +278,7 @@ export async function hasPermission(
  * @param siteId - The site ID
  * @param branchId - The branch ID
  * @param permission - The permission to assert
+ * @param masClient - Optional MAS client for live role fetching
  * @throws AuthorizationError if the permission is not granted
  *
  * @example
@@ -179,8 +292,9 @@ export async function assertPermission(
   siteId: string,
   branchId: string,
   permission: keyof RolePermissions,
+  masClient?: MASClient,
 ): Promise<void> {
-  const { role, roleName } = await getEffectiveRole(principal, siteId, branchId);
+  const { role, roleName } = await getEffectiveRole(principal, siteId, branchId, masClient);
 
   if (!role[permission]) {
     throw new AuthorizationError(

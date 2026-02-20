@@ -400,17 +400,14 @@ export function createToolHandlers(apiClient: ApiClient): ToolHandlers {
 
     async start_edit_session(input: StartEditSessionInput): Promise<ToolResult> {
       try {
-        console.error('[MCP DEBUG] start_edit_session called with trigger: autonomous');
         const result = await apiClient.startAgentEdit({
           siteId: input.site_id,
           branchId: input.branch_id,
           documentPath: input.document_path,
           intent: input.intent,
           targetRegions: input.target_regions,
-          trigger: 'autonomous', // TODO: Changed for testing checkpoint creation - revert after validation
+          trigger: 'autonomous',
         });
-
-        console.error('[MCP DEBUG] start_edit_session result:', JSON.stringify(result, null, 2));
 
         return formatResult({
           editSessionId: result.editSessionId,
@@ -421,7 +418,6 @@ export function createToolHandlers(apiClient: ApiClient): ToolHandlers {
             'Edit session started. Use apply_document_edits to make changes, then complete_edit_session when done.',
         });
       } catch (error) {
-        console.error('[MCP DEBUG] start_edit_session error:', error);
         return formatError(error);
       }
     },

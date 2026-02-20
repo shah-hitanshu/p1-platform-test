@@ -4,6 +4,8 @@
 
 This guide documents the authentication and authorization patterns used in Pantheon Content Publisher and provides guidance for implementing similar systems in other applications.
 
+> **Note on Pantheon's Membership and Authorization Service (MAS)**: PCC does **not** use Pantheon's centralized MAS for authorization. PCC uses Pantheon (via Auth0) strictly for **authentication (authN)** and manages all **authorization (authZ) internally** using Firestore-backed role and membership data. All permission checks query PCC's own Firestore collections directly — there are no calls to external authorization services.
+
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
@@ -11,23 +13,28 @@ This guide documents the authentication and authorization patterns used in Panth
 3. [Token Management](#token-management)
 4. [Authorization & Role System](#authorization--role-system)
 5. [Permission Checking Patterns](#permission-checking-patterns)
-6. [Implementation Guide](#implementation-guide)
-7. [Best Practices](#best-practices)
-8. [Code Examples](#code-examples)
+6. [Account Mapping & Credential Management](#account-mapping--credential-management)
+7. [Frontend Authentication](#frontend-authentication)
+8. [Implementation Guide](#implementation-guide)
+9. [Best Practices](#best-practices)
+10. [Code Examples](#code-examples)
 
 ---
 
 ## Architecture Overview
 
-Content Publisher implements a **multi-provider authentication system** with **flexible, role-based authorization** that operates without external dependencies for permission checking.
+Content Publisher implements a **multi-provider authentication system** with **self-contained, role-based authorization** backed by Firestore. PCC relies on external identity providers (Auth0, Google, Microsoft) solely for **authentication** — all authorization decisions are made internally without calling any external authorization service.
 
 ### Key Architectural Decisions
 
 1. **Multiple Authentication Providers**: Support Auth0, Google OAuth, Microsoft/Azure AD, and custom scoped tokens
-2. **Lazy Permission Evaluation**: Permissions computed on-demand with request-scoped caching
-3. **Domain-Based Access Control**: Workspace domains provide automatic collaboration within organizations
-4. **Hybrid Permission Model**: Combines external system permissions (Google Drive) with internal authorization (Firestore)
-5. **Request-Scoped User Object**: All permission methods attached to `req.user` for clean API design
+2. **Self-Contained Authorization**: All authZ is internal — Firestore stores site admins, collaborators, and account mappings. No dependency on Pantheon's MAS or any external authorization service
+3. **Lazy Permission Evaluation**: Permissions computed on-demand with request-scoped caching
+4. **Domain-Based Access Control**: Workspace domains provide automatic collaboration within organizations
+5. **Hybrid Permission Model**: Combines external system permissions (Google Drive) with internal authorization (Firestore)
+6. **Email Tier-Based Access**: Gmail addresses (`@gmail.com`) receive free-tier permissions; all other domains are treated as paid-tier with additional capabilities
+7. **Request-Scoped User Object**: All permission methods attached to `req.user` for clean API design
+8. **Account Mapping**: Auth0 users can connect Google/Microsoft accounts, enabling cross-provider Drive access via a Credential Manager service
 
 ### High-Level Flow
 
@@ -37,27 +44,29 @@ Content Publisher implements a **multi-provider authentication system** with **f
 └──────┬──────┘
        │ Bearer Token
        ▼
-┌─────────────────────┐
-│  Token Validation   │
-│  - Auth0 JWT        │
-│  - Google ID Token  │
-│  - Microsoft Token  │
-│  - Scoped PCC Token │
-└──────┬──────────────┘
+┌──────────────────────────┐
+│  Token Validation (authN)│  ← External providers
+│  - Auth0 JWT             │
+│  - Google ID Token       │
+│  - Microsoft Token       │
+│  - Scoped PCC Token      │
+└──────┬───────────────────┘
        │
        ▼
-┌─────────────────────┐
-│  Populate req.user  │
-│  + permission fns   │
-└──────┬──────────────┘
+┌──────────────────────────┐
+│  Populate req.user       │
+│  + permission fns        │
+│  + account mappings      │  ← Auth0 → Google account links
+└──────┬───────────────────┘
        │
        ▼
-┌─────────────────────┐
-│  Route Handler      │
-│  - Check access     │
-│  - Determine role   │
-│  - Enforce policy   │
-└─────────────────────┘
+┌──────────────────────────┐
+│  Route Handler (authZ)   │  ← All internal (Firestore)
+│  - Google Drive access   │
+│  - Site admin/collab     │
+│  - Domain/workspace      │
+│  - Email tier (free/paid)│
+└──────────────────────────┘
 ```
 
 ---
@@ -190,7 +199,7 @@ Content Publisher uses **6 distinct token types**:
 
 ### Auth0 JWT Validation
 
-**Challenge**: Support multiple Auth0 issuers during migration
+**Challenge**: Support multiple Auth0 issuers during migration between Auth0 tenants or to a custom domain. The code supports `AUTH0_ISSUER_BASE_URL` (original) and `AUTH0_NEW_ISSUER_BASE_URL` (new/custom domain) simultaneously.
 
 ```typescript
 async function validateAuth0Token(token: string) {
@@ -348,6 +357,8 @@ async function validateAPIKey(key: string): Promise<boolean> {
 
 ### Role Definition Pattern
 
+**File**: `permissions.ts`
+
 ```typescript
 interface Role {
   // View permissions
@@ -387,108 +398,156 @@ interface Role {
 
 ### Access Considerations
 
+These factors are gathered by `determineAccessConsiderations()` which queries both Google Drive (for document access) and Firestore (for site membership). For `INGEST_API` and `MS_OFFICE` content sources, only ownership-based checks are used since there is no way to independently verify access through a third-party API.
+
 ```typescript
-type AccessConsiderations = {
+interface AccessConsiderations {
   // Document-level access
-  hasDocumentAccess: boolean;      // Via Google Drive or ownership
+  hasDocumentAccess: boolean;      // Via Google Drive API or ownership
   isOwner: boolean;                // File/resource owner
-  hasEditAccess: boolean;          // Can modify content
+  hasEditAccess: boolean;          // Can modify content (Drive capabilities or ownership)
 
   // Organization-level access
-  isGmail: boolean;                // Free tier (@gmail.com)
-  isPaidAccount: boolean;          // Paid tier (non-gmail)
-  isSameWorkspace: boolean;        // Same email domain
+  isGmail: boolean;                // Free tier (domain === '@gmail.com')
+  isPaidAccount: boolean;          // Paid tier (!isGmail) — TODO: eventually pull from DB
+  isSameWorkspace: boolean;        // User domain matches file owner domain
 
   // Site-level access
-  isAdmin: boolean;                // Site administrator
-  isContentManager: boolean;       // Content permissions
-  isPlayground: boolean;           // Sandbox environment
-};
+  isAdmin: boolean;                // In site's admins[] or originalCreator
+  isContentManager: boolean;       // Has edit permissions on the document
+  isPlayground: boolean;           // Site's __isPlayground flag
+}
 ```
 
 ### Role Templates
+
+PCC defines **5 roles** that map to the email-tier model. Gmail users (`@gmail.com`) are free-tier; all other domains are paid-tier.
 
 ```typescript
 const NO_ACCESS: Role = {
   canView: false,
 };
 
+// For gmail users with edit access or admin status.
+// Grants content editing but not site management.
+const FREE_TIER_FULL_ACCESS: Role = {
+  canView: true,
+  canManageAnalytics: true,
+  canManageMetadata: true,
+  canManageMetadataSchema: true,
+  canManageTags: true,
+  canPublish: true,
+  canUnpublish: true,
+  canViewPublishedDocuments: true,
+  canEditComponent: true,
+  canEditArticle: true,
+};
+
+// For users added to a document but not in the owner's workspace.
 const READ_ONLY_ACCESS: Role = {
   canView: true,
   canViewAnalytics: true,
   canViewSite: true,
   canViewMetadata: true,
-  canViewPublishedDocuments: true,
-  // All other permissions default to false
+  canViewMetadataSchema: true,
+  canViewPublishedDocuments: false,
+  canEditComponent: false,
+  canEditArticle: false,
+  canEditSiteURL: false,
 };
 
-const EDITOR: Role = {
+// For paid-account users with edit access (non-admin).
+const PAID_TIER_EDITOR: Role = {
+  canView: true,
+  canViewAnalytics: true,
+  canManageAnalytics: false,
+  canViewSite: true,
+  canManageSite: false,
+  canCreateSite: true,
+  canDeleteSite: false,
+  canManageUsers: false,
+  canViewMetadata: true,
+  canManageMetadata: true,
+  canViewMetadataSchema: true,
+  canManageMetadataSchema: false,
+  canViewPublishedDocuments: true,
+  canManagePublishedDocuments: false,
+  canManageTags: true,
+  canPublish: true,
+  canUnpublish: true,
+  canManageWebhook: false,
+  canEditSiteURL: false,
+  canEditComponent: true,
+  canEditArticle: true,
+};
+
+// For paid-account users with admin status.
+const PAID_TIER_ADMIN: Role = {
   canView: true,
   canViewAnalytics: true,
   canManageAnalytics: true,
   canViewSite: true,
+  canManageSite: true,
   canCreateSite: true,
-  canEditComponent: true,
-  canEditArticle: true,
+  canDeleteSite: true,
+  canManageUsers: true,
   canViewMetadata: true,
   canManageMetadata: true,
+  canViewMetadataSchema: true,
+  canManageMetadataSchema: true,
   canViewPublishedDocuments: true,
   canManagePublishedDocuments: true,
   canManageTags: true,
   canPublish: true,
   canUnpublish: true,
-};
-
-const ADMIN: Role = {
-  ...EDITOR,
-  canManageSite: true,
-  canDeleteSite: true,
-  canEditSiteURL: true,
-  canManageUsers: true,
-  canViewMetadataSchema: true,
-  canManageMetadataSchema: true,
   canManageWebhook: true,
+  canEditComponent: true,
+  canEditArticle: true,
+  canEditSiteURL: true,
 };
 ```
 
 ### Permission Determination Logic
 
+**File**: `permissions.ts` — `determineAccess()`
+
+Note the evaluation order: admin status is checked **before** document access. This means site admins can access content even without direct Google Drive permissions.
+
 ```typescript
-function determineRole(considerations: AccessConsiderations): Role {
-  const {
-    hasDocumentAccess,
-    isGmail,
-    isPaidAccount,
-    isAdmin,
-    hasEditAccess,
-    isPlayground,
-  } = considerations;
+function determineAccess(considerations: AccessConsiderations): Role {
+  const { hasDocumentAccess, isGmail, hasEditAccess, isAdmin, isPlayground } =
+    considerations;
 
-  // No document access = no access at all
-  if (!hasDocumentAccess) {
-    return NO_ACCESS;
-  }
+  let role;
 
-  // Admins get full access (tier-dependent)
+  // 1. Admins get full access (tier-dependent)
   if (isAdmin) {
-    return isPaidAccount ? ADMIN : EDITOR;
+    role = isGmail ? FREE_TIER_FULL_ACCESS : PAID_TIER_ADMIN;
+  }
+  // 2. No document access = no access at all
+  else if (!hasDocumentAccess) {
+    role = NO_ACCESS;
+  }
+  // 3. Edit access = editor role (tier-dependent)
+  else if (hasEditAccess) {
+    role = isGmail ? FREE_TIER_FULL_ACCESS : PAID_TIER_EDITOR;
+  }
+  // 4. Default to read-only
+  else {
+    role = READ_ONLY_ACCESS;
   }
 
-  // Editors get edit permissions (tier-dependent)
-  if (hasEditAccess) {
-    return isPaidAccount ? EDITOR : EDITOR;
-  }
+  role = clone(role);
 
-  // Default to read-only
-  const role = { ...READ_ONLY_ACCESS };
-
-  // Apply restrictions
-  if (isPlayground) {
+  // Playground sites cannot edit site URL
+  if (role.canEditSiteURL && isPlayground) {
     role.canEditSiteURL = false;
   }
 
-  // Connection permission requires edit access
-  role.canConnectToCollection = hasEditAccess;
+  // Connection permission requires both article edit + document edit access
+  role.canConnectToCollection = role.canEditArticle && hasEditAccess;
+
+  role.considerations = considerations;
 
   return role;
 }
@@ -515,18 +574,28 @@ interface User {
   email: string;
   email_verified: boolean;
   domain: string | undefined;
-  authProvider: AuthProvider;
-
-  // Permission checking methods
-  hasAccessToFile(articleId: string): Promise<boolean>;
-  hasEditPermissions(articleId: string): Promise<boolean>;
-  getFileOwner(articleId: string): Promise<string | undefined>;
-  isAdminForSite(siteOrId: string | Site): Promise<boolean>;
-  isCollaboratorForSite(siteOrId: string | Site): Promise<boolean>;
-  hasAccessToSite(siteOrId: string | Site): Promise<boolean>;
+  articleId?: string;
+  siteId?: string;
+  authProvider?: 'auth0' | 'pcc' | 'google' | 'ms' | 'unknown';
+  auth0Id?: string | undefined;
+  isAuth0Registered?: boolean | undefined;
 
   // Token management
   setAccessToken(token: string): void;
+
+  // Document-level permission checks (Google Drive or ownership-based)
+  canOnlyAccessThroughSharedLink(articleId: string): Promise<boolean>;
+  hasAccessToFile(articleId: string): Promise<boolean>;
+  hasEditPermissions(articleId: string): Promise<boolean>;
+  getFileOwner(articleId: string): Promise<string | undefined>;
+
+  // Site-level permission checks (Firestore-backed)
+  isAdminForSite(siteOrId: string | Site): Promise<boolean>;
+  isCollaboratorForSite(siteOrId: string | Site): Promise<boolean>;
+
+  // Account mapping (for Auth0 users with connected Google/MS accounts)
+  getUserAccountEmails(): Promise<string[]>;
+  getAccessorAccount(siteOrId: string | Site): Promise<Account | null>;
 }
 ```
 
@@ -664,6 +733,251 @@ user.hasAccessToFile = withCache(
   'hasAccessToFile'
 );
 ```
+
+---
+
+## Account Mapping & Credential Management
+
+### Why Account Mapping?
+
+Auth0 users authenticate with Auth0 but may need access to Google Drive (for document permissions) or Microsoft services. PCC solves this by allowing users to **connect external accounts** after authenticating with Auth0.
+
+### Account Data Model
+
+**File**: `types/accounts.ts`
+
+```typescript
+interface Account {
+  id: string;
+  userEmail: string;        // Auth0 login email
+  accountEmail: string;     // Connected provider email (e.g., Google)
+  accountProvider?: string; // 'google' | 'microsoft'
+  name: string;
+  picture?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+```
+
+Accounts are stored in the `accounts` Firestore collection. A single Auth0 user can have multiple connected accounts.
+
+### Auth0 User Permissions Class
+
+**File**: `lib/auth0.ts`
+
+When an Auth0 user makes a request, their permission checks must consider **all connected accounts**, not just their Auth0 email. The `Auth0UserPermissions` class handles this:
+
+```typescript
+class Auth0UserPermissions {
+  private email: string;
+  private accounts: Account[] | undefined;
+
+  // Fetches all connected accounts from Firestore (cached after first call)
+  async getUserAccounts(): Promise<Account[]>;
+
+  // Returns all connected account emails
+  async getUserAccountEmails(): Promise<string[]>;
+
+  // Checks admin status using ALL connected account emails
+  async isAdminForSite(siteId: string | Site): Promise<boolean>;
+
+  // Checks collaborator status using ALL connected account emails
+  async isCollaboratorForSite(siteId: string | Site): Promise<boolean>;
+
+  // Checks site access using ALL connected account emails
+  async hasAccessToSite(siteId: string): Promise<boolean>;
+
+  // Finds which connected account has access to a given site
+  async getAccessorAccount(siteId: string | Site): Promise<Account | null>;
+}
+```
+
+### Credential Manager Service
+
+**File**: `lib/credential-manager.ts`
+
+PCC runs a separate **Credential Manager** Cloud Run service that securely stores and refreshes OAuth tokens for connected accounts. The main application communicates with it via `CredentialManagerClient`:
+
+```typescript
+type CredentialManagerProvider = 'google' | 'microsoft';
+
+class CredentialManagerClient {
+  // Store a refresh token for a connected account
+  async storeCredential(params: {
+    userId: string;
+    accountId: string;
+    refreshToken: string;
+    provider: CredentialManagerProvider;
+  }): Promise<{ connectionId: string }>;
+
+  // Get a fresh access token for a connected account
+  async getAccessToken(params: {
+    connectionId: string;
+    userId: string;
+    purpose: string;
+  }): Promise<{ accessToken: string; expiresAt: string }>;
+
+  // Revoke a stored credential
+  async revokeCredential(params: {
+    connectionId: string;
+    userId: string;
+    reason: string;
+  }): Promise<{ success: boolean }>;
+}
+```
+
+The Credential Manager handles token refresh internally — callers simply request an access token by `connectionId` and receive a valid one.
+
+### Auth0 Issuer Migration
+
+The codebase supports **two Auth0 issuers simultaneously** to enable migration between Auth0 tenants or custom domains:
+
+- `AUTH0_ISSUER_BASE_URL` — Original Auth0 issuer
+- `AUTH0_NEW_ISSUER_BASE_URL` — Custom domain or new tenant issuer
+
+Token validation checks the JWT's `iss` claim and selects the appropriate JWKS endpoint. This allows a gradual migration without breaking existing tokens.
+
+---
+
+## Frontend Authentication
+
+### Dual Auth System
+
+The `publish-builder` frontend (Next.js) supports two authentication methods simultaneously, routed by URL path:
+
+| Path | Auth Provider | SDK | Use Case |
+|---|---|---|---|
+| `/dashboard/*`, `/auth/*`, `/callbacks/*` | Auth0 | `@auth0/nextjs-auth0` | Primary dashboard experience |
+| `/addon/*` | Google (NextAuth) | `next-auth` | Google Workspace add-on |
+| `/try/*` | Google (NextAuth) | `next-auth` | Trial/playground experience |
+
+### Auth0 Frontend Configuration
+
+Auth0 is connected to the frontend entirely through the `@auth0/nextjs-auth0` SDK and environment variables. There is no custom OAuth flow — the SDK provides convention-based routes (`/auth/login`, `/auth/logout`, `/auth/callback`) automatically.
+
+**Environment variables** (from `.env.example`):
+
+```bash
+AUTH0_SECRET=              # Session encryption key (generate with: openssl rand -hex 32)
+AUTH0_BASE_URL=            # This app's URL (e.g., https://publisher.pantheon.io)
+AUTH0_ISSUER_BASE_URL=     # Auth0 tenant URL (e.g., https://yourapp.us.auth0.com)
+AUTH0_CLIENT_ID=           # Auth0 application client ID
+AUTH0_CLIENT_SECRET=       # Auth0 application client secret
+AUTH0_AUDIENCE=            # API identifier (the PCC backend URL)
+AUTH0_SCOPE='openid profile create:session'
+```
+
+**SDK instantiation** in `publish-builder/app/lib/auth.ts`:
+
+```typescript
+import { Auth0Client } from '@auth0/nextjs-auth0/server';
+
+const auth0 = new Auth0Client({
+  authorizationParameters: {
+    audience: process.env.AUTH0_AUDIENCE,
+    scope: process.env.AUTH0_SCOPE,
+  },
+  onCallback(error, context, session) {
+    // Track sign-in event, check registration status
+    // Redirect to /dashboard/complete-profile if new user
+  },
+});
+```
+
+### Login Flow
+
+The login page (`publish-builder/app/login/clientside.tsx`) offers two paths, both routed through Auth0:
+
+- **"Continue with Google"** → `/auth/login?connection=google-oauth2` — Auth0 skips Universal Login and redirects straight to Google OAuth
+- **"Login with email"** → `/auth/login` — Auth0 shows its Universal Login page for email/password
+- **"Create new account"** → `/auth/login?screen_hint=signup` — Auth0 shows its signup screen
+
+All three paths redirect to Auth0's hosted login, which handles the OAuth/OIDC flow and redirects back to `/auth/callback`. The SDK processes the callback, stores the session (with tokens) in an encrypted cookie, and the `onCallback` handler checks whether the user needs to complete registration.
+
+### Auth0 Custom Claims
+
+Auth0 injects PCC-specific data into the JWT via a custom namespace (`pcc`), configured in Auth0 Actions or Rules on the Auth0 tenant side:
+
+```typescript
+// In the Auth0 token payload:
+{
+  "pcc": {
+    "email": "user@example.com",
+    "is_registered": true
+  },
+  "sub": "auth0|abc123",
+  "iss": "https://yourapp.us.auth0.com/",
+  // ...standard JWT claims
+}
+```
+
+The middleware checks `is_registered` to determine whether to redirect new users to the profile completion page.
+
+### Session Management & Token Refresh
+
+The Next.js middleware (`publish-builder/proxy.ts`) handles Auth0 session management on every `/dashboard/*` request:
+
+1. `auth0.middleware(req)` — handles Auth0 route conventions (`/auth/*`)
+2. `auth0.getSession(req)` — reads the encrypted session cookie
+3. If the access token expires within 5 minutes, `auth0.getAccessToken(req, resp, { refresh: true })` uses the stored refresh token to get a new one from Auth0
+4. If the session is invalid or the token cannot be refreshed, the user is redirected to `/login`
+
+### Path-Based Provider Routing
+
+The Next.js middleware sets an `x-auth-provider` header on each response, which the `AuthContextProvider` server component reads to decide which session to load:
+
+**File**: `publish-builder/proxy.ts`
+
+```typescript
+// Middleware sets the provider header based on path
+if (req.nextUrl.pathname.startsWith('/addon/')) {
+  resp.headers.set('x-auth-provider', 'next-auth');
+} else if (req.nextUrl.pathname.startsWith('/dashboard/')) {
+  resp.headers.set('x-auth-provider', 'auth0');
+}
+```
+
+**File**: `publish-builder/app/components/auth/AuthContextProvider.tsx`
+
+```typescript
+// Server component reads the header to select the session source
+const provider = (headersList.get('x-auth-provider') as AuthProvider) || '';
+if (provider === AuthProvider.nextAuth) return getNextAuthSession();
+else return await getAuth0Session();
+```
+
+### NextAuth (Google OAuth) Configuration
+
+For `/addon/*` and `/try/*` paths, NextAuth.js handles Google OAuth directly (not through Auth0):
+
+**File**: `publish-builder/app/api/auth/[...nextauth]/auth-options.ts`
+
+```typescript
+GoogleProvider({
+  clientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  authorization: {
+    params: {
+      access_type: 'offline',  // Request refresh token
+      prompt: 'consent',
+      scope: [
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/userinfo.profile',
+        'https://www.googleapis.com/auth/drive.file',
+      ].join(' '),
+    },
+  },
+})
+```
+
+NextAuth stores Google's `access_token`, `refresh_token`, and `id_token` in the JWT session cookie and handles token refresh via Google's OAuth2 endpoint.
+
+### How Tokens Reach the Backend
+
+The two providers send different tokens to the PCC backend:
+
+- **Auth0 users** (`/dashboard`): Send the Auth0 JWT as `Authorization: Bearer <auth0_jwt>`. For Google Drive access, the backend's `populateAccountToken` middleware uses the Credential Manager to fetch an OAuth token from the user's connected account.
+- **Google/NextAuth users** (`/addon`, `/try`): Send the Google ID token as `Authorization: Bearer <google_id_token>` and pass the Google OAuth access token as the `oauth-token` header. The backend uses that OAuth token directly for Drive API calls.
 
 ---
 
@@ -1126,21 +1440,26 @@ function ArticleToolbar({ capabilities }: { capabilities: Role }) {
 
 Pantheon Content Publisher's authentication architecture demonstrates:
 
-1. **Flexibility**: Support multiple auth providers without architectural lock-in
-2. **Performance**: Lazy permission evaluation with request-scoped caching
-3. **Security**: Proper token validation, hashed API keys, scoped access
-4. **Usability**: Clean API design with permissions attached to `req.user`
-5. **Scalability**: Domain-based access for automatic workspace collaboration
+1. **Self-Contained AuthZ**: All authorization is internal (Firestore-backed) — no dependency on Pantheon's MAS or any external authorization service
+2. **Flexible AuthN**: Multiple auth providers (Auth0, Google, Microsoft) for authentication only
+3. **Performance**: Lazy permission evaluation with request-scoped caching
+4. **Security**: Proper token validation, hashed API keys, scoped access, separate credential management service
+5. **Usability**: Clean API design with permissions attached to `req.user`
+6. **Scalability**: Domain-based access for automatic workspace collaboration
+7. **Cross-Provider Access**: Account mapping system allows Auth0 users to connect Google/Microsoft accounts for Drive access
 
 Key takeaways for implementation:
 
+- PCC uses external providers for authN only; all authZ is internal
 - Start with one provider, design for multiple
 - Attach permission methods to user object for clean APIs
 - Cache permission checks within request lifecycle
 - Use scoped tokens for limited-purpose operations
-- Combine external permissions (Drive) with internal authorization (DB)
+- Combine external permissions (Drive) with internal authorization (Firestore)
 - Store only hashed secrets (API keys, tokens)
-- Make roles configurable and document them clearly
+- Use a separate credential management service for OAuth refresh tokens
+- Support account mapping for cross-provider access (Auth0 → Google)
+- Email domain determines tier (gmail.com = free, all others = paid)
 
 ---
 
@@ -1152,13 +1471,27 @@ From Pantheon Content Publisher codebase:
 - `/packages/functions/src/middleware/auth/index.ts` - Main auth middleware
 - `/packages/functions/src/lib/auth0-token.ts` - Auth0 validation
 - `/packages/functions/src/middleware/auth/microsoft.ts` - Microsoft validation
+- `/packages/functions/src/middleware/auth/pcc-token.ts` - API key & collection token validation
 - `/packages/functions/src/lib/jwt.ts` - Scoped JWT utilities
 
-**Authorization Core**:
-- `/packages/functions/src/permissions.ts` - Role definitions and logic
+**Authorization Core** (all internal, Firestore-backed):
+- `/packages/functions/src/permissions.ts` - Role definitions and determination logic
 - `/packages/functions/src/custom.d.ts` - User type definitions
 - `/packages/functions/src/types/site.ts` - Site and membership types
 
+**Account Mapping & Credential Management**:
+- `/packages/functions/src/lib/auth0.ts` - Auth0UserPermissions class (cross-account permission checks)
+- `/packages/functions/src/lib/credential-manager.ts` - CredentialManagerClient SDK
+- `/packages/functions/src/types/accounts.ts` - Account type definition
+- `/cloudrun/credential-manager/` - Credential Manager Cloud Run service
+- `/cloudrun/addonapi/src/modules/accounts/index.ts` - Account lifecycle management
+
 **Frontend Auth**:
-- `/publish-builder/app/api/auth/[...nextauth]/auth-options.ts` - NextAuth setup
-- `/publish-builder/app/lib/auth.ts` - Client auth utilities
+- `/publish-builder/app/lib/auth.ts` - Auth0Client instantiation, session helpers (`getAuth0Session`, `getNextAuthSession`)
+- `/publish-builder/app/lib/auth0.ts` - Auth0 user profile and userinfo fetching
+- `/publish-builder/app/api/auth/[...nextauth]/auth-options.ts` - NextAuth setup (Google OAuth)
+- `/publish-builder/proxy.ts` - Next.js middleware (path-based provider routing, Auth0 session/token refresh)
+- `/publish-builder/app/login/clientside.tsx` - Login page UI (Auth0 Universal Login + Google connection)
+- `/publish-builder/app/components/auth/AuthContextProvider.tsx` - Server component that selects session by `x-auth-provider` header
+- `/publish-builder/app/components/auth/hooks.ts` - `useAuthContext` hook with provider-aware `getGoogleAccessToken`
+- `/publish-builder/.env.example` - Auth0 and Google OAuth environment variables

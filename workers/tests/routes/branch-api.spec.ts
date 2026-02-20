@@ -41,8 +41,18 @@ vi.mock('../../src/services', () => ({
 }));
 
 // Mock authorization
-vi.mock('../../src/auth/middleware', () => ({
-  requirePermission: vi.fn(() => vi.fn()),
+vi.mock('../../src/auth/authorization', () => ({
+  assertPermission: vi.fn(),
+  AuthorizationError: class AuthorizationError extends Error {
+    override name = 'AuthorizationError';
+    constructor(
+      message: string,
+      public requiredPermission: string,
+      public roleName: string,
+    ) {
+      super(message);
+    }
+  },
 }));
 
 describe('Phase 7.1a: Branch API Routes', () => {
@@ -716,6 +726,174 @@ describe('Phase 7.1a: Branch API Routes', () => {
       });
 
       expect(response.status).toBe(405);
+    });
+  });
+
+  // ===========================================================================
+  // Authorization
+  // ===========================================================================
+
+  describe('Authorization', () => {
+    const authPrincipal = {
+      id: 'user-1',
+      type: 'user' as const,
+      email: 'alice@example.com',
+      pantheonSiteRoles: { 'site-1': 'admin' as const },
+      tokenExpiry: '2026-01-24T10:00:00.000Z',
+    };
+
+    it('should check canView permission for GET single branch', async () => {
+      const { handleBranchRoutes } = await import(
+        '../../src/routes/branch-api'
+      );
+      const services = await import('../../src/services');
+      const { assertPermission } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1',
+        siteId: 'site-1',
+        name: 'feature-branch',
+        description: 'A feature branch',
+        isMain: false,
+        status: 'active',
+        sourceBranchId: 'main-branch-id',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1',
+        { method: 'GET' },
+      );
+
+      await handleBranchRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        principal: authPrincipal,
+      });
+
+      expect(assertPermission).toHaveBeenCalledWith(
+        authPrincipal,
+        'site-1',
+        'branch-1',
+        'canView',
+      );
+    });
+
+    it('should check canCreateBranch permission for POST create branch', async () => {
+      const { handleBranchRoutes } = await import(
+        '../../src/routes/branch-api'
+      );
+      const services = await import('../../src/services');
+      const { assertPermission } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      vi.mocked(services.createCheckpoint).mockResolvedValueOnce({
+        checkpoint: {
+          id: 'cp-1',
+          branchId: 'main-branch-id',
+          name: 'Auto-created for branching',
+          checkpointType: 'auto',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          createdById: 'user-1',
+          createdByType: 'user',
+        },
+        documentCount: 0,
+      });
+
+      vi.mocked(services.createBranch).mockResolvedValueOnce({
+        id: 'new-branch-id',
+        siteId: 'site-1',
+        name: 'feature-branch',
+        isMain: false,
+        status: 'active',
+        sourceBranchId: 'main-branch-id',
+        createdFromCheckpointId: 'cp-1',
+        createdAt: '2026-01-24T11:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'feature-branch',
+            sourceBranch: 'main',
+          }),
+        },
+      );
+
+      await handleBranchRoutes(request, {
+        siteId: 'site-1',
+        principal: authPrincipal,
+      });
+
+      expect(assertPermission).toHaveBeenCalledWith(
+        authPrincipal,
+        'site-1',
+        'main-branch-id',
+        'canCreateBranch',
+      );
+    });
+
+    it('should return 403 when principal lacks permission', async () => {
+      const { handleBranchRoutes } = await import(
+        '../../src/routes/branch-api'
+      );
+      const services = await import('../../src/services');
+      const { assertPermission, AuthorizationError } = await import(
+        '../../src/auth/authorization'
+      );
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1',
+        siteId: 'site-1',
+        name: 'feature-branch',
+        isMain: false,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      vi.mocked(assertPermission).mockRejectedValueOnce(
+        new AuthorizationError(
+          'Missing permission: canView',
+          'canView',
+          'viewer',
+        ),
+      );
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1',
+        { method: 'GET' },
+      );
+
+      const response = await handleBranchRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        principal: authPrincipal,
+      });
+
+      expect(response.status).toBe(403);
     });
   });
 });

@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { AuthenticatedPrincipal } from '../../src/types';
 
 // Mock the database
 vi.mock('../../src/db', () => ({
@@ -105,31 +106,80 @@ vi.mock('../../src/routes/realtime-api', () => ({
   ),
 }));
 
-// Mock the mock-identity-provider
-vi.mock('../../src/auth/mock-identity-provider', () => ({
-  MockIdentityProvider: vi.fn().mockImplementation(() => ({
-    validateToken: vi.fn().mockResolvedValue({
-      id: 'user-alice',
-      type: 'user',
-      email: 'alice@example.com',
-      pantheonSiteRoles: { 'site-123': 'admin' },
-      tokenExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    }),
-    validateAgentKey: vi.fn().mockResolvedValue({
-      id: 'a0000000-0000-0000-0000-000000000001',
-      type: 'agent',
-      pantheonSiteRoles: { 'site-123': 'editor' },
-      tokenExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    }),
-    getUser: vi.fn().mockReturnValue({
-      id: 'user-alice',
-      email: 'alice@example.com',
-      name: 'Alice Developer',
-      siteRoles: { 'site-123': 'admin' },
-    }),
-    issueToken: vi.fn().mockResolvedValue('mock-jwt-token'),
-  })),
-}));
+// Default mock principals for auth
+const mockTokenPrincipal = {
+  id: 'user-alice',
+  type: 'user' as const,
+  email: 'alice@example.com',
+  authProvider: 'mock' as const,
+  pantheonSiteRoles: { 'site-123': 'admin' },
+  tokenExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+};
+
+const mockAgentPrincipal = {
+  id: 'a0000000-0000-0000-0000-000000000001',
+  type: 'agent' as const,
+  authProvider: 'mock' as const,
+  pantheonSiteRoles: { 'site-123': 'editor' },
+  tokenExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+};
+
+// Mock the mock-identity-provider as a proper class
+vi.mock('../../src/auth/mock-identity-provider', () => {
+  return {
+    MockIdentityProvider: class MockIdentityProvider {
+      validateToken = vi.fn().mockResolvedValue({ ...mockTokenPrincipal });
+      validateAgentKey = vi.fn().mockResolvedValue({ ...mockAgentPrincipal });
+      getUser = vi.fn().mockReturnValue({
+        id: 'user-alice',
+        email: 'alice@example.com',
+        name: 'Alice Developer',
+        siteRoles: { 'site-123': 'admin' },
+      });
+      issueToken = vi.fn().mockResolvedValue('mock-jwt-token');
+    },
+  };
+});
+
+// Mock identity-provider to bypass JWT decode in canVerifyToken
+interface MockProviderMethods {
+  validateToken: (token: string) => Promise<AuthenticatedPrincipal | null>;
+  validateAgentKey: (apiKey: string) => Promise<AuthenticatedPrincipal | null>;
+}
+
+vi.mock('../../src/auth/identity-provider', async () => {
+  const actual = await vi.importActual<
+        typeof import('../../src/auth/identity-provider')
+          >('../../src/auth/identity-provider');
+  return {
+    ...actual,
+    MockIdentityProviderAdapter: class MockIdentityProviderAdapter {
+      name = 'mock' as const;
+      private mockProvider: MockProviderMethods;
+      constructor(mockProvider: MockProviderMethods) {
+        this.mockProvider = mockProvider;
+      }
+      canVerifyToken(): boolean {
+        // Always accept tokens in test — real JWT decode is not needed
+        return true;
+      }
+      async validateToken(token: string): Promise<AuthenticatedPrincipal | null> {
+        const principal = await this.mockProvider.validateToken(token);
+        if (principal !== null) {
+          principal.authProvider = 'mock';
+        }
+        return principal;
+      }
+      async validateAgentKey(apiKey: string): Promise<AuthenticatedPrincipal | null> {
+        const principal = await this.mockProvider.validateAgentKey(apiKey);
+        if (principal !== null) {
+          principal.authProvider = 'mock';
+        }
+        return principal;
+      }
+    },
+  };
+});
 
 describe('Phase 0: Router and Middleware', () => {
   // Mock environment
@@ -279,17 +329,9 @@ describe('Phase 0: Router and Middleware', () => {
     it('should return 401 for requests without authentication', async () => {
       const module = await import('../../src/index');
 
-      // Need to re-mock to return null for no auth
-      const mockIdentityModule = await import('../../src/auth/mock-identity-provider');
-      vi.mocked(mockIdentityModule.MockIdentityProvider).mockImplementationOnce(() => ({
-        validateToken: vi.fn().mockResolvedValue(null),
-        validateAgentKey: vi.fn().mockResolvedValue(null),
-        getUser: vi.fn(),
-        issueToken: vi.fn(),
-      }));
-
       const request = new Request('https://api.example.com/api/sites', {
         method: 'GET',
+        // No Authorization header, no API key — should be 401
       });
 
       const response = await module.default.fetch(request, mockEnv, mockContext);
@@ -300,13 +342,11 @@ describe('Phase 0: Router and Middleware', () => {
     });
 
     it('should return 401 for invalid Bearer token', async () => {
-      const mockIdentityModule = await import('../../src/auth/mock-identity-provider');
-      vi.mocked(mockIdentityModule.MockIdentityProvider).mockImplementationOnce(() => ({
-        validateToken: vi.fn().mockResolvedValue(null),
-        validateAgentKey: vi.fn().mockResolvedValue(null),
-        getUser: vi.fn(),
-        issueToken: vi.fn(),
-      }));
+      // Mock the adapter's validateToken to return null for this test
+      const identityModule = await import('../../src/auth/identity-provider');
+      const origAdapter = identityModule.MockIdentityProviderAdapter;
+      const adapterProto = origAdapter.prototype;
+      const spy = vi.spyOn(adapterProto, 'validateToken').mockResolvedValueOnce(null);
 
       const module = await import('../../src/index');
 
@@ -320,6 +360,7 @@ describe('Phase 0: Router and Middleware', () => {
       const response = await module.default.fetch(request, mockEnv, mockContext);
 
       expect(response.status).toBe(401);
+      spy.mockRestore();
     });
 
     it('should skip authentication for health endpoint', async () => {
@@ -700,13 +741,15 @@ describe('Phase 0: Router and Middleware', () => {
     });
 
     it('should return 404 for unknown user at POST /api/auth/token', async () => {
+      // Swap the MockIdentityProvider export so getUser returns undefined
       const mockIdentityModule = await import('../../src/auth/mock-identity-provider');
-      vi.mocked(mockIdentityModule.MockIdentityProvider).mockImplementationOnce(() => ({
-        validateToken: vi.fn(),
-        validateAgentKey: vi.fn(),
-        getUser: vi.fn().mockReturnValue(undefined),
-        issueToken: vi.fn(),
-      }));
+      const OrigClass = mockIdentityModule.MockIdentityProvider;
+      const PatchedClass = class extends OrigClass {
+        override getUser = vi.fn().mockReturnValue(undefined);
+      };
+      Object.defineProperty(mockIdentityModule, 'MockIdentityProvider', {
+        value: PatchedClass, writable: true, configurable: true,
+      });
 
       const module = await import('../../src/index');
 
@@ -719,6 +762,11 @@ describe('Phase 0: Router and Middleware', () => {
       const response = await module.default.fetch(request, mockEnv, mockContext);
 
       expect(response.status).toBe(404);
+
+      // Restore original class
+      Object.defineProperty(mockIdentityModule, 'MockIdentityProvider', {
+        value: OrigClass, writable: true, configurable: true,
+      });
     });
 
     it('should list available users at GET /api/auth/users', async () => {

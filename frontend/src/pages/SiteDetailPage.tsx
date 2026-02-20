@@ -9,9 +9,16 @@ import { useParams, Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { getSite } from '../api/sites';
 import { listBranches, createBranch, updateBranch, deleteBranch as deleteBranchApi } from '../api/branches';
+import {
+  listCollaborators,
+  addCollaborator as addCollaboratorApi,
+  removeCollaborator as removeCollaboratorApi,
+} from '../api/collaborators';
+import type { AddCollaboratorParams } from '../api/collaborators';
+import { listUsers } from '../api/users';
 import { ApiResponse } from '../components/ApiResponse';
 import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
-import type { Site, Branch } from '../types';
+import type { Site, Branch, Collaborator, SystemUser } from '../types';
 import {
   Button,
   RouterLinkButton,
@@ -39,18 +46,36 @@ export function SiteDetailPage() {
   const { execute: archiveBranchRequest, isLoading: isArchiving } =
     useApi<Branch, [string, string, { status: Branch['status'] }]>(updateBranch);
 
+  // Collaborator state
+  const { data: collaborators, isLoading: collaboratorsLoading, error: collaboratorsError, execute: fetchCollaborators } =
+    useApi<Collaborator[], [string]>(listCollaborators);
+  const { data: systemUsers, execute: fetchSystemUsers } =
+    useApi<SystemUser[], []>(listUsers);
+  const { execute: addCollaboratorRequest, isLoading: isAddingCollaborator, error: addCollaboratorError } =
+    useApi<Collaborator, [string, AddCollaboratorParams]>(addCollaboratorApi);
+  const { execute: removeCollaboratorRequest, isLoading: isRemovingCollaborator, error: removeCollaboratorError } =
+    useApi<void, [string, string]>(removeCollaboratorApi);
+
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
   const [selectedParentBranch, setSelectedParentBranch] = useState<string>('');
   const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null);
   const [archivingBranchId, setArchivingBranchId] = useState<string | null>(null);
 
+  // Collaborator form state
+  const [showCollaboratorForm, setShowCollaboratorForm] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [selectedCollaboratorRole, setSelectedCollaboratorRole] = useState('developer');
+  const [collaboratorToRemove, setCollaboratorToRemove] = useState<Collaborator | null>(null);
+
   useEffect(() => {
     if (siteId) {
       fetchSite(siteId);
       fetchBranches(siteId);
+      fetchCollaborators(siteId);
+      fetchSystemUsers();
     }
-  }, [siteId, fetchSite, fetchBranches]);
+  }, [siteId, fetchSite, fetchBranches, fetchCollaborators, fetchSystemUsers]);
 
   const handleCreateBranch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,6 +117,53 @@ export function SiteDetailPage() {
     if (result) {
       fetchBranches(siteId);
     }
+  };
+
+  const handleAddCollaborator = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUserId || !siteId) return;
+
+    const result = await addCollaboratorRequest(siteId, {
+      userId: selectedUserId,
+      role: selectedCollaboratorRole,
+    });
+    if (result) {
+      setSelectedUserId('');
+      setSelectedCollaboratorRole('developer');
+      setShowCollaboratorForm(false);
+      fetchCollaborators(siteId);
+    }
+  };
+
+  const handleRemoveCollaborator = async () => {
+    if (!collaboratorToRemove || !siteId) return;
+
+    const result = await removeCollaboratorRequest(siteId, collaboratorToRemove.userId);
+    if (result !== null) {
+      setCollaboratorToRemove(null);
+      fetchCollaborators(siteId);
+    }
+  };
+
+  const getUserEmail = (userId: string): string => {
+    const user = systemUsers?.find((u) => u.id === userId);
+    return user?.email ?? userId;
+  };
+
+  const getRoleTagType = (role: string): 'success' | 'info' | 'default' => {
+    switch (role) {
+      case 'owner':
+      case 'admin':
+        return 'info';
+      case 'developer':
+        return 'success';
+      default:
+        return 'default';
+    }
+  };
+
+  const getSourceTagType = (source: string): 'info' | 'default' => {
+    return source === 'mas' ? 'info' : 'default';
   };
 
   const getStatusTagType = (status: Branch['status']): 'success' | 'info' | 'default' | 'danger' => {
@@ -311,6 +383,130 @@ export function SiteDetailPage() {
         )}
       </section>
 
+      {/* Collaborators Section */}
+      <section className="collaborators-section" data-testid="collaborators-section">
+        <div className="section-header">
+          <h2 className="section-title" data-testid="section-title-collaborators">Collaborators</h2>
+          <Button
+            type={showCollaboratorForm ? 'secondary' : 'primary'}
+            onClick={() => setShowCollaboratorForm(!showCollaboratorForm)}
+            data-testid="add-collaborator-btn"
+          >
+            {showCollaboratorForm ? 'Cancel' : '+ Add collaborator'}
+          </Button>
+        </div>
+
+        {showCollaboratorForm && (
+          <div className="create-form-container" data-testid="add-collaborator-form">
+            <form onSubmit={handleAddCollaborator} className="create-form">
+              <div className="form-fields">
+                <select
+                  value={selectedUserId}
+                  onChange={(e) => setSelectedUserId(e.target.value)}
+                  className="pds-select"
+                  aria-label="Select user"
+                  data-testid="collaborator-user-select"
+                >
+                  <option value="">Select a user...</option>
+                  {systemUsers?.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.email}{user.name ? ` (${user.name})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={selectedCollaboratorRole}
+                  onChange={(e) => setSelectedCollaboratorRole(e.target.value)}
+                  className="pds-select"
+                  aria-label="Collaborator role"
+                  data-testid="collaborator-role-select"
+                >
+                  <option value="admin">Admin</option>
+                  <option value="developer">Developer</option>
+                  <option value="team_member">Team Member</option>
+                </select>
+              </div>
+              <Button
+                type="primary"
+                isSubmit
+                onClick={() => {}}
+                disabled={isAddingCollaborator || !selectedUserId}
+                isLoading={isAddingCollaborator}
+                data-testid="submit-collaborator-btn"
+              >
+                {isAddingCollaborator ? 'Adding...' : 'Add'}
+              </Button>
+            </form>
+            {addCollaboratorError && (
+              <Alert type="danger" className="create-error-alert" data-testid="add-collaborator-error">
+                {addCollaboratorError}
+              </Alert>
+            )}
+          </div>
+        )}
+
+        {collaboratorsError && (
+          <div className="error-banner">
+            <ApiResponse data={null} isLoading={false} error={collaboratorsError} />
+          </div>
+        )}
+
+        {collaboratorsLoading ? (
+          <div className="loading-container">
+            <ApiResponse data={null} isLoading={true} error={null} />
+          </div>
+        ) : collaborators && collaborators.length > 0 ? (
+          <div className="collaborators-table-container">
+            <table className="collaborators-table" data-testid="collaborators-table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Role</th>
+                  <th>Source</th>
+                  <th>Added</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {collaborators.map((collab) => (
+                  <tr key={collab.id} data-testid={`collaborator-row-${collab.id}`}>
+                    <td className="collaborator-user">{getUserEmail(collab.userId)}</td>
+                    <td>
+                      <Tag type={getRoleTagType(collab.role)} data-testid={`collab-role-${collab.id}`}>
+                        {collab.role}
+                      </Tag>
+                    </td>
+                    <td>
+                      <Tag type={getSourceTagType(collab.source)} data-testid={`collab-source-${collab.id}`}>
+                        {collab.source}
+                      </Tag>
+                    </td>
+                    <td className="collaborator-date">
+                      {new Date(collab.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="collaborator-actions">
+                      {collab.source === 'local' && (
+                        <Button
+                          type="danger"
+                          onClick={() => setCollaboratorToRemove(collab)}
+                          data-testid={`remove-collaborator-${collab.id}`}
+                        >
+                          Remove
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty-state" data-testid="collaborators-empty-state">
+            <p>No collaborators found. Add collaborators to grant site access.</p>
+          </div>
+        )}
+      </section>
+
       <ConfirmDeleteModal
         isOpen={branchToDelete !== null}
         resourceType="branch"
@@ -319,6 +515,16 @@ export function SiteDetailPage() {
         onCancel={() => setBranchToDelete(null)}
         isDeleting={isDeleting}
         error={deleteError}
+      />
+
+      <ConfirmDeleteModal
+        isOpen={collaboratorToRemove !== null}
+        resourceType="collaborator"
+        resourceName={collaboratorToRemove ? getUserEmail(collaboratorToRemove.userId) : ''}
+        onConfirm={handleRemoveCollaborator}
+        onCancel={() => setCollaboratorToRemove(null)}
+        isDeleting={isRemovingCollaborator}
+        error={removeCollaboratorError}
       />
     </div>
   );
