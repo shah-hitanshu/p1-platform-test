@@ -213,23 +213,10 @@ export class DocumentSession {
   private readonly env: DocumentSessionEnv;
   private readonly sessionInfo: SessionInfo;
   private ydoc: Y.Doc;
-  private connections: Map<WebSocket, ConnectionMeta>;
   private initialized: boolean;
-
-  /** Timer for idle sync (cleared on each edit, fires after SYNC_IDLE_TIMEOUT_MS) */
-  private syncTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Flag to track if a cleanup alarm is scheduled (avoids redundant setAlarm calls) */
   private cleanupAlarmScheduled = false;
-
-  /** Actor ID of the last edit (used for sync attribution) */
-  private lastEditActorId: string | null = null;
-
-  /** Actor type of the last edit */
-  private lastEditActorType: 'user' | 'agent' = 'user';
-
-  /** Flag indicating whether any edits have been made in this session */
-  private hasUnsyncedEdits = false;
 
   /** Promise tracking an in-progress sync to prevent concurrent syncs */
   private syncInProgress: Promise<void> | null = null;
@@ -264,7 +251,6 @@ export class DocumentSession {
     this.env = env as DocumentSessionEnv;
     this.sessionInfo = this.parseSessionId();
     this.ydoc = new Y.Doc();
-    this.connections = new Map();
     this.initialized = false;
 
     // Initialize Agent Politeness services
@@ -339,7 +325,32 @@ export class DocumentSession {
    * Get current connection count
    */
   getConnectionCount(): number {
-    return this.connections.size;
+    return this.state.getWebSockets().length;
+  }
+
+  /**
+   * Get connection metadata from a WebSocket's serialized attachment.
+   */
+  private getConnectionMeta(ws: WebSocket): ConnectionMeta | null {
+    try {
+      return ws.deserializeAttachment() as ConnectionMeta | null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Get all connections paired with their metadata.
+   */
+  private getAllConnections(): [WebSocket, ConnectionMeta][] {
+    const result: [WebSocket, ConnectionMeta][] = [];
+    for (const ws of this.state.getWebSockets()) {
+      const meta = this.getConnectionMeta(ws);
+      if (meta !== null) {
+        result.push([ws, meta]);
+      }
+    }
+    return result;
   }
 
   /**
@@ -721,7 +732,7 @@ export class DocumentSession {
     const root = this.ydoc.getMap('root');
     const snapshot = root.toJSON() as Record<string, unknown>;
     const stateVector = Array.from(Y.encodeStateVector(this.ydoc));
-    const connectedActors = Array.from(this.connections.values());
+    const connectedActors = this.getAllConnections().map(([, m]) => m);
 
     const response: SnapshotResponse = {
       snapshot,
@@ -904,7 +915,7 @@ export class DocumentSession {
     }
 
     // Schedule sync to PostgreSQL after idle timeout
-    this.scheduleSync(body.actorId, actorType as 'user' | 'agent');
+    await this.scheduleSync(body.actorId, actorType as 'user' | 'agent');
 
     const root = this.ydoc.getMap('root');
     const response: ApplyResponse & { agentConflicts?: typeof agentConflicts } = {
@@ -987,7 +998,7 @@ export class DocumentSession {
     }
 
     // Security: Limit concurrent connections
-    if (this.connections.size >= MAX_WEBSOCKET_CONNECTIONS) {
+    if (this.getConnectionCount() >= MAX_WEBSOCKET_CONNECTIONS) {
       return this.errorResponse(503, 'Too many connections. Try again later.');
     }
 
@@ -1003,10 +1014,7 @@ export class DocumentSession {
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
 
-    // Accept the WebSocket connection
-    server.accept();
-
-    // Store connection metadata with Auth Phase 4 fields
+    // Store connection metadata as attachment (Hibernatable WebSocket API)
     const meta: ConnectionMeta = {
       actorId,
       actorType,
@@ -1016,11 +1024,14 @@ export class DocumentSession {
       name: actorName,
       avatar: actorAvatar,
     };
-    this.connections.set(server, meta);
+    server.serializeAttachment(meta);
+
+    // Accept the WebSocket connection via Hibernatable API
+    this.state.acceptWebSocket(server);
 
     // Record WebSocket connection metrics
     incrementCounter('css_ws_connections_total', { action: 'open' });
-    setGauge('css_ws_connections_active', this.connections.size);
+    setGauge('css_ws_connections_active', this.getConnectionCount());
 
     // Schedule cleanup alarm if not already scheduled
     void this.scheduleCleanupAlarm();
@@ -1032,61 +1043,86 @@ export class DocumentSession {
     // Broadcast presence update to all clients (new connection joined)
     this.broadcastPresenceUpdate();
 
-    // Handle incoming messages
-    server.addEventListener('message', async (event) => {
-      try {
-        // Distinguish text (presence JSON) from binary (Yjs CRDT) messages
-        if (typeof event.data === 'string') {
-          // Text frame: JSON presence message
-          this.handlePresenceMessage(server, meta, event.data);
-          return;
-        }
-
-        // Binary frame: Yjs CRDT update
-        const data = event.data as ArrayBuffer;
-
-        // Security: Limit message size
-        if (data.byteLength > MAX_WEBSOCKET_MESSAGE_SIZE) {
-          console.warn(`WebSocket message too large: ${String(data.byteLength)} bytes`);
-          return;
-        }
-
-        const update = new Uint8Array(data);
-
-        // Apply update to local doc
-        Y.applyUpdate(this.ydoc, update);
-
-        // Broadcast to other clients
-        for (const [conn] of this.connections) {
-          if (conn !== server && conn.readyState === WebSocket.OPEN) {
-            conn.send(update);
-          }
-        }
-
-        // Persist state
-        await this.persist();
-
-        // Schedule sync to PostgreSQL after idle timeout
-        this.scheduleSync(meta.actorId, meta.actorType);
-      } catch (error) {
-        console.error('Error handling WebSocket message:', error);
-      }
-    });
-
-    // Handle connection close
-    server.addEventListener('close', () => {
-      this.handleWebSocketDisconnect(server, meta.actorId);
-    });
-
-    server.addEventListener('error', () => {
-      this.handleWebSocketDisconnect(server, meta.actorId);
-    });
-
     // Return the client side of the WebSocket
     return new Response(null, {
       status: 101,
       webSocket: client,
     });
+  }
+
+  /**
+   * Hibernatable WebSocket API: Handle incoming WebSocket messages.
+   * Called by the runtime when a message arrives on any accepted WebSocket.
+   */
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    await this.initializeIfNeeded();
+
+    const meta = this.getConnectionMeta(ws);
+    if (meta === null) {
+      console.warn('webSocketMessage: no metadata for WebSocket');
+      return;
+    }
+
+    try {
+      // Distinguish text (presence JSON) from binary (Yjs CRDT) messages
+      if (typeof message === 'string') {
+        this.handlePresenceMessage(ws, meta, message);
+        return;
+      }
+
+      // Binary frame: Yjs CRDT update
+      const data = message;
+
+      // Security: Limit message size
+      if (data.byteLength > MAX_WEBSOCKET_MESSAGE_SIZE) {
+        console.warn(`WebSocket message too large: ${String(data.byteLength)} bytes`);
+        return;
+      }
+
+      const update = new Uint8Array(data);
+
+      // Apply update to local doc
+      Y.applyUpdate(this.ydoc, update);
+
+      // Broadcast to other clients
+      for (const conn of this.state.getWebSockets()) {
+        if (conn !== ws && conn.readyState === WebSocket.OPEN) {
+          conn.send(update);
+        }
+      }
+
+      // Persist state
+      await this.persist();
+
+      // Schedule sync to PostgreSQL after idle timeout
+      await this.scheduleSync(meta.actorId, meta.actorType);
+    } catch (error) {
+      console.error('Error handling WebSocket message:', error);
+    }
+  }
+
+  /**
+   * Hibernatable WebSocket API: Handle WebSocket close.
+   * Called by the runtime when a WebSocket connection closes.
+   */
+  async webSocketClose(ws: WebSocket, _code: number, _reason: string, _wasClean: boolean): Promise<void> {
+    await this.initializeIfNeeded();
+
+    const meta = this.getConnectionMeta(ws);
+    const actorId = meta?.actorId ?? 'unknown';
+    this.handleWebSocketDisconnect(ws, actorId);
+  }
+
+  /**
+   * Hibernatable WebSocket API: Handle WebSocket errors.
+   * Called by the runtime when a WebSocket connection encounters an error.
+   */
+  async webSocketError(ws: WebSocket, _error: unknown): Promise<void> {
+    await this.initializeIfNeeded();
+
+    const meta = this.getConnectionMeta(ws);
+    const actorId = meta?.actorId ?? 'unknown';
+    this.handleWebSocketDisconnect(ws, actorId);
   }
 
   /**
@@ -1097,15 +1133,17 @@ export class DocumentSession {
    * @param actorId - The actor ID associated with this connection
    */
   private handleWebSocketDisconnect(server: WebSocket, actorId: string): void {
-    // Remove connection from map
-    this.connections.delete(server);
+    // Runtime manages WebSocket removal for Hibernatable API
     incrementCounter('css_ws_connections_total', { action: 'close' });
-    setGauge('css_ws_connections_active', this.connections.size);
+    setGauge('css_ws_connections_active', this.getConnectionCount());
 
     // Check if actor has other active connections before cleaning up
+    // Filter out the closing socket for accurate count
+    const remainingWebSockets = this.state.getWebSockets().filter((ws: WebSocket) => ws !== server);
     let actorHasOtherConnections = false;
-    for (const [, meta] of this.connections) {
-      if (meta.actorId === actorId) {
+    for (const ws of remainingWebSockets) {
+      const meta = this.getConnectionMeta(ws);
+      if (meta !== null && meta.actorId === actorId) {
         actorHasOtherConnections = true;
         break;
       }
@@ -1124,7 +1162,7 @@ export class DocumentSession {
     this.broadcastPresenceUpdate();
 
     // If this was the last connection, clean up and sync
-    if (this.connections.size === 0) {
+    if (remainingWebSockets.length === 0) {
       // Run one final cleanup before syncing
       // (Cleanup alarm will self-stop if no data to track)
       const cleanupStats = this.runCleanup();
@@ -1149,7 +1187,7 @@ export class DocumentSession {
    */
   private compactCrdtState(): void {
     // Safety check: don't compact if there are active connections
-    if (this.connections.size > 0) {
+    if (this.getConnectionCount() > 0) {
       console.warn('compactCrdtState called with active connections - skipping');
       return;
     }
@@ -1615,15 +1653,18 @@ export class DocumentSession {
     return this.uint8ArrayToBase64(stateVector);
   }
 
+  /** Storage key for sync schedule (survives hibernation) */
+  private static readonly SYNC_SCHEDULE_KEY = 'syncSchedule';
+
   /**
-   * Schedule a sync to PostgreSQL after idle timeout.
-   * Resets the timer on each call (debouncing).
-   * Only schedules sync if document content has actually changed.
+   * Schedule a sync to PostgreSQL after idle timeout using DO alarms.
+   * Uses storage-backed scheduling so the sync survives hibernation.
+   * Debounces by updating the dueAt time on each call.
    *
    * @param actorId - ID of the actor making the edit
    * @param actorType - Type of actor ('user' or 'agent')
    */
-  private scheduleSync(actorId: string, actorType: 'user' | 'agent'): void {
+  private async scheduleSync(actorId: string, actorType: 'user' | 'agent'): Promise<void> {
     // Check if the document has actually changed by comparing state vectors
     const currentHash = this.computeStateVectorHash();
     if (currentHash === this.lastSyncedStateVectorHash) {
@@ -1631,25 +1672,25 @@ export class DocumentSession {
       return;
     }
 
-    // Store actor info for sync attribution
-    this.lastEditActorId = actorId;
-    this.lastEditActorType = actorType;
-    this.hasUnsyncedEdits = true;
-
-    // Clear existing timer (debounce)
-    if (this.syncTimer !== null) {
-      clearTimeout(this.syncTimer);
-    }
-
     // Only schedule if we have internal API configured
     if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
       return;
     }
 
-    // Schedule sync after idle timeout
-    this.syncTimer = setTimeout(() => {
-      void this.syncToPostgres();
-    }, SYNC_IDLE_TIMEOUT_MS);
+    // Store sync schedule in DO storage (survives hibernation)
+    const dueAt = Date.now() + SYNC_IDLE_TIMEOUT_MS;
+    await this.state.storage.put(DocumentSession.SYNC_SCHEDULE_KEY, {
+      dueAt,
+      actorId,
+      actorType,
+    });
+
+    // Set alarm to fire at the due time (or earlier if cleanup alarm already set)
+    const existingAlarm = await this.state.storage.getAlarm();
+    if (existingAlarm === null || existingAlarm > dueAt) {
+      await this.state.storage.setAlarm(dueAt);
+      this.cleanupAlarmScheduled = true;
+    }
   }
 
   /**
@@ -1691,9 +1732,12 @@ export class DocumentSession {
   /**
    * Durable Object alarm handler.
    * Called by the runtime when the scheduled alarm fires.
-   * Runs cleanup and reschedules if there's still data to track.
+   * Handles sync schedule processing, then runs cleanup and reschedules.
    */
   async alarm(): Promise<void> {
+    // Restore state after potential hibernation wake
+    await this.initializeIfNeeded();
+
     const startTime = Date.now();
     const metricsEnabled = this.isAlarmMetricsEnabled();
 
@@ -1703,6 +1747,12 @@ export class DocumentSession {
 
     // Reset the scheduled flag since the alarm has fired
     this.cleanupAlarmScheduled = false;
+
+    // Process sync schedule if due
+    const syncSchedule = await this.state.storage.get<{ dueAt: number; actorId: string; actorType: 'user' | 'agent' }>(DocumentSession.SYNC_SCHEDULE_KEY);
+    if (syncSchedule !== undefined && Date.now() >= syncSchedule.dueAt) {
+      await this.syncToPostgres(syncSchedule.actorId, syncSchedule.actorType);
+    }
 
     // Run cleanup
     const cleanupStats = this.runCleanup();
@@ -1732,16 +1782,33 @@ export class DocumentSession {
       }
 
       // Record DO state gauges
-      setGauge('css_do_connections_count', this.connections.size);
+      setGauge('css_do_connections_count', this.getConnectionCount());
       setGauge('css_do_presence_count', this.presenceManager.count());
       setGauge('css_do_edit_sessions_count', this.editSessions.size);
       setGauge('css_do_active_regions_count', this.activityDetector.getActiveRegions().length);
       setGauge('css_do_focus_regions_count', this.activityDetector.getHumanFocusRegions().length);
     }
 
-    // Reschedule alarm if there's still data to track
+    // Determine next alarm time
+    // Check for pending sync schedule that hasn't fired yet
+    const pendingSyncSchedule = await this.state.storage.get<{ dueAt: number }>(DocumentSession.SYNC_SCHEDULE_KEY);
+    let nextAlarmTime: number | null = null;
+
+    if (pendingSyncSchedule !== undefined) {
+      // There's a pending sync that needs to fire
+      nextAlarmTime = pendingSyncSchedule.dueAt;
+    }
+
+    // Reschedule cleanup alarm if there's still data to track
     if (!this.shouldStopCleanupTimer()) {
-      await this.state.storage.setAlarm(Date.now() + CLEANUP_INTERVAL_MS);
+      const cleanupTime = Date.now() + CLEANUP_INTERVAL_MS;
+      nextAlarmTime = nextAlarmTime !== null
+        ? Math.min(nextAlarmTime, cleanupTime)
+        : cleanupTime;
+    }
+
+    if (nextAlarmTime !== null) {
+      await this.state.storage.setAlarm(nextAlarmTime);
       this.cleanupAlarmScheduled = true;
       if (metricsEnabled) {
         incrementCounter('css_do_alarm_decision_total', { decision: 'rescheduled' });
@@ -1809,7 +1876,7 @@ export class DocumentSession {
    */
   private shouldStopCleanupTimer(): boolean {
     // Keep running if there are active WebSocket connections
-    if (this.connections.size > 0) {
+    if (this.getConnectionCount() > 0) {
       return false;
     }
 
@@ -1839,27 +1906,33 @@ export class DocumentSession {
 
   /**
    * Sync current CRDT state to PostgreSQL via the internal API.
-   * Called after idle timeout or on last client disconnect.
+   * Called from alarm handler when sync schedule is due, or on last client disconnect.
    * Uses a lock to prevent concurrent syncs which could create duplicate versions.
+   *
+   * @param actorId - Actor ID for sync attribution (from stored schedule or caller)
+   * @param actorType - Actor type for sync attribution
    */
-  private async syncToPostgres(): Promise<void> {
-    // Clear timer since we're syncing now
-    if (this.syncTimer !== null) {
-      clearTimeout(this.syncTimer);
-      this.syncTimer = null;
-    }
-
+  private async syncToPostgres(actorId?: string, actorType?: 'user' | 'agent'): Promise<void> {
     // If a sync is already in progress, wait for it to complete and return.
-    // The in-progress sync will handle the current state.
     if (this.syncInProgress !== null) {
       console.log('Sync skipped: another sync is already in progress');
       await this.syncInProgress;
       return;
     }
 
-    // Skip sync if no edits have been made
-    if (!this.hasUnsyncedEdits || this.lastEditActorId === null) {
-      console.log('Sync skipped: no unsynced edits');
+    // Read sync schedule from storage if no actor info provided
+    let syncActorId = actorId;
+    let syncActorType = actorType ?? 'user' as const;
+    if (syncActorId === undefined) {
+      const schedule = await this.state.storage.get<{ dueAt: number; actorId: string; actorType: 'user' | 'agent' }>(DocumentSession.SYNC_SCHEDULE_KEY);
+      if (schedule !== undefined) {
+        syncActorId = schedule.actorId;
+        syncActorType = schedule.actorType;
+      }
+    }
+
+    if (syncActorId === undefined) {
+      console.log('Sync skipped: no sync schedule or actor info available');
       return;
     }
 
@@ -1872,7 +1945,7 @@ export class DocumentSession {
     }
 
     // Set the lock before starting the sync
-    this.syncInProgress = this.performSync(internalApiUrl, internalSecret);
+    this.syncInProgress = this.performSync(internalApiUrl, internalSecret, syncActorId, syncActorType);
 
     try {
       await this.syncInProgress;
@@ -1886,8 +1959,15 @@ export class DocumentSession {
    * Separated from syncToPostgres to enable proper locking.
    * @param internalApiUrl - The internal API URL (pre-validated)
    * @param internalSecret - The internal secret (pre-validated)
+   * @param actorId - Actor ID for sync attribution
+   * @param actorType - Actor type for sync attribution
    */
-  private async performSync(internalApiUrl: string, internalSecret: string): Promise<void> {
+  private async performSync(
+    internalApiUrl: string,
+    internalSecret: string,
+    actorId: string,
+    actorType: 'user' | 'agent',
+  ): Promise<void> {
     try {
       const root = this.ydoc.getMap('root');
       const snapshot = root.toJSON() as Record<string, unknown>;
@@ -1907,8 +1987,8 @@ export class DocumentSession {
           branchId: this.sessionInfo.branchId,
           snapshot,
           crdtState,
-          actorId: this.lastEditActorId,
-          actorType: this.lastEditActorType,
+          actorId,
+          actorType,
         }),
       });
 
@@ -1917,9 +1997,9 @@ export class DocumentSession {
         console.error(`Sync to PostgreSQL failed: ${String(response.status)} ${errorText}`);
       } else {
         console.log(`Synced document ${this.sessionInfo.documentId} to PostgreSQL`);
-        // Reset the flag and update the state vector hash after successful sync
-        this.hasUnsyncedEdits = false;
+        // Update the state vector hash and clear sync schedule after successful sync
         this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+        await this.state.storage.delete(DocumentSession.SYNC_SCHEDULE_KEY);
       }
     } catch (error) {
       console.error('Error syncing to PostgreSQL:', error);
@@ -2095,7 +2175,7 @@ export class DocumentSession {
    * Broadcast an update to all connected clients
    */
   private broadcastUpdate(update: Uint8Array): void {
-    for (const [conn] of this.connections) {
+    for (const conn of this.state.getWebSockets()) {
       if (conn.readyState === WebSocket.OPEN) {
         conn.send(update);
       }
@@ -2249,7 +2329,7 @@ export class DocumentSession {
     const now = new Date().toISOString();
     const connectionPresences: ActorPresence[] = [];
 
-    for (const [, meta] of this.connections) {
+    for (const [, meta] of this.getAllConnections()) {
       // Skip if already tracked in presenceManager
       if (existingActorIds.has(meta.actorId)) {
         continue;
@@ -3109,7 +3189,7 @@ export class DocumentSession {
     };
 
     const json = JSON.stringify(message);
-    for (const [conn] of this.connections) {
+    for (const conn of this.state.getWebSockets()) {
       if (conn.readyState === WebSocket.OPEN) {
         conn.send(json);
       }
@@ -3131,7 +3211,7 @@ export class DocumentSession {
     const now = new Date().toISOString();
     const connectionPresences: ActorPresence[] = [];
 
-    for (const [, meta] of this.connections) {
+    for (const [, meta] of this.getAllConnections()) {
       // Skip if already tracked in presenceManager
       if (existingActorIds.has(meta.actorId)) {
         continue;
@@ -3172,7 +3252,7 @@ export class DocumentSession {
    */
   private broadcastToOthers(sender: WebSocket, message: WsServerMessage): void {
     const json = JSON.stringify(message);
-    for (const [conn] of this.connections) {
+    for (const conn of this.state.getWebSockets()) {
       if (conn !== sender && conn.readyState === WebSocket.OPEN) {
         conn.send(json);
       }
