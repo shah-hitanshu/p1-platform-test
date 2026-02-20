@@ -4,6 +4,10 @@
  * Demonstrates Puck editor integration with the Collaborative State System.
  * Uses Puck's Plugin API and Overrides for proper integration.
  * Document management is handled within Puck's plugin rail, not a separate sidebar.
+ *
+ * Auth is handled by CSSAuthProvider from @pantheon/puck-css.
+ * This demo uses the default CSSLoginPage for standalone mode.
+ * In an embedded scenario, you'd use useCSSAuth() with your own login UI.
  */
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
@@ -18,6 +22,12 @@ import {
 } from '@pantheon/css-client';
 
 import {
+  // Auth (from puck-css)
+  CSSAuthProvider,
+  useCSSAuth,
+  CSSLoginPage,
+  DEMO_USERS,
+  // Editor integration
   CSSPuckProvider,
   useCSSPuck,
   useDocuments,
@@ -32,7 +42,7 @@ import {
   FocusHighlightProvider,
   usePresenceContext,
 } from '@pantheon/puck-css';
-import type { DocumentVersion } from '@pantheon/css-client';
+import type { AuthMode, DocumentVersion } from '@pantheon/puck-css';
 import type { ComponentDiffWithPosition } from '@pantheon/puck-css';
 
 // Import puck-css styles for visual comparison
@@ -41,99 +51,42 @@ import '@pantheon/puck-css/styles.css';
 import { puckConfig } from './puck.config';
 
 // Environment configuration
-const config = {
+const envConfig = {
   baseUrl: import.meta.env.VITE_CSS_BASE_URL || 'http://localhost:8787',
   wsBaseUrl: import.meta.env.VITE_CSS_WS_BASE_URL || 'ws://localhost:8787',
   siteId: import.meta.env.VITE_CSS_SITE_ID || '',
-  branchId: import.meta.env.VITE_CSS_BRANCH_ID as string | undefined, // Optional - defaults to main
-  enableRealtime: import.meta.env.VITE_CSS_ENABLE_REALTIME !== 'false', // Default to true
-  enablePresence: import.meta.env.VITE_CSS_ENABLE_PRESENCE !== 'false', // Default to true
+  branchId: import.meta.env.VITE_CSS_BRANCH_ID as string | undefined,
+  enableRealtime: import.meta.env.VITE_CSS_ENABLE_REALTIME !== 'false',
+  enablePresence: import.meta.env.VITE_CSS_ENABLE_PRESENCE !== 'false',
+  authMode: (import.meta.env.VITE_AUTH_MODE || 'mock') as AuthMode,
 };
-
-// Demo users for testing presence
-// User IDs must be valid UUIDs matching the CSS backend user registry
-const DEMO_USERS = [
-  { id: '11111111-1111-1111-1111-111111111111', name: 'Alice Developer' },
-  { id: '22222222-2222-2222-2222-222222222222', name: 'Bob Teammate' },
-  { id: '33333333-3333-3333-3333-333333333333', name: 'Carol Coder' },
-];
-
-// Token storage key (matches CSS Admin frontend pattern)
-const TOKEN_KEY = 'css_auth_token';
-
-/**
- * Get stored auth token
- */
-function getStoredToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-/**
- * Store auth token
- */
-function setStoredToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
-}
-
-/**
- * Clear stored token
- */
-function clearStoredToken(): void {
-  localStorage.removeItem(TOKEN_KEY);
-}
-
-/**
- * Login as a user and get a JWT token from the CSS backend
- */
-async function loginAsUser(userId: string): Promise<{ token: string; user: { id: string; name: string; email: string } }> {
-  const response = await fetch(`${config.baseUrl}/api/auth/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Login failed' }));
-    throw new Error(error.error || 'Login failed');
-  }
-
-  return response.json();
-}
 
 /**
  * Generate a consistent hash from a string.
- * Uses a simple but effective hash algorithm (djb2).
- * Must match the algorithm in CollaboratorAvatars.tsx for consistent colors.
+ * Uses djb2 algorithm. Must match CollaboratorAvatars.tsx for consistent colors.
  */
 function hashString(str: string): number {
   let hash = 5381;
   for (let i = 0; i < str.length; i++) {
     hash = (hash * 33) ^ str.charCodeAt(i);
   }
-  return hash >>> 0; // Convert to unsigned 32-bit integer
+  return hash >>> 0;
 }
 
-/**
- * Generate a consistent HSL color from a user's ID.
- * Uses the ID to generate a hue, with fixed saturation and lightness
- * for good contrast with white text.
- */
 function getAvatarColor(userId: string): string {
   const hash = hashString(userId);
   const hue = hash % 360;
   return `hsl(${hue}, 65%, 45%)`;
 }
 
-interface UserSwitcherProps {
-  currentUserId: string;
-  onUserChange: (userId: string, userName: string) => void;
-}
-
 /**
  * User Switcher Component
- * Allows switching between demo users to test presence features
+ * Allows inline switching between demo users without bouncing to login page.
+ * Only visible in mock auth mode.
  */
-function UserSwitcher({ currentUserId, onUserChange }: UserSwitcherProps) {
+function UserSwitcher() {
+  const { user, login } = useCSSAuth();
+  const currentUserId = user?.id ?? DEMO_USERS[0].id;
   const currentUser = DEMO_USERS.find(u => u.id === currentUserId) || DEMO_USERS[0];
   const avatarColor = getAvatarColor(currentUser.id);
 
@@ -169,12 +122,7 @@ function UserSwitcher({ currentUserId, onUserChange }: UserSwitcherProps) {
       </div>
       <select
         value={currentUserId}
-        onChange={(e) => {
-          const user = DEMO_USERS.find(u => u.id === e.target.value);
-          if (user) {
-            onUserChange(user.id, user.name);
-          }
-        }}
+        onChange={(e) => void login(e.target.value)}
         style={{
           padding: '8px 12px',
           borderRadius: '6px',
@@ -209,7 +157,6 @@ function UserSwitcher({ currentUserId, onUserChange }: UserSwitcherProps) {
   );
 }
 
-// Validate configuration
 function ConfigWarning() {
   return (
     <div className="config-warning">
@@ -256,23 +203,17 @@ function AppContent() {
     latestVersionData,
     loadVersion,
     returnToLatest,
-    // Phase 9: Presence
     presence,
-    // WebSocket focus region sender
     sendFocusRegions: sendFocusRegionsViaWs,
   } = useCSSPuck();
 
-  // Focus region reporting - reports which component the user has selected
-  // This helps agents avoid editing regions where a human has focus
-  // Pass sendFocusRegions from context to use WebSocket first, with HTTP fallback
   const { setFocusRegions, clearFocus } = useFocusRegionReporting({
-    enabled: config.enablePresence,
+    enabled: envConfig.enablePresence,
     debounceMs: 300,
     heartbeatMs: 15000,
     sendViaWebSocket: sendFocusRegionsViaWs,
   });
 
-  // Handle selection changes from Puck for focus region reporting
   const handleSelectionChange = useCallback((path: string | null, _itemId: string | null) => {
     if (path) {
       setFocusRegions([path]);
@@ -281,14 +222,12 @@ function AppContent() {
     }
   }, [setFocusRegions, clearFocus]);
 
-  // Document management via useDocuments hook
   const { documents, loading: documentsLoading, create, remove } = useDocuments({
     client,
     siteId,
     branchId,
   });
 
-  // Version management via useVersions hook
   const {
     versions,
     loading: versionsLoading,
@@ -303,70 +242,41 @@ function AppContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  // Compute diffs when viewing a historical version
   const historicalDiffs = useMemo((): ComponentDiffWithPosition[] => {
     if (!isViewingHistoricalVersion || !currentData || !latestVersionData) {
       return [];
     }
-    // Compare historical version (before) with latest (after)
     return diffPuckDataWithPositions(currentData, latestVersionData);
   }, [isViewingHistoricalVersion, currentData, latestVersionData]);
 
-  // Get the current user's ID from the presence context to filter them out of focus highlights
   const presenceContext = usePresenceContext();
   const currentUserId = presenceContext?.userId ?? '';
 
-  // Create focus map from other actors' focus regions
-  // This shows visual highlights on components that other users/agents are viewing or editing
-  // With context-based highlighting, focusMap changes no longer cause config recreation
   const focusMap = useMemo(() => {
     if (!presence || !currentData) return new Map();
-    // Filter out the current user - we only show highlights for OTHER actors
     const otherActors = presence.actors.filter(a => a.actorId !== currentUserId);
     return createFocusRegionMap(currentData, otherActors);
   }, [presence, currentUserId, currentData]);
 
-  // Create config with focus highlight wrappers (stable - uses context for actual highlights)
-  // The focus highlighting is context-based, so config doesn't need to change when focusMap changes
   const focusEnabledConfig = useMemo(() => {
     return createFocusHighlightConfig(puckConfig) as typeof puckConfig;
   }, []);
 
-  // Create highlighted config when viewing historical version
-  // Only changes when viewing history, not on focus region changes
   const effectiveConfig = useMemo(() => {
     let config = focusEnabledConfig;
-
-    // Apply historical version highlighting if viewing old version
     if (isViewingHistoricalVersion && historicalDiffs.length > 0) {
       config = createHistoricalVersionConfig(config, historicalDiffs) as typeof puckConfig;
     }
-
     return config;
   }, [isViewingHistoricalVersion, historicalDiffs, focusEnabledConfig]);
 
-  // Puck permissions - read-only when viewing historical version
   const puckPermissions = useMemo(() => {
     if (isViewingHistoricalVersion) {
-      return {
-        delete: false,
-        drag: false,
-        duplicate: false,
-        edit: false,
-        insert: false,
-      };
+      return { delete: false, drag: false, duplicate: false, edit: false, insert: false };
     }
-    // Explicitly enable all permissions when not viewing historical version
-    return {
-      delete: true,
-      drag: true,
-      duplicate: true,
-      edit: true,
-      insert: true,
-    };
+    return { delete: true, drag: true, duplicate: true, edit: true, insert: true };
   }, [isViewingHistoricalVersion]);
 
-  // Handle document selection
   const handleDocumentSelect = useCallback(
     (path: string) => {
       if (path) {
@@ -378,7 +288,6 @@ function AppContent() {
     [setSearchParams]
   );
 
-  // Handle document creation
   const handleDocumentCreate = useCallback(
     async (path: string) => {
       await create(path);
@@ -387,7 +296,6 @@ function AppContent() {
     [create, handleDocumentSelect]
   );
 
-  // Handle document deletion
   const handleDocumentDelete = useCallback(
     async (documentId: string, path: string) => {
       await remove(documentId);
@@ -398,17 +306,14 @@ function AppContent() {
     [remove, selectedPath, handleDocumentSelect]
   );
 
-  // Load document when path changes
   useEffect(() => {
     if (!selectedPath) {
       setLoading(false);
       setError(null);
       return;
     }
-
     setLoading(true);
     setError(null);
-
     loadDocument(selectedPath)
       .then(() => setLoading(false))
       .catch((err) => {
@@ -432,79 +337,42 @@ function AppContent() {
     alert(`Publish failed: ${err.message}`);
   }, []);
 
-  // Handle stop agent - called when user clicks "Stop Agent" button
   const handleStopAgent = useCallback(async (agent: ActorPresence) => {
-    if (!currentDocument?.path) {
-      console.error('[StopAgent] No document path available');
-      return;
-    }
-
+    if (!currentDocument?.path) return;
     try {
-      console.log(`[StopAgent] Stopping agent ${agent.name} (${agent.actorId})`);
-      const result = await client.agentEdit.stopAgent(
-        siteId,
-        branchId,
-        currentDocument.path,
-        agent.actorId
-      );
-
-      if (result.success) {
-        if (result.rolledBack) {
-          console.log(`[StopAgent] Agent stopped and changes rolled back`);
-        } else {
-          console.log(`[StopAgent] Agent stopped: ${result.message ?? 'No active session'}`);
-        }
-      } else {
-        console.error('[StopAgent] Failed to stop agent');
-      }
+      await client.agentEdit.stopAgent(siteId, branchId, currentDocument.path, agent.actorId);
     } catch (err) {
       console.error('[StopAgent] Error stopping agent:', err);
     }
   }, [client, siteId, branchId, currentDocument?.path]);
 
-  // Handle version selection - loads the selected version into the editor
   const handleVersionSelect = useCallback((version: DocumentVersion) => {
-    // Check if this is the latest version (first in the sorted list)
     const latestVersion = versions[0];
     if (latestVersion && version.id === latestVersion.id) {
-      // If selecting the latest version, return to it
       void returnToLatest();
     } else {
-      // Load the historical version
       void loadVersion(version);
     }
   }, [versions, loadVersion, returnToLatest]);
 
-  // Refresh versions when document changes or after save
   useEffect(() => {
     if (currentDocument?.id) {
       void refreshVersions();
     }
   }, [currentDocument?.id, refreshVersions]);
 
-  // Use refs for values that change frequently but shouldn't trigger plugin/overrides recreation
-  // This prevents the plugin and overrides from being recreated on every save, which causes flicker
   const saveStatusRef = useRef(saveStatus);
   const lastSavedRef = useRef(lastSaved);
   const saveErrorRef = useRef(saveError);
-  useEffect(() => {
-    saveStatusRef.current = saveStatus;
-  }, [saveStatus]);
-  useEffect(() => {
-    lastSavedRef.current = lastSaved;
-  }, [lastSaved]);
-  useEffect(() => {
-    saveErrorRef.current = saveError;
-  }, [saveError]);
+  useEffect(() => { saveStatusRef.current = saveStatus; }, [saveStatus]);
+  useEffect(() => { lastSavedRef.current = lastSaved; }, [lastSaved]);
+  useEffect(() => { saveErrorRef.current = saveError; }, [saveError]);
 
-  // Stable getter functions (read from refs to avoid stale closures)
   const getHasUnsavedChanges = useCallback(() => saveStatusRef.current === 'saving', []);
   const getSaveStatus = useCallback(() => saveStatusRef.current, []);
   const getLastSaved = useCallback(() => lastSavedRef.current, []);
   const getSaveError = useCallback(() => saveErrorRef.current, []);
 
-  // Create Puck plugin for CSS integration (branch selector + document list + versions in plugin rail)
-  // The plugin uses ContextSyncBridge internally to sync data from CSSPuckContext to Puck
   const cssPlugin = useMemo(() => createCSSPlugin({
     branches,
     currentBranch,
@@ -520,34 +388,16 @@ function AppContent() {
     versionsLoading,
     selectedVersionId: viewingVersion?.id ?? undefined,
     onVersionSelect: handleVersionSelect,
-    // Focus region reporting - reports component selection to backend for agent collision avoidance
-    onSelectionChange: config.enablePresence ? handleSelectionChange : undefined,
+    onSelectionChange: envConfig.enablePresence ? handleSelectionChange : undefined,
   }), [
-    branches,
-    currentBranch,
-    switchBranch,
-    getHasUnsavedChanges,
-    documents,
-    selectedPath,
-    handleDocumentSelect,
-    handleDocumentCreate,
-    handleDocumentDelete,
-    documentsLoading,
-    versions,
-    versionsLoading,
-    viewingVersion,
-    handleVersionSelect,
-    // Focus region reporting for agent collision avoidance
+    branches, currentBranch, switchBranch, getHasUnsavedChanges,
+    documents, selectedPath, handleDocumentSelect, handleDocumentCreate, handleDocumentDelete,
+    documentsLoading, versions, versionsLoading, viewingVersion, handleVersionSelect,
     handleSelectionChange,
   ]);
 
-  // Create Puck overrides for header actions (save indicator, publish button, version banner)
-  // IMPORTANT: We use getter functions for saveStatus/lastSaved/saveError to avoid recreating
-  // the overrides on every save, which would cause Puck to potentially re-render and flicker.
   const cssOverrides = useMemo(() => createCSSOverrides({
-    getSaveStatus,
-    getLastSaved,
-    getSaveError,
+    getSaveStatus, getLastSaved, getSaveError,
     onRetrySave: saveNow,
     onPublish: createCheckpoint,
     onPublishSuccess: handlePublishSuccess,
@@ -558,7 +408,6 @@ function AppContent() {
     isViewingHistoricalVersion,
     viewingVersion,
     onReturnToLatest: returnToLatest,
-    // Phase 9: Presence features
     showCollaboratorAvatars: !!presence,
     presence: presence?.actors ?? [],
     showAgentActivityBanner: !!presence?.hasActiveAgents,
@@ -567,7 +416,6 @@ function AppContent() {
     onStopAgent: handleStopAgent,
   }), [getSaveStatus, getLastSaved, getSaveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError, pauseAutoSave, isViewingHistoricalVersion, viewingVersion, returnToLatest, presence, handleStopAgent]);
 
-  // Loading state
   if (loading) {
     return (
       <div className="app app--fullscreen">
@@ -576,7 +424,6 @@ function AppContent() {
     );
   }
 
-  // Error state
   if (error) {
     return (
       <div className="app app--fullscreen">
@@ -588,13 +435,11 @@ function AppContent() {
     );
   }
 
-  // Cast plugin to match Puck's expected types
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const puckPlugins = [cssPlugin] as any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const puckOverrides = cssOverrides as any;
 
-  // No document selected - show Puck with empty state
   if (!selectedPath || !currentDocument || !currentData) {
     return (
       <div className="app app--fullscreen">
@@ -609,10 +454,6 @@ function AppContent() {
     );
   }
 
-  // Document loaded - show Puck editor
-  // When viewing historical version, editor is read-only with diff highlighting
-  // Data sync happens via PuckDataSynchronizer in overrides (preserves sidebar state)
-  // FocusHighlightProvider enables focus highlighting without config recreation (no flicker)
   return (
     <div className="app app--fullscreen">
       <FocusHighlightProvider focusMap={focusMap}>
@@ -630,84 +471,28 @@ function AppContent() {
 }
 
 /**
- * App Component
- * Main entry point with provider setup
+ * Authenticated App Shell
+ * Sources auth state from CSSAuthProvider via useCSSAuth().
  */
-export function App() {
-  // State for current user (enables user switching for presence demo)
-  const [currentUser, setCurrentUser] = useState({
-    id: DEMO_USERS[0].id,
-    name: DEMO_USERS[0].name,
-  });
+function AuthenticatedApp() {
+  const { user, token, authMode } = useCSSAuth();
 
-  // Auth state
-  const [authToken, setAuthToken] = useState<string | null>(getStoredToken());
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
-
-  // Login function - gets JWT token from backend
-  const performLogin = useCallback(async (userId: string) => {
-    setIsLoggingIn(true);
-    setLoginError(null);
-
-    try {
-      const response = await loginAsUser(userId);
-      setStoredToken(response.token);
-      setAuthToken(response.token);
-    } catch (err) {
-      setLoginError(err instanceof Error ? err.message : 'Login failed');
-      clearStoredToken();
-      setAuthToken(null);
-    } finally {
-      setIsLoggingIn(false);
-    }
-  }, []);
-
-  // Login on mount if no token, or when user changes
-  useEffect(() => {
-    // Always login as the current user to get a fresh token
-    void performLogin(currentUser.id);
-  }, [currentUser.id, performLogin]);
-
-  // Handle user change - this will trigger re-login via useEffect
-  const handleUserChange = useCallback((userId: string, userName: string) => {
-    // Clear old token first
-    clearStoredToken();
-    setAuthToken(null);
-    setCurrentUser({ id: userId, name: userName });
-  }, []);
-
-  // Create CSS client with JWT auth provider
-  // Recreates when token changes
   const cssClient = useMemo(() => {
-    if (!authToken) return null;
-
+    if (!token) return null;
     return new CSSClient({
-      baseUrl: config.baseUrl,
-      authProvider: async () => `Bearer ${authToken}`,
+      baseUrl: envConfig.baseUrl,
+      authProvider: async () => `Bearer ${token}`,
     });
-  }, [authToken]);
+  }, [token]);
 
-  // Check for required configuration (branchId is optional - defaults to main)
-  if (!config.siteId) {
+  if (!envConfig.siteId) {
     return <ConfigWarning />;
   }
 
-  // Show loading during login
-  if (isLoggingIn) {
+  if (!cssClient || !user || !token) {
     return (
       <div className="app app--fullscreen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div>Logging in as {currentUser.name}...</div>
-      </div>
-    );
-  }
-
-  // Show error if login failed
-  if (loginError || !cssClient) {
-    return (
-      <div className="app app--fullscreen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px' }}>
-        <div style={{ color: 'red' }}>Login failed: {loginError || 'No auth token'}</div>
-        <button onClick={() => void performLogin(currentUser.id)}>Retry</button>
+        <div>Initializing...</div>
       </div>
     );
   }
@@ -715,26 +500,65 @@ export function App() {
   return (
     <>
       <CSSPuckProvider
-        key={`${currentUser.id}-${authToken}`} // Force remount on user/token change to reset connections
+        key={`${user.id}-${token}`}
         client={cssClient}
-        siteId={config.siteId}
-        branchId={config.branchId}
-        userId={currentUser.id}
-        userName={currentUser.name}
+        siteId={envConfig.siteId}
+        branchId={envConfig.branchId}
+        userId={user.id}
+        userName={user.name}
         autoSaveDelay={3000}
         maxRetries={3}
-        enableRealtime={config.enableRealtime}
-        wsBaseUrl={config.wsBaseUrl}
-        realtimeApiKey={authToken ?? undefined}
-        presenceEnabled={config.enablePresence}
-        userNameResolver={(id) => DEMO_USERS.find(u => u.id === id)?.name}
+        enableRealtime={envConfig.enableRealtime}
+        wsBaseUrl={envConfig.wsBaseUrl}
+        realtimeApiKey={token}
+        presenceEnabled={envConfig.enablePresence}
+        userNameResolver={(id) => {
+          // Check current user first, then fall back to demo users for mock mode
+          if (id === user.id) return user.name;
+          return DEMO_USERS.find(u => u.id === id)?.name;
+        }}
       >
         <AppContent />
       </CSSPuckProvider>
-      <UserSwitcher
-        currentUserId={currentUser.id}
-        onUserChange={handleUserChange}
-      />
+      {authMode === 'mock' && <UserSwitcher />}
     </>
   );
+}
+
+/**
+ * App Component — thin shell.
+ * All auth logic lives in @pantheon/puck-css (CSSAuthProvider).
+ * The demo app only provides env config and the Puck component config.
+ */
+export function App() {
+  return (
+    <CSSAuthProvider
+      authMode={envConfig.authMode}
+      cssBaseUrl={envConfig.baseUrl}
+      googleClientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}
+      auth0Domain={import.meta.env.VITE_AUTH0_DOMAIN}
+      auth0ClientId={import.meta.env.VITE_AUTH0_CLIENT_ID}
+      auth0Audience={import.meta.env.VITE_AUTH0_AUDIENCE}
+    >
+      <AppGate />
+    </CSSAuthProvider>
+  );
+}
+
+function AppGate() {
+  const { isAuthenticated, isLoading } = useCSSAuth();
+
+  if (isLoading) {
+    return (
+      <div className="app app--fullscreen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div>Loading...</div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <CSSLoginPage />;
+  }
+
+  return <AuthenticatedApp />;
 }

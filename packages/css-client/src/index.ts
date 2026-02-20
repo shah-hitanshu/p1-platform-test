@@ -73,6 +73,22 @@ export {
 } from './auth.js';
 export type { AuthProvider, TokenStorage } from './auth.js';
 
+// OAuth utilities
+export {
+  createGoogleOAuth,
+  createAuth0OAuth,
+  createOAuthAuthProvider,
+  validateToken,
+  loginMockUser,
+} from './oauth.js';
+export type {
+  GoogleOAuthConfig,
+  Auth0OAuthConfig,
+  OAuthUserInfo,
+  OAuthSession,
+  AuthMeResponse,
+} from './oauth.js';
+
 // Errors
 export {
   CSSApiError,

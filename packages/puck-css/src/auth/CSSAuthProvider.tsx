@@ -1,0 +1,262 @@
+/**
+ * CSSAuthProvider
+ *
+ * Reusable auth context for any React app integrating with CSS.
+ * Supports three auth modes: 'mock', 'google', and 'auth0'.
+ * Handles token lifecycle, validation, and expiry across all modes.
+ *
+ * Framework-agnostic within React — works with Next.js, Remix, Vite, CRA, etc.
+ */
+
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+} from 'react';
+import {
+  createGoogleOAuth,
+  createAuth0OAuth,
+  validateToken,
+  loginMockUser,
+} from '@pantheon/css-client';
+import type { OAuthSession, OAuthUserInfo } from '@pantheon/css-client';
+
+export type AuthMode = 'mock' | 'google' | 'auth0';
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  email?: string;
+  picture?: string;
+}
+
+export interface CSSAuthContextValue {
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  user: AuthUser | null;
+  token: string | null;
+  error: string | null;
+  authMode: AuthMode;
+  login(userId?: string): Promise<void>;
+  logout(): Promise<void>;
+}
+
+const CSSAuthContext = createContext<CSSAuthContextValue | null>(null);
+
+/** Default demo users for mock auth mode. */
+export const DEMO_USERS = [
+  { id: '11111111-1111-1111-1111-111111111111', name: 'Alice Developer' },
+  { id: '22222222-2222-2222-2222-222222222222', name: 'Bob Teammate' },
+  { id: '33333333-3333-3333-3333-333333333333', name: 'Carol Coder' },
+];
+
+const DEFAULT_TOKEN_KEY = 'css_auth_token';
+
+export interface CSSAuthProviderProps {
+  /** Auth mode: 'mock' for demo users, 'google' or 'auth0' for OAuth. */
+  authMode: AuthMode;
+  /** CSS backend base URL (e.g., "http://localhost:8787"). */
+  cssBaseUrl: string;
+  /** Google OAuth client ID (required when authMode is 'google'). */
+  googleClientId?: string;
+  /** Auth0 domain (required when authMode is 'auth0'). */
+  auth0Domain?: string;
+  /** Auth0 client ID (required when authMode is 'auth0'). */
+  auth0ClientId?: string;
+  /** Auth0 audience (optional). */
+  auth0Audience?: string;
+  /** localStorage key for token persistence. Default: 'css_auth_token'. */
+  tokenStorageKey?: string;
+  children: React.ReactNode;
+}
+
+function createOAuthSession(
+  authMode: AuthMode,
+  props: CSSAuthProviderProps,
+): OAuthSession | null {
+  if (authMode === 'google') {
+    if (!props.googleClientId) {
+      console.warn('CSSAuthProvider: googleClientId is required for google auth mode');
+      return null;
+    }
+    return createGoogleOAuth({ clientId: props.googleClientId });
+  }
+
+  if (authMode === 'auth0') {
+    if (!props.auth0Domain || !props.auth0ClientId) {
+      console.warn('CSSAuthProvider: auth0Domain and auth0ClientId are required for auth0 auth mode');
+      return null;
+    }
+    return createAuth0OAuth({
+      domain: props.auth0Domain,
+      clientId: props.auth0ClientId,
+      audience: props.auth0Audience,
+    });
+  }
+
+  return null;
+}
+
+function oauthUserToAuthUser(info: OAuthUserInfo): AuthUser {
+  return {
+    id: info.id,
+    name: info.name ?? info.email ?? info.id,
+    email: info.email,
+    picture: info.picture,
+  };
+}
+
+export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement {
+  const { authMode, cssBaseUrl, tokenStorageKey, children } = props;
+  const storageKey = tokenStorageKey ?? DEFAULT_TOKEN_KEY;
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [oauthSession] = useState<OAuthSession | null>(() =>
+    createOAuthSession(authMode, props),
+  );
+
+  const isAuthenticated = user !== null && token !== null;
+
+  // Validate existing token on mount
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkExistingAuth() {
+      setIsLoading(true);
+
+      if (authMode === 'mock') {
+        const storedToken = localStorage.getItem(storageKey);
+        if (storedToken) {
+          const validated = await validateToken(cssBaseUrl, storedToken);
+          if (!cancelled && validated) {
+            setToken(storedToken);
+            setUser({
+              id: validated.id,
+              name: validated.email ?? validated.id,
+              email: validated.email,
+            });
+          } else if (!cancelled) {
+            localStorage.removeItem(storageKey);
+          }
+        }
+      } else if (oauthSession) {
+        if (oauthSession.isAuthenticated()) {
+          const oauthToken = await oauthSession.getToken();
+          if (!cancelled && oauthToken) {
+            const validated = await validateToken(cssBaseUrl, oauthToken);
+            if (!cancelled && validated) {
+              setToken(oauthToken);
+              setUser({
+                id: validated.id,
+                name: validated.email ?? validated.id,
+                email: validated.email,
+              });
+            } else if (!cancelled) {
+              // Use OAuth user info as fallback if /api/auth/me isn't reachable
+              const info = oauthSession.getUserInfo();
+              if (info) {
+                setToken(oauthToken);
+                setUser(oauthUserToAuthUser(info));
+              }
+            }
+          } else if (!cancelled) {
+            // Token expired (getToken returned null) — clear state for re-login
+            setToken(null);
+            setUser(null);
+          }
+        }
+      }
+
+      if (!cancelled) {
+        setIsLoading(false);
+      }
+    }
+
+    void checkExistingAuth();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authMode, oauthSession, cssBaseUrl, storageKey]);
+
+  const login = useCallback(
+    async (userId?: string) => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        if (authMode === 'mock') {
+          const id = userId ?? DEMO_USERS[0]?.id ?? '11111111-1111-1111-1111-111111111111';
+          const result = await loginMockUser(cssBaseUrl, id);
+          localStorage.setItem(storageKey, result.token);
+          setToken(result.token);
+          setUser({
+            id: result.user.id,
+            name: result.user.name,
+            email: result.user.email,
+          });
+        } else if (oauthSession) {
+          await oauthSession.login();
+          const oauthToken = await oauthSession.getToken();
+          if (oauthToken) {
+            setToken(oauthToken);
+            const info = oauthSession.getUserInfo();
+            if (info) {
+              setUser(oauthUserToAuthUser(info));
+            }
+          }
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Login failed';
+        setError(msg);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [authMode, oauthSession, cssBaseUrl, storageKey],
+  );
+
+  const logout = useCallback(async () => {
+    if (authMode === 'mock') {
+      localStorage.removeItem(storageKey);
+    } else if (oauthSession) {
+      await oauthSession.logout();
+    }
+
+    setToken(null);
+    setUser(null);
+    setError(null);
+  }, [authMode, oauthSession, storageKey]);
+
+  const value: CSSAuthContextValue = {
+    isAuthenticated,
+    isLoading,
+    user,
+    token,
+    error,
+    authMode,
+    login,
+    logout,
+  };
+
+  return (
+    <CSSAuthContext.Provider value={value}>{children}</CSSAuthContext.Provider>
+  );
+}
+
+/**
+ * Hook to access the CSS auth context.
+ * Must be used within a CSSAuthProvider.
+ */
+export function useCSSAuth(): CSSAuthContextValue {
+  const ctx = useContext(CSSAuthContext);
+  if (!ctx) {
+    throw new Error('useCSSAuth must be used within a CSSAuthProvider');
+  }
+  return ctx;
+}

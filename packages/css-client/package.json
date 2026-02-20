@@ -39,6 +39,14 @@
     "node": ">=18.0.0"
   },
   "license": "MIT",
+  "peerDependencies": {
+    "@auth0/auth0-spa-js": ">=2.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@auth0/auth0-spa-js": {
+      "optional": true
+    }
+  },
   "dependencies": {
     "partysocket": "^1.0.0",
     "yjs": "^13.6.0"

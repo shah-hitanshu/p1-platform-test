@@ -4,6 +4,21 @@
  * Puck editor integration with the Collaborative State System.
  */
 
+// Auth
+export {
+  CSSAuthProvider,
+  useCSSAuth,
+  DEMO_USERS,
+  CSSLoginPage,
+} from './auth/index.js';
+export type {
+  AuthMode,
+  AuthUser,
+  CSSAuthContextValue,
+  CSSAuthProviderProps,
+  CSSLoginPageProps,
+} from './auth/index.js';
+
 // Provider and Context
 export { CSSPuckProvider } from './CSSPuckProvider.js';
 export { CSSPuckContext, useCSSPuck } from './CSSPuckContext.js';
