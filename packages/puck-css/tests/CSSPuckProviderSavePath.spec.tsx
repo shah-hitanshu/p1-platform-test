@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import React from 'react';
 import { useCSSPuck } from '../src/CSSPuckContext.js';
 import type { CSSClient, Branch, PuckData } from '@pantheon/css-client';
@@ -32,6 +32,7 @@ vi.mock('../src/hooks/useRealtime.js', () => ({
     sendFocusRegions: mockSendFocusRegions,
     sendHeartbeat: mockSendHeartbeat,
     presenceViaWebSocket: false,
+    connectedDocumentPath: mockRealtimeConnected ? 'pages/home' : null,
   }),
 }));
 
@@ -212,6 +213,16 @@ describe('CSSPuckProvider Save Path - Realtime vs REST', () => {
     await act(async () => {
       await result.current.loadDocument('/pages/home');
     });
+
+    // When realtime is enabled, loadDocument increments pendingRemoteUpdatesRef
+    // to prevent the REST-loaded data from bouncing back through Y.Doc.
+    // Advance past the 100ms safety reset so subsequent saveData calls are
+    // treated as genuine user edits (not stale REST data).
+    if (options.enableRealtime) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+    }
 
     return result;
   }

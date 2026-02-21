@@ -127,6 +127,19 @@ function CSSPuckProviderInner({
   const currentDocumentRef = useRef<Document | null>(null);
   const initializedRef = useRef(false);
 
+  // Tracks the document path that the current data in state belongs to.
+  // Set alongside every setCurrentData call to record the data's origin.
+  // Checked before every write (realtime or REST) to prevent cross-document
+  // corruption during rapid document switching.
+  const currentDataDocumentPathRef = useRef<string | null>(null);
+
+  // Monotonically increasing counter for stale loadDocument response detection.
+  // Each loadDocument call increments this and captures the current value.
+  // After each async operation, the captured value is compared to the current
+  // value — if they differ, a newer loadDocument call has started and the
+  // current one should bail out.
+  const loadRequestIdRef = useRef(0);
+
   // Track realtime connection state for use in performSave (avoids stale closure)
   const realtimeConnectedRef = useRef(false);
 
@@ -262,6 +275,7 @@ function CSSPuckProviderInner({
           pendingRemoteUpdatesRef.current += 1;
 
           // Update current data when remote changes arrive
+          currentDataDocumentPathRef.current = currentDocumentRef.current?.path ?? null;
           setCurrentData(dataToSync);
           // Update sync key to trigger Puck re-sync
           setRemoteSyncKey(`remote-${Date.now()}`);
@@ -362,6 +376,12 @@ function CSSPuckProviderInner({
     const doc = currentDocumentRef.current;
 
     if (!dataToSave || !doc) {
+      return;
+    }
+
+    // Data origin guard: reject writes if data doesn't belong to current document
+    if (currentDataDocumentPathRef.current !== doc.path) {
+      pendingDataRef.current = null;
       return;
     }
 
@@ -468,6 +488,32 @@ function CSSPuckProviderInner({
           // User is viewing historical version - don't broadcast or save
           return;
         } else {
+          const currentPath = currentDocumentRef.current?.path ?? null;
+
+          // Data origin guard: verify the data in state belongs to the
+          // current document. During rapid document switching, a stale
+          // loadDocument call can resolve and set data from document Y
+          // into state after currentDocument has been updated to X.
+          const dataOriginPath = currentDataDocumentPathRef.current;
+          if (dataOriginPath !== currentPath) {
+            console.warn(
+              '[CSSPuckProvider] Data origin mismatch — skipping realtime send.',
+              'dataOrigin:', dataOriginPath, 'currentDoc:', currentPath,
+            );
+            return;
+          }
+
+          // Connection identity guard: verify the realtime connection is
+          // bound to the same document we're currently editing.
+          const connectedPath = realtime.connectedDocumentPath;
+          if (currentPath !== connectedPath) {
+            console.warn(
+              '[CSSPuckProvider] Connection identity mismatch — skipping realtime send.',
+              'currentDoc:', currentPath, 'connectedDoc:', connectedPath,
+            );
+            return;
+          }
+
           // Local user edit — send via WebSocket (DO handles persistence)
           realtime.applyLocalChange(data);
           // Still trigger debounced save as fallback, but performSave will
@@ -491,11 +537,18 @@ function CSSPuckProviderInner({
 
     // When realtime is connected, ensure the latest data is sent via WebSocket
     if (enableRealtime && realtimeConnectedRef.current && pendingDataRef.current) {
-      realtime.applyLocalChange(pendingDataRef.current);
-      pendingDataRef.current = null;
-      setSaveStatus('saved');
-      setLastSaved(new Date());
-      return;
+      const currentPath = currentDocumentRef.current?.path ?? null;
+      const dataOriginPath = currentDataDocumentPathRef.current;
+      const connectedPath = realtime.connectedDocumentPath;
+      // Data origin + connection identity guards
+      if (dataOriginPath === currentPath && currentPath === connectedPath) {
+        realtime.applyLocalChange(pendingDataRef.current);
+        pendingDataRef.current = null;
+        setSaveStatus('saved');
+        setLastSaved(new Date());
+        return;
+      }
+      // Fall through to REST save if mismatch
     }
 
     await performSave();
@@ -508,22 +561,61 @@ function CSSPuckProviderInner({
       // where a stale remote update overrides the document we're loading
       cancelPendingRemoteSync();
 
+      // Increment load request counter and capture for staleness detection.
+      // If a newer loadDocument call starts before our awaits resolve, the
+      // counter will have been incremented again and our captured value
+      // will no longer match — signaling that our response is stale.
+      loadRequestIdRef.current += 1;
+      const thisRequestId = loadRequestIdRef.current;
+
       try {
         // Normalize path: strip leading slash if present
         const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
 
         // Get document by path
         const doc = await userClient.documents.getByPath(siteId, normalizedPath);
+
+        // Staleness check: a newer loadDocument call has started
+        if (thisRequestId !== loadRequestIdRef.current) {
+          console.warn('[CSSPuckProvider] Stale loadDocument — skipping (after getByPath)');
+          return;
+        }
+
         setCurrentDocument(doc);
 
         // Get latest version
         const version = await userClient.versions.getLatest(siteId, branchId, doc.id);
         const puckData = version.snapshot as unknown as PuckData;
 
+        // Staleness check: a newer loadDocument call has started
+        if (thisRequestId !== loadRequestIdRef.current) {
+          console.warn('[CSSPuckProvider] Stale loadDocument — skipping (after getLatest)');
+          return;
+        }
+
+        // Mark REST data as non-local to prevent the Puck onChange handler
+        // from echoing it back through the Y.Doc via applyLocalChange.
+        // This is critical after the Hibernatable WS migration because
+        // initializeIfNeeded() latency can invert the ordering of WebSocket
+        // initial state vs REST response, causing the remote-update guard
+        // (pendingRemoteUpdatesRef) to be bypassed.
+        if (enableRealtime) {
+          pendingRemoteUpdatesRef.current += 1;
+
+          // Safety net: reset after React has processed the state updates.
+          // If Puck's data is identical to current editor state, onChange
+          // won't fire and the counter would never be decremented naturally.
+          // Leaving it > 0 would cause subsequent local edits to be dropped.
+          setTimeout(() => {
+            pendingRemoteUpdatesRef.current = 0;
+          }, 100);
+        }
+
         // IMPORTANT: Update the ref BEFORE state updates
         // Setting to null allows remote updates after document loads
         viewingVersionRef.current = null;
 
+        currentDataDocumentPathRef.current = doc.path;
         setCurrentData(puckData);
         setLatestVersionData(puckData);
         setViewingVersion(null);
@@ -537,7 +629,7 @@ function CSSPuckProviderInner({
         throw error;
       }
     },
-    [userClient, siteId, branchId, cancelPendingRemoteSync]
+    [userClient, siteId, branchId, cancelPendingRemoteSync, enableRealtime]
   );
 
   // Load a specific version into the editor
@@ -578,6 +670,7 @@ function CSSPuckProviderInner({
         // Remote updates check this ref, so we need it set synchronously
         viewingVersionRef.current = versionToUse;
 
+        currentDataDocumentPathRef.current = currentDocumentRef.current?.path ?? null;
         setCurrentData(puckData);
         setViewingVersion(versionToUse);
         // Clear remoteSyncKey so version sync takes priority
@@ -625,6 +718,7 @@ function CSSPuckProviderInner({
       // Increment counter to skip onChange that will fire
       pendingRemoteUpdatesRef.current += 1;
 
+      currentDataDocumentPathRef.current = currentDocumentRef.current?.path ?? null;
       setCurrentData(dataToRestore);
       setViewingVersion(null);
       // Clear remoteSyncKey so latest version sync takes priority
@@ -955,8 +1049,11 @@ function CSSPuckProviderInner({
       // Save any pending changes first
       if (pendingDataRef.current) {
         if (enableRealtime && realtimeConnectedRef.current) {
-          // Send latest data through WebSocket
-          realtime.applyLocalChange(pendingDataRef.current);
+          // Data origin guard: only send if data belongs to current document
+          const currentPath = currentDocumentRef.current?.path ?? null;
+          if (currentDataDocumentPathRef.current === currentPath) {
+            realtime.applyLocalChange(pendingDataRef.current);
+          }
           pendingDataRef.current = null;
           // Brief delay to allow DO sync to complete
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -994,6 +1091,7 @@ function CSSPuckProviderInner({
 
       setBranchId(newBranchId);
       setCurrentDocument(null);
+      currentDataDocumentPathRef.current = null;
       setCurrentData(null);
       setViewingVersion(null);
       // Clear remoteSyncKey so new branch document sync takes priority
