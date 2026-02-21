@@ -1195,8 +1195,10 @@ async function handleRequest(
         principal_id: string | null;
         system_role: string;
         is_active: boolean;
+        name: string | null;
+        avatar_url: string | null;
       }>(
-        'SELECT id, principal_id, system_role, is_active FROM app.users WHERE email = $1',
+        'SELECT id, principal_id, system_role, is_active, name, avatar_url FROM app.users WHERE email = $1',
         [principal.email.toLowerCase()],
       );
 
@@ -1212,13 +1214,33 @@ async function handleRequest(
       // Link principal_id on first login, and update name/avatar_url
       if (userRow.principal_id === null) {
         await query(
-          'UPDATE app.users SET principal_id = $1, auth_provider = $2, name = COALESCE($3, name), avatar_url = $4, updated_at = NOW() WHERE id = $5',
+          'UPDATE app.users SET principal_id = $1, auth_provider = $2, name = COALESCE($3, name), avatar_url = COALESCE($4, avatar_url), updated_at = NOW() WHERE id = $5',
           [principal.id, principal.authProvider ?? 'unknown', principal.name ?? null, principal.avatarUrl ?? null, userRow.id],
         );
       }
 
-      // Use the DB user ID for downstream authorization (role tables reference users.id)
-      principal.id = userRow.id;
+      // Refresh DB name/avatar when returning user's JWT has newer values
+      if (userRow.principal_id !== null) {
+        const nameChanged = principal.name !== undefined && principal.name !== userRow.name;
+        const avatarChanged = principal.avatarUrl !== undefined && principal.avatarUrl !== userRow.avatar_url;
+        if (nameChanged || avatarChanged) {
+          await query(
+            'UPDATE app.users SET name = COALESCE($1, name), avatar_url = COALESCE($2, avatar_url), updated_at = NOW() WHERE id = $3',
+            [principal.name ?? null, principal.avatarUrl ?? null, userRow.id],
+          );
+        }
+      }
+
+      // Enrich principal from database when JWT claims are missing
+      if (principal.name === undefined && userRow.name !== null) {
+        principal.name = userRow.name;
+      }
+      if (principal.avatarUrl === undefined && userRow.avatar_url !== null) {
+        principal.avatarUrl = userRow.avatar_url;
+      }
+
+      // Store DB user ID for authorization queries (role tables reference users.id, not the UUIDv5 principal id)
+      principal.dbUserId = userRow.id;
       // Attach system role to principal for downstream use
       principal.systemRole = userRow.system_role;
     }
@@ -1353,12 +1375,7 @@ async function handleRequest(
           branchId: route.params.branchId,
           organizationId: route.params.organizationId,
           agentId: route.params.agentId,
-          principal: {
-            id: principal.id,
-            type: principal.type as 'user' | 'agent',
-            organizationId: principal.organizationId,
-            pantheonSiteRoles: principal.pantheonSiteRoles,
-          },
+          principal,
         }, env);
         break;
 

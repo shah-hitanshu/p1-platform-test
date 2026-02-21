@@ -10,6 +10,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
 
+// Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
+vi.mock('cloudflare:workers', () => ({
+  DurableObject: class DurableObject {
+    ctx: unknown;
+    env: unknown;
+    constructor(ctx: unknown, env: unknown) {
+      this.ctx = ctx;
+      this.env = env;
+    }
+  },
+}));
+
 // The UUIDv5-derived principal ID (from google + subject)
 const PROVIDER_DERIVED_ID = '3f5f62dd-27bd-528d-94d7-015b99a0c90e';
 // The DB-generated users.id
@@ -38,13 +50,15 @@ vi.mock('../../src/db', () => ({
     if (sql.includes('SELECT COUNT(*)')) {
       return Promise.resolve({ rows: [{ count: '1' }] });
     }
-    if (sql.includes('SELECT id, principal_id, system_role, is_active FROM app.users')) {
+    if (sql.includes('FROM app.users WHERE email')) {
       return Promise.resolve({
         rows: [{
           id: DB_USER_ID,
           principal_id: PROVIDER_DERIVED_ID,
           system_role: 'member',
           is_active: true,
+          name: 'Alice Developer',
+          avatar_url: 'https://example.com/alice.jpg',
         }],
       });
     }
@@ -192,7 +206,7 @@ describe('Principal ID Enrichment', () => {
     capturedPrincipal = null;
   });
 
-  it('should replace principal.id with DB users.id for downstream authorization', async () => {
+  it('should set dbUserId to DB users.id while preserving principal.id', async () => {
     const module = await import('../../src/index');
 
     const request = new Request('https://api.example.com/api/sites', {
@@ -209,9 +223,10 @@ describe('Principal ID Enrichment', () => {
     if (capturedPrincipal === null) {
       throw new Error('Expected capturedPrincipal to be set');
     }
-    // The principal.id should be the DB user ID, NOT the provider-derived UUIDv5
-    expect(capturedPrincipal.id).toBe(DB_USER_ID);
-    expect(capturedPrincipal.id).not.toBe(PROVIDER_DERIVED_ID);
+    // principal.id should remain the provider-derived UUIDv5 (used by clients as actorId)
+    expect(capturedPrincipal.id).toBe(PROVIDER_DERIVED_ID);
+    // dbUserId should be the DB users.id (used for authorization queries)
+    expect(capturedPrincipal.dbUserId).toBe(DB_USER_ID);
   });
 
   it('should attach systemRole from DB user row', async () => {
