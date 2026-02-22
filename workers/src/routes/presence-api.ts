@@ -14,7 +14,7 @@
  * - Agent presence: Requires caller to be in the same organization
  */
 
-import type { PantheonRole } from '../types';
+import type { AuthenticatedPrincipal } from '../types';
 import {
   getBranchPresence,
   getSitePresence,
@@ -31,6 +31,31 @@ import { hasPermission } from '../auth/authorization';
 // =============================================================================
 
 /**
+ * Minimal principal fields required for presence authorization.
+ * Extends the core identity fields with optional authorization-related fields.
+ * In production, a full AuthenticatedPrincipal is passed (from index.ts).
+ * The optional fields accommodate callers and tests that pass partial objects.
+ */
+export interface PresencePrincipal {
+  id: string;
+  type: 'user' | 'agent';
+  pantheonSiteRoles?: Record<string, string>;
+  organizationId?: string;
+  /** DB-generated users.id for authorization queries (set by principal enrichment) */
+  dbUserId?: string;
+  /** System role from DB (admin, member, etc.) */
+  systemRole?: string;
+  /** Token expiry for authorization checks */
+  tokenExpiry?: string;
+  /** Auth provider name */
+  authProvider?: string;
+  email?: string;
+  name?: string;
+  avatarUrl?: string;
+  providerSubjectId?: string;
+}
+
+/**
  * Request context for presence routes with authorization data
  */
 export interface PresenceRouteContext {
@@ -38,12 +63,7 @@ export interface PresenceRouteContext {
   branchId?: string;
   organizationId?: string;
   agentId?: string;
-  principal: {
-    id: string;
-    type: 'user' | 'agent';
-    organizationId?: string;
-    pantheonSiteRoles?: Record<string, PantheonRole>;
-  };
+  principal: PresencePrincipal;
 }
 
 /**
@@ -112,15 +132,9 @@ async function canViewSite(
     return false;
   }
 
-  // Build a minimal authenticated principal for permission check
-  const authPrincipal = {
-    id: context.principal.id,
-    type: context.principal.type,
-    pantheonSiteRoles: context.principal.pantheonSiteRoles ?? {},
-    tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
-  };
-
-  return await hasPermission(authPrincipal, siteId, mainBranch.id, 'canView');
+  return await hasPermission(
+    context.principal as AuthenticatedPrincipal, siteId, mainBranch.id, 'canView',
+  );
 }
 
 /**
@@ -137,14 +151,9 @@ async function canViewBranch(
   }
 
   // Check canView permission on the specific branch
-  const authPrincipal = {
-    id: context.principal.id,
-    type: context.principal.type,
-    pantheonSiteRoles: context.principal.pantheonSiteRoles ?? {},
-    tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
-  };
-
-  return await hasPermission(authPrincipal, siteId, branchId, 'canView');
+  return await hasPermission(
+    context.principal as AuthenticatedPrincipal, siteId, branchId, 'canView',
+  );
 }
 
 /**

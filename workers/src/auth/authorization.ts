@@ -92,10 +92,12 @@ async function getSiteRole(
     return await getDualSourceRole(principal, siteId, masClient);
   } else {
     // Query user_site_roles table (legacy single-source)
+    // Use dbUserId (the DB users.id) when available, falling back to principal.id
+    const userId = principal.dbUserId ?? principal.id;
     const result = await query<{ role: PantheonRole }>(
       `SELECT role FROM user_site_roles
        WHERE user_id = $1 AND site_id = $2`,
-      [principal.id, siteId],
+      [userId, siteId],
     );
 
     if (result.rows[0]) {
@@ -118,10 +120,12 @@ async function getDualSourceRole(
   masClient: MASClient,
 ): Promise<RoleName> {
   // Query both sources in one query
+  // Use dbUserId (the DB users.id) when available, falling back to principal.id
+  const userId = principal.dbUserId ?? principal.id;
   const result = await query<{ role: PantheonRole; source: string; updated_at: string }>(
     `SELECT role, source, updated_at FROM app.user_site_roles
      WHERE user_id = $1 AND site_id = $2`,
-    [principal.id, siteId],
+    [userId, siteId],
   );
 
   let localRole: RoleName = 'NO_ACCESS';
@@ -145,7 +149,7 @@ async function getDualSourceRole(
 
   if (needsRefresh) {
     try {
-      const freshRole = await masClient.getUserSiteRole(principal.id, siteId);
+      const freshRole = await masClient.getUserSiteRole(userId, siteId);
 
       if (freshRole !== null) {
         // Upsert the MAS role
@@ -154,7 +158,7 @@ async function getDualSourceRole(
            VALUES ($1, $2, $3, 'mas', NOW())
            ON CONFLICT (user_id, site_id, source)
            DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()`,
-          [principal.id, siteId, freshRole],
+          [userId, siteId, freshRole],
         );
         masRole = mapPantheonRole(freshRole);
       } else if (masRow === null) {
@@ -227,10 +231,11 @@ export async function getEffectiveRole(
   const baselineRoleName = await getSiteRole(principal, siteId, masClient);
 
   // Step 2: Check for branch-level elevation
+  const actorId = principal.dbUserId ?? principal.id;
   const branchGrant = await query<{ role: RoleName }>(
     `SELECT role FROM branch_grants
      WHERE branch_id = $1 AND actor_id = $2`,
-    [branchId, principal.id],
+    [branchId, actorId],
   );
 
   const grantRoleName = branchGrant.rows[0]?.role;

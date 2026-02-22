@@ -490,6 +490,8 @@ export interface AuthenticatedPrincipal {
   authProvider?: AuthProvider;
   /** Original subject ID from the OAuth provider (before UUIDv5 mapping) */
   providerSubjectId?: string;
+  /** Database users.id (may differ from id which is a provider-derived UUIDv5) */
+  dbUserId?: string;
   /** System-level role from the users allowlist ('admin' or 'member') */
   systemRole?: string;
 }
