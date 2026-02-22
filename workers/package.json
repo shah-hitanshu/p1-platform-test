@@ -45,7 +45,8 @@
   "pnpm": {
     "overrides": {
       "esbuild": ">=0.25.0",
-      "undici": ">=6.23.0"
+      "undici": ">=6.23.0",
+      "minimatch": ">=10.2.1"
     }
   },
   "devDependencies": {
