@@ -5,7 +5,7 @@
  * Manages WebSocket connection and Yjs CRDT synchronization.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { RealtimeClient } from '@pantheon/css-client';
 import type { PuckData, ActorPresence, ActorState } from '@pantheon/css-client';
 import {
@@ -98,6 +98,14 @@ export interface UseRealtimeReturn {
    * Returns true when connected and able to send/receive presence messages.
    */
   presenceViaWebSocket: boolean;
+
+  /**
+   * The document path that the realtime connection is currently bound to.
+   * Captured at the moment of connection establishment. Returns null when
+   * disconnected or during connection transitions. Used by callers to verify
+   * that data being sent matches the active connection's document.
+   */
+  connectedDocumentPath: string | null;
 }
 
 /**
@@ -149,6 +157,12 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
   const [error, setError] = useState<Error | null>(null);
   const [presenceViaWebSocket, setPresenceViaWebSocket] = useState(false);
 
+  // Track the document path that the active connection is bound to.
+  // Captured at connection time, cleared on disconnect. Used to prevent
+  // cross-document state bleed: callers can compare this against their
+  // current document path before sending data through the binding.
+  const connectedDocumentPathRef = useRef<string | null>(null);
+
   // Refs to avoid recreating callbacks
   const clientRef = useRef<RealtimeClient | null>(null);
   const bindingRef = useRef<ReturnType<typeof createPuckYjsBinding> | null>(null);
@@ -169,6 +183,22 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
     onFocusRegionBroadcastRef.current = onFocusRegionBroadcast;
   }, [onFocusRegionBroadcast]);
 
+  // Eagerly clean up binding and client refs when dependencies change.
+  // useLayoutEffect cleanup runs BEFORE regular useEffect callbacks (including
+  // children's effects like PuckDataSynchronizer). This prevents a race condition
+  // where PuckDataSynchronizer dispatches setData during a document switch, Puck
+  // fires onChange, and saveData sends data through a stale binding that still
+  // points to the previous document's Y.Doc — causing cross-document state bleed.
+  useLayoutEffect(() => {
+    return () => {
+      connectedDocumentPathRef.current = null;
+      bindingRef.current?.destroy();
+      bindingRef.current = null;
+      clientRef.current?.disconnect();
+      clientRef.current = null;
+    };
+  }, [baseUrl, apiKey, siteId, branchId, documentPath, actorId, actorType, sessionId, enabled]);
+
   // Effect to manage connection lifecycle
   useEffect(() => {
     // Don't connect if disabled, no document path, or missing required params
@@ -184,11 +214,28 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
       baseUrl,
       apiKey,
       onConnect: () => {
+        // Guard: ignore callbacks from stale clients.
+        // When dependencies change, the old client is destroyed and a new one
+        // created. The old WebSocket's close event fires asynchronously and may
+        // arrive AFTER the new client has already connected. Without this guard,
+        // the stale onDisconnect would overwrite the new client's connection
+        // state (connectedDocumentPathRef, connected, presenceViaWebSocket),
+        // permanently breaking sync in one direction and corrupting presence.
+        if (clientRef.current !== client) return;
+
+        // Capture the document path this connection is bound to.
+        // documentPath here is from the effect closure — it's the value
+        // that was current when this effect ran, which is the document
+        // the WebSocket was created for.
+        connectedDocumentPathRef.current = documentPath;
         setConnected(true);
         setPresenceViaWebSocket(true);
         setError(null);
       },
       onDisconnect: () => {
+        // Guard: ignore callbacks from stale clients (see onConnect comment).
+        if (clientRef.current !== client) return;
+        connectedDocumentPathRef.current = null;
         setConnected(false);
         setPresenceViaWebSocket(false);
       },
@@ -228,6 +275,7 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
 
     // Cleanup on unmount or when dependencies change
     return () => {
+      connectedDocumentPathRef.current = null;
       binding.destroy();
       bindingRef.current = null;
       client.disconnect();
@@ -278,5 +326,6 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
     sendFocusRegions,
     sendHeartbeat,
     presenceViaWebSocket,
+    connectedDocumentPath: connectedDocumentPathRef.current,
   };
 }

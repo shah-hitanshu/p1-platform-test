@@ -41,6 +41,14 @@ interface BindingState {
    * even if there are edge cases with transaction origins.
    */
   isApplyingLocalChange: boolean;
+
+  /**
+   * Flag set when destroy() is called. Prevents applyLocalChange from
+   * writing to the Y.Doc after the binding has been torn down. This is
+   * critical during document switches where a stale binding reference
+   * could otherwise write the wrong document's data into the Y.Doc.
+   */
+  destroyed: boolean;
 }
 
 /**
@@ -137,6 +145,7 @@ export function createPuckYjsBinding(
   // when multiple binding instances existed in the same browser window
   const bindingState: BindingState = {
     isApplyingLocalChange: false,
+    destroyed: false,
   };
 
   // Observer for remote changes
@@ -177,6 +186,10 @@ export function createPuckYjsBinding(
      * Also sets isApplyingLocalChange flag as a backup mechanism.
      */
     applyLocalChange: (data: PuckData) => {
+      // Prevent writes through a destroyed binding (cross-document state bleed guard)
+      if (bindingState.destroyed) {
+        return;
+      }
       bindingState.isApplyingLocalChange = true;
       try {
         puckDataToYMap(data, root);
@@ -186,9 +199,11 @@ export function createPuckYjsBinding(
     },
 
     /**
-     * Cleanup observers.
+     * Cleanup observers and mark as destroyed.
+     * After destroy(), applyLocalChange becomes a no-op.
      */
     destroy: () => {
+      bindingState.destroyed = true;
       root.unobserveDeep(observer);
     },
   };

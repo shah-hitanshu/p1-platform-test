@@ -194,11 +194,7 @@ export class RealtimeClient {
     this.ydoc.on('update', (update: Uint8Array, origin: unknown) => {
       // Only broadcast if this update didn't come from remote
       if (origin !== 'remote' && this.ws && this.ws.readyState === WebSocket.OPEN) {
-        /* TODO: Remove console.log */
-        console.log('[Realtime] Sending local update, size:', update.length, 'origin:', origin);
         this.ws.send(update);
-      } else if (origin !== 'remote') {
-        console.log('[Realtime] NOT sending update - ws:', !!this.ws, 'readyState:', this.ws?.readyState);
       }
     });
   }
@@ -429,10 +425,10 @@ export class RealtimeClient {
    * This permanently closes the connection and stops any reconnection attempts.
    */
   disconnect(): void {
+    this.intentionalDisconnect = true;
+    this.stopReconnectMonitoring();
+    this.stopVisibilityMonitoring();
     if (this.ws) {
-      this.intentionalDisconnect = true;
-      this.stopReconnectMonitoring();
-      this.stopVisibilityMonitoring();
       this.ws.close();
       this.ws = null;
       this.connected = false;
