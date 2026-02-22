@@ -184,6 +184,50 @@ describe('Auth Phase 4: WebSocket Authentication & Authorization', () => {
       expect(response.status).toBe(200);
     });
 
+    it('should allow when client actorId matches providerSubjectId', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+      const principal = createTestPrincipal({
+        id: 'uuidv5-derived-id',
+        providerSubjectId: '110402054196644394871',
+      });
+
+      const request = new Request(
+        'https://example.com/api/sites/site-123/branches/branch-1/documents/test-doc',
+        {
+          method: 'GET',
+          headers: { 'X-Actor-Id': '110402054196644394871' },
+        },
+      );
+
+      const result = await handleRealtimeRoutes(request, mockEnv, { principal });
+
+      const response = assertNotNull(result);
+      expect(response.status).toBe(200);
+    });
+
+    it('should reject when client actorId matches neither principal id nor providerSubjectId', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+      const principal = createTestPrincipal({
+        id: 'uuidv5-derived-id',
+        providerSubjectId: '110402054196644394871',
+      });
+
+      const request = new Request(
+        'https://example.com/api/sites/site-123/branches/branch-1/documents/test-doc',
+        {
+          method: 'GET',
+          headers: { 'X-Actor-Id': 'completely-different-id' },
+        },
+      );
+
+      const result = await handleRealtimeRoutes(request, mockEnv, { principal });
+
+      const response = assertNotNull(result);
+      expect(response.status).toBe(403);
+      const body = await response.json();
+      expect(body.error).toContain('does not match');
+    });
+
     it('should default to principal id when no client actorId is provided', async () => {
       const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
       const principal = createTestPrincipal({ id: 'user-123' });

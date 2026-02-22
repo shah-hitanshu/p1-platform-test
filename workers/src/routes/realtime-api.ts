@@ -780,7 +780,12 @@ export async function handleRealtimeRoutes(
   const clientActorId = request.headers.get('X-Actor-Id')
     ?? url.searchParams.get('actorId');
 
-  if (clientActorId !== null && clientActorId !== '' && clientActorId !== context.principal.id) {
+  if (
+    clientActorId !== null
+    && clientActorId !== ''
+    && clientActorId !== context.principal.id
+    && clientActorId !== context.principal.providerSubjectId
+  ) {
     return errorResponse(403, 'Actor ID does not match authenticated identity', origin, patterns);
   }
 
@@ -829,7 +834,10 @@ export async function handleRealtimeRoutes(
     }
 
     // Auth Phase 4: Cross-validate body actorId against principal
-    if (bodyResult.actorId !== context.principal.id) {
+    if (
+      bodyResult.actorId !== context.principal.id
+      && bodyResult.actorId !== context.principal.providerSubjectId
+    ) {
       return errorResponse(403, 'Actor ID in request body does not match authenticated identity', origin, patterns);
     }
 
