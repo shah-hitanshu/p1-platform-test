@@ -8,7 +8,19 @@
  * - Environment interface
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
+vi.mock('cloudflare:workers', () => ({
+  DurableObject: class DurableObject {
+    ctx: unknown;
+    env: unknown;
+    constructor(ctx: unknown, env: unknown) {
+      this.ctx = ctx;
+      this.env = env;
+    }
+  },
+}));
 
 describe('Project Configuration', () => {
   describe('TypeScript Configuration', () => {

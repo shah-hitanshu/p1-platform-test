@@ -17,6 +17,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import type { EditOperation, ConnectionMeta } from '../../src/types';
 
+// Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
+vi.mock('cloudflare:workers', () => ({
+  DurableObject: class DurableObject {
+    ctx: unknown;
+    env: unknown;
+    constructor(ctx: unknown, env: unknown) {
+      this.ctx = ctx;
+      this.env = env;
+    }
+  },
+}));
+
 // =============================================================================
 // Mock Types for Durable Object Testing
 // =============================================================================

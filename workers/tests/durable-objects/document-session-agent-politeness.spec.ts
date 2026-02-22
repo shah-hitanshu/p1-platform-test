@@ -15,6 +15,18 @@
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 
+// Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
+vi.mock('cloudflare:workers', () => ({
+  DurableObject: class DurableObject {
+    ctx: unknown;
+    env: unknown;
+    constructor(ctx: unknown, env: unknown) {
+      this.ctx = ctx;
+      this.env = env;
+    }
+  },
+}));
+
 // Mock agent service to return agent info for name lookup
 vi.mock('../../src/services/agent-service', () => ({
   getAgentById: vi.fn().mockImplementation((agentId: string) => {

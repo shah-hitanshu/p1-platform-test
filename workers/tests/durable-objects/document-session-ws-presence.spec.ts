@@ -19,6 +19,18 @@ import type {
   WsPresenceErrorMessage,
 } from '../../src/types/websocket-messages';
 
+// Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
+vi.mock('cloudflare:workers', () => ({
+  DurableObject: class DurableObject {
+    ctx: unknown;
+    env: unknown;
+    constructor(ctx: unknown, env: unknown) {
+      this.ctx = ctx;
+      this.env = env;
+    }
+  },
+}));
+
 // =============================================================================
 // Mock Types for Durable Object Testing
 // =============================================================================

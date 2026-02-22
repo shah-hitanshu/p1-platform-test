@@ -12,6 +12,18 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
+vi.mock('cloudflare:workers', () => ({
+  DurableObject: class DurableObject {
+    ctx: unknown;
+    env: unknown;
+    constructor(ctx: unknown, env: unknown) {
+      this.ctx = ctx;
+      this.env = env;
+    }
+  },
+}));
+
 // Mock document service for database calls
 vi.mock('../../src/services/document-service', () => ({
   getDocumentByPath: vi.fn(),

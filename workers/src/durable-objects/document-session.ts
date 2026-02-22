@@ -13,6 +13,7 @@
  */
 
 import * as Y from 'yjs';
+import { DurableObject } from 'cloudflare:workers';
 import type { DurableObjectState } from '@cloudflare/workers-types';
 import type { EditOperation, ConnectionMeta, CheckpointTrigger, ActorPresence } from '../types';
 import { incrementCounter, setGauge, recordTiming } from '../services/metrics-service';
@@ -208,9 +209,9 @@ const SYNC_IDLE_TIMEOUT_MS = 5000;
  * Each instance manages CRDT state for a single document on a single branch.
  * Multiple users can connect via WebSocket for real-time collaboration.
  */
-export class DocumentSession {
-  private readonly state: DurableObjectState;
-  private readonly env: DocumentSessionEnv;
+export class DocumentSession extends DurableObject<DocumentSessionEnv> {
+  /** Alias this.ctx as this.state to minimize changes from pre-migration code */
+  private get state(): DurableObjectState { return this.ctx; }
   private readonly sessionInfo: SessionInfo;
   private ydoc: Y.Doc;
   private initialized: boolean;
@@ -247,8 +248,7 @@ export class DocumentSession {
   private orgSettingsLoaded = false;
 
   constructor(state: unknown, env: unknown) {
-    this.state = state as DurableObjectState;
-    this.env = env as DocumentSessionEnv;
+    super(state as DurableObjectState, env as DocumentSessionEnv);
     this.sessionInfo = this.parseSessionId();
     this.ydoc = new Y.Doc();
     this.initialized = false;
@@ -319,6 +319,35 @@ export class DocumentSession {
    */
   getSessionInfo(): SessionInfo {
     return this.sessionInfo;
+  }
+
+  /**
+   * Create a compact summary of the current Y.Doc state for diagnostic logging.
+   * Includes content item count, types, and a truncated JSON preview.
+   */
+  private snapshotSummary(): string {
+    try {
+      const root = this.ydoc.getMap('root');
+      const json = root.toJSON() as Record<string, unknown>;
+      const content = Array.isArray(json.content)
+        ? json.content
+        : [];
+      const types = content
+        .map((c: unknown) => {
+          const obj = c as Record<string, unknown> | null;
+          if (obj !== null && typeof obj === 'object') {
+            const t = obj.type;
+            return typeof t === 'string' ? t : '?';
+          }
+          return '?';
+        })
+        .join(',');
+      const preview = JSON.stringify(json).slice(0, 200);
+      return `items=${String(content.length)} types=[${types}]`
+        + ` preview=${preview}`;
+    } catch {
+      return '<error reading snapshot>';
+    }
   }
 
   /**
@@ -495,6 +524,9 @@ export class DocumentSession {
       return;
     }
 
+    const sid = JSON.stringify(this.sessionInfo);
+    console.log(`[DO-DIAG] initializeIfNeeded START session=${sid}`);
+
     const stored = await this.state.storage.get(YDOC_STORAGE_KEY);
 
     if (stored instanceof Uint8Array && stored.length > 0) {
@@ -504,10 +536,21 @@ export class DocumentSession {
         this.initialized = true;
         // Set initial state vector hash to prevent unnecessary syncs
         this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+        console.log(
+          '[DO-DIAG] initializeIfNeeded LOADED from DO storage,'
+          + ` size=${String(stored.length)},`
+          + ` ${this.snapshotSummary()}`,
+        );
       } catch (error) {
         // Invalid stored data - log and try PostgreSQL fallback
         console.warn('Failed to restore CRDT state from storage:', error);
       }
+    } else {
+      console.log(
+        '[DO-DIAG] initializeIfNeeded:'
+        + ' DO storage empty or not Uint8Array'
+        + ` (type=${typeof stored})`,
+      );
     }
 
     // Priority 2: Try to load from PostgreSQL if DO storage was empty or invalid
@@ -515,6 +558,11 @@ export class DocumentSession {
       if (this.env.INTERNAL_API_URL !== undefined && this.env.INTERNAL_SECRET !== undefined) {
         try {
           await this.initializeFromPostgres();
+          console.log(
+            '[DO-DIAG] initializeIfNeeded'
+            + ' LOADED from PostgreSQL,'
+            + ` ${this.snapshotSummary()}`,
+          );
         } catch (error) {
           console.warn('Failed to initialize from PostgreSQL:', error);
           // Continue with empty state
@@ -1014,6 +1062,10 @@ export class DocumentSession {
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
 
+    // Accept the WebSocket connection via Hibernatable API
+    // (must happen before serializeAttachment so the runtime tracks the socket)
+    this.state.acceptWebSocket(server);
+
     // Store connection metadata as attachment (Hibernatable WebSocket API)
     const meta: ConnectionMeta = {
       actorId,
@@ -1026,9 +1078,6 @@ export class DocumentSession {
     };
     server.serializeAttachment(meta);
 
-    // Accept the WebSocket connection via Hibernatable API
-    this.state.acceptWebSocket(server);
-
     // Record WebSocket connection metrics
     incrementCounter('css_ws_connections_total', { action: 'open' });
     setGauge('css_ws_connections_active', this.getConnectionCount());
@@ -1038,6 +1087,14 @@ export class DocumentSession {
 
     // Send current state to new client
     const stateUpdate = Y.encodeStateAsUpdate(this.ydoc);
+    console.log(
+      '[DO-DIAG] handleWebSocket SEND initial state'
+      + ` actor=${actorId},`
+      + ` size=${String(stateUpdate.length)},`
+      + ` conns=${String(this.getConnectionCount())},`
+      + ` session=${JSON.stringify(this.sessionInfo)},`
+      + ` ${this.snapshotSummary()}`,
+    );
     server.send(stateUpdate);
 
     // Broadcast presence update to all clients (new connection joined)
@@ -1081,8 +1138,27 @@ export class DocumentSession {
 
       const update = new Uint8Array(data);
 
+      // Diagnostic: snapshot BEFORE applying update
+      const beforeSummary = this.snapshotSummary();
+
       // Apply update to local doc
       Y.applyUpdate(this.ydoc, update);
+
+      // Diagnostic: snapshot AFTER applying update
+      const afterSummary = this.snapshotSummary();
+      const otherConnCount = this.state.getWebSockets()
+        .filter((c: WebSocket) => c !== ws
+          && c.readyState === WebSocket.OPEN)
+        .length;
+      console.log(
+        '[DO-DIAG] webSocketMessage'
+        + ` actor=${meta.actorId},`
+        + ` updateSize=${String(update.length)},`
+        + ` broadcastTo=${String(otherConnCount)},`
+        + ` session=${JSON.stringify(this.sessionInfo)}`
+        + `\n  BEFORE: ${beforeSummary}`
+        + `\n  AFTER:  ${afterSummary}`,
+      );
 
       // Broadcast to other clients
       for (const conn of this.state.getWebSockets()) {
@@ -1110,7 +1186,7 @@ export class DocumentSession {
 
     const meta = this.getConnectionMeta(ws);
     const actorId = meta?.actorId ?? 'unknown';
-    this.handleWebSocketDisconnect(ws, actorId);
+    await this.handleWebSocketDisconnect(ws, actorId);
   }
 
   /**
@@ -1122,17 +1198,27 @@ export class DocumentSession {
 
     const meta = this.getConnectionMeta(ws);
     const actorId = meta?.actorId ?? 'unknown';
-    this.handleWebSocketDisconnect(ws, actorId);
+    await this.handleWebSocketDisconnect(ws, actorId);
   }
 
   /**
    * Handle WebSocket disconnect (close or error).
    * Cleans up actor's presence, focus regions, and triggers sync if needed.
    *
+   * Must be awaited so that persist/sync operations complete before the DO
+   * is eligible for hibernation (fire-and-forget promises would be cancelled).
+   *
    * @param server - The WebSocket connection
    * @param actorId - The actor ID associated with this connection
    */
-  private handleWebSocketDisconnect(server: WebSocket, actorId: string): void {
+  private async handleWebSocketDisconnect(server: WebSocket, actorId: string): Promise<void> {
+    console.log(
+      '[DO-DIAG] handleWebSocketDisconnect'
+      + ` actor=${actorId},`
+      + ` remainingConns=${String(this.getConnectionCount())},`
+      + ` session=${JSON.stringify(this.sessionInfo)},`
+      + ` ${this.snapshotSummary()}`,
+    );
     // Runtime manages WebSocket removal for Hibernatable API
     incrementCounter('css_ws_connections_total', { action: 'close' });
     setGauge('css_ws_connections_active', this.getConnectionCount());
@@ -1169,14 +1255,17 @@ export class DocumentSession {
 
       // Persist edit sessions if any were cleared during cleanup
       if (cleanupStats.sessionsCleared > 0) {
-        void this.persistEditSessions();
+        await this.persistEditSessions();
       }
 
       // Compact CRDT state to free memory from deleted content
       this.compactCrdtState();
 
-      // Trigger immediate sync to PostgreSQL
-      void this.syncToPostgres();
+      // Persist the compacted state to DO storage so it survives hibernation
+      await this.persist();
+
+      // Trigger sync to PostgreSQL (awaited so it completes before hibernation)
+      await this.syncToPostgres();
     }
   }
 
