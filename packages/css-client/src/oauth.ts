@@ -286,7 +286,6 @@ export function createAuth0OAuth(config: Auth0OAuthConfig): OAuthSession {
 
     try {
       // Dynamic import of the optional peer dependency
-      // @ts-expect-error - @auth0/auth0-spa-js is an optional peer dependency
       const { Auth0Client } = await import('@auth0/auth0-spa-js');
       auth0Client = new Auth0Client({
         domain: config.domain,

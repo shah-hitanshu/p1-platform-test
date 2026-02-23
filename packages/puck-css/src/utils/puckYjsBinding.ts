@@ -201,8 +201,11 @@ export function createPuckYjsBinding(
     /**
      * Cleanup observers and mark as destroyed.
      * After destroy(), applyLocalChange becomes a no-op.
+     * Idempotent: safe to call multiple times (e.g. React strict mode
+     * double-unmount where both useLayoutEffect and useEffect cleanups fire).
      */
     destroy: () => {
+      if (bindingState.destroyed) return;
       bindingState.destroyed = true;
       root.unobserveDeep(observer);
     },
