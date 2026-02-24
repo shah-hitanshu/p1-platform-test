@@ -1003,6 +1003,21 @@ Server logic:
 7. **Puck Integration**: Uses Puck 0.21's Plugin API for left rail and Overrides for header actions
 8. **Optional Configuration**: Only baseUrl, apiKey, siteId, and userId are required; branchId is optional
 
+### v0.1.1 Patch Release (2026-02-23) ✅
+
+**Release:** [v0.1.1](https://github.com/pantheon-systems/puck-css-integration/releases/tag/v0.1.1)
+
+**Changes:**
+- Removed stale `@ts-expect-error` on Auth0 dynamic import in `@pantheon/css-client` (types now resolve correctly)
+- Made `puckYjsBinding.destroy()` idempotent in `@pantheon/puck-css` to prevent errors during React strict mode double-unmount
+
+**Distribution:**
+- Switched from checked-in tarballs to GitHub Releases for distribution
+- Tarballs attached to the GitHub release as downloadable assets
+- `.gitignore` continues to exclude `*.tgz` from version control
+
+---
+
 ## Remaining Work
 
 ### Phase 7: E2E Tests
