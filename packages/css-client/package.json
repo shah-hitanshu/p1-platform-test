@@ -1,6 +1,6 @@
 {
   "name": "@pantheon/css-client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript API client for Collaborative State System",
   "repository": {
     "type": "git",
