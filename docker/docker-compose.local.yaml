@@ -1,8 +1,7 @@
 # Docker Compose - Local Development Environment
-# 
+#
 # Provides backend services for local Cloudflare Worker development:
 # - PostgreSQL 16 for document/state persistence
-# - Firestore emulator for notifications and activity feed
 #
 # Usage:
 #   make docker-up       # Start services
@@ -10,8 +9,6 @@
 #   make docker-logs     # View logs
 #
 # Note: Miniflare (Cloudflare Worker) runs separately via `make worker-dev`
-
-version: '3.8'
 
 services:
   # ─────────────────────────────────────────────────────────────────────────────
@@ -41,30 +38,28 @@ services:
       - "pan-environment=local"
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Firestore Emulator - Notifications and activity feed
+  # Firestore Emulator - Notifications and activity feed (currently unused)
+  # Uncomment when Firestore is needed for notifications/activity feed.
   # ─────────────────────────────────────────────────────────────────────────────
-  firestore:
-    image: google/cloud-sdk:slim
-    platform: linux/amd64
-    container_name: css-firestore
-    command: >
-      bash -c "
-        apt-get update -qq && apt-get install -qq -y openjdk-17-jre-headless google-cloud-cli-firestore-emulator > /dev/null 2>&1 &&
-        gcloud emulators firestore start --host-port=0.0.0.0:8080 --project=local-css-project
-      "
-    ports:
-      - "8080:8080"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 0"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-    networks:
-      - css-network
-    labels:
-      - "pan-service=collaborative-state-system"
-      - "pan-environment=local"
+  # firestore:
+  #   image: google/cloud-sdk:emulators
+  #   platform: linux/amd64
+  #   container_name: css-firestore
+  #   command: >
+  #     gcloud emulators firestore start --host-port=0.0.0.0:8080 --project=local-css-project
+  #   ports:
+  #     - "8080:8080"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 0"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 10
+  #     start_period: 30s
+  #   networks:
+  #     - css-network
+  #   labels:
+  #     - "pan-service=collaborative-state-system"
+  #     - "pan-environment=local"
 
   # ─────────────────────────────────────────────────────────────────────────────
   # pgAdmin - Database management UI (optional, use with --profile tools)

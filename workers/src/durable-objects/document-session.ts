@@ -386,6 +386,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
    * Update session info from request header if not available from state.id.name
    * This is needed because Miniflare (local dev) doesn't provide state.id.name
    */
+  /** Storage key for persisted session info (survives hibernation/alarm wakeups) */
+  private static readonly SESSION_INFO_KEY = 'sessionInfo';
+
   private updateSessionInfoFromRequest(request: Request): void {
     // Only update if session info has unknown values (meaning state.id.name wasn't available)
     if (this.sessionInfo.siteId === 'unknown') {
@@ -406,6 +409,8 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
             documentId: parts[1],
             branchId: parts[2],
           };
+          // Persist to DO storage so alarm handler can recover session info
+          void this.state.storage.put(DocumentSession.SESSION_INFO_KEY, this.sessionInfo);
           console.log(`Session info updated from request: ${JSON.stringify(this.sessionInfo)}`);
         } else {
           console.error(`Invalid session ID format: ${sessionId}`);
@@ -413,6 +418,20 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       } else {
         console.error(`No session ID found in request. URL: ${request.url}, Headers: X-Session-Id=${request.headers.get('X-Session-Id') ?? 'null'}`);
       }
+    }
+  }
+
+  /**
+   * Restore session info from DO storage when state.id.name is unavailable.
+   * This handles alarm wakeups in Miniflare where state.id.name is undefined.
+   */
+  private async restoreSessionInfoFromStorage(): Promise<void> {
+    if (this.sessionInfo.siteId !== 'unknown') {
+      return;
+    }
+    const stored = await this.state.storage.get<SessionInfo>(DocumentSession.SESSION_INFO_KEY);
+    if (stored !== undefined && stored.siteId !== 'unknown') {
+      this.sessionInfo = stored;
     }
   }
 
@@ -1774,9 +1793,10 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       actorType,
     });
 
-    // Set alarm to fire at the due time (or earlier if cleanup alarm already set)
+    // Set alarm to fire at the due time, replacing stale or later alarms
     const existingAlarm = await this.state.storage.getAlarm();
-    if (existingAlarm === null || existingAlarm > dueAt) {
+    const now = Date.now();
+    if (existingAlarm === null || existingAlarm > dueAt || existingAlarm < now) {
       await this.state.storage.setAlarm(dueAt);
       this.cleanupAlarmScheduled = true;
     }
@@ -1824,6 +1844,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
    * Handles sync schedule processing, then runs cleanup and reschedules.
    */
   async alarm(): Promise<void> {
+    // Restore session info from storage if state.id.name is unavailable (Miniflare)
+    await this.restoreSessionInfoFromStorage();
+
     // Restore state after potential hibernation wake
     await this.initializeIfNeeded();
 

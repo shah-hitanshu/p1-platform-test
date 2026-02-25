@@ -58,6 +58,9 @@ WEBSOCKET_HEARTBEAT_INTERVAL=30000
 DOCUMENT_SYNC_BATCH_SIZE=50
 PRESENCE_TTL_SECONDS=120
 
+# Internal API secret for DO-to-PostgreSQL sync
+INTERNAL_SECRET=development-internal-secret
+
 # Mock Google credentials (local development only)
 # In production, this comes from Vault via OIDC
 GOOGLE_APPLICATION_CREDENTIALS={"type":"service_account","project_id":"${FIRESTORE_PROJECT}","private_key_id":"local-mock-key","private_key":"-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBglocal-dev-mock-key\n-----END PRIVATE KEY-----\n","client_email":"local-dev@${FIRESTORE_PROJECT}.iam.gserviceaccount.com","client_id":"000000000000"}

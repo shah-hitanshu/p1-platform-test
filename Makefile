@@ -59,7 +59,6 @@ dev-status: ## Show status of local services
 	@echo ""
 	@echo "$(BLUE)Service Endpoints:$(NC)"
 	@echo "  PostgreSQL:  localhost:5432"
-	@echo "  Firestore:   localhost:8080"
 	@echo "  Worker:      localhost:8787 (when running)"
 
 ##@ Docker Services

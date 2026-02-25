@@ -19,19 +19,12 @@ RETRY_INTERVAL=2
 # Services to check
 POSTGRES_HOST="${POSTGRES_HOST:-localhost}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
-FIRESTORE_HOST="${FIRESTORE_HOST:-localhost}"
-FIRESTORE_PORT="${FIRESTORE_PORT:-8080}"
 
 echo -e "${YELLOW}Waiting for services to be ready...${NC}"
 
-# Function to check PostgreSQL
+# Function to check PostgreSQL (runs inside container to avoid needing local pg_isready)
 check_postgres() {
-    pg_isready -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -q 2>/dev/null
-}
-
-# Function to check Firestore emulator
-check_firestore() {
-    curl -s -o /dev/null -w "%{http_code}" "http://${FIRESTORE_HOST}:${FIRESTORE_PORT}/" 2>/dev/null | grep -q "200\|404"
+    docker exec css-postgres pg_isready -U cssuser -d cssdb -q 2>/dev/null
 }
 
 # Wait for PostgreSQL
@@ -42,20 +35,6 @@ while ! check_postgres; do
     if [ $retries -ge $MAX_RETRIES ]; then
         echo -e "${RED}FAILED${NC}"
         echo -e "${RED}Error: PostgreSQL did not become ready in time${NC}"
-        exit 1
-    fi
-    sleep $RETRY_INTERVAL
-done
-echo -e "${GREEN}ready${NC}"
-
-# Wait for Firestore emulator
-echo -n "  Firestore ($FIRESTORE_HOST:$FIRESTORE_PORT): "
-retries=0
-while ! check_firestore; do
-    retries=$((retries + 1))
-    if [ $retries -ge $MAX_RETRIES ]; then
-        echo -e "${RED}FAILED${NC}"
-        echo -e "${RED}Error: Firestore emulator did not become ready in time${NC}"
         exit 1
     fi
     sleep $RETRY_INTERVAL

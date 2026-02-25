@@ -142,6 +142,7 @@ const DEFAULT_MOCK_CONFIG: MockIdentityConfig = {
         'site-123': 'admin',
         'site-456': 'developer',
         'b56bdbfd-512c-4c1f-82e9-e774c2a8ec22': 'admin',
+        '03499be6-0236-47d8-9076-64b71c420e1e': 'admin',
       },
     },
     {
@@ -151,6 +152,7 @@ const DEFAULT_MOCK_CONFIG: MockIdentityConfig = {
       siteRoles: {
         'site-123': 'team_member',
         'b56bdbfd-512c-4c1f-82e9-e774c2a8ec22': 'admin',
+        '03499be6-0236-47d8-9076-64b71c420e1e': 'admin',
       },
     },
     {
@@ -161,6 +163,7 @@ const DEFAULT_MOCK_CONFIG: MockIdentityConfig = {
         'site-123': 'developer',
         'site-456': 'admin',
         'b56bdbfd-512c-4c1f-82e9-e774c2a8ec22': 'admin',
+        '03499be6-0236-47d8-9076-64b71c420e1e': 'admin',
       },
     },
   ],
@@ -175,6 +178,7 @@ const DEFAULT_MOCK_CONFIG: MockIdentityConfig = {
         '5da7f0d0-81d8-4e92-9a4b-a4cb07090768': 'admin',
         '35b800c4-6010-4908-a724-f1512e2a2144': 'admin',
         'b56bdbfd-512c-4c1f-82e9-e774c2a8ec22': 'admin',
+        '03499be6-0236-47d8-9076-64b71c420e1e': 'admin',
       },
     },
     {
