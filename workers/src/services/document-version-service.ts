@@ -372,3 +372,124 @@ export async function getDocumentVersionByNumber(
 
   return mapRowToDocumentVersion(getFirstRow(result.rows));
 }
+
+// =============================================================================
+// Phase 5.2: Batch Sync (for future Queue consumer use)
+// =============================================================================
+
+/**
+ * Payload for a single item in a batch sync operation.
+ */
+export interface BatchSyncPayload {
+  documentId: string;
+  branchId: string;
+  snapshot: Record<string, unknown>;
+  crdtState: string;
+  actorId: string;
+  actorType: 'user' | 'agent';
+}
+
+/**
+ * Result of a batch sync operation.
+ */
+export interface BatchSyncResult {
+  /** Document versions that were successfully inserted */
+  inserted: DocumentVersion[];
+  /** Number of items that were skipped due to deduplication */
+  skippedCount: number;
+}
+
+/**
+ * Batch sync multiple document versions to PostgreSQL in a single query (Phase 5.2).
+ *
+ * Designed for future Queue consumer use (Phase 5.1) where batches of up to
+ * 100 sync messages are processed together. Each item in the batch gets its
+ * own dedup check via a CTE that compares against the latest snapshot for
+ * each (document_id, branch_id) pair.
+ *
+ * @param payloads - Array of sync payloads to insert
+ * @returns Result with inserted versions and skipped count
+ */
+export async function batchSyncToPostgres(
+  payloads: BatchSyncPayload[],
+): Promise<BatchSyncResult> {
+  if (payloads.length === 0) {
+    return { inserted: [], skippedCount: 0 };
+  }
+
+  // Build arrays for each column to use with unnest()
+  const documentIds: string[] = [];
+  const branchIds: string[] = [];
+  const snapshots: (Record<string, unknown>)[] = [];
+  const crdtStates: (Buffer | null)[] = [];
+  const actorIds: string[] = [];
+  const actorTypes: string[] = [];
+
+  for (const payload of payloads) {
+    documentIds.push(payload.documentId);
+    branchIds.push(payload.branchId);
+    snapshots.push(payload.snapshot);
+    crdtStates.push(
+      payload.crdtState !== ''
+        ? Buffer.from(payload.crdtState, 'base64')
+        : null,
+    );
+    actorIds.push(payload.actorId);
+    actorTypes.push(payload.actorType);
+  }
+
+  // Use a CTE-based approach: for each input row, check if the latest snapshot
+  // matches. If it does, skip the insert (dedup). Otherwise, compute the next
+  // version number and insert.
+  const result = await query<DocumentVersionRow>(
+    `WITH input_rows AS (
+      SELECT
+        unnest($1::uuid[]) AS document_id,
+        unnest($2::uuid[]) AS branch_id,
+        unnest($3::jsonb[]) AS snapshot,
+        unnest($4::bytea[]) AS crdt_state,
+        unnest($5::uuid[]) AS actor_id,
+        unnest($6::text[]) AS actor_type
+    ),
+    deduped AS (
+      SELECT ir.*
+      FROM input_rows ir
+      LEFT JOIN LATERAL (
+        SELECT snapshot FROM app.document_versions
+        WHERE document_id = ir.document_id AND branch_id = ir.branch_id
+        ORDER BY version_number DESC LIMIT 1
+      ) latest ON true
+      WHERE latest.snapshot IS DISTINCT FROM ir.snapshot
+    )
+    INSERT INTO app.document_versions (
+      document_id, branch_id, version_number, snapshot, crdt_state,
+      source, created_by_id, created_by_type
+    )
+    SELECT
+      d.document_id,
+      d.branch_id,
+      COALESCE(
+        (SELECT MAX(version_number) FROM app.document_versions
+         WHERE document_id = d.document_id AND branch_id = d.branch_id),
+        0
+      ) + ROW_NUMBER() OVER (
+        PARTITION BY d.document_id, d.branch_id
+        ORDER BY d.document_id
+      ),
+      d.snapshot,
+      d.crdt_state,
+      'realtime',
+      d.actor_id,
+      d.actor_type
+    FROM deduped d
+    RETURNING *`,
+    [documentIds, branchIds, snapshots, crdtStates, actorIds, actorTypes],
+  );
+
+  const inserted = result.rows.map(mapRowToDocumentVersion);
+
+  return {
+    inserted,
+    skippedCount: payloads.length - inserted.length,
+  };
+}
