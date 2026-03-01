@@ -35,12 +35,12 @@
     "cf:kv:list": "wrangler kv:key list --binding CONFIG_KV"
   },
   "dependencies": {
-    "ajv": "^8.17.1",
+    "ajv": "^8.18.0",
     "fast-json-patch": "^3.1.1",
-    "jose": "^5.2.0",
+    "jose": "^5.10.0",
     "object-hash": "^3.0.0",
-    "postgres": "^3.4.3",
-    "yjs": "^13.6.0"
+    "postgres": "^3.4.8",
+    "yjs": "^13.6.29"
   },
   "pnpm": {
     "overrides": {
@@ -50,18 +50,18 @@
     }
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20241205.0",
-    "@eslint/js": "^9.17.0",
-    "@types/node": "^22.10.0",
+    "@cloudflare/workers-types": "^4.20260301.1",
+    "@eslint/js": "^9.39.3",
+    "@types/node": "^22.19.13",
     "@types/object-hash": "^3.0.6",
-    "@vitest/coverage-v8": "^2.1.0",
-    "eslint": "^9.17.0",
-    "globals": "^15.14.0",
+    "@vitest/coverage-v8": "^2.1.9",
+    "eslint": "^9.39.3",
+    "globals": "^15.15.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.0",
-    "typescript-eslint": "^8.18.0",
-    "vitest": "^2.1.0",
-    "wrangler": "^3.98.0"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1",
+    "vitest": "^2.1.9",
+    "wrangler": "^3.114.17"
   },
   "engines": {
     "node": ">=20.0.0",
