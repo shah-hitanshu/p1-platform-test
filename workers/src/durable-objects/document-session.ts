@@ -40,6 +40,8 @@ import {
   FOCUS_STALE_THRESHOLD_MS,
   PRESENCE_STALE_THRESHOLD_MS,
   MAX_EDIT_SESSION_AGE_MS,
+  PERSIST_DEBOUNCE_MS,
+  BROADCAST_DEBOUNCE_MS,
 } from '../constants/security-limits';
 import { AgentEditPermissionService } from '../services/agent-edit-permission-service';
 import { getOrganizationForSite } from '../services/organization-service';
@@ -224,6 +226,26 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
   /** Last synced state vector hash for change detection */
   private lastSyncedStateVectorHash: string | null = null;
+
+  // =============================================================================
+  // Phase 1.1: Debounced Persistence
+  // =============================================================================
+
+  /** Flag indicating that the Y.Doc has been modified and needs to be persisted */
+  private persistPending = false;
+
+  // =============================================================================
+  // Phase 1.2: Debounced Broadcasts
+  // =============================================================================
+
+  /** Accumulated Yjs updates waiting to be broadcast */
+  private pendingBroadcastUpdates: Uint8Array[] = [];
+
+  /** Sender WebSocket for each pending broadcast (to exclude from broadcast) */
+  private pendingBroadcastSenders: WebSocket[] = [];
+
+  /** Timer ID for the broadcast debounce window */
+  private broadcastTimer: ReturnType<typeof setTimeout> | null = null;
 
   // =============================================================================
   // Agent Politeness Services
@@ -588,6 +610,12 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
         }
       }
       this.initialized = true;
+    }
+
+    // Phase 1.1: Restore persist pending flag from storage (survives hibernation)
+    const pendingFlag = await this.state.storage.get(DocumentSession.PERSIST_PENDING_KEY);
+    if (pendingFlag === true) {
+      this.persistPending = true;
     }
 
     // Load org settings after initialization
@@ -1104,12 +1132,33 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     // Schedule cleanup alarm if not already scheduled
     void this.scheduleCleanupAlarm();
 
-    // Send current state to new client
-    const stateUpdate = Y.encodeStateAsUpdate(this.ydoc);
+    // Phase 1.3: Delta encoding — check for client-provided state vector
+    const stateVectorParam = url.searchParams.get('stateVector');
+    let stateUpdate: Uint8Array;
+    if (stateVectorParam !== null && stateVectorParam !== '') {
+      try {
+        // Decode base64 state vector from client
+        const svBinary = atob(stateVectorParam);
+        const clientStateVector = new Uint8Array(svBinary.length);
+        for (let i = 0; i < svBinary.length; i++) {
+          clientStateVector[i] = svBinary.charCodeAt(i);
+        }
+        // Send only the delta since the client's state vector
+        stateUpdate = Y.encodeStateAsUpdate(this.ydoc, clientStateVector);
+      } catch {
+        // If state vector is invalid, fall back to full state
+        stateUpdate = Y.encodeStateAsUpdate(this.ydoc);
+      }
+    } else {
+      // No state vector — send full compacted state
+      stateUpdate = Y.encodeStateAsUpdate(this.ydoc);
+    }
+
     console.log(
       '[DO-DIAG] handleWebSocket SEND initial state'
       + ` actor=${actorId},`
       + ` size=${String(stateUpdate.length)},`
+      + ` delta=${String(stateVectorParam !== null)},`
       + ` conns=${String(this.getConnectionCount())},`
       + ` session=${JSON.stringify(this.sessionInfo)},`
       + ` ${this.snapshotSummary()}`,
@@ -1179,15 +1228,11 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
         + `\n  AFTER:  ${afterSummary}`,
       );
 
-      // Broadcast to other clients
-      for (const conn of this.state.getWebSockets()) {
-        if (conn !== ws && conn.readyState === WebSocket.OPEN) {
-          conn.send(update);
-        }
-      }
+      // Phase 1.2: Batch broadcast — accumulate update and schedule flush
+      this.enqueueBroadcast(ws, update);
 
-      // Persist state
-      await this.persist();
+      // Phase 1.1: Debounced persistence — mark pending instead of persisting directly
+      await this.markPersistPending();
 
       // Schedule sync to PostgreSQL after idle timeout
       await this.scheduleSync(meta.actorId, meta.actorType);
@@ -1266,6 +1311,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     // Broadcast presence update to remaining clients (connection left)
     this.broadcastPresenceUpdate();
 
+    // Phase 1.2: Flush any pending broadcasts before checking disconnect
+    this.flushPendingBroadcasts();
+
     // If this was the last connection, clean up and sync
     if (remainingWebSockets.length === 0) {
       // Run one final cleanup before syncing
@@ -1280,7 +1328,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       // Compact CRDT state to free memory from deleted content
       this.compactCrdtState();
 
-      // Persist the compacted state to DO storage so it survives hibernation
+      // Phase 1.1: Flush pending persist and persist compacted state
+      this.persistPending = false; // Clear pending flag — we're about to do a full persist
+      await this.state.storage.delete(DocumentSession.PERSIST_PENDING_KEY);
       await this.persist();
 
       // Trigger sync to PostgreSQL (awaited so it completes before hibernation)
@@ -1749,6 +1799,106 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   // =============================================================================
+  // Phase 1.1: Debounced Persistence Helpers
+  // =============================================================================
+
+  /** Storage key for persist pending flag (survives hibernation) */
+  private static readonly PERSIST_PENDING_KEY = 'persistPending';
+
+  /**
+   * Mark that the Y.Doc has been modified and needs to be persisted.
+   * Instead of persisting immediately, sets a flag and schedules an alarm
+   * to flush within PERSIST_DEBOUNCE_MS. The Y.Doc remains the authoritative
+   * in-memory state.
+   */
+  private async markPersistPending(): Promise<void> {
+    if (this.persistPending) {
+      return; // Already marked, alarm is already scheduled
+    }
+
+    this.persistPending = true;
+    await this.state.storage.put(DocumentSession.PERSIST_PENDING_KEY, true);
+
+    // Schedule an alarm to flush persistence if one isn't already set
+    // within the debounce window
+    const dueAt = Date.now() + PERSIST_DEBOUNCE_MS;
+    const existingAlarm = await this.state.storage.getAlarm();
+    if (existingAlarm === null || existingAlarm > dueAt) {
+      await this.state.storage.setAlarm(dueAt);
+      this.cleanupAlarmScheduled = true;
+    }
+  }
+
+  /**
+   * Flush pending persistence if there are uncommitted changes.
+   * Called by alarm handler and on last client disconnect.
+   */
+  private async flushPendingPersist(): Promise<void> {
+    if (!this.persistPending) {
+      return;
+    }
+
+    await this.persist();
+    this.persistPending = false;
+    await this.state.storage.delete(DocumentSession.PERSIST_PENDING_KEY);
+  }
+
+  // =============================================================================
+  // Phase 1.2: Debounced Broadcast Helpers
+  // =============================================================================
+
+  /**
+   * Enqueue a Yjs update for batched broadcast.
+   * Updates are accumulated and flushed after BROADCAST_DEBOUNCE_MS.
+   *
+   * @param sender - The WebSocket that sent the update (excluded from broadcast)
+   * @param update - The Yjs update to broadcast
+   */
+  private enqueueBroadcast(sender: WebSocket, update: Uint8Array): void {
+    this.pendingBroadcastUpdates.push(update);
+    this.pendingBroadcastSenders.push(sender);
+
+    // Schedule flush if not already scheduled
+    this.broadcastTimer ??= setTimeout(() => {
+      this.flushPendingBroadcasts();
+    }, BROADCAST_DEBOUNCE_MS);
+  }
+
+  /**
+   * Flush all pending broadcast updates. Merges accumulated Yjs updates
+   * into a single update and broadcasts to all connections except senders.
+   */
+  private flushPendingBroadcasts(): void {
+    this.broadcastTimer = null;
+
+    if (this.pendingBroadcastUpdates.length === 0) {
+      return;
+    }
+
+    // Collect unique senders to exclude
+    const senders = new Set(this.pendingBroadcastSenders);
+
+    // Merge all pending updates into one
+    let mergedUpdate: Uint8Array;
+    if (this.pendingBroadcastUpdates.length === 1) {
+      mergedUpdate = this.pendingBroadcastUpdates[0];
+    } else {
+      mergedUpdate = Y.mergeUpdates(this.pendingBroadcastUpdates);
+    }
+
+    // Clear pending state
+    this.pendingBroadcastUpdates = [];
+    this.pendingBroadcastSenders = [];
+
+    // Broadcast the merged update to all connections except senders
+    for (const conn of this.state.getWebSockets()) {
+      if (!senders.has(conn) && conn.readyState === WebSocket.OPEN) {
+        conn.send(mergedUpdate);
+      }
+    }
+  }
+
+  // =============================================================================
   // PostgreSQL Sync Methods
   // =============================================================================
 
@@ -1860,6 +2010,14 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     // Reset the scheduled flag since the alarm has fired
     this.cleanupAlarmScheduled = false;
 
+    // Phase 1.1: Flush any pending persistence
+    await this.flushPendingPersist();
+
+    // Phase 1.3: Run periodic compaction when no connections are active
+    if (this.getConnectionCount() === 0) {
+      this.compactCrdtState();
+    }
+
     // Process sync schedule if due
     const syncSchedule = await this.state.storage.get<{ dueAt: number; actorId: string; actorType: 'user' | 'agent' }>(DocumentSession.SYNC_SCHEDULE_KEY);
     if (syncSchedule !== undefined && Date.now() >= syncSchedule.dueAt) {
@@ -1909,6 +2067,14 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     if (pendingSyncSchedule !== undefined) {
       // There's a pending sync that needs to fire
       nextAlarmTime = pendingSyncSchedule.dueAt;
+    }
+
+    // Phase 1.1: If persist is still pending (e.g., rapid edits), schedule next alarm
+    if (this.persistPending) {
+      const persistTime = Date.now() + PERSIST_DEBOUNCE_MS;
+      nextAlarmTime = nextAlarmTime !== null
+        ? Math.min(nextAlarmTime, persistTime)
+        : persistTime;
     }
 
     // Reschedule cleanup alarm if there's still data to track
