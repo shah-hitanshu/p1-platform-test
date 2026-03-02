@@ -29,22 +29,19 @@
   // Add new migrations when adding/renaming DO classes
   //
   // Migration path (Phase 2.1 - SQLite storage backend):
-  // v1: Delete existing KV-backed DO classes. Since only local environment exists,
-  //     we use delete-and-recreate instead of a 3-step migration. DOs will
-  //     re-hydrate from PostgreSQL on next connection (initializeFromPostgres).
-  // v2: Recreate all DO classes with SQLite storage backend. This provides:
+  // v1: Create all DO classes with SQLite storage backend. This provides:
   //     - Increased value size limit: 128 KiB (KV) → 2 MB (SQLite)
   //     - Future use of ctx.storage.sql for structured queries
   //     - Better transactional consistency
   //     The KV API (ctx.storage.put/get) still works on SQLite-backed DOs,
   //     so existing persist/restore code requires no changes.
+  //
+  // Note: For production environments with existing KV-backed DOs,
+  //     a delete-then-recreate migration sequence would be needed.
+  //     Since we haven't deployed to production yet, a single create suffices.
   "migrations": [
     {
       "tag": "v1",
-      "deleted_classes": ["DocumentState", "PresenceManager", "SessionManager"]
-    },
-    {
-      "tag": "v2",
       "new_sqlite_classes": ["DocumentState", "PresenceManager", "SessionManager"]
     }
   ],
