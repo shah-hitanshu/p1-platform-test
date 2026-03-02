@@ -119,14 +119,11 @@ export function useFocusRegionReporting(
         return;
       }
 
-      // Try WebSocket first if available
-      console.log('[FocusRegion] Trying WebSocket, sendViaWebSocket available:', !!sendViaWebSocketRef.current);
+      // Try WebSocket first if available, fall back to HTTP
       if (sendViaWebSocketRef.current?.(regions)) {
-        console.log('[FocusRegion] Sent via WebSocket successfully');
         lastReportedRef.current = serialized;
         return;
       }
-      console.log('[FocusRegion] WebSocket send failed or not available, falling back to HTTP');
 
       // Fall back to HTTP
       try {
@@ -155,12 +152,10 @@ export function useFocusRegionReporting(
    */
   const setFocusRegions = useCallback(
     (regions: string[]) => {
-      console.log('[FocusRegion] setFocusRegions called:', regions);
       // Update local state immediately
       setFocusRegionsState(regions);
 
       if (!enabled) {
-        console.log('[FocusRegion] Skipping - not enabled');
         return;
       }
 

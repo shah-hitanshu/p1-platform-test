@@ -263,8 +263,6 @@ export class RealtimeClient {
     this.startVisibilityMonitoring();
 
     this.ws.addEventListener('open', () => {
-      /* TODO: Remove console.log */
-      console.log('[Realtime] WebSocket connected');
       this.connected = true;
 
       // On reconnect, send local state to ensure bidirectional sync.
@@ -272,7 +270,6 @@ export class RealtimeClient {
       // where Yjs will merge them with the server's state and broadcast to other clients.
       if (this.hasConnectedOnce && this.ws) {
         const localState = Y.encodeStateAsUpdate(this.ydoc);
-        console.log('[Realtime] Reconnect detected, sending local state, size:', localState.length);
         this.ws.send(localState);
       }
 
@@ -293,8 +290,6 @@ export class RealtimeClient {
         // Binary frame: Yjs CRDT update
         const data = event.data as ArrayBuffer;
         const update = new Uint8Array(data);
-        /* TODO: Remove console.log */
-        console.log('[Realtime] Received message, update size:', update.length);
 
         // Apply remote update to local Y.Doc
         Y.applyUpdate(this.ydoc, update, 'remote');
@@ -302,7 +297,6 @@ export class RealtimeClient {
         // Notify listeners of new snapshot
         const root = this.ydoc.getMap('root');
         const snapshot = root.toJSON() as Record<string, unknown>;
-        console.log('[Realtime] Applied update, snapshot:', JSON.stringify(snapshot).slice(0, 200));
         this.config.onUpdate?.(snapshot);
       } catch (error) {
         console.error('[Realtime] Error processing message:', error);
@@ -396,8 +390,6 @@ export class RealtimeClient {
 
     this.visibilityHandler = () => {
       if (document.visibilityState === 'visible' && !this.intentionalDisconnect && this.ws) {
-        console.log('[Realtime] Page became visible, forcing reconnection to ensure fresh connection');
-
         // Force a reconnection by calling reconnect() on PartySocket.
         // This ensures we get a fresh connection even if the old one appears open
         // but is actually stale (server closed it while tab was backgrounded).
@@ -484,9 +476,7 @@ export class RealtimeClient {
    * @returns true if message was sent, false if not connected
    */
   sendFocusRegions(focusRegions: string[]): boolean {
-    console.log('[Realtime] sendFocusRegions called:', focusRegions, 'ws:', !!this.ws, 'readyState:', this.ws?.readyState);
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.log('[Realtime] Cannot send focus regions - WebSocket not ready');
       return false;
     }
 
@@ -496,7 +486,6 @@ export class RealtimeClient {
       timestamp: Date.now(),
     };
 
-    console.log('[Realtime] Sending focus_region_update:', JSON.stringify(message));
     this.ws.send(JSON.stringify(message));
     return true;
   }
@@ -537,8 +526,7 @@ export class RealtimeClient {
           break;
 
         case 'focus_region_ack':
-          // Acknowledgment received - could add callback if needed
-          console.log('[Realtime] Focus region ack:', message.success);
+          // Acknowledgment received
           break;
 
         case 'presence_error':
