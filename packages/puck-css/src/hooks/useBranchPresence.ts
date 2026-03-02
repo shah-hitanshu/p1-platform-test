@@ -12,7 +12,7 @@ import { usePresenceContext } from '../PresenceContext.js';
  * Options for the useBranchPresence hook.
  */
 export interface UseBranchPresenceOptions {
-  /** Polling interval in ms (default: 5000) */
+  /** Polling interval in ms (default: 10000) */
   pollingInterval?: number;
 }
 
@@ -59,7 +59,7 @@ export interface UseBranchPresenceReturn {
 export function useBranchPresence(
   options: UseBranchPresenceOptions = {}
 ): UseBranchPresenceReturn {
-  const { pollingInterval = 5000 } = options;
+  const { pollingInterval = 10000 } = options;
   const { client, siteId, branchId } = usePresenceContext();
 
   const [presence, setPresence] = useState<BranchPresence | null>(null);

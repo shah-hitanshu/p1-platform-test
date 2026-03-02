@@ -320,7 +320,7 @@ describe('usePresence', () => {
       expect(client.presence.getBranchPresence).toHaveBeenCalledTimes(2);
     });
 
-    it('should use default polling interval of 5000ms', async () => {
+    it('should use default polling interval of 10000ms', async () => {
       const client = createMockClient();
       renderHook(() => usePresence(), {
         wrapper: createWrapper({
@@ -339,7 +339,7 @@ describe('usePresence', () => {
       expect(client.presence.getBranchPresence).toHaveBeenCalledTimes(1);
 
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(5000);
+        await vi.advanceTimersByTimeAsync(10000);
       });
 
       expect(client.presence.getBranchPresence).toHaveBeenCalledTimes(2);

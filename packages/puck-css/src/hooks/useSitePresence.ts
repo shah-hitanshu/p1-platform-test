@@ -12,7 +12,7 @@ import { usePresenceContext } from '../PresenceContext.js';
  * Options for the useSitePresence hook.
  */
 export interface UseSitePresenceOptions {
-  /** Polling interval in ms (default: 5000) */
+  /** Polling interval in ms (default: 10000) */
   pollingInterval?: number;
 }
 
@@ -59,7 +59,7 @@ export interface UseSitePresenceReturn {
 export function useSitePresence(
   options: UseSitePresenceOptions = {}
 ): UseSitePresenceReturn {
-  const { pollingInterval = 5000 } = options;
+  const { pollingInterval = 10000 } = options;
   const { client, siteId } = usePresenceContext();
 
   const [presence, setPresence] = useState<SitePresence | null>(null);

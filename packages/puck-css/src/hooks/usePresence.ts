@@ -12,7 +12,7 @@ import { usePresenceContext } from '../PresenceContext.js';
  * Options for the usePresence hook.
  */
 export interface UsePresenceOptions {
-  /** Polling interval in ms (default: 5000) */
+  /** Polling interval in ms (default: 10000) */
   pollingInterval?: number;
   /** Include self in presence list (default: false) */
   includeSelf?: boolean;
@@ -65,7 +65,7 @@ export interface UsePresenceReturn {
  * ```
  */
 export function usePresence(options: UsePresenceOptions = {}): UsePresenceReturn {
-  const { pollingInterval = 5000, includeSelf = false } = options;
+  const { pollingInterval = 10000, includeSelf = false } = options;
   const { client, siteId, branchId, userId } = usePresenceContext();
 
   const [actors, setActors] = useState<ActorPresence[]>([]);
