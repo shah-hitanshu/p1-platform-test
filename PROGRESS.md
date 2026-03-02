@@ -1045,9 +1045,17 @@ Impact: 50% reduction in presence REST API calls. WebSocket-based presence remai
 
 **Tests:** 6 new tests in `presence-polling-defaults.spec.ts` (697 total passing)
 
-#### Item 1: Delta Encoding on WebSocket Connect — Pending
+#### Item 1: Delta Encoding on WebSocket Reconnect ✅
 
-Send Yjs state vector as query parameter on reconnect so the server responds with only the diff instead of full CRDT history.
+**Commits:** `394ebf1` (tests), `61f5af9` (implementation)
+
+Changed `connect()` in RealtimeClient to pass a URL provider function to PartySocket instead of a static URL string. On initial connect, returns the base URL without state vector. On reconnect (`hasConnectedOnce === true`), appends `stateVector` query parameter with base64-encoded `Y.encodeStateVector()` so the server responds with only the delta.
+
+- Existing reconnect behavior (sending local state back to server) preserved
+- Impact: reconnect payload reduced from full CRDT history to only changes since disconnect
+- Significant for large documents (2,000+ components) and tab-backgrounding scenarios
+
+**Tests:** 5 new tests in `realtime-delta-encoding.spec.ts` (136 css-client tests total)
 
 #### Item 2: Client-Side Message Rate Awareness — Pending
 
