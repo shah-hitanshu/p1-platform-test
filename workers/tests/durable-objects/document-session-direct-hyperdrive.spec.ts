@@ -216,7 +216,7 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
 
       const req = new Request('http://localhost/snapshot');
       const response = await session.fetch(req);
-      const result = await response.json() as { snapshot: Record<string, unknown> };
+      const result = await response.json();
 
       // Should have used CRDT state (title: 'CRDT State'), not snapshot (title: 'Snapshot Only')
       expect(result.snapshot.title).toBe('CRDT State');
@@ -245,7 +245,7 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
 
       const req = new Request('http://localhost/snapshot');
       const response = await session.fetch(req);
-      const result = await response.json() as { snapshot: Record<string, unknown> };
+      const result = await response.json();
 
       expect(result.snapshot.title).toBe('Snapshot Only');
     });
@@ -275,7 +275,7 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
 
       const req = new Request('http://localhost/snapshot');
       const response = await session.fetch(req);
-      const result = await response.json() as { snapshot: Record<string, unknown> };
+      const result = await response.json();
 
       expect(result.snapshot.title).toBe('From HTTP');
 
@@ -317,7 +317,7 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
 
       const req = new Request('http://localhost/snapshot');
       const response = await session.fetch(req);
-      const result = await response.json() as { snapshot: Record<string, unknown> };
+      const result = await response.json();
 
       // Should have fallen back to HTTP after Hyperdrive failure
       expect(result.snapshot.title).toBe('HTTP Fallback');
