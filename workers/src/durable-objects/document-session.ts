@@ -16,8 +16,13 @@ import * as Y from 'yjs';
 import { DurableObject } from 'cloudflare:workers';
 import type { DurableObjectState } from '@cloudflare/workers-types';
 import type { EditOperation, ConnectionMeta, CheckpointTrigger, ActorPresence } from '../types';
+import { runWithConnection, query as dbQuery } from '../db';
+import {
+  createCheckpoint as createCheckpointDirect,
+  revertToCheckpoint as revertToCheckpointDirect,
+} from '../services/checkpoint-service';
 import { incrementCounter, setGauge, recordTiming } from '../services/metrics-service';
-import { PresenceManager, regionsOverlap } from '../services/presence-service';
+import { PresenceManager, regionsOverlap, type SerializedPresenceState } from '../services/presence-service';
 import {
   ActivityDetector,
   type ActivityDetectorState,
@@ -40,6 +45,11 @@ import {
   FOCUS_STALE_THRESHOLD_MS,
   PRESENCE_STALE_THRESHOLD_MS,
   MAX_EDIT_SESSION_AGE_MS,
+  PERSIST_DEBOUNCE_MS,
+  BROADCAST_DEBOUNCE_MS,
+  MAX_MESSAGES_PER_SECOND,
+  RATE_LIMIT_WINDOW_MS,
+  RATE_LIMIT_CLOSE_THRESHOLD,
 } from '../constants/security-limits';
 import { AgentEditPermissionService } from '../services/agent-edit-permission-service';
 import { getOrganizationForSite } from '../services/organization-service';
@@ -60,6 +70,12 @@ import { isWsFocusRegionUpdate, isWsPresenceHeartbeat } from '../types/websocket
  * Storage key for persisted Yjs document state
  */
 const YDOC_STORAGE_KEY = 'ydoc';
+
+/**
+ * Storage key for persisted presence state.
+ * Presence is stored in DO storage so it survives DO eviction/re-instantiation.
+ */
+const PRESENCE_STORAGE_KEY = 'presenceState';
 
 /**
  * Storage key for persisted edit sessions.
@@ -195,6 +211,12 @@ interface DocumentSessionEnv {
   INTERNAL_SECRET?: string;
   /** Enable detailed DO alarm/cleanup metrics (can be high volume) */
   DO_ALARM_METRICS_ENABLED?: string;
+  /** Phase 5.1: Queue binding for async DO-to-PostgreSQL sync */
+  SYNC_QUEUE?: Queue;
+  /** Phase 5.3: Hyperdrive binding for direct DB access from DOs */
+  HYPERDRIVE?: Hyperdrive;
+  /** Phase 3.2: PresenceManager DO binding for site-level presence aggregation */
+  PRESENCE?: DurableObjectNamespace;
 }
 
 /**
@@ -216,6 +238,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   private ydoc: Y.Doc;
   private initialized: boolean;
 
+  /** Phase 4.2: Flag for metadata-only init (no CRDT loading) */
+  private metadataInitialized = false;
+
   /** Flag to track if a cleanup alarm is scheduled (avoids redundant setAlarm calls) */
   private cleanupAlarmScheduled = false;
 
@@ -226,11 +251,45 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   private lastSyncedStateVectorHash: string | null = null;
 
   // =============================================================================
+  // Phase 1.1: Debounced Persistence
+  // =============================================================================
+
+  /** Flag indicating that the Y.Doc has been modified and needs to be persisted */
+  private persistPending = false;
+
+  // =============================================================================
+  // Phase 1.2: Debounced Broadcasts
+  // =============================================================================
+
+  /** Accumulated Yjs updates waiting to be broadcast */
+  private pendingBroadcastUpdates: Uint8Array[] = [];
+
+  /** Sender WebSocket for each pending broadcast (to exclude from broadcast) */
+  private pendingBroadcastSenders: WebSocket[] = [];
+
+  /** Timer ID for the broadcast debounce window */
+  private broadcastTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // =============================================================================
+  // Phase 4.1: WebSocket Rate Limiting
+  // =============================================================================
+
+  /** Per-actor message rate tracking for rate limiting */
+  private messageRates = new Map<string, {
+    timestamps: number[];
+    consecutiveRateLimits: number;
+    rateLimitedInCurrentWindow: boolean;
+  }>();
+
+  // =============================================================================
   // Agent Politeness Services
   // =============================================================================
 
   /** Presence manager for tracking actors in the document */
-  private readonly presenceManager: PresenceManager;
+  private presenceManager: PresenceManager;
+
+  /** Flag indicating that presence state has been modified and needs to be persisted */
+  private presencePersistPending = false;
 
   /** Activity detector for tracking human activity and idle state */
   private readonly activityDetector: ActivityDetector;
@@ -446,72 +505,91 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       // Update session info from request if state.id.name wasn't available (Miniflare local dev)
       this.updateSessionInfoFromRequest(request);
 
-      // Ensure state is initialized before handling requests
-      await this.initializeIfNeeded();
-
+      // Phase 4.2: Route to appropriate initialization level
       switch (path) {
+        // CRDT endpoints — need full Y.Doc initialization
         case '/snapshot':
+          await this.initializeCrdtIfNeeded();
           return this.handleSnapshot();
 
         case '/apply':
+          await this.initializeCrdtIfNeeded();
           return await this.handleApplyOperations(request);
 
         case '/connect':
+          await this.initializeCrdtIfNeeded();
           return this.handleWebSocket(request);
 
         case '/sync':
+          await this.initializeCrdtIfNeeded();
           return await this.handleSync(request);
 
         case '/initialize':
+          await this.initializeCrdtIfNeeded();
           return await this.handleInitialize(request);
 
           // =============================================================
-          // Agent Politeness Endpoints
+          // Metadata-only endpoints — no CRDT loading needed
           // =============================================================
 
         case '/presences':
+          await this.initializeMetadataIfNeeded();
           return this.handleGetPresences();
 
         case '/update-focus-regions':
+          await this.initializeMetadataIfNeeded();
           return await this.handleUpdateFocusRegions(request);
 
         case '/activity-state':
+          await this.initializeMetadataIfNeeded();
           return this.handleGetActivityState();
 
         case '/can-agent-edit':
+          await this.initializeMetadataIfNeeded();
           return await this.handleCanAgentEdit(request);
 
         case '/agent-edit-start':
+          await this.initializeMetadataIfNeeded();
           return await this.handleAgentEditStart(request);
 
         case '/agent-edit-complete':
+          await this.initializeMetadataIfNeeded();
           return await this.handleAgentEditComplete(request);
 
         case '/agent-edit-abort':
+          await this.initializeMetadataIfNeeded();
           return await this.handleAgentEditAbort(request);
 
         case '/agent-stop':
+          await this.initializeMetadataIfNeeded();
           return await this.handleAgentStop(request);
 
         case '/edit-sessions':
+          await this.initializeMetadataIfNeeded();
           return this.handleGetEditSessions();
 
         case '/set-idle-timeout':
+          await this.initializeMetadataIfNeeded();
           return await this.handleSetIdleTimeout(request);
 
         case '/org-settings':
+          await this.initializeMetadataIfNeeded();
           return this.handleGetOrgSettings();
 
         case '/org-settings/refresh':
+          await this.initializeMetadataIfNeeded();
           return await this.handleRefreshOrgSettings();
 
         case '/kick-agent':
+          await this.initializeMetadataIfNeeded();
           return await this.handleKickAgent(request);
 
         case '/kick-all-agents':
+          await this.initializeMetadataIfNeeded();
           return await this.handleKickAllAgents(request);
 
         case '/active-agents':
+          await this.initializeMetadataIfNeeded();
           return this.handleGetActiveAgents();
 
         default:
@@ -533,18 +611,44 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   /**
-   * Initialize CRDT state from storage if not already done.
-   * Falls back to PostgreSQL if DO storage is empty and internal API is configured.
+   * Phase 4.2: Initialize metadata only (no CRDT loading).
+   * Handles: session info restoration, org settings, edit sessions, presence.
+   * Used by presence-only endpoints to avoid expensive Y.Doc loading.
    */
-  private async initializeIfNeeded(): Promise<void> {
-    if (this.initialized) {
+  private async initializeMetadataIfNeeded(): Promise<void> {
+    if (this.metadataInitialized) {
       // Ensure org settings are loaded even if already initialized
       await this.loadOrgSettingsIfNeeded();
       return;
     }
 
+    // Phase 3.1: Restore presence state from DO storage
+    await this.restorePresence();
+
+    // Load org settings after initialization
+    await this.loadOrgSettingsIfNeeded();
+
+    // Restore persisted edit sessions from DO storage
+    await this.restoreEditSessions();
+
+    this.metadataInitialized = true;
+  }
+
+  /**
+   * Phase 4.2: Initialize CRDT state from storage if not already done.
+   * First ensures metadata is loaded, then handles Y.Doc loading.
+   * Falls back to PostgreSQL if DO storage is empty and internal API is configured.
+   */
+  private async initializeCrdtIfNeeded(): Promise<void> {
+    // Ensure metadata is loaded first
+    await this.initializeMetadataIfNeeded();
+
+    if (this.initialized) {
+      return;
+    }
+
     const sid = JSON.stringify(this.sessionInfo);
-    console.log(`[DO-DIAG] initializeIfNeeded START session=${sid}`);
+    console.log(`[DO-DIAG] initializeCrdtIfNeeded START session=${sid}`);
 
     const stored = await this.state.storage.get(YDOC_STORAGE_KEY);
 
@@ -556,7 +660,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
         // Set initial state vector hash to prevent unnecessary syncs
         this.lastSyncedStateVectorHash = this.computeStateVectorHash();
         console.log(
-          '[DO-DIAG] initializeIfNeeded LOADED from DO storage,'
+          '[DO-DIAG] initializeCrdtIfNeeded LOADED from DO storage,'
           + ` size=${String(stored.length)},`
           + ` ${this.snapshotSummary()}`,
         );
@@ -566,7 +670,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       }
     } else {
       console.log(
-        '[DO-DIAG] initializeIfNeeded:'
+        '[DO-DIAG] initializeCrdtIfNeeded:'
         + ' DO storage empty or not Uint8Array'
         + ` (type=${typeof stored})`,
       );
@@ -574,11 +678,14 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
     // Priority 2: Try to load from PostgreSQL if DO storage was empty or invalid
     if (!this.initialized) {
-      if (this.env.INTERNAL_API_URL !== undefined && this.env.INTERNAL_SECRET !== undefined) {
+      const hasHttpApi = this.env.INTERNAL_API_URL !== undefined
+        && this.env.INTERNAL_SECRET !== undefined;
+      const hasHyperdrive = this.env.HYPERDRIVE !== undefined;
+      if (hasHttpApi || hasHyperdrive) {
         try {
           await this.initializeFromPostgres();
           console.log(
-            '[DO-DIAG] initializeIfNeeded'
+            '[DO-DIAG] initializeCrdtIfNeeded'
             + ' LOADED from PostgreSQL,'
             + ` ${this.snapshotSummary()}`,
           );
@@ -590,12 +697,19 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       this.initialized = true;
     }
 
-    // Load org settings after initialization
-    await this.loadOrgSettingsIfNeeded();
+    // Phase 1.1: Restore persist pending flag from storage (survives hibernation)
+    const pendingFlag = await this.state.storage.get(DocumentSession.PERSIST_PENDING_KEY);
+    if (pendingFlag === true) {
+      this.persistPending = true;
+    }
+  }
 
-    // Restore persisted edit sessions from DO storage
-    // Sessions are persisted so they survive DO eviction/re-instantiation
-    await this.restoreEditSessions();
+  /**
+   * @deprecated Use initializeMetadataIfNeeded() or initializeCrdtIfNeeded()
+   * Kept for backward compatibility during migration.
+   */
+  private async initializeIfNeeded(): Promise<void> {
+    await this.initializeCrdtIfNeeded();
   }
 
   /**
@@ -637,6 +751,119 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       }
     } catch (error) {
       console.warn('Failed to restore edit sessions from storage:', error);
+    }
+  }
+
+  /**
+   * Persist presence state to DO storage.
+   * Called immediately on disconnect, debounced on focus updates.
+   */
+  private async persistPresence(): Promise<void> {
+    const serialized = this.presenceManager.serialize();
+    await this.state.storage.put(PRESENCE_STORAGE_KEY, serialized);
+    this.presencePersistPending = false;
+  }
+
+  /**
+   * Mark presence as needing persistence (debounced via alarm).
+   * Schedules persistence within PERSIST_DEBOUNCE_MS.
+   */
+  private async markPresencePersistPending(): Promise<void> {
+    if (this.presencePersistPending) {
+      return;
+    }
+
+    this.presencePersistPending = true;
+
+    const dueAt = Date.now() + PERSIST_DEBOUNCE_MS;
+    const existingAlarm = await this.state.storage.getAlarm();
+    if (existingAlarm === null || existingAlarm > dueAt) {
+      await this.state.storage.setAlarm(dueAt);
+      this.cleanupAlarmScheduled = true;
+    }
+  }
+
+  /**
+   * Restore presence state from DO storage.
+   * Called during initializeIfNeeded() to recover presence after DO eviction.
+   */
+  private async restorePresence(): Promise<void> {
+    try {
+      const stored = await this.state.storage.get(PRESENCE_STORAGE_KEY);
+      if (stored !== undefined && stored !== null && typeof stored === 'object') {
+        const data = stored as SerializedPresenceState;
+        if (Array.isArray(data.presences)) {
+          this.presenceManager = PresenceManager.deserialize(data);
+          console.log(`Restored ${String(this.presenceManager.count())} presence(s) from storage`);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to restore presence from storage:', error);
+    }
+  }
+
+  /**
+   * Phase 3.2: Push presence update to PresenceManager DO.
+   * Fire-and-forget: wrapped in try/catch, non-blocking.
+   */
+  private pushPresenceUpdate(
+    type: 'join' | 'leave' | 'focus' | 'state',
+    actorId: string,
+    extra?: { actor?: ActorPresence; focusRegions?: string[]; state?: string },
+  ): void {
+    if (this.env.PRESENCE === undefined) {
+      return;
+    }
+
+    try {
+      const presenceId = this.env.PRESENCE.idFromName(this.sessionInfo.siteId);
+      const stub = this.env.PRESENCE.get(presenceId);
+
+      const payload = {
+        siteId: this.sessionInfo.siteId,
+        branchId: this.sessionInfo.branchId,
+        documentId: this.sessionInfo.documentId,
+      };
+
+      const rpcStub = stub as unknown as Record<string, (arg: unknown) => Promise<void>>;
+      let rpcCall: Promise<void> | undefined;
+
+      switch (type) {
+        case 'join':
+          if (extra?.actor !== undefined) {
+            rpcCall = rpcStub.actorJoined({ ...payload, actor: extra.actor });
+          }
+          break;
+        case 'leave':
+          rpcCall = rpcStub.actorLeft({ ...payload, actorId });
+          break;
+        case 'focus':
+          if (extra?.focusRegions !== undefined) {
+            rpcCall = rpcStub.focusChanged({
+              ...payload,
+              actorId,
+              focusRegions: extra.focusRegions,
+            });
+          }
+          break;
+        case 'state':
+          if (extra?.state !== undefined) {
+            rpcCall = rpcStub.stateChanged({
+              ...payload,
+              actorId,
+              state: extra.state,
+            });
+          }
+          break;
+      }
+
+      if (rpcCall !== undefined) {
+        rpcCall.catch((error: unknown) => {
+          console.warn('Failed to push presence update to PresenceManager:', error);
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to get PresenceManager stub:', error);
     }
   }
 
@@ -692,39 +919,119 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   /**
-   * Load initial state from PostgreSQL via internal API.
-   * Called when DO storage is empty but PostgreSQL may have data.
+   * Load initial state from PostgreSQL.
+   * Phase 5.3: Tries direct Hyperdrive first, falls back to HTTP.
    */
   private async initializeFromPostgres(): Promise<void> {
-    if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
+    const { siteId, documentId, branchId } = this.sessionInfo;
+
+    if (
+      siteId === 'unknown'
+      || documentId === 'unknown'
+      || branchId === 'unknown'
+    ) {
+      return;
+    }
+
+    // Phase 5.3: Try direct Hyperdrive path first
+    if (this.env.HYPERDRIVE !== undefined) {
+      try {
+        const loaded = await this.initializeFromHyperdrive();
+        if (loaded) return;
+      } catch (error) {
+        console.warn(
+          'Hyperdrive init failed, falling back to HTTP:',
+          error,
+        );
+      }
+    }
+
+    await this.initializeFromHttpApi();
+  }
+
+  /**
+   * Phase 5.3: Initialize from PostgreSQL via Hyperdrive.
+   * @returns true if state was loaded
+   */
+  private async initializeFromHyperdrive(): Promise<boolean> {
+    if (this.env.HYPERDRIVE === undefined) return false;
+
+    const { documentId, branchId } = this.sessionInfo;
+
+    interface VersionRow {
+      snapshot: Record<string, unknown>;
+      crdt_state: Buffer | null;
+    }
+
+    const result = await runWithConnection(
+      this.env.HYPERDRIVE.connectionString,
+      { isHyperdrive: true },
+      async () => dbQuery<VersionRow>(
+        `SELECT dv.snapshot, dv.crdt_state
+         FROM app.document_versions dv
+         WHERE dv.document_id = $1 AND dv.branch_id = $2
+         ORDER BY dv.version_number DESC LIMIT 1`,
+        [documentId, branchId],
+      ),
+    );
+
+    if (result.rows.length === 0) return false;
+    const row = result.rows[0];
+
+    if (row.crdt_state !== null) {
+      const base64 = row.crdt_state.toString('base64');
+      Y.applyUpdate(this.ydoc, this.base64ToUint8Array(base64));
+      console.log(
+        `Initialized doc ${documentId} from Hyperdrive CRDT state`,
+      );
+      await this.persist();
+      this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+      return true;
+    }
+
+    if (typeof row.snapshot === 'object') {
+      const root = this.ydoc.getMap('root');
+      this.applySnapshotToYMap(root, row.snapshot);
+      console.log(
+        `Initialized doc ${documentId} from Hyperdrive snapshot`,
+      );
+      await this.persist();
+      this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Load initial state via HTTP internal API (fallback path).
+   */
+  private async initializeFromHttpApi(): Promise<void> {
+    if (
+      this.env.INTERNAL_API_URL === undefined
+      || this.env.INTERNAL_SECRET === undefined
+    ) {
       return;
     }
 
     const { siteId, documentId, branchId } = this.sessionInfo;
-
-    // Skip initialization for unknown/invalid session IDs
-    if (siteId === 'unknown' || documentId === 'unknown' || branchId === 'unknown') {
-      return;
-    }
-
-    const url = new URL(`${this.env.INTERNAL_API_URL}/internal/crdt-state`);
+    const url = new URL(
+      `${this.env.INTERNAL_API_URL}/internal/crdt-state`,
+    );
     url.searchParams.set('siteId', siteId);
     url.searchParams.set('documentId', documentId);
     url.searchParams.set('branchId', branchId);
 
     const response = await fetch(url.toString(), {
       method: 'GET',
-      headers: {
-        'X-Internal-Secret': this.env.INTERNAL_SECRET,
-      },
+      headers: { 'X-Internal-Secret': this.env.INTERNAL_SECRET },
     });
 
     if (!response.ok) {
-      // 404 is expected for new documents - just continue with empty state
-      if (response.status === 404) {
-        return;
-      }
-      throw new Error(`Failed to load from PostgreSQL: ${String(response.status)}`);
+      if (response.status === 404) return;
+      throw new Error(
+        `Failed to load from PostgreSQL: ${String(response.status)}`,
+      );
     }
 
     const rawData = await response.json();
@@ -734,30 +1041,31 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       crdtState?: string | null;
     };
 
-    if (!data.found) {
-      return;
-    }
+    if (!data.found) return;
 
-    // Apply CRDT state if available (preferred)
     if (typeof data.crdtState === 'string' && data.crdtState !== '') {
-      const bytes = this.base64ToUint8Array(data.crdtState);
-      Y.applyUpdate(this.ydoc, bytes);
-      console.log(`Initialized document ${documentId} from PostgreSQL CRDT state`);
-      // Persist to DO storage for future use
+      Y.applyUpdate(
+        this.ydoc,
+        this.base64ToUint8Array(data.crdtState),
+      );
+      console.log(
+        `Initialized doc ${documentId} from PostgreSQL CRDT state`,
+      );
       await this.persist();
-      // Set initial state vector hash to prevent unnecessary syncs
       this.lastSyncedStateVectorHash = this.computeStateVectorHash();
       return;
     }
 
-    // Fall back to snapshot if no CRDT state
-    if (data.snapshot !== undefined && typeof data.snapshot === 'object') {
+    if (
+      data.snapshot !== undefined
+      && typeof data.snapshot === 'object'
+    ) {
       const root = this.ydoc.getMap('root');
       this.applySnapshotToYMap(root, data.snapshot);
-      console.log(`Initialized document ${documentId} from PostgreSQL snapshot`);
-      // Persist to DO storage for future use
+      console.log(
+        `Initialized doc ${documentId} from PostgreSQL snapshot`,
+      );
       await this.persist();
-      // Set initial state vector hash to prevent unnecessary syncs
       this.lastSyncedStateVectorHash = this.computeStateVectorHash();
     }
   }
@@ -1104,12 +1412,33 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     // Schedule cleanup alarm if not already scheduled
     void this.scheduleCleanupAlarm();
 
-    // Send current state to new client
-    const stateUpdate = Y.encodeStateAsUpdate(this.ydoc);
+    // Phase 1.3: Delta encoding — check for client-provided state vector
+    const stateVectorParam = url.searchParams.get('stateVector');
+    let stateUpdate: Uint8Array;
+    if (stateVectorParam !== null && stateVectorParam !== '') {
+      try {
+        // Decode base64 state vector from client
+        const svBinary = atob(stateVectorParam);
+        const clientStateVector = new Uint8Array(svBinary.length);
+        for (let i = 0; i < svBinary.length; i++) {
+          clientStateVector[i] = svBinary.charCodeAt(i);
+        }
+        // Send only the delta since the client's state vector
+        stateUpdate = Y.encodeStateAsUpdate(this.ydoc, clientStateVector);
+      } catch {
+        // If state vector is invalid, fall back to full state
+        stateUpdate = Y.encodeStateAsUpdate(this.ydoc);
+      }
+    } else {
+      // No state vector — send full compacted state
+      stateUpdate = Y.encodeStateAsUpdate(this.ydoc);
+    }
+
     console.log(
       '[DO-DIAG] handleWebSocket SEND initial state'
       + ` actor=${actorId},`
       + ` size=${String(stateUpdate.length)},`
+      + ` delta=${String(stateVectorParam !== null)},`
       + ` conns=${String(this.getConnectionCount())},`
       + ` session=${JSON.stringify(this.sessionInfo)},`
       + ` ${this.snapshotSummary()}`,
@@ -1118,6 +1447,12 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
     // Broadcast presence update to all clients (new connection joined)
     this.broadcastPresenceUpdate();
+
+    // Phase 3.2: Push presence join to PresenceManager DO
+    const joinedPresence = this.presenceManager.getByActorId(actorId);
+    if (joinedPresence !== undefined) {
+      this.pushPresenceUpdate('join', actorId, { actor: joinedPresence });
+    }
 
     // Return the client side of the WebSocket
     return new Response(null, {
@@ -1130,12 +1465,81 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
    * Hibernatable WebSocket API: Handle incoming WebSocket messages.
    * Called by the runtime when a message arrives on any accepted WebSocket.
    */
+  /**
+   * Check rate limit for an actor's WebSocket messages.
+   * Returns 'ok' if under limit, 'rate_limited' if over limit,
+   * or 'close_connection' if persistent abuse detected.
+   */
+  private checkRateLimit(actorId: string): 'ok' | 'rate_limited' | 'close_connection' {
+    const now = Date.now();
+    let entry = this.messageRates.get(actorId);
+    if (entry === undefined) {
+      entry = { timestamps: [], consecutiveRateLimits: 0, rateLimitedInCurrentWindow: false };
+      this.messageRates.set(actorId, entry);
+    }
+
+    // Remove timestamps outside the rate limit window
+    const windowStart = now - RATE_LIMIT_WINDOW_MS;
+    const prevLength = entry.timestamps.length;
+    entry.timestamps = entry.timestamps.filter((t) => t > windowStart);
+
+    // If old timestamps were pruned, we've transitioned to a new window
+    if (entry.timestamps.length < prevLength) {
+      // If previous window was clean (not rate limited), reset consecutive counter
+      if (!entry.rateLimitedInCurrentWindow) {
+        entry.consecutiveRateLimits = 0;
+      }
+      entry.rateLimitedInCurrentWindow = false;
+    }
+
+    // Add current timestamp
+    entry.timestamps.push(now);
+
+    if (entry.timestamps.length >= MAX_MESSAGES_PER_SECOND) {
+      // Only increment consecutive counter once per window
+      if (!entry.rateLimitedInCurrentWindow) {
+        entry.rateLimitedInCurrentWindow = true;
+        entry.consecutiveRateLimits++;
+      }
+      if (entry.consecutiveRateLimits >= RATE_LIMIT_CLOSE_THRESHOLD) {
+        return 'close_connection';
+      }
+      return 'rate_limited';
+    }
+
+    return 'ok';
+  }
+
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    await this.initializeIfNeeded();
+    await this.initializeCrdtIfNeeded();
 
     const meta = this.getConnectionMeta(ws);
     if (meta === null) {
       console.warn('webSocketMessage: no metadata for WebSocket');
+      return;
+    }
+
+    // Phase 4.1: Rate limit check
+    const rateCheck = this.checkRateLimit(meta.actorId);
+    if (rateCheck === 'close_connection') {
+      const errorMsg: WsPresenceErrorMessage = {
+        type: 'presence_error',
+        code: 'RATE_LIMITED',
+        message: 'Connection closed due to persistent rate limiting',
+        timestamp: Date.now(),
+      };
+      ws.send(JSON.stringify(errorMsg));
+      ws.close(1008, 'Rate limit exceeded');
+      return;
+    }
+    if (rateCheck === 'rate_limited') {
+      const errorMsg: WsPresenceErrorMessage = {
+        type: 'presence_error',
+        code: 'RATE_LIMITED',
+        message: 'Message rate limit exceeded. Please slow down.',
+        timestamp: Date.now(),
+      };
+      ws.send(JSON.stringify(errorMsg));
       return;
     }
 
@@ -1179,15 +1583,11 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
         + `\n  AFTER:  ${afterSummary}`,
       );
 
-      // Broadcast to other clients
-      for (const conn of this.state.getWebSockets()) {
-        if (conn !== ws && conn.readyState === WebSocket.OPEN) {
-          conn.send(update);
-        }
-      }
+      // Phase 1.2: Batch broadcast — accumulate update and schedule flush
+      this.enqueueBroadcast(ws, update);
 
-      // Persist state
-      await this.persist();
+      // Phase 1.1: Debounced persistence — mark pending instead of persisting directly
+      await this.markPersistPending();
 
       // Schedule sync to PostgreSQL after idle timeout
       await this.scheduleSync(meta.actorId, meta.actorType);
@@ -1201,7 +1601,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
    * Called by the runtime when a WebSocket connection closes.
    */
   async webSocketClose(ws: WebSocket, _code: number, _reason: string, _wasClean: boolean): Promise<void> {
-    await this.initializeIfNeeded();
+    await this.initializeCrdtIfNeeded();
 
     const meta = this.getConnectionMeta(ws);
     const actorId = meta?.actorId ?? 'unknown';
@@ -1213,7 +1613,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
    * Called by the runtime when a WebSocket connection encounters an error.
    */
   async webSocketError(ws: WebSocket, _error: unknown): Promise<void> {
-    await this.initializeIfNeeded();
+    await this.initializeCrdtIfNeeded();
 
     const meta = this.getConnectionMeta(ws);
     const actorId = meta?.actorId ?? 'unknown';
@@ -1261,10 +1661,19 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
       // Unregister actor from presence manager
       this.presenceManager.unregisterByActorId(actorId);
+
+      // Phase 3.2: Push presence leave to PresenceManager DO
+      this.pushPresenceUpdate('leave', actorId);
+
+      // Phase 4.1: Clean up rate tracking
+      this.messageRates.delete(actorId);
     }
 
     // Broadcast presence update to remaining clients (connection left)
     this.broadcastPresenceUpdate();
+
+    // Phase 1.2: Flush any pending broadcasts before checking disconnect
+    this.flushPendingBroadcasts();
 
     // If this was the last connection, clean up and sync
     if (remainingWebSockets.length === 0) {
@@ -1280,8 +1689,13 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       // Compact CRDT state to free memory from deleted content
       this.compactCrdtState();
 
-      // Persist the compacted state to DO storage so it survives hibernation
+      // Phase 1.1: Flush pending persist and persist compacted state
+      this.persistPending = false; // Clear pending flag — we're about to do a full persist
+      await this.state.storage.delete(DocumentSession.PERSIST_PENDING_KEY);
       await this.persist();
+
+      // Phase 3.1: Persist presence state immediately on last disconnect
+      await this.persistPresence();
 
       // Trigger sync to PostgreSQL (awaited so it completes before hibernation)
       await this.syncToPostgres();
@@ -1749,6 +2163,106 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   // =============================================================================
+  // Phase 1.1: Debounced Persistence Helpers
+  // =============================================================================
+
+  /** Storage key for persist pending flag (survives hibernation) */
+  private static readonly PERSIST_PENDING_KEY = 'persistPending';
+
+  /**
+   * Mark that the Y.Doc has been modified and needs to be persisted.
+   * Instead of persisting immediately, sets a flag and schedules an alarm
+   * to flush within PERSIST_DEBOUNCE_MS. The Y.Doc remains the authoritative
+   * in-memory state.
+   */
+  private async markPersistPending(): Promise<void> {
+    if (this.persistPending) {
+      return; // Already marked, alarm is already scheduled
+    }
+
+    this.persistPending = true;
+    await this.state.storage.put(DocumentSession.PERSIST_PENDING_KEY, true);
+
+    // Schedule an alarm to flush persistence if one isn't already set
+    // within the debounce window
+    const dueAt = Date.now() + PERSIST_DEBOUNCE_MS;
+    const existingAlarm = await this.state.storage.getAlarm();
+    if (existingAlarm === null || existingAlarm > dueAt) {
+      await this.state.storage.setAlarm(dueAt);
+      this.cleanupAlarmScheduled = true;
+    }
+  }
+
+  /**
+   * Flush pending persistence if there are uncommitted changes.
+   * Called by alarm handler and on last client disconnect.
+   */
+  private async flushPendingPersist(): Promise<void> {
+    if (!this.persistPending) {
+      return;
+    }
+
+    await this.persist();
+    this.persistPending = false;
+    await this.state.storage.delete(DocumentSession.PERSIST_PENDING_KEY);
+  }
+
+  // =============================================================================
+  // Phase 1.2: Debounced Broadcast Helpers
+  // =============================================================================
+
+  /**
+   * Enqueue a Yjs update for batched broadcast.
+   * Updates are accumulated and flushed after BROADCAST_DEBOUNCE_MS.
+   *
+   * @param sender - The WebSocket that sent the update (excluded from broadcast)
+   * @param update - The Yjs update to broadcast
+   */
+  private enqueueBroadcast(sender: WebSocket, update: Uint8Array): void {
+    this.pendingBroadcastUpdates.push(update);
+    this.pendingBroadcastSenders.push(sender);
+
+    // Schedule flush if not already scheduled
+    this.broadcastTimer ??= setTimeout(() => {
+      this.flushPendingBroadcasts();
+    }, BROADCAST_DEBOUNCE_MS);
+  }
+
+  /**
+   * Flush all pending broadcast updates. Merges accumulated Yjs updates
+   * into a single update and broadcasts to all connections except senders.
+   */
+  private flushPendingBroadcasts(): void {
+    this.broadcastTimer = null;
+
+    if (this.pendingBroadcastUpdates.length === 0) {
+      return;
+    }
+
+    // Collect unique senders to exclude
+    const senders = new Set(this.pendingBroadcastSenders);
+
+    // Merge all pending updates into one
+    let mergedUpdate: Uint8Array;
+    if (this.pendingBroadcastUpdates.length === 1) {
+      mergedUpdate = this.pendingBroadcastUpdates[0];
+    } else {
+      mergedUpdate = Y.mergeUpdates(this.pendingBroadcastUpdates);
+    }
+
+    // Clear pending state
+    this.pendingBroadcastUpdates = [];
+    this.pendingBroadcastSenders = [];
+
+    // Broadcast the merged update to all connections except senders
+    for (const conn of this.state.getWebSockets()) {
+      if (!senders.has(conn) && conn.readyState === WebSocket.OPEN) {
+        conn.send(mergedUpdate);
+      }
+    }
+  }
+
+  // =============================================================================
   // PostgreSQL Sync Methods
   // =============================================================================
 
@@ -1848,7 +2362,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     await this.restoreSessionInfoFromStorage();
 
     // Restore state after potential hibernation wake
-    await this.initializeIfNeeded();
+    await this.initializeCrdtIfNeeded();
 
     const startTime = Date.now();
     const metricsEnabled = this.isAlarmMetricsEnabled();
@@ -1859,6 +2373,19 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
     // Reset the scheduled flag since the alarm has fired
     this.cleanupAlarmScheduled = false;
+
+    // Phase 1.1: Flush any pending persistence
+    await this.flushPendingPersist();
+
+    // Phase 3.1: Flush pending presence persistence
+    if (this.presencePersistPending) {
+      await this.persistPresence();
+    }
+
+    // Phase 1.3: Run periodic compaction when no connections are active
+    if (this.getConnectionCount() === 0) {
+      this.compactCrdtState();
+    }
 
     // Process sync schedule if due
     const syncSchedule = await this.state.storage.get<{ dueAt: number; actorId: string; actorType: 'user' | 'agent' }>(DocumentSession.SYNC_SCHEDULE_KEY);
@@ -1909,6 +2436,14 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     if (pendingSyncSchedule !== undefined) {
       // There's a pending sync that needs to fire
       nextAlarmTime = pendingSyncSchedule.dueAt;
+    }
+
+    // Phase 1.1: If persist is still pending (e.g., rapid edits), schedule next alarm
+    if (this.persistPending) {
+      const persistTime = Date.now() + PERSIST_DEBOUNCE_MS;
+      nextAlarmTime = nextAlarmTime !== null
+        ? Math.min(nextAlarmTime, persistTime)
+        : persistTime;
     }
 
     // Reschedule cleanup alarm if there's still data to track
@@ -2085,6 +2620,25 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       const snapshot = root.toJSON() as Record<string, unknown>;
       const crdtState = this.uint8ArrayToBase64(Y.encodeStateAsUpdate(this.ydoc));
 
+      // Phase 5.1: Prefer queue-based sync when available
+      if (this.env.SYNC_QUEUE !== undefined) {
+        await this.env.SYNC_QUEUE.send({
+          siteId: this.sessionInfo.siteId,
+          documentId: this.sessionInfo.documentId,
+          branchId: this.sessionInfo.branchId,
+          snapshot,
+          crdtState,
+          actorId,
+          actorType,
+          timestamp: Date.now(),
+        });
+        this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+        await this.state.storage.delete(DocumentSession.SYNC_SCHEDULE_KEY);
+        console.log(`Queued sync for document ${this.sessionInfo.documentId}`);
+        return;
+      }
+
+      // Fallback: direct HTTP sync via internal API
       const syncUrl = `${internalApiUrl}/internal/crdt-sync`;
 
       const response = await fetch(syncUrl, {
@@ -2123,8 +2677,8 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   // =============================================================================
 
   /**
-   * Create a pre-edit checkpoint for an agent via the internal API.
-   * This checkpoint enables rollback if the agent edit is aborted.
+   * Create a pre-edit checkpoint for an agent.
+   * Phase 6.3: Tries direct Hyperdrive DB access first, falls back to HTTP.
    */
   private async createAgentPreEditCheckpoint(
     agentId: string,
@@ -2132,9 +2686,33 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     trigger: 'human_requested' | 'autonomous',
     targetRegions: string[],
   ): Promise<string | undefined> {
-    // Skip if internal API is not configured
+    // Phase 6.3: Try direct Hyperdrive first
+    if (this.env.HYPERDRIVE !== undefined) {
+      try {
+        const result = await runWithConnection(
+          this.env.HYPERDRIVE.connectionString,
+          { isHyperdrive: true },
+          async () =>
+            createCheckpointDirect({
+              branchId: this.sessionInfo.branchId,
+              checkpointType: 'agent_pre_edit',
+              createdById: agentId,
+              createdByType: 'agent',
+              description: `Pre-edit checkpoint: ${intent}`,
+              trigger,
+              affectedRegions: targetRegions,
+            }),
+        );
+        console.log(`Created pre-edit checkpoint ${result.checkpoint.id} for agent ${agentId} (direct DB)`);
+        return result.checkpoint.id;
+      } catch (error) {
+        console.warn('Direct DB checkpoint failed, falling back to HTTP:', error);
+      }
+    }
+
+    // Fallback: HTTP internal API
     if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
-      console.log('Agent checkpoint skipped: INTERNAL_API_URL not configured, using placeholder');
+      console.log('Agent checkpoint skipped: no Hyperdrive or internal API configured, using placeholder');
       return `checkpoint-${String(Date.now())}-${Math.random().toString(36).substring(2, 9)}`;
     }
 
@@ -2174,8 +2752,8 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   /**
-   * Create a post-edit checkpoint for an agent via the internal API.
-   * This checkpoint documents the completed agent changes.
+   * Create a post-edit checkpoint for an agent.
+   * Phase 6.3: Tries direct Hyperdrive DB access first, falls back to HTTP.
    */
   private async createAgentPostEditCheckpoint(
     agentId: string,
@@ -2183,9 +2761,33 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     preEditCheckpointId: string,
     affectedRegions: string[],
   ): Promise<string | undefined> {
-    // Skip if internal API is not configured
+    // Phase 6.3: Try direct Hyperdrive first
+    if (this.env.HYPERDRIVE !== undefined) {
+      try {
+        const result = await runWithConnection(
+          this.env.HYPERDRIVE.connectionString,
+          { isHyperdrive: true },
+          async () =>
+            createCheckpointDirect({
+              branchId: this.sessionInfo.branchId,
+              checkpointType: 'agent_post_edit',
+              createdById: agentId,
+              createdByType: 'agent',
+              description: `Post-edit checkpoint: ${intent}`,
+              trigger: 'autonomous',
+              affectedRegions,
+            }),
+        );
+        console.log(`Created post-edit checkpoint ${result.checkpoint.id} for agent ${agentId} (direct DB)`);
+        return result.checkpoint.id;
+      } catch (error) {
+        console.warn('Direct DB post-edit checkpoint failed, falling back to HTTP:', error);
+      }
+    }
+
+    // Fallback: HTTP internal API
     if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
-      console.log('Agent checkpoint skipped: INTERNAL_API_URL not configured');
+      console.log('Agent checkpoint skipped: no Hyperdrive or internal API configured');
       return undefined;
     }
 
@@ -2225,17 +2827,39 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   /**
-   * Rollback to a pre-edit checkpoint via the internal API.
-   * Called when an agent edit is aborted.
+   * Rollback to a pre-edit checkpoint.
+   * Phase 6.3: Tries direct Hyperdrive DB access first, falls back to HTTP.
    */
   private async rollbackToAgentCheckpoint(
     checkpointId: string,
     agentId: string,
     reason?: string,
   ): Promise<boolean> {
-    // Skip if internal API is not configured
+    // Phase 6.3: Try direct Hyperdrive first
+    if (this.env.HYPERDRIVE !== undefined) {
+      try {
+        const result = await runWithConnection(
+          this.env.HYPERDRIVE.connectionString,
+          { isHyperdrive: true },
+          async () =>
+            revertToCheckpointDirect({
+              checkpointId,
+              createdById: agentId,
+              createdByType: 'agent',
+              message: reason,
+            }),
+        );
+        const reverted = String(result.documentsReverted);
+        console.log(`Rolled back to checkpoint ${checkpointId}, reverted ${reverted} docs (direct DB)`);
+        return true;
+      } catch (error) {
+        console.warn('Direct DB rollback failed, falling back to HTTP:', error);
+      }
+    }
+
+    // Fallback: HTTP internal API
     if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
-      console.log('Agent rollback skipped: INTERNAL_API_URL not configured');
+      console.log('Agent rollback skipped: no Hyperdrive or internal API configured');
       return false;
     }
 
@@ -2558,6 +3182,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
         focusRegions: validRegions,
       });
     }
+
+    // Phase 3.1: Schedule debounced presence persistence on focus update
+    await this.markPresencePersistPending();
 
     // Return the current focus regions for this actor
     const focusInfo = this.activityDetector.getFocusInfo(actorId);
@@ -3263,6 +3890,12 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       timestamp: Date.now(),
     };
     this.broadcastToOthers(sender, broadcast);
+
+    // Phase 3.1: Schedule debounced presence persistence on focus update
+    void this.markPresencePersistPending();
+
+    // Phase 3.2: Push focus change to PresenceManager DO
+    this.pushPresenceUpdate('focus', meta.actorId, { focusRegions: validRegions });
   }
 
   /**

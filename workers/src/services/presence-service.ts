@@ -8,6 +8,15 @@
 import type { ActorPresence, PresenceState } from '../types';
 
 /**
+ * Serialized form of PresenceManager state.
+ * JSON-serializable for DO storage persistence.
+ */
+export interface SerializedPresenceState {
+  presences: ActorPresence[];
+  actorIdIndex: Record<string, string>;
+}
+
+/**
  * Maximum number of presences allowed per session.
  * Prevents memory exhaustion from unbounded registration.
  */
@@ -377,6 +386,40 @@ export class PresenceManager {
     }
 
     return cleared;
+  }
+
+  /**
+   * Serialize presence state to a JSON-serializable object.
+   * Used for persisting presence to DO storage.
+   */
+  serialize(): SerializedPresenceState {
+    const actorIdIndex: Record<string, string> = {};
+    for (const [actorId, presenceId] of this.actorIdIndex.entries()) {
+      actorIdIndex[actorId] = presenceId;
+    }
+
+    return {
+      presences: this.getAll(),
+      actorIdIndex,
+    };
+  }
+
+  /**
+   * Recreate a PresenceManager from serialized data.
+   * Used for restoring presence from DO storage.
+   */
+  static deserialize(data: SerializedPresenceState): PresenceManager {
+    const pm = new PresenceManager();
+
+    for (const presence of data.presences) {
+      pm.presences.set(presence.id, presence);
+    }
+
+    for (const [actorId, presenceId] of Object.entries(data.actorIdIndex)) {
+      pm.actorIdIndex.set(actorId, presenceId);
+    }
+
+    return pm;
   }
 
   /**

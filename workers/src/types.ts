@@ -293,6 +293,8 @@ export interface Checkpoint {
   /** Detailed description of what the checkpoint contains */
   description?: string;
   checkpointType: CheckpointType;
+  /** ID of the parent checkpoint for incremental checkpoints (Phase 6.1) */
+  parentCheckpointId?: string;
 
   // Agent Politeness fields
   /** How this checkpoint was triggered */

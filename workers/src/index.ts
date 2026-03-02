@@ -38,6 +38,10 @@ import { handlePresenceRoutes } from './routes/presence-api';
 // MAS client
 import { MASClient } from './services/mas-client';
 
+// Queue consumer (Phase 5.1)
+import { handleSyncQueue } from './queues/sync-consumer';
+import type { SyncQueueMessage } from './types/queue-messages';
+
 // CORS
 import {
   parseOriginPatterns,
@@ -102,6 +106,9 @@ export interface Env {
   // Hyperdrive binding (production/staging - handles connection pooling properly)
   // See: https://developers.cloudflare.com/hyperdrive/
   HYPERDRIVE?: Hyperdrive;
+
+  // Queue binding (Phase 5.1: Queue-Based Sync Decoupling)
+  SYNC_QUEUE?: Queue;
 
   // Durable Object bindings
   DOCUMENT_STATE: DurableObjectNamespace;
@@ -1091,6 +1098,14 @@ export default {
       // Flush metrics (fire-and-forget)
       await flushMetrics();
     }
+  },
+
+  /**
+   * Phase 5.1: Queue handler for DO-to-PostgreSQL sync.
+   * Processes batches of sync messages from Cloudflare Queues.
+   */
+  async queue(batch: MessageBatch, env: Env): Promise<void> {
+    await handleSyncQueue(batch as MessageBatch<SyncQueueMessage>, env);
   },
 };
 

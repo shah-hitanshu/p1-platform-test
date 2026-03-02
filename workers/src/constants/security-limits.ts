@@ -203,6 +203,30 @@ export const MAX_DOCUMENT_PATH_LENGTH = 512;
 export const MAX_EDIT_SESSION_ID_LENGTH = 128;
 
 // =============================================================================
+// Debounce Limits (Scaling Optimizations)
+// Used in: document-session.ts
+// =============================================================================
+
+/**
+ * Debounce window for DO storage persistence (in milliseconds).
+ * Instead of persisting on every WebSocket message, edits within this window
+ * are batched and persisted once. Always persist immediately on last client
+ * disconnect and on /apply HTTP endpoint.
+ * Value: 2000ms (2 seconds - acceptable data-at-risk window since connected
+ * clients hold state in memory and CRDTs re-sync on reconnect)
+ */
+export const PERSIST_DEBOUNCE_MS = 2000;
+
+/**
+ * Debounce window for WebSocket broadcast batching (in milliseconds).
+ * Incoming Yjs updates are batched within this window and merged via
+ * Y.mergeUpdates() before broadcasting to all connections. Reduces O(N^2)
+ * broadcast work to O(N) per batch window.
+ * Value: 50ms (imperceptible to users, significant CPU/network savings)
+ */
+export const BROADCAST_DEBOUNCE_MS = 50;
+
+// =============================================================================
 // Cleanup Timer Limits
 // Used in: document-session.ts
 // =============================================================================
@@ -234,3 +258,17 @@ export const PRESENCE_STALE_THRESHOLD_MS = 120000;
  * Value: 600000ms (10 minutes - balances long operations with cleanup speed)
  */
 export const MAX_EDIT_SESSION_AGE_MS = 600000;
+
+// =============================================================================
+// WebSocket Rate Limiting (Scaling Optimizations)
+// Used in: document-session.ts
+// =============================================================================
+
+/** Maximum WebSocket messages per second per actor */
+export const MAX_MESSAGES_PER_SECOND = 50;
+
+/** Rate limit tracking window in milliseconds */
+export const RATE_LIMIT_WINDOW_MS = 1000;
+
+/** Number of consecutive rate limit hits before closing connection */
+export const RATE_LIMIT_CLOSE_THRESHOLD = 3;

@@ -27,10 +27,22 @@
   
   // Durable Object migrations - required for production deployments
   // Add new migrations when adding/renaming DO classes
+  //
+  // Migration path (Phase 2.1 - SQLite storage backend):
+  // v1: Create all DO classes with SQLite storage backend. This provides:
+  //     - Increased value size limit: 128 KiB (KV) → 2 MB (SQLite)
+  //     - Future use of ctx.storage.sql for structured queries
+  //     - Better transactional consistency
+  //     The KV API (ctx.storage.put/get) still works on SQLite-backed DOs,
+  //     so existing persist/restore code requires no changes.
+  //
+  // Note: For production environments with existing KV-backed DOs,
+  //     a delete-then-recreate migration sequence would be needed.
+  //     Since we haven't deployed to production yet, a single create suffices.
   "migrations": [
     {
       "tag": "v1",
-      "new_classes": ["DocumentState", "PresenceManager", "SessionManager"]
+      "new_sqlite_classes": ["DocumentState", "PresenceManager", "SessionManager"]
     }
   ],
   
@@ -72,7 +84,17 @@
     "local_protocol": "http",
     "ip": "0.0.0.0"
   },
-  
+
+  // ==========================================================================
+  // Queue Configuration (Phase 5.1: Queue-Based Sync Decoupling)
+  // Producers: Durable Objects send sync messages to the queue
+  // Consumers: Worker processes batches for PostgreSQL persistence
+  // ==========================================================================
+  "queues": {
+    "producers": [{ "binding": "SYNC_QUEUE", "queue": "css-sync-queue" }],
+    "consumers": [{ "queue": "css-sync-queue", "max_batch_size": 100, "max_batch_timeout": 30 }]
+  },
+
   // ==========================================================================
   // Environment Overrides
   // Deploy with: pnpm exec wrangler deploy --env <env>

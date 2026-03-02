@@ -10,7 +10,8 @@
  * 3. State continuity: DOs can initialize from PostgreSQL if their local storage is empty
  */
 
-import type { DocumentVersion } from '../types';
+import type { DocumentVersion, DocumentVersionSource } from '../types';
+import { query } from '../db';
 import { getDocument } from './document-service';
 import {
   createDocumentVersion,
@@ -20,6 +21,26 @@ import {
 // =============================================================================
 // Types
 // =============================================================================
+
+/**
+ * Parameters for the consolidated single-query sync (Phase 5.2).
+ * Unlike SyncCrdtToPostgresParams, this does NOT require siteId because
+ * document existence validation is handled at the DO level.
+ */
+export interface ConsolidatedSyncParams {
+  /** The document UUID */
+  documentId: string;
+  /** The branch ID */
+  branchId: string;
+  /** The current document snapshot (JSON representation) */
+  snapshot: Record<string, unknown>;
+  /** Base64-encoded CRDT state from Y.encodeStateAsUpdate() */
+  crdtState: string;
+  /** The actor performing the sync */
+  actorId: string;
+  /** Type of actor (user or agent) */
+  actorType: 'user' | 'agent';
+}
 
 /**
  * Parameters for syncing CRDT state to PostgreSQL.
@@ -165,4 +186,117 @@ export async function loadLatestCrdtState(
     snapshot: version.snapshot,
     crdtState: version.crdtState,
   };
+}
+
+// =============================================================================
+// Phase 5.2: Consolidated Sync (single query per sync)
+// =============================================================================
+
+/**
+ * Database row format for document versions (used by consolidated query).
+ */
+interface DocumentVersionRow {
+  id: string;
+  document_id: string;
+  branch_id: string;
+  version_number: number;
+  snapshot: Record<string, unknown>;
+  crdt_state: Buffer | null;
+  source: DocumentVersionSource;
+  created_by_id: string;
+  created_by_type: 'user' | 'agent' | 'system';
+  created_at: string;
+}
+
+/**
+ * Maps a database row to a DocumentVersion domain object.
+ */
+function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersion {
+  return {
+    id: row.id,
+    documentId: row.document_id,
+    branchId: row.branch_id,
+    versionNumber: row.version_number,
+    snapshot: row.snapshot,
+    crdtState: row.crdt_state ? row.crdt_state.toString('base64') : undefined,
+    source: row.source,
+    createdById: row.created_by_id,
+    createdByType: row.created_by_type,
+    createdAt: row.created_at,
+  };
+}
+
+/**
+ * Consolidated single-query sync from a Durable Object to PostgreSQL (Phase 5.2).
+ *
+ * Replaces the previous 2-3 serial query flow:
+ *   1. getDocument(documentId) — no longer needed (DO already validated)
+ *   2. getLatestDocumentVersion() — folded into CTE
+ *   3. createDocumentVersion() — combined INSERT
+ *
+ * Uses a CTE to atomically check the latest snapshot for dedup and insert
+ * a new version if the snapshot has changed. Returns null if the snapshot
+ * is unchanged (dedup).
+ *
+ * @param params - Consolidated sync parameters (no siteId needed)
+ * @returns The created document version, or null if deduplicated
+ * @throws SyncError if required fields are missing
+ */
+export async function syncCrdtToPostgresConsolidated(
+  params: ConsolidatedSyncParams,
+): Promise<DocumentVersion | null> {
+  // Validate required fields
+  if (!params.documentId || params.documentId.trim() === '') {
+    throw new SyncError('Document ID is required');
+  }
+  if (!params.branchId || params.branchId.trim() === '') {
+    throw new SyncError('Branch ID is required');
+  }
+  if (!params.actorId || params.actorId.trim() === '') {
+    throw new SyncError('Actor ID is required');
+  }
+
+  // Convert base64 CRDT state to buffer if provided
+  const crdtBuffer =
+    params.crdtState !== ''
+      ? Buffer.from(params.crdtState, 'base64')
+      : null;
+
+  const result = await query<DocumentVersionRow>(
+    `WITH latest AS (
+      SELECT snapshot FROM app.document_versions
+      WHERE document_id = $1 AND branch_id = $2
+      ORDER BY version_number DESC LIMIT 1
+    )
+    INSERT INTO app.document_versions (
+      document_id, branch_id, version_number, snapshot, crdt_state,
+      source, created_by_id, created_by_type
+    )
+    SELECT $1, $2, COALESCE(MAX(version_number), 0) + 1,
+      $3, $4, 'realtime', $5, $6
+    FROM app.document_versions
+    WHERE document_id = $1 AND branch_id = $2
+      AND NOT EXISTS (
+        SELECT 1 FROM latest WHERE latest.snapshot = $3
+      )
+    RETURNING *`,
+    [
+      params.documentId,
+      params.branchId,
+      params.snapshot,
+      crdtBuffer,
+      params.actorId,
+      params.actorType,
+    ],
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  const row = result.rows[0];
+  if (row === undefined) {
+    return null;
+  }
+  return mapRowToDocumentVersion(row);
 }
