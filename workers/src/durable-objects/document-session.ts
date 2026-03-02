@@ -1444,6 +1444,12 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     // Broadcast presence update to all clients (new connection joined)
     this.broadcastPresenceUpdate();
 
+    // Phase 3.2: Push presence join to PresenceManager DO
+    const joinedPresence = this.presenceManager.getByActorId(actorId);
+    if (joinedPresence !== undefined) {
+      this.pushPresenceUpdate('join', actorId, { actor: joinedPresence });
+    }
+
     // Return the client side of the WebSocket
     return new Response(null, {
       status: 101,
@@ -1651,6 +1657,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
       // Unregister actor from presence manager
       this.presenceManager.unregisterByActorId(actorId);
+
+      // Phase 3.2: Push presence leave to PresenceManager DO
+      this.pushPresenceUpdate('leave', actorId);
 
       // Phase 4.1: Clean up rate tracking
       this.messageRates.delete(actorId);
@@ -3810,6 +3819,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
     // Phase 3.1: Schedule debounced presence persistence on focus update
     void this.markPresencePersistPending();
+
+    // Phase 3.2: Push focus change to PresenceManager DO
+    this.pushPresenceUpdate('focus', meta.actorId, { focusRegions: validRegions });
   }
 
   /**
