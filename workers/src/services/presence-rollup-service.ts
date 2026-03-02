@@ -1,8 +1,11 @@
 /**
- * Phase 8: Presence Rollup Service
+ * Phase 8 / Phase 3.3: Presence Rollup Service
  *
  * Aggregates presence data across documents, branches, and sites.
- * Uses a fan-out query pattern to query DocumentSession DOs in parallel.
+ *
+ * Phase 3.3 optimization: When PRESENCE binding is available, queries
+ * PresenceManager DO via RPC instead of fanning out to N DocumentSession DOs.
+ * Falls back to fan-out when PRESENCE is unavailable or RPC fails.
  *
  * Based on collaborative-state-system-architecture-v2.3.md
  */
@@ -23,6 +26,11 @@ import { listBranches, getBranch } from './branch-service';
 import { getSite } from './site-service';
 import { getSitesByOrganization } from './organization-service';
 import { getAgentById } from './agent-service';
+import type {
+  BranchPresenceResult,
+  SitePresenceResult,
+  AgentPresenceResult,
+} from '../durable-objects/presence-manager';
 
 // =============================================================================
 // Error Classes
@@ -73,6 +81,16 @@ export class AgentNotFoundError extends Error {
  */
 interface PresenceRollupEnv {
   DOCUMENT_STATE: DurableObjectNamespace;
+  PRESENCE?: DurableObjectNamespace;
+}
+
+/**
+ * RPC stub interface for PresenceManager DO methods.
+ */
+interface PresenceManagerRpc {
+  getBranchPresence: (branchId: string) => Promise<BranchPresenceResult>;
+  getSitePresence: () => Promise<SitePresenceResult>;
+  getAgentPresence: (agentId: string) => Promise<AgentPresenceResult>;
 }
 
 /**
@@ -194,7 +212,8 @@ export async function queryDocumentPresence(
 /**
  * Get branch-level presence aggregation.
  *
- * Queries all documents on the branch in parallel and aggregates presence data.
+ * Phase 3.3: Queries PresenceManager DO via RPC when PRESENCE binding is
+ * available. Falls back to fan-out document queries otherwise.
  *
  * @param env - Environment with bindings
  * @param siteId - Site identifier
@@ -213,10 +232,59 @@ export async function getBranchPresence(
     throw new BranchNotFoundError(branchId);
   }
 
-  // Get all documents on the branch
+  // Phase 3.3: Try PresenceManager DO RPC first
+  const typedEnv = env as Partial<PresenceRollupEnv>;
+  if (typedEnv.PRESENCE !== undefined) {
+    try {
+      const presenceId = typedEnv.PRESENCE.idFromName(siteId);
+      const stub = typedEnv.PRESENCE.get(presenceId) as unknown as PresenceManagerRpc;
+      const rpcResult = await stub.getBranchPresence(branchId);
+
+      const deduplicatedActors = deduplicateActors(rpcResult.actors);
+      const summary = calculateSummary(deduplicatedActors);
+
+      const documentSummary: DocumentPresenceSummary[] = rpcResult.documentSummary
+        .filter((d) => d.actorCount > 0)
+        .map((d) => ({
+          documentId: d.documentId,
+          documentPath: d.documentId,
+          actorCount: d.actorCount,
+          hasHumans: rpcResult.actors.some(
+            (a) => a.role === 'human',
+          ),
+          hasAgents: rpcResult.actors.some(
+            (a) => a.role === 'agent',
+          ),
+        }));
+
+      return {
+        branchId,
+        branchName: branch.name,
+        siteId,
+        summary,
+        actors: deduplicatedActors,
+        documentSummary,
+      };
+    } catch (error) {
+      console.warn('PresenceManager RPC failed for getBranchPresence, falling back to fan-out:', error);
+    }
+  }
+
+  // Fallback: Fan-out to DocumentSession DOs
+  return getBranchPresenceFanOut(env, siteId, branchId, branch);
+}
+
+/**
+ * Fan-out implementation for branch presence (legacy path).
+ */
+async function getBranchPresenceFanOut(
+  env: unknown,
+  siteId: string,
+  branchId: string,
+  branch: { name: string },
+): Promise<BranchPresence> {
   const documents = await listDocumentsOnBranch(branchId);
 
-  // Query presence from each document in parallel
   const presencePromises = documents.map(async (doc) => {
     const presences = await queryDocumentPresence(env, siteId, doc.id, branchId);
     return {
@@ -228,7 +296,6 @@ export async function getBranchPresence(
 
   const results = await Promise.allSettled(presencePromises);
 
-  // Aggregate results
   const allActors: ActorPresence[] = [];
   const documentSummary: DocumentPresenceSummary[] = [];
 
@@ -264,7 +331,8 @@ export async function getBranchPresence(
 /**
  * Get site-level presence aggregation.
  *
- * Queries all branches and aggregates presence across the site.
+ * Phase 3.3: Queries PresenceManager DO via RPC when PRESENCE binding is
+ * available. Falls back to branch fan-out otherwise.
  *
  * @param env - Environment with bindings
  * @param siteId - Site identifier
@@ -281,12 +349,57 @@ export async function getSitePresence(
     throw new SiteNotFoundError(siteId);
   }
 
-  // Get all active branches
+  // Phase 3.3: Try PresenceManager DO RPC first
+  const typedEnv = env as Partial<PresenceRollupEnv>;
+  if (typedEnv.PRESENCE !== undefined) {
+    try {
+      const presenceId = typedEnv.PRESENCE.idFromName(siteId);
+      const stub = typedEnv.PRESENCE.get(presenceId) as unknown as PresenceManagerRpc;
+      const rpcResult = await stub.getSitePresence();
+
+      const deduplicatedActors = deduplicateActors(rpcResult.actors);
+      const activeBranches = rpcResult.branchSummary.filter((b) => b.actorCount > 0).length;
+
+      const branchSummaries: BranchPresenceSummary[] = rpcResult.branchSummary.map((b) => ({
+        branchId: b.branchId,
+        branchName: b.branchId,
+        actorCount: b.actorCount,
+        hasHumans: rpcResult.actors.some((a) => a.role === 'human'),
+        hasAgents: rpcResult.actors.some((a) => a.role === 'agent'),
+      }));
+
+      return {
+        siteId,
+        siteName: site.name,
+        summary: {
+          totalActors: deduplicatedActors.length,
+          humanCount: deduplicatedActors.filter((a) => a.role === 'human').length,
+          agentCount: deduplicatedActors.filter((a) => a.role === 'agent').length,
+          activeBranches,
+        },
+        branches: branchSummaries,
+      };
+    } catch (error) {
+      console.warn('PresenceManager RPC failed for getSitePresence, falling back to fan-out:', error);
+    }
+  }
+
+  // Fallback: Fan-out to branches
+  return getSitePresenceFanOut(env, siteId, site);
+}
+
+/**
+ * Fan-out implementation for site presence (legacy path).
+ */
+async function getSitePresenceFanOut(
+  env: unknown,
+  siteId: string,
+  site: { name: string },
+): Promise<SitePresence> {
   const branches = await listBranches(siteId, {
     status: 'active',
   });
 
-  // Query presence from each branch in parallel
   const branchPromises = branches.map(async (branch) => {
     const presence = await getBranchPresence(env, siteId, branch.id);
     return presence;
@@ -294,7 +407,6 @@ export async function getSitePresence(
 
   const results = await Promise.allSettled(branchPromises);
 
-  // Aggregate results
   const allActors: ActorPresence[] = [];
   const branchSummaries: BranchPresenceSummary[] = [];
   let activeBranches = 0;
@@ -337,7 +449,8 @@ export async function getSitePresence(
 /**
  * Get an agent's presence across all sites in an organization.
  *
- * Searches all sites, branches, and documents to find where the agent is active.
+ * Phase 3.3: Queries PresenceManager DO via RPC for each site when PRESENCE
+ * binding is available. Falls back to fan-out otherwise.
  *
  * @param env - Environment with bindings
  * @param organizationId - Organization identifier
@@ -359,9 +472,57 @@ export async function getAgentPresence(
   // Get all sites in the organization
   const sites = await getSitesByOrganization(organizationId);
 
+  // Phase 3.3: Try PresenceManager DO RPC when available
+  const typedEnv = env as Partial<PresenceRollupEnv>;
+  if (typedEnv.PRESENCE !== undefined) {
+    try {
+      const locations: AgentPresenceLocation[] = [];
+
+      for (const site of sites) {
+        const presenceId = typedEnv.PRESENCE.idFromName(site.id);
+        const stub = typedEnv.PRESENCE.get(presenceId) as unknown as PresenceManagerRpc;
+        const rpcResult = await stub.getAgentPresence(agentId);
+
+        for (const loc of rpcResult.locations) {
+          locations.push({
+            siteId: site.id,
+            siteName: site.name,
+            branchId: loc.branchId,
+            branchName: loc.branchId,
+            documentId: loc.documentId,
+            documentPath: loc.documentId,
+            presence: loc.actor,
+          });
+        }
+      }
+
+      return {
+        agentId,
+        agentName: agent.name,
+        organizationId,
+        locations,
+      };
+    } catch (error) {
+      console.warn('PresenceManager RPC failed for getAgentPresence, falling back to fan-out:', error);
+    }
+  }
+
+  // Fallback: Fan-out to sites/branches/documents
+  return getAgentPresenceFanOut(env, organizationId, agentId, agent, sites);
+}
+
+/**
+ * Fan-out implementation for agent presence (legacy path).
+ */
+async function getAgentPresenceFanOut(
+  env: unknown,
+  organizationId: string,
+  agentId: string,
+  agent: { name: string },
+  sites: { id: string; name: string }[],
+): Promise<AgentGlobalPresence> {
   const locations: AgentPresenceLocation[] = [];
 
-  // Search each site for the agent's presence
   for (const site of sites) {
     const branches = await listBranches(site.id, { status: 'active' });
 
