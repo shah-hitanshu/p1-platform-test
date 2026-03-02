@@ -418,10 +418,12 @@ export async function batchSyncToPostgres(
   }
 
   // Build arrays for each column to use with unnest()
+  // Note: crdt_state is passed as base64 text[] and decoded in SQL because
+  // the postgres driver cannot serialize Buffer[] as a PostgreSQL bytea[] array.
   const documentIds: string[] = [];
   const branchIds: string[] = [];
   const snapshots: (Record<string, unknown>)[] = [];
-  const crdtStates: (Buffer | null)[] = [];
+  const crdtStates: (string | null)[] = [];
   const actorIds: string[] = [];
   const actorTypes: string[] = [];
 
@@ -429,11 +431,7 @@ export async function batchSyncToPostgres(
     documentIds.push(payload.documentId);
     branchIds.push(payload.branchId);
     snapshots.push(payload.snapshot);
-    crdtStates.push(
-      payload.crdtState !== ''
-        ? Buffer.from(payload.crdtState, 'base64')
-        : null,
-    );
+    crdtStates.push(payload.crdtState !== '' ? payload.crdtState : null);
     actorIds.push(payload.actorId);
     actorTypes.push(payload.actorType);
   }
@@ -447,7 +445,7 @@ export async function batchSyncToPostgres(
         unnest($1::uuid[]) AS document_id,
         unnest($2::uuid[]) AS branch_id,
         unnest($3::jsonb[]) AS snapshot,
-        unnest($4::bytea[]) AS crdt_state,
+        decode(unnest($4::text[]), 'base64') AS crdt_state,
         unnest($5::uuid[]) AS actor_id,
         unnest($6::text[]) AS actor_type
     ),
