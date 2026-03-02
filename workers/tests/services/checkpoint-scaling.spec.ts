@@ -710,15 +710,18 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         id: 'new-cp',
       });
 
+      // Use 3+ documents to trigger the batch INSERT path (threshold = 3)
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
         .mockResolvedValueOnce({
           rows: [
             createMockVersionWithDocument({ document_id: 'doc-1' }),
+            createMockVersionWithDocument({ document_id: 'doc-2' }),
+            createMockVersionWithDocument({ document_id: 'doc-3' }),
           ],
         }) // getDocumentsAtCheckpoint
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // Bulk INSERT...SELECT
+        .mockResolvedValueOnce({ rows: [], rowCount: 3 }) // Bulk INSERT...SELECT
         .mockResolvedValueOnce({ rows: [] }) // Get structures
         .mockResolvedValueOnce({ rows: [] }) // Delete structures
         .mockResolvedValueOnce({ rows: [] }) // Restore structures
@@ -816,13 +819,18 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         checkpoint_type: 'manual',
       });
 
+      // Use 3+ documents to trigger the batch INSERT path (threshold = 3)
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
         .mockResolvedValueOnce({
-          rows: [createMockVersionWithDocument({ document_id: 'doc-1' })],
+          rows: [
+            createMockVersionWithDocument({ document_id: 'doc-1' }),
+            createMockVersionWithDocument({ document_id: 'doc-2' }),
+            createMockVersionWithDocument({ document_id: 'doc-3' }),
+          ],
         })
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // Bulk INSERT
+        .mockResolvedValueOnce({ rows: [], rowCount: 3 }) // Bulk INSERT
         .mockResolvedValueOnce({ rows: [] }) // Get structures
         .mockResolvedValueOnce({ rows: [] }) // Delete structures
         .mockResolvedValueOnce({ rows: [] }) // Restore structures

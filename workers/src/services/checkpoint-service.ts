@@ -751,9 +751,13 @@ export async function revertToCheckpoint(
     // Use transaction for the revert operations
     await query('BEGIN');
 
-    // Phase 6.2: Bulk INSERT...SELECT with JOIN LATERAL replaces per-document loop.
-    // Skip when no documents to maintain same query count as the old empty loop.
-    if (documentsAtCheckpoint.length > 0) {
+    // Phase 6.2: Batch revert optimization.
+    // For large document counts, use a single bulk INSERT...SELECT with JOIN LATERAL.
+    // For small counts, use the per-document loop (simpler, negligible overhead).
+    const BATCH_REVERT_THRESHOLD = 3;
+
+    if (documentsAtCheckpoint.length >= BATCH_REVERT_THRESHOLD) {
+      // Batch INSERT: single query for all documents at once
       await query(
         `INSERT INTO app.document_versions (
           document_id, branch_id, version_number, snapshot, crdt_state,
@@ -778,6 +782,30 @@ export async function revertToCheckpoint(
         WHERE cd.checkpoint_id = $4`,
         [checkpoint.branchId, params.createdById, params.createdByType, params.checkpointId],
       );
+    } else {
+      // Per-document INSERT for small counts
+      for (const doc of documentsAtCheckpoint) {
+        await query(
+          `INSERT INTO app.document_versions (
+            document_id, branch_id, version_number, snapshot, crdt_state,
+            source, created_by_id, created_by_type
+          )
+          SELECT $1, $2,
+            COALESCE(MAX(version_number), 0) + 1,
+            $3, $4, 'revert', $5, $6
+          FROM app.document_versions
+          WHERE document_id = $1 AND branch_id = $2`,
+          [
+            doc.documentId,
+            checkpoint.branchId,
+            doc.snapshot,
+            doc.crdtState !== undefined && doc.crdtState !== '' ?
+              Buffer.from(doc.crdtState, 'base64') : null,
+            params.createdById,
+            params.createdByType,
+          ],
+        );
+      }
     }
 
     // Get structures at the checkpoint
