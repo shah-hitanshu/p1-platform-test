@@ -17,7 +17,7 @@ import { DurableObject } from 'cloudflare:workers';
 import type { DurableObjectState } from '@cloudflare/workers-types';
 import type { EditOperation, ConnectionMeta, CheckpointTrigger, ActorPresence } from '../types';
 import { incrementCounter, setGauge, recordTiming } from '../services/metrics-service';
-import { PresenceManager, regionsOverlap } from '../services/presence-service';
+import { PresenceManager, regionsOverlap, type SerializedPresenceState } from '../services/presence-service';
 import {
   ActivityDetector,
   type ActivityDetectorState,
@@ -42,6 +42,9 @@ import {
   MAX_EDIT_SESSION_AGE_MS,
   PERSIST_DEBOUNCE_MS,
   BROADCAST_DEBOUNCE_MS,
+  MAX_MESSAGES_PER_SECOND,
+  RATE_LIMIT_WINDOW_MS,
+  RATE_LIMIT_CLOSE_THRESHOLD,
 } from '../constants/security-limits';
 import { AgentEditPermissionService } from '../services/agent-edit-permission-service';
 import { getOrganizationForSite } from '../services/organization-service';
@@ -62,6 +65,12 @@ import { isWsFocusRegionUpdate, isWsPresenceHeartbeat } from '../types/websocket
  * Storage key for persisted Yjs document state
  */
 const YDOC_STORAGE_KEY = 'ydoc';
+
+/**
+ * Storage key for persisted presence state.
+ * Presence is stored in DO storage so it survives DO eviction/re-instantiation.
+ */
+const PRESENCE_STORAGE_KEY = 'presenceState';
 
 /**
  * Storage key for persisted edit sessions.
@@ -197,6 +206,8 @@ interface DocumentSessionEnv {
   INTERNAL_SECRET?: string;
   /** Enable detailed DO alarm/cleanup metrics (can be high volume) */
   DO_ALARM_METRICS_ENABLED?: string;
+  /** Phase 5.1: Queue binding for async DO-to-PostgreSQL sync */
+  SYNC_QUEUE?: Queue;
 }
 
 /**
@@ -248,11 +259,25 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   private broadcastTimer: ReturnType<typeof setTimeout> | null = null;
 
   // =============================================================================
+  // Phase 4.1: WebSocket Rate Limiting
+  // =============================================================================
+
+  /** Per-actor message rate tracking for rate limiting */
+  private messageRates = new Map<string, {
+    timestamps: number[];
+    consecutiveRateLimits: number;
+    rateLimitedInCurrentWindow: boolean;
+  }>();
+
+  // =============================================================================
   // Agent Politeness Services
   // =============================================================================
 
   /** Presence manager for tracking actors in the document */
-  private readonly presenceManager: PresenceManager;
+  private presenceManager: PresenceManager;
+
+  /** Flag indicating that presence state has been modified and needs to be persisted */
+  private presencePersistPending = false;
 
   /** Activity detector for tracking human activity and idle state */
   private readonly activityDetector: ActivityDetector;
@@ -618,6 +643,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       this.persistPending = true;
     }
 
+    // Phase 3.1: Restore presence state from DO storage
+    await this.restorePresence();
+
     // Load org settings after initialization
     await this.loadOrgSettingsIfNeeded();
 
@@ -665,6 +693,54 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       }
     } catch (error) {
       console.warn('Failed to restore edit sessions from storage:', error);
+    }
+  }
+
+  /**
+   * Persist presence state to DO storage.
+   * Called immediately on disconnect, debounced on focus updates.
+   */
+  private async persistPresence(): Promise<void> {
+    const serialized = this.presenceManager.serialize();
+    await this.state.storage.put(PRESENCE_STORAGE_KEY, serialized);
+    this.presencePersistPending = false;
+  }
+
+  /**
+   * Mark presence as needing persistence (debounced via alarm).
+   * Schedules persistence within PERSIST_DEBOUNCE_MS.
+   */
+  private async markPresencePersistPending(): Promise<void> {
+    if (this.presencePersistPending) {
+      return;
+    }
+
+    this.presencePersistPending = true;
+
+    const dueAt = Date.now() + PERSIST_DEBOUNCE_MS;
+    const existingAlarm = await this.state.storage.getAlarm();
+    if (existingAlarm === null || existingAlarm > dueAt) {
+      await this.state.storage.setAlarm(dueAt);
+      this.cleanupAlarmScheduled = true;
+    }
+  }
+
+  /**
+   * Restore presence state from DO storage.
+   * Called during initializeIfNeeded() to recover presence after DO eviction.
+   */
+  private async restorePresence(): Promise<void> {
+    try {
+      const stored = await this.state.storage.get(PRESENCE_STORAGE_KEY);
+      if (stored !== undefined && stored !== null && typeof stored === 'object') {
+        const data = stored as SerializedPresenceState;
+        if (Array.isArray(data.presences)) {
+          this.presenceManager = PresenceManager.deserialize(data);
+          console.log(`Restored ${String(this.presenceManager.count())} presence(s) from storage`);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to restore presence from storage:', error);
     }
   }
 
@@ -1179,12 +1255,81 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
    * Hibernatable WebSocket API: Handle incoming WebSocket messages.
    * Called by the runtime when a message arrives on any accepted WebSocket.
    */
+  /**
+   * Check rate limit for an actor's WebSocket messages.
+   * Returns 'ok' if under limit, 'rate_limited' if over limit,
+   * or 'close_connection' if persistent abuse detected.
+   */
+  private checkRateLimit(actorId: string): 'ok' | 'rate_limited' | 'close_connection' {
+    const now = Date.now();
+    let entry = this.messageRates.get(actorId);
+    if (entry === undefined) {
+      entry = { timestamps: [], consecutiveRateLimits: 0, rateLimitedInCurrentWindow: false };
+      this.messageRates.set(actorId, entry);
+    }
+
+    // Remove timestamps outside the rate limit window
+    const windowStart = now - RATE_LIMIT_WINDOW_MS;
+    const prevLength = entry.timestamps.length;
+    entry.timestamps = entry.timestamps.filter((t) => t > windowStart);
+
+    // If old timestamps were pruned, we've transitioned to a new window
+    if (entry.timestamps.length < prevLength) {
+      // If previous window was clean (not rate limited), reset consecutive counter
+      if (!entry.rateLimitedInCurrentWindow) {
+        entry.consecutiveRateLimits = 0;
+      }
+      entry.rateLimitedInCurrentWindow = false;
+    }
+
+    // Add current timestamp
+    entry.timestamps.push(now);
+
+    if (entry.timestamps.length >= MAX_MESSAGES_PER_SECOND) {
+      // Only increment consecutive counter once per window
+      if (!entry.rateLimitedInCurrentWindow) {
+        entry.rateLimitedInCurrentWindow = true;
+        entry.consecutiveRateLimits++;
+      }
+      if (entry.consecutiveRateLimits >= RATE_LIMIT_CLOSE_THRESHOLD) {
+        return 'close_connection';
+      }
+      return 'rate_limited';
+    }
+
+    return 'ok';
+  }
+
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     await this.initializeIfNeeded();
 
     const meta = this.getConnectionMeta(ws);
     if (meta === null) {
       console.warn('webSocketMessage: no metadata for WebSocket');
+      return;
+    }
+
+    // Phase 4.1: Rate limit check
+    const rateCheck = this.checkRateLimit(meta.actorId);
+    if (rateCheck === 'close_connection') {
+      const errorMsg: WsPresenceErrorMessage = {
+        type: 'presence_error',
+        code: 'RATE_LIMITED',
+        message: 'Connection closed due to persistent rate limiting',
+        timestamp: Date.now(),
+      };
+      ws.send(JSON.stringify(errorMsg));
+      ws.close(1008, 'Rate limit exceeded');
+      return;
+    }
+    if (rateCheck === 'rate_limited') {
+      const errorMsg: WsPresenceErrorMessage = {
+        type: 'presence_error',
+        code: 'RATE_LIMITED',
+        message: 'Message rate limit exceeded. Please slow down.',
+        timestamp: Date.now(),
+      };
+      ws.send(JSON.stringify(errorMsg));
       return;
     }
 
@@ -1306,6 +1451,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
       // Unregister actor from presence manager
       this.presenceManager.unregisterByActorId(actorId);
+
+      // Phase 4.1: Clean up rate tracking
+      this.messageRates.delete(actorId);
     }
 
     // Broadcast presence update to remaining clients (connection left)
@@ -1332,6 +1480,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       this.persistPending = false; // Clear pending flag — we're about to do a full persist
       await this.state.storage.delete(DocumentSession.PERSIST_PENDING_KEY);
       await this.persist();
+
+      // Phase 3.1: Persist presence state immediately on last disconnect
+      await this.persistPresence();
 
       // Trigger sync to PostgreSQL (awaited so it completes before hibernation)
       await this.syncToPostgres();
@@ -2013,6 +2164,11 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     // Phase 1.1: Flush any pending persistence
     await this.flushPendingPersist();
 
+    // Phase 3.1: Flush pending presence persistence
+    if (this.presencePersistPending) {
+      await this.persistPresence();
+    }
+
     // Phase 1.3: Run periodic compaction when no connections are active
     if (this.getConnectionCount() === 0) {
       this.compactCrdtState();
@@ -2251,6 +2407,25 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       const snapshot = root.toJSON() as Record<string, unknown>;
       const crdtState = this.uint8ArrayToBase64(Y.encodeStateAsUpdate(this.ydoc));
 
+      // Phase 5.1: Prefer queue-based sync when available
+      if (this.env.SYNC_QUEUE !== undefined) {
+        await this.env.SYNC_QUEUE.send({
+          siteId: this.sessionInfo.siteId,
+          documentId: this.sessionInfo.documentId,
+          branchId: this.sessionInfo.branchId,
+          snapshot,
+          crdtState,
+          actorId,
+          actorType,
+          timestamp: Date.now(),
+        });
+        this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+        await this.state.storage.delete(DocumentSession.SYNC_SCHEDULE_KEY);
+        console.log(`Queued sync for document ${this.sessionInfo.documentId}`);
+        return;
+      }
+
+      // Fallback: direct HTTP sync via internal API
       const syncUrl = `${internalApiUrl}/internal/crdt-sync`;
 
       const response = await fetch(syncUrl, {
@@ -2724,6 +2899,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
         focusRegions: validRegions,
       });
     }
+
+    // Phase 3.1: Schedule debounced presence persistence on focus update
+    await this.markPresencePersistPending();
 
     // Return the current focus regions for this actor
     const focusInfo = this.activityDetector.getFocusInfo(actorId);
@@ -3429,6 +3607,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       timestamp: Date.now(),
     };
     this.broadcastToOthers(sender, broadcast);
+
+    // Phase 3.1: Schedule debounced presence persistence on focus update
+    void this.markPresencePersistPending();
   }
 
   /**

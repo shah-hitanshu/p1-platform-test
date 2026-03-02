@@ -249,7 +249,8 @@ describe('Phase 5.1: Sync Queue Consumer', () => {
       await handleSyncQueue(batch as unknown as MessageBatch<SyncQueueMessage>, env);
 
       expect(batchSyncToPostgres).toHaveBeenCalledTimes(1);
-      const payloads = (batchSyncToPostgres as ReturnType<typeof vi.fn>).mock.calls[0][0] as Array<{ snapshot: Record<string, unknown> }>;
+      const payloads = (batchSyncToPostgres as ReturnType<typeof vi.fn>)
+        .mock.calls[0][0] as { snapshot: Record<string, unknown> }[];
       expect(payloads).toHaveLength(1);
       expect(payloads[0].snapshot).toEqual({ content: 'new' });
     });

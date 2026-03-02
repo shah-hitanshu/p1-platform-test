@@ -258,3 +258,17 @@ export const PRESENCE_STALE_THRESHOLD_MS = 120000;
  * Value: 600000ms (10 minutes - balances long operations with cleanup speed)
  */
 export const MAX_EDIT_SESSION_AGE_MS = 600000;
+
+// =============================================================================
+// WebSocket Rate Limiting (Scaling Optimizations)
+// Used in: document-session.ts
+// =============================================================================
+
+/** Maximum WebSocket messages per second per actor */
+export const MAX_MESSAGES_PER_SECOND = 50;
+
+/** Rate limit tracking window in milliseconds */
+export const RATE_LIMIT_WINDOW_MS = 1000;
+
+/** Number of consecutive rate limit hits before closing connection */
+export const RATE_LIMIT_CLOSE_THRESHOLD = 3;

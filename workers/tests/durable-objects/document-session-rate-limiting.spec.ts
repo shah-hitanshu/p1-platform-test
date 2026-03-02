@@ -201,7 +201,8 @@ describe('Phase 4.1: WebSocket Message Rate Limiting', () => {
       expect(errorMessages).toHaveLength(0);
 
       // The sender should NOT have been closed
-      expect(sender.close).not.toHaveBeenCalled();
+      const closeCalls = (sender.close as Mock).mock.calls;
+      expect(closeCalls).toHaveLength(0);
     });
   });
 
@@ -383,7 +384,11 @@ describe('Phase 4.1: WebSocket Message Rate Limiting', () => {
       }
 
       // The connection should have been closed with code 1008
-      expect(sender.close).toHaveBeenCalledWith(1008, 'Rate limit exceeded');
+      const closeCallArgs = (sender.close as Mock).mock.calls;
+      const closedWithRateLimit = closeCallArgs.some(
+        (args: unknown[]) => args[0] === 1008 && args[1] === 'Rate limit exceeded',
+      );
+      expect(closedWithRateLimit).toBe(true);
 
       // Should have sent a rate limit error before closing
       const senderCalls = (sender.send as Mock).mock.calls;

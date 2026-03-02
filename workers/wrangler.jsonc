@@ -87,7 +87,17 @@
     "local_protocol": "http",
     "ip": "0.0.0.0"
   },
-  
+
+  // ==========================================================================
+  // Queue Configuration (Phase 5.1: Queue-Based Sync Decoupling)
+  // Producers: Durable Objects send sync messages to the queue
+  // Consumers: Worker processes batches for PostgreSQL persistence
+  // ==========================================================================
+  "queues": {
+    "producers": [{ "binding": "SYNC_QUEUE", "queue": "css-sync-queue" }],
+    "consumers": [{ "queue": "css-sync-queue", "max_batch_size": 100, "max_batch_timeout": 30 }]
+  },
+
   // ==========================================================================
   // Environment Overrides
   // Deploy with: pnpm exec wrangler deploy --env <env>
