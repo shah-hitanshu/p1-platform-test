@@ -5,6 +5,17 @@
  * Based on SCALING-PLAN.md Phases 6.1 and 6.2.
  *
  * These tests are written BEFORE implementation following TDD methodology.
+ *
+ * Key design decisions:
+ * - Parent checkpoint detection is embedded in the INSERT query using a CTE
+ *   (WITH parent AS ...) to avoid adding an extra query that would break
+ *   existing test mock sequences.
+ * - The CTE returns parent_created_at as an extra RETURNING column.
+ * - For merge types (pre_merge, post_merge), a CASE expression nullifies
+ *   parent_checkpoint_id to force full checkpoints.
+ * - Batch revert uses INSERT...SELECT with JOIN LATERAL for per-row version numbers.
+ * - Bulk INSERT is skipped when documentsAtCheckpoint.length === 0 for
+ *   backward compatibility with existing 0-doc revert tests.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -29,6 +40,9 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
   // Shared mock types and helpers
   // =========================================================================
 
+  /**
+   * Standard checkpoint row returned by SELECT queries.
+   */
   interface MockCheckpointRow {
     id: string;
     branch_id: string;
@@ -47,6 +61,15 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
     rolled_back_by_id: string | null;
     rolled_back_at: string | null;
     parent_checkpoint_id: string | null;
+  }
+
+  /**
+   * Extended row returned by the CTE-based INSERT in createCheckpoint.
+   * The CTE embeds parent checkpoint lookup, so RETURNING includes
+   * parent_created_at as an extra column alongside standard fields.
+   */
+  interface MockCheckpointInsertRow extends MockCheckpointRow {
+    parent_created_at: string | null;
   }
 
   interface MockVersionWithDocumentRow {
@@ -88,6 +111,19 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
     };
   }
 
+  /**
+   * Creates a mock INSERT row with the extra parent_created_at field
+   * that the CTE-based INSERT returns via RETURNING.
+   */
+  function createMockInsertRow(
+    overrides: Partial<MockCheckpointInsertRow> = {},
+  ): MockCheckpointInsertRow {
+    return {
+      ...createMockCheckpointRow(overrides),
+      parent_created_at: overrides.parent_created_at ?? null,
+    };
+  }
+
   function createMockVersionWithDocument(
     overrides: Partial<MockVersionWithDocumentRow> = {},
   ): MockVersionWithDocumentRow {
@@ -117,30 +153,29 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         const { createCheckpoint } = await import('../../src/services/checkpoint-service');
         const db = await import('../../src/db');
 
-        const mockCheckpointRow = createMockCheckpointRow({
+        const mockInsertRow = createMockInsertRow({
           parent_checkpoint_id: null,
+          parent_created_at: null, // CTE found no parent
         });
 
-        // Transaction flow:
+        // CTE-based INSERT keeps the same query count as before:
         // 1. BEGIN
-        // 2. Get latest checkpoint for branch (none found)
-        // 3. INSERT checkpoint (full, no parent)
-        // 4. Get ALL latest versions for branch (full snapshot)
-        // 5. INSERT checkpoint_documents
-        // 6. INSERT checkpoint structures
-        // 7. INSERT checkpoint metadata
-        // 8. COMMIT
+        // 2. INSERT checkpoint (CTE: WITH parent AS (...) INSERT ... RETURNING *, parent_created_at)
+        // 3. Get ALL latest versions (full snapshot, since no parent)
+        // 4. INSERT checkpoint_documents
+        // 5. INSERT checkpoint structures
+        // 6. INSERT checkpoint metadata
+        // 7. COMMIT
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [] }) // Get latest checkpoint (none)
-          .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // INSERT checkpoint
+          .mockResolvedValueOnce({ rows: [mockInsertRow] }) // INSERT with CTE
           .mockResolvedValueOnce({
             rows: [
               { document_id: 'doc-1', document_version_id: 'v-1' },
               { document_id: 'doc-2', document_version_id: 'v-2' },
               { document_id: 'doc-3', document_version_id: 'v-3' },
             ],
-          }) // Get ALL latest versions (full snapshot)
+          }) // Get ALL latest versions
           .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint_documents
           .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint structures
           .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint metadata
@@ -155,7 +190,6 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
 
         expect(result.checkpoint.id).toBe('checkpoint-uuid-123');
         expect(result.documentCount).toBe(3);
-        // Full checkpoint should not have a parent
         expect(result.checkpoint.parentCheckpointId).toBeUndefined();
       });
 
@@ -163,34 +197,28 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         const { createCheckpoint } = await import('../../src/services/checkpoint-service');
         const db = await import('../../src/db');
 
-        const parentCheckpoint = createMockCheckpointRow({
-          id: 'parent-checkpoint-id',
-          created_at: '2026-03-01T09:00:00.000Z',
-        });
-
-        const incrementalCheckpoint = createMockCheckpointRow({
+        const mockInsertRow = createMockInsertRow({
           id: 'incremental-checkpoint-id',
           parent_checkpoint_id: 'parent-checkpoint-id',
+          parent_created_at: '2026-03-01T09:00:00.000Z', // CTE found parent
         });
 
-        // Transaction flow for incremental checkpoint:
+        // CTE-based INSERT detects parent -> incremental mode:
         // 1. BEGIN
-        // 2. Get latest checkpoint for branch (found parent)
-        // 3. INSERT checkpoint with parent_checkpoint_id
-        // 4. Get only CHANGED versions since parent checkpoint's created_at
-        // 5. INSERT checkpoint_documents (only changed docs)
-        // 6. INSERT checkpoint structures
-        // 7. INSERT checkpoint metadata
-        // 8. COMMIT
+        // 2. INSERT checkpoint (CTE sets parent_checkpoint_id, returns parent_created_at)
+        // 3. Get CHANGED versions since parent_created_at (time-filtered query)
+        // 4. INSERT checkpoint_documents (only changed docs)
+        // 5. INSERT checkpoint structures
+        // 6. INSERT checkpoint metadata
+        // 7. COMMIT
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [parentCheckpoint] }) // Get latest checkpoint
-          .mockResolvedValueOnce({ rows: [incrementalCheckpoint] }) // INSERT checkpoint
+          .mockResolvedValueOnce({ rows: [mockInsertRow] }) // INSERT with CTE
           .mockResolvedValueOnce({
             rows: [
               { document_id: 'doc-1', document_version_id: 'v-1-new' },
             ],
-          }) // Get CHANGED versions only (1 of many docs)
+          }) // Get CHANGED versions only
           .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint_documents
           .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint structures
           .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint metadata
@@ -205,27 +233,30 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
 
         expect(result.documentCount).toBe(1);
         expect(result.checkpoint.parentCheckpointId).toBe('parent-checkpoint-id');
+
+        // Verify the version query uses a time filter for incremental mode
+        const queryCalls = vi.mocked(db.query).mock.calls;
+        const versionQueryCall = queryCalls[2]; // 3rd call (index 2)
+        const versionSql = versionQueryCall[0];
+        expect(versionSql).toContain('created_at >');
       });
 
       it('should create an incremental checkpoint with zero documents when nothing changed', async () => {
         const { createCheckpoint } = await import('../../src/services/checkpoint-service');
         const db = await import('../../src/db');
 
-        const parentCheckpoint = createMockCheckpointRow({
-          id: 'parent-checkpoint-id',
-          created_at: '2026-03-01T09:00:00.000Z',
-        });
-
-        const incrementalCheckpoint = createMockCheckpointRow({
+        const mockInsertRow = createMockInsertRow({
           id: 'incremental-checkpoint-id',
           parent_checkpoint_id: 'parent-checkpoint-id',
+          parent_created_at: '2026-03-01T09:00:00.000Z',
         });
 
+        // No docs changed: checkpoint_documents INSERT is skipped
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [parentCheckpoint] }) // Get latest checkpoint
-          .mockResolvedValueOnce({ rows: [incrementalCheckpoint] }) // INSERT checkpoint
+          .mockResolvedValueOnce({ rows: [mockInsertRow] }) // INSERT with CTE
           .mockResolvedValueOnce({ rows: [] }) // No changed documents
+          // No INSERT checkpoint_documents (0 rows -> skipped)
           .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint structures
           .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint metadata
           .mockResolvedValueOnce({ rows: [] }); // COMMIT
@@ -245,21 +276,17 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         const { createCheckpoint } = await import('../../src/services/checkpoint-service');
         const db = await import('../../src/db');
 
-        const parentCheckpoint = createMockCheckpointRow({
-          id: 'parent-checkpoint-id',
-          created_at: '2026-03-01T09:00:00.000Z',
-        });
-
-        const fullMergeCheckpoint = createMockCheckpointRow({
+        // CTE may find a parent, but CASE expression nullifies parent_checkpoint_id for merge
+        const mockInsertRow = createMockInsertRow({
           id: 'merge-checkpoint-id',
           checkpoint_type: 'post_merge',
-          parent_checkpoint_id: null, // Full checkpoint, no parent
+          parent_checkpoint_id: null, // CASE nullified for merge type
+          parent_created_at: '2026-03-01T09:00:00.000Z', // CTE found parent, but irrelevant
         });
 
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [parentCheckpoint] }) // Get latest checkpoint (exists)
-          .mockResolvedValueOnce({ rows: [fullMergeCheckpoint] }) // INSERT checkpoint
+          .mockResolvedValueOnce({ rows: [mockInsertRow] }) // INSERT with CTE
           .mockResolvedValueOnce({
             rows: [
               { document_id: 'doc-1', document_version_id: 'v-1' },
@@ -288,26 +315,22 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         const { createCheckpoint } = await import('../../src/services/checkpoint-service');
         const db = await import('../../src/db');
 
-        const parentCheckpoint = createMockCheckpointRow({
-          id: 'parent-checkpoint-id',
-        });
-
-        const fullPreMergeCheckpoint = createMockCheckpointRow({
+        const mockInsertRow = createMockInsertRow({
           id: 'pre-merge-checkpoint-id',
           checkpoint_type: 'pre_merge',
           parent_checkpoint_id: null,
+          parent_created_at: null,
         });
 
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [parentCheckpoint] }) // Get latest checkpoint
-          .mockResolvedValueOnce({ rows: [fullPreMergeCheckpoint] }) // INSERT checkpoint
+          .mockResolvedValueOnce({ rows: [mockInsertRow] }) // INSERT with CTE
           .mockResolvedValueOnce({
             rows: [
               { document_id: 'doc-1', document_version_id: 'v-1' },
               { document_id: 'doc-2', document_version_id: 'v-2' },
             ],
-          }) // Get ALL latest versions (full snapshot)
+          }) // Get ALL latest versions
           .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint_documents
           .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint structures
           .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint metadata
@@ -618,7 +641,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         parent_checkpoint_id: null,
       });
 
-      const newCheckpointRow = createMockCheckpointRow({
+      const newCheckpointInsertRow = createMockInsertRow({
         id: 'new-checkpoint-after-revert',
         message: 'Reverted to checkpoint: v1.0 (checkpoint-to-revert)',
       });
@@ -631,7 +654,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
             createMockVersionWithDocument({ document_id: 'doc-2' }),
             createMockVersionWithDocument({ document_id: 'doc-3' }),
           ],
-        }) // getDocumentsAtCheckpoint (used for count, but revert uses bulk query)
+        }) // getDocumentsAtCheckpoint
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
         .mockResolvedValueOnce({ rows: [], rowCount: 3 }) // Bulk INSERT...SELECT for all docs at once
         .mockResolvedValueOnce({ rows: [] }) // Get structures at checkpoint
@@ -641,12 +664,10 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         .mockResolvedValueOnce({ rows: [] }) // Restore metadata
         .mockResolvedValueOnce({ rows: [] }) // UPDATE checkpoint status
         .mockResolvedValueOnce({ rows: [] }) // COMMIT
-        // createCheckpoint transaction
+        // createCheckpoint sub-transaction (CTE-based, no separate get-latest)
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [] }) // Get latest checkpoint
-        .mockResolvedValueOnce({ rows: [newCheckpointRow] }) // INSERT checkpoint
+        .mockResolvedValueOnce({ rows: [newCheckpointInsertRow] }) // INSERT with CTE
         .mockResolvedValueOnce({ rows: [] }) // Get latest versions
-        .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint_documents
         .mockResolvedValueOnce({ rows: [] }) // INSERT structures
         .mockResolvedValueOnce({ rows: [] }) // INSERT metadata
         .mockResolvedValueOnce({ rows: [] }); // COMMIT
@@ -685,7 +706,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         parent_checkpoint_id: null,
       });
 
-      const newCheckpointRow = createMockCheckpointRow({
+      const newCheckpointInsertRow = createMockInsertRow({
         id: 'new-cp',
       });
 
@@ -705,10 +726,9 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         .mockResolvedValueOnce({ rows: [] }) // Restore metadata
         .mockResolvedValueOnce({ rows: [] }) // UPDATE checkpoint status
         .mockResolvedValueOnce({ rows: [] }) // COMMIT
-        // createCheckpoint transaction
+        // createCheckpoint sub-transaction
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [] }) // Get latest checkpoint
-        .mockResolvedValueOnce({ rows: [newCheckpointRow] }) // INSERT checkpoint
+        .mockResolvedValueOnce({ rows: [newCheckpointInsertRow] }) // INSERT with CTE
         .mockResolvedValueOnce({ rows: [] }) // Get latest versions
         .mockResolvedValueOnce({ rows: [] }) // INSERT structures
         .mockResolvedValueOnce({ rows: [] }) // INSERT metadata
@@ -747,7 +767,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         parent_checkpoint_id: null,
       });
 
-      const newCheckpointRow = createMockCheckpointRow({
+      const newCheckpointInsertRow = createMockInsertRow({
         id: 'new-cp-after-revert',
       });
 
@@ -755,8 +775,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
         .mockResolvedValueOnce({ rows: [] }) // No documents at checkpoint
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        // No bulk INSERT needed (0 documents — skip or execute with empty result)
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Bulk INSERT returns 0 rows
+        // No bulk INSERT (0 documents -> skipped for backward compatibility)
         .mockResolvedValueOnce({ rows: [] }) // Get structures
         .mockResolvedValueOnce({ rows: [] }) // Delete structures
         .mockResolvedValueOnce({ rows: [] }) // Restore structures
@@ -764,10 +783,9 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         .mockResolvedValueOnce({ rows: [] }) // Restore metadata
         .mockResolvedValueOnce({ rows: [] }) // UPDATE checkpoint status
         .mockResolvedValueOnce({ rows: [] }) // COMMIT
-        // createCheckpoint
+        // createCheckpoint sub-transaction
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [] }) // Get latest checkpoint
-        .mockResolvedValueOnce({ rows: [newCheckpointRow] }) // INSERT checkpoint
+        .mockResolvedValueOnce({ rows: [newCheckpointInsertRow] }) // INSERT with CTE
         .mockResolvedValueOnce({ rows: [] }) // Get latest versions
         .mockResolvedValueOnce({ rows: [] }) // INSERT structures
         .mockResolvedValueOnce({ rows: [] }) // INSERT metadata
@@ -792,7 +810,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         parent_checkpoint_id: null,
       });
 
-      const newCheckpointRow = createMockCheckpointRow({
+      const newCheckpointInsertRow = createMockInsertRow({
         id: 'post-revert-cp',
         message: 'Reverted to checkpoint: Stable Release (cp-to-revert)',
         checkpoint_type: 'manual',
@@ -812,12 +830,10 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         .mockResolvedValueOnce({ rows: [] }) // Restore metadata
         .mockResolvedValueOnce({ rows: [] }) // UPDATE status
         .mockResolvedValueOnce({ rows: [] }) // COMMIT
-        // createCheckpoint
+        // createCheckpoint sub-transaction
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [] }) // Get latest checkpoint
-        .mockResolvedValueOnce({ rows: [newCheckpointRow] }) // INSERT checkpoint
+        .mockResolvedValueOnce({ rows: [newCheckpointInsertRow] }) // INSERT with CTE
         .mockResolvedValueOnce({ rows: [] }) // Get latest versions
-        .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint_documents
         .mockResolvedValueOnce({ rows: [] }) // INSERT structures
         .mockResolvedValueOnce({ rows: [] }) // INSERT metadata
         .mockResolvedValueOnce({ rows: [] }); // COMMIT

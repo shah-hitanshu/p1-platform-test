@@ -117,6 +117,17 @@ interface CheckpointRow {
   status: CheckpointStatus | null;
   rolled_back_by_id: string | null;
   rolled_back_at: string | null;
+  // Incremental checkpoint support (Phase 6.1)
+  parent_checkpoint_id: string | null;
+}
+
+/**
+ * Extended row returned by CTE-based INSERT in createCheckpoint.
+ * The CTE embeds parent checkpoint lookup, so RETURNING includes
+ * parent_created_at alongside standard checkpoint fields.
+ */
+interface CheckpointInsertRow extends CheckpointRow {
+  parent_created_at: string | null;
 }
 
 /**
@@ -232,6 +243,7 @@ function mapRowToCheckpoint(row: CheckpointRow): Checkpoint {
     name: row.name ?? undefined,
     message: row.message ?? undefined,
     checkpointType: row.checkpoint_type,
+    parentCheckpointId: row.parent_checkpoint_id ?? undefined,
     createdById: row.created_by_id,
     createdByType: row.created_by_type,
     createdAt: row.created_at,
@@ -391,15 +403,29 @@ export async function createCheckpoint(
     // Use transaction for multi-step operation
     await query('BEGIN');
 
-    // Create the checkpoint
-    const checkpointResult = await query<CheckpointRow>(
-      `INSERT INTO app.checkpoints (
+    // Phase 6.1: CTE-based INSERT embeds parent checkpoint lookup
+    // to avoid an extra query while enabling incremental checkpoints.
+    // For merge types (pre_merge, post_merge), CASE nullifies parent_checkpoint_id
+    // to force full snapshots.
+    const checkpointResult = await query<CheckpointInsertRow>(
+      `WITH parent AS (
+        SELECT id, created_at
+        FROM app.checkpoints
+        WHERE branch_id = $1
+        ORDER BY created_at DESC
+        LIMIT 1
+      )
+      INSERT INTO app.checkpoints (
         branch_id, name, message, checkpoint_type,
         created_by_id, created_by_type,
-        description, trigger, requested_by_id, operation_type, affected_regions, status
+        description, trigger, requested_by_id, operation_type, affected_regions, status,
+        parent_checkpoint_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-      RETURNING *`,
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+        CASE WHEN $4::text IN ('pre_merge', 'post_merge') THEN NULL
+             ELSE (SELECT id FROM parent) END
+      )
+      RETURNING *, (SELECT created_at FROM parent) AS parent_created_at`,
       [
         params.branchId,
         params.name ?? null,
@@ -416,18 +442,39 @@ export async function createCheckpoint(
       ],
     );
 
-    const checkpoint = mapRowToCheckpoint(getFirstRow(checkpointResult.rows));
+    const insertRow = getFirstRow(checkpointResult.rows);
+    const checkpoint = mapRowToCheckpoint(insertRow);
 
-    // Get latest versions for all documents on this branch
-    const latestVersionsResult = await query<{ document_id: string; document_version_id: string }>(
-      `SELECT DISTINCT ON (dv.document_id)
-        dv.document_id,
-        dv.id as document_version_id
-      FROM app.document_versions dv
-      WHERE dv.branch_id = $1
-      ORDER BY dv.document_id, dv.version_number DESC`,
-      [params.branchId],
-    );
+    // Determine incremental mode from the CTE result
+    const isIncremental = insertRow.parent_checkpoint_id != null;
+    const parentCreatedAt = insertRow.parent_created_at;
+
+    // Get document versions — incremental only captures changes since parent
+    let latestVersionsResult: { rows: { document_id: string; document_version_id: string }[] };
+
+    if (isIncremental && parentCreatedAt != null && parentCreatedAt !== '') {
+      // Incremental: only documents changed since the parent checkpoint
+      latestVersionsResult = await query<{ document_id: string; document_version_id: string }>(
+        `SELECT DISTINCT ON (dv.document_id)
+          dv.document_id,
+          dv.id as document_version_id
+        FROM app.document_versions dv
+        WHERE dv.branch_id = $1 AND dv.created_at > $2
+        ORDER BY dv.document_id, dv.version_number DESC`,
+        [params.branchId, parentCreatedAt],
+      );
+    } else {
+      // Full: all latest versions for the branch
+      latestVersionsResult = await query<{ document_id: string; document_version_id: string }>(
+        `SELECT DISTINCT ON (dv.document_id)
+          dv.document_id,
+          dv.id as document_version_id
+        FROM app.document_versions dv
+        WHERE dv.branch_id = $1
+        ORDER BY dv.document_id, dv.version_number DESC`,
+        [params.branchId],
+      );
+    }
 
     // Insert checkpoint_documents entries
     if (latestVersionsResult.rows.length > 0) {
@@ -596,6 +643,43 @@ export async function getDocumentAtCheckpoint(
 }
 
 /**
+ * Resolves the complete set of documents for a checkpoint, walking the
+ * parent chain for incremental checkpoints. Newer checkpoint entries
+ * override older ones for the same document.
+ *
+ * @param checkpointId - The checkpoint ID to resolve
+ * @returns Complete array of document versions representing the checkpoint state
+ */
+export async function resolveCheckpointDocuments(
+  checkpointId: string,
+): Promise<CheckpointDocumentVersion[]> {
+  // Collect checkpoint chain from newest to oldest
+  const chain: CheckpointDocumentVersion[][] = [];
+  let currentCheckpointId: string | null = checkpointId;
+
+  while (currentCheckpointId !== null) {
+    const checkpoint = await getCheckpoint(currentCheckpointId);
+    if (!checkpoint) break;
+
+    const docs = await getDocumentsAtCheckpoint(currentCheckpointId);
+    chain.push(docs);
+
+    currentCheckpointId = checkpoint.parentCheckpointId ?? null;
+  }
+
+  // Merge documents: process from oldest (end) to newest (start)
+  // so newer entries override older ones for the same documentId
+  const documentMap = new Map<string, CheckpointDocumentVersion>();
+  for (let i = chain.length - 1; i >= 0; i--) {
+    for (const doc of chain[i]) {
+      documentMap.set(doc.documentId, doc);
+    }
+  }
+
+  return Array.from(documentMap.values());
+}
+
+/**
  * Gets all structures captured in a checkpoint.
  *
  * @param checkpointId - The checkpoint ID
@@ -660,34 +744,39 @@ export async function revertToCheckpoint(
     throw new CheckpointNotFoundError(params.checkpointId);
   }
 
-  // Get documents at the checkpoint (before transaction)
+  // Get documents at the checkpoint (before transaction, for verification)
   const documentsAtCheckpoint = await getDocumentsAtCheckpoint(params.checkpointId);
 
   try {
     // Use transaction for the revert operations
     await query('BEGIN');
 
-    // Create new versions for each document with source='revert'
-    for (const doc of documentsAtCheckpoint) {
+    // Phase 6.2: Bulk INSERT...SELECT with JOIN LATERAL replaces per-document loop.
+    // Skip when no documents to maintain same query count as the old empty loop.
+    if (documentsAtCheckpoint.length > 0) {
       await query(
         `INSERT INTO app.document_versions (
           document_id, branch_id, version_number, snapshot, crdt_state,
           source, created_by_id, created_by_type
         )
-        SELECT $1, $2,
-          COALESCE(MAX(version_number), 0) + 1,
-          $3, $4, 'revert', $5, $6
-        FROM app.document_versions
-        WHERE document_id = $1 AND branch_id = $2`,
-        [
-          doc.documentId,
-          checkpoint.branchId,
-          doc.snapshot,
-          doc.crdtState !== undefined && doc.crdtState !== '' ?
-            Buffer.from(doc.crdtState, 'base64') : null,
-          params.createdById,
-          params.createdByType,
-        ],
+        SELECT
+          cd.document_id,
+          $1,
+          lv.max_version + 1,
+          dv.snapshot,
+          dv.crdt_state,
+          'revert',
+          $2,
+          $3
+        FROM app.checkpoint_documents cd
+        JOIN app.document_versions dv ON cd.document_version_id = dv.id
+        JOIN LATERAL (
+          SELECT COALESCE(MAX(version_number), 0) as max_version
+          FROM app.document_versions
+          WHERE document_id = cd.document_id AND branch_id = $1
+        ) lv ON true
+        WHERE cd.checkpoint_id = $4`,
+        [checkpoint.branchId, params.createdById, params.createdByType, params.checkpointId],
       );
     }
 
