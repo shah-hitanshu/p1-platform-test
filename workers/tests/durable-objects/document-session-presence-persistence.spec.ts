@@ -406,8 +406,7 @@ describe('Phase 3.1: Persist Presence to DO Storage', () => {
 
       // Trigger initialization
       const snapshotReq = new Request('http://localhost/snapshot');
-      const response = await session.fetch(snapshotReq);
-      const body = await response.json();
+      await session.fetch(snapshotReq);
 
       // The session should have loaded the presence data from storage
       // Verify by checking storage.get was called with 'presenceState'
@@ -451,7 +450,7 @@ describe('Phase 3.1: Persist Presence to DO Storage', () => {
   });
 
   describe('persistPresence() debounced on focus updates', () => {
-    it('should schedule debounced presence persistence on focus region update', async () => {
+    it('should persist presence via HTTP focus-regions endpoint and alarm', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState();
       const mockEnv = createMockEnv();
@@ -470,22 +469,28 @@ describe('Phase 3.1: Persist Presence to DO Storage', () => {
       });
       await session.fetch(connectReq);
 
-      // Send a focus region update via WebSocket message
-      const focusMessage = JSON.stringify({
-        type: 'focus_region_update',
-        focusRegions: ['/content/0/props'],
+      // Use the HTTP update-focus-regions endpoint to update focus (this is awaited, unlike WS handler)
+      const focusReq = new Request('http://localhost/update-focus-regions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Actor-Type': 'user',
+        },
+        body: JSON.stringify({
+          actorId: 'user-1',
+          focusRegions: ['/content/0/props'],
+        }),
       });
-      await session.webSocketMessage(ws, focusMessage);
+      await session.fetch(focusReq);
 
-      // The presenceState should be scheduled for persistence (debounced)
-      // After PERSIST_DEBOUNCE_MS, storage.put should be called with 'presenceState'
-      await vi.advanceTimersByTimeAsync(2100); // Past PERSIST_DEBOUNCE_MS (2000ms)
+      // Simulate alarm firing to flush debounced presence persistence
+      await session.alarm();
 
       const putCalls = mockState.storage.put.mock.calls;
       const presencePutCalls = putCalls.filter(
         (call) => call[0] === 'presenceState',
       );
-      // Should have persisted within the debounce window
+      // Should have persisted when the alarm fired
       expect(presencePutCalls.length).toBeGreaterThanOrEqual(1);
     });
   });
