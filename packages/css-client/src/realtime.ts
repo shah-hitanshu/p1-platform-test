@@ -243,11 +243,27 @@ export class RealtimeClient {
     const maxReconnectionDelay = reconnection.maxReconnectionDelay ?? 30000;
     const reconnectionDelayGrowFactor = reconnection.reconnectionDelayGrowFactor ?? 1.5;
 
-    // Build the full WebSocket URL
-    const wsUrl = url.toString();
+    // Build the base WebSocket URL (without state vector)
+    const baseWsUrl = url.toString();
 
-    // Create ReconnectingWebSocket with reconnection options
-    this.ws = new ReconnectingWebSocket(wsUrl, [], {
+    // Create a URL provider function for PartySocket.
+    // On initial connect, returns the base URL (no state vector).
+    // On reconnect (hasConnectedOnce === true), appends the client's Yjs
+    // state vector as a base64-encoded query parameter so the server can
+    // respond with only the delta instead of the full CRDT history.
+    const urlProvider = (): string => {
+      if (!this.hasConnectedOnce) {
+        return baseWsUrl;
+      }
+      const reconnectUrl = new URL(baseWsUrl);
+      const sv = Y.encodeStateVector(this.ydoc);
+      const svBase64 = btoa(String.fromCharCode(...sv));
+      reconnectUrl.searchParams.set('stateVector', svBase64);
+      return reconnectUrl.toString();
+    };
+
+    // Create ReconnectingWebSocket with URL provider and reconnection options
+    this.ws = new ReconnectingWebSocket(urlProvider, [], {
       maxRetries,
       minReconnectionDelay,
       maxReconnectionDelay,

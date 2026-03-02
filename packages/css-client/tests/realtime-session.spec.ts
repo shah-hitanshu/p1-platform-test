@@ -162,11 +162,10 @@ describe('RealtimeClient Session Authorization', () => {
         sessionId: 'session-abc',
       });
 
-      expect(WebSocket).toHaveBeenCalledWith(
-        expect.stringContaining('sessionId=session-abc'),
-        expect.any(Array),
-        expect.any(Object),
-      );
+      // Resolve the URL provider and verify sessionId in query params
+      const urlProvider = vi.mocked(WebSocket).mock.calls[0][0] as () => string;
+      const resolvedUrl = urlProvider();
+      expect(resolvedUrl).toContain('sessionId=session-abc');
 
       client.disconnect();
     });
@@ -187,8 +186,9 @@ describe('RealtimeClient Session Authorization', () => {
         actorType: 'agent',
       });
 
-      const call = vi.mocked(WebSocket).mock.calls[0];
-      expect(call[0]).not.toContain('sessionId=');
+      const urlProvider = vi.mocked(WebSocket).mock.calls[0][0] as () => string;
+      const resolvedUrl = urlProvider();
+      expect(resolvedUrl).not.toContain('sessionId=');
 
       client.disconnect();
     });
@@ -213,8 +213,9 @@ describe('RealtimeClient Session Authorization', () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
       expect(client.isConnected()).toBe(true);
 
-      const call = vi.mocked(WebSocket).mock.calls[0];
-      expect(call[0]).not.toContain('sessionId=');
+      const urlProvider = vi.mocked(WebSocket).mock.calls[0][0] as () => string;
+      const resolvedUrl = urlProvider();
+      expect(resolvedUrl).not.toContain('sessionId=');
 
       client.disconnect();
     });
