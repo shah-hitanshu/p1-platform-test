@@ -17,6 +17,9 @@ import {
   CLEANUP_INTERVAL_MS,
   PRESENCE_STALE_THRESHOLD_MS,
   PERSIST_DEBOUNCE_MS,
+  MAX_ACTOR_ID_LENGTH,
+  MAX_SITE_ID_LENGTH,
+  MAX_BRANCH_ID_LENGTH,
 } from '../constants/security-limits';
 
 // =============================================================================
@@ -221,6 +224,7 @@ export class PresenceManager extends DurableObject<PresenceManagerEnv> {
     await this.initializeIfNeeded();
 
     const { branchId, documentId, actor } = payload;
+    this.validatePayloadFields({ branchId, documentId, actorId: actor.actorId, siteId: payload.siteId });
 
     let docMap = this.index.get(branchId);
     if (docMap === undefined) {
@@ -247,6 +251,7 @@ export class PresenceManager extends DurableObject<PresenceManagerEnv> {
     await this.initializeIfNeeded();
 
     const { branchId, documentId, actorId } = payload;
+    this.validatePayloadFields({ branchId, documentId, actorId, siteId: payload.siteId });
 
     const docMap = this.index.get(branchId);
     if (docMap === undefined) return;
@@ -274,6 +279,7 @@ export class PresenceManager extends DurableObject<PresenceManagerEnv> {
     await this.initializeIfNeeded();
 
     const { branchId, documentId, actorId, focusRegions } = payload;
+    this.validatePayloadFields({ branchId, documentId, actorId, siteId: payload.siteId });
 
     const actor = this.getActor(branchId, documentId, actorId);
     if (actor === undefined) return;
@@ -291,6 +297,7 @@ export class PresenceManager extends DurableObject<PresenceManagerEnv> {
     await this.initializeIfNeeded();
 
     const { branchId, documentId, actorId, state: newState } = payload;
+    this.validatePayloadFields({ branchId, documentId, actorId, siteId: payload.siteId });
 
     const actor = this.getActor(branchId, documentId, actorId);
     if (actor === undefined) return;
@@ -444,6 +451,23 @@ export class PresenceManager extends DurableObject<PresenceManagerEnv> {
   // =========================================================================
   // Helpers
   // =========================================================================
+
+  /**
+   * Validate string field lengths to prevent memory exhaustion.
+   * Throws if any field exceeds its maximum allowed length.
+   */
+  private validatePayloadFields(fields: Record<string, string | undefined>): void {
+    for (const [name, value] of Object.entries(fields)) {
+      if (value === undefined) continue;
+      const limit = name === 'actorId' ? MAX_ACTOR_ID_LENGTH
+        : name === 'siteId' ? MAX_SITE_ID_LENGTH
+          : name === 'branchId' ? MAX_BRANCH_ID_LENGTH
+            : MAX_SITE_ID_LENGTH; // default to site limit for documentId etc.
+      if (value.length > limit) {
+        throw new Error(`${name} exceeds maximum length of ${String(limit)}`);
+      }
+    }
+  }
 
   /**
    * Get an actor from the index by branch, document, and actor ID.
