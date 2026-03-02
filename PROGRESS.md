@@ -1057,9 +1057,18 @@ Changed `connect()` in RealtimeClient to pass a URL provider function to PartySo
 
 **Tests:** 5 new tests in `realtime-delta-encoding.spec.ts` (136 css-client tests total)
 
-#### Item 2: Client-Side Message Rate Awareness — Pending
+#### Item 2: Client-Side Message Rate Awareness ✅
 
-Add sliding-window message counter to buffer/coalesce rapid WebSocket updates approaching the 50 msg/sec server limit.
+**Commits:** `4b3345b` (tests), `8ab8bd7` (implementation)
+
+Added sliding-window rate limiter to `RealtimeClient`:
+- Threshold at 40 msgs/sec (server limit is 50); normal editing sends immediately with zero latency
+- Excess updates buffered and coalesced via `Y.mergeUpdates()`, flushed after 1s window resets
+- Both `ydoc.on('update')` listener and `applyLocalUpdate()` use rate-aware sending
+- `RATE_LIMITED` server error handled gracefully via `onRateLimited` callback without disconnect
+- Rate state cleaned up on `disconnect()`
+
+**Tests:** 8 new tests in `realtime-rate-awareness.spec.ts` (144 css-client tests total)
 
 ---
 
