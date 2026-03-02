@@ -17,6 +17,10 @@ import { DurableObject } from 'cloudflare:workers';
 import type { DurableObjectState } from '@cloudflare/workers-types';
 import type { EditOperation, ConnectionMeta, CheckpointTrigger, ActorPresence } from '../types';
 import { runWithConnection, query as dbQuery } from '../db';
+import {
+  createCheckpoint as createCheckpointDirect,
+  revertToCheckpoint as revertToCheckpointDirect,
+} from '../services/checkpoint-service';
 import { incrementCounter, setGauge, recordTiming } from '../services/metrics-service';
 import { PresenceManager, regionsOverlap, type SerializedPresenceState } from '../services/presence-service';
 import {
@@ -1444,12 +1448,6 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     // Broadcast presence update to all clients (new connection joined)
     this.broadcastPresenceUpdate();
 
-    // Phase 3.2: Push presence join to PresenceManager DO
-    const joinedPresence = this.presenceManager.getByActorId(actorId);
-    if (joinedPresence !== undefined) {
-      this.pushPresenceUpdate('join', actorId, { actor: joinedPresence });
-    }
-
     // Return the client side of the WebSocket
     return new Response(null, {
       status: 101,
@@ -1657,9 +1655,6 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
       // Unregister actor from presence manager
       this.presenceManager.unregisterByActorId(actorId);
-
-      // Phase 3.2: Push presence leave to PresenceManager DO
-      this.pushPresenceUpdate('leave', actorId);
 
       // Phase 4.1: Clean up rate tracking
       this.messageRates.delete(actorId);
@@ -2673,8 +2668,8 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   // =============================================================================
 
   /**
-   * Create a pre-edit checkpoint for an agent via the internal API.
-   * This checkpoint enables rollback if the agent edit is aborted.
+   * Create a pre-edit checkpoint for an agent.
+   * Phase 6.3: Tries direct Hyperdrive DB access first, falls back to HTTP.
    */
   private async createAgentPreEditCheckpoint(
     agentId: string,
@@ -2682,9 +2677,33 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     trigger: 'human_requested' | 'autonomous',
     targetRegions: string[],
   ): Promise<string | undefined> {
-    // Skip if internal API is not configured
+    // Phase 6.3: Try direct Hyperdrive first
+    if (this.env.HYPERDRIVE !== undefined) {
+      try {
+        const result = await runWithConnection(
+          this.env.HYPERDRIVE.connectionString,
+          { isHyperdrive: true },
+          async () =>
+            createCheckpointDirect({
+              branchId: this.sessionInfo.branchId,
+              checkpointType: 'agent_pre_edit',
+              createdById: agentId,
+              createdByType: 'agent',
+              description: `Pre-edit checkpoint: ${intent}`,
+              trigger,
+              affectedRegions: targetRegions,
+            }),
+        );
+        console.log(`Created pre-edit checkpoint ${result.checkpoint.id} for agent ${agentId} (direct DB)`);
+        return result.checkpoint.id;
+      } catch (error) {
+        console.warn('Direct DB checkpoint failed, falling back to HTTP:', error);
+      }
+    }
+
+    // Fallback: HTTP internal API
     if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
-      console.log('Agent checkpoint skipped: INTERNAL_API_URL not configured, using placeholder');
+      console.log('Agent checkpoint skipped: no Hyperdrive or internal API configured, using placeholder');
       return `checkpoint-${String(Date.now())}-${Math.random().toString(36).substring(2, 9)}`;
     }
 
@@ -2724,8 +2743,8 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   /**
-   * Create a post-edit checkpoint for an agent via the internal API.
-   * This checkpoint documents the completed agent changes.
+   * Create a post-edit checkpoint for an agent.
+   * Phase 6.3: Tries direct Hyperdrive DB access first, falls back to HTTP.
    */
   private async createAgentPostEditCheckpoint(
     agentId: string,
@@ -2733,9 +2752,33 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     preEditCheckpointId: string,
     affectedRegions: string[],
   ): Promise<string | undefined> {
-    // Skip if internal API is not configured
+    // Phase 6.3: Try direct Hyperdrive first
+    if (this.env.HYPERDRIVE !== undefined) {
+      try {
+        const result = await runWithConnection(
+          this.env.HYPERDRIVE.connectionString,
+          { isHyperdrive: true },
+          async () =>
+            createCheckpointDirect({
+              branchId: this.sessionInfo.branchId,
+              checkpointType: 'agent_post_edit',
+              createdById: agentId,
+              createdByType: 'agent',
+              description: `Post-edit checkpoint: ${intent}`,
+              trigger: 'autonomous',
+              affectedRegions,
+            }),
+        );
+        console.log(`Created post-edit checkpoint ${result.checkpoint.id} for agent ${agentId} (direct DB)`);
+        return result.checkpoint.id;
+      } catch (error) {
+        console.warn('Direct DB post-edit checkpoint failed, falling back to HTTP:', error);
+      }
+    }
+
+    // Fallback: HTTP internal API
     if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
-      console.log('Agent checkpoint skipped: INTERNAL_API_URL not configured');
+      console.log('Agent checkpoint skipped: no Hyperdrive or internal API configured');
       return undefined;
     }
 
@@ -2775,17 +2818,39 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   /**
-   * Rollback to a pre-edit checkpoint via the internal API.
-   * Called when an agent edit is aborted.
+   * Rollback to a pre-edit checkpoint.
+   * Phase 6.3: Tries direct Hyperdrive DB access first, falls back to HTTP.
    */
   private async rollbackToAgentCheckpoint(
     checkpointId: string,
     agentId: string,
     reason?: string,
   ): Promise<boolean> {
-    // Skip if internal API is not configured
+    // Phase 6.3: Try direct Hyperdrive first
+    if (this.env.HYPERDRIVE !== undefined) {
+      try {
+        const result = await runWithConnection(
+          this.env.HYPERDRIVE.connectionString,
+          { isHyperdrive: true },
+          async () =>
+            revertToCheckpointDirect({
+              checkpointId,
+              createdById: agentId,
+              createdByType: 'agent',
+              message: reason,
+            }),
+        );
+        const reverted = String(result.documentsReverted);
+        console.log(`Rolled back to checkpoint ${checkpointId}, reverted ${reverted} docs (direct DB)`);
+        return true;
+      } catch (error) {
+        console.warn('Direct DB rollback failed, falling back to HTTP:', error);
+      }
+    }
+
+    // Fallback: HTTP internal API
     if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
-      console.log('Agent rollback skipped: INTERNAL_API_URL not configured');
+      console.log('Agent rollback skipped: no Hyperdrive or internal API configured');
       return false;
     }
 
@@ -3819,9 +3884,6 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
     // Phase 3.1: Schedule debounced presence persistence on focus update
     void this.markPresencePersistPending();
-
-    // Phase 3.2: Push focus change to PresenceManager DO
-    this.pushPresenceUpdate('focus', meta.actorId, { focusRegions: validRegions });
   }
 
   /**
