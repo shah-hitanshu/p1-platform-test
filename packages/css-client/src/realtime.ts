@@ -113,6 +113,12 @@ export interface RealtimeClientConfig {
    * Configuration for automatic reconnection behavior.
    */
   reconnection?: ReconnectionConfig;
+
+  /**
+   * Callback when the server sends a RATE_LIMITED error.
+   * The client remains connected; this is informational.
+   */
+  onRateLimited?: () => void;
 }
 
 /**
@@ -186,6 +192,13 @@ export class RealtimeClient {
   private reconnectCheckInterval: ReturnType<typeof setInterval> | null = null;
   private visibilityHandler: (() => void) | null = null;
 
+  // Rate limiting state
+  private sendTimestamps: number[] = [];
+  private pendingUpdates: Uint8Array[] = [];
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly RATE_THRESHOLD = 40; // Start buffering at this rate
+  private static readonly RATE_WINDOW_MS = 1000; // 1-second sliding window
+
   constructor(config: RealtimeClientConfig) {
     this.config = config;
     this.ydoc = new Y.Doc();
@@ -194,7 +207,7 @@ export class RealtimeClient {
     this.ydoc.on('update', (update: Uint8Array, origin: unknown) => {
       // Only broadcast if this update didn't come from remote
       if (origin !== 'remote' && this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(update);
+        this.rateLimitedSend(update);
       }
     });
   }
@@ -436,6 +449,15 @@ export class RealtimeClient {
     this.intentionalDisconnect = true;
     this.stopReconnectMonitoring();
     this.stopVisibilityMonitoring();
+
+    // Clean up rate limiting state
+    if (this.flushTimer !== null) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    this.pendingUpdates = [];
+    this.sendTimestamps = [];
+
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -446,13 +468,69 @@ export class RealtimeClient {
   /**
    * Apply a local Yjs update.
    * This is typically called from Puck-Yjs binding when local edits occur.
+   * Uses rate-aware sending to avoid exceeding the server's rate limit.
    *
    * @param update - Raw Yjs update bytes
    */
   applyLocalUpdate(update: Uint8Array): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(update);
+      this.rateLimitedSend(update);
     }
+  }
+
+  /**
+   * Send a Yjs update with rate awareness.
+   * Sends immediately when under the threshold (40 msgs/sec).
+   * Buffers and coalesces updates when approaching the server's 50 msg/sec limit.
+   */
+  private rateLimitedSend(update: Uint8Array): void {
+    const now = Date.now();
+
+    // Prune timestamps outside the sliding window
+    this.sendTimestamps = this.sendTimestamps.filter(
+      (ts) => now - ts < RealtimeClient.RATE_WINDOW_MS,
+    );
+
+    if (this.sendTimestamps.length < RealtimeClient.RATE_THRESHOLD) {
+      // Under threshold — send immediately
+      this.sendTimestamps.push(now);
+      this.ws!.send(update);
+    } else {
+      // At or above threshold — buffer for coalesced flush
+      this.pendingUpdates.push(update);
+      this.scheduleFlush();
+    }
+  }
+
+  /**
+   * Schedule a flush of buffered updates after the rate window resets.
+   */
+  private scheduleFlush(): void {
+    if (this.flushTimer !== null) return;
+
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null;
+      this.flushPendingUpdates();
+    }, RealtimeClient.RATE_WINDOW_MS);
+  }
+
+  /**
+   * Flush all buffered updates as a single coalesced message.
+   */
+  private flushPendingUpdates(): void {
+    if (this.pendingUpdates.length === 0) return;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.pendingUpdates = [];
+      return;
+    }
+
+    // Merge all pending updates into a single Yjs update
+    const merged = Y.mergeUpdates(this.pendingUpdates);
+    this.pendingUpdates = [];
+
+    // Reset window and send
+    this.sendTimestamps = [Date.now()];
+    this.ws.send(merged);
   }
 
   /**
@@ -546,7 +624,11 @@ export class RealtimeClient {
           break;
 
         case 'presence_error':
-          console.error('[Realtime] Presence error:', message.code, message.message);
+          if (message.code === 'RATE_LIMITED') {
+            this.config.onRateLimited?.();
+          } else {
+            console.error('[Realtime] Presence error:', message.code, message.message);
+          }
           break;
 
         default:
