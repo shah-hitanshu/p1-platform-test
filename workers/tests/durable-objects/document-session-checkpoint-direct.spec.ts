@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
-import * as Y from 'yjs';
+import 'yjs';
 
 // Mock cloudflare:workers DurableObject base class
 vi.mock('cloudflare:workers', () => ({
@@ -135,36 +135,6 @@ function createMockEnv(overrides: Partial<MockEnv> = {}): MockEnv {
     INTERNAL_SECRET: 'test-secret',
     ...overrides,
   };
-}
-
-function createMockWebSocket(actorId = 'agent-1'): WebSocket {
-  return {
-    readyState: WebSocket.OPEN,
-    send: vi.fn(),
-    close: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn().mockReturnValue(true),
-    CONNECTING: 0,
-    OPEN: 1,
-    CLOSING: 2,
-    CLOSED: 3,
-    binaryType: 'arraybuffer' as BinaryType,
-    bufferedAmount: 0,
-    extensions: '',
-    onclose: null,
-    onerror: null,
-    onmessage: null,
-    onopen: null,
-    protocol: '',
-    url: '',
-    serializeAttachment: vi.fn(),
-    deserializeAttachment: vi.fn().mockReturnValue({
-      actorId,
-      actorType: 'agent',
-      verified: true,
-    }),
-  } as unknown as WebSocket;
 }
 
 // =============================================================================
@@ -420,9 +390,6 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
 
     it('should fall back to HTTP when Hyperdrive checkpoint fails', async () => {
       const db = await import('../../src/db');
-      const checkpointService = await import(
-        '../../src/services/checkpoint-service'
-      );
 
       // Make direct DB path fail
       (db.runWithConnection as ReturnType<typeof vi.fn>).mockRejectedValue(

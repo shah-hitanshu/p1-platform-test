@@ -11,7 +11,6 @@
  * queryDocumentPresence remains unchanged (direct single-document query).
  */
 
-/* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ActorPresence, Branch, Site } from '../../src/types';
@@ -102,7 +101,7 @@ describe('Phase 3.3: Presence Rollup Optimization (PresenceManager DO)', () => {
    * Create a mock env with PRESENCE binding that supports RPC calls.
    * The mock stub supports direct method calls (RPC pattern).
    */
-  function createPresenceEnv(rpcMethods: Record<string, ReturnType<typeof vi.fn>>) {
+  function createPresenceEnv(rpcMethods: Record<string, ReturnType<typeof vi.fn>>): Record<string, unknown> {
     const mockStub = { ...rpcMethods };
     return {
       PRESENCE: {
