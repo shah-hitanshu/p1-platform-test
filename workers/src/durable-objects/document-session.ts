@@ -16,6 +16,7 @@ import * as Y from 'yjs';
 import { DurableObject } from 'cloudflare:workers';
 import type { DurableObjectState } from '@cloudflare/workers-types';
 import type { EditOperation, ConnectionMeta, CheckpointTrigger, ActorPresence } from '../types';
+import { runWithConnection, query as dbQuery } from '../db';
 import { incrementCounter, setGauge, recordTiming } from '../services/metrics-service';
 import { PresenceManager, regionsOverlap, type SerializedPresenceState } from '../services/presence-service';
 import {
@@ -208,6 +209,10 @@ interface DocumentSessionEnv {
   DO_ALARM_METRICS_ENABLED?: string;
   /** Phase 5.1: Queue binding for async DO-to-PostgreSQL sync */
   SYNC_QUEUE?: Queue;
+  /** Phase 5.3: Hyperdrive binding for direct DB access from DOs */
+  HYPERDRIVE?: Hyperdrive;
+  /** Phase 3.2: PresenceManager DO binding for site-level presence aggregation */
+  PRESENCE?: DurableObjectNamespace;
 }
 
 /**
@@ -228,6 +233,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   private readonly sessionInfo: SessionInfo;
   private ydoc: Y.Doc;
   private initialized: boolean;
+
+  /** Phase 4.2: Flag for metadata-only init (no CRDT loading) */
+  private metadataInitialized = false;
 
   /** Flag to track if a cleanup alarm is scheduled (avoids redundant setAlarm calls) */
   private cleanupAlarmScheduled = false;
@@ -493,72 +501,91 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       // Update session info from request if state.id.name wasn't available (Miniflare local dev)
       this.updateSessionInfoFromRequest(request);
 
-      // Ensure state is initialized before handling requests
-      await this.initializeIfNeeded();
-
+      // Phase 4.2: Route to appropriate initialization level
       switch (path) {
+        // CRDT endpoints — need full Y.Doc initialization
         case '/snapshot':
+          await this.initializeCrdtIfNeeded();
           return this.handleSnapshot();
 
         case '/apply':
+          await this.initializeCrdtIfNeeded();
           return await this.handleApplyOperations(request);
 
         case '/connect':
+          await this.initializeCrdtIfNeeded();
           return this.handleWebSocket(request);
 
         case '/sync':
+          await this.initializeCrdtIfNeeded();
           return await this.handleSync(request);
 
         case '/initialize':
+          await this.initializeCrdtIfNeeded();
           return await this.handleInitialize(request);
 
           // =============================================================
-          // Agent Politeness Endpoints
+          // Metadata-only endpoints — no CRDT loading needed
           // =============================================================
 
         case '/presences':
+          await this.initializeMetadataIfNeeded();
           return this.handleGetPresences();
 
         case '/update-focus-regions':
+          await this.initializeMetadataIfNeeded();
           return await this.handleUpdateFocusRegions(request);
 
         case '/activity-state':
+          await this.initializeMetadataIfNeeded();
           return this.handleGetActivityState();
 
         case '/can-agent-edit':
+          await this.initializeMetadataIfNeeded();
           return await this.handleCanAgentEdit(request);
 
         case '/agent-edit-start':
+          await this.initializeMetadataIfNeeded();
           return await this.handleAgentEditStart(request);
 
         case '/agent-edit-complete':
+          await this.initializeMetadataIfNeeded();
           return await this.handleAgentEditComplete(request);
 
         case '/agent-edit-abort':
+          await this.initializeMetadataIfNeeded();
           return await this.handleAgentEditAbort(request);
 
         case '/agent-stop':
+          await this.initializeMetadataIfNeeded();
           return await this.handleAgentStop(request);
 
         case '/edit-sessions':
+          await this.initializeMetadataIfNeeded();
           return this.handleGetEditSessions();
 
         case '/set-idle-timeout':
+          await this.initializeMetadataIfNeeded();
           return await this.handleSetIdleTimeout(request);
 
         case '/org-settings':
+          await this.initializeMetadataIfNeeded();
           return this.handleGetOrgSettings();
 
         case '/org-settings/refresh':
+          await this.initializeMetadataIfNeeded();
           return await this.handleRefreshOrgSettings();
 
         case '/kick-agent':
+          await this.initializeMetadataIfNeeded();
           return await this.handleKickAgent(request);
 
         case '/kick-all-agents':
+          await this.initializeMetadataIfNeeded();
           return await this.handleKickAllAgents(request);
 
         case '/active-agents':
+          await this.initializeMetadataIfNeeded();
           return this.handleGetActiveAgents();
 
         default:
@@ -580,18 +607,44 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   /**
-   * Initialize CRDT state from storage if not already done.
-   * Falls back to PostgreSQL if DO storage is empty and internal API is configured.
+   * Phase 4.2: Initialize metadata only (no CRDT loading).
+   * Handles: session info restoration, org settings, edit sessions, presence.
+   * Used by presence-only endpoints to avoid expensive Y.Doc loading.
    */
-  private async initializeIfNeeded(): Promise<void> {
-    if (this.initialized) {
+  private async initializeMetadataIfNeeded(): Promise<void> {
+    if (this.metadataInitialized) {
       // Ensure org settings are loaded even if already initialized
       await this.loadOrgSettingsIfNeeded();
       return;
     }
 
+    // Phase 3.1: Restore presence state from DO storage
+    await this.restorePresence();
+
+    // Load org settings after initialization
+    await this.loadOrgSettingsIfNeeded();
+
+    // Restore persisted edit sessions from DO storage
+    await this.restoreEditSessions();
+
+    this.metadataInitialized = true;
+  }
+
+  /**
+   * Phase 4.2: Initialize CRDT state from storage if not already done.
+   * First ensures metadata is loaded, then handles Y.Doc loading.
+   * Falls back to PostgreSQL if DO storage is empty and internal API is configured.
+   */
+  private async initializeCrdtIfNeeded(): Promise<void> {
+    // Ensure metadata is loaded first
+    await this.initializeMetadataIfNeeded();
+
+    if (this.initialized) {
+      return;
+    }
+
     const sid = JSON.stringify(this.sessionInfo);
-    console.log(`[DO-DIAG] initializeIfNeeded START session=${sid}`);
+    console.log(`[DO-DIAG] initializeCrdtIfNeeded START session=${sid}`);
 
     const stored = await this.state.storage.get(YDOC_STORAGE_KEY);
 
@@ -603,7 +656,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
         // Set initial state vector hash to prevent unnecessary syncs
         this.lastSyncedStateVectorHash = this.computeStateVectorHash();
         console.log(
-          '[DO-DIAG] initializeIfNeeded LOADED from DO storage,'
+          '[DO-DIAG] initializeCrdtIfNeeded LOADED from DO storage,'
           + ` size=${String(stored.length)},`
           + ` ${this.snapshotSummary()}`,
         );
@@ -613,7 +666,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       }
     } else {
       console.log(
-        '[DO-DIAG] initializeIfNeeded:'
+        '[DO-DIAG] initializeCrdtIfNeeded:'
         + ' DO storage empty or not Uint8Array'
         + ` (type=${typeof stored})`,
       );
@@ -621,11 +674,14 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
     // Priority 2: Try to load from PostgreSQL if DO storage was empty or invalid
     if (!this.initialized) {
-      if (this.env.INTERNAL_API_URL !== undefined && this.env.INTERNAL_SECRET !== undefined) {
+      const hasHttpApi = this.env.INTERNAL_API_URL !== undefined
+        && this.env.INTERNAL_SECRET !== undefined;
+      const hasHyperdrive = this.env.HYPERDRIVE !== undefined;
+      if (hasHttpApi || hasHyperdrive) {
         try {
           await this.initializeFromPostgres();
           console.log(
-            '[DO-DIAG] initializeIfNeeded'
+            '[DO-DIAG] initializeCrdtIfNeeded'
             + ' LOADED from PostgreSQL,'
             + ` ${this.snapshotSummary()}`,
           );
@@ -642,16 +698,14 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     if (pendingFlag === true) {
       this.persistPending = true;
     }
+  }
 
-    // Phase 3.1: Restore presence state from DO storage
-    await this.restorePresence();
-
-    // Load org settings after initialization
-    await this.loadOrgSettingsIfNeeded();
-
-    // Restore persisted edit sessions from DO storage
-    // Sessions are persisted so they survive DO eviction/re-instantiation
-    await this.restoreEditSessions();
+  /**
+   * @deprecated Use initializeMetadataIfNeeded() or initializeCrdtIfNeeded()
+   * Kept for backward compatibility during migration.
+   */
+  private async initializeIfNeeded(): Promise<void> {
+    await this.initializeCrdtIfNeeded();
   }
 
   /**
@@ -745,6 +799,71 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   /**
+   * Phase 3.2: Push presence update to PresenceManager DO.
+   * Fire-and-forget: wrapped in try/catch, non-blocking.
+   */
+  private pushPresenceUpdate(
+    type: 'join' | 'leave' | 'focus' | 'state',
+    actorId: string,
+    extra?: { actor?: ActorPresence; focusRegions?: string[]; state?: string },
+  ): void {
+    if (this.env.PRESENCE === undefined) {
+      return;
+    }
+
+    try {
+      const presenceId = this.env.PRESENCE.idFromName(this.sessionInfo.siteId);
+      const stub = this.env.PRESENCE.get(presenceId);
+
+      const payload = {
+        siteId: this.sessionInfo.siteId,
+        branchId: this.sessionInfo.branchId,
+        documentId: this.sessionInfo.documentId,
+      };
+
+      const rpcStub = stub as unknown as Record<string, (arg: unknown) => Promise<void>>;
+      let rpcCall: Promise<void> | undefined;
+
+      switch (type) {
+        case 'join':
+          if (extra?.actor !== undefined) {
+            rpcCall = rpcStub.actorJoined({ ...payload, actor: extra.actor });
+          }
+          break;
+        case 'leave':
+          rpcCall = rpcStub.actorLeft({ ...payload, actorId });
+          break;
+        case 'focus':
+          if (extra?.focusRegions !== undefined) {
+            rpcCall = rpcStub.focusChanged({
+              ...payload,
+              actorId,
+              focusRegions: extra.focusRegions,
+            });
+          }
+          break;
+        case 'state':
+          if (extra?.state !== undefined) {
+            rpcCall = rpcStub.stateChanged({
+              ...payload,
+              actorId,
+              state: extra.state,
+            });
+          }
+          break;
+      }
+
+      if (rpcCall !== undefined) {
+        rpcCall.catch((error: unknown) => {
+          console.warn('Failed to push presence update to PresenceManager:', error);
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to get PresenceManager stub:', error);
+    }
+  }
+
+  /**
    * Load organization settings for this site and update ActivityDetector timeout.
    * Caches the result to avoid repeated lookups.
    */
@@ -796,39 +915,119 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   /**
-   * Load initial state from PostgreSQL via internal API.
-   * Called when DO storage is empty but PostgreSQL may have data.
+   * Load initial state from PostgreSQL.
+   * Phase 5.3: Tries direct Hyperdrive first, falls back to HTTP.
    */
   private async initializeFromPostgres(): Promise<void> {
-    if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
+    const { siteId, documentId, branchId } = this.sessionInfo;
+
+    if (
+      siteId === 'unknown'
+      || documentId === 'unknown'
+      || branchId === 'unknown'
+    ) {
+      return;
+    }
+
+    // Phase 5.3: Try direct Hyperdrive path first
+    if (this.env.HYPERDRIVE !== undefined) {
+      try {
+        const loaded = await this.initializeFromHyperdrive();
+        if (loaded) return;
+      } catch (error) {
+        console.warn(
+          'Hyperdrive init failed, falling back to HTTP:',
+          error,
+        );
+      }
+    }
+
+    await this.initializeFromHttpApi();
+  }
+
+  /**
+   * Phase 5.3: Initialize from PostgreSQL via Hyperdrive.
+   * @returns true if state was loaded
+   */
+  private async initializeFromHyperdrive(): Promise<boolean> {
+    if (this.env.HYPERDRIVE === undefined) return false;
+
+    const { documentId, branchId } = this.sessionInfo;
+
+    interface VersionRow {
+      snapshot: Record<string, unknown>;
+      crdt_state: Buffer | null;
+    }
+
+    const result = await runWithConnection(
+      this.env.HYPERDRIVE.connectionString,
+      { isHyperdrive: true },
+      async () => dbQuery<VersionRow>(
+        `SELECT dv.snapshot, dv.crdt_state
+         FROM app.document_versions dv
+         WHERE dv.document_id = $1 AND dv.branch_id = $2
+         ORDER BY dv.version_number DESC LIMIT 1`,
+        [documentId, branchId],
+      ),
+    );
+
+    if (result.rows.length === 0) return false;
+    const row = result.rows[0];
+
+    if (row.crdt_state !== null) {
+      const base64 = row.crdt_state.toString('base64');
+      Y.applyUpdate(this.ydoc, this.base64ToUint8Array(base64));
+      console.log(
+        `Initialized doc ${documentId} from Hyperdrive CRDT state`,
+      );
+      await this.persist();
+      this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+      return true;
+    }
+
+    if (typeof row.snapshot === 'object') {
+      const root = this.ydoc.getMap('root');
+      this.applySnapshotToYMap(root, row.snapshot);
+      console.log(
+        `Initialized doc ${documentId} from Hyperdrive snapshot`,
+      );
+      await this.persist();
+      this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Load initial state via HTTP internal API (fallback path).
+   */
+  private async initializeFromHttpApi(): Promise<void> {
+    if (
+      this.env.INTERNAL_API_URL === undefined
+      || this.env.INTERNAL_SECRET === undefined
+    ) {
       return;
     }
 
     const { siteId, documentId, branchId } = this.sessionInfo;
-
-    // Skip initialization for unknown/invalid session IDs
-    if (siteId === 'unknown' || documentId === 'unknown' || branchId === 'unknown') {
-      return;
-    }
-
-    const url = new URL(`${this.env.INTERNAL_API_URL}/internal/crdt-state`);
+    const url = new URL(
+      `${this.env.INTERNAL_API_URL}/internal/crdt-state`,
+    );
     url.searchParams.set('siteId', siteId);
     url.searchParams.set('documentId', documentId);
     url.searchParams.set('branchId', branchId);
 
     const response = await fetch(url.toString(), {
       method: 'GET',
-      headers: {
-        'X-Internal-Secret': this.env.INTERNAL_SECRET,
-      },
+      headers: { 'X-Internal-Secret': this.env.INTERNAL_SECRET },
     });
 
     if (!response.ok) {
-      // 404 is expected for new documents - just continue with empty state
-      if (response.status === 404) {
-        return;
-      }
-      throw new Error(`Failed to load from PostgreSQL: ${String(response.status)}`);
+      if (response.status === 404) return;
+      throw new Error(
+        `Failed to load from PostgreSQL: ${String(response.status)}`,
+      );
     }
 
     const rawData = await response.json();
@@ -838,30 +1037,31 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       crdtState?: string | null;
     };
 
-    if (!data.found) {
-      return;
-    }
+    if (!data.found) return;
 
-    // Apply CRDT state if available (preferred)
     if (typeof data.crdtState === 'string' && data.crdtState !== '') {
-      const bytes = this.base64ToUint8Array(data.crdtState);
-      Y.applyUpdate(this.ydoc, bytes);
-      console.log(`Initialized document ${documentId} from PostgreSQL CRDT state`);
-      // Persist to DO storage for future use
+      Y.applyUpdate(
+        this.ydoc,
+        this.base64ToUint8Array(data.crdtState),
+      );
+      console.log(
+        `Initialized doc ${documentId} from PostgreSQL CRDT state`,
+      );
       await this.persist();
-      // Set initial state vector hash to prevent unnecessary syncs
       this.lastSyncedStateVectorHash = this.computeStateVectorHash();
       return;
     }
 
-    // Fall back to snapshot if no CRDT state
-    if (data.snapshot !== undefined && typeof data.snapshot === 'object') {
+    if (
+      data.snapshot !== undefined
+      && typeof data.snapshot === 'object'
+    ) {
       const root = this.ydoc.getMap('root');
       this.applySnapshotToYMap(root, data.snapshot);
-      console.log(`Initialized document ${documentId} from PostgreSQL snapshot`);
-      // Persist to DO storage for future use
+      console.log(
+        `Initialized doc ${documentId} from PostgreSQL snapshot`,
+      );
       await this.persist();
-      // Set initial state vector hash to prevent unnecessary syncs
       this.lastSyncedStateVectorHash = this.computeStateVectorHash();
     }
   }
@@ -1301,7 +1501,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    await this.initializeIfNeeded();
+    await this.initializeCrdtIfNeeded();
 
     const meta = this.getConnectionMeta(ws);
     if (meta === null) {
@@ -1391,7 +1591,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
    * Called by the runtime when a WebSocket connection closes.
    */
   async webSocketClose(ws: WebSocket, _code: number, _reason: string, _wasClean: boolean): Promise<void> {
-    await this.initializeIfNeeded();
+    await this.initializeCrdtIfNeeded();
 
     const meta = this.getConnectionMeta(ws);
     const actorId = meta?.actorId ?? 'unknown';
@@ -1403,7 +1603,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
    * Called by the runtime when a WebSocket connection encounters an error.
    */
   async webSocketError(ws: WebSocket, _error: unknown): Promise<void> {
-    await this.initializeIfNeeded();
+    await this.initializeCrdtIfNeeded();
 
     const meta = this.getConnectionMeta(ws);
     const actorId = meta?.actorId ?? 'unknown';
@@ -2149,7 +2349,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     await this.restoreSessionInfoFromStorage();
 
     // Restore state after potential hibernation wake
-    await this.initializeIfNeeded();
+    await this.initializeCrdtIfNeeded();
 
     const startTime = Date.now();
     const metricsEnabled = this.isAlarmMetricsEnabled();

@@ -193,7 +193,7 @@ describe('Phase 4.2: Lazy CRDT Initialization', () => {
       const snapshotResponse = await session.fetch(snapshotReq);
       expect(snapshotResponse.status).toBe(200);
 
-      const snapshotData = await snapshotResponse.json() as Record<string, unknown>;
+      const snapshotData = await snapshotResponse.json();
       expect(snapshotData).toHaveProperty('snapshot');
       expect(snapshotData).toHaveProperty('stateVector');
     });
@@ -231,8 +231,8 @@ describe('Phase 4.2: Lazy CRDT Initialization', () => {
 
       expect(response.status).toBe(200);
 
-      const data = await response.json() as Record<string, unknown>;
-      expect(data).toHaveProperty('state');
+      const data = await response.json();
+      expect(data).toHaveProperty('isIdle');
 
       // Verify ydoc was NOT accessed
       const getCalls = mockState.storage.get.mock.calls;
@@ -253,7 +253,7 @@ describe('Phase 4.2: Lazy CRDT Initialization', () => {
 
       expect(response.status).toBe(200);
 
-      const data = await response.json() as Record<string, unknown>;
+      const data = await response.json();
       expect(data).toHaveProperty('sessions');
 
       // Verify ydoc was NOT accessed
