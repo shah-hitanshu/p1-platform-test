@@ -315,6 +315,62 @@ export interface CSSPuckContextValue {
   sendFocusRegions: (regions: string[]) => boolean;
 
   // =========================================================================
+  // Stable Getters (avoid stale closures, referentially stable)
+  // =========================================================================
+
+  /**
+   * Getter for current save status. Referentially stable — always returns
+   * the latest value without causing re-renders.
+   */
+  getSaveStatus: () => SaveStatus;
+
+  /**
+   * Getter for last saved timestamp. Referentially stable.
+   */
+  getLastSaved: () => Date | null;
+
+  /**
+   * Getter for last save error. Referentially stable.
+   */
+  getSaveError: () => Error | null;
+
+  /**
+   * Getter for whether there are unsaved changes (pending data in debounce queue).
+   * Referentially stable.
+   */
+  getHasUnsavedChanges: () => boolean;
+
+  /**
+   * Getter for current sync data (for PuckDataSynchronizer).
+   * Returns currentData when available, undefined otherwise.
+   * Referentially stable.
+   */
+  getSyncData: () => PuckData | undefined;
+
+  /**
+   * Getter for data sync key. Changes when remote updates arrive or
+   * version/document switches occur. Referentially stable.
+   */
+  getDataSyncKey: () => string | undefined;
+
+  /**
+   * Null-safe Puck data. Never null — holds last valid data or empty fallback.
+   * Use this instead of currentData when passing to Puck to avoid crashes
+   * during branch switches or document loads.
+   */
+  safeData: PuckData;
+
+  /**
+   * List of documents on the current branch.
+   */
+  documents: Document[];
+
+  /**
+   * Whether the document list is still loading.
+   */
+  documentsLoading: boolean;
+
+  // =========================================================================
   // Presence Values (Phase 9)
   // =========================================================================
 

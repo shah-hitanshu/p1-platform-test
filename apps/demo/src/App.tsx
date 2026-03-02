@@ -2,48 +2,31 @@
  * Demo Application
  *
  * Demonstrates Puck editor integration with the Collaborative State System.
- * Uses Puck's Plugin API and Overrides for proper integration.
- * Document management is handled within Puck's plugin rail, not a separate sidebar.
+ * Uses the stable consumer API hooks (useCSSEditor) for minimal boilerplate.
  *
  * Auth is handled by CSSAuthProvider from @pantheon/puck-css.
  * This demo uses the default CSSLoginPage for standalone mode.
- * In an embedded scenario, you'd use useCSSAuth() with your own login UI.
  */
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { Puck } from '@puckeditor/core';
 import '@puckeditor/core/puck.css';
 
-import {
-  CSSClient,
-  Checkpoint,
-  ActorPresence,
-} from '@pantheon/css-client';
+import { CSSClient } from '@pantheon/css-client';
 
 import {
-  // Auth (from puck-css)
+  // Auth
   CSSAuthProvider,
   useCSSAuth,
   CSSLoginPage,
   DEMO_USERS,
-  // Editor integration
+  // Provider
   CSSPuckProvider,
-  useCSSPuck,
-  useDocuments,
-  useVersions,
-  createCSSPlugin,
-  createCSSOverrides,
-  diffPuckDataWithPositions,
-  createHistoricalVersionConfig,
-  useFocusRegionReporting,
-  createFocusRegionMap,
-  createFocusHighlightConfig,
-  FocusHighlightProvider,
-  usePresenceContext,
+  // Stable consumer API
+  useCSSEditor,
 } from '@pantheon/puck-css';
-import type { AuthMode, DocumentVersion } from '@pantheon/puck-css';
-import type { ComponentDiffWithPosition } from '@pantheon/puck-css';
+import type { AuthMode, Checkpoint } from '@pantheon/puck-css';
 
 // Import puck-css styles for visual comparison
 import '@pantheon/puck-css/styles.css';
@@ -175,246 +158,40 @@ VITE_CSS_SITE_ID=your-site-id
 
 /**
  * Main Application Content
- * Full-width Puck editor with CSS plugin in the plugin rail
+ *
+ * Uses useCSSEditor for a complete Puck + CSS integration with minimal code.
+ * Version management, safe data, stable plugins/overrides, and historical
+ * version protection are all handled internally by the hook.
  */
 function AppContent() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const selectedPath = searchParams.get('path');
-
-  const {
-    client,
-    siteId,
-    branchId,
-    currentData,
-    currentDocument,
-    loadDocument,
-    saveData,
-    saveStatus,
-    lastSaved,
-    saveError,
-    saveNow,
-    createCheckpoint,
-    branches,
-    currentBranch,
-    switchBranch,
-    pauseAutoSave,
-    isViewingHistoricalVersion,
-    viewingVersion,
-    latestVersionData,
-    loadVersion,
-    returnToLatest,
-    presence,
-    sendFocusRegions: sendFocusRegionsViaWs,
-  } = useCSSPuck();
-
-  const { setFocusRegions, clearFocus } = useFocusRegionReporting({
-    enabled: envConfig.enablePresence,
-    debounceMs: 300,
-    heartbeatMs: 15000,
-    sendViaWebSocket: sendFocusRegionsViaWs,
-  });
-
-  const handleSelectionChange = useCallback((path: string | null, _itemId: string | null) => {
-    if (path) {
-      setFocusRegions([path]);
-    } else {
-      clearFocus();
-    }
-  }, [setFocusRegions, clearFocus]);
-
-  const { documents, loading: documentsLoading, create, remove } = useDocuments({
-    client,
-    siteId,
-    branchId,
-  });
-
-  const {
-    versions,
-    loading: versionsLoading,
-    refresh: refreshVersions,
-  } = useVersions({
-    client,
-    siteId,
-    branchId,
-    documentId: currentDocument?.id ?? null,
-  });
-
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-
-  const historicalDiffs = useMemo((): ComponentDiffWithPosition[] => {
-    if (!isViewingHistoricalVersion || !currentData || !latestVersionData) {
-      return [];
-    }
-    return diffPuckDataWithPositions(currentData, latestVersionData);
-  }, [isViewingHistoricalVersion, currentData, latestVersionData]);
-
-  const presenceContext = usePresenceContext();
-  const currentUserId = presenceContext?.userId ?? '';
-
-  const focusMap = useMemo(() => {
-    if (!presence || !currentData) return new Map();
-    const otherActors = presence.actors.filter(a => a.actorId !== currentUserId);
-    return createFocusRegionMap(currentData, otherActors);
-  }, [presence, currentUserId, currentData]);
-
-  const focusEnabledConfig = useMemo(() => {
-    return createFocusHighlightConfig(puckConfig) as typeof puckConfig;
-  }, []);
-
-  const effectiveConfig = useMemo(() => {
-    let config = focusEnabledConfig;
-    if (isViewingHistoricalVersion && historicalDiffs.length > 0) {
-      config = createHistoricalVersionConfig(config, historicalDiffs) as typeof puckConfig;
-    }
-    return config;
-  }, [isViewingHistoricalVersion, historicalDiffs, focusEnabledConfig]);
-
-  const puckPermissions = useMemo(() => {
-    if (isViewingHistoricalVersion) {
-      return { delete: false, drag: false, duplicate: false, edit: false, insert: false };
-    }
-    return { delete: true, drag: true, duplicate: true, edit: true, insert: true };
-  }, [isViewingHistoricalVersion]);
+  const documentPath = searchParams.get('path') || '/home';
 
   const handleDocumentSelect = useCallback(
     (path: string) => {
-      if (path) {
-        setSearchParams({ path });
-      } else {
-        setSearchParams({});
-      }
+      setSearchParams(path ? { path } : {});
     },
     [setSearchParams]
   );
 
-  const handleDocumentCreate = useCallback(
-    async (path: string) => {
-      await create(path);
-      handleDocumentSelect(path);
+  const { loading, error, puckProps } = useCSSEditor({
+    documentPath,
+    puckConfig,
+    pluginOptions: {
+      onDocumentSelect: handleDocumentSelect,
+      selectedDocumentPath: documentPath,
     },
-    [create, handleDocumentSelect]
-  );
-
-  const handleDocumentDelete = useCallback(
-    async (documentId: string, path: string) => {
-      await remove(documentId);
-      if (selectedPath === path) {
-        handleDocumentSelect('');
-      }
+    overrideOptions: {
+      showNamePrompt: true,
+      showDefaultPublish: false,
+      onPublishSuccess: (checkpoint: Checkpoint) => {
+        alert(`Published checkpoint: ${checkpoint.name ?? checkpoint.id}`);
+      },
+      onPublishError: (err: Error) => {
+        alert(`Publish failed: ${err.message}`);
+      },
     },
-    [remove, selectedPath, handleDocumentSelect]
-  );
-
-  useEffect(() => {
-    if (!selectedPath) {
-      setLoading(false);
-      setError(null);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    loadDocument(selectedPath)
-      .then(() => setLoading(false))
-      .catch((err) => {
-        setError(err instanceof Error ? err : new Error(String(err)));
-        setLoading(false);
-      });
-  }, [selectedPath, loadDocument]);
-
-  const handleChange = useCallback(
-    (data: unknown) => {
-      saveData(data as Parameters<typeof saveData>[0]);
-    },
-    [saveData]
-  );
-
-  const handlePublishSuccess = useCallback((checkpoint: Checkpoint) => {
-    alert(`Published checkpoint: ${checkpoint.name ?? checkpoint.id}`);
-  }, []);
-
-  const handlePublishError = useCallback((err: Error) => {
-    alert(`Publish failed: ${err.message}`);
-  }, []);
-
-  const handleStopAgent = useCallback(async (agent: ActorPresence) => {
-    if (!currentDocument?.path) return;
-    try {
-      await client.agentEdit.stopAgent(siteId, branchId, currentDocument.path, agent.actorId);
-    } catch (err) {
-      console.error('[StopAgent] Error stopping agent:', err);
-    }
-  }, [client, siteId, branchId, currentDocument?.path]);
-
-  const handleVersionSelect = useCallback((version: DocumentVersion) => {
-    const latestVersion = versions[0];
-    if (latestVersion && version.id === latestVersion.id) {
-      void returnToLatest();
-    } else {
-      void loadVersion(version);
-    }
-  }, [versions, loadVersion, returnToLatest]);
-
-  useEffect(() => {
-    if (currentDocument?.id) {
-      void refreshVersions();
-    }
-  }, [currentDocument?.id, refreshVersions]);
-
-  const saveStatusRef = useRef(saveStatus);
-  const lastSavedRef = useRef(lastSaved);
-  const saveErrorRef = useRef(saveError);
-  useEffect(() => { saveStatusRef.current = saveStatus; }, [saveStatus]);
-  useEffect(() => { lastSavedRef.current = lastSaved; }, [lastSaved]);
-  useEffect(() => { saveErrorRef.current = saveError; }, [saveError]);
-
-  const getHasUnsavedChanges = useCallback(() => saveStatusRef.current === 'saving', []);
-  const getSaveStatus = useCallback(() => saveStatusRef.current, []);
-  const getLastSaved = useCallback(() => lastSavedRef.current, []);
-  const getSaveError = useCallback(() => saveErrorRef.current, []);
-
-  const cssPlugin = useMemo(() => createCSSPlugin({
-    branches,
-    currentBranch,
-    onBranchSwitch: switchBranch,
-    getHasUnsavedChanges,
-    documents,
-    selectedDocumentPath: selectedPath,
-    onDocumentSelect: handleDocumentSelect,
-    onDocumentCreate: handleDocumentCreate,
-    onDocumentDelete: handleDocumentDelete,
-    documentsLoading,
-    versions,
-    versionsLoading,
-    selectedVersionId: viewingVersion?.id ?? undefined,
-    onVersionSelect: handleVersionSelect,
-    onSelectionChange: envConfig.enablePresence ? handleSelectionChange : undefined,
-  }), [
-    branches, currentBranch, switchBranch, getHasUnsavedChanges,
-    documents, selectedPath, handleDocumentSelect, handleDocumentCreate, handleDocumentDelete,
-    documentsLoading, versions, versionsLoading, viewingVersion, handleVersionSelect,
-    handleSelectionChange,
-  ]);
-
-  const cssOverrides = useMemo(() => createCSSOverrides({
-    getSaveStatus, getLastSaved, getSaveError,
-    onRetrySave: saveNow,
-    onPublish: createCheckpoint,
-    onPublishSuccess: handlePublishSuccess,
-    onPublishError: handlePublishError,
-    showNamePrompt: true,
-    showDefaultPublish: false,
-    onPauseAutoSave: pauseAutoSave,
-    isViewingHistoricalVersion,
-    viewingVersion,
-    onReturnToLatest: returnToLatest,
-    showCollaboratorAvatars: !!presence,
-    presence: presence?.actors ?? [],
-    showAgentActivityBanner: !!presence?.hasActiveAgents,
-    activeAgents: presence?.agents ?? [],
-    isAgentEditing: presence?.hasActiveAgents ?? false,
-    onStopAgent: handleStopAgent,
-  }), [getSaveStatus, getLastSaved, getSaveError, saveNow, createCheckpoint, handlePublishSuccess, handlePublishError, pauseAutoSave, isViewingHistoricalVersion, viewingVersion, returnToLatest, presence, handleStopAgent]);
+  });
 
   if (loading) {
     return (
@@ -435,37 +212,10 @@ function AppContent() {
     );
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const puckPlugins = [cssPlugin] as any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const puckOverrides = cssOverrides as any;
-
-  if (!selectedPath || !currentDocument || !currentData) {
-    return (
-      <div className="app app--fullscreen">
-        <Puck
-          config={puckConfig}
-          data={{ content: [], root: { props: {} } }}
-          onChange={() => {}}
-          plugins={puckPlugins}
-          overrides={puckOverrides}
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="app app--fullscreen">
-      <FocusHighlightProvider focusMap={focusMap}>
-        <Puck
-          config={effectiveConfig}
-          data={currentData}
-          onChange={isViewingHistoricalVersion ? () => {} : handleChange}
-          plugins={puckPlugins}
-          overrides={puckOverrides}
-          permissions={puckPermissions}
-        />
-      </FocusHighlightProvider>
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+      <Puck {...puckProps as any} />
     </div>
   );
 }
@@ -513,7 +263,6 @@ function AuthenticatedApp() {
         realtimeApiKey={token}
         presenceEnabled={envConfig.enablePresence}
         userNameResolver={(id) => {
-          // Check current user first, then fall back to demo users for mock mode
           if (id === user.id) return user.name;
           return DEMO_USERS.find(u => u.id === id)?.name;
         }}

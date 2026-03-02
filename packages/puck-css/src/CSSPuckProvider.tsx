@@ -21,6 +21,7 @@ import type { PresenceContextValue } from './PresenceContext.js';
 import { debounce } from './utils/debounce.js';
 import { withRetry } from './utils/retry.js';
 import { useRealtime } from './hooks/useRealtime.js';
+import { useDocuments } from './hooks/useDocuments.js';
 import type { UseAgentEditReturn } from './hooks/useAgentEdit.js';
 import type { UseAgentTriggerReturn } from './hooks/useAgentTrigger.js';
 import type { ConflictNotification } from './components/conflict-notifications/index.js';
@@ -331,6 +332,12 @@ function CSSPuckProviderInner({
     [client, userId]
   );
 
+  // Document list for current branch
+  const {
+    documents: branchDocuments,
+    loading: documentsLoading,
+  } = useDocuments({ client: userClient, siteId, branchId });
+
   // Load branches
   const refreshBranches = useCallback(async () => {
     try {
@@ -468,11 +475,11 @@ function CSSPuckProviderInner({
   // Sends changes via WebSocket when realtime is enabled (but not for remote updates)
   const saveData = useCallback(
     (data: PuckData) => {
-      pendingDataRef.current = data;
-
       // When realtime is enabled, detect whether this onChange came from a remote
       // sync (Yjs update from another client) vs. a local user edit.
       // Remote updates should NOT trigger a REST save — the DO handles persistence.
+      // Important: we must NOT set pendingDataRef for remote syncs, otherwise
+      // getHasUnsavedChanges() will incorrectly report unsaved changes.
       if (enableRealtime && realtime.connected) {
         if (isApplyingRemoteSyncRef.current) {
           // We're in the middle of applying a remote sync, skip everything
@@ -520,6 +527,9 @@ function CSSPuckProviderInner({
           // skip the REST call when realtimeConnectedRef is true.
         }
       }
+
+      // Only mark data as pending for local user edits (not remote syncs)
+      pendingDataRef.current = data;
 
       // Resume on next edit if paused
       if (debouncedSave.isPaused()) {
@@ -1146,6 +1156,140 @@ function CSSPuckProviderInner({
     presenceState,
   ]);
 
+  // =========================================================================
+  // Stable Callback Wrappers
+  // =========================================================================
+  // Wrap volatile callbacks in refs + stable wrappers so consumers don't need
+  // to stabilize them manually. The ref is updated inline during render (safe
+  // because it's a ref write, not a state write) and the stable wrapper
+  // delegates to ref.current, ensuring the latest implementation is always used.
+
+  const saveDataRef = useRef(saveData);
+  saveDataRef.current = saveData;
+  const stableSaveData = useCallback(
+    (data: PuckData) => saveDataRef.current(data),
+    []
+  );
+
+  const saveNowRef = useRef(saveNow);
+  saveNowRef.current = saveNow;
+  const stableSaveNow = useCallback(
+    () => saveNowRef.current(),
+    []
+  );
+
+  const createCheckpointRef = useRef(createCheckpoint);
+  createCheckpointRef.current = createCheckpoint;
+  const stableCreateCheckpoint = useCallback(
+    (name?: string) => createCheckpointRef.current(name),
+    []
+  );
+
+  const pauseAutoSaveRef = useRef(pauseAutoSave);
+  pauseAutoSaveRef.current = pauseAutoSave;
+  const stablePauseAutoSave = useCallback(
+    () => pauseAutoSaveRef.current(),
+    []
+  );
+
+  const resumeAutoSaveRef = useRef(resumeAutoSave);
+  resumeAutoSaveRef.current = resumeAutoSave;
+  const stableResumeAutoSave = useCallback(
+    () => resumeAutoSaveRef.current(),
+    []
+  );
+
+  const switchBranchRef = useRef(switchBranch);
+  switchBranchRef.current = switchBranch;
+  const stableSwitchBranch = useCallback(
+    (newBranchId: string) => switchBranchRef.current(newBranchId),
+    []
+  );
+
+  const loadDocumentRef = useRef(loadDocument);
+  loadDocumentRef.current = loadDocument;
+  const stableLoadDocument = useCallback(
+    (path: string) => loadDocumentRef.current(path),
+    []
+  );
+
+  const loadVersionRef = useRef(loadVersion);
+  loadVersionRef.current = loadVersion;
+  const stableLoadVersion = useCallback(
+    (version: DocumentVersion) => loadVersionRef.current(version),
+    []
+  );
+
+  const returnToLatestRef = useRef(returnToLatest);
+  returnToLatestRef.current = returnToLatest;
+  const stableReturnToLatest = useCallback(
+    () => returnToLatestRef.current(),
+    []
+  );
+
+  // =========================================================================
+  // Stable Getters (Items 2 & 3)
+  // =========================================================================
+  // Refs updated inline during render, exposed as stable getter callbacks.
+
+  const saveStatusGetterRef = useRef(saveStatus);
+  saveStatusGetterRef.current = saveStatus;
+  const getSaveStatus = useCallback(() => saveStatusGetterRef.current, []);
+
+  const lastSavedGetterRef = useRef(lastSaved);
+  lastSavedGetterRef.current = lastSaved;
+  const getLastSaved = useCallback(() => lastSavedGetterRef.current, []);
+
+  const saveErrorGetterRef = useRef(saveError);
+  saveErrorGetterRef.current = saveError;
+  const getSaveError = useCallback(() => saveErrorGetterRef.current, []);
+
+  const getHasUnsavedChanges = useCallback(
+    () => pendingDataRef.current !== null,
+    []
+  );
+
+  // Data sync getters (Item 3)
+  const currentDataGetterRef = useRef(currentData);
+  currentDataGetterRef.current = currentData;
+  const remoteSyncKeyGetterRef = useRef(remoteSyncKey);
+  remoteSyncKeyGetterRef.current = remoteSyncKey;
+  const currentDocumentGetterRef = useRef(currentDocument);
+  currentDocumentGetterRef.current = currentDocument;
+  const viewingVersionGetterRef = useRef(viewingVersion);
+  viewingVersionGetterRef.current = viewingVersion;
+
+  const getSyncData = useCallback(
+    (): PuckData | undefined => currentDataGetterRef.current ?? undefined,
+    []
+  );
+
+  const getDataSyncKey = useCallback((): string | undefined => {
+    const syncKey = remoteSyncKeyGetterRef.current;
+    const doc = currentDocumentGetterRef.current;
+    const version = viewingVersionGetterRef.current;
+
+    if (syncKey) return syncKey;
+    if (version) return `version-${version.id}`;
+    if (doc) return `doc-${doc.id}-latest`;
+    return undefined;
+  }, []);
+
+  // =========================================================================
+  // safeData (Item 4) — never null
+  // =========================================================================
+
+  const EMPTY_PUCK_DATA: PuckData = useMemo(
+    () => ({ content: [], root: { props: {} } }),
+    []
+  );
+
+  const lastGoodDataRef = useRef<PuckData>(EMPTY_PUCK_DATA);
+  if (currentDocument && currentData) {
+    lastGoodDataRef.current = currentData;
+  }
+  const safeData = lastGoodDataRef.current;
+
   // Context value
   const contextValue: CSSPuckContextValue = useMemo(
     () => ({
@@ -1159,23 +1303,35 @@ function CSSPuckProviderInner({
       saveStatus,
       lastSaved,
       saveError,
-      loadDocument,
-      saveData,
-      saveNow,
-      createCheckpoint,
-      switchBranch,
+      loadDocument: stableLoadDocument,
+      saveData: stableSaveData,
+      saveNow: stableSaveNow,
+      createCheckpoint: stableCreateCheckpoint,
+      switchBranch: stableSwitchBranch,
+      // Stable getters (Items 2, 3)
+      getSaveStatus,
+      getLastSaved,
+      getSaveError,
+      getHasUnsavedChanges,
+      getSyncData,
+      getDataSyncKey,
+      // safeData (Item 4)
+      safeData,
+      // Documents (Item 8)
+      documents: branchDocuments,
+      documentsLoading,
       branches,
       currentBranch,
       refreshBranches,
       branchesLoading,
       autoSavePaused,
-      pauseAutoSave,
-      resumeAutoSave,
+      pauseAutoSave: stablePauseAutoSave,
+      resumeAutoSave: stableResumeAutoSave,
       viewingVersion,
       latestVersionData,
       isViewingHistoricalVersion,
-      loadVersion,
-      returnToLatest,
+      loadVersion: stableLoadVersion,
+      returnToLatest: stableReturnToLatest,
       realtimeEnabled: enableRealtime,
       realtimeConnected: realtime.connected,
       remoteSyncKey,
@@ -1199,23 +1355,32 @@ function CSSPuckProviderInner({
       saveStatus,
       lastSaved,
       saveError,
-      loadDocument,
-      saveData,
-      saveNow,
-      createCheckpoint,
-      switchBranch,
+      stableLoadDocument,
+      stableSaveData,
+      stableSaveNow,
+      stableCreateCheckpoint,
+      stableSwitchBranch,
+      getSaveStatus,
+      getLastSaved,
+      getSaveError,
+      getHasUnsavedChanges,
+      getSyncData,
+      getDataSyncKey,
+      safeData,
+      branchDocuments,
+      documentsLoading,
       branches,
       currentBranch,
       refreshBranches,
       branchesLoading,
       autoSavePaused,
-      pauseAutoSave,
-      resumeAutoSave,
+      stablePauseAutoSave,
+      stableResumeAutoSave,
       viewingVersion,
       latestVersionData,
       isViewingHistoricalVersion,
-      loadVersion,
-      returnToLatest,
+      stableLoadVersion,
+      stableReturnToLatest,
       enableRealtime,
       realtime.connected,
       remoteSyncKey,

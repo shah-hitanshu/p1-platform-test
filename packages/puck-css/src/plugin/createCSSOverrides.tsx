@@ -182,19 +182,13 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
     showNamePrompt = true,
     showDefaultPublish = false,
     onPauseAutoSave,
-    isViewingHistoricalVersion = false,
-    viewingVersion,
-    onReturnToLatest,
     // Deprecated props - kept for type signature compatibility but ignored
     syncData: _syncData,
     dataSyncKey: _dataSyncKey,
-    // Presence/Agent Features
-    showCollaboratorAvatars = false,
-    presence = [],
-    showAgentActivityBanner = false,
-    activeAgents = [],
-    isAgentEditing = false,
-    onStopAgent,
+    // Presence/Agent Features — NOT destructured here.
+    // These are read lazily from `options` in the headerActions render function
+    // so that the Proxy pattern from useCSSOverrides provides live values.
+    // Destructuring would capture stale values from the initial call.
   } = options;
 
   // Suppress unused variable warnings for deprecated props
@@ -219,45 +213,59 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
         onRetry: onRetrySave,
       };
 
-  // Find the first active agent for banner display
-  const firstActiveAgent = activeAgents.find(a => a.state === 'editing') || activeAgents[0];
-
   return {
-    headerActions: ({ children }) => (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        {/* NOTE: PuckDataSynchronizer was removed from here because headerActions
-            renders outside Puck's context. Use syncData/dataSyncKey in createCSSPlugin
-            instead, which renders inside Puck's context. */}
-        {/* Agent Activity Banner - shown when agent is editing */}
-        {showAgentActivityBanner && isAgentEditing && firstActiveAgent && (
-          <AgentActivityBanner agent={firstActiveAgent} showIdle onStopAgent={onStopAgent} />
-        )}
-        {/* Collaborator Avatars */}
-        {showCollaboratorAvatars && presence.length > 0 && (
-          <CollaboratorAvatars actors={presence} maxVisible={5} />
-        )}
-        {isViewingHistoricalVersion && viewingVersion && onReturnToLatest ? (
-          <HistoricalVersionBanner
-            version={viewingVersion}
-            onReturnToLatest={onReturnToLatest}
-          />
-        ) : (
-          <>
-            <SaveIndicator {...saveIndicatorProps} />
-            <PublishButton
-              onPublish={onPublish}
-              showNamePrompt={showNamePrompt}
-              onSuccess={onPublishSuccess}
-              onError={onPublishError}
-              onPromptShow={onPauseAutoSave}
-              className="css-puck-header-publish"
-            >
-              Publish
-            </PublishButton>
-          </>
-        )}
-        {showDefaultPublish && children}
-      </div>
-    ),
+    headerActions: ({ children }) => {
+      // Read presence/agent values lazily from options (Proxy) each render
+      // so they reflect the latest state from useCSSOverrides' optionsRef.
+      const _showCollaboratorAvatars = options.showCollaboratorAvatars ?? false;
+      const _presence = options.presence ?? [];
+      const _showAgentActivityBanner = options.showAgentActivityBanner ?? false;
+      const _activeAgents = options.activeAgents ?? [];
+      const _isAgentEditing = options.isAgentEditing ?? false;
+      const _onStopAgent = options.onStopAgent;
+      const _isViewingHistoricalVersion = options.isViewingHistoricalVersion ?? false;
+      const _viewingVersion = options.viewingVersion;
+      const _onReturnToLatest = options.onReturnToLatest;
+
+      // Find the first active agent for banner display
+      const firstActiveAgent = _activeAgents.find(a => a.state === 'editing') || _activeAgents[0];
+
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* NOTE: PuckDataSynchronizer was removed from here because headerActions
+              renders outside Puck's context. Use syncData/dataSyncKey in createCSSPlugin
+              instead, which renders inside Puck's context. */}
+          {/* Agent Activity Banner - shown when agent is editing */}
+          {_showAgentActivityBanner && _isAgentEditing && firstActiveAgent && (
+            <AgentActivityBanner agent={firstActiveAgent} showIdle onStopAgent={_onStopAgent} />
+          )}
+          {/* Collaborator Avatars */}
+          {_showCollaboratorAvatars && _presence.length > 0 && (
+            <CollaboratorAvatars actors={_presence} maxVisible={5} />
+          )}
+          {_isViewingHistoricalVersion && _viewingVersion && _onReturnToLatest ? (
+            <HistoricalVersionBanner
+              version={_viewingVersion}
+              onReturnToLatest={_onReturnToLatest}
+            />
+          ) : (
+            <>
+              <SaveIndicator {...saveIndicatorProps} />
+              <PublishButton
+                onPublish={onPublish}
+                showNamePrompt={showNamePrompt}
+                onSuccess={onPublishSuccess}
+                onError={onPublishError}
+                onPromptShow={onPauseAutoSave}
+                className="css-puck-header-publish"
+              >
+                Publish
+              </PublishButton>
+            </>
+          )}
+          {showDefaultPublish && children}
+        </div>
+      );
+    },
   };
 }

@@ -41,6 +41,14 @@ export type { UseBranchPresenceOptions, UseBranchPresenceReturn } from './hooks/
 export { useSitePresence } from './hooks/useSitePresence.js';
 export type { UseSitePresenceOptions, UseSitePresenceReturn } from './hooks/useSitePresence.js';
 
+// Stable Consumer API Hooks
+export { useCSSPlugin } from './hooks/useCSSPlugin.js';
+export type { UseCSSPluginOptions } from './hooks/useCSSPlugin.js';
+export { useCSSOverrides } from './hooks/useCSSOverrides.js';
+export type { UseCSSOverridesOptions } from './hooks/useCSSOverrides.js';
+export { useCSSEditor } from './hooks/useCSSEditor.js';
+export type { UseCSSEditorOptions, UseCSSEditorReturn, PuckProps } from './hooks/useCSSEditor.js';
+
 // Focus Region Reporting (Proactive Collision Detection)
 export { useFocusRegionReporting } from './hooks/useFocusRegionReporting.js';
 export type {
@@ -250,6 +258,13 @@ export type {
   FocusHighlightContextValue,
   FocusHighlightProviderProps,
 } from './FocusHighlightContext.js';
+
+// Stable Plugin Array Utility
+export { createStablePluginArray } from './utils/createStablePluginArray.js';
+
+// Feature Configuration
+export { CSS_PRESETS, resolveFeatureConfig } from './featureConfig.js';
+export type { CSSFeatureConfig } from './featureConfig.js';
 
 // Types
 export type {
