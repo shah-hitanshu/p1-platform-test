@@ -1018,6 +1018,43 @@ Server logic:
 
 ---
 
+### Client-Side Optimizations for Wave 2 Backend (2026-03-02)
+
+Corresponding client-side updates for the collaborative-state-system Wave 2 scaling optimizations (backend PR #23).
+
+#### Item 4: Remove Debug Console.log Statements ✅
+
+**Commit:** `799ae41`
+
+Removed 14 debug `console.log` statements from production code:
+- `packages/css-client/src/realtime.ts` — 9 statements removed
+- `packages/puck-css/src/hooks/useFocusRegionReporting.ts` — 5 statements removed
+- Kept `console.warn` for unknown message types and `console.error` for genuine errors
+- Zero behavioral change, no test modifications needed
+
+#### Item 3: Increase Presence Polling Intervals ✅
+
+**Commits:** `9fd5080` (tests), `882a723` (implementation)
+
+Increased default polling interval from 5000ms to 10000ms for all three presence hooks:
+- `usePresence` — `packages/puck-css/src/hooks/usePresence.ts`
+- `useBranchPresence` — `packages/puck-css/src/hooks/useBranchPresence.ts`
+- `useSitePresence` — `packages/puck-css/src/hooks/useSitePresence.ts`
+
+Impact: 50% reduction in presence REST API calls. WebSocket-based presence remains the primary real-time channel. `pollingInterval` prop override still works.
+
+**Tests:** 6 new tests in `presence-polling-defaults.spec.ts` (697 total passing)
+
+#### Item 1: Delta Encoding on WebSocket Connect — Pending
+
+Send Yjs state vector as query parameter on reconnect so the server responds with only the diff instead of full CRDT history.
+
+#### Item 2: Client-Side Message Rate Awareness — Pending
+
+Add sliding-window message counter to buffer/coalesce rapid WebSocket updates approaching the 50 msg/sec server limit.
+
+---
+
 ## Remaining Work
 
 ### Phase 7: E2E Tests
