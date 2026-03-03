@@ -1072,6 +1072,19 @@ Added sliding-window rate limiter to `RealtimeClient`:
 
 ---
 
+### Known Issue: Demo App Missing Focus Region Highlight Wiring
+
+The demo app (`apps/demo`) does not render focus region overlay badges for collaborators. The infrastructure exists in `@pantheon/puck-css` (exported utilities `createFocusHighlightConfig`, `createFocusRegionMap`, and `FocusHighlightProvider`), and the WebSocket connection correctly receives focus region data via `onFocusRegionBroadcast`. However, the demo app does not wire these rendering components into the Puck editor — unlike the reference implementation in `my-app` which uses all three. This is a pre-existing gap, not a regression from the client optimization work.
+
+To enable focus highlighting in the demo, the following would need to be added:
+1. Call `createFocusHighlightConfig(puckConfig)` to wrap component renders
+2. Call `createFocusRegionMap(currentData, otherActors)` to map focus paths to component IDs
+3. Wrap `<Puck>` with `<FocusHighlightProvider focusMap={focusMap}>`
+4. Use `useFocusRegionReporting()` to report local selection changes
+5. Wire a selection change handler into the CSS plugin
+
+---
+
 ## Remaining Work
 
 ### Phase 7: E2E Tests
