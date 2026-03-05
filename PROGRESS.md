@@ -1018,6 +1018,73 @@ Server logic:
 
 ---
 
+### Client-Side Optimizations for Wave 2 Backend (2026-03-02)
+
+Corresponding client-side updates for the collaborative-state-system Wave 2 scaling optimizations (backend PR #23).
+
+#### Item 4: Remove Debug Console.log Statements ✅
+
+**Commit:** `799ae41`
+
+Removed 14 debug `console.log` statements from production code:
+- `packages/css-client/src/realtime.ts` — 9 statements removed
+- `packages/puck-css/src/hooks/useFocusRegionReporting.ts` — 5 statements removed
+- Kept `console.warn` for unknown message types and `console.error` for genuine errors
+- Zero behavioral change, no test modifications needed
+
+#### Item 3: Increase Presence Polling Intervals ✅
+
+**Commits:** `9fd5080` (tests), `882a723` (implementation)
+
+Increased default polling interval from 5000ms to 10000ms for all three presence hooks:
+- `usePresence` — `packages/puck-css/src/hooks/usePresence.ts`
+- `useBranchPresence` — `packages/puck-css/src/hooks/useBranchPresence.ts`
+- `useSitePresence` — `packages/puck-css/src/hooks/useSitePresence.ts`
+
+Impact: 50% reduction in presence REST API calls. WebSocket-based presence remains the primary real-time channel. `pollingInterval` prop override still works.
+
+**Tests:** 6 new tests in `presence-polling-defaults.spec.ts` (697 total passing)
+
+#### Item 1: Delta Encoding on WebSocket Reconnect ✅
+
+**Commits:** `394ebf1` (tests), `61f5af9` (implementation)
+
+Changed `connect()` in RealtimeClient to pass a URL provider function to PartySocket instead of a static URL string. On initial connect, returns the base URL without state vector. On reconnect (`hasConnectedOnce === true`), appends `stateVector` query parameter with base64-encoded `Y.encodeStateVector()` so the server responds with only the delta.
+
+- Existing reconnect behavior (sending local state back to server) preserved
+- Impact: reconnect payload reduced from full CRDT history to only changes since disconnect
+- Significant for large documents (2,000+ components) and tab-backgrounding scenarios
+
+**Tests:** 5 new tests in `realtime-delta-encoding.spec.ts` (136 css-client tests total)
+
+#### Item 2: Client-Side Message Rate Awareness ✅
+
+**Commits:** `4b3345b` (tests), `8ab8bd7` (implementation)
+
+Added sliding-window rate limiter to `RealtimeClient`:
+- Threshold at 40 msgs/sec (server limit is 50); normal editing sends immediately with zero latency
+- Excess updates buffered and coalesced via `Y.mergeUpdates()`, flushed after 1s window resets
+- Both `ydoc.on('update')` listener and `applyLocalUpdate()` use rate-aware sending
+- `RATE_LIMITED` server error handled gracefully via `onRateLimited` callback without disconnect
+- Rate state cleaned up on `disconnect()`
+
+**Tests:** 8 new tests in `realtime-rate-awareness.spec.ts` (144 css-client tests total)
+
+---
+
+### Known Issue: Demo App Missing Focus Region Highlight Wiring
+
+The demo app (`apps/demo`) does not render focus region overlay badges for collaborators. The infrastructure exists in `@pantheon/puck-css` (exported utilities `createFocusHighlightConfig`, `createFocusRegionMap`, and `FocusHighlightProvider`), and the WebSocket connection correctly receives focus region data via `onFocusRegionBroadcast`. However, the demo app does not wire these rendering components into the Puck editor — unlike the reference implementation in `my-app` which uses all three. This is a pre-existing gap, not a regression from the client optimization work.
+
+To enable focus highlighting in the demo, the following would need to be added:
+1. Call `createFocusHighlightConfig(puckConfig)` to wrap component renders
+2. Call `createFocusRegionMap(currentData, otherActors)` to map focus paths to component IDs
+3. Wrap `<Puck>` with `<FocusHighlightProvider focusMap={focusMap}>`
+4. Use `useFocusRegionReporting()` to report local selection changes
+5. Wire a selection change handler into the CSS plugin
+
+---
+
 ## Remaining Work
 
 ### Phase 7: E2E Tests

@@ -215,19 +215,19 @@ describe('Phase 2.1: RealtimeClient', () => {
         actorType: 'user',
       });
 
-      // Check that WebSocket was created with correct URL
+      // WebSocket is created with a URL provider function (for delta encoding on reconnect)
       expect(WebSocket).toHaveBeenCalledWith(
-        expect.stringContaining('ws://localhost:8787'),
+        expect.any(Function),
         expect.any(Array),
         expect.any(Object),
       );
-      // Verify URL contains the expected route
-      expect(WebSocket).toHaveBeenCalledWith(
-        expect.stringContaining(
-          '/api/sites/site-123/branches/branch-456/documents/pages%2Fhome/connect',
-        ),
-        expect.any(Array),
-        expect.any(Object),
+
+      // Resolve the URL provider and verify URL contents
+      const urlProvider = vi.mocked(WebSocket).mock.calls[0][0] as () => string;
+      const resolvedUrl = urlProvider();
+      expect(resolvedUrl).toContain('ws://localhost:8787');
+      expect(resolvedUrl).toContain(
+        '/api/sites/site-123/branches/branch-456/documents/pages%2Fhome/connect',
       );
 
       client.disconnect();
@@ -275,17 +275,11 @@ describe('Phase 2.1: RealtimeClient', () => {
         actorType: 'user',
       });
 
-      // WebSocket connections can't send headers, so actor info goes in URL
-      expect(WebSocket).toHaveBeenCalledWith(
-        expect.stringContaining('actorId=user-789'),
-        expect.any(Array),
-        expect.any(Object),
-      );
-      expect(WebSocket).toHaveBeenCalledWith(
-        expect.stringContaining('actorType=user'),
-        expect.any(Array),
-        expect.any(Object),
-      );
+      // Resolve the URL provider and verify actor info in query params
+      const urlProvider = vi.mocked(WebSocket).mock.calls[0][0] as () => string;
+      const resolvedUrl = urlProvider();
+      expect(resolvedUrl).toContain('actorId=user-789');
+      expect(resolvedUrl).toContain('actorType=user');
 
       client.disconnect();
     });
@@ -313,7 +307,7 @@ describe('Phase 2.1: RealtimeClient', () => {
       });
 
       expect(WebSocket).toHaveBeenCalledWith(
-        expect.any(String),
+        expect.any(Function),
         expect.any(Array),
         expect.objectContaining({
           maxRetries: 5,
@@ -664,7 +658,7 @@ describe('Phase 2.1: RealtimeClient', () => {
 
       // Check default values are passed
       expect(WebSocket).toHaveBeenCalledWith(
-        expect.any(String),
+        expect.any(Function),
         expect.any(Array),
         expect.objectContaining({
           maxRetries: Infinity,
