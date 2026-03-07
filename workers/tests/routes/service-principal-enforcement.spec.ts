@@ -81,7 +81,7 @@ describe('Service Principal Scope Enforcement', () => {
       const principal = createServicePrincipal('site-123', ['read:published']);
       const result = isServicePrincipalAllowed(principal, 'site-123', 'POST');
       expect(result.allowed).toBe(false);
-      expect(result.reason).toContain('scope');
+      expect(result.reason).toContain('Scope');
     });
 
     it('should deny PATCH requests', () => {

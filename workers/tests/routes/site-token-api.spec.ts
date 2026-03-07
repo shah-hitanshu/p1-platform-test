@@ -100,7 +100,7 @@ describe('Site API Token Routes', () => {
       });
 
       expect(response.status).toBe(201);
-      const body = await response.json() as { token: string; metadata: { id: string; name: string } };
+      const body: { token: string; metadata: { id: string; name: string } } = await response.json();
       expect(body.token).toBe('sat_abc123def456ghi789');
       expect(body.metadata.id).toBe('token-uuid-123');
       expect(body.metadata.name).toBe('Production frontend');
@@ -270,7 +270,7 @@ describe('Site API Token Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json() as { tokens: Array<{ id: string }> };
+      const body: { tokens: { id: string }[] } = await response.json();
       expect(body.tokens).toHaveLength(2);
       expect(body.tokens[0].id).toBe('token-1');
     });
@@ -305,7 +305,7 @@ describe('Site API Token Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json() as { tokens: unknown[] };
+      const body: { tokens: unknown[] } = await response.json();
       expect(body.tokens).toEqual([]);
     });
   });
