@@ -20,7 +20,7 @@ const mockAuthState = {
   logout: vi.fn(),
 };
 
-vi.mock('../auth/CSSAuthProvider', () => ({
+vi.mock('../auth/index', () => ({
   CSSAuthProvider: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="css-auth-provider">{children}</div>
   ),
@@ -31,8 +31,13 @@ vi.mock('../auth/CSSAuthProvider', () => ({
   DEMO_USERS: [],
 }));
 
+// Use vi.hoisted to define mocks before vi.mock hoisting
+const { capturedPuckProviderProps, MockCSSClient } = vi.hoisted(() => ({
+  capturedPuckProviderProps: vi.fn(),
+  MockCSSClient: vi.fn().mockImplementation(() => ({})),
+}));
+
 // Capture CSSPuckProvider props for assertions
-const capturedPuckProviderProps = vi.fn();
 vi.mock('../CSSPuckProvider', () => ({
   CSSPuckProvider: (props: Record<string, unknown>) => {
     const { children, ...rest } = props;
@@ -49,8 +54,6 @@ vi.mock('../FocusHighlightContext', () => ({
   },
 }));
 
-// Mock CSSClient constructor
-const MockCSSClient = vi.fn().mockImplementation(() => ({}));
 vi.mock('@pantheon/css-client', () => ({
   CSSClient: MockCSSClient,
 }));

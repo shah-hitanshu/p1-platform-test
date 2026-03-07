@@ -20,8 +20,8 @@ const mockAuthState = {
   logout: vi.fn(),
 };
 
-// Mock the auth module — CSSApp will use these internally
-vi.mock('../auth/CSSAuthProvider', () => ({
+// Mock the auth module — CSSApp imports from the barrel export
+vi.mock('../auth/index', () => ({
   CSSAuthProvider: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="css-auth-provider">{children}</div>
   ),
