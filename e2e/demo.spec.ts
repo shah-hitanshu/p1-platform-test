@@ -132,25 +132,16 @@ test.describe('Demo App - Editor', () => {
 
   test('publish button opens name prompt', async ({ page }) => {
     await page.goto(`/?path=${VALID_DOC_PATH}`);
-    await expect(page.getByRole('button', { name: 'Publish' })).toBeVisible({ timeout: 15000 });
+    const publishBtn = page.getByRole('button', { name: 'Publish' });
+    await expect(publishBtn).toBeVisible({ timeout: 15000 });
 
-    // Click publish — should show name prompt (showNamePrompt: true in demo config)
-    await page.getByRole('button', { name: 'Publish' }).click();
+    // Use dispatchEvent to bypass Puck's editor overlay that intercepts pointer events
+    await publishBtn.dispatchEvent('click');
 
-    // The publish flow should show some form of name input or confirmation dialog
-    // Wait briefly for the dialog/prompt to appear
-    await page.waitForTimeout(500);
-
-    // The checkpoint name prompt renders as part of the overrides
-    // Check that something appeared (dialog, input, etc.)
-    const dialogOrPrompt = page.locator('[role="dialog"], [role="alertdialog"]');
-    const hasDialog = await dialogOrPrompt.count() > 0;
-
-    // Also check for browser prompt (window.prompt) — Playwright handles these automatically
-    // If showNamePrompt uses window.prompt, it will appear as a dialog event
-
-    // At minimum, verify the publish button was interactive (not disabled)
-    expect(true).toBeTruthy(); // The click didn't throw — button was interactive
+    // The PublishButton component shows an inline name prompt with an input
+    const nameInput = page.getByPlaceholder('Checkpoint name (optional)');
+    await expect(nameInput).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: 'Confirm' })).toBeVisible();
   });
 
   test('shows user switcher in mock auth mode', async ({ page }) => {
