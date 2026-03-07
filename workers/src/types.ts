@@ -471,7 +471,7 @@ export interface ApprovalRequest {
 // =============================================================================
 
 /** Authentication provider that validated the token */
-export type AuthProvider = 'auth0' | 'google' | 'mock' | 'unknown';
+export type AuthProvider = 'auth0' | 'google' | 'mock' | 'site_token' | 'unknown';
 
 /**
  * Pre-validated identity from Pantheon Identity Service.
@@ -494,6 +494,8 @@ export interface AuthenticatedPrincipal {
   providerSubjectId?: string;
   /** Database users.id (may differ from id which is a provider-derived UUIDv5) */
   dbUserId?: string;
+  /** Site ID this principal is scoped to (for service/site_token principals) */
+  siteId?: string;
   /** System-level role from the users allowlist ('admin' or 'member') */
   systemRole?: string;
 }

@@ -288,7 +288,7 @@ describe('Site API Token Service', () => {
       await validateToken('sat_sometoken');
 
       // Should have called crypto.subtle.digest
-      expect(mockDigest).toHaveBeenCalledWith('SHA-256', expect.any(ArrayBuffer));
+      expect(mockDigest).toHaveBeenCalledWith('SHA-256', expect.any(Uint8Array));
     });
 
     it('should only match non-revoked tokens', async () => {

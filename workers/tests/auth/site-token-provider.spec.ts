@@ -8,8 +8,6 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import type { AuthenticatedPrincipal } from '../../src/types';
-
 // Mock the token service
 vi.mock('../../src/services/site-api-token-service', () => ({
   validateToken: vi.fn(),
