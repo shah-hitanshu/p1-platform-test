@@ -165,8 +165,8 @@ interface MockProviderMethods {
 
 vi.mock('../../src/auth/identity-provider', async () => {
   const actual = await vi.importActual<
-    typeof import('../../src/auth/identity-provider')
-  >('../../src/auth/identity-provider');
+        typeof import('../../src/auth/identity-provider')
+          >('../../src/auth/identity-provider');
   return {
     ...actual,
     MockIdentityProviderAdapter: class MockIdentityProviderAdapter {
@@ -175,9 +175,9 @@ vi.mock('../../src/auth/identity-provider', async () => {
       constructor(mockProvider: MockProviderMethods) {
         this.mockProvider = mockProvider;
       }
-      canVerifyToken(): boolean {
-        // Always accept tokens in test - real JWT decode is not needed
-        return true;
+      canVerifyToken(token: string): boolean {
+        // Accept non-sat_ tokens — sat_ tokens should be handled by SiteApiTokenProvider
+        return !token.startsWith('sat_');
       }
       async validateToken(token: string): Promise<AuthenticatedPrincipal | null> {
         const principal = await this.mockProvider.validateToken(token);

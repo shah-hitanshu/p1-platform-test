@@ -360,6 +360,10 @@ async function authenticate(
   // Try API key from header
   const apiKey = request.headers.get('X-API-Key');
   if (apiKey !== null && apiKey !== '') {
+    // Site API tokens (sat_ prefix) are validated as tokens, not agent keys
+    if (apiKey.startsWith('sat_')) {
+      return await identityProvider.validateToken(apiKey);
+    }
     return await identityProvider.validateAgentKey(apiKey);
   }
 
@@ -367,6 +371,10 @@ async function authenticate(
   const url = new URL(request.url);
   const queryApiKey = url.searchParams.get('apiKey');
   if (queryApiKey !== null && queryApiKey !== '') {
+    // Site API tokens (sat_ prefix) are validated as tokens
+    if (queryApiKey.startsWith('sat_')) {
+      return await identityProvider.validateToken(queryApiKey);
+    }
     // Try as JWT token first (for human users), then as agent API key
     // JWTs are longer and contain dots, agent keys are shorter alphanumeric
     if (queryApiKey.includes('.')) {
