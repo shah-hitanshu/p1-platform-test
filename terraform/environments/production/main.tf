@@ -1,7 +1,8 @@
-# Collaborative State System - Sandbox (sbx1) Environment
+# Collaborative State System - Production Environment
 #
-# This configuration deploys to the sandbox Cloudflare account
-# and connects to sandbox GCP resources.
+# This configuration deploys production infrastructure:
+# - CloudSQL PostgreSQL with HA and backups
+# - Cloudflare KV namespaces, Queue, and Hyperdrive
 #
 # Prerequisites:
 #   - Cloudflare API token with Workers permissions
@@ -9,9 +10,9 @@
 #   - Vault access for secrets
 #
 # Usage:
-#   make tf-init ENV=sbx1
-#   make tf-plan ENV=sbx1
-#   make tf-apply ENV=sbx1
+#   make tf-init ENV=production
+#   make tf-plan ENV=production
+#   make tf-apply ENV=production
 
 terraform {
   required_version = ">= 1.6.0"
@@ -19,7 +20,7 @@ terraform {
   # Remote backend - GCS bucket
   backend "gcs" {
     bucket = "pantheon-css-terraform-state"
-    prefix = "sbx1"
+    prefix = "production"
   }
 
   required_providers {
@@ -72,7 +73,7 @@ variable "cloudsql_authorized_networks" {
 # -----------------------------------------------------------------------------
 
 locals {
-  environment = "sbx1"
+  environment = "production"
   project     = "collaborative-state-system"
 
   # Pantheon pan-* tagging convention
@@ -85,7 +86,7 @@ locals {
 }
 
 # -----------------------------------------------------------------------------
-# Database Module (CloudSQL)
+# Database Module (CloudSQL - Production)
 # -----------------------------------------------------------------------------
 
 module "database" {
@@ -95,12 +96,12 @@ module "database" {
   gcp_project = var.gcp_project
   gcp_region  = var.gcp_region
 
-  cloudsql_tier                = "db-f1-micro"
-  cloudsql_disk_size           = 10
-  cloudsql_availability_type   = "ZONAL"
-  cloudsql_backup_enabled      = false
+  cloudsql_tier                = "db-custom-2-7680"
+  cloudsql_disk_size           = 50
+  cloudsql_availability_type   = "REGIONAL"
+  cloudsql_backup_enabled      = true
   cloudsql_authorized_networks = var.cloudsql_authorized_networks
-  deletion_protection          = false
+  deletion_protection          = true
 
   tags = local.default_tags
 }

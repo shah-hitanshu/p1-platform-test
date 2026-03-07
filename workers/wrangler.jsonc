@@ -106,18 +106,38 @@
       "vars": {
         "ENVIRONMENT": "sbx1",
         "LOG_LEVEL": "info",
-        "CORS_ORIGINS": "https://sbx1.pantheon.io",
+        "CORS_ORIGINS": "*",
         "METRICS_ENABLED": "true",
-        "INTERNAL_API_URL": "https://collaborative-state-worker-sbx1.pantheon.workers.dev"
+        "INTERNAL_API_URL": "https://collaborative-state-worker-sbx1.chris-801.workers.dev",
+        "WEBSOCKET_HEARTBEAT_INTERVAL": "30000",
+        "DOCUMENT_SYNC_BATCH_SIZE": "50",
+        "PRESENCE_TTL_SECONDS": "120",
+        "APP_VERSION": "sbx1"
       },
-      "kv_namespaces": [
-        { "binding": "CONFIG_KV", "id": "REPLACE_WITH_SBX1_CONFIG_KV_ID" },
-        { "binding": "SESSION_KV", "id": "REPLACE_WITH_SBX1_SESSION_KV_ID" }
+      "durable_objects": {
+        "bindings": [
+          { "name": "DOCUMENT_STATE", "class_name": "DocumentState" },
+          { "name": "PRESENCE", "class_name": "PresenceManager" },
+          { "name": "SESSION", "class_name": "SessionManager" }
+        ]
+      },
+      "migrations": [
+        {
+          "tag": "v1",
+          "new_sqlite_classes": ["DocumentState", "PresenceManager", "SessionManager"]
+        }
       ],
-      // Hyperdrive for PostgreSQL connection pooling
-      // Create with: npx wrangler hyperdrive create css-postgres-sbx1 --connection-string="<connection-string>"
+      "kv_namespaces": [
+        { "binding": "CONFIG_KV", "id": "d7c8df3b12f04817a210c002b577b8ba" },
+        { "binding": "SESSION_KV", "id": "47e9398983d34b6a8838fda023099a48" }
+      ],
+      "queues": {
+        "producers": [{ "binding": "SYNC_QUEUE", "queue": "css-sync-queue-sbx1" }],
+        "consumers": [{ "queue": "css-sync-queue-sbx1", "max_batch_size": 100, "max_batch_timeout": 30 }]
+      },
       "hyperdrive": [
-        { "binding": "HYPERDRIVE", "id": "REPLACE_WITH_SBX1_HYPERDRIVE_ID" }
+        { "binding": "HYPERDRIVE", "id": "994ab9a7250448b2b15f6addfca616bb" },
+        { "binding": "HYPERDRIVE_NOCACHE", "id": "2a624aeb2efa4fb887f8e200d307a757" }
       ]
     },
 
@@ -150,7 +170,7 @@
       "vars": {
         "ENVIRONMENT": "production",
         "LOG_LEVEL": "warn",
-        "CORS_ORIGINS": "https://pantheon.io,https://app.pantheon.io",
+        "CORS_ORIGINS": "*",
         "METRICS_ENABLED": "true",
         "INTERNAL_API_URL": "https://collaborative-state-worker-prod.pantheon.workers.dev"
       },

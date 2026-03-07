@@ -18,6 +18,8 @@ const originalEnv = { ...import.meta.env };
 
 beforeEach(() => {
   vi.resetModules();
+  // Clear window config (config.ts reads this first)
+  delete (window as unknown as Record<string, unknown>).__CSS_CONFIG__;
   // Clear all VITE_ auth env vars
   delete import.meta.env.VITE_GOOGLE_CLIENT_ID;
   delete import.meta.env.VITE_AUTH0_DOMAIN;
@@ -29,6 +31,7 @@ beforeEach(() => {
 afterEach(() => {
   // Restore original env
   Object.assign(import.meta.env, originalEnv);
+  delete (window as unknown as Record<string, unknown>).__CSS_CONFIG__;
 });
 
 async function loadAuthConfig(): Promise<typeof import('../../utils/auth-config')> {

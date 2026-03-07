@@ -52,12 +52,6 @@ locals {
     database = "cssdb"
   }
 
-  firestore = {
-    host       = "localhost"
-    port       = 8080
-    project_id = "local-css-project"
-  }
-
   worker = {
     port = 8787
   }
@@ -70,31 +64,13 @@ locals {
 module "database" {
   source = "../../modules/database"
 
-  environment    = local.environment
-  postgres_host  = local.postgres.host
-  postgres_port  = local.postgres.port
-  postgres_user  = local.postgres.user
-  postgres_pass  = local.postgres.password
-  postgres_db    = local.postgres.database
-  
-  tags = local.default_tags
-}
+  environment   = local.environment
+  postgres_host = local.postgres.host
+  postgres_port = local.postgres.port
+  postgres_user = local.postgres.user
+  postgres_pass = local.postgres.password
+  postgres_db   = local.postgres.database
 
-# -----------------------------------------------------------------------------
-# Workers Module (local configuration)
-# -----------------------------------------------------------------------------
-
-module "workers" {
-  source = "../../modules/workers"
-
-  environment          = local.environment
-  worker_port          = local.worker.port
-  firestore_project_id = local.firestore.project_id
-  firestore_host       = "${local.firestore.host}:${local.firestore.port}"
-  
-  # Database connection from module output
-  postgres_connection_string = module.database.connection_string
-  
   tags = local.default_tags
 }
 
@@ -116,23 +92,14 @@ LOG_LEVEL=debug
 # PostgreSQL connection (Docker container)
 POSTGRES_CONNECTION_STRING=${module.database.connection_string}
 
-# Firestore emulator (Docker container)
-FIRESTORE_PROJECT_ID=${local.firestore.project_id}
-FIRESTORE_EMULATOR_HOST=${local.firestore.host}:${local.firestore.port}
-
 # CORS origins for local development
-CORS_ORIGINS=http://localhost:3000,http://localhost:8080,http://localhost:5173
+CORS_ORIGINS=http://localhost:3000,http://localhost:3002,http://localhost:3005,http://localhost:5173,http://localhost:8080
 
-# WebSocket configuration
-WEBSOCKET_HEARTBEAT_INTERVAL=30000
+# Internal API secret for DO-to-PostgreSQL sync
+INTERNAL_SECRET=development-internal-secret
 
-# Document sync settings
-DOCUMENT_SYNC_BATCH_SIZE=50
-PRESENCE_TTL_SECONDS=120
-
-# Mock Google credentials (local development only)
-# In production, this comes from Vault via OIDC
-GOOGLE_APPLICATION_CREDENTIALS={"type":"service_account","project_id":"${local.firestore.project_id}","private_key_id":"local-mock-key","private_key":"-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBglocal-dev-mock-key\n-----END PRIVATE KEY-----\n","client_email":"local-dev@${local.firestore.project_id}.iam.gserviceaccount.com","client_id":"000000000000"}
+# Mock JWT secret (local development only)
+MOCK_JWT_SECRET=local-dev-jwt-secret-do-not-use-in-production
 EOT
 }
 
@@ -151,11 +118,6 @@ output "postgres_connection_string" {
   sensitive   = true
 }
 
-output "firestore_emulator_host" {
-  description = "Firestore emulator host:port"
-  value       = "${local.firestore.host}:${local.firestore.port}"
-}
-
 output "worker_url" {
   description = "Local worker URL (run 'make worker-dev' to start)"
   value       = "http://localhost:${local.worker.port}"
@@ -169,9 +131,8 @@ output "dev_vars_path" {
 output "services" {
   description = "Local service endpoints"
   value = {
-    postgres  = "${local.postgres.host}:${local.postgres.port}"
-    firestore = "${local.firestore.host}:${local.firestore.port}"
-    worker    = "localhost:${local.worker.port}"
+    postgres = "${local.postgres.host}:${local.postgres.port}"
+    worker   = "localhost:${local.worker.port}"
   }
 }
 

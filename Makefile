@@ -64,7 +64,7 @@ dev-status: ## Show status of local services
 ##@ Docker Services
 
 .PHONY: docker-up
-docker-up: ## Start Docker containers (PostgreSQL, Firestore emulator)
+docker-up: ## Start Docker containers (PostgreSQL)
 	@echo "$(GREEN)Starting Docker containers...$(NC)"
 	@docker-compose -f docker/docker-compose.local.yaml up -d
 	@echo "$(GREEN)Waiting for services to be healthy...$(NC)"
@@ -91,10 +91,6 @@ docker-logs: ## Show Docker container logs (follow mode)
 .PHONY: docker-logs-postgres
 docker-logs-postgres: ## Show PostgreSQL logs
 	@docker-compose -f docker/docker-compose.local.yaml logs -f postgres
-
-.PHONY: docker-logs-firestore
-docker-logs-firestore: ## Show Firestore emulator logs
-	@docker-compose -f docker/docker-compose.local.yaml logs -f firestore
 
 ##@ Worker Development (Miniflare)
 
@@ -133,7 +129,7 @@ metrics-receiver: ## Start local metrics receiver with macOS notifications
 ##@ Terraform - Infrastructure Management
 
 .PHONY: tf-init
-tf-init: ## Initialize Terraform (ENV=local|sbx1)
+tf-init: ## Initialize Terraform (ENV=local|sbx1|production)
 	@echo "$(GREEN)Initializing Terraform for $(ENV)...$(NC)"
 ifeq ($(ENV),local)
 	@cd $(TF_DIR) && terraform init -backend=false
@@ -173,6 +169,11 @@ tf-validate: tf-init ## Validate Terraform configuration
 .PHONY: tf-output
 tf-output: ## Show Terraform outputs
 	@cd $(TF_DIR) && terraform output
+
+.PHONY: tf-sync
+tf-sync: ## Sync Terraform outputs to wrangler.jsonc (ENV=sbx1|production)
+	@echo "$(GREEN)Syncing Terraform outputs to wrangler.jsonc...$(NC)"
+	@./scripts/sync-terraform-to-wrangler.sh $(ENV)
 
 ##@ Database Utilities
 
@@ -215,7 +216,7 @@ ci-lint: tf-fmt ## Run infrastructure linting
 .PHONY: ci-validate
 ci-validate: ## Validate all Terraform configurations
 	@echo "$(GREEN)Validating Terraform configurations...$(NC)"
-	@for env in local sbx1; do \
+	@for env in local sbx1 production; do \
 		echo "  Validating $$env..."; \
 		cd terraform/environments/$$env && terraform init -backend=false > /dev/null && terraform validate || exit 1; \
 		cd ../../..; \
@@ -249,6 +250,20 @@ frontend-lint: ## Lint frontend code
 frontend-test: ## Run frontend E2E tests
 	@echo "$(GREEN)Running frontend E2E tests...$(NC)"
 	@cd frontend && pnpm test:e2e
+
+##@ Frontend Deployment
+
+.PHONY: frontend-deploy-sbx1
+frontend-deploy-sbx1: ## Build and deploy frontend to sbx1
+	@echo "$(GREEN)Building and deploying frontend to sbx1...$(NC)"
+	@cd frontend && pnpm deploy:sbx1
+
+.PHONY: frontend-deploy-prod
+frontend-deploy-prod: ## Build and deploy frontend to production (with confirmation)
+	@echo "$(RED)WARNING: This will deploy the frontend to PRODUCTION!$(NC)"
+	@read -p "Are you sure? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
+	@echo "$(GREEN)Building and deploying frontend to production...$(NC)"
+	@cd frontend && pnpm deploy:production
 
 ##@ Full Stack Development
 

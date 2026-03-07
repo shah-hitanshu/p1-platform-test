@@ -38,30 +38,6 @@ services:
       - "pan-environment=local"
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Firestore Emulator - Notifications and activity feed (currently unused)
-  # Uncomment when Firestore is needed for notifications/activity feed.
-  # ─────────────────────────────────────────────────────────────────────────────
-  # firestore:
-  #   image: google/cloud-sdk:emulators
-  #   platform: linux/amd64
-  #   container_name: css-firestore
-  #   command: >
-  #     gcloud emulators firestore start --host-port=0.0.0.0:8080 --project=local-css-project
-  #   ports:
-  #     - "8080:8080"
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 0"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 10
-  #     start_period: 30s
-  #   networks:
-  #     - css-network
-  #   labels:
-  #     - "pan-service=collaborative-state-system"
-  #     - "pan-environment=local"
-
-  # ─────────────────────────────────────────────────────────────────────────────
   # pgAdmin - Database management UI (optional, use with --profile tools)
   # ─────────────────────────────────────────────────────────────────────────────
   pgadmin:

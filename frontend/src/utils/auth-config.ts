@@ -1,9 +1,12 @@
 /**
  * Auth Configuration
  *
- * Reads OAuth provider settings from Vite environment variables.
+ * Reads OAuth provider settings from the unified config module,
+ * which supports runtime injection (deployed) and import.meta.env (local dev).
  * Exports helper functions to detect which providers are enabled.
  */
+
+import { getConfig } from '../config';
 
 export interface GoogleConfig {
   enabled: boolean;
@@ -28,14 +31,15 @@ export interface AuthConfig {
 }
 
 /**
- * Build the full auth configuration from environment variables.
+ * Build the full auth configuration from the unified config module.
  */
 export function getAuthConfig(): AuthConfig {
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '';
-  const auth0Domain = import.meta.env.VITE_AUTH0_DOMAIN ?? '';
-  const auth0ClientId = import.meta.env.VITE_AUTH0_CLIENT_ID ?? '';
-  const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE ?? '';
-  const mockExplicit = import.meta.env.VITE_ENABLE_MOCK_LOGIN;
+  const config = getConfig();
+  const googleClientId = config.googleClientId;
+  const auth0Domain = config.auth0Domain;
+  const auth0ClientId = config.auth0ClientId;
+  const auth0Audience = config.auth0Audience;
+  const mockExplicit = config.enableMockLogin;
 
   const googleEnabled = googleClientId.length > 0;
   const auth0Enabled = auth0Domain.length > 0 && auth0ClientId.length > 0;
@@ -43,7 +47,7 @@ export function getAuthConfig(): AuthConfig {
   // Mock is enabled when no OAuth providers are configured,
   // or when explicitly set to 'true'
   const anyOAuthEnabled = googleEnabled || auth0Enabled;
-  const mockEnabled = mockExplicit === 'true' || !anyOAuthEnabled;
+  const mockEnabled = mockExplicit || !anyOAuthEnabled;
 
   return {
     google: {

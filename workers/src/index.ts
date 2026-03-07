@@ -103,9 +103,12 @@ export interface Env {
   // Internal API secret for Durable Object to PostgreSQL sync
   INTERNAL_SECRET?: string;
 
-  // Hyperdrive binding (production/staging - handles connection pooling properly)
+  // Hyperdrive bindings (production/staging - handles connection pooling properly)
+  // HYPERDRIVE: cached (short TTL) for document reads
+  // HYPERDRIVE_NOCACHE: uncached for admin writes that need immediate consistency
   // See: https://developers.cloudflare.com/hyperdrive/
   HYPERDRIVE?: Hyperdrive;
+  HYPERDRIVE_NOCACHE?: Hyperdrive;
 
   // Queue binding (Phase 5.1: Queue-Based Sync Decoupling)
   SYNC_QUEUE?: Queue;
@@ -203,10 +206,26 @@ const DEFAULT_MOCK_CONFIG: MockIdentityConfig = {
  * Mock provider is always available in non-production environments.
  * Google and Auth0 providers will be added in Phases 2 and 3.
  */
+/**
+ * Check whether any real OAuth provider is configured.
+ * When true, mock authentication should be disabled.
+ */
+function hasOAuthProviders(env: Env): boolean {
+  const hasGoogle = env.GOOGLE_CLIENT_ID !== undefined && env.GOOGLE_CLIENT_ID !== '';
+  const hasAuth0 =
+    env.AUTH0_ISSUER_BASE_URL !== undefined &&
+    env.AUTH0_ISSUER_BASE_URL !== '' &&
+    env.AUTH0_AUDIENCE !== undefined &&
+    env.AUTH0_AUDIENCE !== '';
+  return hasGoogle || hasAuth0;
+}
+
 function getIdentityProvider(env: Env): MultiProviderIdentityProvider {
   const providers = [];
 
-  // Mock provider (always available in non-production, fallback for local dev)
+  // Mock provider: available in non-production environments for token validation
+  // (requires MOCK_JWT_SECRET). Mock auth *endpoints* are separately gated
+  // by hasOAuthProviders() so tokens cannot be issued when OAuth is configured.
   if (env.ENVIRONMENT !== 'production') {
     providers.push(new MockIdentityProviderAdapter(
       new MockIdentityProvider({
@@ -1040,11 +1059,16 @@ export default {
 
     // Determine connection string and options
     // Prefer Hyperdrive (production) over direct connection (local dev)
+    // Admin routes use HYPERDRIVE_NOCACHE for immediate read-after-write consistency
     let connectionString: string;
     let isHyperdrive = false;
+    const isAdminRoute = path.startsWith('/api/admin/');
+    const hyperdrive = isAdminRoute && env.HYPERDRIVE_NOCACHE
+      ? env.HYPERDRIVE_NOCACHE
+      : env.HYPERDRIVE;
 
-    if (env.HYPERDRIVE !== undefined) {
-      connectionString = env.HYPERDRIVE.connectionString;
+    if (hyperdrive !== undefined) {
+      connectionString = hyperdrive.connectionString;
       isHyperdrive = true;
     } else if (
       env.POSTGRES_CONNECTION_STRING !== undefined &&
@@ -1151,11 +1175,13 @@ async function handleRequest(
     );
   }
 
-  // Auth endpoints (no auth required)
+  // Mock auth endpoints (only when no real OAuth providers are configured)
   if (path.startsWith('/api/auth')) {
-    const response = await handleAuthRoutes(request, path, env);
-    if (response) {
-      return addCorsHeaders(response, origin, env);
+    if (!hasOAuthProviders(env)) {
+      const response = await handleAuthRoutes(request, path, env);
+      if (response) {
+        return addCorsHeaders(response, origin, env);
+      }
     }
     return addCorsHeaders(errorResponse('Not found', 404), origin, env);
   }
@@ -1175,7 +1201,10 @@ async function handleRequest(
         {
           error: 'Not Found',
           message: `No handler for ${request.method} ${path}`,
-          availableEndpoints: ['/health', '/api/sites', '/api/admin/users', '/api/auth/me', '/api/auth/users', '/api/auth/token'],
+          availableEndpoints: [
+            '/health', '/api/sites', '/api/admin/users', '/api/auth/me',
+            ...(!hasOAuthProviders(env) ? ['/api/auth/users', '/api/auth/token'] : []),
+          ],
         },
         404,
       ),
@@ -1196,10 +1225,7 @@ async function handleRequest(
 
   // Allowlist check: if users table has entries, only listed users can access
   // Skip for mock auth mode (development ergonomics)
-  const isMockOnly = env.MOCK_JWT_SECRET !== undefined
-    && env.MOCK_JWT_SECRET !== ''
-    && (env.GOOGLE_CLIENT_ID === undefined || env.GOOGLE_CLIENT_ID === '')
-    && (env.AUTH0_ISSUER_BASE_URL === undefined || env.AUTH0_ISSUER_BASE_URL === '');
+  const isMockOnly = !hasOAuthProviders(env);
 
   if (!isMockOnly && principal.email !== undefined) {
     const userCountResult = await query<{ count: string }>(

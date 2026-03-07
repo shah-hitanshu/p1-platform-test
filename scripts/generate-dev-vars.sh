@@ -23,10 +23,6 @@ POSTGRES_HOST="${POSTGRES_HOST:-localhost}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 POSTGRES_DB="${POSTGRES_DB:-cssdb}"
 
-FIRESTORE_PROJECT="${FIRESTORE_PROJECT:-local-css-project}"
-FIRESTORE_HOST="${FIRESTORE_HOST:-localhost}"
-FIRESTORE_PORT="${FIRESTORE_PORT:-8080}"
-
 echo -e "${YELLOW}Generating ${DEV_VARS_FILE}...${NC}"
 
 # Create the file
@@ -44,26 +40,14 @@ LOG_LEVEL=debug
 # PostgreSQL connection (Docker container)
 POSTGRES_CONNECTION_STRING=postgresql://${POSTGRES_USER}:${POSTGRES_PASS}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
 
-# Firestore emulator (Docker container)
-FIRESTORE_PROJECT_ID=${FIRESTORE_PROJECT}
-FIRESTORE_EMULATOR_HOST=${FIRESTORE_HOST}:${FIRESTORE_PORT}
-
 # CORS origins for local development
-CORS_ORIGINS=http://localhost:3000,http://localhost:8080,http://localhost:5173
-
-# WebSocket configuration
-WEBSOCKET_HEARTBEAT_INTERVAL=30000
-
-# Document sync settings
-DOCUMENT_SYNC_BATCH_SIZE=50
-PRESENCE_TTL_SECONDS=120
+CORS_ORIGINS=http://localhost:3000,http://localhost:3002,http://localhost:3005,http://localhost:5173,http://localhost:8080
 
 # Internal API secret for DO-to-PostgreSQL sync
 INTERNAL_SECRET=development-internal-secret
 
-# Mock Google credentials (local development only)
-# In production, this comes from Vault via OIDC
-GOOGLE_APPLICATION_CREDENTIALS={"type":"service_account","project_id":"${FIRESTORE_PROJECT}","private_key_id":"local-mock-key","private_key":"-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBglocal-dev-mock-key\n-----END PRIVATE KEY-----\n","client_email":"local-dev@${FIRESTORE_PROJECT}.iam.gserviceaccount.com","client_id":"000000000000"}
+# Mock JWT secret (local development only)
+MOCK_JWT_SECRET=local-dev-jwt-secret-do-not-use-in-production
 EOF
 
 # Set permissions (readable only by owner)
@@ -73,6 +57,5 @@ echo -e "${GREEN}Generated ${DEV_VARS_FILE}${NC}"
 echo ""
 echo "Configuration:"
 echo "  PostgreSQL: ${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
-echo "  Firestore:  ${FIRESTORE_HOST}:${FIRESTORE_PORT}"
 echo ""
 echo "Start local development with: make dev"

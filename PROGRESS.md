@@ -3057,3 +3057,97 @@ Following Pantheon testing practices:
 | 2026-03-02 | Phase 6.3 | Checkpoint Bypass for Queue: Rewrote all 3 checkpoint methods (`createAgentPreEditCheckpoint`, `createAgentPostEditCheckpoint`, `rollbackToAgentCheckpoint`) to try direct Hyperdrive via `runWithConnection()` first, falling back to HTTP internal API. 5 new tests. Commit: `3c2061d`. |
 | 2026-03-02 | Security Review | OWASP Top 10 scan of all Wave 2 changes. **One finding remediated:** A01 (Broken Access Control) — PresenceManager DO RPC methods lacked input validation on payload fields; added `validatePayloadFields()` enforcing `MAX_ACTOR_ID_LENGTH`, `MAX_SITE_ID_LENGTH`, `MAX_BRANCH_ID_LENGTH` on all 4 RPC methods. **Clean on remaining 9 categories:** A02 (no new secrets), A03 (all SQL parameterized), A04 (queue messages bounded by CF 128 KB limit), A05 (reasonable queue config), A06 (0 CVEs in 321 deps), A07 (RPCs from authenticated DOs only), A08 (presence fire-and-forget by design), A09 (all error paths logged), A10 (URLs from env config only). 0 dependencies with known vulnerabilities. Commit: `7a06900`. |
 | 2026-03-02 | Bug Fix | **Queue sync bytea[] casting error:** `batchSyncToPostgres()` passed `Buffer[]` as a SQL parameter for `unnest($4::bytea[])`, but the `postgres` npm driver cannot serialize JavaScript `Buffer[]` into a PostgreSQL `bytea[]` array — it treats the whole array as a single `bytea`, causing `PostgresError: cannot cast type bytea to bytea[]`. Every queue-processed sync batch failed and retried infinitely, preventing version history updates in PostgreSQL. **Fix:** Keep CRDT state as base64 text strings and use `decode(unnest($4::text[]), 'base64')` in SQL to convert to `bytea` server-side. Also simplified DO migrations in `wrangler.jsonc` from two-step delete-then-recreate to single `new_sqlite_classes` create, fixing `Cannot apply deleted_classes to non-existent class` on fresh local dev state. Verified end-to-end with Puck editor — saves now persist to PostgreSQL and version history updates correctly. Commits: `c2573cf`, `b28a841`. |
+
+---
+
+### Terraform Alignment (Branch: `terraform-alignment`)
+
+**Status:** Complete
+**Commit:** `dc3d24e` - feat: align Terraform with current architecture
+
+The Terraform setup was written early as scaffolding and drifted significantly from the architecture over a month of development. This work brings it into alignment.
+
+#### What changed:
+- **Removed all Firestore references** — Firestore was dropped from the architecture but remained in Terraform locals, `.dev.vars` templates, `generate-dev-vars.sh`, `docker-compose.local.yaml` (commented-out emulator), and Makefile targets
+- **Replaced `modules/workers`** (config-only, no real resources) with **`modules/cloudflare`** — creates actual `cloudflare_workers_kv_namespace` (CONFIG_KV, SESSION_KV), `cloudflare_queue` (sync queue), and `cloudflare_hyperdrive_config` (PostgreSQL connection pooling)
+- **Enhanced `modules/database`** — added conditional CloudSQL resources (`google_sql_database_instance`, `google_sql_database`, `google_sql_user`) gated by `is_local` count; added variables for availability type, backups, authorized networks, deletion protection
+- **Upgraded Cloudflare provider** from `~> 4.0` to `~> 5.0` (v5.18.0 installed) — no migration needed since no prior Cloudflare resources existed
+- **Implemented `sbx1` environment** — replaced empty placeholder with `module.database` (CloudSQL db-f1-micro, ZONAL) and `module.cloudflare` (KV, Queue, Hyperdrive); outputs all resource IDs for wrangler sync
+- **Scaffolded `production` environment** — same structure as sbx1 with production defaults: `db-custom-2-7680`, `REGIONAL` HA, backups enabled, `deletion_protection = true`
+- **Updated `.dev.vars` template** — removed Firestore/Google credentials, added `INTERNAL_SECRET` and `MOCK_JWT_SECRET`
+- **Created `scripts/sync-terraform-to-wrangler.sh`** — reads `terraform output -json` and patches `REPLACE_WITH_*` placeholder IDs in `wrangler.jsonc`
+- **Updated Makefile** — added `production` to `ci-validate` loop, added `tf-sync` target, removed `docker-logs-firestore` target
+- **Updated CORS origins** — added `localhost:3002` and `localhost:3005` for puck-css-integration frontend dev servers
+
+#### Design decisions:
+- **Terraform manages infrastructure, wrangler manages deployments** — DO migrations have known provider issues; worker code changes frequently; this matches Cloudflare's recommendations
+- **Terraform outputs feed wrangler.jsonc** via the sync script, bridging declarative infra with wrangler-managed deploys
+- **Personal sandbox stays script-based** (`setup-sandbox.sh`) — ephemeral and personal, not suited for shared Terraform state
+
+#### Validation:
+- `terraform validate` passes for all 3 environments (local, sbx1, production)
+- `terraform plan ENV=local` correctly generates `.dev.vars` with no Firestore references
+- Local dev stack verified: Docker up, worker starts, `/health` returns `{"status":"healthy","database":{"connected":true}}`, auth endpoints work
+
+---
+
+### Frontend Cloudflare Worker Deployment (Branch: `terraform-alignment`)
+
+**Status:** Complete
+**Commits:**
+- `a3d0ca6` - feat: add frontend Cloudflare Worker with runtime config injection
+- `74d59cc` - fix: add run_worker_first for config injection, disable mock auth in sbx1/prod
+- `0f51ef9` - feat: add HYPERDRIVE_NOCACHE for admin routes, reduce cache TTL to 5s
+
+#### What was built:
+
+**Frontend Worker with runtime config injection:**
+- Created `frontend/src/worker.ts` — thin Cloudflare Worker (~30 lines of logic) that uses `HTMLRewriter` to inject `<script>window.__CSS_CONFIG__={...}</script>` into `<head>` on all HTML navigation requests
+- Created `frontend/wrangler.jsonc` — Worker config with static assets (`not_found_handling: "single-page-application"`), `run_worker_first: true`, and per-environment vars for sbx1/production
+- Created `frontend/tsconfig.worker.json` — separate tsconfig for the Worker (Cloudflare types, no DOM)
+- Added `wrangler` and `@cloudflare/workers-types` as devDependencies
+
+**Unified config module ("one build, any environment"):**
+- Created `frontend/src/config.ts` — reads from `window.__CSS_CONFIG__` (Worker-injected at serve time) with fallback to `import.meta.env.VITE_*` (local dev). No config baked at build time.
+- Updated `frontend/src/utils/auth-config.ts` — now reads all OAuth settings via `getConfig()` instead of `import.meta.env` directly
+- Updated `frontend/src/api/client.ts` — `API_BASE_URL` now from `getConfig().apiBaseUrl`
+- Local `vite dev` still works unchanged via `import.meta.env` fallbacks
+
+**CORS opened for arbitrary frontend origins:**
+- Set `CORS_ORIGINS: "*"` in `workers/wrangler.jsonc` for sbx1 and production
+- Updated `terraform/modules/cloudflare/main.tf` CORS config to `"*"` for both environments
+- Safe because every API endpoint (except `/health`) requires a valid JWT — the token is the security boundary, not the origin
+
+**Hyperdrive dual-binding for read-after-write consistency:**
+- Created `css-postgres-sbx1-nocache` Hyperdrive config with caching disabled
+- Added `HYPERDRIVE_NOCACHE` binding to worker Env interface and sbx1 wrangler config
+- Admin routes (`/api/admin/*`) use `HYPERDRIVE_NOCACHE` for immediate consistency after writes
+- All other routes use `HYPERDRIVE` (cached) with reduced TTL: `max_age: 5s`, `stale_while_revalidate: 0` (down from 60s/15s defaults)
+- This also improves version change reload speed in the Puck CSS interface
+
+**Infrastructure updates:**
+- Added `frontend_worker_name` local and output to `terraform/modules/cloudflare/main.tf`
+- Added `frontend_worker_name` output to sbx1 and production environment configs
+- Added commented-out `cloudflare_workers_custom_domain` scaffold for future custom domain
+- Added `frontend-deploy-sbx1` and `frontend-deploy-prod` Makefile targets
+- Updated `frontend/.env.example` with Google OAuth redirect URI instructions
+
+#### Design decisions:
+- **Runtime config injection over build-time env** — same `pnpm build` artifact deploys to any environment; Worker injects config via HTMLRewriter. Aligns with Pantheon's GSM pattern of separating config from artifacts.
+- **`run_worker_first: true`** — required because Cloudflare's default asset-first routing serves `index.html` from CDN without invoking the Worker, bypassing config injection. Discovered during deployment testing.
+- **Mock login disabled in deployed environments** — only available in local dev. OAuth (Google) is the auth path for sbx1/production.
+- **Open CORS (`*`) with JWT boundary** — future Puck CSS frontends run on unpredictable domains (Pantheon sites, ephemeral dev envs). JWT in `localStorage` is not auto-sent like cookies, so CSRF is not a concern.
+- **Dual Hyperdrive over disabling cache globally** — preserves read performance for document queries while ensuring admin operations are immediately consistent
+
+#### Manual steps required:
+- Add `https://collaborative-state-frontend-sbx1.chris-801.workers.dev` to Google OAuth Authorized JavaScript origins in Google Cloud Console
+
+#### Validation:
+- 23 frontend test files, 173 tests — all passing
+- 98 worker test files, 2192 tests — all passing
+- 0 lint errors (frontend and workers)
+- Frontend build (`tsc -b && vite build`) succeeds
+- Deployed to sbx1: config injection verified on `/`, `/login`, `/sites/*`
+- Static assets (JS, CSS) served from CDN cache
+- Admin user creation reflects immediately in user list
+- API calls from deployed frontend succeed (CORS + auth working)

@@ -5,14 +5,15 @@
  */
 
 import type { ApiError } from '../types';
+import { getConfig } from '../config';
 
 /**
  * Base URL for API requests.
- * When VITE_API_BASE_URL is set (deployed frontend), all API calls
- * are prefixed with this URL. When unset (local dev with Vite proxy),
- * this is empty and relative paths work via the proxy.
+ * When deployed, the Worker injects the API URL via window.__CSS_CONFIG__.
+ * For local dev, falls back to import.meta.env.VITE_API_BASE_URL (or empty
+ * string for Vite proxy).
  */
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+export const API_BASE_URL = getConfig().apiBaseUrl;
 
 const TOKEN_KEY = 'css_auth_token';
 
