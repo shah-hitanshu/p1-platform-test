@@ -25,7 +25,7 @@ async function loginAsDemoUser(page: Page) {
   await page.reload();
   await page.getByRole('button', { name: 'Sign in as Demo User' }).click();
   // Wait for login page to disappear (auth succeeded)
-  await expect(page.getByRole('heading', { name: 'CSS Puck Editor' })).not.toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole('heading', { name: 'CSS Demo' })).not.toBeVisible({ timeout: 10000 });
   // Verify token is persisted in localStorage before navigating away
   await page.waitForFunction(
     () => !!localStorage.getItem('css_auth_token'),
@@ -41,7 +41,7 @@ test.describe('Demo App - Auth', () => {
     await page.evaluate(() => localStorage.clear());
     await page.reload();
 
-    await expect(page.getByRole('heading', { name: 'CSS Puck Editor' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'CSS Demo' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Sign in as Demo User' })).toBeVisible();
     await expect(page.getByRole('combobox')).toBeVisible();
   });
@@ -67,7 +67,7 @@ test.describe('Demo App - Auth', () => {
 
     // After login, should show loading or error (depending on whether /home exists)
     // The key test is that auth succeeded — we should NOT see the login page
-    await expect(page.getByRole('heading', { name: 'CSS Puck Editor' })).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'CSS Demo' })).not.toBeVisible({ timeout: 10000 });
   });
 });
 

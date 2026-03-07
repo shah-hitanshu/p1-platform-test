@@ -41,6 +41,9 @@ export default defineConfig({
     timeout: 120 * 1000,
     env: {
       VITE_AUTH_MODE: 'mock',
+      VITE_CSS_BASE_URL: 'http://localhost:8787',
+      VITE_CSS_WS_BASE_URL: 'ws://localhost:8787',
+      VITE_CSS_SITE_ID: 'b56bdbfd-512c-4c1f-82e9-e774c2a8ec22',
     },
   },
 });
