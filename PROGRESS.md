@@ -3036,6 +3036,25 @@ Following Pantheon testing practices:
 
 ---
 
+### Site API Tokens (Branch: `feature/site-api-tokens`)
+
+**Status:** In Progress (Phases 1-5, 7 complete; Phase 6 pending)
+**Purpose:** Two-tier authentication — per-site opaque API tokens (`sat_` prefix) for application-level read access, alongside existing OAuth for user-level editing.
+
+| Date | Phase | Details |
+|------|-------|---------|
+| 2026-03-06 | Phase 1: DB Migration | `020_site_api_tokens.sql`: `app.site_api_tokens` table with UUID PK, site FK (CASCADE), SHA-256 `token_hash` (unique), `prefix` (first 8 chars for display), `name`, `scopes` (TEXT[], default `['read:published']`), `created_by`, timestamps, `revoked_at`. Partial index on `token_hash WHERE revoked_at IS NULL` for fast active-token lookups. |
+| 2026-03-06 | Phase 2: Token Service | `site-api-token-service.ts`: `generateToken()` creates 32 random bytes → base62 → `sat_` prefix, stores SHA-256 hash, returns raw token once. `validateToken()` hashes incoming token, looks up active (non-revoked) row, updates `last_used_at`. `listTokens()` returns metadata only (no hashes). `revokeToken()` sets `revoked_at`. 23 tests. |
+| 2026-03-06 | Phase 3: Auth Provider | `SiteApiTokenProvider` implements `IdentityProvider`. `canVerifyToken()` checks `sat_` prefix. `validateToken()` delegates to token service, returns principal with `type: 'service'`, `siteId`, `scopes`, `authProvider: 'site_token'`. Registered in `MultiProviderIdentityProvider`. Extended `AuthProvider` type and `AuthenticatedPrincipal` with `siteId` field. 21 tests. |
+| 2026-03-06 | Phase 4: Scope Enforcement | `service-principal.ts`: `isServicePrincipalAllowed()` enforces site scoping (principal can only access bound site) and method restrictions (`read:published`/`read:draft` → GET only). Non-service principals pass through. Wired into `index.ts` before route dispatch. Service principals blocked from routes without siteId param. 10 tests. |
+| 2026-03-06 | Phase 5: API Routes | `site-token-api.ts`: REST endpoints for token management — `POST /api/sites/:siteId/tokens` (generate), `GET /api/sites/:siteId/tokens` (list), `DELETE /api/sites/:siteId/tokens/:tokenId` (revoke). All require `canManageGrants` permission. Service principals blocked from managing tokens (403). Route parsing added to `index.ts`. 12 tests. |
+| 2026-03-06 | Phase 7: Frontend UI | API Tokens section on `SiteDetailPage.tsx` following Collaborators section pattern. Token generate form (name input), token table (name, prefix, scopes, created, last used, revoke button), raw token banner with copy-to-clipboard and "shown once" warning, `ConfirmDeleteModal` for revoke confirmation. Added `SiteApiToken` type, `site-tokens.ts` API module, CSS styles, `'token'` to ConfirmDeleteModal resourceType. Reviewer fixes: try/catch on clipboard API, `revokeTokenError` wired to modal. 6 tests; 168 frontend tests pass; 0 lint errors. Test commit: `f939b9d`. Implementation commit: `1ab7c91`. |
+| | Phase 6 (pending) | Verify puck-css-integration's existing `createApiKeyAuth()` path works with `sat_` tokens. May need to adjust header routing in `packages/css-client/src/endpoints/base.ts` — current `ApiKey ` prefix routes to `X-API-Key` header, but `sat_` tokens should use `Authorization: Bearer`. |
+
+**Backend test totals:** 2186 tests pass (101/102 test files; 1 pre-existing DB connection failure). **Frontend test totals:** 168 tests pass (22 test files). **Lint:** 0 errors in both repos.
+
+---
+
 ### Scaling Optimizations (Branch: `feat/scaling-optimizations`)
 
 **Status:** In Progress (Phases 1, 2.1, 3.1-3.3, 4.1-4.2, 5.1-5.3, 6.1-6.3 complete)

@@ -34,6 +34,11 @@ import { handleMetadataRoutes } from './routes/metadata-api';
 import { handleRealtimeRoutes } from './routes/realtime-api';
 import { handleInternalRoutes } from './routes/internal-api';
 import { handlePresenceRoutes } from './routes/presence-api';
+import { handleSiteTokenRoutes } from './routes/site-token-api';
+
+// Auth providers
+import { SiteApiTokenProvider } from './auth/site-token-provider';
+import { isServicePrincipalAllowed } from './auth/service-principal';
 
 // MAS client
 import { MASClient } from './services/mas-client';
@@ -223,10 +228,9 @@ function hasOAuthProviders(env: Env): boolean {
 function getIdentityProvider(env: Env): MultiProviderIdentityProvider {
   const providers = [];
 
-  // Mock provider: available in non-production environments for token validation
-  // (requires MOCK_JWT_SECRET). Mock auth *endpoints* are separately gated
-  // by hasOAuthProviders() so tokens cannot be issued when OAuth is configured.
-  if (env.ENVIRONMENT !== 'production') {
+  // Mock provider: available only in local development for token validation.
+  // Sandboxes and production are internet-facing and must use real auth.
+  if (env.ENVIRONMENT === 'local') {
     providers.push(new MockIdentityProviderAdapter(
       new MockIdentityProvider({
         config: DEFAULT_MOCK_CONFIG,
@@ -256,6 +260,9 @@ function getIdentityProvider(env: Env): MultiProviderIdentityProvider {
       audience: env.AUTH0_AUDIENCE,
     }));
   }
+
+  // Site API token provider (always available — validates sat_ tokens against DB)
+  providers.push(new SiteApiTokenProvider());
 
   return new MultiProviderIdentityProvider(providers);
 }
@@ -352,6 +359,10 @@ async function authenticate(
   // Try API key from header
   const apiKey = request.headers.get('X-API-Key');
   if (apiKey !== null && apiKey !== '') {
+    // Site API tokens (sat_ prefix) are validated as tokens, not agent keys
+    if (apiKey.startsWith('sat_')) {
+      return await identityProvider.validateToken(apiKey);
+    }
     return await identityProvider.validateAgentKey(apiKey);
   }
 
@@ -359,6 +370,10 @@ async function authenticate(
   const url = new URL(request.url);
   const queryApiKey = url.searchParams.get('apiKey');
   if (queryApiKey !== null && queryApiKey !== '') {
+    // Site API tokens (sat_ prefix) are validated as tokens
+    if (queryApiKey.startsWith('sat_')) {
+      return await identityProvider.validateToken(queryApiKey);
+    }
     // Try as JWT token first (for human users), then as agent API key
     // JWTs are longer and contain dots, agent keys are shorter alphanumeric
     if (queryApiKey.includes('.')) {
@@ -516,6 +531,7 @@ interface RouteParams {
   versionId?: string;
   organizationId?: string;
   agentId?: string;
+  tokenId?: string;
 }
 
 function parseRoute(path: string): { handler: string; params: RouteParams } | null {
@@ -533,6 +549,15 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
     return {
       handler: 'admin-users',
       params: { userId: adminUsersMatch[1] },
+    };
+  }
+
+  // Site token routes (must come before generic site routes)
+  const siteTokenMatch = /^\/api\/sites\/([^/]+)\/tokens(?:\/([^/]+))?$/.exec(normalizedPath);
+  if (siteTokenMatch) {
+    return {
+      handler: 'site-tokens',
+      params: { siteId: siteTokenMatch[1], tokenId: siteTokenMatch[2] },
     };
   }
 
@@ -1223,11 +1248,32 @@ async function handleRequest(
     );
   }
 
+  // Service principal scope enforcement
+  if (principal.type === 'service') {
+    // Service principals must always target a specific site
+    if (route.params.siteId === undefined) {
+      return addCorsHeaders(
+        errorResponse('Service principals can only access site-scoped routes', 403),
+        origin,
+        env,
+      );
+    }
+    const scopeCheck = isServicePrincipalAllowed(principal, route.params.siteId, request.method);
+    if (!scopeCheck.allowed) {
+      return addCorsHeaders(
+        errorResponse(scopeCheck.reason ?? 'Access denied', 403),
+        origin,
+        env,
+      );
+    }
+  }
+
   // Allowlist check: if users table has entries, only listed users can access
   // Skip for mock auth mode (development ergonomics)
+  // Skip for service principals (they authenticate via site API tokens, not user accounts)
   const isMockOnly = !hasOAuthProviders(env);
 
-  if (!isMockOnly && principal.email !== undefined) {
+  if (!isMockOnly && principal.type !== 'service' && principal.email !== undefined) {
     const userCountResult = await query<{ count: string }>(
       'SELECT COUNT(*) as count FROM app.users',
     );
@@ -1298,6 +1344,14 @@ async function handleRequest(
     let response: Response;
 
     switch (route.handler) {
+      case 'site-tokens':
+        response = await handleSiteTokenRoutes(request, {
+          siteId: route.params.siteId,
+          tokenId: route.params.tokenId,
+          principal,
+        });
+        break;
+
       case 'sites':
         response = await handleSiteRoutes(request, {
           siteId: route.params.siteId,

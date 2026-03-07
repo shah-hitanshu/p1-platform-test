@@ -15,10 +15,16 @@ import {
   removeCollaborator as removeCollaboratorApi,
 } from '../api/collaborators';
 import type { AddCollaboratorParams } from '../api/collaborators';
+import {
+  listSiteTokens,
+  generateSiteToken as generateSiteTokenApi,
+  revokeSiteToken as revokeSiteTokenApi,
+} from '../api/site-tokens';
+import type { GenerateTokenParams, GenerateTokenResult } from '../api/site-tokens';
 import { listUsers } from '../api/users';
 import { ApiResponse } from '../components/ApiResponse';
 import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
-import type { Site, Branch, Collaborator, SystemUser } from '../types';
+import type { Site, Branch, Collaborator, SystemUser, SiteApiToken } from '../types';
 import {
   Button,
   RouterLinkButton,
@@ -68,14 +74,29 @@ export function SiteDetailPage() {
   const [selectedCollaboratorRole, setSelectedCollaboratorRole] = useState('developer');
   const [collaboratorToRemove, setCollaboratorToRemove] = useState<Collaborator | null>(null);
 
+  // Token state
+  const { data: tokens, isLoading: tokensLoading, error: tokensError, execute: fetchTokens } =
+    useApi<SiteApiToken[], [string]>(listSiteTokens);
+  const { execute: generateTokenRequest, isLoading: isGeneratingToken, error: generateTokenError } =
+    useApi<GenerateTokenResult, [string, GenerateTokenParams]>(generateSiteTokenApi);
+  const { execute: revokeTokenRequest, isLoading: isRevokingToken, error: revokeTokenError } =
+    useApi<void, [string, string]>(revokeSiteTokenApi);
+
+  const [showTokenForm, setShowTokenForm] = useState(false);
+  const [newTokenName, setNewTokenName] = useState('');
+  const [generatedToken, setGeneratedToken] = useState<GenerateTokenResult | null>(null);
+  const [tokenToRevoke, setTokenToRevoke] = useState<SiteApiToken | null>(null);
+  const [tokenCopied, setTokenCopied] = useState(false);
+
   useEffect(() => {
     if (siteId) {
       fetchSite(siteId);
       fetchBranches(siteId);
       fetchCollaborators(siteId);
       fetchSystemUsers();
+      fetchTokens(siteId);
     }
-  }, [siteId, fetchSite, fetchBranches, fetchCollaborators, fetchSystemUsers]);
+  }, [siteId, fetchSite, fetchBranches, fetchCollaborators, fetchSystemUsers, fetchTokens]);
 
   const handleCreateBranch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,6 +163,39 @@ export function SiteDetailPage() {
     if (result !== null) {
       setCollaboratorToRemove(null);
       fetchCollaborators(siteId);
+    }
+  };
+
+  const handleGenerateToken = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTokenName.trim() || !siteId) return;
+
+    const result = await generateTokenRequest(siteId, { name: newTokenName.trim() });
+    if (result) {
+      setGeneratedToken(result);
+      setNewTokenName('');
+      setShowTokenForm(false);
+      fetchTokens(siteId);
+    }
+  };
+
+  const handleRevokeToken = async () => {
+    if (!tokenToRevoke || !siteId) return;
+
+    const result = await revokeTokenRequest(siteId, tokenToRevoke.id);
+    if (result !== null) {
+      setTokenToRevoke(null);
+      fetchTokens(siteId);
+    }
+  };
+
+  const handleCopyToken = async (token: string) => {
+    try {
+      await navigator.clipboard.writeText(token);
+      setTokenCopied(true);
+      setTimeout(() => setTokenCopied(false), 2000);
+    } catch {
+      // Fallback: select the text for manual copy
     }
   };
 
@@ -507,6 +561,130 @@ export function SiteDetailPage() {
         )}
       </section>
 
+      {/* API Tokens Section */}
+      <section className="tokens-section" data-testid="tokens-section">
+        <div className="section-header">
+          <h2 className="section-title" data-testid="section-title-tokens">API Tokens</h2>
+          <Button
+            type={showTokenForm ? 'secondary' : 'primary'}
+            onClick={() => { setShowTokenForm(!showTokenForm); setGeneratedToken(null); }}
+            data-testid="create-token-btn"
+          >
+            {showTokenForm ? 'Cancel' : '+ Generate token'}
+          </Button>
+        </div>
+
+        {generatedToken && (
+          <div className="raw-token-banner" data-testid="raw-token-display">
+            <p><strong>Token generated successfully.</strong> Copy this token now — you won't be able to see it again.</p>
+            <div className="raw-token-value">
+              <code data-testid="raw-token-value">{generatedToken.token}</code>
+              <Button
+                type="secondary"
+                onClick={() => handleCopyToken(generatedToken.token)}
+                data-testid="copy-token-btn"
+              >
+                {tokenCopied ? 'Copied!' : 'Copy'}
+              </Button>
+            </div>
+            <p>Name: <strong>{generatedToken.name}</strong> | Prefix: <code>{generatedToken.prefix}</code></p>
+          </div>
+        )}
+
+        {showTokenForm && (
+          <div className="create-form-container" data-testid="create-token-form">
+            <form onSubmit={handleGenerateToken} className="create-form">
+              <div className="form-fields">
+                <input
+                  type="text"
+                  value={newTokenName}
+                  onChange={(e) => setNewTokenName(e.target.value)}
+                  placeholder="Enter token name..."
+                  className="pds-input"
+                  autoFocus
+                  aria-label="Token name"
+                  data-testid="token-name-input"
+                />
+              </div>
+              <Button
+                type="primary"
+                isSubmit
+                onClick={() => {}}
+                disabled={isGeneratingToken || !newTokenName.trim()}
+                isLoading={isGeneratingToken}
+                data-testid="submit-token-btn"
+              >
+                {isGeneratingToken ? 'Generating...' : 'Generate'}
+              </Button>
+            </form>
+            {generateTokenError && (
+              <Alert type="danger" className="create-error-alert" data-testid="generate-token-error">
+                {generateTokenError}
+              </Alert>
+            )}
+          </div>
+        )}
+
+        {tokensError && (
+          <div className="error-banner">
+            <ApiResponse data={null} isLoading={false} error={tokensError} />
+          </div>
+        )}
+
+        {tokensLoading ? (
+          <div className="loading-container">
+            <ApiResponse data={null} isLoading={true} error={null} />
+          </div>
+        ) : tokens && tokens.length > 0 ? (
+          <div className="tokens-table-container">
+            <table className="tokens-table" data-testid="tokens-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Prefix</th>
+                  <th>Scopes</th>
+                  <th>Created</th>
+                  <th>Last used</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tokens.map((token) => (
+                  <tr key={token.id} data-testid={`token-row-${token.id}`}>
+                    <td className="token-name">{token.name}</td>
+                    <td className="token-prefix"><code>{token.prefix}</code></td>
+                    <td>
+                      {token.scopes.map((scope) => (
+                        <Tag key={scope} type="default">{scope}</Tag>
+                      ))}
+                    </td>
+                    <td className="token-date">
+                      {new Date(token.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="token-date">
+                      {token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleDateString() : 'Never'}
+                    </td>
+                    <td className="token-actions">
+                      <Button
+                        type="danger"
+                        onClick={() => setTokenToRevoke(token)}
+                        data-testid={`revoke-token-${token.id}`}
+                      >
+                        Revoke
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty-state" data-testid="tokens-empty-state">
+            <p>No API tokens found. Generate a token to allow external applications to access this site.</p>
+          </div>
+        )}
+      </section>
+
       <ConfirmDeleteModal
         isOpen={branchToDelete !== null}
         resourceType="branch"
@@ -525,6 +703,16 @@ export function SiteDetailPage() {
         onCancel={() => setCollaboratorToRemove(null)}
         isDeleting={isRemovingCollaborator}
         error={removeCollaboratorError}
+      />
+
+      <ConfirmDeleteModal
+        isOpen={tokenToRevoke !== null}
+        resourceType="token"
+        resourceName={tokenToRevoke?.name ?? ''}
+        onConfirm={handleRevokeToken}
+        onCancel={() => setTokenToRevoke(null)}
+        isDeleting={isRevokingToken}
+        error={revokeTokenError}
       />
     </div>
   );

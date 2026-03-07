@@ -247,6 +247,19 @@ export interface Collaborator {
   updatedAt: string;
 }
 
+// Site API Token types
+export interface SiteApiToken {
+  id: string;
+  siteId: string;
+  prefix: string;
+  name: string;
+  scopes: string[];
+  createdBy: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+}
+
 // Node types
 export interface StructureNode {
   id: string;
