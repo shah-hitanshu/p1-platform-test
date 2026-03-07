@@ -184,13 +184,13 @@ export async function validateToken(
 }
 
 /**
- * List all tokens for a site (metadata only, never hashes).
+ * List active (non-revoked) tokens for a site (metadata only, never hashes).
  */
 export async function listTokens(siteId: string): Promise<TokenMetadata[]> {
   const result = await query<TokenRow>(
     `SELECT id, site_id, prefix, name, scopes, created_by, created_at, last_used_at, revoked_at
      FROM app.site_api_tokens
-     WHERE site_id = $1
+     WHERE site_id = $1 AND revoked_at IS NULL
      ORDER BY created_at DESC`,
     [siteId],
   );
