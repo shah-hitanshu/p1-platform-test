@@ -208,7 +208,7 @@ vi.mock('../../src/services/site-api-token-service', () => ({
 
 describe('sat_ token routing', () => {
   const mockEnv = {
-    ENVIRONMENT: 'test',
+    ENVIRONMENT: 'local',
     LOG_LEVEL: 'debug',
     CORS_ORIGINS: 'https://test.example.com',
     WEBSOCKET_HEARTBEAT_INTERVAL: '30000',

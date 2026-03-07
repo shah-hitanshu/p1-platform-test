@@ -228,10 +228,9 @@ function hasOAuthProviders(env: Env): boolean {
 function getIdentityProvider(env: Env): MultiProviderIdentityProvider {
   const providers = [];
 
-  // Mock provider: available in non-production environments for token validation
-  // (requires MOCK_JWT_SECRET). Mock auth *endpoints* are separately gated
-  // by hasOAuthProviders() so tokens cannot be issued when OAuth is configured.
-  if (env.ENVIRONMENT !== 'production') {
+  // Mock provider: available only in local development for token validation.
+  // Sandboxes and production are internet-facing and must use real auth.
+  if (env.ENVIRONMENT === 'local') {
     providers.push(new MockIdentityProviderAdapter(
       new MockIdentityProvider({
         config: DEFAULT_MOCK_CONFIG,
