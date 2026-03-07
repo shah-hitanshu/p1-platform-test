@@ -179,11 +179,7 @@ describe('API Tokens Section', () => {
     });
 
     await user.type(screen.getByTestId('token-name-input'), 'New Token');
-    await user.click(screen.getByTestId('create-token-form'));
-
-    // Submit the form (click submit button or press enter)
-    const form = screen.getByTestId('create-token-form');
-    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await user.click(screen.getByTestId('submit-token-btn'));
 
     await waitFor(() => {
       expect(screen.getByTestId('raw-token-display')).toBeInTheDocument();
@@ -216,8 +212,15 @@ describe('API Tokens Section', () => {
 
     await user.click(screen.getByTestId('revoke-token-tok-1'));
 
+    // ConfirmDeleteModal requires typing the resource name
     await waitFor(() => {
-      expect(mockRevokeSiteToken).toHaveBeenCalled();
+      expect(screen.getByTestId('confirm-input')).toBeInTheDocument();
+    });
+    await user.type(screen.getByTestId('confirm-input'), 'CI Token');
+    await user.click(screen.getByTestId('delete-button'));
+
+    await waitFor(() => {
+      expect(mockRevokeSiteToken).toHaveBeenCalledWith('site-123', 'tok-1');
     });
   });
 });
