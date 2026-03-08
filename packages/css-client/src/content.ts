@@ -40,6 +40,18 @@ export interface PageListResult {
   isMainBranch: boolean;
 }
 
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end--;
+  return value.slice(0, end);
+}
+
+function trimLeadingSlashes(value: string): string {
+  let start = 0;
+  while (start < value.length && value[start] === '/') start++;
+  return value.slice(start);
+}
+
 export class CSSContentClient {
   private baseUrl: string;
   private apiToken: string;
@@ -47,14 +59,14 @@ export class CSSContentClient {
   private branchId?: string;
 
   constructor(config: CSSContentClientConfig) {
-    this.baseUrl = config.baseUrl.replace(/\/+$/, '');
+    this.baseUrl = trimTrailingSlashes(config.baseUrl);
     this.apiToken = config.apiToken;
     this.siteId = config.siteId;
     this.branchId = config.branchId;
   }
 
   async getPage(documentPath: string): Promise<PageContent | null> {
-    const cleanPath = documentPath.replace(/^\/+/, '');
+    const cleanPath = trimLeadingSlashes(documentPath);
     let url = `${this.baseUrl}/api/sites/${this.siteId}/content/${cleanPath}`;
     if (this.branchId) {
       url += `?branch=${this.branchId}`;
