@@ -1,4 +1,5 @@
 import type { AuthMode } from './auth/CSSAuthProvider.js';
+import { CSSContentClient } from '@pantheon/css-client';
 
 export interface CSSConfig {
   baseUrl: string;
@@ -79,4 +80,36 @@ export function createCSSConfig(
     autoSaveDelay: overrides.autoSaveDelay ?? envNum('CSS_AUTO_SAVE_DELAY'),
     maxRetries: overrides.maxRetries ?? envNum('CSS_MAX_RETRIES'),
   };
+}
+
+export function createNextConfig(overrides?: Partial<CSSConfig>): CSSConfig {
+  return createCSSConfig({}, {
+    overrides: {
+      baseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL,
+      siteId: process.env.NEXT_PUBLIC_CSS_SITE_ID,
+      authMode: process.env.NEXT_PUBLIC_CSS_AUTH_MODE as AuthMode | undefined,
+      googleClientId: process.env.NEXT_PUBLIC_CSS_GOOGLE_CLIENT_ID,
+      branchId: process.env.NEXT_PUBLIC_CSS_BRANCH_ID,
+      enableRealtime: process.env.NEXT_PUBLIC_CSS_ENABLE_REALTIME === 'true',
+      wsBaseUrl: process.env.NEXT_PUBLIC_CSS_WS_BASE_URL,
+      enablePresence: process.env.NEXT_PUBLIC_CSS_ENABLE_PRESENCE === 'true',
+      ...overrides,
+    },
+  });
+}
+
+export function createNextContentClient(overrides?: {
+  baseUrl?: string;
+  apiToken?: string;
+  siteId?: string;
+  branchId?: string;
+}): CSSContentClient | null {
+  const baseUrl = overrides?.baseUrl ?? process.env.NEXT_PUBLIC_CSS_BASE_URL;
+  const apiToken = overrides?.apiToken ?? process.env.CSS_API_KEY;
+  const siteId = overrides?.siteId ?? process.env.NEXT_PUBLIC_CSS_SITE_ID;
+  const branchId = overrides?.branchId ?? process.env.NEXT_PUBLIC_CSS_BRANCH_ID;
+
+  if (!baseUrl || !apiToken || !siteId) return null;
+
+  return new CSSContentClient({ baseUrl, apiToken, siteId, branchId });
 }

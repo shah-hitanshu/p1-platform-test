@@ -7,7 +7,7 @@
 // High-level API
 export { CSSApp } from './CSSApp.js';
 export type { CSSAppProps } from './CSSApp.js';
-export { createCSSConfig } from './config.js';
+export { createCSSConfig, createNextConfig, createNextContentClient } from './config.js';
 export type { CSSConfig } from './config.js';
 export { toCSSPath } from './utils/path.js';
 
@@ -304,4 +304,8 @@ export type {
   DocumentVersion,
   Branch,
   Checkpoint,
+  CSSContentClientConfig,
+  PageContent,
+  PageListEntry,
+  PageListResult,
 } from '@pantheon/css-client';
