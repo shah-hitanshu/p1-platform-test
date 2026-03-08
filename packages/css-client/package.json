@@ -17,6 +17,17 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./content": {
+      "import": "./dist/content.js",
+      "types": "./dist/content.d.ts"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "content": [
+        "./dist/content.d.ts"
+      ]
     }
   },
   "files": [

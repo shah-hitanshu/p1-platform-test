@@ -4,6 +4,13 @@
  * Puck editor integration with the Collaborative State System.
  */
 
+// High-level API
+export { CSSApp } from './CSSApp.js';
+export type { CSSAppProps } from './CSSApp.js';
+export { createCSSConfig } from './config.js';
+export type { CSSConfig } from './config.js';
+export { toCSSPath } from './utils/path.js';
+
 // Auth
 export {
   CSSAuthProvider,

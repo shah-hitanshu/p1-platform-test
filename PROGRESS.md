@@ -1085,13 +1085,33 @@ To enable focus highlighting in the demo, the following would need to be added:
 
 ---
 
+### Content Delivery: CSSContentClient + Subpath Exports (2026-03-07) ✅
+
+#### CSSContentClient (`@pantheon/css-client/content`)
+- Server-side content delivery client for reading published content
+- Uses `X-API-Key` header with `sat_` tokens (service principal auth)
+- `getPage(path, branch?)` — fetch a single document's content by path
+- `getPagePaths(branch?)` — list all page paths on a branch
+- 404 → `null`, errors → `CSSApiError`
+- Zero browser dependencies — works in Node 18+, Deno, Bun, Workers
+- 11 tests in `packages/css-client/tests/content.spec.ts`
+
+#### Subpath Exports
+- `@pantheon/css-client/content` — server-only CSSContentClient import (avoids pulling in browser OAuth deps)
+- `@pantheon/puck-css/config` — `createCSSConfig` for server-side imports (avoids Turbopack RSC resolution failure through Puck barrel)
+- `@pantheon/puck-css/utils/path` — `toCSSPath` for server-side imports
+- `typesVersions` added to both packages for `moduleResolution: "node"` compatibility
+
+#### Downstream Integration (my-app)
+- Render path: server-side `getContentClient().getPage()` replaces client-side `CSSRenderProvider`
+- Edit path: `EditorWithCSSApp.tsx` (~170 lines) replaces `EditorWithCSS.tsx` (~2100 lines) using `CSSApp` + `useCSSEditor`
+- Google OAuth verified working end-to-end
+
 ## Remaining Work
 
-### Phase 7: E2E Tests
-- Playwright tests for full user flows
-- Test auto-save behavior
-- Test publish workflow
-- Test branch switching
+### Future
+- Apply render/edit split pattern to airbus site
+- Update MIGRATION-GUIDE.md with render/edit split and content delivery patterns
 
 ## How to Run
 
