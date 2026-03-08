@@ -3,7 +3,7 @@
  *
  * Enforces that service principals (from site API tokens) are restricted to:
  * 1. Their bound siteId
- * 2. Operations allowed by their scopes
+ * 2. Operations allowed by their scopes (method, handler, branch constraints)
  *
  * Non-service principals (users, agents) pass through without restriction.
  */
@@ -16,12 +16,34 @@ export interface ServicePrincipalCheck {
 }
 
 /**
- * Scope-to-allowed-methods mapping.
- * Defines which HTTP methods each scope permits.
+ * Defines the constraints for a single scope.
  */
-const SCOPE_METHODS: Record<string, string[]> = {
-  'read:published': ['GET'],
-  'read:draft': ['GET'],
+export interface ScopeRule {
+  methods: string[];
+  allowedHandlers: string[] | '*';
+  mainBranchOnly?: boolean;
+}
+
+/**
+ * Scope rules mapping.
+ * Defines which HTTP methods, route handlers, and branch constraints each scope permits.
+ */
+export const SCOPE_RULES: Record<string, ScopeRule> = {
+  'read:published': {
+    methods: ['GET'],
+    allowedHandlers: ['content'],
+    mainBranchOnly: true,
+  },
+  'read:all': {
+    methods: ['GET'],
+    allowedHandlers: ['content'],
+    mainBranchOnly: false,
+  },
+  'read:draft': {
+    methods: ['GET'],
+    allowedHandlers: ['content', 'documents', 'branches'],
+    mainBranchOnly: false,
+  },
 };
 
 /**
@@ -33,11 +55,15 @@ const SCOPE_METHODS: Record<string, string[]> = {
  * @param principal - The authenticated principal
  * @param requestSiteId - The site ID from the request path
  * @param method - The HTTP method
+ * @param routeHandler - The route handler name (defaults to 'content' for backward compatibility)
+ * @param branchIsMain - Whether the target branch is main (undefined treated as main for backward compatibility)
  */
 export function isServicePrincipalAllowed(
   principal: AuthenticatedPrincipal,
   requestSiteId: string,
   method: string,
+  routeHandler = 'content',
+  branchIsMain?: boolean,
 ): ServicePrincipalCheck {
   // Only enforce for service principals
   if (principal.type !== 'service') {
@@ -57,24 +83,37 @@ export function isServicePrincipalAllowed(
     };
   }
 
-  // Scope enforcement: check method is allowed by at least one scope
+  // Scope enforcement: check if ANY scope allows the operation
   const scopes = principal.scopes ?? [];
-  const allowedMethods = new Set<string>();
+  const effectiveBranchIsMain = branchIsMain ?? true;
+
   for (const scope of scopes) {
-    const methods = SCOPE_METHODS[scope];
-    if (methods) {
-      for (const m of methods) {
-        allowedMethods.add(m);
-      }
+    const rule = SCOPE_RULES[scope];
+    if (!rule) {
+      continue;
     }
+
+    // Check method
+    if (!rule.methods.includes(method)) {
+      continue;
+    }
+
+    // Check handler
+    if (rule.allowedHandlers !== '*' && !rule.allowedHandlers.includes(routeHandler)) {
+      continue;
+    }
+
+    // Check branch constraint
+    if (rule.mainBranchOnly === true && !effectiveBranchIsMain) {
+      continue;
+    }
+
+    // This scope allows the operation
+    return { allowed: true };
   }
 
-  if (!allowedMethods.has(method)) {
-    return {
-      allowed: false,
-      reason: `Scopes [${scopes.join(', ')}] do not allow ${method} requests`,
-    };
-  }
-
-  return { allowed: true };
+  return {
+    allowed: false,
+    reason: 'Insufficient scope for this operation',
+  };
 }

@@ -452,3 +452,12 @@
   font-size: 0.875rem;
   word-break: break-all;
 }
+
+/* Settings Section */
+.settings-section {
+  background-color: var(--dt-color-white, #fff);
+  border-radius: 8px;
+  padding: 24px;
+  margin-top: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}

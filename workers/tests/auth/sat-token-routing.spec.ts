@@ -122,6 +122,24 @@ vi.mock('../../src/routes/realtime-api', () => ({
   ),
 }));
 
+vi.mock('../../src/routes/content-api', () => ({
+  handleContentRoutes: vi.fn().mockImplementation(() =>
+    new Response(JSON.stringify({ mock: 'content-api' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  ),
+}));
+
+vi.mock('../../src/routes/site-settings-api', () => ({
+  handleSiteSettingsRoutes: vi.fn().mockImplementation(() =>
+    new Response(JSON.stringify({ mock: 'site-settings-api' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  ),
+}));
+
 // Default mock principals for auth
 const mockTokenPrincipal = {
   id: 'user-alice',
@@ -243,9 +261,9 @@ describe('sat_ token routing', () => {
 
   it('should authenticate sat_ tokens via X-API-Key header', async () => {
     const module = await import('../../src/index');
-    const siteApi = await import('../../src/routes/site-api');
+    const contentApi = await import('../../src/routes/content-api');
 
-    const request = new Request('https://api.example.com/api/sites/site-123', {
+    const request = new Request('https://api.example.com/api/sites/site-123/content/home', {
       method: 'GET',
       headers: {
         'X-API-Key': 'sat_validtoken123',
@@ -255,13 +273,13 @@ describe('sat_ token routing', () => {
     const response = await module.default.fetch(request, mockEnv, mockContext);
 
     expect(response.status).toBe(200);
-    expect(siteApi.handleSiteRoutes).toHaveBeenCalled();
+    expect(contentApi.handleContentRoutes).toHaveBeenCalled();
   });
 
   it('should authenticate sat_ tokens via apiKey query parameter', async () => {
     const module = await import('../../src/index');
 
-    const request = new Request('https://api.example.com/api/sites/site-123?apiKey=sat_validtoken123', {
+    const request = new Request('https://api.example.com/api/sites/site-123/content/home?apiKey=sat_validtoken123', {
       method: 'GET',
     });
 

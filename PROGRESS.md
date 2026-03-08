@@ -3170,3 +3170,107 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - Static assets (JS, CSS) served from CDN cache
 - Admin user creation reflects immediately in user list
 - API calls from deployed frontend succeed (CORS + auth working)
+
+---
+
+### Content Delivery Plan (Phases 1-7)
+
+**Status:** Complete
+**Branch:** `feature/content-delivery`
+
+#### Phase 1: Site Settings API
+- `workers/src/db/migrations/021_site_settings.sql` — JSONB settings column on `app.sites`
+- `workers/src/services/site-settings-service.ts` — CRUD with validation, JSONB merge
+- `workers/src/routes/site-settings-api.ts` — GET/PATCH endpoints with role authorization
+- 30 tests (19 service + 11 route)
+
+#### Phase 2: Content Delivery Endpoints
+- `workers/src/routes/content-api.ts` — GET content by path, GET content-pages listing
+- Branch resolution, ETag/304, Cache-Control with per-site TTL settings
+- 16 tests
+
+#### Phase 3: Scope Enforcement Upgrade
+- Replaced `SCOPE_METHODS` with `SCOPE_RULES` — route-aware and branch-aware
+- `read:published` (main only, content only), `read:all` (any branch, content), `read:draft` (full draft API)
+- Updated `index.ts` to pass routeHandler and branchIsMain to scope check
+- 22 tests
+
+#### Phase 4: Admin Frontend — Token Scopes
+- `frontend/src/components/ScopeSelector.tsx` — checkbox component with supersession logic
+- SiteDetailPage: scope selector in token form, scope badges with color coding
+- 15 tests (8 component + 7 integration)
+
+#### Phase 5: Admin Frontend — Site Cache Settings
+- `frontend/src/api/site-settings.ts` — API client for GET/PATCH settings
+- `frontend/src/components/CacheSettings.tsx` — TTL inputs with validation, reset-to-defaults
+- SiteDetailPage: Settings section, fetched on page load
+- 24 tests (14 component + 6 API + 4 integration)
+
+#### Phase 6: CSSContentClient
+- `CSSContentClient` class with `getPage()` and `getPagePaths()` methods
+- X-API-Key auth, optional branch query param, 404→null, errors→CSSApiError
+- **Correction:** Originally misplaced in this repo's `packages/css-client/`; moved to puck-css-integration's `packages/css-client/` where the `@pantheon/css-client` package lives. Misplaced files removed from this repo.
+- Available via `@pantheon/css-client` (barrel) and `@pantheon/css-client/content` (subpath, no browser deps)
+- 11 tests in puck-css-integration repo
+
+#### Phase 7: High-Level Module API (in puck-css-integration repo)
+- `packages/puck-css/src/config.ts` — `createCSSConfig()` env factory with prefix/overrides
+- `packages/puck-css/src/CSSApp.tsx` — full provider composition: CSSAuthProvider → AuthGate → CSSClient creation → CSSPuckProvider → conditional FocusHighlightProvider
+  - Creates CSSClient with `clientBaseUrl || baseUrl` and Bearer token auth
+  - Passes all config props to CSSPuckProvider (siteId, branchId, realtime, presence, etc.)
+  - Uses `key={userId-token}` to force clean re-mount on user switch
+  - Conditionally mounts FocusHighlightProvider when `enablePresence` is true
+- `packages/puck-css/src/utils/path.ts` — `toCSSPath()` route→document path converter
+- Exported from `@pantheon/puck-css` index
+- **Demo app rewrite** (`apps/demo/src/App.tsx`) — ~314 lines → ~220 lines using `CSSApp` + `createCSSConfig`
+  - Eliminated manual CSSAuthProvider wiring, auth gate logic, CSSClient/CSSPuckProvider composition
+  - Uses `createCSSConfig(import.meta.env, { prefix: 'VITE_', overrides: {...} })` for env parsing
+  - Preserved UserSwitcher, AppContent, and ConfigWarning functionality
+- **E2E validation** — all 12 Playwright tests passing against local backend
+  - Fixed pre-existing Publish button test (Puck overlay intercepting pointer events — used `dispatchEvent`)
+  - Updated login page heading assertions to match new `loginPageProps`
+  - Added local backend env vars to Playwright webServer config
+- Branch: `feature/content-delivery-phase7` in puck-css-integration repo, PR #11
+- 34 unit tests (11 config + 8 path + 7 CSSApp auth gate + 8 CSSApp provider composition)
+- 12 E2E tests (3 auth + 8 editor + 1 version management)
+
+#### Key design decisions:
+- **Conservative branch enforcement** — `?branch=` param present → `branchIsMain=false`, no DB lookup needed
+- **JSONB merge for settings** — PostgreSQL `||` operator, key removal with `-` for null values
+- **Zero-dep content client** — global `fetch` only, works in Node 18+, Deno, Bun, Workers
+- **Env-agnostic config** — `createCSSConfig` takes env source record, never reads process.env directly
+- **CSSApp handles full provider tree** — consumers only need `<CSSApp config={config}>` instead of manually composing CSSAuthProvider + CSSClient + CSSPuckProvider + FocusHighlightProvider
+- **dispatchEvent for Puck overlay** — Puck's editor renders overlay divs that intercept pointer events on header buttons; `dispatchEvent('click')` bypasses this reliably in E2E tests
+
+### my-app Migration to CSSApp + Server-Side Content Delivery
+
+**Status:** Complete
+**Commits:**
+- `a40b143` (my-app) — feat: migrate to CSSApp + server-side content delivery
+- `1a0be9c` (puck-css-integration) — feat: add CSSContentClient and subpath exports
+- `8dc8074` (collaborative-state-system) — fix: remove misplaced css-client package; add content delivery plan
+
+#### Render Path (Public Pages)
+- Server-side content delivery via `CSSContentClient` using `sat_` token (`read:published` scope)
+- `CSS_API_KEY` env var (server-only, no `NEXT_PUBLIC_` prefix) holds the site API token
+- `getContentClient()` helper in `lib/css-config.ts` creates the client
+- `app/(site)/page.tsx` and `app/(site)/[...puckPath]/page.tsx` fetch content at request time
+- Falls back to `getPage()` (database.json) when CSS is not configured
+- Deleted `CSSRenderProvider.tsx` and `PuckRenderClient.tsx` (wrong architecture — used client-side providers for server-side fetches)
+
+#### Edit Path (Authenticated)
+- `EditorWithCSSApp.tsx` (~170 lines) replaces `EditorWithCSS.tsx` (~2100 lines)
+- Uses `CSSApp` + `useCSSEditor` from `@pantheon/puck-css` — CSSApp handles auth gating, client creation, and provider composition
+- Google OAuth login verified working (chris.yates@pantheon.io)
+- Includes `UserSwitcher` for mock auth mode
+
+#### Infrastructure Fixes
+- Applied migration 021 (`ALTER TABLE app.sites ADD COLUMN settings JSONB`) to local DB
+- Corrected site API token scope from `read:draft` to `read:published` (prefix `sat_SFlD3aPf`)
+- Discovered wrangler dev does NOT hot-reload `.dev.vars` — must restart for new env vars
+
+#### Subpath Exports Added
+- `@pantheon/css-client/content` — server-only CSSContentClient (no browser deps)
+- `@pantheon/puck-css/config` — createCSSConfig for server-side imports
+- `@pantheon/puck-css/utils/path` — toCSSPath for server-side imports
+- `typesVersions` added to both packages for `moduleResolution: "node"` compat

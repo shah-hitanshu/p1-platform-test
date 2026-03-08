@@ -90,6 +90,7 @@ export {
   createDocumentVersion,
   getDocumentVersion,
   getLatestDocumentVersion,
+  getLatestPublishedDocumentVersion,
   getLatestVersionsForBranch,
   listDocumentVersions,
   getDocumentVersionByNumber,
@@ -484,3 +485,16 @@ export {
   SiteNotFoundError as PresenceRollupSiteNotFoundError,
   AgentNotFoundError as PresenceRollupAgentNotFoundError,
 } from './presence-rollup-service';
+
+// Site Settings Service
+export {
+  getSiteSettings,
+  updateSiteSettings,
+  getEffectiveCacheTtl,
+  InvalidSettingsError,
+} from './site-settings-service';
+
+export type {
+  SiteSettings,
+  EnvDefaults,
+} from './site-settings-service';

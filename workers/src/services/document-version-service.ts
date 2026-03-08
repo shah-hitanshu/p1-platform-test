@@ -292,6 +292,40 @@ export async function getLatestDocumentVersion(
 }
 
 /**
+ * Retrieves the latest *published* version of a document on a branch.
+ * A published version is one that has been captured in a checkpoint.
+ * Uses the checkpoint_documents join table to find the most recent
+ * checkpoint-associated version.
+ *
+ * @param documentId - The document ID
+ * @param branchId - The branch ID
+ * @returns The latest published document version or null if none exist
+ */
+export async function getLatestPublishedDocumentVersion(
+  documentId: string,
+  branchId: string,
+): Promise<DocumentVersion | null> {
+  const result = await query<DocumentVersionRow>(
+    `SELECT dv.*
+     FROM app.document_versions dv
+     INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
+     INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+     WHERE dv.document_id = $1
+       AND dv.branch_id = $2
+       AND cp.branch_id = $2
+     ORDER BY dv.version_number DESC
+     LIMIT 1`,
+    [documentId, branchId],
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return mapRowToDocumentVersion(getFirstRow(result.rows));
+}
+
+/**
  * Retrieves the latest version for each document on a branch.
  * Uses a window function to efficiently get the latest version per document.
  *

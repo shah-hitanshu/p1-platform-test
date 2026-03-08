@@ -21,9 +21,13 @@ import {
   revokeSiteToken as revokeSiteTokenApi,
 } from '../api/site-tokens';
 import type { GenerateTokenParams, GenerateTokenResult } from '../api/site-tokens';
+import { getSiteSettings, updateSiteSettings } from '../api/site-settings';
+import type { SiteSettings } from '../api/site-settings';
 import { listUsers } from '../api/users';
 import { ApiResponse } from '../components/ApiResponse';
+import { CacheSettings } from '../components/CacheSettings';
 import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
+import { ScopeSelector } from '../components/ScopeSelector';
 import type { Site, Branch, Collaborator, SystemUser, SiteApiToken } from '../types';
 import {
   Button,
@@ -82,8 +86,15 @@ export function SiteDetailPage() {
   const { execute: revokeTokenRequest, isLoading: isRevokingToken, error: revokeTokenError } =
     useApi<void, [string, string]>(revokeSiteTokenApi);
 
+  // Settings state
+  const { data: siteSettings, isLoading: settingsLoading, execute: fetchSettings } =
+    useApi<SiteSettings, [string]>(getSiteSettings);
+  const { execute: updateSettingsRequest, isLoading: isUpdatingSettings } =
+    useApi<SiteSettings, [string, Partial<SiteSettings>]>(updateSiteSettings);
+
   const [showTokenForm, setShowTokenForm] = useState(false);
   const [newTokenName, setNewTokenName] = useState('');
+  const [selectedScopes, setSelectedScopes] = useState<string[]>(['read:published']);
   const [generatedToken, setGeneratedToken] = useState<GenerateTokenResult | null>(null);
   const [tokenToRevoke, setTokenToRevoke] = useState<SiteApiToken | null>(null);
   const [tokenCopied, setTokenCopied] = useState(false);
@@ -95,8 +106,9 @@ export function SiteDetailPage() {
       fetchCollaborators(siteId);
       fetchSystemUsers();
       fetchTokens(siteId);
+      fetchSettings(siteId);
     }
-  }, [siteId, fetchSite, fetchBranches, fetchCollaborators, fetchSystemUsers, fetchTokens]);
+  }, [siteId, fetchSite, fetchBranches, fetchCollaborators, fetchSystemUsers, fetchTokens, fetchSettings]);
 
   const handleCreateBranch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,10 +182,11 @@ export function SiteDetailPage() {
     e.preventDefault();
     if (!newTokenName.trim() || !siteId) return;
 
-    const result = await generateTokenRequest(siteId, { name: newTokenName.trim() });
+    const result = await generateTokenRequest(siteId, { name: newTokenName.trim(), scopes: selectedScopes });
     if (result) {
       setGeneratedToken(result);
       setNewTokenName('');
+      setSelectedScopes(['read:published']);
       setShowTokenForm(false);
       fetchTokens(siteId);
     }
@@ -199,6 +212,12 @@ export function SiteDetailPage() {
     }
   };
 
+  const handleSaveSettings = async (settings: { cacheTtlMain?: number | null; cacheTtlBranch?: number | null }) => {
+    if (!siteId) return;
+    await updateSettingsRequest(siteId, settings as Partial<SiteSettings>);
+    fetchSettings(siteId);
+  };
+
   const getUserEmail = (userId: string): string => {
     const user = systemUsers?.find((u) => u.id === userId);
     return user?.email ?? userId;
@@ -210,6 +229,17 @@ export function SiteDetailPage() {
       case 'admin':
         return 'info';
       case 'developer':
+        return 'success';
+      default:
+        return 'default';
+    }
+  };
+
+  const getScopeTagType = (scope: string): 'success' | 'info' | 'default' => {
+    switch (scope) {
+      case 'read:all':
+        return 'info';
+      case 'read:draft':
         return 'success';
       default:
         return 'default';
@@ -567,7 +597,7 @@ export function SiteDetailPage() {
           <h2 className="section-title" data-testid="section-title-tokens">API Tokens</h2>
           <Button
             type={showTokenForm ? 'secondary' : 'primary'}
-            onClick={() => { setShowTokenForm(!showTokenForm); setGeneratedToken(null); }}
+            onClick={() => { setShowTokenForm(!showTokenForm); setGeneratedToken(null); setSelectedScopes(['read:published']); }}
             data-testid="create-token-btn"
           >
             {showTokenForm ? 'Cancel' : '+ Generate token'}
@@ -606,6 +636,7 @@ export function SiteDetailPage() {
                   data-testid="token-name-input"
                 />
               </div>
+              <ScopeSelector selectedScopes={selectedScopes} onChange={setSelectedScopes} />
               <Button
                 type="primary"
                 isSubmit
@@ -655,7 +686,7 @@ export function SiteDetailPage() {
                     <td className="token-prefix"><code>{token.prefix}</code></td>
                     <td>
                       {token.scopes.map((scope) => (
-                        <Tag key={scope} type="default">{scope}</Tag>
+                        <Tag key={scope} type={getScopeTagType(scope)} data-testid={`scope-badge-${token.id}-${scope}`}>{scope}</Tag>
                       ))}
                     </td>
                     <td className="token-date">
@@ -683,6 +714,19 @@ export function SiteDetailPage() {
             <p>No API tokens found. Generate a token to allow external applications to access this site.</p>
           </div>
         )}
+      </section>
+
+      {/* Settings Section */}
+      <section className="settings-section" data-testid="settings-section">
+        <div className="section-header">
+          <h2 className="section-title" data-testid="section-title-settings">Settings</h2>
+        </div>
+        <CacheSettings
+          settings={siteSettings}
+          isLoading={settingsLoading}
+          onSave={handleSaveSettings}
+          isSaving={isUpdatingSettings}
+        />
       </section>
 
       <ConfirmDeleteModal

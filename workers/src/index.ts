@@ -35,6 +35,8 @@ import { handleRealtimeRoutes } from './routes/realtime-api';
 import { handleInternalRoutes } from './routes/internal-api';
 import { handlePresenceRoutes } from './routes/presence-api';
 import { handleSiteTokenRoutes } from './routes/site-token-api';
+import { handleSiteSettingsRoutes } from './routes/site-settings-api';
+import { handleContentRoutes } from './routes/content-api';
 
 // Auth providers
 import { SiteApiTokenProvider } from './auth/site-token-provider';
@@ -549,6 +551,33 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
     return {
       handler: 'admin-users',
       params: { userId: adminUsersMatch[1] },
+    };
+  }
+
+  // Site settings routes (must come before generic site routes)
+  const siteSettingsMatch = /^\/api\/sites\/([^/]+)\/settings$/.exec(normalizedPath);
+  if (siteSettingsMatch) {
+    return {
+      handler: 'site-settings',
+      params: { siteId: siteSettingsMatch[1] },
+    };
+  }
+
+  // Content pages route (must come before content route)
+  const contentPagesMatch = /^\/api\/sites\/([^/]+)\/content-pages$/.exec(normalizedPath);
+  if (contentPagesMatch) {
+    return {
+      handler: 'content',
+      params: { siteId: contentPagesMatch[1], action: 'content-pages' },
+    };
+  }
+
+  // Content delivery route (documentPath may contain slashes)
+  const contentMatch = /^\/api\/sites\/([^/]+)\/content\/(.+)$/.exec(normalizedPath);
+  if (contentMatch) {
+    return {
+      handler: 'content',
+      params: { siteId: contentMatch[1], documentPath: contentMatch[2], action: 'content' },
     };
   }
 
@@ -1258,7 +1287,15 @@ async function handleRequest(
         env,
       );
     }
-    const scopeCheck = isServicePrincipalAllowed(principal, route.params.siteId, request.method);
+    // Determine if the request targets the main branch for scope enforcement.
+    // If ?branch= is present, assume non-main (conservative for read:published).
+    // If absent, the route handler will default to main branch.
+    const requestUrl = new URL(request.url);
+    const branchParam = requestUrl.searchParams.get('branch');
+    const branchIsMain = branchParam === null || branchParam === '' ? undefined : false;
+    const scopeCheck = isServicePrincipalAllowed(
+      principal, route.params.siteId, request.method, route.handler, branchIsMain,
+    );
     if (!scopeCheck.allowed) {
       return addCorsHeaders(
         errorResponse(scopeCheck.reason ?? 'Access denied', 403),
@@ -1344,6 +1381,22 @@ async function handleRequest(
     let response: Response;
 
     switch (route.handler) {
+      case 'site-settings':
+        response = await handleSiteSettingsRoutes(request, {
+          siteId: route.params.siteId,
+          principal,
+        });
+        break;
+
+      case 'content':
+        response = await handleContentRoutes(request, {
+          siteId: route.params.siteId ?? '',
+          documentPath: route.params.documentPath,
+          action: route.params.action as 'content' | 'content-pages',
+          principal,
+        });
+        break;
+
       case 'site-tokens':
         response = await handleSiteTokenRoutes(request, {
           siteId: route.params.siteId,
