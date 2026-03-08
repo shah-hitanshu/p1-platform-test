@@ -13,10 +13,24 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "config": ["./dist/config.d.ts"],
+      "utils/path": ["./dist/utils/path.d.ts"]
+    }
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./config": {
+      "import": "./dist/config.js",
+      "types": "./dist/config.d.ts"
+    },
+    "./utils/path": {
+      "import": "./dist/utils/path.js",
+      "types": "./dist/utils/path.d.ts"
     },
     "./styles.css": "./dist/styles.css"
   },

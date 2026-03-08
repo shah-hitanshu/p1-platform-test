@@ -99,6 +99,15 @@ export {
   ValidationError,
 } from './errors.js';
 
+// Content delivery (read-only)
+export { CSSContentClient } from './content.js';
+export type {
+  CSSContentClientConfig,
+  PageContent,
+  PageListEntry,
+  PageListResult,
+} from './content.js';
+
 // Real-time collaboration
 export { RealtimeClient } from './realtime.js';
 export type { RealtimeClientConfig, ConnectionParams } from './realtime.js';

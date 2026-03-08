@@ -1,0 +1,95 @@
+/**
+ * CSS Content Client
+ *
+ * Read-only client for fetching published content from the CSS content delivery API.
+ * Designed for server-side use (e.g., Next.js SSR/SSG) without pulling in
+ * browser dependencies like partysocket.
+ */
+
+import { CSSApiError } from './errors.js';
+
+export interface CSSContentClientConfig {
+  baseUrl: string;
+  apiToken: string;
+  siteId: string;
+  branchId?: string;
+}
+
+export interface PageContent {
+  documentId: string;
+  path: string;
+  data: Record<string, unknown>;
+  branchId: string;
+  branchName: string;
+  isMainBranch: boolean;
+  versionNumber: number;
+  versionCreatedAt: string;
+  etag: string;
+}
+
+export interface PageListEntry {
+  path: string;
+  documentId: string;
+  lastModifiedAt: string;
+}
+
+export interface PageListResult {
+  pages: PageListEntry[];
+  branchId: string;
+  branchName: string;
+  isMainBranch: boolean;
+}
+
+export class CSSContentClient {
+  private baseUrl: string;
+  private apiToken: string;
+  private siteId: string;
+  private branchId?: string;
+
+  constructor(config: CSSContentClientConfig) {
+    this.baseUrl = config.baseUrl.replace(/\/+$/, '');
+    this.apiToken = config.apiToken;
+    this.siteId = config.siteId;
+    this.branchId = config.branchId;
+  }
+
+  async getPage(documentPath: string): Promise<PageContent | null> {
+    const cleanPath = documentPath.replace(/^\/+/, '');
+    let url = `${this.baseUrl}/api/sites/${this.siteId}/content/${cleanPath}`;
+    if (this.branchId) {
+      url += `?branch=${this.branchId}`;
+    }
+    const response = await fetch(url, {
+      headers: { 'X-API-Key': this.apiToken },
+    });
+    if (response.status === 404) {
+      return null;
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new CSSApiError(
+        (body as { error?: string }).error || `HTTP ${response.status}`,
+        response.status,
+      );
+    }
+    return response.json() as Promise<PageContent>;
+  }
+
+  async getPagePaths(): Promise<PageListResult> {
+    let url = `${this.baseUrl}/api/sites/${this.siteId}/content-pages`;
+    if (this.branchId) {
+      url += `?branch=${this.branchId}`;
+    }
+    const response = await fetch(url, {
+      headers: { 'X-API-Key': this.apiToken },
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new CSSApiError(
+        (body as { error?: string }).error || `HTTP ${response.status}`,
+        response.status,
+      );
+    }
+    return response.json() as Promise<PageListResult>;
+  }
+}
