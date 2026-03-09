@@ -134,6 +134,12 @@ function CSSPuckProviderInner({
   // corruption during rapid document switching.
   const currentDataDocumentPathRef = useRef<string | null>(null);
 
+  // Suppresses the next saveData call after loadDocument completes.
+  // PuckDataSynchronizer dispatches setData into Puck, which fires onChange,
+  // which calls saveData — but this is just echoing the loaded data, not a
+  // user edit. This flag prevents that echo from triggering a false save.
+  const suppressNextSaveRef = useRef(false);
+
   // Monotonically increasing counter for stale loadDocument response detection.
   // Each loadDocument call increments this and captures the current value.
   // After each async operation, the captured value is compared to the current
@@ -475,6 +481,12 @@ function CSSPuckProviderInner({
   // Sends changes via WebSocket when realtime is enabled (but not for remote updates)
   const saveData = useCallback(
     (data: PuckData) => {
+      // Suppress the onChange echo from PuckDataSynchronizer after loadDocument.
+      if (suppressNextSaveRef.current) {
+        suppressNextSaveRef.current = false;
+        return;
+      }
+
       // When realtime is enabled, detect whether this onChange came from a remote
       // sync (Yjs update from another client) vs. a local user edit.
       // Remote updates should NOT trigger a REST save — the DO handles persistence.
@@ -626,6 +638,7 @@ function CSSPuckProviderInner({
         viewingVersionRef.current = null;
 
         currentDataDocumentPathRef.current = doc.path;
+        suppressNextSaveRef.current = true;
         setCurrentData(puckData);
         setLatestVersionData(puckData);
         setViewingVersion(null);

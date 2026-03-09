@@ -158,7 +158,7 @@ function AppContent() {
     [setSearchParams]
   );
 
-  const { loading, error, puckProps } = useCSSEditor({
+  const { loading, error, puckKey, puckProps } = useCSSEditor({
     documentPath,
     puckConfig,
     pluginOptions: {
@@ -199,7 +199,7 @@ function AppContent() {
   return (
     <div className="app app--fullscreen">
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-      <Puck {...puckProps as any} />
+      <Puck key={puckKey} {...puckProps as any} />
       {authMode === 'mock' && <UserSwitcher />}
     </div>
   );

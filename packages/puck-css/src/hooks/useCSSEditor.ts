@@ -64,6 +64,8 @@ export interface UseCSSEditorReturn {
   loading: boolean;
   /** Error from document loading, if any */
   error: Error | null;
+  /** React key — pass directly as `<Puck key={puckKey} {...puckProps} />` to force clean remount on document switch */
+  puckKey: string;
   /** Props to spread onto <Puck> */
   puckProps: PuckProps;
   /** Full CSS context for advanced/escape-hatch use */
@@ -270,6 +272,10 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   // Assemble puckProps
   // =========================================================================
 
+  // Key that forces Puck to remount on document switch, ensuring clean
+  // undo history, sidebar state, and no false onChange echo from setData.
+  const puckKey = `css-${css.currentDocument?.id ?? documentPath}`;
+
   const puckProps: PuckProps = useMemo(
     () => ({
       config: puckConfig,
@@ -285,6 +291,7 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   return {
     loading,
     error,
+    puckKey,
     puckProps,
     css,
   };

@@ -10,6 +10,11 @@ export interface GoogleOAuthConfig {
   clientId: string;
   /** Storage key for token persistence. Default: 'css_google_token' */
   storageKey?: string;
+  /**
+   * Called whenever a credential is received (from One Tap or renderButton).
+   * Use this to update app state when login happens outside the `login()` promise.
+   */
+  onCredential?: (userInfo: OAuthUserInfo, token: string) => void;
 }
 
 /** Configuration for Auth0 OAuth */
@@ -48,6 +53,13 @@ export interface OAuthSession {
    * (e.g., Google tokens require re-login).
    */
   getToken(): Promise<string | null>;
+  /**
+   * Render a provider-hosted sign-in button into the given container.
+   * For Google, this renders the official GSI button (avoids One Tap cooldown issues).
+   * Returns a cleanup function to remove the button.
+   * Not all providers support this — returns null if unsupported.
+   */
+  renderButton?(container: HTMLElement): (() => void) | null;
 }
 
 /** Buffer before expiry at which we attempt a token refresh (5 minutes). */
@@ -85,10 +97,25 @@ declare global {
             client_id: string;
             callback: (response: { credential: string }) => void;
             auto_select?: boolean;
+            use_fedcm_for_prompt?: boolean;
           }): void;
           prompt(callback?: (notification: { isNotDisplayed(): boolean; isSkippedMoment(): boolean }) => void): void;
+          renderButton(parent: HTMLElement, options: { type?: string; theme?: string; size?: string; text?: string; width?: number }): void;
           revoke(hint: string, callback?: () => void): void;
           disableAutoSelect(): void;
+        };
+        oauth2: {
+          initCodeClient(config: {
+            client_id: string;
+            scope: string;
+            callback: (response: { code?: string; error?: string }) => void;
+            ux_mode?: string;
+          }): { requestCode(): void };
+          initTokenClient(config: {
+            client_id: string;
+            scope: string;
+            callback: (response: { access_token?: string; error?: string }) => void;
+          }): { requestAccessToken(): void };
         };
       };
     };
@@ -183,6 +210,11 @@ export function createGoogleOAuth(config: GoogleOAuthConfig): OAuthSession {
       };
     }
 
+    // Notify via callback (for renderButton flow where login() wasn't called)
+    if (config.onCredential && userInfo) {
+      config.onCredential(userInfo, token);
+    }
+
     if (loginResolve) {
       loginResolve();
       loginResolve = null;
@@ -190,37 +222,85 @@ export function createGoogleOAuth(config: GoogleOAuthConfig): OAuthSession {
     }
   }
 
+  let initialized = false;
+  async function waitForGoogle(timeoutMs = 5000): Promise<void> {
+    if (window.google?.accounts?.id) return;
+    return new Promise((resolve, reject) => {
+      const start = Date.now();
+      const interval = setInterval(() => {
+        if (window.google?.accounts?.id) {
+          clearInterval(interval);
+          resolve();
+        } else if (Date.now() - start > timeoutMs) {
+          clearInterval(interval);
+          reject(new Error('Google Identity Services failed to load'));
+        }
+      }, 50);
+    });
+  }
+
+  async function ensureInitialized(): Promise<void> {
+    await loadScript(GOOGLE_GSI_SCRIPT);
+    await waitForGoogle();
+    if (!initialized) {
+      window.google!.accounts.id.initialize({
+        client_id: config.clientId,
+        callback: handleCredentialResponse,
+        use_fedcm_for_prompt: false,
+      });
+      initialized = true;
+    }
+  }
+
   const session: OAuthSession = {
     provider: 'google',
 
     async login(): Promise<void> {
-      await loadScript(GOOGLE_GSI_SCRIPT);
-
-      if (!window.google) {
-        throw new Error('Google Identity Services failed to load');
-      }
+      await ensureInitialized();
 
       return new Promise<void>((resolve, reject) => {
         loginResolve = resolve;
         loginReject = reject;
 
-        window.google!.accounts.id.initialize({
-          client_id: config.clientId,
-          callback: handleCredentialResponse,
-        });
-
         window.google!.accounts.id.prompt((notification) => {
           if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            // The One Tap prompt was suppressed; the credential callback won't fire.
-            // Reject so the caller knows login did not complete.
+            // One Tap was suppressed (cooldown, browser restrictions, FedCM issues).
+            // Consumers should use renderButton() as a more reliable alternative.
             if (loginReject) {
-              loginReject(new Error('Google sign-in prompt was not displayed. Enable popups or try again.'));
+              loginReject(new Error('Google sign-in prompt was not displayed. The One Tap prompt may be in cooldown.'));
               loginResolve = null;
               loginReject = null;
             }
           }
         });
       });
+    },
+
+    renderButton(container: HTMLElement): (() => void) | null {
+      let cancelled = false;
+
+      ensureInitialized()
+        .then(() => {
+          if (cancelled || !window.google) return;
+          window.google.accounts.id.renderButton(container, {
+            type: 'standard',
+            theme: 'outline',
+            size: 'large',
+            text: 'signin_with',
+            width: 300,
+          });
+        })
+        .catch(() => {
+          // GSI failed to load; button simply won't render.
+          // User can still retry via page refresh.
+        });
+
+      return () => {
+        cancelled = true;
+        while (container.firstChild) {
+          container.removeChild(container.firstChild);
+        }
+      };
     },
 
     async logout(): Promise<void> {
