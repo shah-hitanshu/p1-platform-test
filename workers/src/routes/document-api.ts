@@ -251,16 +251,24 @@ async function handleRestoreDocument(context: DocumentRouteContext): Promise<Res
 
 /**
  * Handle GET /api/sites/{siteId}/branches/{branchId}/documents
+ *
+ * For non-main branches, includes inherited documents from main via COW fallback.
  */
 async function handleListDocumentsOnBranch(
   request: Request,
+  siteId: string,
   branchId: string,
 ): Promise<Response> {
   const url = new URL(request.url);
   const pathPrefix = url.searchParams.get('pathPrefix');
 
+  // For non-main branches, pass mainBranchId to enable copy-on-write fallback
+  const branch = await getBranch(branchId);
+  const mainBranch = branch && !branch.isMain ? await getMainBranch(siteId) : null;
+
   const documents = await listDocumentsOnBranch(branchId, {
     pathPrefix: pathPrefix ?? undefined,
+    mainBranchId: mainBranch?.id,
   });
 
   return jsonResponse({ documents });
@@ -520,7 +528,7 @@ async function handleBranchScopedDocumentRoutes(
   // Collection routes
   switch (method) {
     case 'GET':
-      return await handleListDocumentsOnBranch(request, branchId);
+      return await handleListDocumentsOnBranch(request, context.siteId, branchId);
     case 'POST':
       return await handleCreateDocumentOnBranch(request, context.siteId, branchId, context.principal);
     default:
