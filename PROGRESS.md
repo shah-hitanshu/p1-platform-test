@@ -3277,7 +3277,7 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 
 ### Copy-on-Write Branching Refactor
 
-**Status:** Complete (Phases 1-6 done; Phase 7 future)
+**Status:** Complete (Phases 1-6 done, document-api COW done; Phase 7 future)
 **Branch:** `feature/copy-on-write-branching`
 **Commits:**
 - `43c300e` — test: add Phase 1 + Phase 3 copy-on-write branching tests (red)
@@ -3289,6 +3289,9 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - `07c72db` — feat: migration 023 — remove duplicate version rows for COW branches (Phase 6)
 - `0c72efa` — test: add Phase 2 frontend COW branching tests (red state)
 - `55d17b4` — feat: enforce main-only branching in frontend UI (Phase 2)
+- `33c5e78` — fix: pass mainBranchId to listDocumentsOnBranch in document-api
+- `5d55eb0` — test: add COW fallback tests for document-api and document-service (red state)
+- `1611bb1` — feat: COW fallback for document-api routes and inherited flag in listings
 
 #### Wave 1 — Phases 1+3: Main-Only Branching & COW Branch Creation
 - [x] Enforce `parentBranchId` must be main in `createBranch`
@@ -3327,6 +3330,17 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - [x] Remove deprecated `parentBranchId` from Branch type and API params
 - [x] Unit tests: 5 new Vitest tests for COW branching UI
 - [x] E2E tests: Updated branch-crud and merge-requests specs
+
+#### Wave 6 — Document API COW Fallback
+- [x] `listDocumentsOnBranch` returns `inherited: boolean` per document via `DocumentOnBranch` type
+- [x] SQL UNION: `false AS inherited` for local docs, `true AS inherited` for main-inherited docs
+- [x] GET document on non-main branch falls back to main when no local version exists
+- [x] GET latest version on non-main branch uses `getLatestDocumentVersionWithFallback`
+- [x] POST create version works for inherited documents (COW gate relaxed)
+- [x] Pass `isMainBranch` from route handler to avoid redundant `getBranch` calls
+- [x] Main branch behavior unchanged (no fallback)
+- [x] Tests: 10 new tests (6 API, 4 service)
+- [x] Fix: document-api passes `mainBranchId` to `listDocumentsOnBranch` for non-main branches
 
 #### Remaining
 - [ ] Phase 7: Publish-propagation foundation (future)
