@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { CSSClient } from '@pantheon/css-client';
 import { CSSAuthProvider, useCSSAuth, CSSLoginPage } from './auth/index.js';
 import { CSSPuckProvider } from './CSSPuckProvider.js';
-import { FocusHighlightProvider } from './FocusHighlightContext.js';
 import { useCSSPuck } from './CSSPuckContext.js';
+import { useOptionalPresenceContext } from './PresenceContext.js';
 import { createFocusRegionMap } from './utils/focusRegionMap.js';
+import type { FocusHighlight } from './utils/focusRegionMap.js';
 import type { CSSConfig } from './config.js';
 
 export interface CSSAppProps {
@@ -92,7 +93,9 @@ function AuthenticatedShell({
 
 /**
  * Bridge component that reads presence data from CSSPuckProvider context
- * and computes the focusMap for FocusHighlightProvider.
+ * and applies focus highlights directly to the DOM via Puck's
+ * [data-puck-component] attributes. This avoids React re-renders in the
+ * component tree, preventing scroll jumps and layout recalculation.
  * Must be rendered inside CSSPuckProvider.
  */
 function PresenceFocusBridge({
@@ -103,18 +106,60 @@ function PresenceFocusBridge({
   children: React.ReactNode;
 }): React.ReactElement {
   const css = useCSSPuck();
+  // Read presence from the dedicated PresenceContext (which updates reactively
+  // on presence changes) instead of the main CSSPuck context (which now uses
+  // a ref-based getter to avoid cascading re-renders through the plugin tree).
+  const presenceCtx = useOptionalPresenceContext();
+  const prevHighlightedRef = useRef<Set<string>>(new Set());
 
   const focusMap = useMemo(() => {
-    if (!css.presence) return new Map();
-    const otherActors = css.presence.actors.filter((a) => a.actorId !== userId);
+    if (!presenceCtx) return new Map<string, FocusHighlight>();
+    const otherActors = presenceCtx.actors.filter((a) => a.actorId !== userId);
     return createFocusRegionMap(css.safeData, otherActors);
-  }, [css.presence, css.safeData, userId]);
+  }, [presenceCtx, css.safeData, userId]);
 
-  return (
-    <FocusHighlightProvider focusMap={focusMap}>
-      {children}
-    </FocusHighlightProvider>
-  );
+  // Apply highlights via CSS class/style changes only — no DOM insertions.
+  // Badge is rendered via CSS ::after pseudo-element to avoid DOM mutations
+  // that can trigger browser auto-scroll before user interaction.
+  useEffect(() => {
+    const iframe = document.getElementById('preview-frame') as HTMLIFrameElement | null;
+    const doc = iframe?.contentDocument ?? document;
+
+    // Remove highlights from previously highlighted components
+    prevHighlightedRef.current.forEach((componentId) => {
+      if (!focusMap.has(componentId)) {
+        const el = doc.querySelector(`[data-puck-component="${componentId}"]`);
+        if (el) {
+          el.classList.remove('focus-region-highlight', 'focus-region-highlight--editing');
+          (el as HTMLElement).style.removeProperty('--focus-color');
+          el.removeAttribute('data-focus-actor');
+          el.removeAttribute('data-focus-initial');
+        }
+      }
+    });
+
+    // Apply highlights — only classList and style changes, no child elements
+    const currentHighlighted = new Set<string>();
+    focusMap.forEach((highlight, componentId) => {
+      currentHighlighted.add(componentId);
+      const el = doc.querySelector(`[data-puck-component="${componentId}"]`);
+      if (!el) return;
+
+      el.classList.add('focus-region-highlight');
+      if (highlight.isEditing) {
+        el.classList.add('focus-region-highlight--editing');
+      } else {
+        el.classList.remove('focus-region-highlight--editing');
+      }
+      (el as HTMLElement).style.setProperty('--focus-color', highlight.color);
+      el.setAttribute('data-focus-actor', highlight.actorId);
+      el.setAttribute('data-focus-initial', highlight.actorName.charAt(0).toUpperCase());
+    });
+
+    prevHighlightedRef.current = currentHighlighted;
+  }, [focusMap]);
+
+  return <>{children}</>;
 }
 
 export function CSSApp({

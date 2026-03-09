@@ -1752,7 +1752,8 @@
    Focus Region Highlighting
    ============================================ */
 
-/* Focus region highlight wrapper - shows which components other actors have selected */
+/* Focus region highlight - applied directly to Puck's [data-puck-component] elements via DOM.
+   Uses outline (no layout impact) to avoid scroll jumps. */
 .focus-region-highlight {
   position: relative;
   outline: 2px solid var(--focus-color, #6366f1);
@@ -1775,7 +1776,27 @@
   }
 }
 
-/* Actor badge - shows first initial of actor's name */
+/* Actor badge via ::after pseudo-element — avoids DOM insertion that triggers scroll */
+.focus-region-highlight[data-focus-initial]::after {
+  content: attr(data-focus-initial);
+  position: absolute;
+  top: -0.75rem;
+  left: 0.5rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--focus-color, #6366f1);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 50%;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* Legacy badge class (kept for backwards compatibility) */
 .focus-region-highlight__badge {
   position: absolute;
   top: -0.75rem;

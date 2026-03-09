@@ -876,6 +876,12 @@ function CSSPuckProviderInner({
     };
   }, [presenceEnabled, presenceActors, wsPresenceActors, realtime.connected, fetchPresence]);
 
+  // Keep presence in a ref so it can be read via getter without triggering
+  // context recreation. Presence changes frequently (focus region broadcasts)
+  // but shouldn't cause PuckDataSynchronizer or plugin re-renders.
+  const presenceStateRef = useRef(presenceState);
+  presenceStateRef.current = presenceState;
+
   // =========================================================================
   // Phase 9: Agent Edit Capabilities (when this client IS an agent)
   // =========================================================================
@@ -1351,7 +1357,10 @@ function CSSPuckProviderInner({
       // WebSocket presence - send focus regions via WebSocket when connected
       sendFocusRegions: realtime.sendFocusRegions,
       // Phase 9: Presence & Agent values
-      presence: presenceState,
+      // Use getter to avoid context recreation on every presence update.
+      // Presence changes frequently (focus region broadcasts) but shouldn't
+      // trigger re-renders of data-sync components like PuckDataSynchronizer.
+      get presence() { return presenceStateRef.current; },
       agentEdit: agentEditCapabilities,
       triggerAgent: triggerAgentFn,
       conflicts,
@@ -1398,8 +1407,7 @@ function CSSPuckProviderInner({
       realtime.connected,
       remoteSyncKey,
       realtime.sendFocusRegions,
-      // Phase 9 dependencies
-      presenceState,
+      // Phase 9 dependencies (presenceState excluded — accessed via getter/ref)
       agentEditCapabilities,
       triggerAgentFn,
       conflicts,

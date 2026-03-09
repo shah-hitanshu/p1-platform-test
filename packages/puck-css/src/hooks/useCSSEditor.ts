@@ -12,7 +12,6 @@ import { useCSSPuck } from '../CSSPuckContext.js';
 import { useCSSPlugin } from './useCSSPlugin.js';
 import { useCSSOverrides } from './useCSSOverrides.js';
 import { useVersions } from './useVersions.js';
-import { createFocusHighlightConfig } from '../utils/focusHighlightConfig.js';
 import type { UseCSSPluginOptions } from './useCSSPlugin.js';
 import type { UseCSSOverridesOptions } from './useCSSOverrides.js';
 import type { PuckPlugin, PuckOverrides } from '../plugin/index.js';
@@ -298,25 +297,19 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   // undo history, sidebar state, and no false onChange echo from setData.
   const puckKey = `css-${css.currentDocument?.id ?? documentPath}`;
 
-  // Wrap config with focus highlight wrappers when presence is enabled.
-  // Uses context-based mode: config is created once, highlights update
-  // via FocusHighlightProvider without config recreation.
-  const presenceEnabled = css.presence !== null;
-  const highlightConfig = useMemo(
-    () => presenceEnabled ? createFocusHighlightConfig(puckConfig as Record<string, unknown>) : puckConfig,
-    [puckConfig, presenceEnabled]
-  );
+  // Focus highlighting is handled via direct DOM manipulation in
+  // PresenceFocusBridge (CSSApp.tsx) — no config wrapping needed.
 
   const puckProps: PuckProps = useMemo(
     () => ({
-      config: highlightConfig,
+      config: puckConfig,
       data: css.safeData,
       onChange,
       plugins,
       overrides: cssOverrides,
       ...(permissions ? { permissions } : {}),
     }),
-    [highlightConfig, css.safeData, onChange, plugins, cssOverrides, permissions]
+    [puckConfig, css.safeData, onChange, plugins, cssOverrides, permissions]
   );
 
   return {
