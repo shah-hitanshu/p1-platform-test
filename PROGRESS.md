@@ -3277,7 +3277,7 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 
 ### Copy-on-Write Branching Refactor
 
-**Status:** In Progress (Phases 1, 3, 4, 5 complete; Phase 6 pending)
+**Status:** In Progress (Phases 1, 3, 4, 5, 6 complete; Phase 7 future)
 **Branch:** `feature/copy-on-write-branching`
 **Commits:**
 - `43c300e` — test: add Phase 1 + Phase 3 copy-on-write branching tests (red)
@@ -3307,7 +3307,14 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - [x] `archiveDocument`/`restoreDocument` marked as deprecated (prose, not @deprecated tag to avoid lint cascade)
 - [x] Tests: 5 new tests for COW merge and tombstone handling
 
+#### Wave 4 — Phase 6: Data Migration
+- [x] Migration 023: `cow_cleanup_duplicate_versions`
+- [x] Remap 23 checkpoint_documents from branch v1 rows to main's versions
+- [x] Delete 52 duplicate v1 version rows (snapshot matched main, no local edits)
+- [x] Preserve 11 v1 rows that have higher versions (edit history)
+- [x] Register previously-applied migrations 018-022 in tracking table
+- [x] FK integrity verified: 0 orphaned checkpoint_documents
+
 #### Remaining
-- [ ] Phase 6: Data Migration — clean up duplicate version rows on existing branches
 - [ ] Phase 7: Publish-propagation foundation (future)
 - Phase 2 (frontend): Skipped per CLAUDE.md (separate project)
