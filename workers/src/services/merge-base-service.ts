@@ -154,96 +154,7 @@ export async function findMergeBase(
     return null;
   }
 
-  // Use a recursive CTE to find the merge base
-  // This traverses both branch lineages and finds the common ancestor
-  const sql = `
-    WITH RECURSIVE
-    -- Get source branch lineage (from source up to root)
-    source_lineage AS (
-      SELECT
-        id,
-        source_branch_id,
-        source_checkpoint_id,
-        0 AS depth
-      FROM app.branches
-      WHERE id = $1
-
-      UNION ALL
-
-      SELECT
-        b.id,
-        b.source_branch_id,
-        b.source_checkpoint_id,
-        sl.depth + 1
-      FROM app.branches b
-      INNER JOIN source_lineage sl ON b.id = sl.source_branch_id
-    ),
-    -- Get target branch lineage (from target up to root)
-    target_lineage AS (
-      SELECT
-        id,
-        source_branch_id,
-        source_checkpoint_id,
-        0 AS depth
-      FROM app.branches
-      WHERE id = $2
-
-      UNION ALL
-
-      SELECT
-        b.id,
-        b.source_branch_id,
-        b.source_checkpoint_id,
-        tl.depth + 1
-      FROM app.branches b
-      INNER JOIN target_lineage tl ON b.id = tl.source_branch_id
-    )
-    -- Find the merge base:
-    -- Case 1: Source was branched directly from target - use source's source_checkpoint_id
-    -- Case 2: Find common ancestor branch and use the earliest checkpoint from that point
-    SELECT
-      COALESCE(
-        -- Case 1: Direct branch from target
-        (SELECT source_checkpoint_id
-         FROM source_lineage
-         WHERE source_branch_id = $2
-         LIMIT 1),
-        -- Case 2: Common ancestor - find the checkpoint where lineages meet
-        (SELECT sl.source_checkpoint_id
-         FROM source_lineage sl
-         INNER JOIN target_lineage tl ON sl.source_branch_id = tl.id
-         ORDER BY sl.depth ASC
-         LIMIT 1)
-      ) AS merge_base_checkpoint_id,
-      COALESCE(
-        (SELECT $2::uuid
-         FROM source_lineage
-         WHERE source_branch_id = $2
-         LIMIT 1),
-        (SELECT tl.id
-         FROM source_lineage sl
-         INNER JOIN target_lineage tl ON sl.source_branch_id = tl.id
-         ORDER BY sl.depth ASC
-         LIMIT 1)
-      ) AS merge_base_branch_id,
-      c.created_at,
-      c.name,
-      c.message
-    FROM app.checkpoints c
-    WHERE c.id = COALESCE(
-      (SELECT source_checkpoint_id
-       FROM source_lineage
-       WHERE source_branch_id = $2
-       LIMIT 1),
-      (SELECT sl.source_checkpoint_id
-       FROM source_lineage sl
-       INNER JOIN target_lineage tl ON sl.source_branch_id = tl.id
-       ORDER BY sl.depth ASC
-       LIMIT 1)
-    )
-  `;
-
-  // First verify both branches exist
+  // Verify source branch exists and get its source_checkpoint_id
   const sourceBranchResult = await query<BranchRow>(
     'SELECT id, source_branch_id, source_checkpoint_id FROM app.branches WHERE id = $1',
     [sourceBranchId],
@@ -253,6 +164,7 @@ export async function findMergeBase(
     throw new SourceBranchNotFoundError(sourceBranchId);
   }
 
+  // Verify target branch exists
   const targetBranchResult = await query<BranchRow>(
     'SELECT id, source_branch_id, source_checkpoint_id FROM app.branches WHERE id = $1',
     [targetBranchId],
@@ -262,22 +174,36 @@ export async function findMergeBase(
     throw new TargetBranchNotFoundError(targetBranchId);
   }
 
-  const result = await query<MergeBaseRow>(sql, [sourceBranchId, targetBranchId]);
+  // With main-only branching, the merge base is simply the source_checkpoint_id
+  // from the source branch (the checkpoint on main when the branch was created)
+  const sourceCheckpointId = sourceBranchResult.rows[0].source_checkpoint_id;
 
-  if (result.rows.length === 0) {
+  if (sourceCheckpointId === null) {
     return null;
   }
 
-  const row = result.rows[0];
+  // Look up checkpoint metadata
+  const checkpointResult = await query<MergeBaseRow>(
+    `SELECT
+      $1::uuid AS merge_base_checkpoint_id,
+      $2::uuid AS merge_base_branch_id,
+      c.created_at,
+      c.name,
+      c.message
+    FROM app.checkpoints c
+    WHERE c.id = $1`,
+    [sourceCheckpointId, targetBranchId],
+  );
 
-  // Check if merge base was found (could be null if no common ancestor)
-  if (row.merge_base_checkpoint_id === null || row.merge_base_branch_id === null) {
+  if (checkpointResult.rows.length === 0) {
     return null;
   }
+
+  const row = checkpointResult.rows[0];
 
   return {
-    checkpointId: row.merge_base_checkpoint_id,
-    branchId: row.merge_base_branch_id,
+    checkpointId: row.merge_base_checkpoint_id ?? '',
+    branchId: row.merge_base_branch_id ?? '',
     createdAt: row.created_at,
     name: row.name ?? undefined,
     message: row.message ?? undefined,

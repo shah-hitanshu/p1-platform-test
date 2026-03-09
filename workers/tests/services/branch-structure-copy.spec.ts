@@ -32,13 +32,25 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
     function setupBranchMocks(
       db: { query: ReturnType<typeof vi.fn> },
       branchRow: Record<string, unknown>,
+      fromCheckpoint = false,
     ): void {
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [branchRow] }) // INSERT branch
-        .mockResolvedValueOnce({ rows: [] }) // structure copy
-        .mockResolvedValueOnce({ rows: [] }) // metadata copy
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      if (fromCheckpoint) {
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [{ id: branchRow.source_branch_id, is_main: true }] })
+          .mockResolvedValueOnce({ rows: [branchRow] }) // INSERT branch
+          .mockResolvedValueOnce({ rows: [] }) // structure copy from checkpoint
+          .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      } else {
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [{ id: branchRow.source_branch_id, is_main: true }] })
+          .mockResolvedValueOnce({ rows: [branchRow] }) // INSERT branch
+          .mockResolvedValueOnce({ rows: [] }) // structure copy from branch
+          .mockResolvedValueOnce({ rows: [{ id: 'latest-checkpoint' }] }) // find latest checkpoint
+          .mockResolvedValueOnce({ rows: [branchRow] }) // UPDATE branch with checkpoint
+          .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      }
     }
 
     it('should copy structure state from source branch', async () => {
@@ -147,14 +159,14 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
         createdByType: 'user',
       });
 
-      // Verify metadata copy was called
+      // Copy-on-write: metadata is NOT copied, inherited from main
       const metadataCopyCall = vi.mocked(db.query).mock.calls.find(
         (call) =>
           typeof call[0] === 'string' &&
           call[0].includes('branch_document_metadata') &&
           call[0].includes('INSERT'),
       );
-      expect(metadataCopyCall).toBeDefined();
+      expect(metadataCopyCall).toBeUndefined();
     });
 
     it('should handle branch creation with no source (main branch)', async () => {
@@ -207,9 +219,9 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
     ): void {
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ id: branchRow.source_branch_id, is_main: true }] })
         .mockResolvedValueOnce({ rows: [branchRow] }) // INSERT branch
         .mockResolvedValueOnce({ rows: [] }) // structure copy from checkpoint
-        .mockResolvedValueOnce({ rows: [] }) // metadata copy from checkpoint
         .mockResolvedValueOnce({ rows: [] }); // COMMIT
     }
 
@@ -251,7 +263,7 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
       expect(copyQuery).toBeDefined();
     });
 
-    it('should copy document metadata from checkpoint', async () => {
+    it('should NOT copy document metadata from checkpoint (copy-on-write)', async () => {
       const { createBranch } = await import('../../src/services/branch-service');
       const db = await import('../../src/db');
 
@@ -279,14 +291,14 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
         createdByType: 'user',
       });
 
-      // Verify metadata copy references checkpoint_document_metadata
+      // Copy-on-write: metadata is NOT copied, inherited from main
       const metadataCopyQuery = vi.mocked(db.query).mock.calls.find(
         (call) =>
           typeof call[0] === 'string' &&
           call[0].includes('checkpoint_document_metadata') &&
-          call[0].includes('SELECT'),
+          call[0].includes('INSERT'),
       );
-      expect(metadataCopyQuery).toBeDefined();
+      expect(metadataCopyQuery).toBeUndefined();
     });
   });
 
@@ -305,6 +317,7 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
       // Create branch with proper mocks
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ id: 'main-branch', is_main: true }] }) // source branch validation
         .mockResolvedValueOnce({
           rows: [
             {
@@ -324,7 +337,8 @@ describe('Phase 7.1.1a: Branch Structure Copy', () => {
           ],
         })
         .mockResolvedValueOnce({ rows: [] }) // structure copy
-        .mockResolvedValueOnce({ rows: [] }) // metadata copy
+        .mockResolvedValueOnce({ rows: [{ id: 'latest-checkpoint' }] }) // find latest checkpoint
+        .mockResolvedValueOnce({ rows: [{ id: 'feature-branch' }] }) // UPDATE branch
         .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       await createBranch({

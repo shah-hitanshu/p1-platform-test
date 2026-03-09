@@ -74,6 +74,7 @@ export {
   DuplicateBranchNameError,
   InvalidBranchParamsError,
   MainBranchProtectionError,
+  MainBranchOnlyError,
   InvalidBranchStatusTransitionError,
   DatabaseError,
 } from './branch-service';
@@ -152,6 +153,7 @@ export {
   SourceBranchNotFoundError,
   TargetBranchNotFoundError,
   CannotDeleteMergedRequestError,
+  TargetBranchNotMainError,
 } from './merge-request-service';
 
 export type {

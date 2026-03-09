@@ -71,18 +71,30 @@ describe('Phase 3.2: Branch Service', () => {
   describe('createBranch', () => {
     /**
      * Helper to set up mocks for createBranch with transaction.
-     * The function uses BEGIN/COMMIT with structure and metadata copy.
+     * Copy-on-write: only copies structure state, no document versions or metadata.
      */
     function setupCreateBranchMocks(
       db: { query: ReturnType<typeof vi.fn> },
       branchRow: MockBranchRow,
+      fromCheckpoint = false,
     ): void {
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [branchRow] }) // INSERT branch
-        .mockResolvedValueOnce({ rows: [] }) // structure copy
-        .mockResolvedValueOnce({ rows: [] }) // metadata copy
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      if (fromCheckpoint) {
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // source branch validation
+          .mockResolvedValueOnce({ rows: [branchRow] }) // INSERT branch
+          .mockResolvedValueOnce({ rows: [] }) // structure copy from checkpoint
+          .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      } else {
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // source branch validation
+          .mockResolvedValueOnce({ rows: [branchRow] }) // INSERT branch
+          .mockResolvedValueOnce({ rows: [] }) // structure copy from branch
+          .mockResolvedValueOnce({ rows: [{ id: 'latest-checkpoint' }] }) // find latest checkpoint
+          .mockResolvedValueOnce({ rows: [branchRow] }) // UPDATE branch with checkpoint
+          .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      }
     }
 
     it('should create a branch from a source branch', async () => {
@@ -120,7 +132,7 @@ describe('Phase 3.2: Branch Service', () => {
       const mockRow = createMockBranchRow({
         source_checkpoint_id: 'checkpoint-uuid-123',
       });
-      setupCreateBranchMocks(db, mockRow);
+      setupCreateBranchMocks(db, mockRow, true);
 
       const result = await createBranch({
         siteId: 'site-uuid-456',
@@ -143,6 +155,7 @@ describe('Phase 3.2: Branch Service', () => {
       (error as NodeJS.ErrnoException).code = '23505';
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // source branch validation
         .mockRejectedValueOnce(error); // INSERT fails
 
       await expect(
@@ -165,6 +178,7 @@ describe('Phase 3.2: Branch Service', () => {
       (error as NodeJS.ErrnoException).code = '23503';
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // source branch validation
         .mockRejectedValueOnce(error); // INSERT fails
 
       await expect(
@@ -1027,8 +1041,8 @@ describe('Phase 3.2: Branch Service', () => {
         }) // source branch check - is main
         .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
         .mockResolvedValueOnce({ rows: [] }) // structure copy
-        .mockResolvedValueOnce({ rows: [] }) // metadata copy
-        .mockResolvedValueOnce({ rows: [] }) // document version copy
+        .mockResolvedValueOnce({ rows: [{ id: 'latest-cp' }] }) // find latest checkpoint
+        .mockResolvedValueOnce({ rows: [mockRow] }) // UPDATE branch
         .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const result = await createBranch({
@@ -1311,36 +1325,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
   });
 
-  describe('Document Version Inheritance on Branch Creation', () => {
-    /**
-     * Helper to set up mocks for createBranch with transaction and version copying.
-     * The function uses BEGIN/COMMIT with structure, metadata, AND document version copy.
-     */
-    function setupCreateBranchWithVersionsMocks(
-      db: { query: ReturnType<typeof vi.fn> },
-      branchRow: MockBranchRow,
-      fromCheckpoint = false,
-    ): void {
-      if (fromCheckpoint) {
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [branchRow] }) // INSERT branch
-          .mockResolvedValueOnce({ rows: [] }) // structure copy from checkpoint
-          .mockResolvedValueOnce({ rows: [] }) // metadata copy from checkpoint
-          .mockResolvedValueOnce({ rows: [] }) // document version copy from checkpoint
-          .mockResolvedValueOnce({ rows: [] }); // COMMIT
-      } else {
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [branchRow] }) // INSERT branch
-          .mockResolvedValueOnce({ rows: [] }) // structure copy from branch
-          .mockResolvedValueOnce({ rows: [] }) // metadata copy from branch
-          .mockResolvedValueOnce({ rows: [] }) // document version copy from branch
-          .mockResolvedValueOnce({ rows: [] }); // COMMIT
-      }
-    }
-
-    it('should copy document versions from source branch when creating a new branch', async () => {
+  describe('Document Version Inheritance on Branch Creation (Copy-on-Write)', () => {
+    it('should NOT copy document versions from source branch (copy-on-write)', async () => {
       const { createBranch } = await import('../../src/services/branch-service');
       const db = await import('../../src/db');
 
@@ -1348,9 +1334,17 @@ describe('Phase 3.2: Branch Service', () => {
         id: 'new-branch-uuid',
         source_branch_id: 'main-branch-uuid',
       });
-      setupCreateBranchWithVersionsMocks(db, mockRow, false);
 
-      const result = await createBranch({
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // source branch validation
+        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
+        .mockResolvedValueOnce({ rows: [] }) // structure copy
+        .mockResolvedValueOnce({ rows: [{ id: 'latest-checkpoint' }] }) // find latest checkpoint
+        .mockResolvedValueOnce({ rows: [mockRow] }) // UPDATE branch
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+      await createBranch({
         siteId: 'site-uuid-456',
         name: 'feature-branch',
         sourceBranchId: 'main-branch-uuid',
@@ -1358,28 +1352,17 @@ describe('Phase 3.2: Branch Service', () => {
         createdByType: 'user',
       });
 
-      expect(result).toBeDefined();
-      expect(result.id).toBe('new-branch-uuid');
-
-      // Verify document_versions INSERT was called (5th query in sequence)
+      // Verify NO document_versions INSERT was called
       const calls = vi.mocked(db.query).mock.calls;
       const versionCopyCall = calls.find(
         (call) =>
           typeof call[0] === 'string' &&
-          call[0].includes('INSERT INTO app.document_versions') &&
-          call[0].includes('FROM app.document_versions'),
+          call[0].includes('INSERT INTO app.document_versions'),
       );
-      expect(versionCopyCall).toBeDefined();
-
-      // Check the query contains the correct column selection
-      if (versionCopyCall) {
-        expect(versionCopyCall[0]).toContain('DISTINCT ON (dv.document_id)');
-        // The SELECT uses 'branch' as a literal for the source column
-        expect(versionCopyCall[0]).toContain("'branch'");
-      }
+      expect(versionCopyCall).toBeUndefined();
     });
 
-    it('should copy document versions from checkpoint when creating branch from checkpoint', async () => {
+    it('should NOT copy document versions from checkpoint (copy-on-write)', async () => {
       const { createBranch } = await import('../../src/services/branch-service');
       const db = await import('../../src/db');
 
@@ -1388,9 +1371,15 @@ describe('Phase 3.2: Branch Service', () => {
         source_branch_id: 'main-branch-uuid',
         source_checkpoint_id: 'checkpoint-uuid-123',
       });
-      setupCreateBranchWithVersionsMocks(db, mockRow, true);
 
-      const result = await createBranch({
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // source branch validation
+        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
+        .mockResolvedValueOnce({ rows: [] }) // structure copy from checkpoint
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+      await createBranch({
         siteId: 'site-uuid-456',
         name: 'feature-from-checkpoint',
         sourceBranchId: 'main-branch-uuid',
@@ -1399,151 +1388,14 @@ describe('Phase 3.2: Branch Service', () => {
         createdByType: 'user',
       });
 
-      expect(result).toBeDefined();
-      expect(result.sourceCheckpointId).toBe('checkpoint-uuid-123');
-
-      // Verify checkpoint_documents copy was called
+      // Verify NO document_versions INSERT was called
       const calls = vi.mocked(db.query).mock.calls;
       const versionCopyCall = calls.find(
         (call) =>
           typeof call[0] === 'string' &&
-          call[0].includes('INSERT INTO app.document_versions') &&
-          call[0].includes('FROM app.checkpoint_documents'),
+          call[0].includes('INSERT INTO app.document_versions'),
       );
-      expect(versionCopyCall).toBeDefined();
-    });
-
-    it('should set version_number to 1 for copied document versions', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({
-        id: 'new-branch-uuid',
-        source_branch_id: 'main-branch-uuid',
-      });
-      setupCreateBranchWithVersionsMocks(db, mockRow, false);
-
-      await createBranch({
-        siteId: 'site-uuid-456',
-        name: 'feature-branch',
-        sourceBranchId: 'main-branch-uuid',
-        createdById: 'user-uuid-789',
-        createdByType: 'user',
-      });
-
-      const calls = vi.mocked(db.query).mock.calls;
-      const versionCopyCall = calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('INSERT INTO app.document_versions') &&
-          call[0].includes('FROM app.document_versions'),
-      );
-
-      // Verify the query sets version_number to 1 for the new branch
-      if (versionCopyCall) {
-        expect(versionCopyCall[0]).toMatch(/SELECT.*\$1.*1.*FROM/s);
-      }
-    });
-
-    it('should set source to branch for copied document versions', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({
-        id: 'new-branch-uuid',
-        source_branch_id: 'main-branch-uuid',
-      });
-      setupCreateBranchWithVersionsMocks(db, mockRow, false);
-
-      await createBranch({
-        siteId: 'site-uuid-456',
-        name: 'feature-branch',
-        sourceBranchId: 'main-branch-uuid',
-        createdById: 'user-uuid-789',
-        createdByType: 'user',
-      });
-
-      const calls = vi.mocked(db.query).mock.calls;
-      const versionCopyCall = calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('INSERT INTO app.document_versions') &&
-          call[0].includes('FROM app.document_versions'),
-      );
-
-      // Verify the query sets source to 'branch'
-      if (versionCopyCall) {
-        expect(versionCopyCall[0]).toContain("'branch'");
-      }
-    });
-
-    it('should copy only the latest version of each document', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({
-        id: 'new-branch-uuid',
-        source_branch_id: 'main-branch-uuid',
-      });
-      setupCreateBranchWithVersionsMocks(db, mockRow, false);
-
-      await createBranch({
-        siteId: 'site-uuid-456',
-        name: 'feature-branch',
-        sourceBranchId: 'main-branch-uuid',
-        createdById: 'user-uuid-789',
-        createdByType: 'user',
-      });
-
-      const calls = vi.mocked(db.query).mock.calls;
-      const versionCopyCall = calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('INSERT INTO app.document_versions') &&
-          call[0].includes('FROM app.document_versions'),
-      );
-
-      // Verify the query uses DISTINCT ON to get only one version per document
-      // and orders by version_number DESC to get the latest
-      if (versionCopyCall) {
-        expect(versionCopyCall[0]).toContain('DISTINCT ON (dv.document_id)');
-        expect(versionCopyCall[0]).toContain('ORDER BY dv.document_id, dv.version_number DESC');
-      }
-    });
-
-    it('should preserve created_by_id and created_by_type from branch creation params', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({
-        id: 'new-branch-uuid',
-        source_branch_id: 'main-branch-uuid',
-        created_by_id: 'agent-uuid-999',
-        created_by_type: 'agent',
-      });
-      setupCreateBranchWithVersionsMocks(db, mockRow, false);
-
-      await createBranch({
-        siteId: 'site-uuid-456',
-        name: 'feature-branch',
-        sourceBranchId: 'main-branch-uuid',
-        createdById: 'agent-uuid-999',
-        createdByType: 'agent',
-      });
-
-      const calls = vi.mocked(db.query).mock.calls;
-      const versionCopyCall = calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('INSERT INTO app.document_versions') &&
-          call[0].includes('FROM app.document_versions'),
-      );
-
-      // Verify the parameters include the createdById and createdByType
-      if (versionCopyCall && Array.isArray(versionCopyCall[1])) {
-        expect(versionCopyCall[1]).toContain('agent-uuid-999');
-        expect(versionCopyCall[1]).toContain('agent');
-      }
+      expect(versionCopyCall).toBeUndefined();
     });
   });
 });
