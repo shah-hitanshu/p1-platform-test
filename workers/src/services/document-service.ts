@@ -425,6 +425,8 @@ export async function documentExists(
  * Archives (soft-deletes) a document.
  * The document path becomes available for reuse after archival.
  *
+ * Deprecated: prefer deleteDocumentOnBranch with tombstone versions.
+ *
  * @param documentId - The document ID
  * @returns True if archived, false if not found
  */
@@ -441,6 +443,8 @@ export async function archiveDocument(documentId: string): Promise<boolean> {
 
 /**
  * Restores an archived document.
+ *
+ * Deprecated: prefer createDocumentOnBranch to recreate after tombstone.
  *
  * @param documentId - The document ID
  * @returns The restored document

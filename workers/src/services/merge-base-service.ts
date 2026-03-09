@@ -114,6 +114,7 @@ interface ModifiedDocumentRow {
   base_version_number: number | null;
   is_deleted?: boolean;
   source?: string;
+  snapshot?: Record<string, unknown> | null;
 }
 
 interface CheckpointDocumentRow {
@@ -228,10 +229,7 @@ export async function getModifiedDocumentsSince(
     WITH
     -- Documents and versions at the checkpoint
     checkpoint_docs AS (
-      SELECT
-        cd.document_id,
-        cd.document_version_id,
-        dv.version_number
+      SELECT cd.document_id, cd.document_version_id, dv.version_number
       FROM app.checkpoint_documents cd
       INNER JOIN app.document_versions dv ON dv.id = cd.document_version_id
       WHERE cd.checkpoint_id = $2
@@ -239,17 +237,14 @@ export async function getModifiedDocumentsSince(
     -- Current latest versions on the branch
     current_versions AS (
       SELECT DISTINCT ON (dv.document_id)
-        dv.document_id,
-        dv.id AS version_id,
-        dv.version_number,
-        dv.source
+        dv.document_id, dv.id AS version_id, dv.version_number, dv.source, dv.snapshot
       FROM app.document_versions dv
       WHERE dv.branch_id = $1
       ORDER BY dv.document_id, dv.version_number DESC
     )
     -- Find documents that differ
     SELECT
-      COALESCE(cv.document_id, cd.document_id) AS document_id,
+      cv.document_id,
       d.path AS document_path,
       cv.version_id AS latest_version_id,
       cv.version_number AS latest_version_number,
@@ -257,21 +252,18 @@ export async function getModifiedDocumentsSince(
       cd.version_number AS base_version_number,
       cv.source,
       CASE
-        WHEN cv.version_id IS NULL AND cd.document_id IS NOT NULL THEN TRUE
-        WHEN d.archived_at IS NOT NULL AND cd.document_id IS NOT NULL THEN TRUE
+        WHEN (cv.snapshot->>'_deleted') = 'true' THEN TRUE
         ELSE FALSE
       END AS is_deleted
     FROM current_versions cv
-    FULL OUTER JOIN checkpoint_docs cd ON cv.document_id = cd.document_id
-    INNER JOIN app.documents d ON d.id = COALESCE(cv.document_id, cd.document_id)
+    LEFT JOIN checkpoint_docs cd ON cv.document_id = cd.document_id
+    INNER JOIN app.documents d ON d.id = cv.document_id
     WHERE
       (
         -- Modified: version numbers differ
         (cv.version_number IS DISTINCT FROM cd.version_number)
         -- Or new document (not in checkpoint)
         OR (cd.document_id IS NULL)
-        -- Or deleted (not in current versions)
-        OR (cv.version_id IS NULL)
       )
       -- Exclude unmodified branch copies (created when branch was forked)
       AND NOT (cv.source = 'branch' AND cd.document_id IS NOT NULL AND d.archived_at IS NULL)

@@ -455,23 +455,27 @@ export async function createCheckpoint(
     if (isIncremental && parentCreatedAt != null && parentCreatedAt !== '') {
       // Incremental: only documents changed since the parent checkpoint
       latestVersionsResult = await query<{ document_id: string; document_version_id: string }>(
-        `SELECT DISTINCT ON (dv.document_id)
-          dv.document_id,
-          dv.id as document_version_id
-        FROM app.document_versions dv
-        WHERE dv.branch_id = $1 AND dv.created_at > $2
-        ORDER BY dv.document_id, dv.version_number DESC`,
+        `SELECT document_id, document_version_id FROM (
+          SELECT DISTINCT ON (dv.document_id)
+            dv.document_id, dv.id as document_version_id, dv.snapshot
+          FROM app.document_versions dv
+          WHERE dv.branch_id = $1 AND dv.created_at > $2
+          ORDER BY dv.document_id, dv.version_number DESC
+        ) latest
+        WHERE (latest.snapshot->>'_deleted') IS DISTINCT FROM 'true'`,
         [params.branchId, parentCreatedAt],
       );
     } else {
       // Full: all latest versions for the branch
       latestVersionsResult = await query<{ document_id: string; document_version_id: string }>(
-        `SELECT DISTINCT ON (dv.document_id)
-          dv.document_id,
-          dv.id as document_version_id
-        FROM app.document_versions dv
-        WHERE dv.branch_id = $1
-        ORDER BY dv.document_id, dv.version_number DESC`,
+        `SELECT document_id, document_version_id FROM (
+          SELECT DISTINCT ON (dv.document_id)
+            dv.document_id, dv.id as document_version_id, dv.snapshot
+          FROM app.document_versions dv
+          WHERE dv.branch_id = $1
+          ORDER BY dv.document_id, dv.version_number DESC
+        ) latest
+        WHERE (latest.snapshot->>'_deleted') IS DISTINCT FROM 'true'`,
         [params.branchId],
       );
     }
