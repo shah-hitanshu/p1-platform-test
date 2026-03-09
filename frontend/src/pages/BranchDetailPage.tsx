@@ -189,11 +189,11 @@ export function BranchDetailPage() {
               <strong>ID:</strong> <code>{branch?.id}</code>
             </span>
             <span className="meta-item">
-              <strong>Parent:</strong>{' '}
+              <strong>Source:</strong>{' '}
               {branch?.sourceBranchId ? (
-                <code>{branch.sourceBranchId.slice(0, 8)}...</code>
+                <span>main</span>
               ) : (
-                <span className="no-parent">None (main branch)</span>
+                <span className="no-parent">None (this is the main branch)</span>
               )}
             </span>
             <span className="meta-item">

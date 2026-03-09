@@ -39,7 +39,6 @@ import './SiteDetailPage.css';
 
 interface CreateBranchParams {
   name: string;
-  parentBranchId?: string;
 }
 
 export function SiteDetailPage() {
@@ -68,7 +67,6 @@ export function SiteDetailPage() {
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
-  const [selectedParentBranch, setSelectedParentBranch] = useState<string>('');
   const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null);
   const [archivingBranchId, setArchivingBranchId] = useState<string | null>(null);
 
@@ -114,15 +112,9 @@ export function SiteDetailPage() {
     e.preventDefault();
     if (!newBranchName.trim() || !siteId) return;
 
-    const params: CreateBranchParams = { name: newBranchName.trim() };
-    if (selectedParentBranch) {
-      params.parentBranchId = selectedParentBranch;
-    }
-
-    const result = await createBranchRequest(siteId, params);
+    const result = await createBranchRequest(siteId, { name: newBranchName.trim() });
     if (result) {
       setNewBranchName('');
-      setSelectedParentBranch('');
       setShowCreateForm(false);
       fetchBranches(siteId);
     }
@@ -351,20 +343,6 @@ export function SiteDetailPage() {
                   aria-label="Branch name"
                   data-testid="branch-name-input"
                 />
-                <select
-                  value={selectedParentBranch}
-                  onChange={(e) => setSelectedParentBranch(e.target.value)}
-                  className="pds-select"
-                  aria-label="Parent branch"
-                  data-testid="parent-branch-select"
-                >
-                  <option value="">No parent (main branch)</option>
-                  {branches?.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </option>
-                  ))}
-                </select>
               </div>
               <Button
                 type="primary"
@@ -374,7 +352,7 @@ export function SiteDetailPage() {
                 isLoading={isCreating}
                 data-testid="submit-branch-btn"
               >
-                {isCreating ? 'Creating...' : 'Create'}
+                {isCreating ? 'Creating...' : 'Create branch from main'}
               </Button>
             </form>
             {createError && (
@@ -402,7 +380,7 @@ export function SiteDetailPage() {
                 <tr>
                   <th>Name</th>
                   <th>Status</th>
-                  <th>Parent</th>
+                  <th>Source</th>
                   <th>Created</th>
                   <th>Actions</th>
                 </tr>
@@ -416,9 +394,9 @@ export function SiteDetailPage() {
                         {branch.status}
                       </Tag>
                     </td>
-                    <td className="branch-parent">
+                    <td className="branch-source">
                       {branch.sourceBranchId ? (
-                        <code>{branch.sourceBranchId.slice(0, 8)}...</code>
+                        <span>main</span>
                       ) : (
                         <span className="no-parent">-</span>
                       )}
