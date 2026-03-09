@@ -3277,7 +3277,7 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 
 ### Copy-on-Write Branching Refactor
 
-**Status:** In Progress (Phases 1, 3, 4, 5, 6 complete; Phase 7 future)
+**Status:** Complete (Phases 1-6 done; Phase 7 future)
 **Branch:** `feature/copy-on-write-branching`
 **Commits:**
 - `43c300e` — test: add Phase 1 + Phase 3 copy-on-write branching tests (red)
@@ -3286,6 +3286,9 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - `2c16e18` — feat: version fallback to main for copy-on-write branches (Phase 4)
 - `4eb178c` — test: add Phase 5 merge execution TDD tests (red)
 - `00266b9` — feat: COW-aware merge execution, tombstone checkpoint exclusion, deprecate archive (Phase 5)
+- `07c72db` — feat: migration 023 — remove duplicate version rows for COW branches (Phase 6)
+- `0c72efa` — test: add Phase 2 frontend COW branching tests (red state)
+- `55d17b4` — feat: enforce main-only branching in frontend UI (Phase 2)
 
 #### Wave 1 — Phases 1+3: Main-Only Branching & COW Branch Creation
 - [x] Enforce `parentBranchId` must be main in `createBranch`
@@ -3315,6 +3318,15 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - [x] Register previously-applied migrations 018-022 in tracking table
 - [x] FK integrity verified: 0 orphaned checkpoint_documents
 
+#### Wave 5 — Phase 2: Frontend Main-Only Branching
+- [x] Remove parent branch selector from create branch form (SiteDetailPage)
+- [x] Update button text to "Create branch from main"
+- [x] Auto-select main as merge request target, disable selector (CreateMergeRequestPage)
+- [x] Filter main from source branch options in merge request form
+- [x] Rename "Parent" column/label to "Source", show "main" text (SiteDetailPage, BranchDetailPage)
+- [x] Remove deprecated `parentBranchId` from Branch type and API params
+- [x] Unit tests: 5 new Vitest tests for COW branching UI
+- [x] E2E tests: Updated branch-crud and merge-requests specs
+
 #### Remaining
 - [ ] Phase 7: Publish-propagation foundation (future)
-- Phase 2 (frontend): Skipped per CLAUDE.md (separate project)
