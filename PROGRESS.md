@@ -1107,6 +1107,32 @@ To enable focus highlighting in the demo, the following would need to be added:
 - Edit path: `EditorWithCSSApp.tsx` (~170 lines) replaces `EditorWithCSS.tsx` (~2100 lines) using `CSSApp` + `useCSSEditor`
 - Google OAuth verified working end-to-end
 
+### Bug Fixes: Focus Region Highlighting & Editor Regressions (2026-03-09) ✅
+
+#### False "Saved just now" on Initial Load
+- `PuckDataSynchronizer` dispatches `setData` to sync loaded data into Puck, which triggers Puck's `onChange` callback, creating a false save echo
+- Fix: Added `suppressNextSaveRef` in `CSSPuckProvider.saveData` — set in `loadDocument` before `setCurrentData`, checked and cleared in `saveData` to skip the first onChange echo
+- Added `puckKey` to `useCSSEditor` return value (separate from `puckProps` due to React key spread limitation) to force clean Puck remount on document switch
+
+#### Focus Region Highlighting Not Working
+- Three layers of fixes required:
+  1. **PresenceFocusBridge** in `CSSApp.tsx` — replaced empty `focusMap` with real computation from presence actor data using `createFocusRegionMap`
+  2. **WebSocket reporting** — switched `useCSSEditor` focus region reporting from HTTP API (`client.presence.updateFocusRegions`) to WebSocket (`css.sendFocusRegions`) for instant broadcast to other clients
+  3. **Config wrapping** — initially used `createFocusHighlightConfig` to wrap Puck component renders with `FocusHighlightWrapper`, later replaced with DOM-based approach
+
+#### Scroll Jump Prevention
+- Root cause: `presenceState` was a dependency of the main `contextValue` useMemo in `CSSPuckProvider`. Every focus region broadcast recreated the context → triggered re-renders of `ContextSyncBridge` → `PuckDataSynchronizer` → cascaded through entire Puck plugin tree
+- Additionally, DOM element insertion (badge div) inside Puck's preview iframe triggered browser auto-scroll before user interaction
+- Fixes:
+  1. **Decoupled presence from main context** — `presenceState` uses a ref-based getter (`get presence() { return presenceStateRef.current; }`) so focus region broadcasts don't trigger context recreation
+  2. **DOM-based highlighting** — applies CSS classes/attributes directly to existing `[data-puck-component]` elements instead of React render wrapping
+  3. **CSS `::after` badge** — uses pseudo-element (`content: attr(data-focus-initial)`) instead of DOM insertion to avoid browser auto-scroll
+  4. **PresenceFocusBridge** reads from dedicated `PresenceContext` (which still updates reactively) instead of main `CSSPuckContext`
+
+#### Key Architecture Decision
+- Presence state updates (focus regions, actor lists) are high-frequency and should NOT cascade through the data synchronization pipeline
+- Main `CSSPuckContext` stays stable during presence changes; presence-specific UI reads from the separate `PresenceContext` or the ref-based getter
+
 ## Remaining Work
 
 ### Future
