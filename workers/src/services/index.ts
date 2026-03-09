@@ -49,6 +49,7 @@ export type {
   CreateDocumentParams,
   ListDocumentsOptions,
   DocumentWithArchive,
+  DocumentOnBranch,
   // Branch-scoped document types
   ListDocumentsOnBranchOptions,
   CreateDocumentOnBranchParams,

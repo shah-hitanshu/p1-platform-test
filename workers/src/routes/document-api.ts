@@ -23,6 +23,7 @@ import {
   getMainBranch,
   // Document version operations
   getLatestDocumentVersion,
+  getLatestDocumentVersionWithFallback,
   getDocumentVersion,
   listDocumentVersions,
   createDocumentVersion,
@@ -307,10 +308,28 @@ async function handleCreateDocumentOnBranch(
 async function handleGetDocumentOnBranch(
   documentId: string,
   branchId: string,
+  siteId: string,
+  isMainBranch: boolean,
 ): Promise<Response> {
   // Check if document exists on this branch
   const exists = await documentExistsOnBranch(documentId, branchId);
   if (!exists) {
+    // For non-main branches, check if document is inherited from main
+    if (!isMainBranch) {
+      const mainBranch = await getMainBranch(siteId);
+      if (mainBranch !== null) {
+        const fallback = await getLatestDocumentVersionWithFallback(
+          documentId, branchId, mainBranch.id,
+        );
+        if (fallback !== null) {
+          // Document exists on main — return it
+          const document = await getDocument(documentId);
+          if (document !== null) {
+            return jsonResponse(document);
+          }
+        }
+      }
+    }
     return errorResponse('Document not found on this branch', 404);
   }
 
@@ -369,12 +388,29 @@ async function handleListDocumentVersions(
 async function handleGetLatestDocumentVersion(
   documentId: string,
   branchId: string,
+  siteId: string,
+  isMainBranch: boolean,
 ): Promise<Response> {
+  // Try local version first
   const version = await getLatestDocumentVersion(documentId, branchId);
-  if (version === null) {
-    return errorResponse('No versions found for this document on this branch', 404);
+  if (version !== null) {
+    return jsonResponse(version);
   }
-  return jsonResponse(version);
+
+  // For non-main branches, fall back to main's published version
+  if (!isMainBranch) {
+    const mainBranch = await getMainBranch(siteId);
+    if (mainBranch !== null) {
+      const fallback = await getLatestDocumentVersionWithFallback(
+        documentId, branchId, mainBranch.id,
+      );
+      if (fallback !== null) {
+        return jsonResponse({ ...fallback.version, inherited: fallback.inherited });
+      }
+    }
+  }
+
+  return errorResponse('No versions found for this document on this branch', 404);
 }
 
 /**
@@ -437,13 +473,30 @@ async function handleDocumentVersionRoutes(
   documentId: string,
   branchId: string,
   context: DocumentRouteContext,
+  isMainBranch: boolean,
 ): Promise<Response> {
   const method = request.method;
 
-  // Check if document exists on branch first
+  // Check if document exists on branch (local versions)
   const exists = await documentExistsOnBranch(documentId, branchId);
   if (!exists) {
-    return errorResponse('Document not found on this branch', 404);
+    // For non-main branches, check if document is inherited from main (COW)
+    if (!isMainBranch) {
+      const mainBranch = await getMainBranch(context.siteId);
+      if (mainBranch !== null) {
+        const fallback = await getLatestDocumentVersionWithFallback(
+          documentId, branchId, mainBranch.id,
+        );
+        if (fallback === null) {
+          return errorResponse('Document not found on this branch', 404);
+        }
+        // Document is inherited from main — allow version routes to proceed
+      } else {
+        return errorResponse('Document not found on this branch', 404);
+      }
+    } else {
+      return errorResponse('Document not found on this branch', 404);
+    }
   }
 
   // Authorization for version routes
@@ -458,7 +511,7 @@ async function handleDocumentVersionRoutes(
     if (method !== 'GET') {
       return errorResponse('Method not allowed', 405);
     }
-    return await handleGetLatestDocumentVersion(documentId, branchId);
+    return await handleGetLatestDocumentVersion(documentId, branchId, context.siteId, isMainBranch);
   }
 
   // GET /versions/{versionId}
@@ -503,7 +556,7 @@ async function handleBranchScopedDocumentRoutes(
 
   // Handle document version routes (authorization is handled inside handleDocumentVersionRoutes)
   if (context.versionsPath === true && context.documentId !== undefined) {
-    return await handleDocumentVersionRoutes(request, context.documentId, branchId, context);
+    return await handleDocumentVersionRoutes(request, context.documentId, branchId, context, branch.isMain);
   }
 
   // Authorization for branch-scoped document routes
@@ -517,7 +570,7 @@ async function handleBranchScopedDocumentRoutes(
   if (context.documentId !== undefined) {
     switch (method) {
       case 'GET':
-        return await handleGetDocumentOnBranch(context.documentId, branchId);
+        return await handleGetDocumentOnBranch(context.documentId, branchId, context.siteId, branch.isMain);
       case 'DELETE':
         return await handleDeleteDocumentOnBranch(context.documentId, branchId, context.principal);
       default:

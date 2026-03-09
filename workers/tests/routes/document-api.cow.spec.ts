@@ -231,6 +231,8 @@ describe('Copy-on-Write (COW) Document API Fallback', () => {
       vi.mocked(services.getBranch).mockResolvedValue(featureBranch);
       // Document does NOT exist locally on the feature branch
       vi.mocked(services.documentExistsOnBranch).mockResolvedValue(false);
+      // No local version on branch
+      vi.mocked(services.getLatestDocumentVersion).mockResolvedValue(null);
       // Fallback: look up main branch
       vi.mocked(services.getMainBranch).mockResolvedValue(mainBranch);
       // Fallback returns the inherited version

@@ -62,6 +62,13 @@ interface DocumentRow {
   archived_at: string | null;
 }
 
+/**
+ * Database row format for documents with inherited flag.
+ */
+interface DocumentOnBranchRow extends DocumentRow {
+  inherited: boolean;
+}
+
 // =============================================================================
 // Error Classes
 // =============================================================================
@@ -138,6 +145,22 @@ export class DocumentPathConflictError extends Error {
  */
 export interface DocumentWithArchive extends Document {
   archivedAt?: string;
+}
+
+/**
+ * Extended document type with inherited flag for branch listings.
+ */
+export interface DocumentOnBranch extends DocumentWithArchive {
+  inherited: boolean;
+}
+
+/**
+ * Maps a database row to a DocumentOnBranch domain object.
+ */
+function mapRowToDocumentOnBranch(row: DocumentOnBranchRow): DocumentOnBranch {
+  const doc = mapRowToDocument(row) as DocumentOnBranch;
+  doc.inherited = row.inherited;
+  return doc;
 }
 
 /**
@@ -596,13 +619,13 @@ function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersion {
 export async function listDocumentsOnBranch(
   branchId: string,
   options: ListDocumentsOnBranchOptions = {},
-): Promise<DocumentWithArchive[]> {
+): Promise<DocumentOnBranch[]> {
   const { pathPrefix, mainBranchId } = options;
 
   if (mainBranchId !== undefined && mainBranchId !== '') {
     // Copy-on-write query: include documents from branch + inherited from main
     let sql = `
-      SELECT DISTINCT d.*
+      SELECT DISTINCT d.*, false AS inherited
       FROM app.documents d
       INNER JOIN app.document_versions dv ON dv.document_id = d.id
       WHERE dv.branch_id = $1
@@ -631,7 +654,7 @@ export async function listDocumentsOnBranch(
 
       UNION
 
-      SELECT DISTINCT d.*
+      SELECT DISTINCT d.*, true AS inherited
       FROM app.documents d
       INNER JOIN app.document_versions dv ON dv.document_id = d.id
       INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
@@ -651,14 +674,14 @@ export async function listDocumentsOnBranch(
 
     sql += ' ORDER BY path ASC';
 
-    const result = await query<DocumentRow>(sql, params);
+    const result = await query<DocumentOnBranchRow>(sql, params);
 
-    return result.rows.map(mapRowToDocument);
+    return result.rows.map(mapRowToDocumentOnBranch);
   }
 
   // Original query: only documents with versions on the branch
   let sql = `
-    SELECT DISTINCT d.*
+    SELECT DISTINCT d.*, false AS inherited
     FROM app.documents d
     INNER JOIN app.document_versions dv ON dv.document_id = d.id
     WHERE dv.branch_id = $1
@@ -684,9 +707,9 @@ export async function listDocumentsOnBranch(
 
   sql += ' ORDER BY d.path ASC';
 
-  const result = await query<DocumentRow>(sql, params);
+  const result = await query<DocumentOnBranchRow>(sql, params);
 
-  return result.rows.map(mapRowToDocument);
+  return result.rows.map(mapRowToDocumentOnBranch);
 }
 
 /**
