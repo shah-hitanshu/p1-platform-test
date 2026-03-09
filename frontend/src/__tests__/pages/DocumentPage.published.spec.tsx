@@ -9,7 +9,6 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { DocumentPage } from '../../pages/DocumentPage';
 
 // Mock react-router-dom
@@ -183,6 +182,32 @@ describe('DocumentPage - Published badge in version history', () => {
     expect(screen.queryByText('Published')).not.toBeInTheDocument();
   });
 
+  it('should NOT show "Published" badge on versions where isPublished is undefined', async () => {
+    const versionWithoutField = {
+      id: 'ver-no-field',
+      documentId: 'doc-789',
+      branchId: 'branch-456',
+      versionNumber: 1,
+      snapshot: { title: 'About' },
+      source: 'edit',
+      createdById: 'user-abc-1234-5678',
+      createdByType: 'user' as const,
+      createdAt: '2026-01-01T00:00:00Z',
+      // isPublished intentionally omitted
+    };
+
+    mockGetLatestDocumentVersion.mockResolvedValue(versionWithoutField);
+    mockListDocumentVersions.mockResolvedValue([versionWithoutField]);
+
+    render(<DocumentPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('versions-table')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Published')).not.toBeInTheDocument();
+  });
+
   it('should show multiple "Published" badges when multiple versions are published', async () => {
     const anotherPublished = {
       ...publishedVersion,
@@ -249,7 +274,7 @@ describe('DocumentPage - Unpublished indicator', () => {
 
     // Wait for document to appear
     await waitFor(() => {
-      expect(screen.getByText('pages/about')).toBeInTheDocument();
+      expect(screen.getAllByText('pages/about').length).toBeGreaterThan(0);
     });
 
     // Should not show "Unpublished" while loading
