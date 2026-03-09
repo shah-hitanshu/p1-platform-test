@@ -475,9 +475,9 @@ describe('Phase 3.3: Document Version Service', () => {
       );
 
       expect(result).not.toBeNull();
-      expect(result!.version.id).toBe('branch-version-1');
-      expect(result!.version.branchId).toBe('branch-feature-uuid');
-      expect(result!.inherited).toBe(false);
+      expect(result?.version.id).toBe('branch-version-1');
+      expect(result?.version.branchId).toBe('branch-feature-uuid');
+      expect(result?.inherited).toBe(false);
     });
 
     it('should fall back to main published version with inherited=true when no branch version', async () => {
@@ -503,9 +503,9 @@ describe('Phase 3.3: Document Version Service', () => {
       );
 
       expect(result).not.toBeNull();
-      expect(result!.version.id).toBe('main-published-version');
-      expect(result!.version.branchId).toBe('branch-main-uuid');
-      expect(result!.inherited).toBe(true);
+      expect(result?.version.id).toBe('main-published-version');
+      expect(result?.version.branchId).toBe('branch-main-uuid');
+      expect(result?.inherited).toBe(true);
     });
 
     it('should return null when no version on branch AND no published version on main', async () => {
@@ -547,8 +547,8 @@ describe('Phase 3.3: Document Version Service', () => {
       );
 
       expect(result).not.toBeNull();
-      expect(result!.version.id).toBe('branch-version-local');
-      expect(result!.inherited).toBe(false);
+      expect(result?.version.id).toBe('branch-version-local');
+      expect(result?.inherited).toBe(false);
       // Should only query once — no fallback needed
       expect(db.query).toHaveBeenCalledTimes(1);
     });
@@ -597,8 +597,8 @@ describe('Phase 3.3: Document Version Service', () => {
 
       // Should return the tombstone — caller is responsible for handling it
       expect(result).not.toBeNull();
-      expect(result!.version.snapshot).toEqual({ _deleted: true });
-      expect(result!.inherited).toBe(true);
+      expect(result?.version.snapshot).toEqual({ _deleted: true });
+      expect(result?.inherited).toBe(true);
     });
   });
 });

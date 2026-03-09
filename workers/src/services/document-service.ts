@@ -498,6 +498,7 @@ export async function restoreDocument(documentId: string): Promise<DocumentWithA
  */
 export interface ListDocumentsOnBranchOptions {
   pathPrefix?: string;
+  mainBranchId?: string;
 }
 
 /**
@@ -592,8 +593,66 @@ export async function listDocumentsOnBranch(
   branchId: string,
   options: ListDocumentsOnBranchOptions = {},
 ): Promise<DocumentWithArchive[]> {
-  const { pathPrefix } = options;
+  const { pathPrefix, mainBranchId } = options;
 
+  if (mainBranchId !== undefined && mainBranchId !== '') {
+    // Copy-on-write query: include documents from branch + inherited from main
+    let sql = `
+      SELECT DISTINCT d.*
+      FROM app.documents d
+      INNER JOIN app.document_versions dv ON dv.document_id = d.id
+      WHERE dv.branch_id = $1
+        AND d.archived_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM app.document_versions dv2
+          WHERE dv2.document_id = d.id
+            AND dv2.branch_id = $1
+            AND dv2.snapshot->>'_deleted' = 'true'
+            AND dv2.version_number = (
+              SELECT MAX(dv3.version_number)
+              FROM app.document_versions dv3
+              WHERE dv3.document_id = d.id AND dv3.branch_id = $1
+            )
+        )`;
+
+    const params: unknown[] = [branchId, mainBranchId];
+
+    if (pathPrefix !== undefined && pathPrefix !== '') {
+      const escapedPrefix = escapeLikePattern(pathPrefix) + '%';
+      params.push(escapedPrefix);
+      sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\\\'`;
+    }
+
+    sql += `
+
+      UNION
+
+      SELECT DISTINCT d.*
+      FROM app.documents d
+      INNER JOIN app.document_versions dv ON dv.document_id = d.id
+      INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
+      INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+      WHERE dv.branch_id = $2
+        AND cp.branch_id = $2
+        AND d.archived_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM app.document_versions dv_branch
+          WHERE dv_branch.document_id = d.id
+            AND dv_branch.branch_id = $1
+        )`;
+
+    if (pathPrefix !== undefined && pathPrefix !== '') {
+      sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\\\'`;
+    }
+
+    sql += ' ORDER BY path ASC';
+
+    const result = await query<DocumentRow>(sql, params);
+
+    return result.rows.map(mapRowToDocument);
+  }
+
+  // Original query: only documents with versions on the branch
   let sql = `
     SELECT DISTINCT d.*
     FROM app.documents d

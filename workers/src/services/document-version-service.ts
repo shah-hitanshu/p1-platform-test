@@ -433,6 +433,55 @@ export interface BatchSyncResult {
   skippedCount: number;
 }
 
+// =============================================================================
+// Copy-on-Write Fallback
+// =============================================================================
+
+/**
+ * Result of getting a document version with copy-on-write fallback.
+ */
+export interface DocumentVersionWithFallback {
+  version: DocumentVersion;
+  inherited: boolean;
+}
+
+/**
+ * Gets the latest document version on a branch, falling back to the latest
+ * published version on main if no version exists on the branch.
+ *
+ * This implements copy-on-write semantics: non-main branches inherit
+ * published content from main until they create their own versions.
+ *
+ * @param documentId - The document ID
+ * @param branchId - The branch ID to check first
+ * @param mainBranchId - The main branch ID for fallback
+ * @returns The document version with inheritance flag, or null if not found
+ */
+export async function getLatestDocumentVersionWithFallback(
+  documentId: string,
+  branchId: string,
+  mainBranchId: string,
+): Promise<DocumentVersionWithFallback | null> {
+  // 1. Try getting latest version on the branch
+  const branchVersion = await getLatestDocumentVersion(documentId, branchId);
+  if (branchVersion !== null) {
+    return { version: branchVersion, inherited: false };
+  }
+
+  // 2. If branch IS main, no fallback — return null
+  if (branchId === mainBranchId) {
+    return null;
+  }
+
+  // 3. Fall back to latest published version on main
+  const mainVersion = await getLatestPublishedDocumentVersion(documentId, mainBranchId);
+  if (mainVersion !== null) {
+    return { version: mainVersion, inherited: true };
+  }
+
+  return null;
+}
+
 /**
  * Batch sync multiple document versions to PostgreSQL in a single query (Phase 5.2).
  *

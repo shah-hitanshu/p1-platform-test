@@ -95,6 +95,7 @@ export {
   getLatestVersionsForBranch,
   listDocumentVersions,
   getDocumentVersionByNumber,
+  getLatestDocumentVersionWithFallback,
   // Note: DocumentNotFoundError already exported from document-service
   InvalidDocumentVersionParamsError,
 } from './document-version-service';
@@ -102,6 +103,7 @@ export {
 export type {
   CreateDocumentVersionParams,
   ListDocumentVersionsOptions,
+  DocumentVersionWithFallback,
 } from './document-version-service';
 
 // Checkpoint Service
