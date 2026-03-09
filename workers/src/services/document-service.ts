@@ -666,6 +666,17 @@ export async function listDocumentsOnBranch(
           SELECT 1 FROM app.document_versions dv_branch
           WHERE dv_branch.document_id = d.id
             AND dv_branch.branch_id = $1
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM app.document_versions dv_tomb
+          WHERE dv_tomb.document_id = d.id
+            AND dv_tomb.branch_id = $2
+            AND dv_tomb.snapshot->>'_deleted' = 'true'
+            AND dv_tomb.version_number = (
+              SELECT MAX(dv_latest.version_number)
+              FROM app.document_versions dv_latest
+              WHERE dv_latest.document_id = d.id AND dv_latest.branch_id = $2
+            )
         )`;
 
     if (pathPrefix !== undefined && pathPrefix !== '') {

@@ -105,6 +105,25 @@ describe('Copy-on-Write: listDocumentsOnBranch inherited field', () => {
     expect(result[0].inherited).toBe(false);
   });
 
+  it('should exclude tombstoned documents from main in the inherited arm', async () => {
+    const { listDocumentsOnBranch } = await import('../../src/services/document-service');
+    const db = await import('../../src/db');
+
+    vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+    await listDocumentsOnBranch('branch-feature', {
+      mainBranchId: 'branch-main',
+    });
+
+    const sql = vi.mocked(db.query).mock.calls[0][0] as string;
+    // The inherited arm should check for tombstones on main
+    // (latest version on main has _deleted = true)
+    const unionIndex = sql.indexOf('UNION');
+    const inheritedArm = sql.slice(unionIndex);
+    expect(inheritedArm).toContain("_deleted");
+    expect(inheritedArm).toContain('MAX');
+  });
+
   it('should include inherited column in COW UNION query', async () => {
     const { listDocumentsOnBranch } = await import('../../src/services/document-service');
     const db = await import('../../src/db');
