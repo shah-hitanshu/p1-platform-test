@@ -164,17 +164,13 @@ export function CreateMergeRequestPage() {
             <select
               id="targetBranch"
               value={targetBranchId}
-              onChange={(e) => setTargetBranchId(e.target.value)}
               className="pds-select"
               disabled
               data-testid="target-branch-select"
             >
-              <option value="">Select target branch...</option>
-              {activeBranches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
+              {mainBranch && (
+                <option value={mainBranch.id}>{mainBranch.name}</option>
+              )}
             </select>
             <p className="form-help">All merge requests target the main branch</p>
           </div>

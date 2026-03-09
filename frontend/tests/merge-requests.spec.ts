@@ -208,7 +208,7 @@ test.describe('Create Merge Request', () => {
 
     // Select branches but no title
     await page.locator('#sourceBranch').selectOption({ label: branchName });
-    await page.locator('#targetBranch').selectOption({ label: 'main' });
+
 
     // Submit
     await page.getByTestId('submit-btn').click();
@@ -232,7 +232,7 @@ test.describe('Create Merge Request', () => {
 
     // Fill form
     await page.locator('#sourceBranch').selectOption({ label: branchName });
-    await page.locator('#targetBranch').selectOption({ label: 'main' });
+
     await page.locator('#title').fill(mrTitle);
     await page.locator('#description').fill('This is a test merge request');
 
@@ -283,7 +283,7 @@ test.describe('Merge Request Detail', () => {
     await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
-    await page.locator('#targetBranch').selectOption({ label: 'main' });
+
     await page.locator('#title').fill(mrTitle);
     await page.getByTestId('submit-btn').click();
 
@@ -306,7 +306,7 @@ test.describe('Merge Request Detail', () => {
     await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
-    await page.locator('#targetBranch').selectOption({ label: 'main' });
+
     await page.locator('#title').fill('Status Test');
     await page.getByTestId('submit-btn').click();
 
@@ -326,7 +326,7 @@ test.describe('Merge Request Detail', () => {
     await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
-    await page.locator('#targetBranch').selectOption({ label: 'main' });
+
     await page.locator('#title').fill('Actions Test');
     await page.getByTestId('submit-btn').click();
 
@@ -357,7 +357,7 @@ test.describe('Merge Request Status Changes', () => {
     await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
-    await page.locator('#targetBranch').selectOption({ label: 'main' });
+
     await page.locator('#title').fill('Approve Test');
     await page.getByTestId('submit-btn').click();
 
@@ -380,7 +380,7 @@ test.describe('Merge Request Status Changes', () => {
     await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
-    await page.locator('#targetBranch').selectOption({ label: 'main' });
+
     await page.locator('#title').fill('Close Test');
     await page.getByTestId('submit-btn').click();
 
@@ -410,7 +410,7 @@ test.describe('Merge Request Status Changes', () => {
     await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
-    await page.locator('#targetBranch').selectOption({ label: 'main' });
+
     await page.locator('#title').fill('Reopen Test');
     await page.getByTestId('submit-btn').click();
 
@@ -461,7 +461,7 @@ test.describe('Merge Request Deletion', () => {
     await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
-    await page.locator('#targetBranch').selectOption({ label: 'main' });
+
     await page.locator('#title').fill('Delete Modal Test');
     await page.getByTestId('submit-btn').click();
 
@@ -486,7 +486,7 @@ test.describe('Merge Request Deletion', () => {
     await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
-    await page.locator('#targetBranch').selectOption({ label: 'main' });
+
     await page.locator('#title').fill(mrTitle);
     await page.getByTestId('submit-btn').click();
 
@@ -534,7 +534,7 @@ test.describe('Merge Request Preview', () => {
     await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
-    await page.locator('#targetBranch').selectOption({ label: 'main' });
+
     await page.locator('#title').fill('Preview Test');
     await page.getByTestId('submit-btn').click();
 
@@ -575,7 +575,7 @@ test.describe('Merge Request List View', () => {
     await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
-    await page.locator('#targetBranch').selectOption({ label: 'main' });
+
     await page.locator('#title').fill(mrTitle);
     await page.getByTestId('submit-btn').click();
 
@@ -601,7 +601,7 @@ test.describe('Merge Request List View', () => {
     await page.getByTestId('create-mr-btn').click();
 
     await page.locator('#sourceBranch').selectOption({ label: branchName });
-    await page.locator('#targetBranch').selectOption({ label: 'main' });
+
     await page.locator('#title').fill(mrTitle);
     await page.getByTestId('submit-btn').click();
 
