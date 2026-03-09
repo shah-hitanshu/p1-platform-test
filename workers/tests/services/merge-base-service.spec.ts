@@ -545,4 +545,82 @@ describe('Phase 5.1b: Merge Base Service', () => {
       expect(result).toHaveProperty('createdAt');
     });
   });
+
+  describe('Simplified Merge Base (Main-Only Branching)', () => {
+    it('should find merge base using source branch source_checkpoint_id directly', async () => {
+      const { findMergeBase } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'feature-branch', source_branch_id: 'main-branch', source_checkpoint_id: 'checkpoint-123', is_main: false }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'main-branch', source_branch_id: null, source_checkpoint_id: null, is_main: true }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{
+            merge_base_checkpoint_id: 'checkpoint-123',
+            merge_base_branch_id: 'main-branch',
+            created_at: '2026-01-20T10:00:00.000Z',
+            name: null,
+            message: null,
+          }],
+        });
+
+      const result = await findMergeBase('feature-branch', 'main-branch');
+
+      expect(result).toBeDefined();
+      expect(result?.checkpointId).toBe('checkpoint-123');
+      expect(result?.branchId).toBe('main-branch');
+    });
+
+    it('should return null when source branch has no source_checkpoint_id', async () => {
+      const { findMergeBase } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'feature-branch', source_branch_id: 'main-branch', source_checkpoint_id: null, is_main: false }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'main-branch', source_branch_id: null, source_checkpoint_id: null, is_main: true }],
+        });
+
+      const result = await findMergeBase('feature-branch', 'main-branch');
+
+      expect(result).toBeNull();
+    });
+
+    it('should not use recursive CTE for merge base calculation', async () => {
+      const { findMergeBase } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'feature-branch', source_branch_id: 'main-branch', source_checkpoint_id: 'cp-1', is_main: false }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'main-branch', source_branch_id: null, source_checkpoint_id: null, is_main: true }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{
+            merge_base_checkpoint_id: 'cp-1',
+            merge_base_branch_id: 'main-branch',
+            created_at: '2026-01-20T10:00:00.000Z',
+            name: null,
+            message: null,
+          }],
+        });
+
+      await findMergeBase('feature-branch', 'main-branch');
+
+      const allCalls = vi.mocked(db.query).mock.calls;
+      for (const call of allCalls) {
+        if (typeof call[0] === 'string') {
+          expect(call[0]).not.toContain('WITH RECURSIVE');
+        }
+      }
+    });
+  });
 });

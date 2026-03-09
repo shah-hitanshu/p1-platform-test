@@ -814,4 +814,69 @@ describe('Phase 5.1a: Merge Request Service', () => {
       expect(error.mergeRequestId).toBe('mr-uuid-123');
     });
   });
+
+  describe('Main-Only Merge Target Validation', () => {
+    it('should throw TargetBranchNotMainError when target branch is not main', async () => {
+      const { createMergeRequest, TargetBranchNotMainError } = await import(
+        '../../src/services/merge-request-service'
+      );
+      const db = await import('../../src/db');
+
+      // First query checks if target branch is main - returns non-main branch
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ id: 'feature-branch-uuid', is_main: false }],
+      });
+
+      await expect(
+        createMergeRequest({
+          siteId: 'site-uuid-456',
+          sourceBranchId: 'other-feature-uuid',
+          targetBranchId: 'feature-branch-uuid',
+          title: 'Test MR',
+          createdById: 'user-uuid-abc',
+          createdByType: 'user',
+        }),
+      ).rejects.toThrow(TargetBranchNotMainError);
+    });
+
+    it('should allow creating merge request when target branch is main', async () => {
+      const { createMergeRequest } = await import(
+        '../../src/services/merge-request-service'
+      );
+      const db = await import('../../src/db');
+
+      const mockRow = createMockMergeRequestRow();
+      // First query checks if target is main - returns main branch
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'main-branch-uuid', is_main: true }],
+        })
+        .mockResolvedValueOnce({ rows: [mockRow] });
+
+      const result = await createMergeRequest({
+        siteId: 'site-uuid-456',
+        sourceBranchId: 'feature-branch-uuid',
+        targetBranchId: 'main-branch-uuid',
+        title: 'Add new feature',
+        createdById: 'user-uuid-abc',
+        createdByType: 'user',
+      });
+
+      expect(result).toBeDefined();
+      expect(result.targetBranchId).toBe('main-branch-uuid');
+    });
+
+    it('should throw TargetBranchNotMainError with correct properties', async () => {
+      const { TargetBranchNotMainError } = await import(
+        '../../src/services/merge-request-service'
+      );
+
+      const error = new TargetBranchNotMainError('branch-uuid');
+
+      expect(error.name).toBe('TargetBranchNotMainError');
+      expect(error.targetBranchId).toBe('branch-uuid');
+      expect(error.message).toContain('branch-uuid');
+      expect(error).toBeInstanceOf(Error);
+    });
+  });
 });

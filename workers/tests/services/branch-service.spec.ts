@@ -989,6 +989,328 @@ describe('Phase 3.2: Branch Service', () => {
     });
   });
 
+  describe('Main-Only Branch Creation Validation', () => {
+    it('should throw MainBranchOnlyError when source branch is not main', async () => {
+      const { createBranch, MainBranchOnlyError } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [{ id: 'feature-branch-uuid', is_main: false }],
+        }); // source branch check - not main
+
+      await expect(
+        createBranch({
+          siteId: 'site-uuid-456',
+          name: 'new-feature',
+          sourceBranchId: 'feature-branch-uuid',
+          createdById: 'user-uuid-789',
+          createdByType: 'user',
+        }),
+      ).rejects.toThrow(MainBranchOnlyError);
+    });
+
+    it('should allow creating branch when source is main', async () => {
+      const { createBranch } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockBranchRow({
+        id: 'new-branch-uuid',
+        source_branch_id: 'main-branch-uuid',
+      });
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [{ id: 'main-branch-uuid', is_main: true }],
+        }) // source branch check - is main
+        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
+        .mockResolvedValueOnce({ rows: [] }) // structure copy
+        .mockResolvedValueOnce({ rows: [] }) // metadata copy
+        .mockResolvedValueOnce({ rows: [] }) // document version copy
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+      const result = await createBranch({
+        siteId: 'site-uuid-456',
+        name: 'new-feature',
+        sourceBranchId: 'main-branch-uuid',
+        createdById: 'user-uuid-789',
+        createdByType: 'user',
+      });
+
+      expect(result).toBeDefined();
+      expect(result.id).toBe('new-branch-uuid');
+    });
+
+    it('should throw MainBranchOnlyError with correct properties', async () => {
+      const { MainBranchOnlyError } = await import('../../src/services/branch-service');
+
+      const error = new MainBranchOnlyError('some-branch-id');
+
+      expect(error.name).toBe('MainBranchOnlyError');
+      expect(error.sourceBranchId).toBe('some-branch-id');
+      expect(error.message).toContain('main');
+      expect(error).toBeInstanceOf(Error);
+    });
+
+    it('should throw MainBranchOnlyError when source branch does not exist', async () => {
+      const { createBranch, MainBranchOnlyError } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }); // source branch not found
+
+      await expect(
+        createBranch({
+          siteId: 'site-uuid-456',
+          name: 'new-feature',
+          sourceBranchId: 'nonexistent-branch',
+          createdById: 'user-uuid-789',
+          createdByType: 'user',
+        }),
+      ).rejects.toThrow(MainBranchOnlyError);
+    });
+  });
+
+  describe('Copy-on-Write Branch Creation', () => {
+    it('should NOT copy document versions when creating a branch', async () => {
+      const { createBranch } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockBranchRow({
+        id: 'new-branch-uuid',
+        source_branch_id: 'main-branch-uuid',
+      });
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [{ id: 'main-branch-uuid', is_main: true }],
+        }) // source branch check
+        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
+        .mockResolvedValueOnce({ rows: [] }) // structure copy
+        .mockResolvedValueOnce({ rows: [{ id: 'latest-checkpoint' }] }) // find latest checkpoint
+        .mockResolvedValueOnce({ rows: [mockRow] }) // UPDATE branch with checkpoint
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+      await createBranch({
+        siteId: 'site-uuid-456',
+        name: 'feature-branch',
+        sourceBranchId: 'main-branch-uuid',
+        createdById: 'user-uuid-789',
+        createdByType: 'user',
+      });
+
+      const calls = vi.mocked(db.query).mock.calls;
+      const versionCopyCall = calls.find(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('INSERT INTO app.document_versions'),
+      );
+      expect(versionCopyCall).toBeUndefined();
+    });
+
+    it('should NOT copy branch document metadata when creating a branch', async () => {
+      const { createBranch } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockBranchRow({
+        id: 'new-branch-uuid',
+        source_branch_id: 'main-branch-uuid',
+      });
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [{ id: 'main-branch-uuid', is_main: true }],
+        }) // source branch check
+        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
+        .mockResolvedValueOnce({ rows: [] }) // structure copy
+        .mockResolvedValueOnce({ rows: [{ id: 'latest-checkpoint' }] }) // find latest checkpoint
+        .mockResolvedValueOnce({ rows: [mockRow] }) // UPDATE branch with checkpoint
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+      await createBranch({
+        siteId: 'site-uuid-456',
+        name: 'feature-branch',
+        sourceBranchId: 'main-branch-uuid',
+        createdById: 'user-uuid-789',
+        createdByType: 'user',
+      });
+
+      const calls = vi.mocked(db.query).mock.calls;
+      const metadataCopyCall = calls.find(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('INSERT INTO app.branch_document_metadata'),
+      );
+      expect(metadataCopyCall).toBeUndefined();
+    });
+
+    it('should still copy branch structure state when creating a branch', async () => {
+      const { createBranch } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockBranchRow({
+        id: 'new-branch-uuid',
+        source_branch_id: 'main-branch-uuid',
+      });
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [{ id: 'main-branch-uuid', is_main: true }],
+        }) // source branch check
+        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
+        .mockResolvedValueOnce({ rows: [] }) // structure copy
+        .mockResolvedValueOnce({ rows: [{ id: 'latest-checkpoint' }] }) // find latest checkpoint
+        .mockResolvedValueOnce({ rows: [mockRow] }) // UPDATE branch with checkpoint
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+      await createBranch({
+        siteId: 'site-uuid-456',
+        name: 'feature-branch',
+        sourceBranchId: 'main-branch-uuid',
+        createdById: 'user-uuid-789',
+        createdByType: 'user',
+      });
+
+      const calls = vi.mocked(db.query).mock.calls;
+      const structureCopyCall = calls.find(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('INSERT INTO app.branch_structure_state'),
+      );
+      expect(structureCopyCall).toBeDefined();
+    });
+
+    it('should use provided sourceCheckpointId without querying for latest', async () => {
+      const { createBranch } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockBranchRow({
+        id: 'new-branch-uuid',
+        source_branch_id: 'main-branch-uuid',
+        source_checkpoint_id: 'explicit-checkpoint-id',
+      });
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [{ id: 'main-branch-uuid', is_main: true }],
+        }) // source branch check
+        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
+        .mockResolvedValueOnce({ rows: [] }) // structure copy from checkpoint
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+      const result = await createBranch({
+        siteId: 'site-uuid-456',
+        name: 'feature-branch',
+        sourceBranchId: 'main-branch-uuid',
+        sourceCheckpointId: 'explicit-checkpoint-id',
+        createdById: 'user-uuid-789',
+        createdByType: 'user',
+      });
+
+      expect(result.sourceCheckpointId).toBe('explicit-checkpoint-id');
+
+      const calls = vi.mocked(db.query).mock.calls;
+      const checkpointLookup = calls.find(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('SELECT') &&
+          call[0].includes('app.checkpoints') &&
+          call[0].includes('ORDER BY'),
+      );
+      expect(checkpointLookup).toBeUndefined();
+    });
+
+    it('should auto-resolve source_checkpoint_id from latest checkpoint when not provided', async () => {
+      const { createBranch } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockBranchRow({
+        id: 'new-branch-uuid',
+        source_branch_id: 'main-branch-uuid',
+      });
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [{ id: 'main-branch-uuid', is_main: true }],
+        }) // source branch check
+        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
+        .mockResolvedValueOnce({ rows: [] }) // structure copy
+        .mockResolvedValueOnce({ rows: [{ id: 'auto-resolved-checkpoint' }] }) // find latest checkpoint
+        .mockResolvedValueOnce({ rows: [{ ...mockRow, source_checkpoint_id: 'auto-resolved-checkpoint' }] }) // UPDATE branch
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+      await createBranch({
+        siteId: 'site-uuid-456',
+        name: 'feature-branch',
+        sourceBranchId: 'main-branch-uuid',
+        createdById: 'user-uuid-789',
+        createdByType: 'user',
+      });
+
+      const calls = vi.mocked(db.query).mock.calls;
+      const checkpointLookup = calls.find(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('app.checkpoints') &&
+          call[0].includes('ORDER BY'),
+      );
+      expect(checkpointLookup).toBeDefined();
+
+      const updateCall = calls.find(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('UPDATE') &&
+          call[0].includes('app.branches') &&
+          call[0].includes('source_checkpoint_id'),
+      );
+      expect(updateCall).toBeDefined();
+    });
+
+    it('should return valid branch object with copy-on-write creation', async () => {
+      const { createBranch } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockBranchRow({
+        id: 'cow-branch-uuid',
+        name: 'cow-feature',
+        source_branch_id: 'main-branch-uuid',
+      });
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [{ id: 'main-branch-uuid', is_main: true }],
+        }) // source branch check
+        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
+        .mockResolvedValueOnce({ rows: [] }) // structure copy
+        .mockResolvedValueOnce({ rows: [{ id: 'latest-cp' }] }) // find latest checkpoint
+        .mockResolvedValueOnce({ rows: [mockRow] }) // UPDATE branch
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+      const result = await createBranch({
+        siteId: 'site-uuid-456',
+        name: 'cow-feature',
+        sourceBranchId: 'main-branch-uuid',
+        createdById: 'user-uuid-789',
+        createdByType: 'user',
+      });
+
+      expect(result.id).toBe('cow-branch-uuid');
+      expect(result.name).toBe('cow-feature');
+      expect(result.status).toBe('active');
+      expect(result.isMain).toBe(false);
+      expect(result.sourceBranchId).toBe('main-branch-uuid');
+    });
+  });
+
   describe('Document Version Inheritance on Branch Creation', () => {
     /**
      * Helper to set up mocks for createBranch with transaction and version copying.
