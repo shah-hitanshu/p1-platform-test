@@ -3352,7 +3352,14 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - [x] Fix: exclude tombstoned documents from main in COW inherited listing
 - [x] Tests: 7 new tests (6 isPublished, 1 tombstone exclusion)
 
+#### Wave 8 — Frontend isPublished UI
+- [x] Add `isPublished?: boolean` to frontend `DocumentVersion` type (`frontend/src/api/documents.ts`)
+- [x] Show "Published" badge (green pill) on versions with `isPublished: true` in version history table
+- [x] Show "Unpublished" Tag in document header when versions loaded and none published
+- [x] Add `.published-badge` CSS following existing `.current-badge` pattern
+- [x] Tests: 7 new tests (published badge, unpublished indicator, undefined edge case)
+- [x] Test commit: `4caebc8`, Implementation commit: `a50139d`
+
 #### Remaining
-- [ ] Frontend: show unpublished indicator when no versions have `isPublished: true`
-- [ ] Frontend: show published version marker in version history
 - [ ] Phase 7: Publish-propagation foundation (future)
+- [ ] Remove "Publish" button from Puck integration on branches (only show on main) — separate task
