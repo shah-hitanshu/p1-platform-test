@@ -396,6 +396,63 @@ describe('Phase 5.1b: Merge Base Service', () => {
       const sqlArg = vi.mocked(db.query).mock.calls[0][0];
       expect(sqlArg).toMatch(/cd\.document_id IS NULL AND d\.archived_at IS NOT NULL/);
     });
+
+    it('should NOT treat inherited documents as deleted on COW branches', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      // With COW branching, inherited documents (in checkpoint but no local version
+      // on the branch) should NOT appear as deleted. The query should NOT use
+      // FULL OUTER JOIN which would surface inherited docs as "missing on branch."
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
+
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      // The SQL must NOT use FULL OUTER JOIN — inherited docs should be invisible
+      expect(db.query).toHaveBeenCalledWith(
+        expect.not.stringContaining('FULL OUTER JOIN'),
+        expect.any(Array),
+      );
+      // It should start from current_versions (LEFT JOIN or INNER JOIN)
+      expect(sqlArg).toContain('current_versions');
+    });
+
+    it('should detect tombstoned documents via snapshot _deleted flag', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      // With COW, tombstone detection uses snapshot->>'_deleted' = 'true'
+      // instead of relying on cv.version_id IS NULL (which conflates
+      // inherited-but-not-locally-versioned with actually-deleted).
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            document_id: 'doc-tombstoned',
+            document_path: 'pages/removed',
+            latest_version_id: 'v-tombstone',
+            latest_version_number: 3,
+            base_version_id: 'v-base',
+            base_version_number: 1,
+            is_deleted: true,
+          },
+        ],
+      });
+
+      const result = await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
+
+      // The result should mark it as deleted
+      expect(result).toHaveLength(1);
+      expect(result[0].isDeleted).toBe(true);
+      // The tombstoned doc has a version_id (it's a tombstone version, not absence)
+      expect(result[0].latestVersionId).toBe('v-tombstone');
+
+      // Verify the SQL uses snapshot-based tombstone detection
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringContaining("snapshot->>'_deleted'"),
+        expect.any(Array),
+      );
+    });
   });
 
   describe('getDocumentsAtCheckpoint', () => {

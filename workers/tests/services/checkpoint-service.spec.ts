@@ -250,6 +250,48 @@ describe('Phase 3.3: Checkpoint Service', () => {
         }),
       ).rejects.toThrow(InvalidCheckpointParamsError);
     });
+
+    it('should exclude tombstoned documents from checkpoint', async () => {
+      const { createCheckpoint } = await import('../../src/services/checkpoint-service');
+      const db = await import('../../src/db');
+
+      const mockCheckpointRow = createMockCheckpointRow();
+
+      // Transaction flow: BEGIN, insert checkpoint, get latest versions, insert docs, COMMIT
+      // The latest versions query should filter out documents whose snapshot
+      // contains { _deleted: true } (tombstones).
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint
+        .mockResolvedValueOnce({
+          rows: [
+            // Only live documents should appear — tombstoned ones filtered by SQL
+            createMockCheckpointDocRow({ document_id: 'doc-live', document_version_id: 'v-live' }),
+          ],
+        }) // get latest versions (filtering tombstones)
+        .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
+        .mockResolvedValueOnce({ rows: [] }) // structure capture
+        .mockResolvedValueOnce({ rows: [] }) // metadata capture
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+      await createCheckpoint({
+        branchId: 'branch-uuid-789',
+        checkpointType: 'manual',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+      });
+
+      // Find the SQL query that fetches latest versions (the one with DISTINCT ON)
+      const allCalls = vi.mocked(db.query).mock.calls;
+      const latestVersionsCall = allCalls.find(
+        (call) => typeof call[0] === 'string' && call[0].includes('DISTINCT ON'),
+      );
+
+      expect(latestVersionsCall).toBeDefined();
+      // The SQL should filter out tombstoned documents via snapshot check
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      expect(latestVersionsCall![0]).toContain("snapshot->>'_deleted'");
+    });
   });
 
   describe('getCheckpoint', () => {

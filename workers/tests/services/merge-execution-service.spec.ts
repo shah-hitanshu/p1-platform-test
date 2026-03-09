@@ -510,6 +510,240 @@ describe('Phase 5.3: Merge Execution Service', () => {
         }),
       ).rejects.toThrow(MergeRequestNotFoundError);
     });
+
+    it('should copy tombstone versions to target during merge', async () => {
+      const { executeMerge } = await import('../../src/services/merge-execution-service');
+      const conflictDetection = await import('../../src/services/conflict-detection-service');
+      const mergeRequestService = await import('../../src/services/merge-request-service');
+      const docVersionService = await import('../../src/services/document-version-service');
+      const checkpointService = await import('../../src/services/checkpoint-service');
+
+      // Mock approved merge request
+      vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
+        id: 'mr-1',
+        siteId: 'site-1',
+        sourceBranchId: 'source-branch',
+        targetBranchId: 'target-branch',
+        title: 'Feature merge with deletion',
+        status: 'approved',
+        hasConflicts: false,
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: '2026-01-20T10:00:00.000Z',
+        updatedAt: '2026-01-20T10:00:00.000Z',
+      });
+
+      // Source has a tombstoned document (deleted on branch via tombstone)
+      vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
+        hasConflicts: false,
+        conflicts: { documentConflicts: [], structureConflicts: [] },
+        mergeBase: {
+          checkpointId: 'checkpoint-base',
+          branchId: 'target-branch',
+          createdAt: '2026-01-15T10:00:00.000Z',
+        },
+        sourceChanges: [
+          {
+            documentId: 'doc-deleted',
+            documentPath: 'pages/removed-page',
+            latestVersionId: 'v-tombstone',
+            latestVersionNumber: 2,
+            baseVersionId: 'v-base',
+            baseVersionNumber: 1,
+            isDeleted: true,
+          },
+        ],
+        targetChanges: [],
+      });
+
+      // Mock getting the tombstone version — snapshot has { _deleted: true }
+      vi.mocked(docVersionService.getDocumentVersion).mockResolvedValueOnce({
+        id: 'v-tombstone',
+        documentId: 'doc-deleted',
+        branchId: 'source-branch',
+        versionNumber: 2,
+        snapshot: { _deleted: true },
+        createdAt: '2026-01-20T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+        source: 'edit',
+      });
+
+      // Mock creating tombstone version on target
+      vi.mocked(docVersionService.createDocumentVersion).mockResolvedValueOnce({
+        id: 'new-v-tombstone',
+        documentId: 'doc-deleted',
+        branchId: 'target-branch',
+        versionNumber: 2,
+        snapshot: { _deleted: true },
+        createdAt: '2026-01-20T11:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+        source: 'merge',
+      });
+
+      // Mock checkpoint creation
+      vi.mocked(checkpointService.createCheckpoint).mockResolvedValueOnce({
+        checkpoint: {
+          id: 'checkpoint-merged',
+          branchId: 'target-branch',
+          name: 'Post-merge checkpoint',
+          checkpointType: 'post_merge',
+          createdAt: '2026-01-20T11:00:00.000Z',
+          createdById: 'user-1',
+          createdByType: 'user',
+        },
+        documentCount: 0,
+      });
+
+      // Mock status update
+      vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
+        id: 'mr-1',
+        siteId: 'site-1',
+        sourceBranchId: 'source-branch',
+        targetBranchId: 'target-branch',
+        title: 'Feature merge with deletion',
+        status: 'merged',
+        hasConflicts: false,
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: '2026-01-20T10:00:00.000Z',
+        updatedAt: '2026-01-20T11:00:00.000Z',
+      });
+
+      const result = await executeMerge({
+        mergeRequestId: 'mr-1',
+        mergedById: 'user-1',
+        mergedByType: 'user',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.documentsUpdated).toBe(1);
+
+      // Verify createDocumentVersion was called with the tombstone snapshot
+      expect(docVersionService.createDocumentVersion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          documentId: 'doc-deleted',
+          branchId: 'target-branch',
+          snapshot: { _deleted: true },
+          source: 'merge',
+        }),
+      );
+    });
+
+    it('should only copy documents with local versions (COW: no inherited docs)', async () => {
+      const { executeMerge } = await import('../../src/services/merge-execution-service');
+      const conflictDetection = await import('../../src/services/conflict-detection-service');
+      const mergeRequestService = await import('../../src/services/merge-request-service');
+      const docVersionService = await import('../../src/services/document-version-service');
+      const checkpointService = await import('../../src/services/checkpoint-service');
+
+      vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
+        id: 'mr-1',
+        siteId: 'site-1',
+        sourceBranchId: 'source-branch',
+        targetBranchId: 'target-branch',
+        title: 'COW merge',
+        status: 'approved',
+        hasConflicts: false,
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: '2026-01-20T10:00:00.000Z',
+        updatedAt: '2026-01-20T10:00:00.000Z',
+      });
+
+      // With COW, sourceChanges should ONLY contain locally modified documents,
+      // not inherited ones. This test verifies that the merge only processes
+      // documents that actually have local versions on the source branch.
+      vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
+        hasConflicts: false,
+        conflicts: { documentConflicts: [], structureConflicts: [] },
+        mergeBase: {
+          checkpointId: 'checkpoint-base',
+          branchId: 'target-branch',
+          createdAt: '2026-01-15T10:00:00.000Z',
+        },
+        sourceChanges: [
+          // Only one locally edited document — inherited docs are NOT present
+          {
+            documentId: 'doc-edited',
+            documentPath: 'pages/edited',
+            latestVersionId: 'v-edited',
+            latestVersionNumber: 3,
+            baseVersionId: 'v-base',
+            baseVersionNumber: 1,
+          },
+        ],
+        targetChanges: [],
+      });
+
+      vi.mocked(docVersionService.getDocumentVersion).mockResolvedValueOnce({
+        id: 'v-edited',
+        documentId: 'doc-edited',
+        branchId: 'source-branch',
+        versionNumber: 3,
+        snapshot: { title: 'Edited Page' },
+        createdAt: '2026-01-20T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+        source: 'edit',
+      });
+
+      vi.mocked(docVersionService.createDocumentVersion).mockResolvedValueOnce({
+        id: 'new-v-edited',
+        documentId: 'doc-edited',
+        branchId: 'target-branch',
+        versionNumber: 3,
+        snapshot: { title: 'Edited Page' },
+        createdAt: '2026-01-20T11:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+        source: 'merge',
+      });
+
+      vi.mocked(checkpointService.createCheckpoint).mockResolvedValueOnce({
+        checkpoint: {
+          id: 'checkpoint-merged',
+          branchId: 'target-branch',
+          name: 'Post-merge checkpoint',
+          checkpointType: 'post_merge',
+          createdAt: '2026-01-20T11:00:00.000Z',
+          createdById: 'user-1',
+          createdByType: 'user',
+        },
+        documentCount: 1,
+      });
+
+      vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
+        id: 'mr-1',
+        siteId: 'site-1',
+        sourceBranchId: 'source-branch',
+        targetBranchId: 'target-branch',
+        title: 'COW merge',
+        status: 'merged',
+        hasConflicts: false,
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: '2026-01-20T10:00:00.000Z',
+        updatedAt: '2026-01-20T11:00:00.000Z',
+      });
+
+      const result = await executeMerge({
+        mergeRequestId: 'mr-1',
+        mergedById: 'user-1',
+        mergedByType: 'user',
+      });
+
+      // Only the locally edited document should be copied, not inherited docs
+      expect(result.documentsUpdated).toBe(1);
+      expect(docVersionService.createDocumentVersion).toHaveBeenCalledTimes(1);
+      expect(docVersionService.createDocumentVersion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          documentId: 'doc-edited',
+          source: 'merge',
+        }),
+      );
+    });
   });
 
   describe('executeMergeWithResolution', () => {
