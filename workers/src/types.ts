@@ -274,6 +274,7 @@ export interface DocumentVersion {
   createdById: string;
   createdByType: 'user' | 'agent' | 'system';
   createdAt: string;
+  isPublished?: boolean;
 }
 
 // =============================================================================

@@ -55,6 +55,7 @@ interface DocumentVersionRow {
   created_by_id: string;
   created_by_type: 'user' | 'agent' | 'system';
   created_at: string;
+  is_published?: boolean;
 }
 
 // =============================================================================
@@ -105,7 +106,7 @@ export class DatabaseError extends Error {
  * Maps a database row to a DocumentVersion domain object.
  */
 function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersion {
-  return {
+  const version: DocumentVersion = {
     id: row.id,
     documentId: row.document_id,
     branchId: row.branch_id,
@@ -117,6 +118,10 @@ function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersion {
     createdByType: row.created_by_type,
     createdAt: row.created_at,
   };
+  if (row.is_published !== undefined) {
+    version.isPublished = row.is_published;
+  }
+  return version;
 }
 
 /**
@@ -254,7 +259,12 @@ export async function createDocumentVersion(
  */
 export async function getDocumentVersion(versionId: string): Promise<DocumentVersion | null> {
   const result = await query<DocumentVersionRow>(
-    'SELECT * FROM app.document_versions WHERE id = $1',
+    `SELECT dv.*,
+       EXISTS(
+         SELECT 1 FROM app.checkpoint_documents cd
+         WHERE cd.document_version_id = dv.id
+       ) AS is_published
+     FROM app.document_versions dv WHERE dv.id = $1`,
     [versionId],
   );
 
@@ -277,9 +287,14 @@ export async function getLatestDocumentVersion(
   branchId: string,
 ): Promise<DocumentVersion | null> {
   const result = await query<DocumentVersionRow>(
-    `SELECT * FROM app.document_versions
-     WHERE document_id = $1 AND branch_id = $2
-     ORDER BY version_number DESC
+    `SELECT dv.*,
+       EXISTS(
+         SELECT 1 FROM app.checkpoint_documents cd
+         WHERE cd.document_version_id = dv.id
+       ) AS is_published
+     FROM app.document_versions dv
+     WHERE dv.document_id = $1 AND dv.branch_id = $2
+     ORDER BY dv.version_number DESC
      LIMIT 1`,
     [documentId, branchId],
   );
@@ -359,9 +374,14 @@ export async function listDocumentVersions(
 ): Promise<DocumentVersion[]> {
   const { limit, offset } = options;
 
-  let sql = `SELECT * FROM app.document_versions
-             WHERE document_id = $1 AND branch_id = $2
-             ORDER BY version_number DESC`;
+  let sql = `SELECT dv.*,
+       EXISTS(
+         SELECT 1 FROM app.checkpoint_documents cd
+         WHERE cd.document_version_id = dv.id
+       ) AS is_published
+     FROM app.document_versions dv
+     WHERE dv.document_id = $1 AND dv.branch_id = $2
+     ORDER BY dv.version_number DESC`;
   const params: unknown[] = [documentId, branchId];
   let paramIndex = 3;
 
