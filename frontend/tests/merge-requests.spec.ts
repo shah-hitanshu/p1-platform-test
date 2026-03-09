@@ -41,14 +41,10 @@ async function createSiteAndNavigate(page: import('@playwright/test').Page, site
   await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+$/);
 }
 
-// Helper to create a branch
-async function createBranch(page: import('@playwright/test').Page, branchName: string, parentBranchName?: string) {
+// Helper to create a branch (always from main — no parent selector)
+async function createBranch(page: import('@playwright/test').Page, branchName: string) {
   await page.getByTestId('create-branch-btn').click();
   await page.getByTestId('branch-name-input').fill(branchName);
-
-  if (parentBranchName) {
-    await page.getByTestId('parent-branch-select').selectOption({ label: parentBranchName });
-  }
 
   const responsePromise = page.waitForResponse(resp =>
     resp.url().includes('/api/sites') && resp.url().includes('/branches') && resp.request().method() === 'POST'
@@ -155,7 +151,7 @@ test.describe('Create Merge Request', () => {
     await expect(page.getByTestId('page-title')).toContainText('Create Merge Request');
   });
 
-  test('should display form with required fields', async ({ page }) => {
+  test('should display form with required fields and target pre-selected as main', async ({ page }) => {
     const siteName = uniqueName('MR Form Fields');
     const pantheonId = uniqueName('mrformfields');
 
@@ -168,24 +164,27 @@ test.describe('Create Merge Request', () => {
     await expect(page.locator('#targetBranch')).toBeVisible();
     await expect(page.locator('#title')).toBeVisible();
     await expect(page.locator('#description')).toBeVisible();
+
+    // Target branch should be pre-selected as main and disabled/read-only
+    await expect(page.locator('#targetBranch')).toBeDisabled();
+    await expect(page.locator('#targetBranch')).toHaveValue(/main/);
   });
 
   test('should show validation error when source and target are same', async ({ page }) => {
     const siteName = uniqueName('MR Same Branch');
     const pantheonId = uniqueName('mrsamebranch');
-    const branchName = uniqueName('feature');
 
     await createSiteAndNavigate(page, siteName, pantheonId);
-
-    // Create a feature branch
-    await createBranch(page, branchName);
 
     await navigateToMergeRequests(page);
     await page.getByTestId('create-mr-btn').click();
 
-    // Select same branch for source and target
-    await page.locator('#sourceBranch').selectOption({ label: branchName });
-    await page.locator('#targetBranch').selectOption({ label: branchName });
+    // Target branch should be pre-selected as main and disabled
+    await expect(page.locator('#targetBranch')).toBeDisabled();
+    await expect(page.locator('#targetBranch')).toHaveValue(/main/);
+
+    // Select main as the source too (same as target)
+    await page.locator('#sourceBranch').selectOption({ label: 'main' });
     await page.locator('#title').fill('Test MR');
 
     // Submit

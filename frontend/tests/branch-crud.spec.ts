@@ -120,32 +120,32 @@ test.describe('Branch Creation', () => {
     await expect(page.getByTestId('branches-table')).toContainText(branchName);
   });
 
-  test('should create branch from parent branch', async ({ page }) => {
-    const siteName = uniqueName('Parent Branch Test');
-    const pantheonId = uniqueName('parentbranch');
-    const parentBranchName = uniqueName('parent');
-    const childBranchName = uniqueName('child');
+  test('should always create branches from main (no parent selector)', async ({ page }) => {
+    const siteName = uniqueName('No Parent Select Test');
+    const pantheonId = uniqueName('noparentselect');
+    const branchName = uniqueName('feature');
 
     await createSiteAndNavigate(page, siteName, pantheonId);
 
-    // First create a parent branch
+    // Open create form
     await page.getByTestId('create-branch-btn').click();
-    await page.getByTestId('branch-name-input').fill(parentBranchName);
+    await expect(page.getByTestId('create-branch-form')).toBeVisible();
+
+    // The parent branch selector should NOT exist in the form
+    await expect(page.getByTestId('parent-branch-select')).not.toBeVisible();
+
+    // The submit button or form should indicate branches are created from main
+    await expect(page.getByTestId('submit-branch-btn')).toContainText('Create branch from main');
+
+    // Fill branch name and submit
+    await page.getByTestId('branch-name-input').fill(branchName);
     await page.getByTestId('submit-branch-btn').click();
+
+    // Wait for form to close
     await expect(page.getByTestId('create-branch-form')).not.toBeVisible({ timeout: 10000 });
 
-    // Now create a child branch from the parent
-    await page.getByTestId('create-branch-btn').click();
-    await page.getByTestId('branch-name-input').fill(childBranchName);
-
-    // Select the parent branch
-    await page.getByTestId('parent-branch-select').selectOption({ label: parentBranchName });
-
-    await page.getByTestId('submit-branch-btn').click();
-    await expect(page.getByTestId('create-branch-form')).not.toBeVisible({ timeout: 10000 });
-
-    // Verify child branch exists
-    await expect(page.getByTestId('branches-table')).toContainText(childBranchName);
+    // Verify branch appears in table
+    await expect(page.getByTestId('branches-table')).toContainText(branchName);
   });
 
   test('should not create branch with empty name', async ({ page }) => {
