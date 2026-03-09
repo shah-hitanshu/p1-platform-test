@@ -3292,6 +3292,9 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - `33c5e78` — fix: pass mainBranchId to listDocumentsOnBranch in document-api
 - `5d55eb0` — test: add COW fallback tests for document-api and document-service (red state)
 - `1611bb1` — feat: COW fallback for document-api routes and inherited flag in listings
+- `fed3ec4` — fix: exclude tombstoned documents from COW inherited listing
+- `2eaeb71` — test: add isPublished flag tests and checkpoint_documents index migration (red state)
+- `cf58aa0` — feat: add isPublished flag to document version responses
 
 #### Wave 1 — Phases 1+3: Main-Only Branching & COW Branch Creation
 - [x] Enforce `parentBranchId` must be main in `createBranch`
@@ -3342,5 +3345,14 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - [x] Tests: 10 new tests (6 API, 4 service)
 - [x] Fix: document-api passes `mainBranchId` to `listDocumentsOnBranch` for non-main branches
 
+#### Wave 7 — isPublished Flag & Tombstone Fixes
+- [x] Migration 024: Add index on `checkpoint_documents(document_version_id)` for efficient isPublished lookups
+- [x] Add `isPublished?: boolean` to `DocumentVersion` type (derived via EXISTS subquery, never stored)
+- [x] Update `getLatestDocumentVersion`, `listDocumentVersions`, `getDocumentVersion` queries
+- [x] Fix: exclude tombstoned documents from main in COW inherited listing
+- [x] Tests: 7 new tests (6 isPublished, 1 tombstone exclusion)
+
 #### Remaining
+- [ ] Frontend: show unpublished indicator when no versions have `isPublished: true`
+- [ ] Frontend: show published version marker in version history
 - [ ] Phase 7: Publish-propagation foundation (future)
