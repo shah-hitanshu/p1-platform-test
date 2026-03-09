@@ -12,6 +12,7 @@ import { useCSSPuck } from '../CSSPuckContext.js';
 import { useCSSPlugin } from './useCSSPlugin.js';
 import { useCSSOverrides } from './useCSSOverrides.js';
 import { useVersions } from './useVersions.js';
+import { createFocusHighlightConfig } from '../utils/focusHighlightConfig.js';
 import type { UseCSSPluginOptions } from './useCSSPlugin.js';
 import type { UseCSSOverridesOptions } from './useCSSOverrides.js';
 import type { PuckPlugin, PuckOverrides } from '../plugin/index.js';
@@ -212,11 +213,32 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   }, [versions, css.loadVersion, css.returnToLatest]);
 
   // =========================================================================
+  // Focus Region Reporting (outgoing — report local selection to server)
+  // =========================================================================
+
+  // Report selection changes to the presence system via WebSocket.
+  // Wraps the consumer's onSelectionChange so both reporting and
+  // the consumer callback are called.
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
+
+  const handleSelectionChange = useCallback(
+    (path: string | null, itemId: string | null) => {
+      // Report to presence system via WebSocket (instant broadcast to other clients)
+      const regions = path ? [path] : [];
+      css.sendFocusRegions(regions);
+      // Forward to consumer callback
+      onSelectionChangeRef.current?.(path, itemId);
+    },
+    [css.sendFocusRegions],
+  );
+
+  // =========================================================================
   // Plugin & Overrides (composed hooks)
   // =========================================================================
 
   const cssPlugin = useCSSPlugin({
-    onSelectionChange,
+    onSelectionChange: handleSelectionChange,
     ...pluginOptions,
     versions,
     versionsLoading,
@@ -276,16 +298,25 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   // undo history, sidebar state, and no false onChange echo from setData.
   const puckKey = `css-${css.currentDocument?.id ?? documentPath}`;
 
+  // Wrap config with focus highlight wrappers when presence is enabled.
+  // Uses context-based mode: config is created once, highlights update
+  // via FocusHighlightProvider without config recreation.
+  const presenceEnabled = css.presence !== null;
+  const highlightConfig = useMemo(
+    () => presenceEnabled ? createFocusHighlightConfig(puckConfig as Record<string, unknown>) : puckConfig,
+    [puckConfig, presenceEnabled]
+  );
+
   const puckProps: PuckProps = useMemo(
     () => ({
-      config: puckConfig,
+      config: highlightConfig,
       data: css.safeData,
       onChange,
       plugins,
       overrides: cssOverrides,
       ...(permissions ? { permissions } : {}),
     }),
-    [puckConfig, css.safeData, onChange, plugins, cssOverrides, permissions]
+    [highlightConfig, css.safeData, onChange, plugins, cssOverrides, permissions]
   );
 
   return {

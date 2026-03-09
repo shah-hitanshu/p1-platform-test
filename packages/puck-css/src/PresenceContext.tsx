@@ -87,3 +87,11 @@ export function usePresenceContext(): PresenceContextValue {
 
   return context;
 }
+
+/**
+ * Hook to optionally access presence context.
+ * Returns null if not within a PresenceProvider (no error thrown).
+ */
+export function useOptionalPresenceContext(): PresenceContextValue | null {
+  return useContext(PresenceContext);
+}

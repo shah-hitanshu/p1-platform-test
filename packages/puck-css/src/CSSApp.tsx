@@ -3,6 +3,8 @@ import { CSSClient } from '@pantheon/css-client';
 import { CSSAuthProvider, useCSSAuth, CSSLoginPage } from './auth/index.js';
 import { CSSPuckProvider } from './CSSPuckProvider.js';
 import { FocusHighlightProvider } from './FocusHighlightContext.js';
+import { useCSSPuck } from './CSSPuckContext.js';
+import { createFocusRegionMap } from './utils/focusRegionMap.js';
 import type { CSSConfig } from './config.js';
 
 export interface CSSAppProps {
@@ -64,18 +66,6 @@ function AuthenticatedShell({
     [config.clientBaseUrl, config.baseUrl, token]
   );
 
-  // Initial empty focusMap — actual focus data flows through CSSPuckProvider's
-  // presence system which updates FocusHighlightContext internally
-  const emptyFocusMap = useMemo(() => new Map(), []);
-
-  const content = config.enablePresence ? (
-    <FocusHighlightProvider focusMap={emptyFocusMap}>
-      {children}
-    </FocusHighlightProvider>
-  ) : (
-    <>{children}</>
-  );
-
   return (
     <CSSPuckProvider
       key={`${user.id}-${token}`}
@@ -91,8 +81,39 @@ function AuthenticatedShell({
       realtimeApiKey={token}
       presenceEnabled={config.enablePresence}
     >
-      {content}
+      {config.enablePresence ? (
+        <PresenceFocusBridge userId={user.id}>{children}</PresenceFocusBridge>
+      ) : (
+        children
+      )}
     </CSSPuckProvider>
+  );
+}
+
+/**
+ * Bridge component that reads presence data from CSSPuckProvider context
+ * and computes the focusMap for FocusHighlightProvider.
+ * Must be rendered inside CSSPuckProvider.
+ */
+function PresenceFocusBridge({
+  userId,
+  children,
+}: {
+  userId: string;
+  children: React.ReactNode;
+}): React.ReactElement {
+  const css = useCSSPuck();
+
+  const focusMap = useMemo(() => {
+    if (!css.presence) return new Map();
+    const otherActors = css.presence.actors.filter((a) => a.actorId !== userId);
+    return createFocusRegionMap(css.safeData, otherActors);
+  }, [css.presence, css.safeData, userId]);
+
+  return (
+    <FocusHighlightProvider focusMap={focusMap}>
+      {children}
+    </FocusHighlightProvider>
   );
 }
 
