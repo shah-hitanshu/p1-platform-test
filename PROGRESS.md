@@ -3274,3 +3274,40 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - `@pantheon/puck-css/config` — createCSSConfig for server-side imports
 - `@pantheon/puck-css/utils/path` — toCSSPath for server-side imports
 - `typesVersions` added to both packages for `moduleResolution: "node"` compat
+
+### Copy-on-Write Branching Refactor
+
+**Status:** In Progress (Phases 1, 3, 4, 5 complete; Phase 6 pending)
+**Branch:** `feature/copy-on-write-branching`
+**Commits:**
+- `43c300e` — test: add Phase 1 + Phase 3 copy-on-write branching tests (red)
+- `7a06d0f` — feat: enforce main-only branching and copy-on-write branch creation (Phases 1+3)
+- `800bd4d` — test: add Phase 4 version fallback TDD tests (red)
+- `2c16e18` — feat: version fallback to main for copy-on-write branches (Phase 4)
+- `4eb178c` — test: add Phase 5 merge execution TDD tests (red)
+- `00266b9` — feat: COW-aware merge execution, tombstone checkpoint exclusion, deprecate archive (Phase 5)
+
+#### Wave 1 — Phases 1+3: Main-Only Branching & COW Branch Creation
+- [x] Enforce `parentBranchId` must be main in `createBranch`
+- [x] Add `MainBranchOnlyError` for non-main parent branches
+- [x] Branch-scoped document operations: `listDocumentsOnBranch`, `createDocumentOnBranch`, `documentExistsOnBranch`, `deleteDocumentOnBranch`
+- [x] Tests: 15 new tests covering main-only enforcement and branch-scoped operations
+
+#### Wave 2 — Phase 4: Version Fallback to Main
+- [x] `getLatestDocumentVersionWithFallback()` — tries branch first, falls back to main's published version
+- [x] `DocumentVersionWithFallback` type with `inherited` boolean
+- [x] Content API updated: non-main branches use fallback, response includes `inherited` field
+- [x] `listDocumentsOnBranch` UNION query: branch local docs + main published docs (excluding tombstones)
+- [x] Tests: 15 new tests for fallback behavior
+
+#### Wave 3 — Phase 5: Merge Execution Changes
+- [x] `getModifiedDocumentsSince` rewritten with LEFT JOIN for COW semantics (inherited docs ≠ deleted)
+- [x] Tombstone detection via `snapshot._deleted` instead of missing version rows
+- [x] Checkpoint creation excludes tombstone documents from snapshots
+- [x] `archiveDocument`/`restoreDocument` marked as deprecated (prose, not @deprecated tag to avoid lint cascade)
+- [x] Tests: 5 new tests for COW merge and tombstone handling
+
+#### Remaining
+- [ ] Phase 6: Data Migration — clean up duplicate version rows on existing branches
+- [ ] Phase 7: Publish-propagation foundation (future)
+- Phase 2 (frontend): Skipped per CLAUDE.md (separate project)
