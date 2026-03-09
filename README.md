@@ -51,25 +51,28 @@ export const cssConfig = createCSSConfig(import.meta.env, { prefix: 'VITE_' });
 
 ```tsx
 // App.tsx
-import { CSSApp } from '@pantheon/puck-css';
+import { Puck } from '@puckeditor/core';
+import { CSSApp, useCSSEditor } from '@pantheon/puck-css';
 import { cssConfig } from './css.config';
 import puckConfig from './puck.config';
 import '@pantheon/puck-css/styles.css';
 
-export default function App() {
-  return <CSSApp config={cssConfig} puckConfig={puckConfig} />;
+function Editor() {
+  const { loading, error, puckKey, puckProps } = useCSSEditor({
+    documentPath: '/home',
+    puckConfig,
+  });
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+  return <Puck key={puckKey} {...puckProps} />;
 }
-```
 
-**Step 3 - Custom editor (optional):**
-
-```tsx
-// If you need custom UI beyond CSSApp's defaults:
-import { useCSSEditor } from '@pantheon/puck-css';
-
-function CustomEditor() {
-  const { puckProps, saveStatus, branches } = useCSSEditor({ documentPath: '/home' });
-  return <Puck {...puckProps} />;
+export default function App() {
+  return (
+    <CSSApp config={cssConfig}>
+      <Editor />
+    </CSSApp>
+  );
 }
 ```
 
@@ -101,12 +104,28 @@ export const cssConfig = createNextConfig();
 
 ```tsx
 'use client';
-import { CSSApp } from '@pantheon/puck-css';
+import { Puck } from '@puckeditor/core';
+import { CSSApp, useCSSEditor } from '@pantheon/puck-css';
 import { cssConfig } from '@/lib/css.config';
 import puckConfig from '@/puck.config';
+import '@pantheon/puck-css/styles.css';
+
+function Editor({ documentPath }: { documentPath: string }) {
+  const { loading, error, puckKey, puckProps } = useCSSEditor({
+    documentPath,
+    puckConfig,
+  });
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+  return <Puck key={puckKey} {...puckProps} />;
+}
 
 export default function EditorPage() {
-  return <CSSApp config={cssConfig} puckConfig={puckConfig} />;
+  return (
+    <CSSApp config={cssConfig}>
+      <Editor documentPath="/home" />
+    </CSSApp>
+  );
 }
 ```
 
@@ -178,12 +197,11 @@ Presence awareness is also config-only:
 NEXT_PUBLIC_CSS_ENABLE_PRESENCE=true
 ```
 
-`CSSApp` includes presence UI automatically (collaborator avatars, agent activity banners).
+`CSSApp` includes presence UI automatically:
 
-For custom UI, the following components are available:
-
-- `CollaboratorAvatars` - Stacked avatar display of online users and agents
-- `AgentActivityBanner` - Banner shown when an AI agent is actively editing
+- **Collaborator avatars** — stacked avatar display of online users and agents
+- **Agent activity banner** — shown when an AI agent is actively editing
+- **Focus region highlighting** — outlines the component another user has selected, with a badge showing their initial. Applied via CSS to Puck's existing DOM elements with zero impact on scroll or performance
 
 ## Advanced: Low-Level API
 
