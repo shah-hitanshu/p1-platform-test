@@ -14,9 +14,10 @@ vi.mock('../../src/db', () => ({
   query: vi.fn(),
 }));
 
-// Mock branch-service for getMainBranch
+// Mock branch-service for getMainBranch and getBranch
 vi.mock('../../src/services/branch-service', () => ({
   getMainBranch: vi.fn(),
+  getBranch: vi.fn(),
 }));
 
 describe('publishDocument', () => {
@@ -103,14 +104,22 @@ describe('publishDocument', () => {
 
     // Transaction flow:
     // BEGIN, get latest version on source branch, create version on main,
+    // UPDATE source version with published_to_version_id,
     // insert checkpoint on main, insert checkpoint_documents, COMMIT
     vi.mocked(db.query)
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
       .mockResolvedValueOnce({ rows: [mockVersionRow] }) // get latest version on source branch
       .mockResolvedValueOnce({ rows: [{ id: 'new-version-on-main', version_number: 8 }] }) // create version on main
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE source version with published_to_version_id
       .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint on main
       .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+    vi.mocked(branchService.getBranch).mockResolvedValueOnce({
+      id: 'source-branch-uuid', siteId: 'site-uuid', name: 'feature/test',
+      status: 'active', isMain: false, createdById: 'user-1', createdByType: 'user',
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    });
 
     const result = await publishDocument({
       siteId: 'site-uuid',
@@ -155,9 +164,16 @@ describe('publishDocument', () => {
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
       .mockResolvedValueOnce({ rows: [mockVersionRow] }) // get latest version on source
       .mockResolvedValueOnce({ rows: [{ id: 'copied-version-on-main', version_number: 4 }] }) // create version on main
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE source version with published_to_version_id
       .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint
       .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+    vi.mocked(branchService.getBranch).mockResolvedValueOnce({
+      id: 'source-branch-uuid', siteId: 'site-uuid', name: 'feature/test',
+      status: 'active', isMain: false, createdById: 'user-1', createdByType: 'user',
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    });
 
     await publishDocument({
       siteId: 'site-uuid',
@@ -210,9 +226,16 @@ describe('publishDocument', () => {
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
       .mockResolvedValueOnce({ rows: [mockVersionRow] }) // get latest version
       .mockResolvedValueOnce({ rows: [{ id: 'main-version-id', version_number: 5 }] }) // version on main
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE source version with published_to_version_id
       .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // checkpoint
       .mockResolvedValueOnce({ rows: [] }) // checkpoint_documents
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+    vi.mocked(branchService.getBranch).mockResolvedValueOnce({
+      id: 'source-branch-uuid', siteId: 'site-uuid', name: 'feature/test',
+      status: 'active', isMain: false, createdById: 'user-1', createdByType: 'user',
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    });
 
     const result = await publishDocument({
       siteId: 'site-uuid',
