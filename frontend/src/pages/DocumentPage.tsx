@@ -152,6 +152,8 @@ export function DocumentPage() {
         return 'source-badge source-revert';
       case 'checkpoint':
         return 'source-badge source-checkpoint';
+      case 'publish':
+        return 'source-badge source-publish';
       default:
         return 'source-badge';
     }
@@ -378,6 +380,12 @@ export function DocumentPage() {
                               )}
                               {version.isPublished === true && (
                                 <span className="published-badge">Published</span>
+                              )}
+                              {version.sourceBranchName != null && (
+                                <span className="provenance-badge">from {version.sourceBranchName}</span>
+                              )}
+                              {version.publishedToVersionId != null && (
+                                <span className="published-to-main-badge">Published to main</span>
                               )}
                             </td>
                             <td>

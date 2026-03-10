@@ -446,6 +446,32 @@
   color: var(--dt-color-purple-4, #7b1fa2);
 }
 
+.source-publish {
+  background-color: var(--dt-color-green-1, #e8f5e9);
+  color: var(--dt-color-green-4, #2e7d32);
+}
+
+.provenance-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  border-radius: 10px;
+  background-color: var(--dt-color-cyan-1, #e3f2fd);
+  color: var(--dt-color-cyan-4, #1565c0);
+}
+
+.published-to-main-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-radius: 10px;
+  background-color: var(--dt-color-yellow-1, #fff3e0);
+  color: var(--dt-color-yellow-4, #e65100);
+}
+
 /* Empty State - will be migrated in Phase 5 */
 .document-page .empty-state {
   padding: 40px 20px;

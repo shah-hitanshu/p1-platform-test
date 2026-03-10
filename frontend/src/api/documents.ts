@@ -113,6 +113,10 @@ interface DocumentVersion {
   createdByType: 'user' | 'agent' | 'system';
   createdAt: string;
   isPublished?: boolean;
+  sourceBranchId?: string;
+  sourceVersionId?: string;
+  publishedToVersionId?: string;
+  sourceBranchName?: string;
 }
 
 interface CreateDocumentOnBranchResponse {
