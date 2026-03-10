@@ -33,6 +33,7 @@ export type {
   CreateDocumentParams,
   CreateDocumentVersionParams,
   CreateCheckpointParams,
+  PublishDocumentResult,
   ListDocumentsOptions,
   // Presence types
   ActorState,

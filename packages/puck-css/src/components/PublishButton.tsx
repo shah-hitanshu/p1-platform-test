@@ -1,7 +1,8 @@
 /**
  * PublishButton Component
  *
- * Button for creating checkpoints (publishing).
+ * Two-step button for publishing a document to the live site.
+ * First click shows a confirmation prompt, second click publishes.
  */
 
 import React, { useState, useCallback } from 'react';
@@ -9,19 +10,14 @@ import type { Checkpoint } from '@pantheon/css-client';
 
 interface PublishButtonProps {
   /**
-   * Callback to create checkpoint.
+   * Callback to publish the current document.
    */
-  onPublish: (name?: string) => Promise<Checkpoint>;
+  onPublish: () => Promise<Checkpoint>;
 
   /**
    * Whether the button is disabled.
    */
   disabled?: boolean;
-
-  /**
-   * Whether to show a name input prompt.
-   */
-  showNamePrompt?: boolean;
 
   /**
    * Callback when publish succeeds.
@@ -32,18 +28,6 @@ interface PublishButtonProps {
    * Callback when publish fails.
    */
   onError?: (error: Error) => void;
-
-  /**
-   * Callback when the name prompt is shown. Use this to pause auto-save
-   * and prevent refresh interference while typing.
-   */
-  onPromptShow?: () => void;
-
-  /**
-   * Callback when the name prompt is dismissed (after publish or cancel).
-   * Note: Auto-save typically resumes on the next edit, not on prompt close.
-   */
-  onPromptClose?: () => void;
 
   /**
    * Additional CSS class name.
@@ -57,14 +41,15 @@ interface PublishButtonProps {
 }
 
 /**
- * Button component for publishing (creating checkpoints).
+ * Two-step publish button. First click reveals a confirmation prompt
+ * warning that this publishes to the live site. Confirming triggers
+ * the actual publish.
  *
  * @example
  * ```tsx
  * <PublishButton
- *   onPublish={createCheckpoint}
- *   showNamePrompt
- *   onSuccess={(cp) => console.log('Published:', cp.name)}
+ *   onPublish={publishDocument}
+ *   onSuccess={(cp) => console.log('Published:', cp.id)}
  * >
  *   Publish
  * </PublishButton>
@@ -73,82 +58,60 @@ interface PublishButtonProps {
 export function PublishButton({
   onPublish,
   disabled = false,
-  showNamePrompt = true,
   onSuccess,
   onError,
-  onPromptShow,
-  onPromptClose,
   className = '',
   children = 'Publish',
 }: PublishButtonProps): React.ReactElement {
   const [isPublishing, setIsPublishing] = useState(false);
-  const [showPrompt, setShowPrompt] = useState(false);
-  const [checkpointName, setCheckpointName] = useState('');
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const baseClass = 'css-puck-publish-button';
 
-  const handlePublish = useCallback(async () => {
-    if (showNamePrompt && !showPrompt) {
-      setShowPrompt(true);
-      onPromptShow?.();
-      return;
-    }
-
+  const handleConfirm = useCallback(async () => {
     setIsPublishing(true);
 
     try {
-      const checkpoint = await onPublish(checkpointName || undefined);
-      setShowPrompt(false);
-      setCheckpointName('');
-      onPromptClose?.();
+      const checkpoint = await onPublish();
+      setShowConfirm(false);
       onSuccess?.(checkpoint);
     } catch (error) {
       onError?.(error instanceof Error ? error : new Error(String(error)));
     } finally {
       setIsPublishing(false);
     }
-  }, [onPublish, showNamePrompt, showPrompt, checkpointName, onSuccess, onError, onPromptShow, onPromptClose]);
+  }, [onPublish, onSuccess, onError]);
 
   const handleCancel = useCallback(() => {
-    setShowPrompt(false);
-    setCheckpointName('');
-    onPromptClose?.();
-  }, [onPromptClose]);
+    setShowConfirm(false);
+  }, []);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        void handlePublish();
-      } else if (e.key === 'Escape') {
-        handleCancel();
-      }
-    },
-    [handlePublish, handleCancel]
-  );
-
-  if (showPrompt) {
+  if (showConfirm) {
     return (
-      <div className={`${baseClass}__prompt ${className}`}>
-        <input
-          type="text"
-          className={`${baseClass}__input`}
-          placeholder="Checkpoint name (optional)"
-          value={checkpointName}
-          onChange={(e) => setCheckpointName(e.target.value)}
-          onKeyDown={handleKeyDown}
-          autoFocus
-        />
+      <div className={`${baseClass}__confirm ${className}`} style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+      }}>
+        <span style={{
+          fontSize: '0.75rem',
+          color: '#b45309',
+          fontWeight: 500,
+        }}>
+          Publish to live site?
+        </span>
         <button
           type="button"
-          className={`${baseClass}__confirm`}
-          onClick={() => void handlePublish()}
+          className="pds-button pds-button--primary pds-button--sm"
+          onClick={() => void handleConfirm()}
           disabled={isPublishing}
+          style={isPublishing ? { cursor: 'wait' } : undefined}
         >
           {isPublishing ? 'Publishing...' : 'Confirm'}
         </button>
         <button
           type="button"
-          className={`${baseClass}__cancel`}
+          className="pds-button pds-button--secondary pds-button--sm"
           onClick={handleCancel}
           disabled={isPublishing}
         >
@@ -161,11 +124,11 @@ export function PublishButton({
   return (
     <button
       type="button"
-      className={`${baseClass} ${className}`}
-      onClick={() => void handlePublish()}
+      className={`pds-button pds-button--primary pds-button--sm ${className}`}
+      onClick={() => setShowConfirm(true)}
       disabled={disabled || isPublishing}
     >
-      {isPublishing ? 'Publishing...' : children}
+      {children}
     </button>
   );
 }

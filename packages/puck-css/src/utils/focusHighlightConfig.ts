@@ -38,29 +38,27 @@ function FocusHighlightWrapper({
   const context = React.useContext(FocusHighlightContext);
   const focus = context?.focusMap.get(id) ?? staticFocus;
 
-  // No focus on this component - pass through
-  if (!focus) {
-    return React.createElement(React.Fragment, null, children);
-  }
+  // Always render a stable wrapper div AND badge to avoid DOM insertions/removals
+  // that can trigger browser scroll-into-view behavior.
+  // When not focused, the wrapper has no visual effect and badge is hidden via CSS.
+  const className = focus
+    ? (focus.isEditing
+        ? 'focus-region-highlight focus-region-highlight--editing'
+        : 'focus-region-highlight')
+    : 'focus-region-highlight focus-region-highlight--inactive';
 
-  // Build class name
-  const className = focus.isEditing
-    ? 'focus-region-highlight focus-region-highlight--editing'
-    : 'focus-region-highlight';
-
-  // Wrap with focus highlight
   return React.createElement(
     'div',
     {
       className,
-      style: { '--focus-color': focus.color } as React.CSSProperties,
-      'data-actor-id': focus.actorId,
+      style: focus ? { '--focus-color': focus.color } as React.CSSProperties : undefined,
+      'data-actor-id': focus?.actorId,
     },
     children,
     React.createElement(
       'div',
       { className: 'focus-region-highlight__badge' },
-      focus.actorName.charAt(0).toUpperCase()
+      focus ? focus.actorName.charAt(0).toUpperCase() : ''
     )
   );
 }

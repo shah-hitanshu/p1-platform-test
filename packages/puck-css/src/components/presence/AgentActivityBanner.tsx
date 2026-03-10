@@ -130,7 +130,7 @@ export function AgentActivityBanner({
       <div className={`${baseClass}__actions`}>
         <button
           type="button"
-          className={`${baseClass}__stop-btn`}
+          className={`pds-button pds-button--critical-secondary pds-button--sm ${baseClass}__stop-btn`}
           onClick={handleStopAgent}
           aria-label="Stop Agent"
         >
@@ -140,7 +140,7 @@ export function AgentActivityBanner({
         {dismissible && (
           <button
             type="button"
-            className={`${baseClass}__dismiss-btn`}
+            className={`pds-button pds-button--subtle pds-button--sm ${baseClass}__dismiss-btn`}
             onClick={handleDismiss}
             aria-label="Dismiss"
           >

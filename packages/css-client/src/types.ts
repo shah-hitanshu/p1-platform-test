@@ -227,6 +227,14 @@ export interface CreateCheckpointParams {
 }
 
 /**
+ * Result of publishing a single document.
+ */
+export interface PublishDocumentResult {
+  checkpoint: Checkpoint;
+  publishedVersionId: string;
+}
+
+/**
  * List documents options.
  */
 export interface ListDocumentsOptions extends PaginationOptions {

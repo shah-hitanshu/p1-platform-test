@@ -1,131 +1,143 @@
-/**
- * Tests for createCSSConfig()
- *
- * Validates environment variable parsing, prefix handling,
- * type coercion, and override behavior.
- */
-import { describe, it, expect } from 'vitest';
-import { createCSSConfig } from '../config';
-import type { CSSConfig } from '../config';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createNextConfig, createNextContentClient } from '../config.js';
 
-describe('createCSSConfig', () => {
-  const validEnv: Record<string, string> = {
-    CSS_BASE_URL: 'http://localhost:8787',
-    CSS_SITE_ID: 'test-site',
-    CSS_AUTH_MODE: 'mock',
-  };
+vi.mock('@pantheon/css-client', () => {
+  const MockCSSContentClient = vi.fn();
+  return { CSSContentClient: MockCSSContentClient };
+});
 
-  it('returns valid CSSConfig with all required fields from env', () => {
-    const config: CSSConfig = createCSSConfig(validEnv);
+describe('createNextConfig', () => {
+  const originalEnv = process.env;
 
-    expect(config.baseUrl).toBe('http://localhost:8787');
-    expect(config.siteId).toBe('test-site');
-    expect(config.authMode).toBe('mock');
+  beforeEach(() => {
+    process.env = { ...originalEnv };
   });
 
-  it('throws when CSS_BASE_URL is missing', () => {
-    const env = { ...validEnv };
-    delete env.CSS_BASE_URL;
-
-    expect(() => createCSSConfig(env)).toThrow(/CSS_BASE_URL/);
+  afterEach(() => {
+    process.env = originalEnv;
   });
 
-  it('throws when CSS_SITE_ID is missing', () => {
-    const env = { ...validEnv };
-    delete env.CSS_SITE_ID;
+  it('returns a valid config when all NEXT_PUBLIC_CSS_* env vars are set', () => {
+    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+    process.env.NEXT_PUBLIC_CSS_AUTH_MODE = 'google';
+    process.env.NEXT_PUBLIC_CSS_GOOGLE_CLIENT_ID = 'google-client-id';
+    process.env.NEXT_PUBLIC_CSS_BRANCH_ID = 'branch-456';
+    process.env.NEXT_PUBLIC_CSS_ENABLE_REALTIME = 'true';
+    process.env.NEXT_PUBLIC_CSS_WS_BASE_URL = 'wss://ws.example.com';
+    process.env.NEXT_PUBLIC_CSS_ENABLE_PRESENCE = 'true';
 
-    expect(() => createCSSConfig(env)).toThrow(/CSS_SITE_ID/);
+    const config = createNextConfig();
+
+    expect(config.baseUrl).toBe('https://css.example.com');
+    expect(config.siteId).toBe('site-123');
+    expect(config.authMode).toBe('google');
+    expect(config.googleClientId).toBe('google-client-id');
+    expect(config.branchId).toBe('branch-456');
+    expect(config.enableRealtime).toBe(true);
+    expect(config.wsBaseUrl).toBe('wss://ws.example.com');
+    expect(config.enablePresence).toBe(true);
   });
 
-  it('throws when CSS_AUTH_MODE is missing', () => {
-    const env = { ...validEnv };
-    delete env.CSS_AUTH_MODE;
+  it('allows overrides to take precedence over env vars', () => {
+    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+    process.env.NEXT_PUBLIC_CSS_AUTH_MODE = 'google';
 
-    expect(() => createCSSConfig(env)).toThrow(/CSS_AUTH_MODE/);
-  });
+    const config = createNextConfig({
+      baseUrl: 'https://override.example.com',
+      siteId: 'override-site',
+    });
 
-  it('applies prefix when extracting env vars', () => {
-    const env: Record<string, string> = {
-      VITE_CSS_BASE_URL: 'http://vite.localhost:8787',
-      VITE_CSS_SITE_ID: 'vite-site',
-      VITE_CSS_AUTH_MODE: 'google',
-    };
-
-    const config = createCSSConfig(env, { prefix: 'VITE_' });
-
-    expect(config.baseUrl).toBe('http://vite.localhost:8787');
-    expect(config.siteId).toBe('vite-site');
+    expect(config.baseUrl).toBe('https://override.example.com');
+    expect(config.siteId).toBe('override-site');
     expect(config.authMode).toBe('google');
   });
 
-  it('overrides win over env values', () => {
-    const config = createCSSConfig(validEnv, {
-      overrides: {
-        baseUrl: 'http://override.example.com',
-        siteId: 'override-site',
-      },
+  it('throws when required env vars are missing', () => {
+    expect(() => createNextConfig()).toThrow('Missing required config: CSS_BASE_URL');
+
+    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
+    expect(() => createNextConfig()).toThrow('Missing required config: CSS_SITE_ID');
+
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+    expect(() => createNextConfig()).toThrow('Missing required config: CSS_AUTH_MODE');
+  });
+
+  it('correctly parses boolean env vars', () => {
+    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+    process.env.NEXT_PUBLIC_CSS_AUTH_MODE = 'mock';
+    process.env.NEXT_PUBLIC_CSS_ENABLE_REALTIME = 'false';
+    process.env.NEXT_PUBLIC_CSS_ENABLE_PRESENCE = 'false';
+
+    const config = createNextConfig();
+
+    expect(config.enableRealtime).toBe(false);
+    expect(config.enablePresence).toBe(false);
+
+    process.env.NEXT_PUBLIC_CSS_ENABLE_REALTIME = 'true';
+    process.env.NEXT_PUBLIC_CSS_ENABLE_PRESENCE = 'true';
+
+    const config2 = createNextConfig();
+    expect(config2.enableRealtime).toBe(true);
+    expect(config2.enablePresence).toBe(true);
+  });
+});
+
+describe('createNextContentClient', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env = { ...originalEnv };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('returns a CSSContentClient when required env vars are set', () => {
+    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
+    process.env.CSS_API_KEY = 'api-token-123';
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+    process.env.NEXT_PUBLIC_CSS_BRANCH_ID = 'branch-456';
+
+    const client = createNextContentClient();
+
+    expect(client).not.toBeNull();
+  });
+
+  it('returns null when required env vars are missing', () => {
+    expect(createNextContentClient()).toBeNull();
+
+    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
+    expect(createNextContentClient()).toBeNull();
+
+    process.env.CSS_API_KEY = 'api-token-123';
+    expect(createNextContentClient()).toBeNull();
+  });
+
+  it('allows overrides to take precedence over env vars', async () => {
+    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
+    process.env.CSS_API_KEY = 'api-token-123';
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+
+    const { CSSContentClient } = vi.mocked(
+      await import('@pantheon/css-client')
+    );
+
+    const client = createNextContentClient({
+      baseUrl: 'https://override.example.com',
+      apiToken: 'override-token',
     });
 
-    expect(config.baseUrl).toBe('http://override.example.com');
-    expect(config.siteId).toBe('override-site');
-    // authMode should still come from env
-    expect(config.authMode).toBe('mock');
-  });
-
-  it('parses boolean values: "true" becomes true, "false" becomes false', () => {
-    const env: Record<string, string> = {
-      ...validEnv,
-      CSS_ENABLE_REALTIME: 'true',
-      CSS_ENABLE_PRESENCE: 'false',
-    };
-
-    const config = createCSSConfig(env);
-
-    expect(config.enableRealtime).toBe(true);
-    expect(config.enablePresence).toBe(false);
-  });
-
-  it('parses numeric values for autoSaveDelay and maxRetries', () => {
-    const env: Record<string, string> = {
-      ...validEnv,
-      CSS_AUTO_SAVE_DELAY: '5000',
-      CSS_MAX_RETRIES: '10',
-    };
-
-    const config = createCSSConfig(env);
-
-    expect(config.autoSaveDelay).toBe(5000);
-    expect(config.maxRetries).toBe(10);
-  });
-
-  it('leaves optional fields undefined when not provided in env', () => {
-    const config = createCSSConfig(validEnv);
-
-    expect(config.clientBaseUrl).toBeUndefined();
-    expect(config.branchId).toBeUndefined();
-    expect(config.googleClientId).toBeUndefined();
-    expect(config.auth0Domain).toBeUndefined();
-    expect(config.auth0ClientId).toBeUndefined();
-    expect(config.auth0Audience).toBeUndefined();
-    expect(config.enableRealtime).toBeUndefined();
-    expect(config.wsBaseUrl).toBeUndefined();
-    expect(config.enablePresence).toBeUndefined();
-    expect(config.autoSaveDelay).toBeUndefined();
-    expect(config.maxRetries).toBeUndefined();
-  });
-
-  it('throws when authMode is an invalid value', () => {
-    const env: Record<string, string> = {
-      ...validEnv,
-      CSS_AUTH_MODE: 'invalid',
-    };
-
-    expect(() => createCSSConfig(env)).toThrow();
-  });
-
-  it('reads CSS_BASE_URL directly when no prefix is provided', () => {
-    const config = createCSSConfig(validEnv);
-
-    expect(config.baseUrl).toBe('http://localhost:8787');
+    expect(client).not.toBeNull();
+    expect(CSSContentClient).toHaveBeenCalledWith({
+      baseUrl: 'https://override.example.com',
+      apiToken: 'override-token',
+      siteId: 'site-123',
+      branchId: undefined,
+    });
   });
 });

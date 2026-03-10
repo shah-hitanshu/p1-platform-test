@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+
 /**
  * Puck CSS Integration Styles
  *
@@ -28,6 +30,252 @@
   --puck-css-text-secondary: #6b7280;
   --puck-css-primary: #3b82f6;
   --puck-css-primary-hover: #2563eb;
+
+  /* PDS Button Design Tokens */
+  --pds-color-button-primary-background-default: #4f32ce;
+  --pds-color-button-primary-background-hover: #3017a1;
+  --pds-color-button-primary-background-active: #12026f;
+  --pds-color-button-primary-border-default: #4f32ce;
+  --pds-color-button-primary-border-hover: #3017a1;
+  --pds-color-button-primary-border-active: #12026f;
+  --pds-color-button-primary-foreground-default: #ffffff;
+  --pds-color-button-primary-foreground-hover: #ffffff;
+  --pds-color-button-primary-foreground-active: #ffffff;
+
+  --pds-color-button-secondary-background-default: rgba(0, 0, 0, 0);
+  --pds-color-button-secondary-background-hover: #f4f3fc;
+  --pds-color-button-secondary-background-active: #f4f3fc;
+  --pds-color-button-secondary-border-default: #4f32ce;
+  --pds-color-button-secondary-border-hover: #4f32ce;
+  --pds-color-button-secondary-border-active: #3017a1;
+  --pds-color-button-secondary-foreground-default: #4f32ce;
+  --pds-color-button-secondary-foreground-hover: #4f32ce;
+  --pds-color-button-secondary-foreground-active: #3017a1;
+
+  --pds-color-button-subtle-background-default: rgba(0, 0, 0, 0);
+  --pds-color-button-subtle-border-default: rgba(0, 0, 0, 0);
+  --pds-color-button-subtle-foreground-default: #4f32ce;
+  --pds-color-button-subtle-foreground-hover: #3017a1;
+  --pds-color-button-subtle-foreground-active: #12026f;
+
+  --pds-color-button-critical-background-default: #bc1c11;
+  --pds-color-button-critical-background-hover: #9e140b;
+  --pds-color-button-critical-background-active: #790b03;
+  --pds-color-button-critical-border-default: #bc1c11;
+  --pds-color-button-critical-border-hover: #9e140b;
+  --pds-color-button-critical-border-active: #790b03;
+  --pds-color-button-critical-foreground-default: #ffffff;
+  --pds-color-button-critical-foreground-hover: #ffffff;
+  --pds-color-button-critical-foreground-active: #ffffff;
+
+  --pds-color-button-critical-secondary-background-default: rgba(0, 0, 0, 0);
+  --pds-color-button-critical-secondary-background-hover: #ffefee;
+  --pds-color-button-critical-secondary-background-active: #ffdcd8;
+  --pds-color-button-critical-secondary-border-default: #bc1c11;
+  --pds-color-button-critical-secondary-border-hover: #9e140b;
+  --pds-color-button-critical-secondary-border-active: #790b03;
+  --pds-color-button-critical-secondary-foreground-default: #bc1c11;
+  --pds-color-button-critical-secondary-foreground-hover: #bc1c11;
+  --pds-color-button-critical-secondary-foreground-active: #bc1c11;
+
+  --pds-color-button-brand-background-default: #ffdc28;
+  --pds-color-button-brand-background-hover: #ddbd16;
+  --pds-color-button-brand-background-active: #a88f10;
+  --pds-color-button-brand-border-default: #ffdc28;
+  --pds-color-button-brand-border-hover: #ddbd16;
+  --pds-color-button-brand-border-active: #a88f10;
+  --pds-color-button-brand-foreground-default: #23232d;
+  --pds-color-button-brand-foreground-hover: #23232d;
+  --pds-color-button-brand-foreground-active: #23232d;
+
+  --pds-color-interactive-focus: #0f62fe;
+}
+
+/* ============================================
+   PDS Button Styles
+   ============================================ */
+
+button.pds-button {
+  --button-color-background: var(--pds-color-button-primary-background-default);
+  --button-color-foreground: var(--pds-color-button-primary-foreground-default);
+  --button-color-border: var(--pds-color-button-primary-border-default);
+  align-items: center;
+  background-color: var(--button-color-background);
+  border: 1px solid var(--button-color-border);
+  border-radius: 0.1875rem;
+  box-sizing: border-box;
+  color: var(--button-color-foreground);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: 'Poppins', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  gap: 0.64rem;
+  height: 2.25rem;
+  justify-content: center;
+  letter-spacing: 0.025em;
+  line-height: 1;
+  max-height: 2.25rem;
+  padding: 0.625rem 0.8125rem;
+  text-decoration: none;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1) 0s;
+  white-space: nowrap;
+}
+
+button.pds-button:disabled {
+  cursor: not-allowed;
+  opacity: 63%;
+}
+
+button.pds-button:hover:enabled {
+  --button-color-background: var(--pds-color-button-primary-background-hover);
+  --button-color-border: var(--pds-color-button-primary-border-hover);
+  --button-color-foreground: var(--pds-color-button-primary-foreground-hover);
+}
+
+button.pds-button:active:enabled {
+  --button-color-background: var(--pds-color-button-primary-background-active);
+  --button-color-border: var(--pds-color-button-primary-border-active);
+  --button-color-foreground: var(--pds-color-button-primary-foreground-active);
+}
+
+button.pds-button:focus-visible {
+  outline: 1px solid var(--pds-color-interactive-focus);
+  outline-offset: 0.0625rem;
+}
+
+/* Size: Small */
+button.pds-button.pds-button--sm {
+  font-size: 0.833rem;
+  gap: 0.41rem;
+  height: 2rem;
+  max-height: 2rem;
+  padding: 0.5rem 0.625rem;
+}
+
+/* Size: Large */
+button.pds-button.pds-button--lg {
+  font-size: 1.2rem;
+  height: 3rem;
+  max-height: 3rem;
+  padding: 0.9375rem 1.25rem;
+}
+
+/* Full width */
+button.pds-button.pds-button--full-width {
+  width: 100%;
+}
+
+/* Variant: Secondary */
+button.pds-button.pds-button--secondary {
+  --button-color-background: var(--pds-color-button-secondary-background-default);
+  --button-color-border: var(--pds-color-button-secondary-border-default);
+  --button-color-foreground: var(--pds-color-button-secondary-foreground-default);
+}
+
+button.pds-button.pds-button--secondary:hover:enabled {
+  --button-color-background: var(--pds-color-button-secondary-background-hover);
+  --button-color-border: var(--pds-color-button-secondary-border-hover);
+  --button-color-foreground: var(--pds-color-button-secondary-foreground-hover);
+}
+
+button.pds-button.pds-button--secondary:active:enabled {
+  --button-color-background: var(--pds-color-button-secondary-background-active);
+  --button-color-border: var(--pds-color-button-secondary-border-active);
+  --button-color-foreground: var(--pds-color-button-secondary-foreground-active);
+}
+
+/* Variant: Subtle */
+button.pds-button.pds-button--subtle {
+  --button-color-background: var(--pds-color-button-subtle-background-default);
+  --button-color-border: var(--pds-color-button-subtle-border-default);
+  --button-color-foreground: var(--pds-color-button-subtle-foreground-default);
+  font-weight: 400;
+  letter-spacing: 0;
+  padding: 0.64rem 0.25rem;
+}
+
+button.pds-button.pds-button--subtle:hover:enabled {
+  --button-color-background: var(--pds-color-button-subtle-background-default);
+  --button-color-border: var(--pds-color-button-subtle-border-default);
+  --button-color-foreground: var(--pds-color-button-subtle-foreground-hover);
+}
+
+button.pds-button.pds-button--subtle:active:enabled {
+  --button-color-background: var(--pds-color-button-subtle-background-default);
+  --button-color-border: var(--pds-color-button-subtle-border-default);
+  --button-color-foreground: var(--pds-color-button-subtle-foreground-active);
+}
+
+/* Variant: Critical */
+button.pds-button.pds-button--critical {
+  --button-color-background: var(--pds-color-button-critical-background-default);
+  --button-color-border: var(--pds-color-button-critical-border-default);
+  --button-color-foreground: var(--pds-color-button-critical-foreground-default);
+}
+
+button.pds-button.pds-button--critical:hover:enabled {
+  --button-color-background: var(--pds-color-button-critical-background-hover);
+  --button-color-border: var(--pds-color-button-critical-border-hover);
+  --button-color-foreground: var(--pds-color-button-critical-foreground-hover);
+}
+
+button.pds-button.pds-button--critical:active:enabled {
+  --button-color-background: var(--pds-color-button-critical-background-active);
+  --button-color-border: var(--pds-color-button-critical-border-active);
+  --button-color-foreground: var(--pds-color-button-critical-foreground-active);
+}
+
+/* Variant: Critical Secondary */
+button.pds-button.pds-button--critical-secondary {
+  --button-color-background: var(--pds-color-button-critical-secondary-background-default);
+  --button-color-border: var(--pds-color-button-critical-secondary-border-default);
+  --button-color-foreground: var(--pds-color-button-critical-secondary-foreground-default);
+}
+
+button.pds-button.pds-button--critical-secondary:hover:enabled {
+  --button-color-background: var(--pds-color-button-critical-secondary-background-hover);
+  --button-color-border: var(--pds-color-button-critical-secondary-border-hover);
+  --button-color-foreground: var(--pds-color-button-critical-secondary-foreground-hover);
+}
+
+button.pds-button.pds-button--critical-secondary:active:enabled {
+  --button-color-background: var(--pds-color-button-critical-secondary-background-active);
+  --button-color-border: var(--pds-color-button-critical-secondary-border-active);
+  --button-color-foreground: var(--pds-color-button-critical-secondary-foreground-active);
+}
+
+/* Variant: Brand */
+button.pds-button.pds-button--brand {
+  --button-color-background: var(--pds-color-button-brand-background-default);
+  --button-color-border: var(--pds-color-button-brand-border-default);
+  --button-color-foreground: var(--pds-color-button-brand-foreground-default);
+}
+
+button.pds-button.pds-button--brand:hover:enabled {
+  --button-color-background: var(--pds-color-button-brand-background-hover);
+  --button-color-border: var(--pds-color-button-brand-border-hover);
+  --button-color-foreground: var(--pds-color-button-brand-foreground-hover);
+}
+
+button.pds-button.pds-button--brand:active:enabled {
+  --button-color-background: var(--pds-color-button-brand-background-active);
+  --button-color-border: var(--pds-color-button-brand-border-active);
+  --button-color-foreground: var(--pds-color-button-brand-foreground-active);
+}
+
+/* Button Group */
+.pds-button-group {
+  display: flex;
+  flex-direction: row;
+  column-gap: 1.25rem;
+}
+
+/* Active state for toggle-style buttons */
+button.pds-button.pds-button--active {
+  --button-color-background: var(--pds-color-button-secondary-background-active);
+  --button-color-border: var(--pds-color-button-secondary-border-active);
+  --button-color-foreground: var(--pds-color-button-secondary-foreground-active);
 }
 
 /* ============================================
@@ -103,19 +351,8 @@
 }
 
 .diff-header__close {
-  padding: 0.25rem 0.5rem;
-  border: none;
-  background: transparent;
   font-size: 1.25rem;
-  color: var(--puck-css-text-secondary);
-  cursor: pointer;
-  border-radius: 0.25rem;
   line-height: 1;
-}
-
-.diff-header__close:hover {
-  background: var(--puck-css-bg-secondary);
-  color: var(--puck-css-text);
 }
 
 /* ============================================
@@ -191,19 +428,8 @@
 }
 
 .branch-diff-header__close {
-  padding: 0.25rem 0.5rem;
-  border: none;
-  background: transparent;
   font-size: 1.25rem;
-  color: var(--puck-css-text-secondary);
-  cursor: pointer;
-  border-radius: 0.25rem;
   line-height: 1;
-}
-
-.branch-diff-header__close:hover {
-  background: var(--puck-css-bg-secondary);
-  color: var(--puck-css-text);
 }
 
 /* ============================================
@@ -791,25 +1017,7 @@
 }
 
 .historical-version-banner__button {
-  padding: 0.375rem 0.75rem;
-  background: var(--puck-css-primary);
-  color: white;
-  border: none;
-  border-radius: 0.25rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  cursor: pointer;
   white-space: nowrap;
-  transition: background-color 0.15s;
-}
-
-.historical-version-banner__button:hover {
-  background: var(--puck-css-primary-hover);
-}
-
-.historical-version-banner__button:focus {
-  outline: 2px solid var(--puck-css-primary);
-  outline-offset: 2px;
 }
 
 /* ============================================
@@ -868,33 +1076,6 @@
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
-.css-plugin-btn-small {
-  padding: 4px 8px;
-  font-size: 12px;
-  font-weight: 500;
-  border: 1px solid var(--puck-css-border);
-  border-radius: 4px;
-  background: var(--puck-css-bg);
-  color: var(--puck-css-text);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.css-plugin-btn-small:hover {
-  background: var(--puck-css-bg-secondary);
-  border-color: var(--puck-css-text-secondary);
-}
-
-.css-plugin-btn-primary {
-  background: var(--puck-css-primary);
-  border-color: var(--puck-css-primary);
-  color: white;
-}
-
-.css-plugin-btn-primary:hover {
-  background: var(--puck-css-primary-hover);
-  border-color: var(--puck-css-primary-hover);
-}
 
 .css-plugin-create-form {
   display: flex;
@@ -1034,35 +1215,6 @@
   border-radius: 3px;
 }
 
-.css-plugin-btn {
-  width: 100%;
-  padding: 8px 12px;
-  font-size: 13px;
-  font-weight: 500;
-  border: 1px solid var(--puck-css-border);
-  border-radius: 6px;
-  background: var(--puck-css-bg);
-  color: var(--puck-css-text);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.css-plugin-btn:hover {
-  background: var(--puck-css-bg-secondary);
-  border-color: var(--puck-css-text-secondary);
-}
-
-.css-plugin-btn-compare {
-  background: var(--puck-css-bg);
-  border-color: var(--puck-css-primary);
-  color: var(--puck-css-primary);
-}
-
-.css-plugin-btn-compare:hover {
-  background: var(--puck-css-primary);
-  color: white;
-  border-color: var(--puck-css-primary);
-}
 
 /* ============================================
    Toast Notifications
@@ -1186,45 +1338,11 @@
   margin-top: 0.5rem;
 }
 
-.css-puck-toast__action {
-  padding: 0.375rem 0.75rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--puck-css-primary);
-  background: transparent;
-  border: 1px solid var(--puck-css-primary);
-  border-radius: 0.25rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.css-puck-toast__action:hover {
-  background: var(--puck-css-primary);
-  color: white;
-}
-
-.css-puck-toast__action:focus {
-  outline: 2px solid var(--puck-css-primary);
-  outline-offset: 2px;
-}
-
 /* Dismiss button */
 .css-puck-toast__dismiss {
   flex-shrink: 0;
-  padding: 0.25rem;
   font-size: 0.875rem;
   line-height: 1;
-  color: var(--puck-css-text-secondary);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  border-radius: 0.25rem;
-  transition: all 0.15s ease;
-}
-
-.css-puck-toast__dismiss:hover {
-  background: var(--puck-css-bg-secondary);
-  color: var(--puck-css-text);
 }
 
 /* Progress bar */
@@ -1711,48 +1829,13 @@
   flex-shrink: 0;
 }
 
-.css-puck-agent-banner__stop-btn {
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--puck-css-diff-removed);
-  background: var(--puck-css-diff-removed-bg);
-  border: 1px solid var(--puck-css-diff-removed);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s ease, transform 0.1s ease;
-}
-
-.css-puck-agent-banner__stop-btn:hover {
-  background: var(--puck-css-diff-removed);
-  color: white;
-}
-
-.css-puck-agent-banner__stop-btn:active {
-  transform: scale(0.98);
-}
-
-.css-puck-agent-banner__dismiss-btn {
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--puck-css-text-secondary);
-  background: transparent;
-  border: 1px solid var(--puck-css-border);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.css-puck-agent-banner__dismiss-btn:hover {
-  background: var(--puck-css-bg-secondary);
-}
 
 /* ============================================
    Focus Region Highlighting
    ============================================ */
 
-/* Focus region highlight wrapper - shows which components other actors have selected */
+/* Focus region highlight - applied directly to Puck's [data-puck-component] elements via DOM.
+   Uses outline (no layout impact) to avoid scroll jumps. */
 .focus-region-highlight {
   position: relative;
   outline: 2px solid var(--focus-color, #6366f1);
@@ -1775,7 +1858,27 @@
   }
 }
 
-/* Actor badge - shows first initial of actor's name */
+/* Actor badge via ::after pseudo-element — avoids DOM insertion that triggers scroll */
+.focus-region-highlight[data-focus-initial]::after {
+  content: attr(data-focus-initial);
+  position: absolute;
+  top: -0.75rem;
+  left: 0.5rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--focus-color, #6366f1);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 50%;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* Legacy badge class (kept for backwards compatibility) */
 .focus-region-highlight__badge {
   position: absolute;
   top: -0.75rem;
@@ -1792,4 +1895,133 @@
   border-radius: 50%;
   z-index: 10;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* ============================================
+   Merge Preview Renderer
+   ============================================ */
+
+.merge-preview-renderer__wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.merge-preview-renderer__summary {
+  font-size: 0.75rem;
+  color: var(--puck-css-text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+/* -- Empty state -- */
+
+.merge-preview-renderer--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--puck-css-text-secondary);
+  font-size: 1rem;
+  padding: 2rem;
+}
+
+/* -- Side-by-side mode -- */
+
+.merge-preview-renderer--side-by-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.merge-preview-renderer__panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--puck-css-bg);
+  border: 1px solid var(--puck-css-border);
+  border-radius: 0.375rem;
+  overflow: hidden;
+}
+
+.merge-preview-renderer__panel-label {
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+  background: var(--puck-css-bg-secondary);
+  border-bottom: 1px solid var(--puck-css-border);
+}
+
+.merge-preview-renderer__panel-content {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+}
+
+/* -- Overlay mode -- */
+
+.merge-preview-renderer--overlay {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+}
+
+.merge-preview-renderer__overlay-layer {
+  width: 100%;
+}
+
+.merge-preview-renderer__overlay-layer--source {
+  position: relative;
+  z-index: 1;
+}
+
+.merge-preview-renderer__overlay-layer--target {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  opacity: 0.5;
+}
+
+/* -- Slider mode -- */
+
+.merge-preview-renderer--slider {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.merge-preview-renderer__slider-control {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: var(--puck-css-bg-secondary);
+  border-bottom: 1px solid var(--puck-css-border);
+}
+
+.merge-preview-renderer__slider-input {
+  flex: 1;
+}
+
+.merge-preview-renderer__slider-content {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+}
+
+.merge-preview-renderer__slider-layer {
+  width: 100%;
+}
+
+.merge-preview-renderer__slider-layer--source {
+  position: relative;
+  z-index: 1;
+}
+
+.merge-preview-renderer__slider-layer--target {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
 }

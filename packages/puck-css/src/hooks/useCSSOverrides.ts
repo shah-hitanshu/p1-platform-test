@@ -16,8 +16,6 @@ import type { Checkpoint, ActorPresence } from '@pantheon/css-client';
  * Options consumers can pass to customize override behavior.
  */
 export interface UseCSSOverridesOptions {
-  /** Whether to show checkpoint name prompt */
-  showNamePrompt?: boolean;
   /** Whether to show the default Puck publish button */
   showDefaultPublish?: boolean;
   /** Callback when publish succeeds */
@@ -64,12 +62,10 @@ export function useCSSOverrides(options: UseCSSOverridesOptions = {}): PuckOverr
     getLastSaved: css.getLastSaved,
     getSaveError: css.getSaveError,
     onRetrySave: css.saveNow,
-    onPublish: css.createCheckpoint,
+    onPublish: css.publishDocument,
     onPublishSuccess: options.onPublishSuccess,
     onPublishError: options.onPublishError,
-    showNamePrompt: options.showNamePrompt,
     showDefaultPublish: options.showDefaultPublish,
-    onPauseAutoSave: css.pauseAutoSave,
     isViewingHistoricalVersion: css.isViewingHistoricalVersion,
     viewingVersion: css.viewingVersion,
     onReturnToLatest: css.returnToLatest,

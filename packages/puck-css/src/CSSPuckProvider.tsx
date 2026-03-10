@@ -134,6 +134,12 @@ function CSSPuckProviderInner({
   // corruption during rapid document switching.
   const currentDataDocumentPathRef = useRef<string | null>(null);
 
+  // Suppresses the next saveData call after loadDocument completes.
+  // PuckDataSynchronizer dispatches setData into Puck, which fires onChange,
+  // which calls saveData — but this is just echoing the loaded data, not a
+  // user edit. This flag prevents that echo from triggering a false save.
+  const suppressNextSaveRef = useRef(false);
+
   // Monotonically increasing counter for stale loadDocument response detection.
   // Each loadDocument call increments this and captures the current value.
   // After each async operation, the captured value is compared to the current
@@ -475,6 +481,12 @@ function CSSPuckProviderInner({
   // Sends changes via WebSocket when realtime is enabled (but not for remote updates)
   const saveData = useCallback(
     (data: PuckData) => {
+      // Suppress the onChange echo from PuckDataSynchronizer after loadDocument.
+      if (suppressNextSaveRef.current) {
+        suppressNextSaveRef.current = false;
+        return;
+      }
+
       // When realtime is enabled, detect whether this onChange came from a remote
       // sync (Yjs update from another client) vs. a local user edit.
       // Remote updates should NOT trigger a REST save — the DO handles persistence.
@@ -626,6 +638,7 @@ function CSSPuckProviderInner({
         viewingVersionRef.current = null;
 
         currentDataDocumentPathRef.current = doc.path;
+        suppressNextSaveRef.current = true;
         setCurrentData(puckData);
         setLatestVersionData(puckData);
         setViewingVersion(null);
@@ -863,6 +876,12 @@ function CSSPuckProviderInner({
     };
   }, [presenceEnabled, presenceActors, wsPresenceActors, realtime.connected, fetchPresence]);
 
+  // Keep presence in a ref so it can be read via getter without triggering
+  // context recreation. Presence changes frequently (focus region broadcasts)
+  // but shouldn't cause PuckDataSynchronizer or plugin re-renders.
+  const presenceStateRef = useRef(presenceState);
+  presenceStateRef.current = presenceState;
+
   // =========================================================================
   // Phase 9: Agent Edit Capabilities (when this client IS an agent)
   // =========================================================================
@@ -1084,6 +1103,35 @@ function CSSPuckProviderInner({
     [userClient, siteId, branchId, debouncedSave, performSave, enableRealtime, realtime]
   );
 
+  // Publish current document
+  const publishDocument = useCallback(
+    async (): Promise<Checkpoint> => {
+      const doc = currentDocumentRef.current;
+      if (!doc) {
+        throw new Error('No document loaded to publish');
+      }
+
+      // Save any pending changes first
+      if (pendingDataRef.current) {
+        if (enableRealtime && realtimeConnectedRef.current) {
+          const currentPath = currentDocumentRef.current?.path ?? null;
+          if (currentDataDocumentPathRef.current === currentPath) {
+            realtime.applyLocalChange(pendingDataRef.current);
+          }
+          pendingDataRef.current = null;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } else {
+          debouncedSave.cancel();
+          await performSave();
+        }
+      }
+
+      const result = await userClient.documents.publish(siteId, branchId, doc.id);
+      return result.checkpoint;
+    },
+    [userClient, siteId, branchId, debouncedSave, performSave, enableRealtime, realtime]
+  );
+
   // Switch branch
   const switchBranch = useCallback(
     async (newBranchId: string) => {
@@ -1182,6 +1230,13 @@ function CSSPuckProviderInner({
   createCheckpointRef.current = createCheckpoint;
   const stableCreateCheckpoint = useCallback(
     (name?: string) => createCheckpointRef.current(name),
+    []
+  );
+
+  const publishDocumentRef = useRef(publishDocument);
+  publishDocumentRef.current = publishDocument;
+  const stablePublishDocument = useCallback(
+    () => publishDocumentRef.current(),
     []
   );
 
@@ -1307,6 +1362,7 @@ function CSSPuckProviderInner({
       saveData: stableSaveData,
       saveNow: stableSaveNow,
       createCheckpoint: stableCreateCheckpoint,
+      publishDocument: stablePublishDocument,
       switchBranch: stableSwitchBranch,
       // Stable getters (Items 2, 3)
       getSaveStatus,
@@ -1338,7 +1394,10 @@ function CSSPuckProviderInner({
       // WebSocket presence - send focus regions via WebSocket when connected
       sendFocusRegions: realtime.sendFocusRegions,
       // Phase 9: Presence & Agent values
-      presence: presenceState,
+      // Use getter to avoid context recreation on every presence update.
+      // Presence changes frequently (focus region broadcasts) but shouldn't
+      // trigger re-renders of data-sync components like PuckDataSynchronizer.
+      get presence() { return presenceStateRef.current; },
       agentEdit: agentEditCapabilities,
       triggerAgent: triggerAgentFn,
       conflicts,
@@ -1359,6 +1418,7 @@ function CSSPuckProviderInner({
       stableSaveData,
       stableSaveNow,
       stableCreateCheckpoint,
+      stablePublishDocument,
       stableSwitchBranch,
       getSaveStatus,
       getLastSaved,
@@ -1385,8 +1445,7 @@ function CSSPuckProviderInner({
       realtime.connected,
       remoteSyncKey,
       realtime.sendFocusRegions,
-      // Phase 9 dependencies
-      presenceState,
+      // Phase 9 dependencies (presenceState excluded — accessed via getter/ref)
       agentEditCapabilities,
       triggerAgentFn,
       conflicts,

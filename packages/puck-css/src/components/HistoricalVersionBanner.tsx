@@ -77,7 +77,7 @@ export function HistoricalVersionBanner({
       </div>
       <button
         type="button"
-        className={`${baseClass}__button`}
+        className={`pds-button pds-button--primary pds-button--sm ${baseClass}__button`}
         onClick={onReturnToLatest}
       >
         Return to current

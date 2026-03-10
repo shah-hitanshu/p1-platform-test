@@ -14,6 +14,7 @@ import React, {
   useState,
   useCallback,
   useEffect,
+  useRef,
 } from 'react';
 import {
   createGoogleOAuth,
@@ -41,6 +42,8 @@ export interface CSSAuthContextValue {
   authMode: AuthMode;
   login(userId?: string): Promise<void>;
   logout(): Promise<void>;
+  /** Render a provider-hosted login button into the given container (Google only). */
+  renderLoginButton?(container: HTMLElement): (() => void) | null;
 }
 
 const CSSAuthContext = createContext<CSSAuthContextValue | null>(null);
@@ -75,13 +78,14 @@ export interface CSSAuthProviderProps {
 function createOAuthSession(
   authMode: AuthMode,
   props: CSSAuthProviderProps,
+  onCredential?: (info: OAuthUserInfo, token: string) => void,
 ): OAuthSession | null {
   if (authMode === 'google') {
     if (!props.googleClientId) {
       console.warn('CSSAuthProvider: googleClientId is required for google auth mode');
       return null;
     }
-    return createGoogleOAuth({ clientId: props.googleClientId });
+    return createGoogleOAuth({ clientId: props.googleClientId, onCredential });
   }
 
   if (authMode === 'auth0') {
@@ -116,8 +120,17 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Ref-based callback so the OAuthSession (created once) can update React state
+  const stateRef = useRef({ setUser, setToken, setIsLoading });
+  stateRef.current = { setUser, setToken, setIsLoading };
+
   const [oauthSession] = useState<OAuthSession | null>(() =>
-    createOAuthSession(authMode, props),
+    createOAuthSession(authMode, props, (info, credentialToken) => {
+      stateRef.current.setToken(credentialToken);
+      stateRef.current.setUser(oauthUserToAuthUser(info));
+      stateRef.current.setIsLoading(false);
+    }),
   );
 
   const isAuthenticated = user !== null && token !== null;
@@ -233,6 +246,10 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
     setError(null);
   }, [authMode, oauthSession, storageKey]);
 
+  const renderLoginButton = oauthSession?.renderButton
+    ? (container: HTMLElement) => oauthSession.renderButton!(container)
+    : undefined;
+
   const value: CSSAuthContextValue = {
     isAuthenticated,
     isLoading,
@@ -242,6 +259,7 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
     authMode,
     login,
     logout,
+    renderLoginButton,
   };
 
   return (

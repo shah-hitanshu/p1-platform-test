@@ -64,6 +64,8 @@ export interface UseCSSEditorReturn {
   loading: boolean;
   /** Error from document loading, if any */
   error: Error | null;
+  /** React key — pass directly as `<Puck key={puckKey} {...puckProps} />` to force clean remount on document switch */
+  puckKey: string;
   /** Props to spread onto <Puck> */
   puckProps: PuckProps;
   /** Full CSS context for advanced/escape-hatch use */
@@ -210,11 +212,42 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   }, [versions, css.loadVersion, css.returnToLatest]);
 
   // =========================================================================
+  // Focus Region Reporting (outgoing — report local selection to server)
+  // =========================================================================
+
+  // Report selection changes to the presence system via WebSocket.
+  // Wraps the consumer's onSelectionChange so both reporting and
+  // the consumer callback are called.
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
+
+  const handleSelectionChange = useCallback(
+    (path: string | null, itemId: string | null) => {
+      // Report to presence system via WebSocket (instant broadcast to other clients)
+      const regions = path ? [path] : [];
+      css.sendFocusRegions(regions);
+      // Forward to consumer callback
+      onSelectionChangeRef.current?.(path, itemId);
+    },
+    [css.sendFocusRegions],
+  );
+
+  // =========================================================================
   // Plugin & Overrides (composed hooks)
   // =========================================================================
 
+  // Default merge-compare handler: navigates to the merge page.
+  // The merge page reads the current branch from CSSPuckProvider context.
+  const defaultMergeCompare = useCallback(
+    () => {
+      window.location.assign('/merge');
+    },
+    [],
+  );
+
   const cssPlugin = useCSSPlugin({
-    onSelectionChange,
+    onSelectionChange: handleSelectionChange,
+    onMergeCompare: defaultMergeCompare,
     ...pluginOptions,
     versions,
     versionsLoading,
@@ -270,6 +303,13 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   // Assemble puckProps
   // =========================================================================
 
+  // Key that forces Puck to remount on document switch, ensuring clean
+  // undo history, sidebar state, and no false onChange echo from setData.
+  const puckKey = `css-${css.currentDocument?.id ?? documentPath}`;
+
+  // Focus highlighting is handled via direct DOM manipulation in
+  // PresenceFocusBridge (CSSApp.tsx) — no config wrapping needed.
+
   const puckProps: PuckProps = useMemo(
     () => ({
       config: puckConfig,
@@ -285,6 +325,7 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   return {
     loading,
     error,
+    puckKey,
     puckProps,
     css,
   };

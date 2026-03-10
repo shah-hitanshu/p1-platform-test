@@ -56,22 +56,14 @@ export interface CSSOverridesOptions {
 
   /** Callback to retry save */
   onRetrySave: () => void;
-  /** Callback to create checkpoint/publish */
-  onPublish: (name?: string) => Promise<Checkpoint>;
+  /** Callback to publish the current document */
+  onPublish: () => Promise<Checkpoint>;
   /** Callback when publish succeeds */
   onPublishSuccess?: (checkpoint: Checkpoint) => void;
   /** Callback when publish fails */
   onPublishError?: (error: Error) => void;
-  /** Whether to show checkpoint name prompt */
-  showNamePrompt?: boolean;
   /** Whether to show the default Puck publish button */
   showDefaultPublish?: boolean;
-  /**
-   * Callback to pause auto-save when checkpoint prompt is shown.
-   * Pass pauseAutoSave from useCSSPuck to prevent refresh interference
-   * while typing the checkpoint name.
-   */
-  onPauseAutoSave?: () => void;
   /**
    * Whether currently viewing a historical version (not the latest).
    */
@@ -135,7 +127,7 @@ export interface PuckOverrides {
  *     lastSaved,
  *     saveError,
  *     saveNow,
- *     createCheckpoint,
+ *     publishDocument,
  *   } = useCSSPuck();
  *
  *   // Preferred: use refs and getters for better performance
@@ -147,7 +139,7 @@ export interface PuckOverrides {
  *     getLastSaved: () => lastSavedRef.current,
  *     getSaveError: () => saveErrorRef.current,
  *     onRetrySave: saveNow,
- *     onPublish: createCheckpoint,
+ *     onPublish: publishDocument,
  *     onPublishSuccess: (cp) => console.log('Published:', cp.name),
  *   });
  *
@@ -157,7 +149,7 @@ export interface PuckOverrides {
  *     lastSaved,
  *     saveError,
  *     onRetrySave: saveNow,
- *     onPublish: createCheckpoint,
+ *     onPublish: publishDocument,
  *   });
  *
  *   return <Puck overrides={overrides} {...otherProps} />;
@@ -179,9 +171,7 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
     onPublish,
     onPublishSuccess,
     onPublishError,
-    showNamePrompt = true,
     showDefaultPublish = false,
-    onPauseAutoSave,
     // Deprecated props - kept for type signature compatibility but ignored
     syncData: _syncData,
     dataSyncKey: _dataSyncKey,
@@ -253,10 +243,8 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
               <SaveIndicator {...saveIndicatorProps} />
               <PublishButton
                 onPublish={onPublish}
-                showNamePrompt={showNamePrompt}
                 onSuccess={onPublishSuccess}
                 onError={onPublishError}
-                onPromptShow={onPauseAutoSave}
                 className="css-puck-header-publish"
               >
                 Publish

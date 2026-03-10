@@ -277,11 +277,26 @@ export function MergePreviewRenderer({
     );
   }
 
-  const viewProps = {
+  // In a merge comparison, source = branch (the "after" state) and
+  // target = main (the "before" state).  Swap configs so that:
+  //   - source/branch panel highlights "added" items (green)
+  //   - target/main panel highlights "removed" items (red)
+  const sideBySideProps = {
     sourceData,
     targetData,
-    beforeConfig,
-    afterConfig,
+    beforeConfig: afterConfig,   // branch panel shows added + modified
+    afterConfig: beforeConfig,   // main panel shows removed + modified
+    sourceBranchName,
+    targetBranchName,
+  };
+
+  // Overlay and slider modes are pure visual comparisons —
+  // diff highlighting is redundant and visually noisy.
+  const visualProps = {
+    sourceData,
+    targetData,
+    beforeConfig: config,
+    afterConfig: config,
     sourceBranchName,
     targetBranchName,
   };
@@ -292,9 +307,9 @@ export function MergePreviewRenderer({
         {changeSummary}
       </div>
 
-      {viewMode === 'side-by-side' && <SideBySideView {...viewProps} />}
-      {viewMode === 'overlay' && <OverlayView {...viewProps} />}
-      {viewMode === 'slider' && <SliderView {...viewProps} />}
+      {viewMode === 'side-by-side' && <SideBySideView {...sideBySideProps} />}
+      {viewMode === 'overlay' && <OverlayView {...visualProps} />}
+      {viewMode === 'slider' && <SliderView {...visualProps} />}
     </div>
   );
 }

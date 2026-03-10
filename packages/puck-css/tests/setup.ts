@@ -1,17 +1,8 @@
-/**
- * Vitest Setup File
- *
- * Configures testing environment with jest-dom matchers.
- */
+// Test setup
 
-import '@testing-library/jest-dom/vitest';
-
-// Polyfill ResizeObserver for JSDOM environment
-// Required by @puckeditor/core and @dnd-kit
-class ResizeObserverMock {
+// Polyfill ResizeObserver for jsdom (required by @dnd-kit used in Puck)
+globalThis.ResizeObserver ??= class ResizeObserver {
   observe() {}
   unobserve() {}
   disconnect() {}
-}
-
-global.ResizeObserver = ResizeObserverMock;
+} as unknown as typeof globalThis.ResizeObserver;
