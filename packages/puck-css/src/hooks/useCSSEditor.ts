@@ -236,12 +236,13 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   // Plugin & Overrides (composed hooks)
   // =========================================================================
 
-  // Default merge-compare handler: navigates to the merge page for the current branch
+  // Default merge-compare handler: navigates to the merge page.
+  // The merge page reads the current branch from CSSPuckProvider context.
   const defaultMergeCompare = useCallback(
-    (_targetBranchId: string) => {
-      window.location.assign(`/merge?branch=${css.branchId}`);
+    () => {
+      window.location.assign('/merge');
     },
-    [css.branchId],
+    [],
   );
 
   const cssPlugin = useCSSPlugin({

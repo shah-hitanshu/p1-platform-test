@@ -205,17 +205,17 @@ NEXT_PUBLIC_CSS_ENABLE_PRESENCE=true
 
 ## Branch Merge Comparison
 
-When working on a non-main branch, the CSS plugin panel shows a "Compare with main" link below the branch selector. By default, `useCSSEditor` navigates to `/merge?branch={branchId}` — your app needs a route at `/merge` to handle this.
+When working on a non-main branch, the CSS plugin panel shows a "Compare with main" link below the branch selector. By default, `useCSSEditor` navigates to `/merge` — your app needs a route there to handle the comparison. The merge page reads the current branch from `CSSPuckProvider` context.
 
-To customize the navigation (e.g., use a router push or a different URL pattern), pass `onMergeCompare` via `pluginOptions`. The callback receives the main branch ID as its argument:
+To customize the navigation (e.g., use a router push or a different path), pass `onMergeCompare` via `pluginOptions`:
 
 ```tsx
 const { puckKey, puckProps } = useCSSEditor({
   documentPath: '/home',
   puckConfig,
   pluginOptions: {
-    onMergeCompare: (mainBranchId) => {
-      router.push(`/merge?target=${mainBranchId}`);
+    onMergeCompare: () => {
+      router.push('/review');
     },
   },
 });
@@ -225,8 +225,8 @@ If you are using the lower-level `useCSSPlugin` or `createCSSPlugin` directly, y
 
 ```tsx
 const plugin = useCSSPlugin({
-  onMergeCompare: (mainBranchId) => {
-    window.location.assign(`/merge?target=${mainBranchId}`);
+  onMergeCompare: () => {
+    window.location.assign('/merge');
   },
 });
 ```
