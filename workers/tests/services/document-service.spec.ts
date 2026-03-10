@@ -633,6 +633,7 @@ describe('Phase 3.1: Document Service', () => {
       created_by_id: string;
       created_by_type: 'user' | 'agent' | 'system';
       created_at: string;
+      is_tombstone: boolean;
     }
 
     // Helper to create a mock document version row
@@ -648,6 +649,7 @@ describe('Phase 3.1: Document Service', () => {
         created_by_id: 'user-uuid-789',
         created_by_type: 'user',
         created_at: '2026-01-23T10:00:00.000Z',
+        is_tombstone: false,
         ...overrides,
       };
     }
@@ -955,6 +957,7 @@ describe('Phase 3.1: Document Service', () => {
         const tombstonedVersionRow = createMockVersionRow({
           document_id: 'existing-doc-id',
           snapshot: { _deleted: true },
+          is_tombstone: true,
         });
         const newVersionRow = createMockVersionRow({
           document_id: 'existing-doc-id',
@@ -1090,7 +1093,7 @@ describe('Phase 3.1: Document Service', () => {
 
         expect(result).toBe(false);
         expect(db.query).toHaveBeenCalledWith(
-          expect.stringMatching(/_deleted/i),
+          expect.stringMatching(/is_tombstone/i),
           expect.any(Array),
         );
       });

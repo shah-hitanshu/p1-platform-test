@@ -7,7 +7,7 @@
  * @see collaborative-state-system-architecture-v2.2.md Section "Documents"
  */
 
-import type { Document, Json } from '../types';
+import type { Document } from '../types';
 import { query } from '../db';
 
 // =============================================================================
@@ -15,17 +15,10 @@ import { query } from '../db';
 // =============================================================================
 
 /**
- * Checks if a snapshot represents a tombstone (deleted document version).
- * Tombstones are marked with { _deleted: true }.
+ * Checks if a database row represents a tombstone (deleted document version).
  */
-function isTombstoneSnapshot(snapshot: Json): boolean {
-  if (typeof snapshot !== 'object' || snapshot === null) {
-    return false;
-  }
-  // Use Object.prototype.hasOwnProperty to check for _deleted property
-  // and cast to access the value
-  const obj = snapshot as Record<string, unknown>;
-  return Object.prototype.hasOwnProperty.call(obj, '_deleted') && obj._deleted === true;
+function isTombstoneRow(row: { is_tombstone?: boolean }): boolean {
+  return row.is_tombstone === true;
 }
 
 // =============================================================================
@@ -588,6 +581,7 @@ interface DocumentVersionRow {
   created_by_id: string;
   created_by_type: 'user' | 'agent' | 'system';
   created_at: string;
+  is_tombstone?: boolean;
 }
 
 /**
@@ -634,7 +628,7 @@ export async function listDocumentsOnBranch(
           SELECT 1 FROM app.document_versions dv2
           WHERE dv2.document_id = d.id
             AND dv2.branch_id = $1
-            AND dv2.snapshot->>'_deleted' = 'true'
+            AND dv2.is_tombstone = true
             AND dv2.version_number = (
               SELECT MAX(dv3.version_number)
               FROM app.document_versions dv3
@@ -671,7 +665,7 @@ export async function listDocumentsOnBranch(
           SELECT 1 FROM app.document_versions dv_tomb
           WHERE dv_tomb.document_id = d.id
             AND dv_tomb.branch_id = $2
-            AND dv_tomb.snapshot->>'_deleted' = 'true'
+            AND dv_tomb.is_tombstone = true
             AND dv_tomb.version_number = (
               SELECT MAX(dv_latest.version_number)
               FROM app.document_versions dv_latest
@@ -701,7 +695,7 @@ export async function listDocumentsOnBranch(
         SELECT 1 FROM app.document_versions dv2
         WHERE dv2.document_id = d.id
           AND dv2.branch_id = $1
-          AND dv2.snapshot->>'_deleted' = 'true'
+          AND dv2.is_tombstone = true
           AND dv2.version_number = (
             SELECT MAX(dv3.version_number)
             FROM app.document_versions dv3
@@ -785,8 +779,7 @@ export async function createDocumentOnBranch(
 
         if (latestVersionResult.rows.length > 0) {
           const latestVersion = latestVersionResult.rows[0];
-          const snapshot = latestVersion.snapshot;
-          if (isTombstoneSnapshot(snapshot)) {
+          if (isTombstoneRow(latestVersion)) {
             // This is a recreation after tombstone - delete all versions on this branch
             // to start fresh with version 1
             await query(
@@ -857,8 +850,7 @@ export async function documentExistsOnBranch(
   branchId: string,
 ): Promise<boolean> {
   // Check if document has any version on this branch where:
-  // 1. The latest version is NOT a tombstone (snapshot->>'_deleted' != 'true')
-  // Note: We need COALESCE because NULL = 'true' returns NULL in SQL, not false
+  // 1. The latest version is NOT a tombstone
   const result = await query<{ exists: boolean }>(
     `SELECT EXISTS(
        SELECT 1 FROM app.document_versions dv
@@ -869,7 +861,7 @@ export async function documentExistsOnBranch(
            FROM app.document_versions dv2
            WHERE dv2.document_id = $1 AND dv2.branch_id = $2
          )
-         AND COALESCE(dv.snapshot->>'_deleted', '') != 'true'
+         AND dv.is_tombstone = false
      ) as exists`,
     [documentId, branchId],
   );
@@ -892,11 +884,11 @@ export async function deleteDocumentOnBranch(
     await query<DocumentVersionRow>(
       `INSERT INTO app.document_versions (
         document_id, branch_id, version_number, snapshot, crdt_state,
-        source, created_by_id, created_by_type
+        source, created_by_id, created_by_type, is_tombstone
       )
       SELECT $1, $2,
         COALESCE(MAX(version_number), 0) + 1,
-        $3, NULL, $4, $5, $6
+        $3, NULL, $4, $5, $6, true
       FROM app.document_versions
       WHERE document_id = $1 AND branch_id = $2
       RETURNING *`,

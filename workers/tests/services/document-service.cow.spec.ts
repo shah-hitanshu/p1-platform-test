@@ -115,12 +115,12 @@ describe('Copy-on-Write: listDocumentsOnBranch inherited field', () => {
       mainBranchId: 'branch-main',
     });
 
-    const sql = vi.mocked(db.query).mock.calls[0][0] as string;
+    const sql = vi.mocked(db.query).mock.calls[0][0];
     // The inherited arm should check for tombstones on main
     // (latest version on main has _deleted = true)
     const unionIndex = sql.indexOf('UNION');
     const inheritedArm = sql.slice(unionIndex);
-    expect(inheritedArm).toContain("_deleted");
+    expect(inheritedArm).toContain('is_tombstone');
     expect(inheritedArm).toContain('MAX');
   });
 
@@ -134,7 +134,7 @@ describe('Copy-on-Write: listDocumentsOnBranch inherited field', () => {
       mainBranchId: 'branch-main',
     });
 
-    const sql = vi.mocked(db.query).mock.calls[0][0] as string;
+    const sql = vi.mocked(db.query).mock.calls[0][0];
     // The SQL should include 'false' and 'true' as inherited markers
     expect(sql).toContain('false');
     expect(sql).toContain('true');

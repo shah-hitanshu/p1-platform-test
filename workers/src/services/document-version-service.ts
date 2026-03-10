@@ -56,6 +56,7 @@ interface DocumentVersionRow {
   created_by_type: 'user' | 'agent' | 'system';
   created_at: string;
   is_published?: boolean;
+  is_tombstone?: boolean;
 }
 
 // =============================================================================
@@ -120,6 +121,9 @@ function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersion {
   };
   if (row.is_published !== undefined) {
     version.isPublished = row.is_published;
+  }
+  if (row.is_tombstone !== undefined) {
+    version.isTombstone = row.is_tombstone;
   }
   return version;
 }

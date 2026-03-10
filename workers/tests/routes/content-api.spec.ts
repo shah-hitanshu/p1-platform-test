@@ -110,6 +110,7 @@ const mockTombstonedVersion: DocumentVersion = {
   branchId: 'branch-main-uuid',
   versionNumber: 15,
   snapshot: { _deleted: true },
+  isTombstone: true,
   source: 'edit',
   createdById: 'user-1',
   createdByType: 'user',

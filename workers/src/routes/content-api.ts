@@ -143,8 +143,7 @@ async function handleGetContent(
   }
 
   // Tombstone check
-  const snapshot = version.snapshot as Record<string, unknown> | null;
-  if (snapshot !== null && typeof snapshot === 'object' && snapshot._deleted === true) {
+  if (version.isTombstone === true) {
     return errorResponse('Document has been deleted', 404);
   }
 

@@ -457,12 +457,12 @@ export async function createCheckpoint(
       latestVersionsResult = await query<{ document_id: string; document_version_id: string }>(
         `SELECT document_id, document_version_id FROM (
           SELECT DISTINCT ON (dv.document_id)
-            dv.document_id, dv.id as document_version_id, dv.snapshot
+            dv.document_id, dv.id as document_version_id, dv.is_tombstone
           FROM app.document_versions dv
           WHERE dv.branch_id = $1 AND dv.created_at > $2
           ORDER BY dv.document_id, dv.version_number DESC
         ) latest
-        WHERE (latest.snapshot->>'_deleted') IS DISTINCT FROM 'true'`,
+        WHERE latest.is_tombstone = false`,
         [params.branchId, parentCreatedAt],
       );
     } else {
@@ -470,12 +470,12 @@ export async function createCheckpoint(
       latestVersionsResult = await query<{ document_id: string; document_version_id: string }>(
         `SELECT document_id, document_version_id FROM (
           SELECT DISTINCT ON (dv.document_id)
-            dv.document_id, dv.id as document_version_id, dv.snapshot
+            dv.document_id, dv.id as document_version_id, dv.is_tombstone
           FROM app.document_versions dv
           WHERE dv.branch_id = $1
           ORDER BY dv.document_id, dv.version_number DESC
         ) latest
-        WHERE (latest.snapshot->>'_deleted') IS DISTINCT FROM 'true'`,
+        WHERE latest.is_tombstone = false`,
         [params.branchId],
       );
     }

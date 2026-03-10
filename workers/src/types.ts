@@ -275,6 +275,7 @@ export interface DocumentVersion {
   createdByType: 'user' | 'agent' | 'system';
   createdAt: string;
   isPublished?: boolean;
+  isTombstone?: boolean;
 }
 
 // =============================================================================

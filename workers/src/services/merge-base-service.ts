@@ -237,7 +237,7 @@ export async function getModifiedDocumentsSince(
     -- Current latest versions on the branch
     current_versions AS (
       SELECT DISTINCT ON (dv.document_id)
-        dv.document_id, dv.id AS version_id, dv.version_number, dv.source, dv.snapshot
+        dv.document_id, dv.id AS version_id, dv.version_number, dv.source, dv.snapshot, dv.is_tombstone
       FROM app.document_versions dv
       WHERE dv.branch_id = $1
       ORDER BY dv.document_id, dv.version_number DESC
@@ -251,10 +251,7 @@ export async function getModifiedDocumentsSince(
       cd.document_version_id AS base_version_id,
       cd.version_number AS base_version_number,
       cv.source,
-      CASE
-        WHEN (cv.snapshot->>'_deleted') = 'true' THEN TRUE
-        ELSE FALSE
-      END AS is_deleted
+      cv.is_tombstone AS is_deleted
     FROM current_versions cv
     LEFT JOIN checkpoint_docs cd ON cv.document_id = cd.document_id
     INNER JOIN app.documents d ON d.id = cv.document_id

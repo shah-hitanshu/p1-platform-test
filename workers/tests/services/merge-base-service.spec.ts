@@ -418,7 +418,7 @@ describe('Phase 5.1b: Merge Base Service', () => {
       expect(sqlArg).toContain('current_versions');
     });
 
-    it('should detect tombstoned documents via snapshot _deleted flag', async () => {
+    it('should detect tombstoned documents via is_tombstone column', async () => {
       const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
       const db = await import('../../src/db');
 
@@ -449,7 +449,7 @@ describe('Phase 5.1b: Merge Base Service', () => {
 
       // Verify the SQL uses snapshot-based tombstone detection
       expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining("snapshot->>'_deleted'"),
+        expect.stringContaining('is_tombstone'),
         expect.any(Array),
       );
     });
