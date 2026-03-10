@@ -3410,6 +3410,31 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 
 **Purpose:** Enables frontends to display "Published from branch X by user Y" on main's version history, and "Published to main" on the branch's version history.
 
+##### Frontend Provenance Display
+- [x] "from {branchName}" badge (cyan) on versions with `sourceBranchName` in version history
+- [x] "Published to main" badge (yellow) on versions with `publishedToVersionId` in version history
+- [x] "publish" source badge (green) for `source: 'publish'` versions
+- [x] Tests: 4 new frontend tests, 236 frontend tests passing
+- [x] Test commit: `0278e47`, Implementation commit: `00118b8`
+
+##### Bug Fix: versionId undefined (#30)
+- [x] `CheckpointDocumentVersion` now includes `versionId` field mapped from `row.id`
+- [x] Fixes client receiving `versionId: undefined` in checkpoint documents API response
+- [x] Test added to checkpoint-service.spec.ts
+- [x] Commit: `76ff3e6`
+
+#### Wave 13 — Document Publish State in API Responses (#31)
+- [x] `DocumentOnBranch` type extended with `isPublished`, `publishedVersionId`, `publishedAt`
+- [x] `listDocumentsOnBranch` SQL queries updated with `LEFT JOIN LATERAL` on `checkpoint_documents` + `checkpoints` to derive publish state
+- [x] All 3 query paths updated: COW local arm, COW inherited arm, main branch listing
+- [x] Publish state checked against main branch's checkpoints (main for COW, branchId for non-COW)
+- [x] `isPublished` on `DocumentVersion` already existed via EXISTS subquery — no changes needed
+- [x] No migration required — query-only change using existing `checkpoint_documents` table
+- [x] Tests: 7 new tests, 2431 backend tests passing
+- [x] Test commit: `f5f6708`, Implementation commit: `7559fe2`
+
+**Decision:** Trimmed-down implementation of issue #31. Skipped: site-level document endpoints (publish state is branch-contextual), `unpublishedChanges` field (expensive, better as dedicated diff endpoint). Added guidance for puck-css-integration frontend on issue #31.
+
 #### Remaining
 - [ ] UX confirmation prompt in puck-css-integration before publish (separate project)
 - [ ] Phase 7: Publish-propagation foundation (future)
