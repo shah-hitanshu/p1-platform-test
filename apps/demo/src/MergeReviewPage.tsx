@@ -200,7 +200,8 @@ export function MergeReviewPage() {
     const src = selectedDoc.sourceSnapshot as unknown as PuckData;
     const tgt = selectedDoc.targetSnapshot as unknown as PuckData;
     if (isPuckData(src) && isPuckData(tgt)) {
-      return diffPuckDataWithPositions(src, tgt);
+      // Target (main) is the baseline, source (branch) is the changed state
+      return diffPuckDataWithPositions(tgt, src);
     }
     return [];
   }, [selectedDoc]);
