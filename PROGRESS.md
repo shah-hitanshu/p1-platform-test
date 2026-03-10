@@ -3383,6 +3383,19 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - [x] Tests: 8 new tests (5 service + 3 route), 2389 backend tests passing
 - [x] Test commit: `407d646`, Implementation commit: `3a638c1`
 
+#### Wave 11 — Published-State Merge Comparison & Cherry-Pick Publish
+- [x] `getModifiedDocumentsSince()` gains `publishedOnly` option — compares against `checkpoint_documents` (published state) instead of raw `document_versions`
+- [x] `detectConflicts()` uses `{ publishedOnly: true }` for the target (main) branch
+- [x] `publishDocument()` rewritten as cherry-pick-to-main: always resolves main branch, copies version from source branch to main, creates publish checkpoint on main
+- [x] Route passes `siteId` to `publishDocument()` for main branch resolution
+- [x] DO `/reload` endpoint: re-initializes Y.Doc from PostgreSQL, broadcasts diff to connected WebSocket clients
+- [x] Post-publish DO notification: worker calls main branch DO's `/reload` after successful publish
+- [x] Errors from DO reload are swallowed (logged, don't break publish response)
+- [x] Tests: 22 new tests (5 merge-base, 3 conflict-detection, 7 checkpoint-service, 3 route, 6 DO reload, 7 post-publish notification), 2412 backend tests passing
+- [x] Key commits: `028ae18` (published-only merge tests), `34961f9` (published-only merge impl), `1cc1ff6` (cherry-pick publish tests), `138a46c` (cherry-pick publish impl), `bbc3311` (DO reload tests), `070670b` (DO reload impl), `8b4ec00` (post-publish notification tests), `8616d1a` (post-publish notification impl)
+
+**Decision:** User decided the Publish button should always cherry-pick to main (like git cherry-pick), regardless of which branch the editor is on. A UX confirmation prompt will be added to the puck-css-integration frontend separately.
+
 #### Remaining
+- [ ] UX confirmation prompt in puck-css-integration before publish (separate project)
 - [ ] Phase 7: Publish-propagation foundation (future)
-- [ ] Remove "Publish" button from Puck integration on branches (only show on main) — separate task
