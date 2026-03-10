@@ -3372,6 +3372,17 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - [x] Security fix: user-submitted snapshots with `_deleted` key no longer affect tombstone logic
 - [x] Commit: `86ab283`
 
+#### Wave 10 — Single-Document Publish Endpoint
+- [x] New `publishDocument()` in checkpoint-service: creates publish-type checkpoint for one document
+- [x] New route: `POST /api/sites/:siteId/branches/:branchId/documents/:documentId/publish`
+- [x] Route pattern in index.ts, exports in services/index.ts
+- [x] Transaction safety with try/catch ROLLBACK (per reviewer feedback)
+- [x] Authorization: requires `canEditDocuments` permission
+- [x] Validates document exists and is not tombstoned before publishing
+- [x] Works on any branch (main or feature branches)
+- [x] Tests: 8 new tests (5 service + 3 route), 2389 backend tests passing
+- [x] Test commit: `407d646`, Implementation commit: `3a638c1`
+
 #### Remaining
 - [ ] Phase 7: Publish-propagation foundation (future)
 - [ ] Remove "Publish" button from Puck integration on branches (only show on main) — separate task
