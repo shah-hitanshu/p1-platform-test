@@ -56,10 +56,12 @@ interface DocumentRow {
 }
 
 /**
- * Database row format for documents with inherited flag.
+ * Database row format for documents with inherited flag and publish state.
  */
 interface DocumentOnBranchRow extends DocumentRow {
   inherited: boolean;
+  published_version_id: string | null;
+  published_at: string | null;
 }
 
 // =============================================================================
@@ -141,10 +143,13 @@ export interface DocumentWithArchive extends Document {
 }
 
 /**
- * Extended document type with inherited flag for branch listings.
+ * Extended document type with inherited flag and publish state for branch listings.
  */
 export interface DocumentOnBranch extends DocumentWithArchive {
   inherited: boolean;
+  isPublished: boolean;
+  publishedVersionId?: string;
+  publishedAt?: string;
 }
 
 /**
@@ -153,6 +158,13 @@ export interface DocumentOnBranch extends DocumentWithArchive {
 function mapRowToDocumentOnBranch(row: DocumentOnBranchRow): DocumentOnBranch {
   const doc = mapRowToDocument(row) as DocumentOnBranch;
   doc.inherited = row.inherited;
+  doc.isPublished = row.published_version_id !== null;
+  if (row.published_version_id !== null) {
+    doc.publishedVersionId = row.published_version_id;
+  }
+  if (row.published_at !== null) {
+    doc.publishedAt = row.published_at;
+  }
   return doc;
 }
 
@@ -618,10 +630,21 @@ export async function listDocumentsOnBranch(
 
   if (mainBranchId !== undefined && mainBranchId !== '') {
     // Copy-on-write query: include documents from branch + inherited from main
+    // Includes publish state via LEFT JOIN LATERAL on checkpoint_documents
     let sql = `
-      SELECT DISTINCT d.*, false AS inherited
+      SELECT DISTINCT d.*, false AS inherited,
+        pub.document_version_id AS published_version_id,
+        pub.published_at
       FROM app.documents d
       INNER JOIN app.document_versions dv ON dv.document_id = d.id
+      LEFT JOIN LATERAL (
+        SELECT cd.document_version_id, cp.created_at AS published_at
+        FROM app.checkpoint_documents cd
+        INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+        WHERE cd.document_id = d.id AND cp.branch_id = $2
+        ORDER BY cp.created_at DESC
+        LIMIT 1
+      ) pub ON true
       WHERE dv.branch_id = $1
         AND d.archived_at IS NULL
         AND NOT EXISTS (
@@ -648,11 +671,21 @@ export async function listDocumentsOnBranch(
 
       UNION
 
-      SELECT DISTINCT d.*, true AS inherited
+      SELECT DISTINCT d.*, true AS inherited,
+        pub.document_version_id AS published_version_id,
+        pub.published_at
       FROM app.documents d
       INNER JOIN app.document_versions dv ON dv.document_id = d.id
       INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
       INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+      LEFT JOIN LATERAL (
+        SELECT cd2.document_version_id, cp2.created_at AS published_at
+        FROM app.checkpoint_documents cd2
+        INNER JOIN app.checkpoints cp2 ON cp2.id = cd2.checkpoint_id
+        WHERE cd2.document_id = d.id AND cp2.branch_id = $2
+        ORDER BY cp2.created_at DESC
+        LIMIT 1
+      ) pub ON true
       WHERE dv.branch_id = $2
         AND cp.branch_id = $2
         AND d.archived_at IS NULL
@@ -685,10 +718,21 @@ export async function listDocumentsOnBranch(
   }
 
   // Original query: only documents with versions on the branch
+  // When called without mainBranchId, the branchId itself is treated as main
   let sql = `
-    SELECT DISTINCT d.*, false AS inherited
+    SELECT DISTINCT d.*, false AS inherited,
+      pub.document_version_id AS published_version_id,
+      pub.published_at
     FROM app.documents d
     INNER JOIN app.document_versions dv ON dv.document_id = d.id
+    LEFT JOIN LATERAL (
+      SELECT cd.document_version_id, cp.created_at AS published_at
+      FROM app.checkpoint_documents cd
+      INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+      WHERE cd.document_id = d.id AND cp.branch_id = $1
+      ORDER BY cp.created_at DESC
+      LIMIT 1
+    ) pub ON true
     WHERE dv.branch_id = $1
       AND d.archived_at IS NULL
       AND NOT EXISTS (
