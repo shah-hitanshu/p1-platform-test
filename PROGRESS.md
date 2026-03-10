@@ -3396,6 +3396,20 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 
 **Decision:** User decided the Publish button should always cherry-pick to main (like git cherry-pick), regardless of which branch the editor is on. A UX confirmation prompt will be added to the puck-css-integration frontend separately.
 
+#### Wave 12 — Publish Provenance Tracking
+- [x] Migration 026: adds `source_branch_id`, `source_version_id`, `published_to_version_id` columns to `document_versions`
+- [x] `publishDocument()` sets `source_branch_id` and `source_version_id` on the version copied to main
+- [x] `publishDocument()` UPDATEs the source branch version with `published_to_version_id` back-link
+- [x] `publishDocument()` returns `sourceBranchName` resolved via `getBranch()`
+- [x] `DocumentVersion` type extended with `sourceBranchId`, `sourceVersionId`, `publishedToVersionId`, `sourceBranchName`
+- [x] `mapRowToDocumentVersion` conditionally maps nullable provenance fields
+- [x] Version SELECT queries LEFT JOIN `branches` for `source_branch_name`
+- [x] Provenance only set during cross-branch publish (not when publishing on main)
+- [x] Tests: 11 new provenance tests (6 checkpoint-service, 5 version-service), 2423 backend tests passing
+- [x] Test commit: `d10adae`, Implementation commit: `36cabf0`
+
+**Purpose:** Enables frontends to display "Published from branch X by user Y" on main's version history, and "Published to main" on the branch's version history.
+
 #### Remaining
 - [ ] UX confirmation prompt in puck-css-integration before publish (separate project)
 - [ ] Phase 7: Publish-propagation foundation (future)

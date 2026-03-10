@@ -15,7 +15,7 @@ import type {
   DocumentVersion,
 } from '../types';
 import { query } from '../db';
-import { getMainBranch } from './branch-service';
+import { getBranch, getMainBranch } from './branch-service';
 
 // =============================================================================
 // Types
@@ -95,6 +95,7 @@ export interface ListCheckpointsByAgentOptions {
  */
 export interface CheckpointDocumentVersion extends DocumentVersion {
   documentPath: string;
+  versionId: string;
 }
 
 /**
@@ -266,6 +267,7 @@ function mapRowToCheckpoint(row: CheckpointRow): Checkpoint {
 function mapRowToCheckpointDocumentVersion(row: VersionWithDocumentRow): CheckpointDocumentVersion {
   return {
     id: row.id,
+    versionId: row.id,
     documentId: row.document_id,
     branchId: row.branch_id,
     versionNumber: row.version_number,
@@ -1109,6 +1111,7 @@ export interface PublishDocumentParams {
 export interface PublishDocumentResult {
   checkpoint: Checkpoint;
   publishedVersionId: string;
+  sourceBranchName?: string;
 }
 
 /**
@@ -1168,11 +1171,13 @@ export async function publishDocument(
       const copyResult = await query<{ id: string; version_number: number }>(
         `INSERT INTO app.document_versions (
           document_id, branch_id, version_number, snapshot, crdt_state,
-          source, created_by_id, created_by_type
+          source, created_by_id, created_by_type,
+          source_branch_id, source_version_id
         )
         SELECT $1, $2,
           COALESCE(MAX(version_number), 0) + 1,
-          $3, $4, 'publish', $5, $6
+          $3, $4, 'publish', $5, $6,
+          $7, $8
         FROM app.document_versions
         WHERE document_id = $1 AND branch_id = $2
         RETURNING id, version_number`,
@@ -1183,10 +1188,20 @@ export async function publishDocument(
           version.crdt_state,
           params.createdById,
           params.createdByType,
+          params.branchId,
+          version.id,
         ],
       );
 
       publishVersionId = getFirstRow(copyResult.rows).id;
+
+      // Back-link: mark the source version as published
+      await query(
+        `UPDATE app.document_versions
+         SET published_to_version_id = $1
+         WHERE id = $2`,
+        [publishVersionId, version.id],
+      );
     }
 
     // Create publish checkpoint on main
@@ -1210,9 +1225,19 @@ export async function publishDocument(
 
     await query('COMMIT');
 
+    // After COMMIT, resolve source branch name
+    let sourceBranchName: string | undefined;
+    if (params.branchId !== mainBranch.id) {
+      const sourceBranch = await getBranch(params.branchId);
+      if (sourceBranch !== null) {
+        sourceBranchName = sourceBranch.name;
+      }
+    }
+
     return {
       checkpoint: mapRowToCheckpoint(row),
       publishedVersionId: publishVersionId,
+      ...(sourceBranchName !== undefined ? { sourceBranchName } : {}),
     };
   } catch (error) {
     await query('ROLLBACK');

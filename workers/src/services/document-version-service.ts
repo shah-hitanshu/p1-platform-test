@@ -57,6 +57,10 @@ interface DocumentVersionRow {
   created_at: string;
   is_published?: boolean;
   is_tombstone?: boolean;
+  source_branch_id: string | null;
+  source_version_id: string | null;
+  published_to_version_id: string | null;
+  source_branch_name?: string | null;
 }
 
 // =============================================================================
@@ -125,7 +129,13 @@ function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersion {
   if (row.is_tombstone !== undefined) {
     version.isTombstone = row.is_tombstone;
   }
-  return version;
+  return {
+    ...version,
+    ...(row.source_branch_id != null ? { sourceBranchId: row.source_branch_id } : {}),
+    ...(row.source_version_id != null ? { sourceVersionId: row.source_version_id } : {}),
+    ...(row.published_to_version_id != null ? { publishedToVersionId: row.published_to_version_id } : {}),
+    ...(('source_branch_name' in row && row.source_branch_name != null) ? { sourceBranchName: row.source_branch_name } : {}),
+  };
 }
 
 /**
@@ -264,11 +274,15 @@ export async function createDocumentVersion(
 export async function getDocumentVersion(versionId: string): Promise<DocumentVersion | null> {
   const result = await query<DocumentVersionRow>(
     `SELECT dv.*,
+       dv.source_branch_id, dv.source_version_id, dv.published_to_version_id,
+       b.name AS source_branch_name,
        EXISTS(
          SELECT 1 FROM app.checkpoint_documents cd
          WHERE cd.document_version_id = dv.id
        ) AS is_published
-     FROM app.document_versions dv WHERE dv.id = $1`,
+     FROM app.document_versions dv
+     LEFT JOIN app.branches b ON b.id = dv.source_branch_id
+     WHERE dv.id = $1`,
     [versionId],
   );
 
@@ -292,11 +306,14 @@ export async function getLatestDocumentVersion(
 ): Promise<DocumentVersion | null> {
   const result = await query<DocumentVersionRow>(
     `SELECT dv.*,
+       dv.source_branch_id, dv.source_version_id, dv.published_to_version_id,
+       b.name AS source_branch_name,
        EXISTS(
          SELECT 1 FROM app.checkpoint_documents cd
          WHERE cd.document_version_id = dv.id
        ) AS is_published
      FROM app.document_versions dv
+     LEFT JOIN app.branches b ON b.id = dv.source_branch_id
      WHERE dv.document_id = $1 AND dv.branch_id = $2
      ORDER BY dv.version_number DESC
      LIMIT 1`,
@@ -325,10 +342,13 @@ export async function getLatestPublishedDocumentVersion(
   branchId: string,
 ): Promise<DocumentVersion | null> {
   const result = await query<DocumentVersionRow>(
-    `SELECT dv.*
+    `SELECT dv.*,
+       dv.source_branch_id, dv.source_version_id, dv.published_to_version_id,
+       b.name AS source_branch_name
      FROM app.document_versions dv
      INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
      INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+     LEFT JOIN app.branches b ON b.id = dv.source_branch_id
      WHERE dv.document_id = $1
        AND dv.branch_id = $2
        AND cp.branch_id = $2
@@ -379,11 +399,14 @@ export async function listDocumentVersions(
   const { limit, offset } = options;
 
   let sql = `SELECT dv.*,
+       dv.source_branch_id, dv.source_version_id, dv.published_to_version_id,
+       b.name AS source_branch_name,
        EXISTS(
          SELECT 1 FROM app.checkpoint_documents cd
          WHERE cd.document_version_id = dv.id
        ) AS is_published
      FROM app.document_versions dv
+     LEFT JOIN app.branches b ON b.id = dv.source_branch_id
      WHERE dv.document_id = $1 AND dv.branch_id = $2
      ORDER BY dv.version_number DESC`;
   const params: unknown[] = [documentId, branchId];

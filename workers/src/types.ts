@@ -50,7 +50,7 @@ export type CheckpointType = 'manual' | 'auto' | 'pre_merge' | 'post_merge' | 'a
 /**
  * Source of a document version creation.
  */
-export type DocumentVersionSource = 'edit' | 'merge' | 'revert' | 'checkpoint' | 'realtime';
+export type DocumentVersionSource = 'edit' | 'merge' | 'revert' | 'checkpoint' | 'realtime' | 'publish';
 
 /**
  * Merge request workflow states.
@@ -276,6 +276,10 @@ export interface DocumentVersion {
   createdAt: string;
   isPublished?: boolean;
   isTombstone?: boolean;
+  sourceBranchId?: string;
+  sourceVersionId?: string;
+  publishedToVersionId?: string;
+  sourceBranchName?: string;
 }
 
 // =============================================================================
