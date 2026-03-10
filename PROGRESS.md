@@ -3360,6 +3360,18 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - [x] Tests: 7 new tests (published badge, unpublished indicator, undefined edge case)
 - [x] Test commit: `4caebc8`, Implementation commit: `a50139d`
 
+#### Wave 9 — Security: is_tombstone Column Refactor
+- [x] Migration 025: Add `is_tombstone BOOLEAN NOT NULL DEFAULT false` to `document_versions`
+- [x] Backfill existing tombstones from `snapshot->>'_deleted' = 'true'`
+- [x] Partial index `idx_document_versions_tombstone` for efficient tombstone queries
+- [x] Replace all `snapshot->>'_deleted'` SQL checks with `is_tombstone` column (4 source files, 10 query sites)
+- [x] Replace `snapshot._deleted` runtime checks with `version.isTombstone` (content-api)
+- [x] Add `isTombstone?: boolean` to `DocumentVersion` type and mapper
+- [x] Keep `{ _deleted: true }` in tombstone snapshots for backward compatibility
+- [x] Update 5 test files (6 tests) to match new column-based checks
+- [x] Security fix: user-submitted snapshots with `_deleted` key no longer affect tombstone logic
+- [x] Commit: `86ab283`
+
 #### Remaining
 - [ ] Phase 7: Publish-propagation foundation (future)
 - [ ] Remove "Publish" button from Puck integration on branches (only show on main) — separate task
