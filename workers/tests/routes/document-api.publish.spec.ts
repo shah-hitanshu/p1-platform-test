@@ -160,6 +160,11 @@ describe('POST /api/sites/:siteId/branches/:branchId/documents/:documentId/publi
       principal: mockPrincipal,
     });
 
+    // Verify siteId is passed to publishDocument
+    expect(services.publishDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ siteId: 'site-1' }),
+    );
+
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body).toHaveProperty('checkpoint');
