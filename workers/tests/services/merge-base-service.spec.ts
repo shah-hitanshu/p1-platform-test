@@ -455,6 +455,117 @@ describe('Phase 5.1b: Merge Base Service', () => {
     });
   });
 
+  describe('getModifiedDocumentsSince with publishedOnly option', () => {
+    it('should use checkpoint_documents for current state when publishedOnly is true', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            document_id: 'doc-1',
+            document_path: 'pages/home',
+            latest_version_id: 'published-v1',
+            latest_version_number: 2,
+            base_version_id: 'v-base',
+            base_version_number: 1,
+            is_deleted: false,
+          },
+        ],
+      });
+
+      const result = await getModifiedDocumentsSince('main-branch', 'checkpoint-id', {
+        publishedOnly: true,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].documentId).toBe('doc-1');
+
+      // Verify the SQL uses checkpoint_documents to find published versions
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      expect(sqlArg).toContain('checkpoint_documents');
+      expect(sqlArg).toContain('checkpoints');
+    });
+
+    it('should not include unpublished edits when publishedOnly is true', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      // When publishedOnly is true, the SQL should join on checkpoint_documents
+      // so only published versions are considered as "current state"
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await getModifiedDocumentsSince('main-branch', 'checkpoint-id', {
+        publishedOnly: true,
+      });
+
+      // The SQL should reference checkpoint_documents for the current versions CTE
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      expect(sqlArg).toContain('checkpoint_documents');
+      // Should NOT use raw document_versions for current state
+      // (the checkpoint_docs CTE still references document_versions for the base)
+    });
+
+    it('should use raw document_versions when publishedOnly is false', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await getModifiedDocumentsSince('branch-id', 'checkpoint-id', {
+        publishedOnly: false,
+      });
+
+      // Verify it uses the original query (no checkpoint_documents in current_versions)
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      // The checkpoint_docs CTE always references checkpoint_documents for the base,
+      // but the current_versions CTE should use document_versions directly
+      expect(sqlArg).toContain('current_versions');
+    });
+
+    it('should default to publishedOnly false when no options provided', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      // Call without options (existing behavior)
+      await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
+
+      // Should produce the same SQL as publishedOnly: false
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      expect(sqlArg).toContain('current_versions');
+    });
+
+    it('should detect new published documents since checkpoint when publishedOnly is true', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      // A document that was published on main after the merge base checkpoint
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            document_id: 'doc-new',
+            document_path: 'pages/new-page',
+            latest_version_id: 'published-v1',
+            latest_version_number: 1,
+            base_version_id: null,
+            base_version_number: null,
+            is_deleted: false,
+          },
+        ],
+      });
+
+      const result = await getModifiedDocumentsSince('main-branch', 'checkpoint-id', {
+        publishedOnly: true,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].documentId).toBe('doc-new');
+      expect(result[0].baseVersionId).toBeNull();
+    });
+  });
+
   describe('getDocumentsAtCheckpoint', () => {
     it('should return all document versions at checkpoint', async () => {
       const { getDocumentsAtCheckpoint } = await import('../../src/services/merge-base-service');

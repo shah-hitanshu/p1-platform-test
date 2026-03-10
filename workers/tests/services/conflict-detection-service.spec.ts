@@ -345,6 +345,104 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
     });
   });
 
+  describe('detectConflicts - published state comparison', () => {
+    it('should pass publishedOnly true for target branch changes', async () => {
+      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
+      const mergeBaseService = await import('../../src/services/merge-base-service');
+
+      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+        checkpointId: 'checkpoint-123',
+        branchId: 'main-branch',
+        createdAt: '2026-01-20T10:00:00.000Z',
+      });
+
+      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      await detectConflicts('source-branch', 'target-branch');
+
+      // First call: source branch — no publishedOnly option (raw latest versions)
+      expect(mergeBaseService.getModifiedDocumentsSince).toHaveBeenNthCalledWith(
+        1,
+        'source-branch',
+        'checkpoint-123',
+      );
+
+      // Second call: target branch — publishedOnly: true (only published versions)
+      expect(mergeBaseService.getModifiedDocumentsSince).toHaveBeenNthCalledWith(
+        2,
+        'target-branch',
+        'checkpoint-123',
+        { publishedOnly: true },
+      );
+    });
+
+    it('should not show conflicts for unpublished edits on target', async () => {
+      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
+      const mergeBaseService = await import('../../src/services/merge-base-service');
+
+      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+        checkpointId: 'checkpoint-123',
+        branchId: 'main-branch',
+        createdAt: '2026-01-20T10:00:00.000Z',
+      });
+
+      // Source branch edited doc-1
+      // Target branch has NO published changes to doc-1
+      // (unpublished edits should be invisible to conflict detection)
+      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+        .mockResolvedValueOnce([
+          {
+            documentId: 'doc-1',
+            documentPath: 'pages/home',
+            latestVersionId: 'v1-source',
+            latestVersionNumber: 2,
+            baseVersionId: 'v0',
+            baseVersionNumber: 1,
+          },
+        ])
+        .mockResolvedValueOnce([]); // publishedOnly returns nothing for target
+
+      const result = await detectConflicts('source-branch', 'target-branch');
+
+      expect(result.hasConflicts).toBe(false);
+      expect(result.sourceChanges).toHaveLength(1);
+      expect(result.targetChanges).toHaveLength(0);
+    });
+
+    it('should show new pages on source as additions when target has no published version', async () => {
+      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
+      const mergeBaseService = await import('../../src/services/merge-base-service');
+
+      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+        checkpointId: 'checkpoint-123',
+        branchId: 'main-branch',
+        createdAt: '2026-01-20T10:00:00.000Z',
+      });
+
+      // Source branch created a new page
+      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+        .mockResolvedValueOnce([
+          {
+            documentId: 'doc-new',
+            documentPath: 'pages/new-page',
+            latestVersionId: 'v1-new',
+            latestVersionNumber: 1,
+            baseVersionId: null,
+            baseVersionNumber: null,
+          },
+        ])
+        .mockResolvedValueOnce([]); // No published changes on target
+
+      const result = await detectConflicts('source-branch', 'target-branch');
+
+      expect(result.hasConflicts).toBe(false);
+      expect(result.sourceChanges).toHaveLength(1);
+      expect(result.sourceChanges[0].documentId).toBe('doc-new');
+    });
+  });
+
   describe('checkMergeability', () => {
     it('should return canMerge true when no conflicts', async () => {
       const { checkMergeability } = await import('../../src/services/conflict-detection-service');
