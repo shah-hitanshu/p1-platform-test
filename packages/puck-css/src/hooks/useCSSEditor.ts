@@ -241,6 +241,42 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
           : 'draft';
 
   // =========================================================================
+  // Main-Only Document Detection
+  // =========================================================================
+
+  const [mainOnlyDocumentIds, setMainOnlyDocumentIds] = useState<Set<string> | undefined>(undefined);
+
+  const mainBranch = css.branches.find(b => b.isMain);
+  const isOnMainBranch = css.currentBranch?.isMain ?? true;
+
+  useEffect(() => {
+    if (isOnMainBranch || !mainBranch) {
+      setMainOnlyDocumentIds(undefined);
+      return;
+    }
+
+    let cancelled = false;
+
+    css.client.documents.list(css.siteId, mainBranch.id)
+      .then(mainDocs => {
+        if (cancelled) return;
+        const branchDocIds = new Set(css.documents.map(d => d.id));
+        const mainOnly = new Set<string>();
+        for (const doc of mainDocs) {
+          if (!branchDocIds.has(doc.id)) {
+            mainOnly.add(doc.id);
+          }
+        }
+        setMainOnlyDocumentIds(mainOnly);
+      })
+      .catch(() => {
+        if (!cancelled) setMainOnlyDocumentIds(undefined);
+      });
+
+    return () => { cancelled = true; };
+  }, [isOnMainBranch, mainBranch, css.client, css.siteId, css.documents]);
+
+  // =========================================================================
   // Focus Region Reporting (outgoing — report local selection to server)
   // =========================================================================
 
@@ -283,6 +319,7 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
     selectedVersionId: css.viewingVersion?.id ?? undefined,
     onVersionSelect: handleVersionSelect,
     publishedVersionIds,
+    mainOnlyDocumentIds,
   });
 
   // Wrap onPublishSuccess to refresh published status after publishing
