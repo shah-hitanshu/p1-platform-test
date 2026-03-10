@@ -1146,10 +1146,26 @@ To enable focus highlighting in the demo, the following would need to be added:
 - Added PDS button CSS (design tokens + base styles + all variants) to `styles.css`
 - Loaded Poppins font via `@import` at the top of the stylesheet (required by CSS spec)
 - Updated 13 puck-css components to use `pds-button` classes instead of ad-hoc inline styles/custom CSS
-- Updated my-app merge page to use PDS button classes (5 button groups)
 - Removed old button CSS rules (`.css-plugin-btn*`, `.historical-version-banner__button`, toast/banner button styles)
 - PDS variants used: primary (action buttons), secondary (back/cancel), subtle (dismiss/utility), critical-secondary (stop agent), brand (Auth0 login)
 - 19 new tests validating PDS class application across all button components
+
+### v0.2.0 Release (2026-03-09) ✅
+
+**Release:** [v0.2.0](https://github.com/pantheon-systems/puck-css-integration/releases/tag/v0.2.0)
+
+**Highlights:**
+- Next.js helpers and README rewrite
+- PDS button styles across all button components
+- Publish confirmation step on PublishButton
+- Single-document publish endpoint
+- Focus region highlighting and editor regression fixes
+- Content delivery client (`CSSContentClient`) with subpath exports
+- Client-side optimizations for Wave 2 backend (delta encoding, rate awareness, polling intervals)
+
+**Distribution:**
+- Tarballs attached to GitHub release: `pantheon-puck-css-0.2.0.tgz`, `pantheon-css-client-0.2.0.tgz`
+- Tarballs attached to GitHub release for downstream consumption
 
 ## Remaining Work
 
