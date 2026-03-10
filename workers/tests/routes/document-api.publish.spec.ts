@@ -156,11 +156,12 @@ describe('POST /api/sites/:siteId/branches/:branchId/documents/:documentId/publi
       siteId: 'site-1',
       branchId: 'branch-main',
       documentId: 'doc-1',
+      action: 'publish',
       principal: mockPrincipal,
     });
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as Record<string, unknown>;
+    const body = await response.json();
     expect(body).toHaveProperty('checkpoint');
     expect(body).toHaveProperty('publishedVersionId', mockPublishedVersionId);
   });
@@ -188,6 +189,7 @@ describe('POST /api/sites/:siteId/branches/:branchId/documents/:documentId/publi
       siteId: 'site-1',
       branchId: 'branch-main',
       documentId: 'doc-1',
+      action: 'publish',
       principal: mockPrincipal,
     });
 
@@ -225,6 +227,7 @@ describe('POST /api/sites/:siteId/branches/:branchId/documents/:documentId/publi
       siteId: 'site-1',
       branchId: 'branch-main',
       documentId: 'doc-1',
+      action: 'publish',
       principal: mockPrincipal,
     });
 

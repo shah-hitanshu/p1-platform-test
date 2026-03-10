@@ -1086,3 +1086,98 @@ export async function listCheckpointsByOperationType(
 
   return result.rows.map(mapRowToCheckpoint);
 }
+
+// =============================================================================
+// Publish Document
+// =============================================================================
+
+/**
+ * Parameters for publishing a document.
+ */
+export interface PublishDocumentParams {
+  branchId: string;
+  documentId: string;
+  createdById: string;
+  createdByType: 'user' | 'agent' | 'system';
+}
+
+/**
+ * Result of publishing a document.
+ */
+export interface PublishDocumentResult {
+  checkpoint: Checkpoint;
+  publishedVersionId: string;
+}
+
+/**
+ * Publishes a document by creating a publish checkpoint capturing the latest
+ * version of the document on the branch.
+ *
+ * @param params - Publish parameters
+ * @returns The created checkpoint and published version ID
+ * @throws Error if the document has no versions on the branch or is tombstoned
+ */
+export async function publishDocument(
+  params: PublishDocumentParams,
+): Promise<PublishDocumentResult> {
+  await query('BEGIN');
+
+  // Get the latest version of the document on the branch
+  const versionResult = await query<{
+    id: string;
+    document_id: string;
+    branch_id: string;
+    version_number: number;
+    is_tombstone: boolean;
+  }>(
+    `SELECT id, document_id, branch_id, version_number, is_tombstone
+     FROM app.document_versions
+     WHERE document_id = $1 AND branch_id = $2
+     ORDER BY version_number DESC
+     LIMIT 1`,
+    [params.documentId, params.branchId],
+  );
+
+  if (versionResult.rows.length === 0) {
+    await query('ROLLBACK');
+    throw new Error(`Document with ID "${params.documentId}" not found`);
+  }
+
+  const version = versionResult.rows[0];
+
+  if (version.is_tombstone) {
+    await query('ROLLBACK');
+    throw new Error('Cannot publish a tombstoned document');
+  }
+
+  try {
+    // Insert a publish checkpoint
+    const checkpointResult = await query<CheckpointRow>(
+      `INSERT INTO app.checkpoints (
+        branch_id, name, checkpoint_type, created_by_id, created_by_type, status
+      )
+      VALUES ($1, $2, 'publish', $3, $4, 'completed')
+      RETURNING *`,
+      [params.branchId, 'Publish: document', params.createdById, params.createdByType],
+    );
+
+    const row = getFirstRow(checkpointResult.rows);
+
+    // Insert checkpoint_documents row
+    await query(
+      `INSERT INTO app.checkpoint_documents (checkpoint_id, document_id, document_version_id)
+       VALUES ($1, $2, $3)`,
+      [row.id, params.documentId, version.id],
+    );
+
+    await query('COMMIT');
+
+    return {
+      checkpoint: mapRowToCheckpoint(row),
+      publishedVersionId: version.id,
+    };
+  } catch (error) {
+    await query('ROLLBACK');
+    throw error;
+  }
+}

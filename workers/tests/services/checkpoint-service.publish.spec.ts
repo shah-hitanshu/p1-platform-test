@@ -134,8 +134,9 @@ describe('publishDocument', () => {
     expect(checkpointDocInsert).toBeDefined();
     // Should reference exactly one document version - the params should contain
     // the checkpoint ID, the document ID, and the version ID (3 values for 1 row)
-    const params = checkpointDocInsert![1] as unknown[];
-    expect(params).toHaveLength(3);
+    const insertParams = checkpointDocInsert?.[1];
+    expect(insertParams).toBeDefined();
+    expect(insertParams).toHaveLength(3);
   });
 
   it('should use the latest non-tombstone version of the document', async () => {

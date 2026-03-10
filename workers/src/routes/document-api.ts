@@ -33,6 +33,7 @@ import {
   DocumentNotFoundError,
   DocumentPathConflictError,
   InvalidDocumentVersionParamsError,
+  publishDocument,
 } from '../services';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
 import { validatePagination } from './validation';
@@ -45,7 +46,7 @@ export interface DocumentRouteContext {
   branchId?: string;
   documentId?: string;
   documentPath?: string;
-  action?: 'restore';
+  action?: 'restore' | 'publish';
   versionsPath?: boolean;
   versionAction?: 'latest' | 'by-id';
   versionId?: string;
@@ -552,6 +553,25 @@ async function handleBranchScopedDocumentRoutes(
   const branch = await getBranch(branchId);
   if (branch?.siteId !== context.siteId) {
     return errorResponse('Branch not found', 404);
+  }
+
+  // Handle publish action
+  if (context.action === 'publish' && context.documentId !== undefined) {
+    if (method !== 'POST') {
+      return errorResponse('Method not allowed', 405);
+    }
+    await assertPermission(context.principal, context.siteId, branchId, 'canEditDocuments');
+    const exists = await documentExistsOnBranch(context.documentId, branchId);
+    if (!exists) {
+      return errorResponse('Document not found on this branch', 404);
+    }
+    const result = await publishDocument({
+      branchId,
+      documentId: context.documentId,
+      createdById: context.principal.id,
+      createdByType: context.principal.type as 'user' | 'agent',
+    });
+    return jsonResponse(result);
   }
 
   // Handle document version routes (authorization is handled inside handleDocumentVersionRoutes)

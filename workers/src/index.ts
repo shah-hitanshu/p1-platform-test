@@ -599,6 +599,21 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
     };
   }
 
+  // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/publish
+  const publishRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/([^/]+)\/publish$/;
+  const publishMatch = publishRe.exec(normalizedPath);
+  if (publishMatch) {
+    return {
+      handler: 'documents',
+      params: {
+        siteId: publishMatch[1],
+        branchId: publishMatch[2],
+        documentId: publishMatch[3],
+        action: 'publish',
+      },
+    };
+  }
+
   // Document version routes (must come before branch-scoped document routes)
   // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/latest
   const versionLatestRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/([^/]+)\/versions\/latest$/;
