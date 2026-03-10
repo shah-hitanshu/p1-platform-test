@@ -59,8 +59,8 @@ export function ViewModeSelector({
       {VIEW_MODE_BUTTONS.map(({ mode, label }) => {
         const isActive = viewMode === mode;
         const className = [
-          'view-mode-selector__btn',
-          isActive ? 'view-mode-selector__btn--active' : '',
+          'pds-button pds-button--secondary pds-button--sm view-mode-selector__btn',
+          isActive ? 'pds-button--active view-mode-selector__btn--active' : '',
         ]
           .filter(Boolean)
           .join(' ');

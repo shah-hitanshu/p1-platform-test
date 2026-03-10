@@ -226,7 +226,7 @@ export function SaveIndicator({
           {onRetry && (
             <button
               type="button"
-              className={`${baseClass}__retry`}
+              className={`pds-button pds-button--subtle pds-button--sm ${baseClass}__retry`}
               onClick={onRetry}
               aria-label="Retry save"
             >

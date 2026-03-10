@@ -47,21 +47,6 @@ const subtitleStyle: React.CSSProperties = {
   marginBottom: '32px',
 };
 
-const buttonStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '8px',
-  padding: '12px 24px',
-  fontSize: '16px',
-  fontWeight: 500,
-  borderRadius: '8px',
-  border: 'none',
-  cursor: 'pointer',
-  width: '100%',
-  transition: 'background 0.2s',
-};
-
 const selectStyle: React.CSSProperties = {
   width: '100%',
   padding: '12px 16px',
@@ -101,11 +86,7 @@ function MockLogin() {
         ))}
       </select>
       <button
-        style={{
-          ...buttonStyle,
-          background: '#0066cc',
-          color: 'white',
-        }}
+        className="pds-button pds-button--primary pds-button--full-width"
         onClick={() => void login(selectedUserId)}
         disabled={isLoading}
       >
@@ -137,11 +118,7 @@ function Auth0Login() {
 
   return (
     <button
-      style={{
-        ...buttonStyle,
-        background: '#eb5424',
-        color: 'white',
-      }}
+      className="pds-button pds-button--brand pds-button--full-width"
       onClick={() => void login()}
       disabled={isLoading}
     >

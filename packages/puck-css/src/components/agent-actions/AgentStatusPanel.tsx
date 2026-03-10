@@ -132,7 +132,7 @@ export function AgentStatusPanel({
         <div className={`${baseClass}__actions`}>
           <button
             type="button"
-            className={`${baseClass}__cancel-btn`}
+            className={`pds-button pds-button--subtle pds-button--sm ${baseClass}__cancel-btn`}
             onClick={onCancel}
             aria-label="Cancel action"
           >

@@ -105,10 +105,22 @@ export function AgentActionButton({
     }
   }, [agent, action, context, isLoading, disabled, onSuccess, onError]);
 
+  // Map variant prop to PDS button class
+  const pdsVariantMap: Record<string, string> = {
+    primary: 'pds-button--primary',
+    secondary: 'pds-button--secondary',
+    ghost: 'pds-button--subtle',
+  };
+  const pdsSizeMap: Record<string, string> = {
+    sm: 'pds-button--sm',
+    lg: 'pds-button--lg',
+  };
+
   const buttonClasses = [
+    'pds-button',
+    pdsVariantMap[variant] ?? 'pds-button--secondary',
+    pdsSizeMap[size] ?? '',
     baseClass,
-    `${baseClass}--${variant}`,
-    `${baseClass}--${size}`,
     isLoading && `${baseClass}--loading`,
     className,
   ]

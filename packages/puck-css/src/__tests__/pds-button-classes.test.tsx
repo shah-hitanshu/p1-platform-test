@@ -4,9 +4,13 @@
  * Validates that all button components use PDS button CSS classes
  * instead of ad-hoc inline styles or custom CSS classes.
  */
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, cleanup } from '@testing-library/react';
 import React from 'react';
+
+afterEach(() => {
+  cleanup();
+});
 
 // ============================================================
 // PublishButton Tests

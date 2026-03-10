@@ -102,35 +102,18 @@ export function PublishButton({
         </span>
         <button
           type="button"
-          className={`${baseClass}__confirm-btn`}
+          className="pds-button pds-button--primary pds-button--sm"
           onClick={() => void handleConfirm()}
           disabled={isPublishing}
-          style={{
-            padding: '0.25rem 0.75rem',
-            fontSize: '0.75rem',
-            fontWeight: 600,
-            borderRadius: '0.25rem',
-            border: 'none',
-            background: '#059669',
-            color: 'white',
-            cursor: isPublishing ? 'wait' : 'pointer',
-          }}
+          style={isPublishing ? { cursor: 'wait' } : undefined}
         >
           {isPublishing ? 'Publishing...' : 'Confirm'}
         </button>
         <button
           type="button"
-          className={`${baseClass}__cancel-btn`}
+          className="pds-button pds-button--secondary pds-button--sm"
           onClick={handleCancel}
           disabled={isPublishing}
-          style={{
-            padding: '0.25rem 0.75rem',
-            fontSize: '0.75rem',
-            borderRadius: '0.25rem',
-            border: '1px solid #d1d5db',
-            background: 'white',
-            cursor: 'pointer',
-          }}
         >
           Cancel
         </button>
@@ -141,7 +124,7 @@ export function PublishButton({
   return (
     <button
       type="button"
-      className={`${baseClass} ${className}`}
+      className={`pds-button pds-button--primary pds-button--sm ${className}`}
       onClick={() => setShowConfirm(true)}
       disabled={disabled || isPublishing}
     >

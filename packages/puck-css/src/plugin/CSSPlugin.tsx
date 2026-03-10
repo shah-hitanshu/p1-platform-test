@@ -184,7 +184,7 @@ function CSSPluginPanel({
           return (
             <button
               type="button"
-              className="css-plugin-btn css-plugin-btn-compare"
+              className="pds-button pds-button--secondary pds-button--sm"
               onClick={() => onMergeCompare(mainBranch.id)}
               style={{ marginTop: 8 }}
             >
@@ -202,7 +202,7 @@ function CSSPluginPanel({
             {onDocumentCreate && (
               <button
                 type="button"
-                className="css-plugin-btn-small"
+                className="pds-button pds-button--subtle pds-button--sm"
                 onClick={() => setIsCreating(!isCreating)}
               >
                 {isCreating ? '×' : '+'}
@@ -220,7 +220,7 @@ function CSSPluginPanel({
                 onChange={(e) => setNewDocPath(e.target.value)}
                 autoFocus
               />
-              <button type="submit" className="css-plugin-btn-small css-plugin-btn-primary">
+              <button type="submit" className="pds-button pds-button--primary pds-button--sm">
                 Create
               </button>
               {createError && (
@@ -341,7 +341,7 @@ function CSSPluginPanel({
         <div className="css-plugin-section">
           <button
             type="button"
-            className="css-plugin-btn css-plugin-btn-primary"
+            className="pds-button pds-button--primary pds-button--sm"
             onClick={() => onAgentAction?.(availableAgents[0]!.id, '', [])}
           >
             Ask Agent

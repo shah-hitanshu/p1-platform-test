@@ -130,7 +130,7 @@ export function ConflictNotificationToast({
           <div className={`${baseClass}__actions`}>
             <button
               type="button"
-              className={`${baseClass}__action`}
+              className={`pds-button pds-button--subtle pds-button--sm ${baseClass}__action`}
               onClick={onAction}
             >
               {actionLabel}
@@ -142,7 +142,7 @@ export function ConflictNotificationToast({
       {/* Dismiss button */}
       <button
         type="button"
-        className={`${baseClass}__dismiss`}
+        className={`pds-button pds-button--subtle pds-button--sm ${baseClass}__dismiss`}
         onClick={handleDismiss}
         aria-label="Dismiss notification"
       >

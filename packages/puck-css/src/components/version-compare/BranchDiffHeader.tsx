@@ -113,7 +113,7 @@ export function BranchDiffHeader({
 
       <button
         type="button"
-        className={`${baseClass}__close`}
+        className={`pds-button pds-button--subtle pds-button--sm ${baseClass}__close`}
         onClick={onClose}
         aria-label="Close comparison"
       >
