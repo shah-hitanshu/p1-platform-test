@@ -1142,6 +1142,15 @@ To enable focus highlighting in the demo, the following would need to be added:
 - Fixed pre-existing `ResizeObserver` polyfill gap in test setup that blocked `useCSSEditor` and `useCSSPlugin` hook tests
 - README updated with "Branch Merge Comparison" section documenting default behavior and customization
 
+### PDS Button Styles (2026-03-09) ✅
+- Added PDS button CSS (design tokens + base styles + all variants) to `styles.css`
+- Loaded Poppins font via `@import` at the top of the stylesheet (required by CSS spec)
+- Updated 13 puck-css components to use `pds-button` classes instead of ad-hoc inline styles/custom CSS
+- Updated my-app merge page to use PDS button classes (5 button groups)
+- Removed old button CSS rules (`.css-plugin-btn*`, `.historical-version-banner__button`, toast/banner button styles)
+- PDS variants used: primary (action buttons), secondary (back/cancel), subtle (dismiss/utility), critical-secondary (stop agent), brand (Auth0 login)
+- 19 new tests validating PDS class application across all button components
+
 ## Remaining Work
 
 ### Future
