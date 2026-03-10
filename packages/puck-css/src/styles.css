@@ -314,6 +314,22 @@ button.pds-button.pds-button--active {
 }
 
 /* ============================================
+   Utility: Visually Hidden (screen reader only)
+   ============================================ */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ============================================
    PDS Status Indicator
    ============================================ */
 
@@ -1394,10 +1410,6 @@ button.pds-button.pds-button--active {
 
 .css-plugin-doc-item--main-only {
   opacity: 0.6;
-  font-style: italic;
-}
-
-.css-plugin-doc-item--main-only .css-plugin-doc-path {
   font-style: italic;
 }
 

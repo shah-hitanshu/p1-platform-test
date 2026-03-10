@@ -8,7 +8,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { CSSClient } from '@pantheon/css-client';
 
-interface UsePublishedStatusParams {
+export interface UsePublishedStatusParams {
   client: CSSClient;
   siteId: string;
   branchId: string;
@@ -16,7 +16,7 @@ interface UsePublishedStatusParams {
   currentVersionId?: string;
 }
 
-interface UsePublishedStatusReturn {
+export interface UsePublishedStatusReturn {
   /**
    * Whether the current version matches the latest published version.
    */
