@@ -96,13 +96,17 @@ export function usePublishedStatus({
         const documents = await client.checkpoints.getDocuments(siteId, checkpoint.id);
 
         for (const doc of documents) {
-          if (doc.documentId === documentId && doc.versionId) {
-            collectedVersionIds.add(doc.versionId);
+          if (doc.documentId === documentId) {
+            // The API may not always populate versionId on checkpoint
+            // documents. When present, track it; when absent, use the
+            // checkpoint ID as a stand-in so hasPublishedVersion is true.
+            const vid = doc.versionId ?? checkpoint.id;
+            collectedVersionIds.add(vid);
 
             // Checkpoints are returned most-recent-first,
             // so the first match is the latest published version.
             if (foundLatestVersionId === null) {
-              foundLatestVersionId = doc.versionId;
+              foundLatestVersionId = vid;
             }
           }
         }
