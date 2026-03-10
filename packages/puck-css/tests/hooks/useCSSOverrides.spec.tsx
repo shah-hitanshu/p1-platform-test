@@ -196,7 +196,6 @@ describe('useCSSOverrides', () => {
 
     const { result } = renderHook(
       () => useCSSOverrides({
-        showNamePrompt: false,
         showDefaultPublish: true,
         onPublishSuccess,
         onPublishError,

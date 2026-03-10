@@ -166,7 +166,6 @@ function AppContent() {
       selectedDocumentPath: documentPath,
     },
     overrideOptions: {
-      showNamePrompt: true,
       showDefaultPublish: false,
       onPublishSuccess: (checkpoint: Checkpoint) => {
         alert(`Published checkpoint: ${checkpoint.name ?? checkpoint.id}`);

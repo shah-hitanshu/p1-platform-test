@@ -226,6 +226,12 @@ export interface CSSPuckContextValue {
   createCheckpoint: (name?: string) => Promise<Checkpoint>;
 
   /**
+   * Publish the currently loaded document.
+   * Creates a checkpoint containing only this document.
+   */
+  publishDocument: () => Promise<Checkpoint>;
+
+  /**
    * Switch to a different branch.
    */
   switchBranch: (branchId: string) => Promise<void>;

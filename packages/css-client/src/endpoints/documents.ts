@@ -4,7 +4,7 @@
  * API operations for documents.
  */
 
-import type { Document, CreateDocumentParams, ListDocumentsOptions } from '../types.js';
+import type { Document, CreateDocumentParams, ListDocumentsOptions, PublishDocumentResult } from '../types.js';
 import type { BaseEndpoint } from './base.js';
 
 export class DocumentsEndpoint {
@@ -111,6 +111,17 @@ export class DocumentsEndpoint {
       {
         method: 'POST',
       }
+    );
+  }
+
+  /**
+   * Publish a single document on a branch.
+   * Creates a checkpoint containing only this document's current version.
+   */
+  async publish(siteId: string, branchId: string, documentId: string): Promise<PublishDocumentResult> {
+    return this.base.request<PublishDocumentResult>(
+      `/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/publish`,
+      { method: 'POST' }
     );
   }
 }

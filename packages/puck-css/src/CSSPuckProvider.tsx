@@ -1103,6 +1103,35 @@ function CSSPuckProviderInner({
     [userClient, siteId, branchId, debouncedSave, performSave, enableRealtime, realtime]
   );
 
+  // Publish current document
+  const publishDocument = useCallback(
+    async (): Promise<Checkpoint> => {
+      const doc = currentDocumentRef.current;
+      if (!doc) {
+        throw new Error('No document loaded to publish');
+      }
+
+      // Save any pending changes first
+      if (pendingDataRef.current) {
+        if (enableRealtime && realtimeConnectedRef.current) {
+          const currentPath = currentDocumentRef.current?.path ?? null;
+          if (currentDataDocumentPathRef.current === currentPath) {
+            realtime.applyLocalChange(pendingDataRef.current);
+          }
+          pendingDataRef.current = null;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } else {
+          debouncedSave.cancel();
+          await performSave();
+        }
+      }
+
+      const result = await userClient.documents.publish(siteId, branchId, doc.id);
+      return result.checkpoint;
+    },
+    [userClient, siteId, branchId, debouncedSave, performSave, enableRealtime, realtime]
+  );
+
   // Switch branch
   const switchBranch = useCallback(
     async (newBranchId: string) => {
@@ -1201,6 +1230,13 @@ function CSSPuckProviderInner({
   createCheckpointRef.current = createCheckpoint;
   const stableCreateCheckpoint = useCallback(
     (name?: string) => createCheckpointRef.current(name),
+    []
+  );
+
+  const publishDocumentRef = useRef(publishDocument);
+  publishDocumentRef.current = publishDocument;
+  const stablePublishDocument = useCallback(
+    () => publishDocumentRef.current(),
     []
   );
 
@@ -1326,6 +1362,7 @@ function CSSPuckProviderInner({
       saveData: stableSaveData,
       saveNow: stableSaveNow,
       createCheckpoint: stableCreateCheckpoint,
+      publishDocument: stablePublishDocument,
       switchBranch: stableSwitchBranch,
       // Stable getters (Items 2, 3)
       getSaveStatus,
@@ -1381,6 +1418,7 @@ function CSSPuckProviderInner({
       stableSaveData,
       stableSaveNow,
       stableCreateCheckpoint,
+      stablePublishDocument,
       stableSwitchBranch,
       getSaveStatus,
       getLastSaved,

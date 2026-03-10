@@ -5,8 +5,8 @@
  * without a name prompt.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { PublishButton } from '../../src/components/PublishButton.js';
 import type { Checkpoint } from '@pantheon/css-client';
 
@@ -28,22 +28,26 @@ describe('PublishButton', () => {
     onPublish = vi.fn().mockResolvedValue(createMockCheckpoint());
   });
 
+  afterEach(() => {
+    cleanup();
+  });
+
   it('renders with default "Publish" text', () => {
     render(<PublishButton onPublish={onPublish} />);
 
-    expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
+    expect(screen.getByRole('button').textContent).toBe('Publish');
   });
 
   it('renders with custom children text', () => {
     render(<PublishButton onPublish={onPublish}>Save Version</PublishButton>);
 
-    expect(screen.getByRole('button', { name: 'Save Version' })).toBeInTheDocument();
+    expect(screen.getByRole('button').textContent).toBe('Save Version');
   });
 
   it('calls onPublish when clicked', () => {
     render(<PublishButton onPublish={onPublish} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    fireEvent.click(screen.getByRole('button'));
 
     expect(onPublish).toHaveBeenCalledTimes(1);
   });
@@ -57,14 +61,15 @@ describe('PublishButton', () => {
 
     render(<PublishButton onPublish={onPublish} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    fireEvent.click(screen.getByRole('button'));
 
-    expect(await screen.findByText('Publishing...')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('button').textContent).toBe('Publishing...');
+    });
 
-    // Resolve so the component finishes its async work
     resolvePublish(createMockCheckpoint());
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
+      expect(screen.getByRole('button').textContent).toBe('Publish');
     });
   });
 
@@ -75,7 +80,7 @@ describe('PublishButton', () => {
 
     render(<PublishButton onPublish={onPublish} onSuccess={onSuccess} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    fireEvent.click(screen.getByRole('button'));
 
     await waitFor(() => {
       expect(onSuccess).toHaveBeenCalledTimes(1);
@@ -90,7 +95,7 @@ describe('PublishButton', () => {
 
     render(<PublishButton onPublish={onPublish} onError={onError} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    fireEvent.click(screen.getByRole('button'));
 
     await waitFor(() => {
       expect(onError).toHaveBeenCalledTimes(1);
@@ -101,7 +106,7 @@ describe('PublishButton', () => {
   it('button is disabled when disabled prop is true', () => {
     render(<PublishButton onPublish={onPublish} disabled />);
 
-    expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled();
+    expect(screen.getByRole('button').hasAttribute('disabled')).toBe(true);
   });
 
   it('button is disabled during publishing', async () => {
@@ -113,17 +118,16 @@ describe('PublishButton', () => {
 
     render(<PublishButton onPublish={onPublish} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    fireEvent.click(screen.getByRole('button'));
 
     await waitFor(() => {
-      expect(screen.getByText('Publishing...')).toBeInTheDocument();
+      expect(screen.getByRole('button').textContent).toBe('Publishing...');
     });
-    expect(screen.getByRole('button')).toBeDisabled();
+    expect(screen.getByRole('button').hasAttribute('disabled')).toBe(true);
 
-    // Resolve so the component finishes its async work
     resolvePublish(createMockCheckpoint());
     await waitFor(() => {
-      expect(screen.getByRole('button')).not.toBeDisabled();
+      expect(screen.getByRole('button').hasAttribute('disabled')).toBe(false);
     });
   });
 
