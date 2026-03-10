@@ -1133,6 +1133,15 @@ To enable focus highlighting in the demo, the following would need to be added:
 - Presence state updates (focus regions, actor lists) are high-frequency and should NOT cascade through the data synchronization pipeline
 - Main `CSSPuckContext` stays stable during presence changes; presence-specific UI reads from the separate `PresenceContext` or the ref-based getter
 
+### Default Merge Compare Link in Plugin Panel (2026-03-09) ✅
+
+- `useCSSEditor` now provides a default `onMergeCompare` handler that navigates to `/merge`
+- The "Compare with main" button appears automatically in the CSS plugin panel when on a non-main branch
+- Consumers can override via `pluginOptions.onMergeCompare`; lower-level `useCSSPlugin`/`createCSSPlugin` users must provide their own handler
+- No query parameters needed — the merge page reads the current branch from `CSSPuckProvider` context
+- Fixed pre-existing `ResizeObserver` polyfill gap in test setup that blocked `useCSSEditor` and `useCSSPlugin` hook tests
+- README updated with "Branch Merge Comparison" section documenting default behavior and customization
+
 ## Remaining Work
 
 ### Future
