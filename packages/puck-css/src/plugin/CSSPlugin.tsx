@@ -8,6 +8,7 @@
 import React, { useState, useCallback } from 'react';
 import type { Branch, Document, DocumentVersion, PuckData, RegisteredAgent, ActorPresence } from '@pantheon/css-client';
 import { PuckDataSynchronizer } from '../components/PuckDataSynchronizer.js';
+import { VersionPublishedBadge } from '../components/VersionPublishedBadge.js';
 import { AgentActivityBanner } from '../components/presence/AgentActivityBanner.js';
 import { PuckSelectionTracker } from '../components/PuckSelectionTracker.js';
 import { useCSSPuck } from '../CSSPuckContext.js';
@@ -65,6 +66,10 @@ interface CSSPluginPanelProps {
   agentEditingRegions?: string[];
   /** Callback when "Compare with main" is clicked. Receives the main branch ID. */
   onMergeCompare?: (targetBranchId: string) => void;
+  /** Set of version IDs that have been published */
+  publishedVersionIds?: Set<string>;
+  /** Set of document IDs that exist only on main (not on current branch) */
+  mainOnlyDocumentIds?: Set<string>;
 }
 
 /**
@@ -110,6 +115,8 @@ function CSSPluginPanel({
   showFocusRegions: _showFocusRegions = false,
   agentEditingRegions: _agentEditingRegions = [],
   onMergeCompare,
+  publishedVersionIds,
+  mainOnlyDocumentIds,
 }: CSSPluginPanelProps): React.ReactElement {
   // Suppress unused variable warnings - these are passed through for future use
   void _showFocusRegions;
@@ -235,25 +242,34 @@ function CSSPluginPanel({
             <div className="css-plugin-empty">No documents yet</div>
           ) : (
             <ul className="css-plugin-doc-list">
-              {documents.map((doc) => (
-                <li
-                  key={doc.id}
-                  className={`css-plugin-doc-item ${selectedDocumentPath === doc.path ? 'css-plugin-doc-item--active' : ''}`}
-                  onClick={() => onDocumentSelect(doc.path)}
-                >
-                  <span className="css-plugin-doc-path">{doc.path}</span>
-                  {onDocumentDelete && (
-                    <button
-                      type="button"
-                      className="css-plugin-doc-delete"
-                      onClick={(e) => handleDeleteDocument(e, doc.id, doc.path)}
-                      aria-label={`Delete ${doc.path}`}
-                    >
-                      ×
-                    </button>
-                  )}
-                </li>
-              ))}
+              {documents.map((doc) => {
+                const isMainOnly = !currentBranch?.isMain && mainOnlyDocumentIds?.has(doc.id);
+                return (
+                  <li
+                    key={doc.id}
+                    className={`css-plugin-doc-item ${selectedDocumentPath === doc.path ? 'css-plugin-doc-item--active' : ''} ${isMainOnly ? 'css-plugin-doc-item--main-only' : ''}`}
+                    onClick={() => onDocumentSelect(doc.path)}
+                  >
+                    <span className="css-plugin-doc-path">{doc.path}</span>
+                    {isMainOnly && (
+                      <span className="pds-status-indicator pds-status-indicator--neutral pds-status-indicator--sm">
+                        <span aria-hidden="true" className="pds-status-indicator__icon" role="img"></span>
+                        <span className="pds-status-indicator__label">main only</span>
+                      </span>
+                    )}
+                    {onDocumentDelete && (
+                      <button
+                        type="button"
+                        className="css-plugin-doc-delete"
+                        onClick={(e) => handleDeleteDocument(e, doc.id, doc.path)}
+                        aria-label={`Delete ${doc.path}`}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -291,6 +307,9 @@ function CSSPluginPanel({
                       </span>
                       {isLatest && (
                         <span className="css-plugin-version-badge">current</span>
+                      )}
+                      {publishedVersionIds?.has(version.id) && (
+                        <VersionPublishedBadge />
                       )}
                     </li>
                   );
@@ -553,6 +572,10 @@ export interface CSSPluginOptions {
   agentEditingRegions?: string[];
   /** Callback when "Compare with main" is clicked. Receives the main branch ID. */
   onMergeCompare?: (targetBranchId: string) => void;
+  /** Set of version IDs that have been published */
+  publishedVersionIds?: Set<string>;
+  /** Set of document IDs that exist only on main (not on current branch) */
+  mainOnlyDocumentIds?: Set<string>;
   // Focus Region Reporting
   /**
    * Callback when user selection changes in the Puck editor.
@@ -652,6 +675,8 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
           showFocusRegions={options.showFocusRegions}
           agentEditingRegions={options.agentEditingRegions}
           onMergeCompare={options.onMergeCompare}
+          publishedVersionIds={options.publishedVersionIds}
+          mainOnlyDocumentIds={options.mainOnlyDocumentIds}
         />
       </>
     ),

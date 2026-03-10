@@ -13,6 +13,7 @@ import { PublishButton } from '../components/PublishButton.js';
 import { HistoricalVersionBanner } from '../components/HistoricalVersionBanner.js';
 import { CollaboratorAvatars } from '../components/presence/CollaboratorAvatars.js';
 import { AgentActivityBanner } from '../components/presence/AgentActivityBanner.js';
+import { PublishedStatusBadge } from '../components/PublishedStatusBadge.js';
 // NOTE: PuckDataSynchronizer is NOT imported here - it's used in CSSPlugin instead
 // because headerActions renders outside Puck's context where usePuck() doesn't work.
 
@@ -103,6 +104,8 @@ export interface CSSOverridesOptions {
   isAgentEditing?: boolean;
   /** Callback when stop agent button is clicked */
   onStopAgent?: (agent: ActorPresence) => void;
+  /** Published status of the current document version */
+  publishedStatus?: 'published' | 'unpublished-changes' | 'draft';
 }
 
 /**
@@ -216,6 +219,7 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
       const _isViewingHistoricalVersion = options.isViewingHistoricalVersion ?? false;
       const _viewingVersion = options.viewingVersion;
       const _onReturnToLatest = options.onReturnToLatest;
+      const _publishedStatus = options.publishedStatus;
 
       // Find the first active agent for banner display
       const firstActiveAgent = _activeAgents.find(a => a.state === 'editing') || _activeAgents[0];
@@ -241,6 +245,9 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
           ) : (
             <>
               <SaveIndicator {...saveIndicatorProps} />
+              {_publishedStatus && (
+                <PublishedStatusBadge status={_publishedStatus} />
+              )}
               <PublishButton
                 onPublish={onPublish}
                 onSuccess={onPublishSuccess}

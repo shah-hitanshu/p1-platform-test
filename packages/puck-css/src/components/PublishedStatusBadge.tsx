@@ -1,5 +1,3 @@
-import React from "react";
-
 export interface PublishedStatusBadgeProps {
   status: "published" | "unpublished-changes" | "draft";
   className?: string;

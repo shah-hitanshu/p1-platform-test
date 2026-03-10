@@ -55,6 +55,7 @@ export { useCSSOverrides } from './hooks/useCSSOverrides.js';
 export type { UseCSSOverridesOptions } from './hooks/useCSSOverrides.js';
 export { useCSSEditor } from './hooks/useCSSEditor.js';
 export type { UseCSSEditorOptions, UseCSSEditorReturn, PuckProps } from './hooks/useCSSEditor.js';
+export { usePublishedStatus } from './hooks/usePublishedStatus.js';
 
 // Focus Region Reporting (Proactive Collision Detection)
 export { useFocusRegionReporting } from './hooks/useFocusRegionReporting.js';
@@ -89,6 +90,10 @@ export { PuckDataSynchronizer } from './components/PuckDataSynchronizer.js';
 export type { PuckDataSynchronizerProps } from './components/PuckDataSynchronizer.js';
 export { Toast } from './components/Toast.js';
 export { NotificationContainer } from './components/NotificationContainer.js';
+export { PublishedStatusBadge } from './components/PublishedStatusBadge.js';
+export type { PublishedStatusBadgeProps } from './components/PublishedStatusBadge.js';
+export { VersionPublishedBadge } from './components/VersionPublishedBadge.js';
+export type { VersionPublishedBadgeProps } from './components/VersionPublishedBadge.js';
 
 // Presence Components (Phase 3)
 export {

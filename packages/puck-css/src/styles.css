@@ -1392,6 +1392,15 @@ button.pds-button.pds-button--active {
   padding-left: 7px;
 }
 
+.css-plugin-doc-item--main-only {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.css-plugin-doc-item--main-only .css-plugin-doc-path {
+  font-style: italic;
+}
+
 .css-plugin-doc-path {
   font-size: 13px;
   color: var(--puck-css-text);
