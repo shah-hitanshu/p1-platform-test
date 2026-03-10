@@ -19,6 +19,7 @@ vi.mock('../../src/services', () => ({
   getDocumentByPath: vi.fn(),
   getLatestDocumentVersion: vi.fn(),
   getLatestPublishedDocumentVersion: vi.fn(),
+  getLatestDocumentVersionWithFallback: vi.fn(),
   listDocumentsOnBranch: vi.fn(),
 }));
 
@@ -109,6 +110,7 @@ const mockTombstonedVersion: DocumentVersion = {
   branchId: 'branch-main-uuid',
   versionNumber: 15,
   snapshot: { _deleted: true },
+  isTombstone: true,
   source: 'edit',
   createdById: 'user-1',
   createdByType: 'user',
@@ -282,6 +284,128 @@ describe('Content Delivery API Routes', () => {
       vi.mocked(services.getBranch).mockResolvedValue(mockFeatureBranch);
       vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
       vi.mocked(services.getLatestDocumentVersion).mockResolvedValue(null);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=branch-feature-uuid',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should use getLatestDocumentVersionWithFallback for non-main branches', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      vi.mocked(services.getBranch).mockResolvedValue(mockFeatureBranch);
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestDocumentVersionWithFallback).mockResolvedValue({
+        version: mockDraftVersion,
+        inherited: false,
+      });
+      setupSettingsMocks(settingsService, 5);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=branch-feature-uuid',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      expect(services.getLatestDocumentVersionWithFallback).toHaveBeenCalledWith(
+        'doc-uuid-abc',
+        'branch-feature-uuid',
+        'branch-main-uuid',
+      );
+      expect(services.getLatestDocumentVersion).not.toHaveBeenCalled();
+    });
+
+    it('should include inherited flag in response for non-main branches (inherited=false)', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      vi.mocked(services.getBranch).mockResolvedValue(mockFeatureBranch);
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestDocumentVersionWithFallback).mockResolvedValue({
+        version: mockDraftVersion,
+        inherited: false,
+      });
+      setupSettingsMocks(settingsService, 5);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=branch-feature-uuid',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.inherited).toBe(false);
+    });
+
+    it('should serve main published content when no local version exists (inherited)', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      vi.mocked(services.getBranch).mockResolvedValue(mockFeatureBranch);
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestDocumentVersionWithFallback).mockResolvedValue({
+        version: mockPublishedVersion,
+        inherited: true,
+      });
+      setupSettingsMocks(settingsService, 5);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=branch-feature-uuid',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.inherited).toBe(true);
+      expect(body.data).toEqual(mockPublishedVersion.snapshot);
+    });
+
+    it('should return 404 when no version on branch and no published version on main', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValue(mockFeatureBranch);
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestDocumentVersionWithFallback).mockResolvedValue(null);
 
       const request = new Request(
         'https://api.example.com/api/sites/site-uuid-123/content/home?branch=branch-feature-uuid',
@@ -596,6 +720,47 @@ describe('Content Delivery API Routes', () => {
       expect(body.isMainBranch).toBe(false);
       expect(services.getLatestDocumentVersion).toHaveBeenCalledTimes(2);
       expect(services.getLatestPublishedDocumentVersion).not.toHaveBeenCalled();
+    });
+
+    it('should include inherited documents from main branch', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      const mockDocuments: Document[] = [
+        { id: 'doc-uuid-abc', siteId: 'site-uuid-123', path: 'home', createdAt: '2026-01-05T12:00:00.000Z' },
+        { id: 'doc-uuid-def', siteId: 'site-uuid-123', path: 'about', createdAt: '2026-01-06T12:00:00.000Z' },
+      ];
+
+      vi.mocked(services.getBranch).mockResolvedValue(mockFeatureBranch);
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.listDocumentsOnBranch).mockResolvedValue(mockDocuments);
+      vi.mocked(services.getLatestDocumentVersion)
+        .mockResolvedValueOnce(mockDraftVersion)
+        .mockResolvedValueOnce({
+          ...mockPublishedVersion,
+          id: 'version-uuid-about',
+          documentId: 'doc-uuid-def',
+        });
+      setupSettingsMocks(settingsService, 5);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content-pages?branch=branch-feature-uuid',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        action: 'content-pages',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      // Verify listDocumentsOnBranch was called with mainBranchId option
+      expect(services.listDocumentsOnBranch).toHaveBeenCalledWith(
+        'branch-feature-uuid',
+        expect.objectContaining({ mainBranchId: 'branch-main-uuid' }),
+      );
     });
 
     it('should filter out documents with no versions on the branch', async () => {

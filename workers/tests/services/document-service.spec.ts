@@ -633,6 +633,7 @@ describe('Phase 3.1: Document Service', () => {
       created_by_id: string;
       created_by_type: 'user' | 'agent' | 'system';
       created_at: string;
+      is_tombstone: boolean;
     }
 
     // Helper to create a mock document version row
@@ -648,6 +649,7 @@ describe('Phase 3.1: Document Service', () => {
         created_by_id: 'user-uuid-789',
         created_by_type: 'user',
         created_at: '2026-01-23T10:00:00.000Z',
+        is_tombstone: false,
         ...overrides,
       };
     }
@@ -735,6 +737,92 @@ describe('Phase 3.1: Document Service', () => {
         expect(db.query).toHaveBeenCalledWith(
           expect.stringContaining('LIKE'),
           expect.arrayContaining(['pages/%']),
+        );
+      });
+
+      it('should include main branch published documents when mainBranchId is provided', async () => {
+        const { listDocumentsOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        const mockRows = [
+          createMockDocumentRow({ id: 'doc-branch-1', path: 'pages/local' }),
+          createMockDocumentRow({ id: 'doc-main-1', path: 'pages/inherited' }),
+        ];
+        vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+
+        const result = await listDocumentsOnBranch('branch-feature-uuid', {
+          mainBranchId: 'branch-main-uuid',
+        });
+
+        expect(result).toHaveLength(2);
+        // Query should use UNION to include main branch published docs
+        expect(db.query).toHaveBeenCalledWith(
+          expect.stringMatching(/UNION/i),
+          expect.arrayContaining(['branch-feature-uuid', 'branch-main-uuid']),
+        );
+      });
+
+      it('should exclude documents tombstoned on branch even when published on main', async () => {
+        const { listDocumentsOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        // Only the non-tombstoned doc should be returned
+        const mockRows = [
+          createMockDocumentRow({ id: 'doc-main-1', path: 'pages/inherited' }),
+        ];
+        vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+
+        const result = await listDocumentsOnBranch('branch-feature-uuid', {
+          mainBranchId: 'branch-main-uuid',
+        });
+
+        expect(result).toHaveLength(1);
+        // Query should exclude tombstoned documents from the UNION
+        expect(db.query).toHaveBeenCalledWith(
+          expect.stringMatching(/_deleted|tombstone/i),
+          expect.any(Array),
+        );
+      });
+
+      it('should not duplicate documents that exist on both branch and main', async () => {
+        const { listDocumentsOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        // Document exists on both branch and main — should appear only once
+        const mockRows = [
+          createMockDocumentRow({ id: 'doc-shared-1', path: 'pages/home' }),
+        ];
+        vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+
+        const result = await listDocumentsOnBranch('branch-feature-uuid', {
+          mainBranchId: 'branch-main-uuid',
+        });
+
+        expect(result).toHaveLength(1);
+        expect(result[0].id).toBe('doc-shared-1');
+        // Query should handle deduplication (e.g., via UNION which deduplicates, or EXCEPT/NOT IN)
+        expect(db.query).toHaveBeenCalledWith(
+          expect.stringMatching(/UNION|EXCEPT|NOT IN|NOT EXISTS/i),
+          expect.any(Array),
+        );
+      });
+
+      it('should work without mainBranchId (backward compatible)', async () => {
+        const { listDocumentsOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        const mockRows = [
+          createMockDocumentRow({ id: 'doc-1', path: 'pages/home' }),
+        ];
+        vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+
+        const result = await listDocumentsOnBranch('branch-uuid-456');
+
+        expect(result).toHaveLength(1);
+        // Without mainBranchId, should NOT use UNION
+        expect(db.query).toHaveBeenCalledWith(
+          expect.not.stringMatching(/UNION/i),
+          expect.any(Array),
         );
       });
     });
@@ -869,6 +957,7 @@ describe('Phase 3.1: Document Service', () => {
         const tombstonedVersionRow = createMockVersionRow({
           document_id: 'existing-doc-id',
           snapshot: { _deleted: true },
+          is_tombstone: true,
         });
         const newVersionRow = createMockVersionRow({
           document_id: 'existing-doc-id',
@@ -1004,7 +1093,7 @@ describe('Phase 3.1: Document Service', () => {
 
         expect(result).toBe(false);
         expect(db.query).toHaveBeenCalledWith(
-          expect.stringMatching(/_deleted/i),
+          expect.stringMatching(/is_tombstone/i),
           expect.any(Array),
         );
       });

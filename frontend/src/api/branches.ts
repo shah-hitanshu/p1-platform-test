@@ -11,7 +11,6 @@ interface BranchesResponse {
 
 interface CreateBranchParams {
   name: string;
-  parentBranchId?: string;
 }
 
 interface UpdateBranchParams {

@@ -48,8 +48,6 @@ export interface Branch {
   isMain: boolean;
   /** The branch this was created from (null for main branch) */
   sourceBranchId?: string;
-  /** @deprecated Use sourceBranchId - kept for backwards compatibility */
-  parentBranchId?: string;
   status: BranchStatus;
   createdAt: string;
   updatedAt: string;

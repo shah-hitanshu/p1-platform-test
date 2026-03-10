@@ -114,6 +114,7 @@ interface ModifiedDocumentRow {
   base_version_number: number | null;
   is_deleted?: boolean;
   source?: string;
+  snapshot?: Record<string, unknown> | null;
 }
 
 interface CheckpointDocumentRow {
@@ -154,96 +155,7 @@ export async function findMergeBase(
     return null;
   }
 
-  // Use a recursive CTE to find the merge base
-  // This traverses both branch lineages and finds the common ancestor
-  const sql = `
-    WITH RECURSIVE
-    -- Get source branch lineage (from source up to root)
-    source_lineage AS (
-      SELECT
-        id,
-        source_branch_id,
-        source_checkpoint_id,
-        0 AS depth
-      FROM app.branches
-      WHERE id = $1
-
-      UNION ALL
-
-      SELECT
-        b.id,
-        b.source_branch_id,
-        b.source_checkpoint_id,
-        sl.depth + 1
-      FROM app.branches b
-      INNER JOIN source_lineage sl ON b.id = sl.source_branch_id
-    ),
-    -- Get target branch lineage (from target up to root)
-    target_lineage AS (
-      SELECT
-        id,
-        source_branch_id,
-        source_checkpoint_id,
-        0 AS depth
-      FROM app.branches
-      WHERE id = $2
-
-      UNION ALL
-
-      SELECT
-        b.id,
-        b.source_branch_id,
-        b.source_checkpoint_id,
-        tl.depth + 1
-      FROM app.branches b
-      INNER JOIN target_lineage tl ON b.id = tl.source_branch_id
-    )
-    -- Find the merge base:
-    -- Case 1: Source was branched directly from target - use source's source_checkpoint_id
-    -- Case 2: Find common ancestor branch and use the earliest checkpoint from that point
-    SELECT
-      COALESCE(
-        -- Case 1: Direct branch from target
-        (SELECT source_checkpoint_id
-         FROM source_lineage
-         WHERE source_branch_id = $2
-         LIMIT 1),
-        -- Case 2: Common ancestor - find the checkpoint where lineages meet
-        (SELECT sl.source_checkpoint_id
-         FROM source_lineage sl
-         INNER JOIN target_lineage tl ON sl.source_branch_id = tl.id
-         ORDER BY sl.depth ASC
-         LIMIT 1)
-      ) AS merge_base_checkpoint_id,
-      COALESCE(
-        (SELECT $2::uuid
-         FROM source_lineage
-         WHERE source_branch_id = $2
-         LIMIT 1),
-        (SELECT tl.id
-         FROM source_lineage sl
-         INNER JOIN target_lineage tl ON sl.source_branch_id = tl.id
-         ORDER BY sl.depth ASC
-         LIMIT 1)
-      ) AS merge_base_branch_id,
-      c.created_at,
-      c.name,
-      c.message
-    FROM app.checkpoints c
-    WHERE c.id = COALESCE(
-      (SELECT source_checkpoint_id
-       FROM source_lineage
-       WHERE source_branch_id = $2
-       LIMIT 1),
-      (SELECT sl.source_checkpoint_id
-       FROM source_lineage sl
-       INNER JOIN target_lineage tl ON sl.source_branch_id = tl.id
-       ORDER BY sl.depth ASC
-       LIMIT 1)
-    )
-  `;
-
-  // First verify both branches exist
+  // Verify source branch exists and get its source_checkpoint_id
   const sourceBranchResult = await query<BranchRow>(
     'SELECT id, source_branch_id, source_checkpoint_id FROM app.branches WHERE id = $1',
     [sourceBranchId],
@@ -253,6 +165,7 @@ export async function findMergeBase(
     throw new SourceBranchNotFoundError(sourceBranchId);
   }
 
+  // Verify target branch exists
   const targetBranchResult = await query<BranchRow>(
     'SELECT id, source_branch_id, source_checkpoint_id FROM app.branches WHERE id = $1',
     [targetBranchId],
@@ -262,22 +175,36 @@ export async function findMergeBase(
     throw new TargetBranchNotFoundError(targetBranchId);
   }
 
-  const result = await query<MergeBaseRow>(sql, [sourceBranchId, targetBranchId]);
+  // With main-only branching, the merge base is simply the source_checkpoint_id
+  // from the source branch (the checkpoint on main when the branch was created)
+  const sourceCheckpointId = sourceBranchResult.rows[0].source_checkpoint_id;
 
-  if (result.rows.length === 0) {
+  if (sourceCheckpointId === null) {
     return null;
   }
 
-  const row = result.rows[0];
+  // Look up checkpoint metadata
+  const checkpointResult = await query<MergeBaseRow>(
+    `SELECT
+      $1::uuid AS merge_base_checkpoint_id,
+      $2::uuid AS merge_base_branch_id,
+      c.created_at,
+      c.name,
+      c.message
+    FROM app.checkpoints c
+    WHERE c.id = $1`,
+    [sourceCheckpointId, targetBranchId],
+  );
 
-  // Check if merge base was found (could be null if no common ancestor)
-  if (row.merge_base_checkpoint_id === null || row.merge_base_branch_id === null) {
+  if (checkpointResult.rows.length === 0) {
     return null;
   }
+
+  const row = checkpointResult.rows[0];
 
   return {
-    checkpointId: row.merge_base_checkpoint_id,
-    branchId: row.merge_base_branch_id,
+    checkpointId: row.merge_base_checkpoint_id ?? '',
+    branchId: row.merge_base_branch_id ?? '',
     createdAt: row.created_at,
     name: row.name ?? undefined,
     message: row.message ?? undefined,
@@ -294,58 +221,70 @@ export async function findMergeBase(
  * This compares the current document versions on the branch with the
  * document versions that were part of the checkpoint.
  */
+export interface GetModifiedDocumentsOptions {
+  publishedOnly?: boolean;
+}
+
 export async function getModifiedDocumentsSince(
   branchId: string,
   checkpointId: string,
+  options?: GetModifiedDocumentsOptions,
 ): Promise<ModifiedDocument[]> {
+  const currentVersionsCte = options?.publishedOnly === true
+    ? `
+    current_versions AS (
+      SELECT DISTINCT ON (cd.document_id)
+        cd.document_id,
+        dv.id AS version_id,
+        dv.version_number,
+        dv.source,
+        dv.snapshot,
+        dv.is_tombstone
+      FROM app.checkpoint_documents cd
+      INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+      INNER JOIN app.document_versions dv ON dv.id = cd.document_version_id
+      WHERE cp.branch_id = $1
+      ORDER BY cd.document_id, cp.created_at DESC
+    )`
+    : `
+    current_versions AS (
+      SELECT DISTINCT ON (dv.document_id)
+        dv.document_id, dv.id AS version_id, dv.version_number, dv.source, dv.snapshot, dv.is_tombstone
+      FROM app.document_versions dv
+      WHERE dv.branch_id = $1
+      ORDER BY dv.document_id, dv.version_number DESC
+    )`;
+
   const sql = `
     WITH
     -- Documents and versions at the checkpoint
     checkpoint_docs AS (
-      SELECT
-        cd.document_id,
-        cd.document_version_id,
-        dv.version_number
+      SELECT cd.document_id, cd.document_version_id, dv.version_number
       FROM app.checkpoint_documents cd
       INNER JOIN app.document_versions dv ON dv.id = cd.document_version_id
       WHERE cd.checkpoint_id = $2
     ),
     -- Current latest versions on the branch
-    current_versions AS (
-      SELECT DISTINCT ON (dv.document_id)
-        dv.document_id,
-        dv.id AS version_id,
-        dv.version_number,
-        dv.source
-      FROM app.document_versions dv
-      WHERE dv.branch_id = $1
-      ORDER BY dv.document_id, dv.version_number DESC
-    )
+    ${currentVersionsCte}
     -- Find documents that differ
     SELECT
-      COALESCE(cv.document_id, cd.document_id) AS document_id,
+      cv.document_id,
       d.path AS document_path,
       cv.version_id AS latest_version_id,
       cv.version_number AS latest_version_number,
       cd.document_version_id AS base_version_id,
       cd.version_number AS base_version_number,
       cv.source,
-      CASE
-        WHEN cv.version_id IS NULL AND cd.document_id IS NOT NULL THEN TRUE
-        WHEN d.archived_at IS NOT NULL AND cd.document_id IS NOT NULL THEN TRUE
-        ELSE FALSE
-      END AS is_deleted
+      cv.is_tombstone AS is_deleted
     FROM current_versions cv
-    FULL OUTER JOIN checkpoint_docs cd ON cv.document_id = cd.document_id
-    INNER JOIN app.documents d ON d.id = COALESCE(cv.document_id, cd.document_id)
+    LEFT JOIN checkpoint_docs cd ON cv.document_id = cd.document_id
+    INNER JOIN app.documents d ON d.id = cv.document_id
     WHERE
       (
         -- Modified: version numbers differ
         (cv.version_number IS DISTINCT FROM cd.version_number)
         -- Or new document (not in checkpoint)
         OR (cd.document_id IS NULL)
-        -- Or deleted (not in current versions)
-        OR (cv.version_id IS NULL)
       )
       -- Exclude unmodified branch copies (created when branch was forked)
       AND NOT (cv.source = 'branch' AND cd.document_id IS NOT NULL AND d.archived_at IS NULL)

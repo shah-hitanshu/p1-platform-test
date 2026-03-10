@@ -15,6 +15,7 @@ import type {
   DocumentVersion,
 } from '../types';
 import { query } from '../db';
+import { getMainBranch } from './branch-service';
 
 // =============================================================================
 // Types
@@ -455,23 +456,27 @@ export async function createCheckpoint(
     if (isIncremental && parentCreatedAt != null && parentCreatedAt !== '') {
       // Incremental: only documents changed since the parent checkpoint
       latestVersionsResult = await query<{ document_id: string; document_version_id: string }>(
-        `SELECT DISTINCT ON (dv.document_id)
-          dv.document_id,
-          dv.id as document_version_id
-        FROM app.document_versions dv
-        WHERE dv.branch_id = $1 AND dv.created_at > $2
-        ORDER BY dv.document_id, dv.version_number DESC`,
+        `SELECT document_id, document_version_id FROM (
+          SELECT DISTINCT ON (dv.document_id)
+            dv.document_id, dv.id as document_version_id, dv.is_tombstone
+          FROM app.document_versions dv
+          WHERE dv.branch_id = $1 AND dv.created_at > $2
+          ORDER BY dv.document_id, dv.version_number DESC
+        ) latest
+        WHERE latest.is_tombstone = false`,
         [params.branchId, parentCreatedAt],
       );
     } else {
       // Full: all latest versions for the branch
       latestVersionsResult = await query<{ document_id: string; document_version_id: string }>(
-        `SELECT DISTINCT ON (dv.document_id)
-          dv.document_id,
-          dv.id as document_version_id
-        FROM app.document_versions dv
-        WHERE dv.branch_id = $1
-        ORDER BY dv.document_id, dv.version_number DESC`,
+        `SELECT document_id, document_version_id FROM (
+          SELECT DISTINCT ON (dv.document_id)
+            dv.document_id, dv.id as document_version_id, dv.is_tombstone
+          FROM app.document_versions dv
+          WHERE dv.branch_id = $1
+          ORDER BY dv.document_id, dv.version_number DESC
+        ) latest
+        WHERE latest.is_tombstone = false`,
         [params.branchId],
       );
     }
@@ -1081,4 +1086,136 @@ export async function listCheckpointsByOperationType(
   const result = await query<CheckpointRow>(sql, params);
 
   return result.rows.map(mapRowToCheckpoint);
+}
+
+// =============================================================================
+// Publish Document
+// =============================================================================
+
+/**
+ * Parameters for publishing a document.
+ */
+export interface PublishDocumentParams {
+  siteId: string;
+  branchId: string;
+  documentId: string;
+  createdById: string;
+  createdByType: 'user' | 'agent' | 'system';
+}
+
+/**
+ * Result of publishing a document.
+ */
+export interface PublishDocumentResult {
+  checkpoint: Checkpoint;
+  publishedVersionId: string;
+}
+
+/**
+ * Publishes a document by creating a publish checkpoint capturing the latest
+ * version of the document on the branch.
+ *
+ * @param params - Publish parameters
+ * @returns The created checkpoint and published version ID
+ * @throws Error if the document has no versions on the branch or is tombstoned
+ */
+export async function publishDocument(
+  params: PublishDocumentParams,
+): Promise<PublishDocumentResult> {
+  // Resolve the main branch for this site
+  const mainBranch = await getMainBranch(params.siteId);
+  if (mainBranch === null) {
+    throw new Error('Main branch not found for site');
+  }
+
+  await query('BEGIN');
+
+  // Get the latest version of the document on the SOURCE branch
+  const versionResult = await query<{
+    id: string;
+    document_id: string;
+    branch_id: string;
+    version_number: number;
+    snapshot: Record<string, unknown>;
+    crdt_state: Buffer | null;
+    is_tombstone: boolean;
+  }>(
+    `SELECT id, document_id, branch_id, version_number, snapshot, crdt_state, is_tombstone
+     FROM app.document_versions
+     WHERE document_id = $1 AND branch_id = $2
+     ORDER BY version_number DESC
+     LIMIT 1`,
+    [params.documentId, params.branchId],
+  );
+
+  if (versionResult.rows.length === 0) {
+    await query('ROLLBACK');
+    throw new Error(`Document with ID "${params.documentId}" not found`);
+  }
+
+  const version = versionResult.rows[0];
+
+  if (version.is_tombstone) {
+    await query('ROLLBACK');
+    throw new Error('Cannot publish a tombstoned document');
+  }
+
+  try {
+    let publishVersionId = version.id;
+
+    // If publishing from a non-main branch, copy the version to main first
+    if (params.branchId !== mainBranch.id) {
+      const copyResult = await query<{ id: string; version_number: number }>(
+        `INSERT INTO app.document_versions (
+          document_id, branch_id, version_number, snapshot, crdt_state,
+          source, created_by_id, created_by_type
+        )
+        SELECT $1, $2,
+          COALESCE(MAX(version_number), 0) + 1,
+          $3, $4, 'publish', $5, $6
+        FROM app.document_versions
+        WHERE document_id = $1 AND branch_id = $2
+        RETURNING id, version_number`,
+        [
+          params.documentId,
+          mainBranch.id,
+          version.snapshot,
+          version.crdt_state,
+          params.createdById,
+          params.createdByType,
+        ],
+      );
+
+      publishVersionId = getFirstRow(copyResult.rows).id;
+    }
+
+    // Create publish checkpoint on main
+    const checkpointResult = await query<CheckpointRow>(
+      `INSERT INTO app.checkpoints (
+        branch_id, name, checkpoint_type, created_by_id, created_by_type, status
+      )
+      VALUES ($1, $2, 'publish', $3, $4, 'completed')
+      RETURNING *`,
+      [mainBranch.id, 'Publish: document', params.createdById, params.createdByType],
+    );
+
+    const row = getFirstRow(checkpointResult.rows);
+
+    // Insert checkpoint_documents row referencing the version on main
+    await query(
+      `INSERT INTO app.checkpoint_documents (checkpoint_id, document_id, document_version_id)
+       VALUES ($1, $2, $3)`,
+      [row.id, params.documentId, publishVersionId],
+    );
+
+    await query('COMMIT');
+
+    return {
+      checkpoint: mapRowToCheckpoint(row),
+      publishedVersionId: publishVersionId,
+    };
+  } catch (error) {
+    await query('ROLLBACK');
+    throw error;
+  }
 }

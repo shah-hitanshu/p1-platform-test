@@ -25,7 +25,6 @@ export function CreateMergeRequestPage() {
   const navigate = useNavigate();
 
   const [sourceBranchId, setSourceBranchId] = useState('');
-  const [targetBranchId, setTargetBranchId] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -44,15 +43,13 @@ export function CreateMergeRequestPage() {
     }
   }, [siteId, fetchSite, fetchBranches]);
 
+  const mainBranch = branches?.find((b) => b.isMain);
+  const targetBranchId = mainBranch?.id ?? '';
   const activeBranches = branches?.filter((b) => b.status === 'active') || [];
 
   const validateForm = (): boolean => {
     if (!sourceBranchId) {
       setValidationError('Please select a source branch');
-      return false;
-    }
-    if (!targetBranchId) {
-      setValidationError('Please select a target branch');
       return false;
     }
     if (sourceBranchId === targetBranchId) {
@@ -149,11 +146,13 @@ export function CreateMergeRequestPage() {
               data-testid="source-branch-select"
             >
               <option value="">Select source branch...</option>
-              {activeBranches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
+              {activeBranches
+                .filter((branch) => !branch.isMain)
+                .map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
             </select>
             <p className="form-help">The branch containing changes you want to merge</p>
           </div>
@@ -165,19 +164,15 @@ export function CreateMergeRequestPage() {
             <select
               id="targetBranch"
               value={targetBranchId}
-              onChange={(e) => setTargetBranchId(e.target.value)}
               className="pds-select"
-              disabled={branchesLoading}
+              disabled
               data-testid="target-branch-select"
             >
-              <option value="">Select target branch...</option>
-              {activeBranches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
+              {mainBranch && (
+                <option value={mainBranch.id}>{mainBranch.name}</option>
+              )}
             </select>
-            <p className="form-help">The branch you want to merge changes into</p>
+            <p className="form-help">All merge requests target the main branch</p>
           </div>
 
           <div className="form-group">

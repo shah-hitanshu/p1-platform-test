@@ -528,6 +528,10 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
           await this.initializeCrdtIfNeeded();
           return await this.handleInitialize(request);
 
+        case '/reload':
+          await this.initializeCrdtIfNeeded();
+          return await this.handleReload(request);
+
           // =============================================================
           // Metadata-only endpoints — no CRDT loading needed
           // =============================================================
@@ -1823,6 +1827,56 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       );
     } catch (error) {
       return this.errorResponse(500, `Failed to initialize: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Handle /reload endpoint
+   * Re-initializes the Y.Doc from PostgreSQL and broadcasts the diff
+   * to all connected WebSocket clients. Used after external publish
+   * operations that write directly to PostgreSQL.
+   */
+  private async handleReload(request: Request): Promise<Response> {
+    if (request.method !== 'POST') {
+      return this.errorResponse(405, 'Method not allowed. Use POST.');
+    }
+
+    try {
+      // Capture the old state vector before reload
+      const oldStateVector = Y.encodeStateVector(this.ydoc);
+
+      // Create a fresh Y.Doc and reload from PostgreSQL
+      this.ydoc = new Y.Doc();
+      this.initialized = false;
+      await this.initializeFromPostgres();
+      this.initialized = true;
+
+      // Compute the diff from old state to new state
+      const diff = Y.encodeStateAsUpdate(this.ydoc, oldStateVector);
+
+      // Broadcast diff to all connected WebSocket clients
+      if (diff.length > 0) {
+        for (const conn of this.state.getWebSockets()) {
+          if (conn.readyState === WebSocket.OPEN) {
+            conn.send(diff);
+          }
+        }
+      }
+
+      // Persist the reloaded state
+      await this.persist();
+      this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+
+      const root = this.ydoc.getMap('root');
+      return new Response(
+        JSON.stringify({
+          success: true,
+          snapshot: root.toJSON(),
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    } catch (error) {
+      return this.errorResponse(500, `Failed to reload: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

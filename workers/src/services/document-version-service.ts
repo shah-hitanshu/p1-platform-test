@@ -55,6 +55,8 @@ interface DocumentVersionRow {
   created_by_id: string;
   created_by_type: 'user' | 'agent' | 'system';
   created_at: string;
+  is_published?: boolean;
+  is_tombstone?: boolean;
 }
 
 // =============================================================================
@@ -105,7 +107,7 @@ export class DatabaseError extends Error {
  * Maps a database row to a DocumentVersion domain object.
  */
 function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersion {
-  return {
+  const version: DocumentVersion = {
     id: row.id,
     documentId: row.document_id,
     branchId: row.branch_id,
@@ -117,6 +119,13 @@ function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersion {
     createdByType: row.created_by_type,
     createdAt: row.created_at,
   };
+  if (row.is_published !== undefined) {
+    version.isPublished = row.is_published;
+  }
+  if (row.is_tombstone !== undefined) {
+    version.isTombstone = row.is_tombstone;
+  }
+  return version;
 }
 
 /**
@@ -254,7 +263,12 @@ export async function createDocumentVersion(
  */
 export async function getDocumentVersion(versionId: string): Promise<DocumentVersion | null> {
   const result = await query<DocumentVersionRow>(
-    'SELECT * FROM app.document_versions WHERE id = $1',
+    `SELECT dv.*,
+       EXISTS(
+         SELECT 1 FROM app.checkpoint_documents cd
+         WHERE cd.document_version_id = dv.id
+       ) AS is_published
+     FROM app.document_versions dv WHERE dv.id = $1`,
     [versionId],
   );
 
@@ -277,9 +291,14 @@ export async function getLatestDocumentVersion(
   branchId: string,
 ): Promise<DocumentVersion | null> {
   const result = await query<DocumentVersionRow>(
-    `SELECT * FROM app.document_versions
-     WHERE document_id = $1 AND branch_id = $2
-     ORDER BY version_number DESC
+    `SELECT dv.*,
+       EXISTS(
+         SELECT 1 FROM app.checkpoint_documents cd
+         WHERE cd.document_version_id = dv.id
+       ) AS is_published
+     FROM app.document_versions dv
+     WHERE dv.document_id = $1 AND dv.branch_id = $2
+     ORDER BY dv.version_number DESC
      LIMIT 1`,
     [documentId, branchId],
   );
@@ -359,9 +378,14 @@ export async function listDocumentVersions(
 ): Promise<DocumentVersion[]> {
   const { limit, offset } = options;
 
-  let sql = `SELECT * FROM app.document_versions
-             WHERE document_id = $1 AND branch_id = $2
-             ORDER BY version_number DESC`;
+  let sql = `SELECT dv.*,
+       EXISTS(
+         SELECT 1 FROM app.checkpoint_documents cd
+         WHERE cd.document_version_id = dv.id
+       ) AS is_published
+     FROM app.document_versions dv
+     WHERE dv.document_id = $1 AND dv.branch_id = $2
+     ORDER BY dv.version_number DESC`;
   const params: unknown[] = [documentId, branchId];
   let paramIndex = 3;
 
@@ -431,6 +455,55 @@ export interface BatchSyncResult {
   inserted: DocumentVersion[];
   /** Number of items that were skipped due to deduplication */
   skippedCount: number;
+}
+
+// =============================================================================
+// Copy-on-Write Fallback
+// =============================================================================
+
+/**
+ * Result of getting a document version with copy-on-write fallback.
+ */
+export interface DocumentVersionWithFallback {
+  version: DocumentVersion;
+  inherited: boolean;
+}
+
+/**
+ * Gets the latest document version on a branch, falling back to the latest
+ * published version on main if no version exists on the branch.
+ *
+ * This implements copy-on-write semantics: non-main branches inherit
+ * published content from main until they create their own versions.
+ *
+ * @param documentId - The document ID
+ * @param branchId - The branch ID to check first
+ * @param mainBranchId - The main branch ID for fallback
+ * @returns The document version with inheritance flag, or null if not found
+ */
+export async function getLatestDocumentVersionWithFallback(
+  documentId: string,
+  branchId: string,
+  mainBranchId: string,
+): Promise<DocumentVersionWithFallback | null> {
+  // 1. Try getting latest version on the branch
+  const branchVersion = await getLatestDocumentVersion(documentId, branchId);
+  if (branchVersion !== null) {
+    return { version: branchVersion, inherited: false };
+  }
+
+  // 2. If branch IS main, no fallback — return null
+  if (branchId === mainBranchId) {
+    return null;
+  }
+
+  // 3. Fall back to latest published version on main
+  const mainVersion = await getLatestPublishedDocumentVersion(documentId, mainBranchId);
+  if (mainVersion !== null) {
+    return { version: mainVersion, inherited: true };
+  }
+
+  return null;
 }
 
 /**

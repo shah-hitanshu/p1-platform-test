@@ -453,4 +453,152 @@ describe('Phase 3.3: Document Version Service', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('getLatestDocumentVersionWithFallback', () => {
+    it('should return branch version with inherited=false when version exists on branch', async () => {
+      const { getLatestDocumentVersionWithFallback } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockVersionRow({
+        id: 'branch-version-1',
+        document_id: 'doc-uuid-456',
+        branch_id: 'branch-feature-uuid',
+        version_number: 3,
+      });
+      // First query: getLatestDocumentVersion on the branch — returns a version
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockRow] });
+
+      const result = await getLatestDocumentVersionWithFallback(
+        'doc-uuid-456',
+        'branch-feature-uuid',
+        'branch-main-uuid',
+      );
+
+      expect(result).not.toBeNull();
+      expect(result?.version.id).toBe('branch-version-1');
+      expect(result?.version.branchId).toBe('branch-feature-uuid');
+      expect(result?.inherited).toBe(false);
+    });
+
+    it('should fall back to main published version with inherited=true when no branch version', async () => {
+      const { getLatestDocumentVersionWithFallback } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      const mockMainPublishedRow = createMockVersionRow({
+        id: 'main-published-version',
+        document_id: 'doc-uuid-456',
+        branch_id: 'branch-main-uuid',
+        version_number: 10,
+        source: 'checkpoint',
+      });
+      // First query: getLatestDocumentVersion on branch — no version
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      // Second query: getLatestPublishedDocumentVersion on main — returns published version
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockMainPublishedRow] });
+
+      const result = await getLatestDocumentVersionWithFallback(
+        'doc-uuid-456',
+        'branch-feature-uuid',
+        'branch-main-uuid',
+      );
+
+      expect(result).not.toBeNull();
+      expect(result?.version.id).toBe('main-published-version');
+      expect(result?.version.branchId).toBe('branch-main-uuid');
+      expect(result?.inherited).toBe(true);
+    });
+
+    it('should return null when no version on branch AND no published version on main', async () => {
+      const { getLatestDocumentVersionWithFallback } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      // First query: getLatestDocumentVersion on branch — no version
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      // Second query: getLatestPublishedDocumentVersion on main — no version
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      const result = await getLatestDocumentVersionWithFallback(
+        'doc-uuid-456',
+        'branch-feature-uuid',
+        'branch-main-uuid',
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it('should return branch version (not main) when both exist (branch takes priority)', async () => {
+      const { getLatestDocumentVersionWithFallback } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      const mockBranchRow = createMockVersionRow({
+        id: 'branch-version-local',
+        document_id: 'doc-uuid-456',
+        branch_id: 'branch-feature-uuid',
+        version_number: 2,
+      });
+      // First query: getLatestDocumentVersion on the branch — returns a version
+      // (should NOT proceed to second query)
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockBranchRow] });
+
+      const result = await getLatestDocumentVersionWithFallback(
+        'doc-uuid-456',
+        'branch-feature-uuid',
+        'branch-main-uuid',
+      );
+
+      expect(result).not.toBeNull();
+      expect(result?.version.id).toBe('branch-version-local');
+      expect(result?.inherited).toBe(false);
+      // Should only query once — no fallback needed
+      expect(db.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('should NOT fall back when branchId === mainBranchId (main branch, no fallback)', async () => {
+      const { getLatestDocumentVersionWithFallback } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      // No version on main branch
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      const result = await getLatestDocumentVersionWithFallback(
+        'doc-uuid-456',
+        'branch-main-uuid',
+        'branch-main-uuid',
+      );
+
+      // Should return null, not attempt fallback
+      expect(result).toBeNull();
+      // Should only query once — no fallback for main branch
+      expect(db.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return inherited=true with main tombstone if main has tombstone and no branch version', async () => {
+      const { getLatestDocumentVersionWithFallback } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      const mockMainTombstoneRow = createMockVersionRow({
+        id: 'main-tombstone-version',
+        document_id: 'doc-uuid-456',
+        branch_id: 'branch-main-uuid',
+        version_number: 15,
+        snapshot: { _deleted: true },
+        source: 'edit',
+      });
+      // First query: getLatestDocumentVersion on branch — no version
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      // Second query: getLatestPublishedDocumentVersion on main — returns tombstone
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockMainTombstoneRow] });
+
+      const result = await getLatestDocumentVersionWithFallback(
+        'doc-uuid-456',
+        'branch-feature-uuid',
+        'branch-main-uuid',
+      );
+
+      // Should return the tombstone — caller is responsible for handling it
+      expect(result).not.toBeNull();
+      expect(result?.version.snapshot).toEqual({ _deleted: true });
+      expect(result?.inherited).toBe(true);
+    });
+  });
 });

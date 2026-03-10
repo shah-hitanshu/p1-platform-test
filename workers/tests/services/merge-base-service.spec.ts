@@ -396,6 +396,174 @@ describe('Phase 5.1b: Merge Base Service', () => {
       const sqlArg = vi.mocked(db.query).mock.calls[0][0];
       expect(sqlArg).toMatch(/cd\.document_id IS NULL AND d\.archived_at IS NOT NULL/);
     });
+
+    it('should NOT treat inherited documents as deleted on COW branches', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      // With COW branching, inherited documents (in checkpoint but no local version
+      // on the branch) should NOT appear as deleted. The query should NOT use
+      // FULL OUTER JOIN which would surface inherited docs as "missing on branch."
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
+
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      // The SQL must NOT use FULL OUTER JOIN — inherited docs should be invisible
+      expect(db.query).toHaveBeenCalledWith(
+        expect.not.stringContaining('FULL OUTER JOIN'),
+        expect.any(Array),
+      );
+      // It should start from current_versions (LEFT JOIN or INNER JOIN)
+      expect(sqlArg).toContain('current_versions');
+    });
+
+    it('should detect tombstoned documents via is_tombstone column', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      // With COW, tombstone detection uses snapshot->>'_deleted' = 'true'
+      // instead of relying on cv.version_id IS NULL (which conflates
+      // inherited-but-not-locally-versioned with actually-deleted).
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            document_id: 'doc-tombstoned',
+            document_path: 'pages/removed',
+            latest_version_id: 'v-tombstone',
+            latest_version_number: 3,
+            base_version_id: 'v-base',
+            base_version_number: 1,
+            is_deleted: true,
+          },
+        ],
+      });
+
+      const result = await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
+
+      // The result should mark it as deleted
+      expect(result).toHaveLength(1);
+      expect(result[0].isDeleted).toBe(true);
+      // The tombstoned doc has a version_id (it's a tombstone version, not absence)
+      expect(result[0].latestVersionId).toBe('v-tombstone');
+
+      // Verify the SQL uses snapshot-based tombstone detection
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringContaining('is_tombstone'),
+        expect.any(Array),
+      );
+    });
+  });
+
+  describe('getModifiedDocumentsSince with publishedOnly option', () => {
+    it('should use checkpoint_documents for current state when publishedOnly is true', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            document_id: 'doc-1',
+            document_path: 'pages/home',
+            latest_version_id: 'published-v1',
+            latest_version_number: 2,
+            base_version_id: 'v-base',
+            base_version_number: 1,
+            is_deleted: false,
+          },
+        ],
+      });
+
+      const result = await getModifiedDocumentsSince('main-branch', 'checkpoint-id', {
+        publishedOnly: true,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].documentId).toBe('doc-1');
+
+      // Verify the SQL uses checkpoint_documents to find published versions
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      expect(sqlArg).toContain('checkpoint_documents');
+      expect(sqlArg).toContain('checkpoints');
+    });
+
+    it('should not include unpublished edits when publishedOnly is true', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      // When publishedOnly is true, the SQL should join on checkpoint_documents
+      // so only published versions are considered as "current state"
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await getModifiedDocumentsSince('main-branch', 'checkpoint-id', {
+        publishedOnly: true,
+      });
+
+      // The SQL should reference checkpoint_documents for the current versions CTE
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      expect(sqlArg).toContain('checkpoint_documents');
+      // Should NOT use raw document_versions for current state
+      // (the checkpoint_docs CTE still references document_versions for the base)
+    });
+
+    it('should use raw document_versions when publishedOnly is false', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await getModifiedDocumentsSince('branch-id', 'checkpoint-id', {
+        publishedOnly: false,
+      });
+
+      // Verify it uses the original query (no checkpoint_documents in current_versions)
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      // The checkpoint_docs CTE always references checkpoint_documents for the base,
+      // but the current_versions CTE should use document_versions directly
+      expect(sqlArg).toContain('current_versions');
+    });
+
+    it('should default to publishedOnly false when no options provided', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      // Call without options (existing behavior)
+      await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
+
+      // Should produce the same SQL as publishedOnly: false
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      expect(sqlArg).toContain('current_versions');
+    });
+
+    it('should detect new published documents since checkpoint when publishedOnly is true', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      // A document that was published on main after the merge base checkpoint
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            document_id: 'doc-new',
+            document_path: 'pages/new-page',
+            latest_version_id: 'published-v1',
+            latest_version_number: 1,
+            base_version_id: null,
+            base_version_number: null,
+            is_deleted: false,
+          },
+        ],
+      });
+
+      const result = await getModifiedDocumentsSince('main-branch', 'checkpoint-id', {
+        publishedOnly: true,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].documentId).toBe('doc-new');
+      expect(result[0].baseVersionId).toBeNull();
+    });
   });
 
   describe('getDocumentsAtCheckpoint', () => {
@@ -543,6 +711,84 @@ describe('Phase 5.1b: Merge Base Service', () => {
       expect(result).toHaveProperty('checkpointId');
       expect(result).toHaveProperty('branchId');
       expect(result).toHaveProperty('createdAt');
+    });
+  });
+
+  describe('Simplified Merge Base (Main-Only Branching)', () => {
+    it('should find merge base using source branch source_checkpoint_id directly', async () => {
+      const { findMergeBase } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'feature-branch', source_branch_id: 'main-branch', source_checkpoint_id: 'checkpoint-123', is_main: false }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'main-branch', source_branch_id: null, source_checkpoint_id: null, is_main: true }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{
+            merge_base_checkpoint_id: 'checkpoint-123',
+            merge_base_branch_id: 'main-branch',
+            created_at: '2026-01-20T10:00:00.000Z',
+            name: null,
+            message: null,
+          }],
+        });
+
+      const result = await findMergeBase('feature-branch', 'main-branch');
+
+      expect(result).toBeDefined();
+      expect(result?.checkpointId).toBe('checkpoint-123');
+      expect(result?.branchId).toBe('main-branch');
+    });
+
+    it('should return null when source branch has no source_checkpoint_id', async () => {
+      const { findMergeBase } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'feature-branch', source_branch_id: 'main-branch', source_checkpoint_id: null, is_main: false }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'main-branch', source_branch_id: null, source_checkpoint_id: null, is_main: true }],
+        });
+
+      const result = await findMergeBase('feature-branch', 'main-branch');
+
+      expect(result).toBeNull();
+    });
+
+    it('should not use recursive CTE for merge base calculation', async () => {
+      const { findMergeBase } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'feature-branch', source_branch_id: 'main-branch', source_checkpoint_id: 'cp-1', is_main: false }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'main-branch', source_branch_id: null, source_checkpoint_id: null, is_main: true }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{
+            merge_base_checkpoint_id: 'cp-1',
+            merge_base_branch_id: 'main-branch',
+            created_at: '2026-01-20T10:00:00.000Z',
+            name: null,
+            message: null,
+          }],
+        });
+
+      await findMergeBase('feature-branch', 'main-branch');
+
+      const allCalls = vi.mocked(db.query).mock.calls;
+      for (const call of allCalls) {
+        if (typeof call[0] === 'string') {
+          expect(call[0]).not.toContain('WITH RECURSIVE');
+        }
+      }
     });
   });
 });

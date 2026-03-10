@@ -3274,3 +3274,128 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - `@pantheon/puck-css/config` — createCSSConfig for server-side imports
 - `@pantheon/puck-css/utils/path` — toCSSPath for server-side imports
 - `typesVersions` added to both packages for `moduleResolution: "node"` compat
+
+### Copy-on-Write Branching Refactor
+
+**Status:** Complete (Phases 1-6 done, document-api COW done; Phase 7 future)
+**Branch:** `feature/copy-on-write-branching`
+**Commits:**
+- `43c300e` — test: add Phase 1 + Phase 3 copy-on-write branching tests (red)
+- `7a06d0f` — feat: enforce main-only branching and copy-on-write branch creation (Phases 1+3)
+- `800bd4d` — test: add Phase 4 version fallback TDD tests (red)
+- `2c16e18` — feat: version fallback to main for copy-on-write branches (Phase 4)
+- `4eb178c` — test: add Phase 5 merge execution TDD tests (red)
+- `00266b9` — feat: COW-aware merge execution, tombstone checkpoint exclusion, deprecate archive (Phase 5)
+- `07c72db` — feat: migration 023 — remove duplicate version rows for COW branches (Phase 6)
+- `0c72efa` — test: add Phase 2 frontend COW branching tests (red state)
+- `55d17b4` — feat: enforce main-only branching in frontend UI (Phase 2)
+- `33c5e78` — fix: pass mainBranchId to listDocumentsOnBranch in document-api
+- `5d55eb0` — test: add COW fallback tests for document-api and document-service (red state)
+- `1611bb1` — feat: COW fallback for document-api routes and inherited flag in listings
+- `fed3ec4` — fix: exclude tombstoned documents from COW inherited listing
+- `2eaeb71` — test: add isPublished flag tests and checkpoint_documents index migration (red state)
+- `cf58aa0` — feat: add isPublished flag to document version responses
+
+#### Wave 1 — Phases 1+3: Main-Only Branching & COW Branch Creation
+- [x] Enforce `parentBranchId` must be main in `createBranch`
+- [x] Add `MainBranchOnlyError` for non-main parent branches
+- [x] Branch-scoped document operations: `listDocumentsOnBranch`, `createDocumentOnBranch`, `documentExistsOnBranch`, `deleteDocumentOnBranch`
+- [x] Tests: 15 new tests covering main-only enforcement and branch-scoped operations
+
+#### Wave 2 — Phase 4: Version Fallback to Main
+- [x] `getLatestDocumentVersionWithFallback()` — tries branch first, falls back to main's published version
+- [x] `DocumentVersionWithFallback` type with `inherited` boolean
+- [x] Content API updated: non-main branches use fallback, response includes `inherited` field
+- [x] `listDocumentsOnBranch` UNION query: branch local docs + main published docs (excluding tombstones)
+- [x] Tests: 15 new tests for fallback behavior
+
+#### Wave 3 — Phase 5: Merge Execution Changes
+- [x] `getModifiedDocumentsSince` rewritten with LEFT JOIN for COW semantics (inherited docs ≠ deleted)
+- [x] Tombstone detection via `snapshot._deleted` instead of missing version rows
+- [x] Checkpoint creation excludes tombstone documents from snapshots
+- [x] `archiveDocument`/`restoreDocument` marked as deprecated (prose, not @deprecated tag to avoid lint cascade)
+- [x] Tests: 5 new tests for COW merge and tombstone handling
+
+#### Wave 4 — Phase 6: Data Migration
+- [x] Migration 023: `cow_cleanup_duplicate_versions`
+- [x] Remap 23 checkpoint_documents from branch v1 rows to main's versions
+- [x] Delete 52 duplicate v1 version rows (snapshot matched main, no local edits)
+- [x] Preserve 11 v1 rows that have higher versions (edit history)
+- [x] Register previously-applied migrations 018-022 in tracking table
+- [x] FK integrity verified: 0 orphaned checkpoint_documents
+
+#### Wave 5 — Phase 2: Frontend Main-Only Branching
+- [x] Remove parent branch selector from create branch form (SiteDetailPage)
+- [x] Update button text to "Create branch from main"
+- [x] Auto-select main as merge request target, disable selector (CreateMergeRequestPage)
+- [x] Filter main from source branch options in merge request form
+- [x] Rename "Parent" column/label to "Source", show "main" text (SiteDetailPage, BranchDetailPage)
+- [x] Remove deprecated `parentBranchId` from Branch type and API params
+- [x] Unit tests: 5 new Vitest tests for COW branching UI
+- [x] E2E tests: Updated branch-crud and merge-requests specs
+
+#### Wave 6 — Document API COW Fallback
+- [x] `listDocumentsOnBranch` returns `inherited: boolean` per document via `DocumentOnBranch` type
+- [x] SQL UNION: `false AS inherited` for local docs, `true AS inherited` for main-inherited docs
+- [x] GET document on non-main branch falls back to main when no local version exists
+- [x] GET latest version on non-main branch uses `getLatestDocumentVersionWithFallback`
+- [x] POST create version works for inherited documents (COW gate relaxed)
+- [x] Pass `isMainBranch` from route handler to avoid redundant `getBranch` calls
+- [x] Main branch behavior unchanged (no fallback)
+- [x] Tests: 10 new tests (6 API, 4 service)
+- [x] Fix: document-api passes `mainBranchId` to `listDocumentsOnBranch` for non-main branches
+
+#### Wave 7 — isPublished Flag & Tombstone Fixes
+- [x] Migration 024: Add index on `checkpoint_documents(document_version_id)` for efficient isPublished lookups
+- [x] Add `isPublished?: boolean` to `DocumentVersion` type (derived via EXISTS subquery, never stored)
+- [x] Update `getLatestDocumentVersion`, `listDocumentVersions`, `getDocumentVersion` queries
+- [x] Fix: exclude tombstoned documents from main in COW inherited listing
+- [x] Tests: 7 new tests (6 isPublished, 1 tombstone exclusion)
+
+#### Wave 8 — Frontend isPublished UI
+- [x] Add `isPublished?: boolean` to frontend `DocumentVersion` type (`frontend/src/api/documents.ts`)
+- [x] Show "Published" badge (green pill) on versions with `isPublished: true` in version history table
+- [x] Show "Unpublished" Tag in document header when versions loaded and none published
+- [x] Add `.published-badge` CSS following existing `.current-badge` pattern
+- [x] Tests: 7 new tests (published badge, unpublished indicator, undefined edge case)
+- [x] Test commit: `4caebc8`, Implementation commit: `a50139d`
+
+#### Wave 9 — Security: is_tombstone Column Refactor
+- [x] Migration 025: Add `is_tombstone BOOLEAN NOT NULL DEFAULT false` to `document_versions`
+- [x] Backfill existing tombstones from `snapshot->>'_deleted' = 'true'`
+- [x] Partial index `idx_document_versions_tombstone` for efficient tombstone queries
+- [x] Replace all `snapshot->>'_deleted'` SQL checks with `is_tombstone` column (4 source files, 10 query sites)
+- [x] Replace `snapshot._deleted` runtime checks with `version.isTombstone` (content-api)
+- [x] Add `isTombstone?: boolean` to `DocumentVersion` type and mapper
+- [x] Keep `{ _deleted: true }` in tombstone snapshots for backward compatibility
+- [x] Update 5 test files (6 tests) to match new column-based checks
+- [x] Security fix: user-submitted snapshots with `_deleted` key no longer affect tombstone logic
+- [x] Commit: `86ab283`
+
+#### Wave 10 — Single-Document Publish Endpoint
+- [x] New `publishDocument()` in checkpoint-service: creates publish-type checkpoint for one document
+- [x] New route: `POST /api/sites/:siteId/branches/:branchId/documents/:documentId/publish`
+- [x] Route pattern in index.ts, exports in services/index.ts
+- [x] Transaction safety with try/catch ROLLBACK (per reviewer feedback)
+- [x] Authorization: requires `canEditDocuments` permission
+- [x] Validates document exists and is not tombstoned before publishing
+- [x] Works on any branch (main or feature branches)
+- [x] Tests: 8 new tests (5 service + 3 route), 2389 backend tests passing
+- [x] Test commit: `407d646`, Implementation commit: `3a638c1`
+
+#### Wave 11 — Published-State Merge Comparison & Cherry-Pick Publish
+- [x] `getModifiedDocumentsSince()` gains `publishedOnly` option — compares against `checkpoint_documents` (published state) instead of raw `document_versions`
+- [x] `detectConflicts()` uses `{ publishedOnly: true }` for the target (main) branch
+- [x] `publishDocument()` rewritten as cherry-pick-to-main: always resolves main branch, copies version from source branch to main, creates publish checkpoint on main
+- [x] Route passes `siteId` to `publishDocument()` for main branch resolution
+- [x] DO `/reload` endpoint: re-initializes Y.Doc from PostgreSQL, broadcasts diff to connected WebSocket clients
+- [x] Post-publish DO notification: worker calls main branch DO's `/reload` after successful publish
+- [x] Errors from DO reload are swallowed (logged, don't break publish response)
+- [x] Tests: 22 new tests (5 merge-base, 3 conflict-detection, 7 checkpoint-service, 3 route, 6 DO reload, 7 post-publish notification), 2412 backend tests passing
+- [x] Key commits: `028ae18` (published-only merge tests), `34961f9` (published-only merge impl), `1cc1ff6` (cherry-pick publish tests), `138a46c` (cherry-pick publish impl), `bbc3311` (DO reload tests), `070670b` (DO reload impl), `8b4ec00` (post-publish notification tests), `8616d1a` (post-publish notification impl)
+
+**Decision:** User decided the Publish button should always cherry-pick to main (like git cherry-pick), regardless of which branch the editor is on. A UX confirmation prompt will be added to the puck-css-integration frontend separately.
+
+#### Remaining
+- [ ] UX confirmation prompt in puck-css-integration before publish (separate project)
+- [ ] Phase 7: Publish-propagation foundation (future)

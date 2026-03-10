@@ -16,6 +16,7 @@ import {
   getDocumentByPath,
   getLatestDocumentVersion,
   getLatestPublishedDocumentVersion,
+  getLatestDocumentVersionWithFallback,
   listDocumentsOnBranch,
 } from '../services';
 import {
@@ -116,17 +117,33 @@ async function handleGetContent(
   }
 
   // Main branch: serve only published (checkpoint-captured) content.
-  // Non-main branches: serve the latest saved version (work-in-progress).
-  const version = branch.isMain
-    ? await getLatestPublishedDocumentVersion(document.id, branch.id)
-    : await getLatestDocumentVersion(document.id, branch.id);
-  if (version === null) {
+  // Non-main branches: serve the latest saved version with fallback to main.
+  let version;
+  let inherited = false;
+
+  if (branch.isMain) {
+    version = await getLatestPublishedDocumentVersion(document.id, branch.id);
+  } else {
+    const mainBranch = await getMainBranch(siteId);
+    const fallbackResult = mainBranch != null
+      ? await getLatestDocumentVersionWithFallback(
+        document.id, branch.id, mainBranch.id,
+      )
+      : null;
+    if (fallbackResult != null) {
+      version = fallbackResult.version;
+      inherited = fallbackResult.inherited;
+    } else {
+      version = await getLatestDocumentVersion(document.id, branch.id);
+    }
+  }
+
+  if (version == null) {
     return errorResponse('Document not found', 404);
   }
 
   // Tombstone check
-  const snapshot = version.snapshot as Record<string, unknown> | null;
-  if (snapshot !== null && typeof snapshot === 'object' && snapshot._deleted === true) {
+  if (version.isTombstone === true) {
     return errorResponse('Document has been deleted', 404);
   }
 
@@ -149,18 +166,24 @@ async function handleGetContent(
     });
   }
 
+  const responseBody: Record<string, unknown> = {
+    documentId: document.id,
+    path: document.path,
+    data: version.snapshot,
+    branchId: branch.id,
+    branchName: branch.name,
+    isMainBranch: branch.isMain,
+    versionNumber: version.versionNumber,
+    versionCreatedAt: version.createdAt,
+    etag,
+  };
+
+  if (!branch.isMain) {
+    responseBody.inherited = inherited;
+  }
+
   return jsonResponse(
-    {
-      documentId: document.id,
-      path: document.path,
-      data: version.snapshot,
-      branchId: branch.id,
-      branchName: branch.name,
-      isMainBranch: branch.isMain,
-      versionNumber: version.versionNumber,
-      versionCreatedAt: version.createdAt,
-      etag,
-    },
+    responseBody,
     200,
     {
       'Cache-Control': `public, s-maxage=${String(ttl)}, stale-while-revalidate=${String(ttl * 5)}`,
@@ -183,7 +206,12 @@ async function handleGetContentPages(
   }
 
   // List documents on this branch
-  const documents = await listDocumentsOnBranch(branch.id);
+  // For non-main branches, pass mainBranchId to enable copy-on-write fallback
+  const mainBranch = branch.isMain ? null : await getMainBranch(siteId);
+  const documents = await listDocumentsOnBranch(
+    branch.id,
+    branch.isMain ? {} : { mainBranchId: mainBranch?.id },
+  );
 
   // Main branch: only include documents with published versions.
   // Non-main branches: include all documents with any saved version.

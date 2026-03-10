@@ -7,7 +7,7 @@
  * @see collaborative-state-system-architecture-v2.2.md Section "Documents"
  */
 
-import type { Document, Json } from '../types';
+import type { Document } from '../types';
 import { query } from '../db';
 
 // =============================================================================
@@ -15,17 +15,10 @@ import { query } from '../db';
 // =============================================================================
 
 /**
- * Checks if a snapshot represents a tombstone (deleted document version).
- * Tombstones are marked with { _deleted: true }.
+ * Checks if a database row represents a tombstone (deleted document version).
  */
-function isTombstoneSnapshot(snapshot: Json): boolean {
-  if (typeof snapshot !== 'object' || snapshot === null) {
-    return false;
-  }
-  // Use Object.prototype.hasOwnProperty to check for _deleted property
-  // and cast to access the value
-  const obj = snapshot as Record<string, unknown>;
-  return Object.prototype.hasOwnProperty.call(obj, '_deleted') && obj._deleted === true;
+function isTombstoneRow(row: { is_tombstone?: boolean }): boolean {
+  return row.is_tombstone === true;
 }
 
 // =============================================================================
@@ -60,6 +53,13 @@ interface DocumentRow {
   path: string;
   created_at: string;
   archived_at: string | null;
+}
+
+/**
+ * Database row format for documents with inherited flag.
+ */
+interface DocumentOnBranchRow extends DocumentRow {
+  inherited: boolean;
 }
 
 // =============================================================================
@@ -138,6 +138,22 @@ export class DocumentPathConflictError extends Error {
  */
 export interface DocumentWithArchive extends Document {
   archivedAt?: string;
+}
+
+/**
+ * Extended document type with inherited flag for branch listings.
+ */
+export interface DocumentOnBranch extends DocumentWithArchive {
+  inherited: boolean;
+}
+
+/**
+ * Maps a database row to a DocumentOnBranch domain object.
+ */
+function mapRowToDocumentOnBranch(row: DocumentOnBranchRow): DocumentOnBranch {
+  const doc = mapRowToDocument(row) as DocumentOnBranch;
+  doc.inherited = row.inherited;
+  return doc;
 }
 
 /**
@@ -425,6 +441,8 @@ export async function documentExists(
  * Archives (soft-deletes) a document.
  * The document path becomes available for reuse after archival.
  *
+ * Deprecated: prefer deleteDocumentOnBranch with tombstone versions.
+ *
  * @param documentId - The document ID
  * @returns True if archived, false if not found
  */
@@ -441,6 +459,8 @@ export async function archiveDocument(documentId: string): Promise<boolean> {
 
 /**
  * Restores an archived document.
+ *
+ * Deprecated: prefer createDocumentOnBranch to recreate after tombstone.
  *
  * @param documentId - The document ID
  * @returns The restored document
@@ -498,6 +518,7 @@ export async function restoreDocument(documentId: string): Promise<DocumentWithA
  */
 export interface ListDocumentsOnBranchOptions {
   pathPrefix?: string;
+  mainBranchId?: string;
 }
 
 /**
@@ -560,6 +581,7 @@ interface DocumentVersionRow {
   created_by_id: string;
   created_by_type: 'user' | 'agent' | 'system';
   created_at: string;
+  is_tombstone?: boolean;
 }
 
 /**
@@ -591,11 +613,80 @@ function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersion {
 export async function listDocumentsOnBranch(
   branchId: string,
   options: ListDocumentsOnBranchOptions = {},
-): Promise<DocumentWithArchive[]> {
-  const { pathPrefix } = options;
+): Promise<DocumentOnBranch[]> {
+  const { pathPrefix, mainBranchId } = options;
 
+  if (mainBranchId !== undefined && mainBranchId !== '') {
+    // Copy-on-write query: include documents from branch + inherited from main
+    let sql = `
+      SELECT DISTINCT d.*, false AS inherited
+      FROM app.documents d
+      INNER JOIN app.document_versions dv ON dv.document_id = d.id
+      WHERE dv.branch_id = $1
+        AND d.archived_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM app.document_versions dv2
+          WHERE dv2.document_id = d.id
+            AND dv2.branch_id = $1
+            AND dv2.is_tombstone = true
+            AND dv2.version_number = (
+              SELECT MAX(dv3.version_number)
+              FROM app.document_versions dv3
+              WHERE dv3.document_id = d.id AND dv3.branch_id = $1
+            )
+        )`;
+
+    const params: unknown[] = [branchId, mainBranchId];
+
+    if (pathPrefix !== undefined && pathPrefix !== '') {
+      const escapedPrefix = escapeLikePattern(pathPrefix) + '%';
+      params.push(escapedPrefix);
+      sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\\\'`;
+    }
+
+    sql += `
+
+      UNION
+
+      SELECT DISTINCT d.*, true AS inherited
+      FROM app.documents d
+      INNER JOIN app.document_versions dv ON dv.document_id = d.id
+      INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
+      INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+      WHERE dv.branch_id = $2
+        AND cp.branch_id = $2
+        AND d.archived_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM app.document_versions dv_branch
+          WHERE dv_branch.document_id = d.id
+            AND dv_branch.branch_id = $1
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM app.document_versions dv_tomb
+          WHERE dv_tomb.document_id = d.id
+            AND dv_tomb.branch_id = $2
+            AND dv_tomb.is_tombstone = true
+            AND dv_tomb.version_number = (
+              SELECT MAX(dv_latest.version_number)
+              FROM app.document_versions dv_latest
+              WHERE dv_latest.document_id = d.id AND dv_latest.branch_id = $2
+            )
+        )`;
+
+    if (pathPrefix !== undefined && pathPrefix !== '') {
+      sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\\\'`;
+    }
+
+    sql += ' ORDER BY path ASC';
+
+    const result = await query<DocumentOnBranchRow>(sql, params);
+
+    return result.rows.map(mapRowToDocumentOnBranch);
+  }
+
+  // Original query: only documents with versions on the branch
   let sql = `
-    SELECT DISTINCT d.*
+    SELECT DISTINCT d.*, false AS inherited
     FROM app.documents d
     INNER JOIN app.document_versions dv ON dv.document_id = d.id
     WHERE dv.branch_id = $1
@@ -604,7 +695,7 @@ export async function listDocumentsOnBranch(
         SELECT 1 FROM app.document_versions dv2
         WHERE dv2.document_id = d.id
           AND dv2.branch_id = $1
-          AND dv2.snapshot->>'_deleted' = 'true'
+          AND dv2.is_tombstone = true
           AND dv2.version_number = (
             SELECT MAX(dv3.version_number)
             FROM app.document_versions dv3
@@ -621,9 +712,9 @@ export async function listDocumentsOnBranch(
 
   sql += ' ORDER BY d.path ASC';
 
-  const result = await query<DocumentRow>(sql, params);
+  const result = await query<DocumentOnBranchRow>(sql, params);
 
-  return result.rows.map(mapRowToDocument);
+  return result.rows.map(mapRowToDocumentOnBranch);
 }
 
 /**
@@ -688,8 +779,7 @@ export async function createDocumentOnBranch(
 
         if (latestVersionResult.rows.length > 0) {
           const latestVersion = latestVersionResult.rows[0];
-          const snapshot = latestVersion.snapshot;
-          if (isTombstoneSnapshot(snapshot)) {
+          if (isTombstoneRow(latestVersion)) {
             // This is a recreation after tombstone - delete all versions on this branch
             // to start fresh with version 1
             await query(
@@ -760,8 +850,7 @@ export async function documentExistsOnBranch(
   branchId: string,
 ): Promise<boolean> {
   // Check if document has any version on this branch where:
-  // 1. The latest version is NOT a tombstone (snapshot->>'_deleted' != 'true')
-  // Note: We need COALESCE because NULL = 'true' returns NULL in SQL, not false
+  // 1. The latest version is NOT a tombstone
   const result = await query<{ exists: boolean }>(
     `SELECT EXISTS(
        SELECT 1 FROM app.document_versions dv
@@ -772,7 +861,7 @@ export async function documentExistsOnBranch(
            FROM app.document_versions dv2
            WHERE dv2.document_id = $1 AND dv2.branch_id = $2
          )
-         AND COALESCE(dv.snapshot->>'_deleted', '') != 'true'
+         AND dv.is_tombstone = false
      ) as exists`,
     [documentId, branchId],
   );
@@ -795,11 +884,11 @@ export async function deleteDocumentOnBranch(
     await query<DocumentVersionRow>(
       `INSERT INTO app.document_versions (
         document_id, branch_id, version_number, snapshot, crdt_state,
-        source, created_by_id, created_by_type
+        source, created_by_id, created_by_type, is_tombstone
       )
       SELECT $1, $2,
         COALESCE(MAX(version_number), 0) + 1,
-        $3, NULL, $4, $5, $6
+        $3, NULL, $4, $5, $6, true
       FROM app.document_versions
       WHERE document_id = $1 AND branch_id = $2
       RETURNING *`,

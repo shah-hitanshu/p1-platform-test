@@ -154,6 +154,21 @@ export class InvalidBranchStatusTransitionError extends Error {
 }
 
 /**
+ * Error thrown when attempting to create a branch from a non-main branch.
+ * Branches can only be created from the main branch (copy-on-write model).
+ */
+export class MainBranchOnlyError extends Error {
+  public readonly name = 'MainBranchOnlyError';
+
+  constructor(public readonly sourceBranchId: string) {
+    super(
+      `Branches can only be created from the main branch. Source branch "${sourceBranchId}" is not main.`,
+    );
+    Object.setPrototypeOf(this, MainBranchOnlyError.prototype);
+  }
+}
+
+/**
  * Error thrown when an unexpected database error occurs.
  * Wraps raw database errors to prevent leaking internal details.
  */
@@ -287,6 +302,17 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
   try {
     await query('BEGIN');
 
+    // Validate source branch is the main branch (copy-on-write: branches only from main)
+    const sourceBranchResult = await query<{ id: string; is_main: boolean }>(
+      'SELECT id, is_main FROM app.branches WHERE id = $1',
+      [params.sourceBranchId],
+    );
+
+    if (sourceBranchResult.rows.length === 0 || !sourceBranchResult.rows[0].is_main) {
+      await query('ROLLBACK');
+      throw new MainBranchOnlyError(params.sourceBranchId);
+    }
+
     const result = await query<BranchRow>(
       `INSERT INTO app.branches (
         site_id, name, description, status, is_main,
@@ -308,9 +334,10 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
 
     const branch = mapRowToBranch(getFirstRow(result.rows));
 
-    // Copy structure state from source
+    // Copy-on-write: only copy structure state (navigation tree must be independent per branch)
+    // Document versions and metadata are NOT copied — they inherit from main via fallback
     if (params.sourceCheckpointId !== undefined) {
-      // Copy from checkpoint
+      // Copy structure from checkpoint
       await query(
         `INSERT INTO app.branch_structure_state (
           branch_id, structure_id, name, slug, description, structure_type,
@@ -322,34 +349,8 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
         WHERE cs.checkpoint_id = $2`,
         [branch.id, params.sourceCheckpointId],
       );
-
-      // Copy document metadata from checkpoint
-      await query(
-        `INSERT INTO app.branch_document_metadata (
-          branch_id, structure_id, document_id, metadata
-        )
-        SELECT $1, cdm.structure_id, cdm.document_id, cdm.metadata
-        FROM app.checkpoint_document_metadata cdm
-        WHERE cdm.checkpoint_id = $2`,
-        [branch.id, params.sourceCheckpointId],
-      );
-
-      // Copy document versions from checkpoint
-      // checkpoint_documents only stores document_version_id, so join with document_versions
-      await query(
-        `INSERT INTO app.document_versions (
-          document_id, branch_id, version_number, snapshot, crdt_state,
-          source, created_by_id, created_by_type
-        )
-        SELECT cd.document_id, $1, 1, dv.snapshot, dv.crdt_state,
-               'branch', $2, $3
-        FROM app.checkpoint_documents cd
-        INNER JOIN app.document_versions dv ON dv.id = cd.document_version_id
-        WHERE cd.checkpoint_id = $4`,
-        [branch.id, params.createdById, params.createdByType, params.sourceCheckpointId],
-      );
     } else {
-      // Copy from current branch state
+      // Copy structure from current branch state
       await query(
         `INSERT INTO app.branch_structure_state (
           branch_id, structure_id, name, slug, description, structure_type,
@@ -362,37 +363,31 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
         [branch.id, params.sourceBranchId],
       );
 
-      // Copy document metadata from source branch
-      await query(
-        `INSERT INTO app.branch_document_metadata (
-          branch_id, structure_id, document_id, metadata
-        )
-        SELECT $1, bdm.structure_id, bdm.document_id, bdm.metadata
-        FROM app.branch_document_metadata bdm
-        WHERE bdm.branch_id = $2`,
-        [branch.id, params.sourceBranchId],
+      // Auto-resolve source_checkpoint_id from latest checkpoint on source branch
+      const latestCheckpoint = await query<{ id: string }>(
+        'SELECT id FROM app.checkpoints WHERE branch_id = $1 ORDER BY created_at DESC LIMIT 1',
+        [params.sourceBranchId],
       );
 
-      // Copy document versions from source branch (latest version of each document)
-      await query(
-        `INSERT INTO app.document_versions (
-          document_id, branch_id, version_number, snapshot, crdt_state,
-          source, created_by_id, created_by_type
-        )
-        SELECT DISTINCT ON (dv.document_id)
-          dv.document_id, $1, 1, dv.snapshot, dv.crdt_state,
-          'branch', $3, $4
-        FROM app.document_versions dv
-        WHERE dv.branch_id = $2
-        ORDER BY dv.document_id, dv.version_number DESC`,
-        [branch.id, params.sourceBranchId, params.createdById, params.createdByType],
-      );
+      if (latestCheckpoint.rows.length > 0) {
+        const updatedResult = await query<BranchRow>(
+          'UPDATE app.branches SET source_checkpoint_id = $1 WHERE id = $2 RETURNING *',
+          [latestCheckpoint.rows[0].id, branch.id],
+        );
+        if (updatedResult.rows.length > 0) {
+          await query('COMMIT');
+          return mapRowToBranch(updatedResult.rows[0]);
+        }
+      }
     }
 
     await query('COMMIT');
 
     return branch;
   } catch (error) {
+    if (error instanceof MainBranchOnlyError) {
+      throw error;
+    }
     await query('ROLLBACK');
     console.error('createBranch error:', error);
     if (isUniqueConstraintViolation(error)) {

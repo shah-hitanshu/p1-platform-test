@@ -213,6 +213,9 @@ export function DocumentPage() {
             {document?.archivedAt && (
               <Tag type="default">Archived</Tag>
             )}
+            {versions && versions.length > 0 && !versions.some((v) => v.isPublished === true) && (
+              <Tag type="default" data-testid="unpublished-tag">Unpublished</Tag>
+            )}
           </div>
           <div className="document-meta">
             <span className="meta-item">
@@ -372,6 +375,9 @@ export function DocumentPage() {
                               <code>v{version.versionNumber}</code>
                               {version.id === latestVersion?.id && (
                                 <span className="current-badge">Current</span>
+                              )}
+                              {version.isPublished === true && (
+                                <span className="published-badge">Published</span>
                               )}
                             </td>
                             <td>

@@ -49,6 +49,7 @@ export type {
   CreateDocumentParams,
   ListDocumentsOptions,
   DocumentWithArchive,
+  DocumentOnBranch,
   // Branch-scoped document types
   ListDocumentsOnBranchOptions,
   CreateDocumentOnBranchParams,
@@ -74,6 +75,7 @@ export {
   DuplicateBranchNameError,
   InvalidBranchParamsError,
   MainBranchProtectionError,
+  MainBranchOnlyError,
   InvalidBranchStatusTransitionError,
   DatabaseError,
 } from './branch-service';
@@ -94,6 +96,7 @@ export {
   getLatestVersionsForBranch,
   listDocumentVersions,
   getDocumentVersionByNumber,
+  getLatestDocumentVersionWithFallback,
   // Note: DocumentNotFoundError already exported from document-service
   InvalidDocumentVersionParamsError,
 } from './document-version-service';
@@ -101,6 +104,7 @@ export {
 export type {
   CreateDocumentVersionParams,
   ListDocumentVersionsOptions,
+  DocumentVersionWithFallback,
 } from './document-version-service';
 
 // Checkpoint Service
@@ -122,6 +126,7 @@ export {
   // Note: BranchNotFoundError is already exported from branch-service
   CheckpointNotFoundError,
   InvalidCheckpointParamsError,
+  publishDocument,
 } from './checkpoint-service';
 
 export type {
@@ -134,6 +139,8 @@ export type {
   CheckpointStructure,
   // Enhanced checkpoint types (Agent Politeness)
   ListCheckpointsByAgentOptions,
+  PublishDocumentParams,
+  PublishDocumentResult,
 } from './checkpoint-service';
 
 // Merge Request Service
@@ -152,6 +159,7 @@ export {
   SourceBranchNotFoundError,
   TargetBranchNotFoundError,
   CannotDeleteMergedRequestError,
+  TargetBranchNotMainError,
 } from './merge-request-service';
 
 export type {
@@ -176,6 +184,7 @@ export type {
   ModifiedDocument,
   CheckpointDocument as MergeBaseCheckpointDocument,
   BranchInLineage,
+  GetModifiedDocumentsOptions,
 } from './merge-base-service';
 
 // Conflict Detection Service

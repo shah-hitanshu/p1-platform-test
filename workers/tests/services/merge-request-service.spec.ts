@@ -71,7 +71,9 @@ describe('Phase 5.1a: Merge Request Service', () => {
       const db = await import('../../src/db');
 
       const mockRow = createMockMergeRequestRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // target validation
+        .mockResolvedValueOnce({ rows: [mockRow] }); // INSERT
 
       const result = await createMergeRequest({
         siteId: 'site-uuid-456',
@@ -101,7 +103,9 @@ describe('Phase 5.1a: Merge Request Service', () => {
       const db = await import('../../src/db');
 
       const mockRow = createMockMergeRequestRow({ description: null });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // target validation
+        .mockResolvedValueOnce({ rows: [mockRow] }); // INSERT
 
       const result = await createMergeRequest({
         siteId: 'site-uuid-456',
@@ -120,7 +124,9 @@ describe('Phase 5.1a: Merge Request Service', () => {
       const db = await import('../../src/db');
 
       const mockRow = createMockMergeRequestRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // target validation
+        .mockResolvedValueOnce({ rows: [mockRow] }); // INSERT
 
       const result = await createMergeRequest({
         siteId: 'site-uuid-456',
@@ -196,7 +202,9 @@ describe('Phase 5.1a: Merge Request Service', () => {
       const error = new Error('violates foreign key constraint');
       (error as Error & { code: string }).code = '23503';
       (error as Error & { constraint: string }).constraint = 'merge_requests_source_branch_id_fkey';
-      vi.mocked(db.query).mockRejectedValue(error);
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // target validation
+        .mockRejectedValueOnce(error); // INSERT fails
 
       await expect(
         createMergeRequest({
@@ -210,17 +218,14 @@ describe('Phase 5.1a: Merge Request Service', () => {
       ).rejects.toThrow(SourceBranchNotFoundError);
     });
 
-    it('should throw TargetBranchNotFoundError when target branch does not exist', async () => {
-      const { createMergeRequest, TargetBranchNotFoundError } = await import(
+    it('should throw TargetBranchNotMainError when target branch does not exist', async () => {
+      const { createMergeRequest, TargetBranchNotMainError } = await import(
         '../../src/services/merge-request-service'
       );
       const db = await import('../../src/db');
 
-      // Simulate foreign key violation for target branch
-      const error = new Error('violates foreign key constraint');
-      (error as Error & { code: string }).code = '23503';
-      (error as Error & { constraint: string }).constraint = 'merge_requests_target_branch_id_fkey';
-      vi.mocked(db.query).mockRejectedValue(error);
+      // Target branch not found - validation query returns empty
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
       await expect(
         createMergeRequest({
@@ -231,7 +236,7 @@ describe('Phase 5.1a: Merge Request Service', () => {
           createdById: 'user-uuid-abc',
           createdByType: 'user',
         }),
-      ).rejects.toThrow(TargetBranchNotFoundError);
+      ).rejects.toThrow(TargetBranchNotMainError);
     });
 
     it('should allow agent to create merge request', async () => {
@@ -241,7 +246,9 @@ describe('Phase 5.1a: Merge Request Service', () => {
       const mockRow = createMockMergeRequestRow({
         created_by_type: 'agent',
       });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // target validation
+        .mockResolvedValueOnce({ rows: [mockRow] }); // INSERT
 
       const result = await createMergeRequest({
         siteId: 'site-uuid-456',
@@ -812,6 +819,71 @@ describe('Phase 5.1a: Merge Request Service', () => {
 
       expect(error.name).toBe('CannotDeleteMergedRequestError');
       expect(error.mergeRequestId).toBe('mr-uuid-123');
+    });
+  });
+
+  describe('Main-Only Merge Target Validation', () => {
+    it('should throw TargetBranchNotMainError when target branch is not main', async () => {
+      const { createMergeRequest, TargetBranchNotMainError } = await import(
+        '../../src/services/merge-request-service'
+      );
+      const db = await import('../../src/db');
+
+      // First query checks if target branch is main - returns non-main branch
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ id: 'feature-branch-uuid', is_main: false }],
+      });
+
+      await expect(
+        createMergeRequest({
+          siteId: 'site-uuid-456',
+          sourceBranchId: 'other-feature-uuid',
+          targetBranchId: 'feature-branch-uuid',
+          title: 'Test MR',
+          createdById: 'user-uuid-abc',
+          createdByType: 'user',
+        }),
+      ).rejects.toThrow(TargetBranchNotMainError);
+    });
+
+    it('should allow creating merge request when target branch is main', async () => {
+      const { createMergeRequest } = await import(
+        '../../src/services/merge-request-service'
+      );
+      const db = await import('../../src/db');
+
+      const mockRow = createMockMergeRequestRow();
+      // First query checks if target is main - returns main branch
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'main-branch-uuid', is_main: true }],
+        })
+        .mockResolvedValueOnce({ rows: [mockRow] });
+
+      const result = await createMergeRequest({
+        siteId: 'site-uuid-456',
+        sourceBranchId: 'feature-branch-uuid',
+        targetBranchId: 'main-branch-uuid',
+        title: 'Add new feature',
+        createdById: 'user-uuid-abc',
+        createdByType: 'user',
+      });
+
+      expect(result).toBeDefined();
+      expect(result.targetBranchId).toBe('main-branch-uuid');
+    });
+
+    it('should throw TargetBranchNotMainError with correct properties', async () => {
+      const { TargetBranchNotMainError } = await import(
+        '../../src/services/merge-request-service'
+      );
+
+      const error = new TargetBranchNotMainError('branch-uuid');
+
+      expect(error.name).toBe('TargetBranchNotMainError');
+      expect(error.targetBranchId).toBe('branch-uuid');
+      expect(error.message).toContain('branch-uuid');
+      expect(error).toBeInstanceOf(Error);
     });
   });
 });

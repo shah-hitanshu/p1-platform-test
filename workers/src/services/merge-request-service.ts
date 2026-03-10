@@ -157,6 +157,19 @@ export class CannotDeleteMergedRequestError extends Error {
   }
 }
 
+/**
+ * Error thrown when the target branch is not the main branch.
+ * Merge requests can only target the main branch.
+ */
+export class TargetBranchNotMainError extends Error {
+  public readonly name = 'TargetBranchNotMainError';
+
+  constructor(public readonly targetBranchId: string) {
+    super(`Target branch "${targetBranchId}" is not the main branch. Merge requests can only target the main branch.`);
+    Object.setPrototypeOf(this, TargetBranchNotMainError.prototype);
+  }
+}
+
 // =============================================================================
 // Status Transitions
 // =============================================================================
@@ -240,6 +253,16 @@ export async function createMergeRequest(params: CreateMergeRequestParams): Prom
 
   if (params.sourceBranchId === params.targetBranchId) {
     throw new InvalidMergeRequestParamsError('Source and target branches must be different.');
+  }
+
+  // Validate target branch is the main branch
+  const targetBranchResult = await query<{ id: string; is_main: boolean }>(
+    'SELECT id, is_main FROM app.branches WHERE id = $1',
+    [params.targetBranchId],
+  );
+
+  if (targetBranchResult.rows.length === 0 || !targetBranchResult.rows[0].is_main) {
+    throw new TargetBranchNotMainError(params.targetBranchId);
   }
 
   const sql = `
