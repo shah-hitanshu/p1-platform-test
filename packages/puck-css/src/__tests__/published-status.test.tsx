@@ -7,7 +7,7 @@
  * - Hook handles loading and error states
  * - Badge renders correct PDS status-badge markup and classes
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, act, waitFor } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
 import React from 'react';
