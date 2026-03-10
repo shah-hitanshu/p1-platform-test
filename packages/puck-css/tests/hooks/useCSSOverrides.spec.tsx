@@ -67,6 +67,7 @@ function createMockClient(): CSSClient {
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
+      publish: vi.fn().mockResolvedValue({ checkpoint: { id: 'cp-1', name: 'test' }, publishedVersionId: 'v-1' }),
     },
     versions: {
       list: vi.fn().mockResolvedValue([]),
@@ -211,5 +212,13 @@ describe('useCSSOverrides', () => {
     expect(() => {
       renderHook(() => useCSSOverrides());
     }).toThrow('useCSSPuck must be used within a CSSPuckProvider');
+  });
+
+  it('should have publishDocument available on context', async () => {
+    const wrapper = createProviderWrapper(client);
+    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+
+    expect(result.current.publishDocument).toBeDefined();
+    expect(typeof result.current.publishDocument).toBe('function');
   });
 });
