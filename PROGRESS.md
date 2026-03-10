@@ -1167,6 +1167,31 @@ To enable focus highlighting in the demo, the following would need to be added:
 - Tarballs attached to GitHub release: `pantheon-puck-css-0.2.0.tgz`, `pantheon-css-client-0.2.0.tgz`
 - Tarballs attached to GitHub release for downstream consumption
 
+### Published Status Indicators (2026-03-10) ✅
+
+**Branch:** `feature/published-status-indicators` | **PR:** [#13](https://github.com/pantheon-systems/puck-css-integration/pull/13)
+
+Added published status indicators to the Puck editor UI:
+
+**Header badge** — Shows document publish state between SaveIndicator and PublishButton:
+- "Published" (green dot) — current version matches latest published
+- "Unpublished changes" (yellow dot) — document was published but has newer edits
+- "Draft" (no dot) — never published
+
+**Version list badges** — "Published" indicator badge next to published versions using `DocumentVersion.isPublished` from the backend.
+
+**Document list branch state** — Inherited (COW) documents shown with dimmed styling and "main only" label on feature branches, using `Document.inherited` from the backend.
+
+**Key decisions:**
+- Published status derived from server-side `DocumentVersion.isPublished` field — zero additional API calls. An earlier iteration used N+1 checkpoint API calls which caused ~20 requests per page load; this was refactored after filing [collaborative-state-system#31](https://github.com/pantheon-systems/collaborative-state-system/issues/31) and backend [PR#32](https://github.com/pantheon-systems/collaborative-state-system/pull/32).
+- Document branch state uses server-side `Document.inherited` field from `listDocumentsOnBranch` — eliminated a separate API call to fetch main branch documents.
+- Deleted `usePublishedStatus` hook and `mainOnlyDocumentIds` computation (-745 lines).
+- Uses PDS `pds-status-badge` and `pds-indicator-badge` CSS patterns.
+
+**New components:** `PublishedStatusBadge`, `VersionPublishedBadge`
+**Client type additions:** `Document.isPublished`, `Document.publishedVersionId`, `Document.publishedAt`, `Document.inherited`, `DocumentVersion.isPublished`
+**Test coverage:** 29 tests across 3 test files
+
 ## Remaining Work
 
 ### Future
