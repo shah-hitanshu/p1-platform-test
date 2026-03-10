@@ -9,8 +9,6 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
-import * as Y from 'yjs';
-
 // Mock cloudflare:workers DurableObject base class
 vi.mock('cloudflare:workers', () => ({
   DurableObject: class DurableObject {
@@ -73,12 +71,16 @@ function createMockState(sessionId = 'site-1:doc-1:branch-1'): MockDurableObject
 interface MockEnv {
   API_URL: string;
   ENVIRONMENT: string;
+  INTERNAL_API_URL: string;
+  INTERNAL_SECRET: string;
 }
 
 function createMockEnv(): MockEnv {
   return {
     API_URL: 'http://localhost:8787',
     ENVIRONMENT: 'test',
+    INTERNAL_API_URL: 'http://localhost:8787',
+    INTERNAL_SECRET: 'test-secret',
   };
 }
 
@@ -114,6 +116,17 @@ describe('DocumentSession /reload endpoint', () => {
   it('should accept POST requests to /reload', async () => {
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
     const session = new DocumentSession(mockState as unknown, mockEnv);
+
+    // Mock fetch for both the initial CRDT load and the reload
+    // Each call needs a fresh Response (Response bodies are consumed on read)
+    mockFetch.mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ found: true, snapshot: { title: 'Test' }, crdtState: null }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
 
     const request = new Request('http://localhost/reload', {
       method: 'POST',
@@ -245,8 +258,9 @@ describe('DocumentSession /reload endpoint', () => {
     await session.fetch(reloadRequest);
 
     // WebSocket should have received the diff as a binary Yjs update
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(mockWs.send).toHaveBeenCalled();
-    const sentData = mockWs.send.mock.calls[0][0];
+    const sentData = (mockWs.send as Mock).mock.calls[0][0];
     // Should be a Uint8Array (Yjs update)
     expect(sentData).toBeInstanceOf(Uint8Array);
   });
@@ -255,17 +269,26 @@ describe('DocumentSession /reload endpoint', () => {
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
     const session = new DocumentSession(mockState as unknown, mockEnv);
 
+    // First call: initial CRDT load (empty doc)
+    // Second call: reload with new content
     const newSnapshot = { title: 'Reloaded Content' };
-    mockFetch.mockResolvedValue(
-      new Response(JSON.stringify({
-        found: true,
-        snapshot: newSnapshot,
-        crdtState: null,
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    );
+    mockFetch
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ found: false }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          found: true,
+          snapshot: newSnapshot,
+          crdtState: null,
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
 
     const reloadRequest = new Request('http://localhost/reload', {
       method: 'POST',
