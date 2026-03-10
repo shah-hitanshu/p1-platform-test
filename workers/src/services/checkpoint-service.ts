@@ -95,6 +95,7 @@ export interface ListCheckpointsByAgentOptions {
  */
 export interface CheckpointDocumentVersion extends DocumentVersion {
   documentPath: string;
+  versionId: string;
 }
 
 /**
@@ -266,6 +267,7 @@ function mapRowToCheckpoint(row: CheckpointRow): Checkpoint {
 function mapRowToCheckpointDocumentVersion(row: VersionWithDocumentRow): CheckpointDocumentVersion {
   return {
     id: row.id,
+    versionId: row.id,
     documentId: row.document_id,
     branchId: row.branch_id,
     versionNumber: row.version_number,

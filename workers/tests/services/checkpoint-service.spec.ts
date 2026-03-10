@@ -465,6 +465,21 @@ describe('Phase 3.3: Checkpoint Service', () => {
       expect(result[0].versionNumber).toBe(5);
       expect(result[0].snapshot).toEqual({ title: 'Home Page', components: [] });
     });
+
+    it('should include versionId matching the version id', async () => {
+      const { getDocumentsAtCheckpoint } = await import('../../src/services/checkpoint-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockVersionWithDocument({
+        id: 'version-uuid-specific',
+      });
+      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+
+      const result = await getDocumentsAtCheckpoint('checkpoint-uuid-123');
+
+      expect(result[0].versionId).toBe('version-uuid-specific');
+      expect(result[0].id).toBe('version-uuid-specific');
+    });
   });
 
   describe('getDocumentAtCheckpoint', () => {
