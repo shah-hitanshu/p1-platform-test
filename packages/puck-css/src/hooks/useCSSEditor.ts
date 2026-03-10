@@ -12,6 +12,7 @@ import { useCSSPuck } from '../CSSPuckContext.js';
 import { useCSSPlugin } from './useCSSPlugin.js';
 import { useCSSOverrides } from './useCSSOverrides.js';
 import { useVersions } from './useVersions.js';
+import { usePublishedStatus } from './usePublishedStatus.js';
 import type { UseCSSPluginOptions } from './useCSSPlugin.js';
 import type { UseCSSOverridesOptions } from './useCSSOverrides.js';
 import type { PuckPlugin, PuckOverrides } from '../plugin/index.js';
@@ -212,6 +213,33 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   }, [versions, css.loadVersion, css.returnToLatest]);
 
   // =========================================================================
+  // Published Status
+  // =========================================================================
+
+  const {
+    isCurrentVersionPublished,
+    hasPublishedVersion,
+    publishedVersionIds,
+    loading: publishedStatusLoading,
+  } = usePublishedStatus({
+    client: css.client,
+    siteId: css.siteId,
+    branchId: css.branchId,
+    documentId: css.currentDocument?.id ?? '',
+    currentVersionId: css.viewingVersion?.id ?? versions[0]?.id,
+  });
+
+  // Derive the status label for the header badge
+  const publishedStatus: 'published' | 'unpublished-changes' | 'draft' | undefined =
+    publishedStatusLoading
+      ? undefined
+      : isCurrentVersionPublished
+        ? 'published'
+        : hasPublishedVersion
+          ? 'unpublished-changes'
+          : 'draft';
+
+  // =========================================================================
   // Focus Region Reporting (outgoing — report local selection to server)
   // =========================================================================
 
@@ -253,9 +281,13 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
     versionsLoading,
     selectedVersionId: css.viewingVersion?.id ?? undefined,
     onVersionSelect: handleVersionSelect,
+    publishedVersionIds,
   });
 
-  const cssOverrides = useCSSOverrides(overrideOptions ?? {});
+  const cssOverrides = useCSSOverrides({
+    ...overrideOptions,
+    publishedStatus,
+  });
 
   // =========================================================================
   // Stable plugin array
