@@ -466,6 +466,13 @@ describe('combined wiring of published status data', () => {
 
     const lastOverridesCall = capturedOverridesOptions[capturedOverridesOptions.length - 1];
     expect(lastOverridesCall.publishedStatus).toBe('published');
-    expect(lastOverridesCall.onPublishSuccess).toBe(onPublishSuccess);
+    // onPublishSuccess is wrapped to also refresh published status,
+    // but calling it should forward to the consumer's callback
+    expect(lastOverridesCall.onPublishSuccess).toBeDefined();
+    expect(lastOverridesCall.onPublishSuccess).not.toBe(onPublishSuccess);
+    // Invoke the wrapper — consumer callback should be called
+    const fakeCheckpoint = { id: 'cp1', name: 'test', branchId: 'b1', siteId: 's1', createdAt: '' };
+    (lastOverridesCall.onPublishSuccess as (cp: unknown) => void)(fakeCheckpoint);
+    expect(onPublishSuccess).toHaveBeenCalledWith(fakeCheckpoint);
   });
 });

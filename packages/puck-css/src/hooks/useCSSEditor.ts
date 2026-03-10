@@ -221,6 +221,7 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
     hasPublishedVersion,
     publishedVersionIds,
     loading: publishedStatusLoading,
+    refresh: refreshPublishedStatus,
   } = usePublishedStatus({
     client: css.client,
     siteId: css.siteId,
@@ -284,9 +285,23 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
     publishedVersionIds,
   });
 
+  // Wrap onPublishSuccess to refresh published status after publishing
+  const consumerOnPublishSuccessRef = useRef(overrideOptions?.onPublishSuccess);
+  consumerOnPublishSuccessRef.current = overrideOptions?.onPublishSuccess;
+
+  const handlePublishSuccess = useCallback(
+    (checkpoint: import('@pantheon/css-client').Checkpoint) => {
+      void refreshPublishedStatus();
+      void refreshVersions();
+      consumerOnPublishSuccessRef.current?.(checkpoint);
+    },
+    [refreshPublishedStatus, refreshVersions],
+  );
+
   const cssOverrides = useCSSOverrides({
     ...overrideOptions,
     publishedStatus,
+    onPublishSuccess: handlePublishSuccess,
   });
 
   // =========================================================================
