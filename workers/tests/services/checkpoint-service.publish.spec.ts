@@ -179,7 +179,8 @@ describe('publishDocument', () => {
 
     expect(versionInsert).toBeDefined();
     // Should reference main branch and use source='publish'
-    const sql = versionInsert?.[0] as string;
+    if (versionInsert === undefined) throw new Error('unreachable');
+    const sql: unknown = versionInsert[0];
     expect(sql).toContain('publish');
   });
 

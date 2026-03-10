@@ -566,6 +566,7 @@ async function handleBranchScopedDocumentRoutes(
       return errorResponse('Document not found on this branch', 404);
     }
     const result = await publishDocument({
+      siteId: context.siteId,
       branchId,
       documentId: context.documentId,
       createdById: context.principal.id,
