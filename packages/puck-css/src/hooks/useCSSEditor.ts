@@ -212,6 +212,25 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   }, [versions, css.loadVersion, css.returnToLatest]);
 
   // =========================================================================
+  // Published Status (derived from version data)
+  // =========================================================================
+
+  // The backend includes isPublished on each DocumentVersion via an EXISTS
+  // subquery against checkpoint_documents. No additional API calls needed.
+  const currentVersionId = css.viewingVersion?.id ?? versions[0]?.id;
+  const currentVersionIsPublished = versions.find(v => v.id === currentVersionId)?.isPublished ?? false;
+  const hasPublishedVersion = versions.some(v => v.isPublished);
+
+  const publishedStatus: 'published' | 'unpublished-changes' | 'draft' | undefined =
+    versionsLoading
+      ? undefined
+      : currentVersionIsPublished
+        ? 'published'
+        : hasPublishedVersion
+          ? 'unpublished-changes'
+          : 'draft';
+
+  // =========================================================================
   // Focus Region Reporting (outgoing — report local selection to server)
   // =========================================================================
 
@@ -255,7 +274,23 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
     onVersionSelect: handleVersionSelect,
   });
 
-  const cssOverrides = useCSSOverrides(overrideOptions ?? {});
+  // Wrap onPublishSuccess to refresh published status after publishing
+  const consumerOnPublishSuccessRef = useRef(overrideOptions?.onPublishSuccess);
+  consumerOnPublishSuccessRef.current = overrideOptions?.onPublishSuccess;
+
+  const handlePublishSuccess = useCallback(
+    (checkpoint: import('@pantheon/css-client').Checkpoint) => {
+      void refreshVersions();
+      consumerOnPublishSuccessRef.current?.(checkpoint);
+    },
+    [refreshVersions],
+  );
+
+  const cssOverrides = useCSSOverrides({
+    ...overrideOptions,
+    publishedStatus,
+    onPublishSuccess: handlePublishSuccess,
+  });
 
   // =========================================================================
   // Stable plugin array

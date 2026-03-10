@@ -89,6 +89,10 @@ export { PuckDataSynchronizer } from './components/PuckDataSynchronizer.js';
 export type { PuckDataSynchronizerProps } from './components/PuckDataSynchronizer.js';
 export { Toast } from './components/Toast.js';
 export { NotificationContainer } from './components/NotificationContainer.js';
+export { PublishedStatusBadge } from './components/PublishedStatusBadge.js';
+export type { PublishedStatusBadgeProps } from './components/PublishedStatusBadge.js';
+export { VersionPublishedBadge } from './components/VersionPublishedBadge.js';
+export type { VersionPublishedBadgeProps } from './components/VersionPublishedBadge.js';
 
 // Presence Components (Phase 3)
 export {

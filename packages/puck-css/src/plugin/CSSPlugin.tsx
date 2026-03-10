@@ -8,6 +8,7 @@
 import React, { useState, useCallback } from 'react';
 import type { Branch, Document, DocumentVersion, PuckData, RegisteredAgent, ActorPresence } from '@pantheon/css-client';
 import { PuckDataSynchronizer } from '../components/PuckDataSynchronizer.js';
+import { VersionPublishedBadge } from '../components/VersionPublishedBadge.js';
 import { AgentActivityBanner } from '../components/presence/AgentActivityBanner.js';
 import { PuckSelectionTracker } from '../components/PuckSelectionTracker.js';
 import { useCSSPuck } from '../CSSPuckContext.js';
@@ -235,25 +236,34 @@ function CSSPluginPanel({
             <div className="css-plugin-empty">No documents yet</div>
           ) : (
             <ul className="css-plugin-doc-list">
-              {documents.map((doc) => (
-                <li
-                  key={doc.id}
-                  className={`css-plugin-doc-item ${selectedDocumentPath === doc.path ? 'css-plugin-doc-item--active' : ''}`}
-                  onClick={() => onDocumentSelect(doc.path)}
-                >
-                  <span className="css-plugin-doc-path">{doc.path}</span>
-                  {onDocumentDelete && (
-                    <button
-                      type="button"
-                      className="css-plugin-doc-delete"
-                      onClick={(e) => handleDeleteDocument(e, doc.id, doc.path)}
-                      aria-label={`Delete ${doc.path}`}
-                    >
-                      ×
-                    </button>
-                  )}
-                </li>
-              ))}
+              {documents.map((doc) => {
+                const isInherited = !currentBranch?.isMain && doc.inherited === true;
+                return (
+                  <li
+                    key={doc.id}
+                    className={`css-plugin-doc-item ${selectedDocumentPath === doc.path ? 'css-plugin-doc-item--active' : ''} ${isInherited ? 'css-plugin-doc-item--main-only' : ''}`}
+                    onClick={() => onDocumentSelect(doc.path)}
+                  >
+                    <span className="css-plugin-doc-path">{doc.path}</span>
+                    {isInherited && (
+                      <span className="pds-status-indicator pds-status-indicator--neutral pds-status-indicator--sm">
+                        <span aria-hidden="true" className="pds-status-indicator__icon" role="img"></span>
+                        <span className="pds-status-indicator__label">main only</span>
+                      </span>
+                    )}
+                    {onDocumentDelete && (
+                      <button
+                        type="button"
+                        className="css-plugin-doc-delete"
+                        onClick={(e) => handleDeleteDocument(e, doc.id, doc.path)}
+                        aria-label={`Delete ${doc.path}`}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -291,6 +301,9 @@ function CSSPluginPanel({
                       </span>
                       {isLatest && (
                         <span className="css-plugin-version-badge">current</span>
+                      )}
+                      {version.isPublished && (
+                        <VersionPublishedBadge />
                       )}
                     </li>
                   );

@@ -28,6 +28,8 @@ export interface UseCSSOverridesOptions {
   showCollaboratorAvatars?: boolean;
   /** Whether to show agent activity banner in header */
   showAgentActivityBanner?: boolean;
+  /** Published status for the header badge */
+  publishedStatus?: 'published' | 'unpublished-changes' | 'draft';
 }
 
 /**
@@ -76,6 +78,7 @@ export function useCSSOverrides(options: UseCSSOverridesOptions = {}): PuckOverr
     activeAgents: css.presence?.agents?.filter(a => a.state === 'editing'),
     isAgentEditing: css.presence?.hasActiveAgents ?? false,
     onStopAgent: options.onStopAgent,
+    publishedStatus: options.publishedStatus,
   };
 
   // Store options in a ref updated each render
