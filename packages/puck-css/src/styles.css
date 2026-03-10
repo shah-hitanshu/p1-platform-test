@@ -89,6 +89,41 @@
   --pds-color-button-brand-foreground-active: #23232d;
 
   --pds-color-interactive-focus: #0f62fe;
+
+  /* PDS Status Design Tokens */
+  --pds-color-status-success-foreground: #217a37;
+  --pds-color-status-success-background: #ebfff0;
+  --pds-color-status-warning-foreground: #b06300;
+  --pds-color-status-warning-background: #ffeed9;
+  --pds-color-status-critical-foreground: #bc1c11;
+  --pds-color-status-critical-background: #ffefee;
+  --pds-color-status-info-foreground: #0875e1;
+  --pds-color-status-info-background: #d7edff;
+  --pds-color-status-neutral-foreground: #23232d;
+  --pds-color-status-neutral-background: #c3c5c9;
+  --pds-color-status-discovery-foreground: #8e74ff;
+  --pds-color-status-discovery-utility: #cfc5ff;
+  --pds-color-fg-default: #23232d;
+  --pds-color-fg-default-secondary: #6a6e7a;
+  --pds-color-border-default: #e3e4e5;
+  --pds-color-bg-default: #ffffff;
+  --pds-color-bg-reverse: #23232d;
+  --pds-color-fg-reverse: #ffffff;
+
+  /* PDS Badge Design Tokens */
+  --pds-color-badge-indicator-default-background: #23232d;
+  --pds-color-badge-indicator-default-foreground: #ffffff;
+  --pds-color-badge-indicator-neutral-background: #6a6e7a;
+  --pds-color-badge-indicator-neutral-foreground: #ffffff;
+  --pds-color-badge-indicator-success-background: #217a37;
+  --pds-color-badge-indicator-success-foreground: #ffffff;
+  --pds-color-badge-indicator-warning-background: #b06300;
+  --pds-color-badge-indicator-warning-foreground: #ffffff;
+  --pds-color-badge-indicator-critical-background: #bc1c11;
+  --pds-color-badge-indicator-critical-foreground: #ffffff;
+  --pds-color-badge-indicator-info-background: #0875e1;
+  --pds-color-badge-indicator-info-foreground: #ffffff;
+  --pds-color-badge-status-dot-default: var(--pds-color-status-neutral-background);
 }
 
 /* ============================================
@@ -276,6 +311,207 @@ button.pds-button.pds-button--active {
   --button-color-background: var(--pds-color-button-secondary-background-active);
   --button-color-border: var(--pds-color-button-secondary-border-active);
   --button-color-foreground: var(--pds-color-button-secondary-foreground-active);
+}
+
+/* ============================================
+   PDS Status Indicator
+   ============================================ */
+
+.pds-status-indicator {
+  --status-indicator-color: var(--pds-color-status-neutral-background);
+  align-items: center;
+  display: inline-flex;
+  font-family: Poppins, sans-serif;
+}
+
+.pds-status-indicator--critical {
+  --status-indicator-color: var(--pds-color-status-critical-foreground);
+}
+
+.pds-status-indicator--info {
+  --status-indicator-color: var(--pds-color-status-info-foreground);
+}
+
+.pds-status-indicator--neutral {
+  --status-indicator-color: var(--pds-color-status-neutral-background);
+}
+
+.pds-status-indicator--new {
+  --status-indicator-color: var(--pds-color-status-discovery-foreground);
+}
+
+.pds-status-indicator--success {
+  --status-indicator-color: var(--pds-color-status-success-foreground);
+}
+
+.pds-status-indicator--warning {
+  --status-indicator-color: var(--pds-color-status-warning-foreground);
+}
+
+.pds-status-indicator__icon {
+  background-color: var(--status-indicator-color);
+  border-radius: 50%;
+  display: block;
+  margin-right: 0.512rem;
+}
+
+.pds-status-indicator__label {
+  color: var(--pds-color-fg-default);
+  text-transform: capitalize;
+}
+
+.pds-status-indicator--sm .pds-status-indicator__icon {
+  height: 0.8rem;
+  width: 0.8rem;
+}
+
+.pds-status-indicator--sm .pds-status-indicator__label {
+  font-size: 0.833rem;
+}
+
+.pds-status-indicator--md .pds-status-indicator__icon {
+  height: 1rem;
+  width: 1rem;
+}
+
+.pds-status-indicator--md .pds-status-indicator__label {
+  font-size: 1rem;
+}
+
+/* ============================================
+   PDS Status Badge
+   ============================================ */
+
+.pds-status-badge {
+  --status-badge-background: transparent;
+  --status-badge-border: var(--pds-color-border-default);
+  --status-badge-label: var(--pds-color-fg-default-secondary);
+  --status-badge-status-dot: var(--pds-color-badge-status-dot-default);
+  align-items: center;
+  background-color: var(--status-badge-background);
+  border: 1px solid var(--status-badge-border);
+  border-radius: 100px;
+  color: var(--status-badge-label);
+  display: inline-flex;
+  font-family: Poppins, sans-serif;
+  font-size: 0.694rem;
+  font-weight: 600;
+  padding: 0.328rem 0.64rem;
+}
+
+.pds-status-badge__status {
+  background-color: var(--status-badge-status-dot);
+  border-radius: 50%;
+  display: inline-block;
+  height: 0.512rem;
+  margin-inline-end: 0.512rem;
+  width: 0.512rem;
+}
+
+.pds-status-badge__label {
+  display: inline-block;
+  line-height: 0.694rem;
+  padding-block-start: 0.0625rem;
+}
+
+.pds-status-badge--transparent {
+  --status-badge-background: transparent;
+  --status-badge-border: var(--pds-color-border-default);
+  --status-badge-label: var(--pds-color-fg-default-secondary);
+}
+
+.pds-status-badge--neutral {
+  --status-badge-background: var(--pds-color-bg-default);
+  --status-badge-border: var(--pds-color-border-default);
+  --status-badge-label: var(--pds-color-fg-default-secondary);
+}
+
+.pds-status-badge__status--success {
+  --status-badge-status-dot: var(--pds-color-status-success-foreground);
+}
+
+.pds-status-badge__status--info {
+  --status-badge-status-dot: var(--pds-color-status-info-foreground);
+}
+
+.pds-status-badge__status--critical {
+  --status-badge-status-dot: var(--pds-color-status-critical-foreground);
+}
+
+.pds-status-badge__status--warning {
+  --status-badge-status-dot: var(--pds-color-status-warning-foreground);
+}
+
+.pds-status-badge__status--discovery {
+  --status-badge-status-dot: var(--pds-color-status-discovery-foreground);
+}
+
+.pds-status-badge__status--disabled {
+  --status-badge-status-dot: var(--pds-color-status-neutral-background);
+}
+
+/* ============================================
+   PDS Indicator Badge
+   ============================================ */
+
+.pds-indicator-badge {
+  --indicator-badge-background: var(--pds-color-badge-indicator-default-background);
+  --indicator-badge-text: var(--pds-color-badge-indicator-default-foreground);
+  align-items: center;
+  background-color: var(--indicator-badge-background);
+  border: 1px solid var(--indicator-badge-background);
+  border-radius: 0.1875rem;
+  color: var(--indicator-badge-text);
+  display: inline-block;
+  font-family: Poppins, sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.01rem;
+  line-height: 140%;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pds-indicator-badge__label {
+  display: inline-block;
+}
+
+.pds-indicator-badge--md {
+  font-size: 0.694rem;
+  padding: 0.125rem 0.41rem;
+}
+
+.pds-indicator-badge--md .pds-indicator-badge__label {
+  padding-block-start: 0.0625rem;
+}
+
+.pds-indicator-badge--sm {
+  font-size: 0.625rem;
+  padding: 0.125rem 0.41rem;
+}
+
+.pds-indicator-badge--neutral {
+  --indicator-badge-background: var(--pds-color-badge-indicator-neutral-background);
+  --indicator-badge-text: var(--pds-color-badge-indicator-neutral-foreground);
+}
+
+.pds-indicator-badge--success {
+  --indicator-badge-background: var(--pds-color-badge-indicator-success-background);
+  --indicator-badge-text: var(--pds-color-badge-indicator-success-foreground);
+}
+
+.pds-indicator-badge--warning {
+  --indicator-badge-background: var(--pds-color-badge-indicator-warning-background);
+  --indicator-badge-text: var(--pds-color-badge-indicator-warning-foreground);
+}
+
+.pds-indicator-badge--critical {
+  --indicator-badge-background: var(--pds-color-badge-indicator-critical-background);
+  --indicator-badge-text: var(--pds-color-badge-indicator-critical-foreground);
+}
+
+.pds-indicator-badge--info {
+  --indicator-badge-background: var(--pds-color-badge-indicator-info-background);
+  --indicator-badge-text: var(--pds-color-badge-indicator-info-foreground);
 }
 
 /* ============================================
