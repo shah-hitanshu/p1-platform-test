@@ -66,10 +66,6 @@ interface CSSPluginPanelProps {
   agentEditingRegions?: string[];
   /** Callback when "Compare with main" is clicked. Receives the main branch ID. */
   onMergeCompare?: (targetBranchId: string) => void;
-  /** Set of version IDs that have been published */
-  publishedVersionIds?: Set<string>;
-  /** Set of document IDs that exist only on main (not on current branch) */
-  mainOnlyDocumentIds?: Set<string>;
 }
 
 /**
@@ -115,8 +111,6 @@ function CSSPluginPanel({
   showFocusRegions: _showFocusRegions = false,
   agentEditingRegions: _agentEditingRegions = [],
   onMergeCompare,
-  publishedVersionIds,
-  mainOnlyDocumentIds,
 }: CSSPluginPanelProps): React.ReactElement {
   // Suppress unused variable warnings - these are passed through for future use
   void _showFocusRegions;
@@ -243,15 +237,15 @@ function CSSPluginPanel({
           ) : (
             <ul className="css-plugin-doc-list">
               {documents.map((doc) => {
-                const isMainOnly = !currentBranch?.isMain && mainOnlyDocumentIds?.has(doc.id);
+                const isInherited = !currentBranch?.isMain && doc.inherited === true;
                 return (
                   <li
                     key={doc.id}
-                    className={`css-plugin-doc-item ${selectedDocumentPath === doc.path ? 'css-plugin-doc-item--active' : ''} ${isMainOnly ? 'css-plugin-doc-item--main-only' : ''}`}
+                    className={`css-plugin-doc-item ${selectedDocumentPath === doc.path ? 'css-plugin-doc-item--active' : ''} ${isInherited ? 'css-plugin-doc-item--main-only' : ''}`}
                     onClick={() => onDocumentSelect(doc.path)}
                   >
                     <span className="css-plugin-doc-path">{doc.path}</span>
-                    {isMainOnly && (
+                    {isInherited && (
                       <span className="pds-status-indicator pds-status-indicator--neutral pds-status-indicator--sm">
                         <span aria-hidden="true" className="pds-status-indicator__icon" role="img"></span>
                         <span className="pds-status-indicator__label">main only</span>
@@ -308,7 +302,7 @@ function CSSPluginPanel({
                       {isLatest && (
                         <span className="css-plugin-version-badge">current</span>
                       )}
-                      {publishedVersionIds?.has(version.id) && (
+                      {version.isPublished && (
                         <VersionPublishedBadge />
                       )}
                     </li>
@@ -572,10 +566,6 @@ export interface CSSPluginOptions {
   agentEditingRegions?: string[];
   /** Callback when "Compare with main" is clicked. Receives the main branch ID. */
   onMergeCompare?: (targetBranchId: string) => void;
-  /** Set of version IDs that have been published */
-  publishedVersionIds?: Set<string>;
-  /** Set of document IDs that exist only on main (not on current branch) */
-  mainOnlyDocumentIds?: Set<string>;
   // Focus Region Reporting
   /**
    * Callback when user selection changes in the Puck editor.
@@ -675,8 +665,6 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
           showFocusRegions={options.showFocusRegions}
           agentEditingRegions={options.agentEditingRegions}
           onMergeCompare={options.onMergeCompare}
-          publishedVersionIds={options.publishedVersionIds}
-          mainOnlyDocumentIds={options.mainOnlyDocumentIds}
         />
       </>
     ),

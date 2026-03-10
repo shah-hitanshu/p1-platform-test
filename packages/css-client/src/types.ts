@@ -63,6 +63,14 @@ export interface Document {
   archived: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Whether this document has been published on the current branch */
+  isPublished?: boolean;
+  /** Version ID from the most recent checkpoint containing this document */
+  publishedVersionId?: string | null;
+  /** Timestamp of the checkpoint that published this document */
+  publishedAt?: string | null;
+  /** Whether this document is inherited from the parent branch (COW) vs locally edited */
+  inherited?: boolean;
 }
 
 /**
@@ -84,6 +92,8 @@ export interface DocumentVersion {
   createdById: string;
   createdByType: 'user' | 'agent';
   createdAt: string;
+  /** Whether this version has been published (exists in a checkpoint) */
+  isPublished?: boolean;
 }
 
 /**

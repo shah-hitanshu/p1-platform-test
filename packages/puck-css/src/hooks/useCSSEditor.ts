@@ -12,7 +12,6 @@ import { useCSSPuck } from '../CSSPuckContext.js';
 import { useCSSPlugin } from './useCSSPlugin.js';
 import { useCSSOverrides } from './useCSSOverrides.js';
 import { useVersions } from './useVersions.js';
-import { usePublishedStatus } from './usePublishedStatus.js';
 import type { UseCSSPluginOptions } from './useCSSPlugin.js';
 import type { UseCSSOverridesOptions } from './useCSSOverrides.js';
 import type { PuckPlugin, PuckOverrides } from '../plugin/index.js';
@@ -213,68 +212,23 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   }, [versions, css.loadVersion, css.returnToLatest]);
 
   // =========================================================================
-  // Published Status
+  // Published Status (derived from version data)
   // =========================================================================
 
-  const {
-    isCurrentVersionPublished,
-    hasPublishedVersion,
-    publishedVersionIds,
-    loading: publishedStatusLoading,
-    refresh: refreshPublishedStatus,
-  } = usePublishedStatus({
-    client: css.client,
-    siteId: css.siteId,
-    branchId: css.branchId,
-    documentId: css.currentDocument?.id ?? '',
-    currentVersionId: css.viewingVersion?.id ?? versions[0]?.id,
-  });
+  // The backend includes isPublished on each DocumentVersion via an EXISTS
+  // subquery against checkpoint_documents. No additional API calls needed.
+  const currentVersionId = css.viewingVersion?.id ?? versions[0]?.id;
+  const currentVersionIsPublished = versions.find(v => v.id === currentVersionId)?.isPublished ?? false;
+  const hasPublishedVersion = versions.some(v => v.isPublished);
 
-  // Derive the status label for the header badge
   const publishedStatus: 'published' | 'unpublished-changes' | 'draft' | undefined =
-    publishedStatusLoading
+    versionsLoading
       ? undefined
-      : isCurrentVersionPublished
+      : currentVersionIsPublished
         ? 'published'
         : hasPublishedVersion
           ? 'unpublished-changes'
           : 'draft';
-
-  // =========================================================================
-  // Main-Only Document Detection
-  // =========================================================================
-
-  const [mainOnlyDocumentIds, setMainOnlyDocumentIds] = useState<Set<string> | undefined>(undefined);
-
-  const mainBranch = css.branches.find(b => b.isMain);
-  const isOnMainBranch = css.currentBranch?.isMain ?? true;
-
-  useEffect(() => {
-    if (isOnMainBranch || !mainBranch) {
-      setMainOnlyDocumentIds(undefined);
-      return;
-    }
-
-    let cancelled = false;
-
-    css.client.documents.list(css.siteId, mainBranch.id)
-      .then(mainDocs => {
-        if (cancelled) return;
-        const branchDocIds = new Set(css.documents.map(d => d.id));
-        const mainOnly = new Set<string>();
-        for (const doc of mainDocs) {
-          if (!branchDocIds.has(doc.id)) {
-            mainOnly.add(doc.id);
-          }
-        }
-        setMainOnlyDocumentIds(mainOnly);
-      })
-      .catch(() => {
-        if (!cancelled) setMainOnlyDocumentIds(undefined);
-      });
-
-    return () => { cancelled = true; };
-  }, [isOnMainBranch, mainBranch, css.client, css.siteId, css.documents]);
 
   // =========================================================================
   // Focus Region Reporting (outgoing — report local selection to server)
@@ -318,8 +272,6 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
     versionsLoading,
     selectedVersionId: css.viewingVersion?.id ?? undefined,
     onVersionSelect: handleVersionSelect,
-    publishedVersionIds,
-    mainOnlyDocumentIds,
   });
 
   // Wrap onPublishSuccess to refresh published status after publishing
@@ -328,11 +280,10 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
 
   const handlePublishSuccess = useCallback(
     (checkpoint: import('@pantheon/css-client').Checkpoint) => {
-      void refreshPublishedStatus();
       void refreshVersions();
       consumerOnPublishSuccessRef.current?.(checkpoint);
     },
-    [refreshPublishedStatus, refreshVersions],
+    [refreshVersions],
   );
 
   const cssOverrides = useCSSOverrides({

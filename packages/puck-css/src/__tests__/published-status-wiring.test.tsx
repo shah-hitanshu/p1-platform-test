@@ -142,6 +142,7 @@ describe('Version list VersionPublishedBadge wiring', () => {
           createdById: 'user1',
           createdByType: 'user' as const,
           createdAt: '2026-01-03T00:00:00Z',
+          isPublished: false,
         },
         {
           id: 'v2',
@@ -154,9 +155,9 @@ describe('Version list VersionPublishedBadge wiring', () => {
           createdById: 'user1',
           createdByType: 'user' as const,
           createdAt: '2026-01-02T00:00:00Z',
+          isPublished: true,
         },
       ],
-      publishedVersionIds: new Set(['v2']),
     });
 
     render(plugin.render());
@@ -171,7 +172,7 @@ describe('Version list VersionPublishedBadge wiring', () => {
     expect(badge!.className).toContain('pds-indicator-badge--success');
   });
 
-  it('does not show Published badge when publishedVersionIds is not provided', () => {
+  it('does not show Published badge when no version is published', () => {
     const plugin = createCSSPlugin({
       branches: [],
       currentBranch: null,
@@ -188,6 +189,7 @@ describe('Version list VersionPublishedBadge wiring', () => {
           createdById: 'user1',
           createdByType: 'user' as const,
           createdAt: '2026-01-01T00:00:00Z',
+          isPublished: false,
         },
       ],
     });
@@ -203,41 +205,43 @@ describe('Version list VersionPublishedBadge wiring', () => {
 // ============================================================
 
 describe('Document list branch indicators', () => {
-  it('renders main-only documents with dimmed styling', () => {
+  it('renders inherited documents with dimmed styling on feature branch', () => {
     const plugin = createCSSPlugin({
       branches: [],
       currentBranch: { id: 'b1', name: 'feature', isMain: false, siteId: 's1', createdAt: '' },
       onBranchSwitch: vi.fn(),
       onDocumentSelect: vi.fn(),
       documents: [
-        { id: 'doc1', path: '/local-page', siteId: 's1', archived: false, createdAt: '', updatedAt: '' },
-        { id: 'doc2', path: '/main-only-page', siteId: 's1', archived: false, createdAt: '', updatedAt: '' },
+        { id: 'doc1', path: '/local-page', siteId: 's1', archived: false, createdAt: '', updatedAt: '', inherited: false },
+        { id: 'doc2', path: '/inherited-page', siteId: 's1', archived: false, createdAt: '', updatedAt: '', inherited: true },
       ],
-      mainOnlyDocumentIds: new Set(['doc2']),
     });
 
     render(plugin.render());
 
     // Both documents should render
     expect(screen.getByText('/local-page')).toBeTruthy();
-    expect(screen.getByText('/main-only-page')).toBeTruthy();
+    expect(screen.getByText('/inherited-page')).toBeTruthy();
 
-    // The main-only document should have the dimmed class
-    const mainOnlyItem = screen.getByText('/main-only-page').closest('.css-plugin-doc-item');
-    expect(mainOnlyItem).toBeTruthy();
-    expect(mainOnlyItem!.className).toContain('css-plugin-doc-item--main-only');
+    // The inherited document should have the dimmed class
+    const inheritedItem = screen.getByText('/inherited-page').closest('.css-plugin-doc-item');
+    expect(inheritedItem).toBeTruthy();
+    expect(inheritedItem!.className).toContain('css-plugin-doc-item--main-only');
+
+    // The local document should not
+    const localItem = screen.getByText('/local-page').closest('.css-plugin-doc-item');
+    expect(localItem!.className).not.toContain('css-plugin-doc-item--main-only');
   });
 
-  it('shows status indicator label for main-only documents', () => {
+  it('shows status indicator label for inherited documents', () => {
     const plugin = createCSSPlugin({
       branches: [],
       currentBranch: { id: 'b1', name: 'feature', isMain: false, siteId: 's1', createdAt: '' },
       onBranchSwitch: vi.fn(),
       onDocumentSelect: vi.fn(),
       documents: [
-        { id: 'doc2', path: '/main-only-page', siteId: 's1', archived: false, createdAt: '', updatedAt: '' },
+        { id: 'doc2', path: '/inherited-page', siteId: 's1', archived: false, createdAt: '', updatedAt: '', inherited: true },
       ],
-      mainOnlyDocumentIds: new Set(['doc2']),
     });
 
     render(plugin.render());
@@ -249,21 +253,20 @@ describe('Document list branch indicators', () => {
     expect(indicator!.className).toContain('pds-status-indicator--neutral');
   });
 
-  it('does not apply main-only styling when on the main branch', () => {
+  it('does not apply inherited styling when on the main branch', () => {
     const plugin = createCSSPlugin({
       branches: [],
       currentBranch: { id: 'b1', name: 'main', isMain: true, siteId: 's1', createdAt: '' },
       onBranchSwitch: vi.fn(),
       onDocumentSelect: vi.fn(),
       documents: [
-        { id: 'doc1', path: '/page', siteId: 's1', archived: false, createdAt: '', updatedAt: '' },
+        { id: 'doc1', path: '/page', siteId: 's1', archived: false, createdAt: '', updatedAt: '', inherited: true },
       ],
-      mainOnlyDocumentIds: new Set(['doc1']),
     });
 
     render(plugin.render());
 
-    // On main branch, mainOnlyDocumentIds should be ignored
+    // On main branch, inherited flag should be ignored
     const item = screen.getByText('/page').closest('.css-plugin-doc-item');
     expect(item!.className).not.toContain('css-plugin-doc-item--main-only');
   });

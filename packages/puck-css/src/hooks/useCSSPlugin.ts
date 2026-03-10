@@ -56,10 +56,6 @@ export interface UseCSSPluginOptions {
   showFocusRegions?: boolean;
   /** Regions being edited by agents */
   agentEditingRegions?: string[];
-  /** Set of version IDs that have been published (for version list badges) */
-  publishedVersionIds?: Set<string>;
-  /** Set of document IDs that exist only on main (for branch indicator styling) */
-  mainOnlyDocumentIds?: Set<string>;
 }
 
 /**
@@ -117,8 +113,6 @@ export function useCSSPlugin(options: UseCSSPluginOptions = {}): PuckPlugin {
     onAgentAction: options.onAgentAction,
     showFocusRegions: options.showFocusRegions,
     agentEditingRegions: options.agentEditingRegions,
-    publishedVersionIds: options.publishedVersionIds,
-    mainOnlyDocumentIds: options.mainOnlyDocumentIds,
   };
 
   // Store options in a ref updated each render

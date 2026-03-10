@@ -55,8 +55,6 @@ export { useCSSOverrides } from './hooks/useCSSOverrides.js';
 export type { UseCSSOverridesOptions } from './hooks/useCSSOverrides.js';
 export { useCSSEditor } from './hooks/useCSSEditor.js';
 export type { UseCSSEditorOptions, UseCSSEditorReturn, PuckProps } from './hooks/useCSSEditor.js';
-export { usePublishedStatus } from './hooks/usePublishedStatus.js';
-export type { UsePublishedStatusParams, UsePublishedStatusReturn } from './hooks/usePublishedStatus.js';
 
 // Focus Region Reporting (Proactive Collision Detection)
 export { useFocusRegionReporting } from './hooks/useFocusRegionReporting.js';

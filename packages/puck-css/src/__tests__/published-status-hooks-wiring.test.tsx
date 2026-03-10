@@ -1,14 +1,14 @@
 /**
- * Tests for published status data wiring through convenience hooks.
+ * Tests for published status derivation and wiring through convenience hooks.
  *
  * Validates:
- * - useCSSEditor calls usePublishedStatus with correct params
- * - Derived publishedStatus is correct for each scenario (published, unpublished-changes, draft)
- * - publishedVersionIds flows through to useCSSPlugin options
+ * - useCSSEditor derives publishedStatus from DocumentVersion.isPublished field
+ * - Correct publishedStatus for each scenario (published, unpublished-changes, draft)
  * - publishedStatus flows through to useCSSOverrides options
+ * - versionsLoading produces undefined publishedStatus
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, cleanup, waitFor } from '@testing-library/react';
+import { renderHook, cleanup } from '@testing-library/react';
 
 // ============================================================
 // Mocks
@@ -48,31 +48,19 @@ vi.mock('../hooks/useCSSOverrides', () => ({
 }));
 
 // Mock useVersions
+import { useVersions } from '../hooks/useVersions.js';
 vi.mock('../hooks/useVersions', () => ({
-  useVersions: vi.fn(() => ({
-    versions: [
-      { id: 'v3', versionNumber: 3 },
-      { id: 'v2', versionNumber: 2 },
-      { id: 'v1', versionNumber: 1 },
-    ],
-    loading: false,
-    refresh: vi.fn().mockResolvedValue(undefined),
-  })),
+  useVersions: vi.fn(),
 }));
+const mockUseVersions = vi.mocked(useVersions);
 
-// Mock usePublishedStatus — the core of these tests
-import { usePublishedStatus } from '../hooks/usePublishedStatus.js';
-vi.mock('../hooks/usePublishedStatus', () => ({
-  usePublishedStatus: vi.fn(),
-}));
-const mockUsePublishedStatus = vi.mocked(usePublishedStatus);
-
-// Default published status return value (draft state)
-const defaultPublishedStatusReturn = {
-  isCurrentVersionPublished: false,
-  hasPublishedVersion: false,
-  latestPublishedVersionId: null,
-  publishedVersionIds: new Set<string>(),
+// Default versions return value (no published versions — draft state)
+const defaultVersionsReturn = {
+  versions: [
+    { id: 'v3', versionNumber: 3, isPublished: false },
+    { id: 'v2', versionNumber: 2, isPublished: false },
+    { id: 'v1', versionNumber: 1, isPublished: false },
+  ],
   loading: false,
   refresh: vi.fn().mockResolvedValue(undefined),
 };
@@ -155,7 +143,7 @@ beforeEach(() => {
   capturedPluginOptions.length = 0;
   capturedOverridesOptions.length = 0;
   mockContextValue = createMockContext();
-  mockUsePublishedStatus.mockReturnValue({ ...defaultPublishedStatusReturn });
+  mockUseVersions.mockReturnValue({ ...defaultVersionsReturn });
 });
 
 afterEach(() => {
@@ -164,36 +152,88 @@ afterEach(() => {
 });
 
 // ============================================================
-// 1. useCSSEditor calls usePublishedStatus with correct params
+// 1. Derived publishedStatus from version isPublished
 // ============================================================
 
-describe('useCSSEditor calls usePublishedStatus with correct params', () => {
-  it('passes client, siteId, branchId, documentId, and currentVersionId from context', () => {
+describe('derived publishedStatus from version isPublished', () => {
+  it('returns "published" when the current version has isPublished: true', () => {
+    mockUseVersions.mockReturnValue({
+      ...defaultVersionsReturn,
+      versions: [
+        { id: 'v3', versionNumber: 3, isPublished: true },
+        { id: 'v2', versionNumber: 2, isPublished: false },
+        { id: 'v1', versionNumber: 1, isPublished: false },
+      ],
+    });
+
+    // viewingVersion is null, so current version = versions[0] = v3
+    renderHook(() =>
+      useCSSEditor({
+        documentPath: '/home',
+        puckConfig: {},
+      }),
+    );
+
+    const lastOverridesCall = capturedOverridesOptions[capturedOverridesOptions.length - 1];
+    expect(lastOverridesCall.publishedStatus).toBe('published');
+  });
+
+  it('returns "unpublished-changes" when a non-current version has isPublished: true', () => {
+    mockUseVersions.mockReturnValue({
+      ...defaultVersionsReturn,
+      versions: [
+        { id: 'v3', versionNumber: 3, isPublished: false },
+        { id: 'v2', versionNumber: 2, isPublished: true },
+        { id: 'v1', versionNumber: 1, isPublished: false },
+      ],
+    });
+
+    // viewingVersion is null, so current version = versions[0] = v3 (not published)
+    // but v2 is published, so status = 'unpublished-changes'
+    renderHook(() =>
+      useCSSEditor({
+        documentPath: '/home',
+        puckConfig: {},
+      }),
+    );
+
+    const lastOverridesCall = capturedOverridesOptions[capturedOverridesOptions.length - 1];
+    expect(lastOverridesCall.publishedStatus).toBe('unpublished-changes');
+  });
+
+  it('returns "draft" when no version has isPublished: true', () => {
+    mockUseVersions.mockReturnValue({
+      ...defaultVersionsReturn,
+      versions: [
+        { id: 'v3', versionNumber: 3, isPublished: false },
+        { id: 'v2', versionNumber: 2, isPublished: false },
+        { id: 'v1', versionNumber: 1, isPublished: false },
+      ],
+    });
+
+    renderHook(() =>
+      useCSSEditor({
+        documentPath: '/home',
+        puckConfig: {},
+      }),
+    );
+
+    const lastOverridesCall = capturedOverridesOptions[capturedOverridesOptions.length - 1];
+    expect(lastOverridesCall.publishedStatus).toBe('draft');
+  });
+
+  it('returns "published" when viewing a historical version that is published', () => {
     mockContextValue = createMockContext({
       viewingVersion: { id: 'v2', versionNumber: 2 },
     });
 
-    renderHook(() =>
-      useCSSEditor({
-        documentPath: '/home',
-        puckConfig: {},
-      }),
-    );
-
-    expect(mockUsePublishedStatus).toHaveBeenCalled();
-    const params = mockUsePublishedStatus.mock.calls[0][0];
-
-    expect(params.client).toBe(mockClient);
-    expect(params.siteId).toBe('site-1');
-    expect(params.branchId).toBe('branch-1');
-    expect(params.documentId).toBe('doc-1');
-    // When viewingVersion is set, its id is used as currentVersionId
-    expect(params.currentVersionId).toBe('v2');
-  });
-
-  it('uses first version id as currentVersionId when viewingVersion is null', () => {
-    mockContextValue = createMockContext({
-      viewingVersion: null,
+    mockUseVersions.mockReturnValue({
+      ...defaultVersionsReturn,
+      versions: [
+        { id: 'v3', versionNumber: 3, isPublished: false },
+        { id: 'v2', versionNumber: 2, isPublished: true },
+        { id: 'v1', versionNumber: 1, isPublished: false },
+      ],
     });
 
     renderHook(() =>
@@ -203,148 +243,25 @@ describe('useCSSEditor calls usePublishedStatus with correct params', () => {
       }),
     );
 
-    const params = mockUsePublishedStatus.mock.calls[0][0];
-    // Falls back to versions[0].id from the mocked useVersions
-    expect(params.currentVersionId).toBe('v3');
-  });
-
-  it('passes empty string as documentId when currentDocument is null', () => {
-    mockContextValue = createMockContext({
-      currentDocument: null,
-    });
-
-    renderHook(() =>
-      useCSSEditor({
-        documentPath: '/home',
-        puckConfig: {},
-      }),
-    );
-
-    const params = mockUsePublishedStatus.mock.calls[0][0];
-    expect(params.documentId).toBe('');
-  });
-});
-
-// ============================================================
-// 2. Derived publishedStatus is correct for each scenario
-// ============================================================
-
-describe('derived publishedStatus mapping', () => {
-  it('maps isCurrentVersionPublished=true to "published"', () => {
-    mockUsePublishedStatus.mockReturnValue({
-      ...defaultPublishedStatusReturn,
-      isCurrentVersionPublished: true,
-      hasPublishedVersion: true,
-      latestPublishedVersionId: 'v3',
-      publishedVersionIds: new Set(['v3']),
-    });
-
-    renderHook(() =>
-      useCSSEditor({
-        documentPath: '/home',
-        puckConfig: {},
-      }),
-    );
-
-    // The overrides should receive publishedStatus = 'published'
-    expect(capturedOverridesOptions.length).toBeGreaterThan(0);
+    // Current version is v2 (viewing historical), which is published
     const lastOverridesCall = capturedOverridesOptions[capturedOverridesOptions.length - 1];
     expect(lastOverridesCall.publishedStatus).toBe('published');
   });
-
-  it('maps isCurrentVersionPublished=false, hasPublishedVersion=true to "unpublished-changes"', () => {
-    mockUsePublishedStatus.mockReturnValue({
-      ...defaultPublishedStatusReturn,
-      isCurrentVersionPublished: false,
-      hasPublishedVersion: true,
-      latestPublishedVersionId: 'v2',
-      publishedVersionIds: new Set(['v2']),
-    });
-
-    renderHook(() =>
-      useCSSEditor({
-        documentPath: '/home',
-        puckConfig: {},
-      }),
-    );
-
-    const lastOverridesCall = capturedOverridesOptions[capturedOverridesOptions.length - 1];
-    expect(lastOverridesCall.publishedStatus).toBe('unpublished-changes');
-  });
-
-  it('maps isCurrentVersionPublished=false, hasPublishedVersion=false to "draft"', () => {
-    mockUsePublishedStatus.mockReturnValue({
-      ...defaultPublishedStatusReturn,
-      isCurrentVersionPublished: false,
-      hasPublishedVersion: false,
-    });
-
-    renderHook(() =>
-      useCSSEditor({
-        documentPath: '/home',
-        puckConfig: {},
-      }),
-    );
-
-    const lastOverridesCall = capturedOverridesOptions[capturedOverridesOptions.length - 1];
-    expect(lastOverridesCall.publishedStatus).toBe('draft');
-  });
 });
 
 // ============================================================
-// 3. publishedVersionIds flows through to plugin options
-// ============================================================
-
-describe('publishedVersionIds flows to useCSSPlugin', () => {
-  it('passes publishedVersionIds from usePublishedStatus to useCSSPlugin', () => {
-    const versionIds = new Set(['v2', 'v1']);
-    mockUsePublishedStatus.mockReturnValue({
-      ...defaultPublishedStatusReturn,
-      publishedVersionIds: versionIds,
-      hasPublishedVersion: true,
-    });
-
-    renderHook(() =>
-      useCSSEditor({
-        documentPath: '/home',
-        puckConfig: {},
-      }),
-    );
-
-    expect(capturedPluginOptions.length).toBeGreaterThan(0);
-    const lastPluginCall = capturedPluginOptions[capturedPluginOptions.length - 1];
-    expect(lastPluginCall.publishedVersionIds).toBe(versionIds);
-  });
-
-  it('passes empty Set when no versions are published', () => {
-    mockUsePublishedStatus.mockReturnValue({
-      ...defaultPublishedStatusReturn,
-      publishedVersionIds: new Set(),
-    });
-
-    renderHook(() =>
-      useCSSEditor({
-        documentPath: '/home',
-        puckConfig: {},
-      }),
-    );
-
-    const lastPluginCall = capturedPluginOptions[capturedPluginOptions.length - 1];
-    expect(lastPluginCall.publishedVersionIds).toEqual(new Set());
-  });
-});
-
-// ============================================================
-// 4. publishedStatus flows through to overrides options
+// 2. publishedStatus flows to useCSSOverrides
 // ============================================================
 
 describe('publishedStatus flows to useCSSOverrides', () => {
-  it('passes "published" status to overrides when current version is published', () => {
-    mockUsePublishedStatus.mockReturnValue({
-      ...defaultPublishedStatusReturn,
-      isCurrentVersionPublished: true,
-      hasPublishedVersion: true,
-      publishedVersionIds: new Set(['v3']),
+  it('passes "published" when current version isPublished', () => {
+    mockUseVersions.mockReturnValue({
+      ...defaultVersionsReturn,
+      versions: [
+        { id: 'v3', versionNumber: 3, isPublished: true },
+        { id: 'v2', versionNumber: 2, isPublished: false },
+        { id: 'v1', versionNumber: 1, isPublished: false },
+      ],
     });
 
     renderHook(() =>
@@ -358,12 +275,14 @@ describe('publishedStatus flows to useCSSOverrides', () => {
     expect(lastOverridesCall.publishedStatus).toBe('published');
   });
 
-  it('passes "unpublished-changes" status to overrides when document has published version but current is not', () => {
-    mockUsePublishedStatus.mockReturnValue({
-      ...defaultPublishedStatusReturn,
-      isCurrentVersionPublished: false,
-      hasPublishedVersion: true,
-      publishedVersionIds: new Set(['v1']),
+  it('passes "unpublished-changes" when older version is published', () => {
+    mockUseVersions.mockReturnValue({
+      ...defaultVersionsReturn,
+      versions: [
+        { id: 'v3', versionNumber: 3, isPublished: false },
+        { id: 'v2', versionNumber: 2, isPublished: false },
+        { id: 'v1', versionNumber: 1, isPublished: true },
+      ],
     });
 
     renderHook(() =>
@@ -377,12 +296,14 @@ describe('publishedStatus flows to useCSSOverrides', () => {
     expect(lastOverridesCall.publishedStatus).toBe('unpublished-changes');
   });
 
-  it('passes "draft" status to overrides when document has never been published', () => {
-    mockUsePublishedStatus.mockReturnValue({
-      ...defaultPublishedStatusReturn,
-      isCurrentVersionPublished: false,
-      hasPublishedVersion: false,
-      publishedVersionIds: new Set(),
+  it('passes "draft" when no version is published', () => {
+    mockUseVersions.mockReturnValue({
+      ...defaultVersionsReturn,
+      versions: [
+        { id: 'v3', versionNumber: 3, isPublished: false },
+        { id: 'v2', versionNumber: 2, isPublished: false },
+        { id: 'v1', versionNumber: 1, isPublished: false },
+      ],
     });
 
     renderHook(() =>
@@ -396,9 +317,9 @@ describe('publishedStatus flows to useCSSOverrides', () => {
     expect(lastOverridesCall.publishedStatus).toBe('draft');
   });
 
-  it('does not pass publishedStatus when usePublishedStatus is still loading', () => {
-    mockUsePublishedStatus.mockReturnValue({
-      ...defaultPublishedStatusReturn,
+  it('passes undefined when versionsLoading is true', () => {
+    mockUseVersions.mockReturnValue({
+      ...defaultVersionsReturn,
       loading: true,
     });
 
@@ -410,24 +331,23 @@ describe('publishedStatus flows to useCSSOverrides', () => {
     );
 
     const lastOverridesCall = capturedOverridesOptions[capturedOverridesOptions.length - 1];
-    // When loading, publishedStatus should not be set (undefined)
     expect(lastOverridesCall.publishedStatus).toBeUndefined();
   });
 });
 
 // ============================================================
-// 5. Combined wiring — both plugin and overrides receive data
+// 3. Combined wiring
 // ============================================================
 
 describe('combined wiring of published status data', () => {
-  it('wires both publishedVersionIds to plugin and publishedStatus to overrides in a single render', () => {
-    const versionIds = new Set(['v3', 'v1']);
-    mockUsePublishedStatus.mockReturnValue({
-      ...defaultPublishedStatusReturn,
-      isCurrentVersionPublished: true,
-      hasPublishedVersion: true,
-      latestPublishedVersionId: 'v3',
-      publishedVersionIds: versionIds,
+  it('overrides receive correct publishedStatus derived from versions', () => {
+    mockUseVersions.mockReturnValue({
+      ...defaultVersionsReturn,
+      versions: [
+        { id: 'v3', versionNumber: 3, isPublished: true },
+        { id: 'v2', versionNumber: 2, isPublished: false },
+        { id: 'v1', versionNumber: 1, isPublished: false },
+      ],
     });
 
     renderHook(() =>
@@ -437,21 +357,19 @@ describe('combined wiring of published status data', () => {
       }),
     );
 
-    // Plugin gets publishedVersionIds
-    const lastPluginCall = capturedPluginOptions[capturedPluginOptions.length - 1];
-    expect(lastPluginCall.publishedVersionIds).toBe(versionIds);
-
     // Overrides get publishedStatus
     const lastOverridesCall = capturedOverridesOptions[capturedOverridesOptions.length - 1];
     expect(lastOverridesCall.publishedStatus).toBe('published');
   });
 
-  it('consumer overrideOptions are merged alongside publishedStatus', () => {
-    mockUsePublishedStatus.mockReturnValue({
-      ...defaultPublishedStatusReturn,
-      isCurrentVersionPublished: true,
-      hasPublishedVersion: true,
-      publishedVersionIds: new Set(['v3']),
+  it('consumer onPublishSuccess callback is still forwarded', () => {
+    mockUseVersions.mockReturnValue({
+      ...defaultVersionsReturn,
+      versions: [
+        { id: 'v3', versionNumber: 3, isPublished: true },
+        { id: 'v2', versionNumber: 2, isPublished: false },
+        { id: 'v1', versionNumber: 1, isPublished: false },
+      ],
     });
 
     const onPublishSuccess = vi.fn();
@@ -466,7 +384,7 @@ describe('combined wiring of published status data', () => {
 
     const lastOverridesCall = capturedOverridesOptions[capturedOverridesOptions.length - 1];
     expect(lastOverridesCall.publishedStatus).toBe('published');
-    // onPublishSuccess is wrapped to also refresh published status,
+    // onPublishSuccess is wrapped to also refresh versions,
     // but calling it should forward to the consumer's callback
     expect(lastOverridesCall.onPublishSuccess).toBeDefined();
     expect(lastOverridesCall.onPublishSuccess).not.toBe(onPublishSuccess);
@@ -477,130 +395,3 @@ describe('combined wiring of published status data', () => {
   });
 });
 
-// ============================================================
-// 6. mainOnlyDocumentIds wiring
-// ============================================================
-
-describe('mainOnlyDocumentIds wiring', () => {
-  const makeBranch = (overrides: Record<string, unknown> = {}) => ({
-    id: 'b1',
-    name: 'main',
-    isMain: true,
-    siteId: 'site-1',
-    createdAt: '',
-    updatedAt: '',
-    ...overrides,
-  });
-
-  const makeDocument = (overrides: Record<string, unknown> = {}) => ({
-    id: 'doc-1',
-    path: '/home',
-    siteId: 'site-1',
-    archived: false,
-    createdAt: '',
-    updatedAt: '',
-    ...overrides,
-  });
-
-  it('passes mainOnlyDocumentIds when on a non-main branch', async () => {
-    const mainBranch = makeBranch({ id: 'b1', name: 'main', isMain: true });
-    const featureBranch = makeBranch({ id: 'b2', name: 'feature', isMain: false });
-
-    // Current branch docs: doc1, doc2
-    const branchDocs = [
-      makeDocument({ id: 'doc1', path: '/page1' }),
-      makeDocument({ id: 'doc2', path: '/page2' }),
-    ];
-
-    // Main branch docs: doc1, doc2, doc3 (doc3 is main-only)
-    const mainDocs = [
-      makeDocument({ id: 'doc1', path: '/page1' }),
-      makeDocument({ id: 'doc2', path: '/page2' }),
-      makeDocument({ id: 'doc3', path: '/page3' }),
-    ];
-
-    mockClient.documents.list.mockResolvedValue(mainDocs);
-
-    mockContextValue = createMockContext({
-      currentBranch: featureBranch,
-      branches: [mainBranch, featureBranch],
-      documents: branchDocs,
-    });
-
-    renderHook(() =>
-      useCSSEditor({
-        documentPath: '/page1',
-        puckConfig: {},
-      }),
-    );
-
-    await waitFor(() => {
-      const lastPluginCall = capturedPluginOptions[capturedPluginOptions.length - 1];
-      expect(lastPluginCall.mainOnlyDocumentIds).toBeDefined();
-      expect(lastPluginCall.mainOnlyDocumentIds).toBeInstanceOf(Set);
-      expect(lastPluginCall.mainOnlyDocumentIds).toEqual(new Set(['doc3']));
-    });
-
-    // Verify client.documents.list was called with siteId and main branch id
-    expect(mockClient.documents.list).toHaveBeenCalledWith('site-1', 'b1');
-  });
-
-  it('does not set mainOnlyDocumentIds when on main branch', () => {
-    const mainBranch = makeBranch({ id: 'b1', name: 'main', isMain: true });
-
-    mockContextValue = createMockContext({
-      currentBranch: mainBranch,
-      branches: [mainBranch],
-      documents: [makeDocument({ id: 'doc1', path: '/page1' })],
-    });
-
-    renderHook(() =>
-      useCSSEditor({
-        documentPath: '/page1',
-        puckConfig: {},
-      }),
-    );
-
-    const lastPluginCall = capturedPluginOptions[capturedPluginOptions.length - 1];
-    // When on main, mainOnlyDocumentIds should be undefined or an empty Set
-    const mainOnlyIds = lastPluginCall.mainOnlyDocumentIds;
-    if (mainOnlyIds !== undefined) {
-      expect(mainOnlyIds).toEqual(new Set());
-    }
-
-    // Should NOT have called client.documents.list (no need to fetch main docs when already on main)
-    expect(mockClient.documents.list).not.toHaveBeenCalled();
-  });
-
-  it('passes empty Set when all main docs exist on branch', async () => {
-    const mainBranch = makeBranch({ id: 'b1', name: 'main', isMain: true });
-    const featureBranch = makeBranch({ id: 'b2', name: 'feature', isMain: false });
-
-    // Same docs on both branches
-    const docs = [
-      makeDocument({ id: 'doc1', path: '/page1' }),
-      makeDocument({ id: 'doc2', path: '/page2' }),
-    ];
-
-    mockClient.documents.list.mockResolvedValue(docs);
-
-    mockContextValue = createMockContext({
-      currentBranch: featureBranch,
-      branches: [mainBranch, featureBranch],
-      documents: docs,
-    });
-
-    renderHook(() =>
-      useCSSEditor({
-        documentPath: '/page1',
-        puckConfig: {},
-      }),
-    );
-
-    await waitFor(() => {
-      const lastPluginCall = capturedPluginOptions[capturedPluginOptions.length - 1];
-      expect(lastPluginCall.mainOnlyDocumentIds).toBeDefined();
-      expect(lastPluginCall.mainOnlyDocumentIds).toEqual(new Set());
-    });
-  });
-});
