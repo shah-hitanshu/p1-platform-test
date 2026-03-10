@@ -44,6 +44,7 @@ import { isServicePrincipalAllowed } from './auth/service-principal';
 
 // MAS client
 import { MASClient } from './services/mas-client';
+import { getMainBranch } from './services/branch-service';
 
 // Queue consumer (Phase 5.1)
 import { handleSyncQueue } from './queues/sync-consumer';
@@ -1441,12 +1442,32 @@ async function handleRequest(
           branchId: route.params.branchId,
           documentId: route.params.documentId,
           documentPath: route.params.documentPath,
-          action: route.params.action as 'restore' | undefined,
+          action: route.params.action as 'restore' | 'publish' | undefined,
           versionsPath: route.params.versionsPath === 'true',
           versionAction: route.params.versionAction as 'latest' | 'by-id' | undefined,
           versionId: route.params.versionId,
           principal,
         });
+
+        // After a successful publish, notify the main branch DO to reload
+        if (
+          route.params.action === 'publish' &&
+          response.status === 200 &&
+          route.params.documentId !== undefined &&
+          route.params.siteId !== undefined
+        ) {
+          try {
+            const mainBranch = await getMainBranch(route.params.siteId);
+            if (mainBranch !== null) {
+              const sessionId = `${route.params.siteId}:${route.params.documentId}:${mainBranch.id}`;
+              const doId = env.DOCUMENT_STATE.idFromName(sessionId);
+              const stub = env.DOCUMENT_STATE.get(doId);
+              await stub.fetch(new Request('http://internal/reload', { method: 'POST' }));
+            }
+          } catch (reloadError) {
+            console.error('Failed to reload DO after publish:', reloadError);
+          }
+        }
         break;
 
       case 'checkpoints':
