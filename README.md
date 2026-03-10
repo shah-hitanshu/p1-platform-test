@@ -203,6 +203,34 @@ NEXT_PUBLIC_CSS_ENABLE_PRESENCE=true
 - **Agent activity banner** — shown when an AI agent is actively editing
 - **Focus region highlighting** — outlines the component another user has selected, with a badge showing their initial. Applied via CSS to Puck's existing DOM elements with zero impact on scroll or performance
 
+## Branch Merge Comparison
+
+When working on a non-main branch, the CSS plugin panel shows a "Compare with main" link below the branch selector. By default, `useCSSEditor` navigates to `/merge?branch={branchId}` — your app needs a route at `/merge` to handle this.
+
+To customize the navigation (e.g., use a router push or a different URL pattern), pass `onMergeCompare` via `pluginOptions`. The callback receives the main branch ID as its argument:
+
+```tsx
+const { puckKey, puckProps } = useCSSEditor({
+  documentPath: '/home',
+  puckConfig,
+  pluginOptions: {
+    onMergeCompare: (mainBranchId) => {
+      router.push(`/merge?target=${mainBranchId}`);
+    },
+  },
+});
+```
+
+If you are using the lower-level `useCSSPlugin` or `createCSSPlugin` directly, you must provide `onMergeCompare` yourself — no default is set at that layer:
+
+```tsx
+const plugin = useCSSPlugin({
+  onMergeCompare: (mainBranchId) => {
+    window.location.assign(`/merge?target=${mainBranchId}`);
+  },
+});
+```
+
 ## Advanced: Low-Level API
 
 For apps that need full control over the CSS integration, you can use the provider and hook directly instead of `CSSApp`:
