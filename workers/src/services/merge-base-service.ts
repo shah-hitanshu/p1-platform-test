@@ -221,10 +221,40 @@ export async function findMergeBase(
  * This compares the current document versions on the branch with the
  * document versions that were part of the checkpoint.
  */
+export interface GetModifiedDocumentsOptions {
+  publishedOnly?: boolean;
+}
+
 export async function getModifiedDocumentsSince(
   branchId: string,
   checkpointId: string,
+  options?: GetModifiedDocumentsOptions,
 ): Promise<ModifiedDocument[]> {
+  const currentVersionsCte = options?.publishedOnly === true
+    ? `
+    current_versions AS (
+      SELECT DISTINCT ON (cd.document_id)
+        cd.document_id,
+        dv.id AS version_id,
+        dv.version_number,
+        dv.source,
+        dv.snapshot,
+        dv.is_tombstone
+      FROM app.checkpoint_documents cd
+      INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+      INNER JOIN app.document_versions dv ON dv.id = cd.document_version_id
+      WHERE cp.branch_id = $1
+      ORDER BY cd.document_id, cp.created_at DESC
+    )`
+    : `
+    current_versions AS (
+      SELECT DISTINCT ON (dv.document_id)
+        dv.document_id, dv.id AS version_id, dv.version_number, dv.source, dv.snapshot, dv.is_tombstone
+      FROM app.document_versions dv
+      WHERE dv.branch_id = $1
+      ORDER BY dv.document_id, dv.version_number DESC
+    )`;
+
   const sql = `
     WITH
     -- Documents and versions at the checkpoint
@@ -235,13 +265,7 @@ export async function getModifiedDocumentsSince(
       WHERE cd.checkpoint_id = $2
     ),
     -- Current latest versions on the branch
-    current_versions AS (
-      SELECT DISTINCT ON (dv.document_id)
-        dv.document_id, dv.id AS version_id, dv.version_number, dv.source, dv.snapshot, dv.is_tombstone
-      FROM app.document_versions dv
-      WHERE dv.branch_id = $1
-      ORDER BY dv.document_id, dv.version_number DESC
-    )
+    ${currentVersionsCte}
     -- Find documents that differ
     SELECT
       cv.document_id,

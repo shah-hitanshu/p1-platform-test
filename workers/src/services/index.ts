@@ -184,6 +184,7 @@ export type {
   ModifiedDocument,
   CheckpointDocument as MergeBaseCheckpointDocument,
   BranchInLineage,
+  GetModifiedDocumentsOptions,
 } from './merge-base-service';
 
 // Conflict Detection Service

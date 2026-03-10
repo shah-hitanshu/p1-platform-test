@@ -127,7 +127,9 @@ export async function detectConflicts(
 
   // Get changes on both branches since merge base
   const sourceChanges = await getModifiedDocumentsSince(sourceBranchId, mergeBase.checkpointId);
-  const targetChanges = await getModifiedDocumentsSince(targetBranchId, mergeBase.checkpointId);
+  const targetChanges = await getModifiedDocumentsSince(targetBranchId, mergeBase.checkpointId, {
+    publishedOnly: true,
+  });
 
   // Build lookup maps
   const sourceByDocId = new Map<string, ModifiedDocument>();
