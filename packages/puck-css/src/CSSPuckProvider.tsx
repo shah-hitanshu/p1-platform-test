@@ -108,11 +108,48 @@ function CSSPuckProviderInner({
 }: CSSPuckProviderProps): React.ReactElement {
   // Access notification context
   const notificationContext = useNotifications();
-  // Branch state - start with initialBranchId or empty (will be set to main)
-  const [branchId, setBranchId] = useState(initialBranchId ?? '');
+
+  // Persist selected branch in sessionStorage so it survives provider remounts
+  // (e.g. when CSSApp is rendered per-page instead of in a shared layout).
+  const branchStorageKey = `css-branch-${siteId}`;
+
+  const getPersistedBranchId = useCallback((): string => {
+    try {
+      return (typeof window !== 'undefined' && sessionStorage.getItem(branchStorageKey)) || '';
+    } catch {
+      return '';
+    }
+  }, [branchStorageKey]);
+
+  const persistBranchId = useCallback((id: string) => {
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(branchStorageKey, id);
+      }
+    } catch {
+      // sessionStorage may be unavailable (SSR, privacy mode)
+    }
+  }, [branchStorageKey]);
+
+  // Branch state - start with initialBranchId, persisted branch, or empty (will be set to main)
+  const [branchId, setBranchId] = useState(() => {
+    if (initialBranchId) return initialBranchId;
+    try {
+      return (typeof window !== 'undefined' && sessionStorage.getItem(branchStorageKey)) || '';
+    } catch {
+      return '';
+    }
+  });
   const [branches, setBranches] = useState<Branch[]>([]);
   const [currentBranch, setCurrentBranch] = useState<Branch | null>(null);
-  const [branchesLoading, setBranchesLoading] = useState(!initialBranchId);
+  const [branchesLoading, setBranchesLoading] = useState(() => {
+    if (initialBranchId) return false;
+    try {
+      return !(typeof window !== 'undefined' && sessionStorage.getItem(branchStorageKey));
+    } catch {
+      return true;
+    }
+  });
 
   // Document state
   const [currentDocument, setCurrentDocument] = useState<Document | null>(null);
@@ -355,7 +392,21 @@ function CSSPuckProviderInner({
       setBranchId((currentBranchId) => {
         let effectiveBranchId = currentBranchId;
 
-        // If no branchId set, default to main branch
+        // If no branchId set, try persisted branch, then default to main
+        if (!effectiveBranchId) {
+          const persisted = getPersistedBranchId();
+          if (persisted && branchList.some((b) => b.id === persisted)) {
+            effectiveBranchId = persisted;
+          }
+        }
+
+        // Validate that the branch exists in the list; fall back to main if not
+        if (effectiveBranchId && !branchList.some((b) => b.id === effectiveBranchId)) {
+          const mainBranch = branchList.find((b) => b.isMain);
+          effectiveBranchId = mainBranch?.id ?? effectiveBranchId;
+        }
+
+        // Default to main if still empty
         if (!effectiveBranchId) {
           const mainBranch = branchList.find((b) => b.isMain);
           if (mainBranch) {
@@ -363,6 +414,7 @@ function CSSPuckProviderInner({
           }
         }
 
+        persistBranchId(effectiveBranchId);
         const current = branchList.find((b) => b.id === effectiveBranchId);
         setCurrentBranch(current ?? null);
 
@@ -373,7 +425,7 @@ function CSSPuckProviderInner({
     } finally {
       setBranchesLoading(false);
     }
-  }, [userClient, siteId]);
+  }, [userClient, siteId, getPersistedBranchId, persistBranchId]);
 
   // Initial branch load - only once
   useEffect(() => {
@@ -1148,6 +1200,7 @@ function CSSPuckProviderInner({
       viewingVersionRef.current = null;
 
       setBranchId(newBranchId);
+      persistBranchId(newBranchId);
       setCurrentDocument(null);
       currentDataDocumentPathRef.current = null;
       setCurrentData(null);
@@ -1162,7 +1215,7 @@ function CSSPuckProviderInner({
       const branch = branches.find((b) => b.id === newBranchId);
       setCurrentBranch(branch ?? null);
     },
-    [branches, debouncedSave, performSave, cancelPendingRemoteSync]
+    [branches, debouncedSave, performSave, cancelPendingRemoteSync, persistBranchId]
   );
 
   // Presence context value (for hooks like useFocusRegionReporting)
