@@ -199,6 +199,14 @@ export class RealtimeClient {
   private static readonly RATE_THRESHOLD = 40; // Start buffering at this rate
   private static readonly RATE_WINDOW_MS = 1000; // 1-second sliding window
 
+  // Delivery acknowledgment state
+  private pendingDeliveryAcks: Map<string, {
+    resolve: () => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }> = new Map();
+  private static readonly DELIVERY_ACK_TIMEOUT_MS = 5000;
+
   constructor(config: RealtimeClientConfig) {
     this.config = config;
     this.ydoc = new Y.Doc();
@@ -458,6 +466,13 @@ export class RealtimeClient {
     this.pendingUpdates = [];
     this.sendTimestamps = [];
 
+    // Reject all pending delivery ack promises
+    for (const [requestId, pending] of this.pendingDeliveryAcks) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error('Disconnected'));
+      this.pendingDeliveryAcks.delete(requestId);
+    }
+
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -603,6 +618,41 @@ export class RealtimeClient {
   }
 
   /**
+   * Wait for the server to acknowledge that all preceding WebSocket messages
+   * have been processed. This uses TCP ordering guarantees: a text frame sent
+   * after binary CRDT updates is guaranteed to arrive after those updates.
+   * The server echoes back a delivery_ack with the matching requestId.
+   *
+   * Used before publish to ensure the Durable Object has received and applied
+   * the latest edits before the HTTP publish request arrives.
+   *
+   * @returns Promise that resolves when the server confirms delivery
+   * @throws Error if not connected or if timeout expires (5 seconds)
+   */
+  waitForDelivery(): Promise<void> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error('Not connected'));
+    }
+
+    const requestId = crypto.randomUUID();
+
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingDeliveryAcks.delete(requestId);
+        reject(new Error('Delivery acknowledgment timed out'));
+      }, RealtimeClient.DELIVERY_ACK_TIMEOUT_MS);
+
+      this.pendingDeliveryAcks.set(requestId, { resolve, reject, timer });
+
+      this.ws!.send(JSON.stringify({
+        type: 'delivery_ack_request',
+        requestId,
+        timestamp: Date.now(),
+      }));
+    });
+  }
+
+  /**
    * Handle incoming text (JSON) messages for presence protocol.
    * @param data - Raw JSON string from WebSocket
    */
@@ -622,6 +672,16 @@ export class RealtimeClient {
         case 'focus_region_ack':
           // Acknowledgment received
           break;
+
+        case 'delivery_ack': {
+          const pending = this.pendingDeliveryAcks.get(message.requestId);
+          if (pending) {
+            clearTimeout(pending.timer);
+            this.pendingDeliveryAcks.delete(message.requestId);
+            pending.resolve();
+          }
+          break;
+        }
 
         case 'presence_error':
           if (message.code === 'RATE_LIMITED') {

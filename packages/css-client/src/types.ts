@@ -589,10 +589,23 @@ export interface WsPresenceErrorMessage {
 }
 
 /**
+ * Server acknowledgment that all preceding messages have been processed.
+ * Sent in response to a delivery_ack_request from the client.
+ */
+export interface WsDeliveryAckMessage {
+  type: 'delivery_ack';
+  /** Matches the requestId from the request */
+  requestId: string;
+  /** Server timestamp */
+  timestamp: number;
+}
+
+/**
  * Union of all server-to-client WebSocket messages.
  */
 export type WsServerMessage =
   | WsPresenceUpdateMessage
   | WsFocusRegionBroadcastMessage
   | WsFocusRegionAckMessage
-  | WsPresenceErrorMessage;
+  | WsPresenceErrorMessage
+  | WsDeliveryAckMessage;

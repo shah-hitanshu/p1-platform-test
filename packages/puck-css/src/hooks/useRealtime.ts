@@ -106,6 +106,14 @@ export interface UseRealtimeReturn {
    * that data being sent matches the active connection's document.
    */
   connectedDocumentPath: string | null;
+
+  /**
+   * Wait for the server to acknowledge that all preceding WebSocket messages
+   * have been processed. Used before publish to ensure the DO has the latest edits.
+   * @returns Promise that resolves when the server confirms delivery
+   * @throws Error if not connected or if timeout expires
+   */
+  waitForDelivery: () => Promise<void>;
 }
 
 /**
@@ -318,6 +326,14 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
     }
   }, []);
 
+  // Wait for delivery acknowledgment from server
+  const waitForDelivery = useCallback((): Promise<void> => {
+    if (clientRef.current) {
+      return clientRef.current.waitForDelivery();
+    }
+    return Promise.reject(new Error('Not connected'));
+  }, []);
+
   return {
     connected,
     applyLocalChange,
@@ -327,5 +343,6 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
     sendHeartbeat,
     presenceViaWebSocket,
     connectedDocumentPath: connectedDocumentPathRef.current,
+    waitForDelivery,
   };
 }

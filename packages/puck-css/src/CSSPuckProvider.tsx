@@ -1136,8 +1136,12 @@ function CSSPuckProviderInner({
             realtime.applyLocalChange(pendingDataRef.current);
           }
           pendingDataRef.current = null;
-          // Brief delay to allow DO sync to complete
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Wait for the DO to acknowledge receipt of all preceding messages
+          try {
+            await realtime.waitForDelivery();
+          } catch {
+            console.warn('[CSSPuckProvider] Delivery ack before checkpoint failed, proceeding anyway');
+          }
         } else {
           debouncedSave.cancel();
           await performSave();
@@ -1171,8 +1175,17 @@ function CSSPuckProviderInner({
             realtime.applyLocalChange(pendingDataRef.current);
           }
           pendingDataRef.current = null;
-          // No client-side wait needed — the backend flushes the DO to
-          // PostgreSQL synchronously before executing the publish operation.
+          // Wait for the DO to acknowledge receipt of all preceding WebSocket
+          // messages (including the CRDT update just sent). TCP ordering
+          // guarantees the ack request arrives after the binary update.
+          // The backend then flushes the DO to PostgreSQL before publish.
+          try {
+            await realtime.waitForDelivery();
+          } catch {
+            // Best-effort: if ack fails (timeout/disconnect), proceed with
+            // publish anyway — the backend flush is still a safety net.
+            console.warn('[CSSPuckProvider] Delivery ack before publish failed, proceeding anyway');
+          }
         } else {
           debouncedSave.cancel();
           await performSave();
