@@ -113,9 +113,9 @@ describe('createFocusHighlightConfig', () => {
       expect(element?.tagName).toBe('P');
       expect(element?.textContent).toBe('Hello');
 
-      // Should NOT have focus highlight wrapper
-      const wrapper = container.querySelector('.focus-region-highlight');
-      expect(wrapper).toBeNull();
+      // Should have inactive focus highlight wrapper
+      const wrapper = container.querySelector('.focus-region-highlight--inactive');
+      expect(wrapper).not.toBeNull();
     });
   });
 
@@ -336,7 +336,7 @@ describe('createFocusHighlightConfig', () => {
         label: 'Click',
       });
       const { container: buttonContainer } = render(buttonResult);
-      expect(buttonContainer.querySelector('.focus-region-highlight')).toBeNull();
+      expect(buttonContainer.querySelector('.focus-region-highlight--inactive')).not.toBeNull();
     });
   });
 
@@ -357,7 +357,7 @@ describe('createFocusHighlightConfig', () => {
       });
       const { container } = render(result);
       expect(container.querySelector('[data-testid="text-1"]')).not.toBeNull();
-      expect(container.querySelector('.focus-region-highlight')).toBeNull();
+      expect(container.querySelector('.focus-region-highlight--inactive')).not.toBeNull();
     });
   });
 });

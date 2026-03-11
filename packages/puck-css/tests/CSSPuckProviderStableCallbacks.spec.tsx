@@ -216,6 +216,12 @@ describe('CSSPuckProvider Stable Callbacks', () => {
       await result.current.loadDocument('/pages/home');
     });
 
+    // Consume the suppressNextSaveRef flag set by loadDocument.
+    // In production, PuckDataSynchronizer's onChange echo does this automatically.
+    act(() => {
+      result.current.saveData(mockVersionSnapshot);
+    });
+
     return result;
   }
 

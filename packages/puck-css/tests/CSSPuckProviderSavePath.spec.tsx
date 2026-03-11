@@ -214,6 +214,12 @@ describe('CSSPuckProvider Save Path - Realtime vs REST', () => {
       await result.current.loadDocument('/pages/home');
     });
 
+    // Consume the suppressNextSaveRef flag set by loadDocument.
+    // In production, PuckDataSynchronizer's onChange echo does this automatically.
+    act(() => {
+      result.current.saveData(mockVersionSnapshot);
+    });
+
     // When realtime is enabled, loadDocument increments pendingRemoteUpdatesRef
     // to prevent the REST-loaded data from bouncing back through Y.Doc.
     // Advance past the 100ms safety reset so subsequent saveData calls are

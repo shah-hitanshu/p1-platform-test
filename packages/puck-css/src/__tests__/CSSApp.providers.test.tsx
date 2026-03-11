@@ -54,6 +54,14 @@ vi.mock('../FocusHighlightContext', () => ({
   },
 }));
 
+vi.mock('../CSSPuckContext', () => ({
+  useCSSPuck: () => ({ safeData: { content: [], root: { props: {} }, zones: {} } }),
+  CSSPuckContext: { Provider: ({ children }: { children: React.ReactNode }) => children },
+}));
+vi.mock('../PresenceContext', () => ({
+  useOptionalPresenceContext: () => null,
+}));
+
 vi.mock('@pantheon/css-client', () => ({
   CSSClient: MockCSSClient,
 }));
@@ -152,7 +160,7 @@ describe('CSSApp provider composition', () => {
     );
   });
 
-  it('mounts FocusHighlightProvider when enablePresence is true', () => {
+  it('renders PresenceFocusBridge without error when enablePresence is true', () => {
     setAuthenticated();
 
     render(
@@ -161,8 +169,8 @@ describe('CSSApp provider composition', () => {
       </CSSApp>
     );
 
-    expect(screen.getByTestId('focus-highlight-provider')).toBeInTheDocument();
-    // Children should be inside it
+    // PresenceFocusBridge renders children directly (no wrapper element)
+    expect(screen.getByTestId('css-puck-provider')).toBeInTheDocument();
     expect(screen.getByTestId('child')).toBeInTheDocument();
   });
 

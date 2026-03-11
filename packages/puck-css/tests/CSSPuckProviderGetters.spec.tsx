@@ -211,6 +211,12 @@ describe('CSSPuckProvider Save Status Getters (Item 2)', () => {
       await result.current.loadDocument('/pages/home');
     });
 
+    // Consume the suppressNextSaveRef flag set by loadDocument.
+    // In production, PuckDataSynchronizer's onChange echo does this automatically.
+    act(() => {
+      result.current.saveData(mockVersionSnapshot);
+    });
+
     return result;
   }
 
@@ -387,6 +393,12 @@ describe('CSSPuckProvider Data Sync Getters (Item 3)', () => {
 
     await act(async () => {
       await result.current.loadDocument('/pages/home');
+    });
+
+    // Consume the suppressNextSaveRef flag set by loadDocument.
+    // In production, PuckDataSynchronizer's onChange echo does this automatically.
+    act(() => {
+      result.current.saveData(mockVersionSnapshot);
     });
 
     return result;
