@@ -57,7 +57,7 @@ describe('Pre-publish DO flush', () => {
         const stub = env.DOCUMENT_STATE.get(doId);
         const flushResponse = await stub.fetch(
           new Request('http://internal/flush', { method: 'POST' }),
-        );
+        ) as Response;
         if (!flushResponse.ok) {
           console.warn('DO flush before publish failed:', await flushResponse.text());
           return { flushed: false };

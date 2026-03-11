@@ -135,7 +135,7 @@ describe('DocumentSession /flush endpoint', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json() as { flushed: boolean };
+      const data = await response.json();
       expect(data).toHaveProperty('flushed');
     });
 
@@ -159,7 +159,7 @@ describe('DocumentSession /flush endpoint', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json() as { flushed: boolean; reason?: string };
+      const data = await response.json();
       expect(data.flushed).toBe(false);
       expect(data.reason).toBe('no_changes');
     });
@@ -189,7 +189,7 @@ describe('DocumentSession /flush endpoint', () => {
       const flushResponse = await session.fetch(flushRequest);
 
       expect(flushResponse.status).toBe(200);
-      const data = await flushResponse.json() as { flushed: boolean };
+      const data = await flushResponse.json();
       expect(data.flushed).toBe(true);
     });
 
@@ -315,7 +315,7 @@ describe('DocumentSession /flush endpoint', () => {
       const flushResponse = await session.fetch(flushRequest);
 
       expect(flushResponse.status).toBe(200);
-      const data = await flushResponse.json() as { flushed: boolean; reason?: string };
+      const data = await flushResponse.json();
       expect(data.flushed).toBe(false);
       expect(data.reason).toBe('no_sync_config');
     });
@@ -342,13 +342,13 @@ describe('DocumentSession /flush endpoint', () => {
       // First flush — should sync
       const flush1 = new Request('http://localhost/flush', { method: 'POST' });
       const response1 = await session.fetch(flush1);
-      const data1 = await response1.json() as { flushed: boolean };
+      const data1 = await response1.json();
       expect(data1.flushed).toBe(true);
 
       // Second flush — no new edits, should be no-op
       const flush2 = new Request('http://localhost/flush', { method: 'POST' });
       const response2 = await session.fetch(flush2);
-      const data2 = await response2.json() as { flushed: boolean; reason?: string };
+      const data2 = await response2.json();
       expect(data2.flushed).toBe(false);
       expect(data2.reason).toBe('no_changes');
     });
