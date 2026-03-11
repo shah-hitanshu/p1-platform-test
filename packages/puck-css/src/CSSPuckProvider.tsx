@@ -1163,7 +1163,7 @@ function CSSPuckProviderInner({
         throw new Error('No document loaded to publish');
       }
 
-      // Save any pending changes first
+      // Send any pending changes before publish
       if (pendingDataRef.current) {
         if (enableRealtime && realtimeConnectedRef.current) {
           const currentPath = currentDocumentRef.current?.path ?? null;
@@ -1171,7 +1171,8 @@ function CSSPuckProviderInner({
             realtime.applyLocalChange(pendingDataRef.current);
           }
           pendingDataRef.current = null;
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // No client-side wait needed — the backend flushes the DO to
+          // PostgreSQL synchronously before executing the publish operation.
         } else {
           debouncedSave.cancel();
           await performSave();
