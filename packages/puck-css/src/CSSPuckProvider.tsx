@@ -1136,15 +1136,19 @@ function CSSPuckProviderInner({
             realtime.applyLocalChange(pendingDataRef.current);
           }
           pendingDataRef.current = null;
-          // Wait for the DO to acknowledge receipt of all preceding messages
-          try {
-            await realtime.waitForDelivery();
-          } catch {
-            console.warn('[CSSPuckProvider] Delivery ack before checkpoint failed, proceeding anyway');
-          }
         } else {
           debouncedSave.cancel();
           await performSave();
+        }
+      }
+
+      // When realtime is connected, wait for the DO to acknowledge receipt of
+      // all preceding WebSocket messages before creating the checkpoint.
+      if (enableRealtime && realtimeConnectedRef.current) {
+        try {
+          await realtime.waitForDelivery();
+        } catch {
+          console.warn('[CSSPuckProvider] Delivery ack before checkpoint failed, proceeding anyway');
         }
       }
 
@@ -1175,20 +1179,25 @@ function CSSPuckProviderInner({
             realtime.applyLocalChange(pendingDataRef.current);
           }
           pendingDataRef.current = null;
-          // Wait for the DO to acknowledge receipt of all preceding WebSocket
-          // messages (including the CRDT update just sent). TCP ordering
-          // guarantees the ack request arrives after the binary update.
-          // The backend then flushes the DO to PostgreSQL before publish.
-          try {
-            await realtime.waitForDelivery();
-          } catch {
-            // Best-effort: if ack fails (timeout/disconnect), proceed with
-            // publish anyway — the backend flush is still a safety net.
-            console.warn('[CSSPuckProvider] Delivery ack before publish failed, proceeding anyway');
-          }
         } else {
           debouncedSave.cancel();
           await performSave();
+        }
+      }
+
+      // When realtime is connected, wait for the DO to acknowledge receipt of
+      // ALL preceding WebSocket messages — not just pending data, but any edits
+      // sent during normal editing via saveData's applyLocalChange. The debounced
+      // save may have already cleared pendingDataRef, but the binary WS message
+      // could still be in transit. TCP ordering guarantees the ack request
+      // arrives after all binary updates on the same connection.
+      if (enableRealtime && realtimeConnectedRef.current) {
+        try {
+          await realtime.waitForDelivery();
+        } catch {
+          // Best-effort: if ack fails (timeout/disconnect), proceed with
+          // publish anyway — the backend flush is still a safety net.
+          console.warn('[CSSPuckProvider] Delivery ack before publish failed, proceeding anyway');
         }
       }
 
