@@ -43,9 +43,22 @@ export interface WsPresenceHeartbeatMessage {
 }
 
 /**
+ * Request acknowledgment that all preceding messages have been processed.
+ * Used before publish to ensure the DO has received the latest CRDT updates
+ * sent on this WebSocket connection before the publish HTTP request arrives.
+ */
+export interface WsDeliveryAckRequestMessage {
+  type: 'delivery_ack_request';
+  /** Unique request ID for correlating the response */
+  requestId: string;
+  /** Client timestamp for latency measurement */
+  timestamp: number;
+}
+
+/**
  * Union of all client-to-server WebSocket messages.
  */
-export type WsClientMessage = WsFocusRegionUpdateMessage | WsPresenceHeartbeatMessage;
+export type WsClientMessage = WsFocusRegionUpdateMessage | WsPresenceHeartbeatMessage | WsDeliveryAckRequestMessage;
 
 // =============================================================================
 // Server → Client Messages
@@ -105,13 +118,26 @@ export interface WsPresenceErrorMessage {
 }
 
 /**
+ * Server acknowledgment that all preceding messages have been processed.
+ * Sent in response to delivery_ack_request.
+ */
+export interface WsDeliveryAckMessage {
+  type: 'delivery_ack';
+  /** Matches the requestId from the request */
+  requestId: string;
+  /** Server timestamp */
+  timestamp: number;
+}
+
+/**
  * Union of all server-to-client WebSocket messages.
  */
 export type WsServerMessage =
   | WsPresenceUpdateMessage
   | WsFocusRegionBroadcastMessage
   | WsFocusRegionAckMessage
-  | WsPresenceErrorMessage;
+  | WsPresenceErrorMessage
+  | WsDeliveryAckMessage;
 
 // =============================================================================
 // Type Guards
@@ -123,7 +149,20 @@ export type WsServerMessage =
 export function isWsClientMessage(msg: unknown): msg is WsClientMessage {
   if (typeof msg !== 'object' || msg === null) return false;
   const m = msg as Record<string, unknown>;
-  return m.type === 'focus_region_update' || m.type === 'presence_heartbeat';
+  return m.type === 'focus_region_update' || m.type === 'presence_heartbeat' || m.type === 'delivery_ack_request';
+}
+
+/**
+ * Check if a message is a delivery ack request.
+ */
+export function isWsDeliveryAckRequest(msg: unknown): msg is WsDeliveryAckRequestMessage {
+  if (typeof msg !== 'object' || msg === null) return false;
+  const m = msg as Record<string, unknown>;
+  return (
+    m.type === 'delivery_ack_request' &&
+    typeof m.requestId === 'string' &&
+    typeof m.timestamp === 'number'
+  );
 }
 
 /**

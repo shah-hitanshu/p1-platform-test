@@ -64,7 +64,7 @@ import type {
   WsPresenceErrorMessage,
   WsServerMessage,
 } from '../types/websocket-messages';
-import { isWsFocusRegionUpdate, isWsPresenceHeartbeat } from '../types/websocket-messages';
+import { isWsFocusRegionUpdate, isWsPresenceHeartbeat, isWsDeliveryAckRequest } from '../types/websocket-messages';
 
 /**
  * Storage key for persisted Yjs document state
@@ -4035,6 +4035,16 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       this.handleWsFocusRegionUpdate(sender, meta, message);
     } else if (isWsPresenceHeartbeat(message)) {
       this.handleWsPresenceHeartbeat(sender, meta, message);
+    } else if (isWsDeliveryAckRequest(message)) {
+      // Acknowledge that all preceding WebSocket messages have been processed.
+      // Since WebSocket messages are TCP-ordered, by the time we process this
+      // text message, all preceding binary (Yjs) updates have already been
+      // applied to the Y.Doc.
+      this.sendWsMessage(sender, {
+        type: 'delivery_ack',
+        requestId: message.requestId,
+        timestamp: Date.now(),
+      });
     } else {
       this.sendPresenceError(sender, 'UNKNOWN_TYPE', 'Unknown message type');
     }
