@@ -1192,6 +1192,30 @@ Added published status indicators to the Puck editor UI:
 **Client type additions:** `Document.isPublished`, `Document.publishedVersionId`, `Document.publishedAt`, `Document.inherited`, `DocumentVersion.isPublished`
 **Test coverage:** 29 tests across 3 test files
 
+### Publish Race Condition Fix (2026-03-11) ✅
+
+Fixed a race condition where publishing a document could publish a stale version instead of the latest edit. The root cause: the Durable Object syncs CRDT state to Postgres asynchronously via a queue with a 5-second idle timeout, but the publish endpoint reads the latest version from Postgres. Edits made within that sync window would be missed.
+
+**Root cause analysis:**
+- DO sync to Postgres: 5-second idle timeout via async queue (`SYNC_IDLE_TIMEOUT_MS`)
+- Frontend workaround: 1-second `setTimeout` before calling publish (insufficient)
+- Publish endpoint: reads latest version from Postgres (`ORDER BY version_number DESC LIMIT 1`)
+- Race window: 4-9 seconds where the latest edit exists only in the DO's memory
+
+**Backend fix** (collaborative-state-system [PR #33](https://github.com/pantheon-systems/collaborative-state-system/pull/33)):
+- Added `/flush` endpoint on `DocumentSession` DO — synchronously writes CRDT state to Postgres via Hyperdrive, bypassing the async queue
+- Added pre-publish flush in `index.ts` — calls the source branch DO's `/flush` before executing publish
+- `performDirectSync`/`executeDirectSync` with `syncInProgress` lock and dedup against latest version only
+- Graceful degradation: flush failure logs warning but doesn't block publish
+
+**Frontend fix** ([PR #14](https://github.com/pantheon-systems/puck-css-integration/pull/14)):
+- Removed the `setTimeout(1000)` hack from `publishDocument` in `CSSPuckProvider.tsx`
+- Backend flush guarantees correctness; no client-side wait needed
+
+**Test coverage:** 16 new tests (9 for `/flush` endpoint, 7 for pre-publish flush logic)
+
+**Decision:** The `createCheckpoint` callback still has a separate `setTimeout(1000)` — this is a distinct code path that may need the same treatment but was deferred to avoid scope creep.
+
 ## Remaining Work
 
 ### Future
