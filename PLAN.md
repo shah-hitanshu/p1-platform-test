@@ -15,7 +15,11 @@ The `useMergeResolution` hook's public API is unchanged. This is a rendering-lay
 
 ### Styling Convention
 
-All new and modified components in the merge-resolution directory use **inline React styles** (via the `style` prop), matching the convention established by the existing merge-resolution components (`DocumentResolutionList`, `DocumentResolutionDetail`, `MergeResolutionToolbar`, etc.). This is distinct from the `MergePreviewRenderer` and other merge-preview components which use BEM CSS class names. The inline style convention was adopted in the previous implementation round to avoid the need for a separate CSS build step or stylesheet, since these are library components consumed by downstream apps.
+All components in this project use **inline React styles** (via the `style` prop). This convention was adopted in the previous implementation round after the user reported the merge-resolution page was "unstyled and generally not usable" when BEM CSS class names were used without a corresponding stylesheet. Since these are library components consumed by downstream apps via tarballs, there is no CSS build pipeline or stylesheet bundling -- inline styles are the only reliable styling mechanism.
+
+**Critical implication for this plan:** The existing `MergePreviewRenderer`, `ViewModeSelector`, and `createHighlightedConfig` utility all use BEM CSS class names (`merge-preview-renderer__panel`, `view-mode-selector`, `visual-diff-highlight`, etc.) with no corresponding CSS file and no inline styles. These components were built before the inline-styles convention was established. If composed into the merge-resolution page as-is, they will render as unstyled HTML -- reproducing the exact bug the user already reported.
+
+**Resolution:** This plan includes converting `MergePreviewRenderer`, `ViewModeSelector`, and `createHighlightedConfig` to use inline styles as a prerequisite phase (Phase 0). The BEM class names are retained as secondary identifiers for test assertions and DOM querying (e.g., `StrategyEmphasisWrapper` querying `.merge-preview-renderer__panel`), but all visual layout and appearance is driven by inline styles. The existing tests for these components (`MergePreviewRenderer.test.tsx`, `ViewModeSelector.test.tsx`) are updated to account for inline styles.
 
 ### Two Diff Systems
 
@@ -130,18 +134,22 @@ The downstream app can then simplify to a single "Resolve Conflicts" entry point
 
 | # | File | Change |
 |---|------|--------|
-| 1 | `packages/puck-css/src/components/merge-resolution/MergeResolutionPage.tsx` | Major rewrite: activate `config` prop (remove `void _config`), compute per-document diffs using `diffPuckDataWithPositions`, pass `config` and diffs to `DocumentResolutionDetail`, pass diff counts to `DocumentResolutionList` |
-| 2 | `packages/puck-css/src/components/merge-resolution/DocumentResolutionDetail.tsx` | Major rewrite: accept `config`, diffs, and view mode props. Render `MergePreviewRenderer` for accept-draft/accept-live/unresolved strategies, wrapped in a private `StrategyEmphasisWrapper` helper that applies dimming/highlight overlays for accept-draft/accept-live. Render `CherryPickVisualPanel` for cherry-pick. Render visual `CrdtPreviewPanel` for crdt-preview. Include `ViewModeSelector` in detail header. |
-| 3 | `packages/puck-css/src/components/merge-resolution/DocumentResolutionList.tsx` | Moderate: accept `documentDiffCounts` prop, display per-document diff summary badges (+N added, -N removed, ~N modified) below each document path |
-| 4 | `packages/puck-css/src/components/merge-resolution/CrdtPreviewPanel.tsx` | Major rewrite: accept `config`, `sourceData`, `targetData`, branch names. Replace raw JSON with three-panel `<Render>` layout (Draft \| CRDT Result \| Live). Keep loading/error states. |
-| 5 | `packages/puck-css/src/components/merge-resolution/MergeResolutionToolbar.tsx` | No functional changes. Remove `ViewModeSelector` from this component (it was never added; the previous plan proposed adding it here, but this plan places it in the detail panel instead). |
-| 6 | `packages/puck-css/src/components/merge-resolution/ResolutionStrategyPicker.tsx` | No changes. |
-| 7 | `packages/puck-css/src/components/merge-resolution/index.ts` | Add exports for `ComponentClickOverlay` and `CherryPickVisualPanel` |
-| 8 | `packages/puck-css/src/index.ts` | Add re-exports for new components |
-| 9 | `packages/puck-css/src/__tests__/MergeResolutionPage.test.tsx` | Update to verify config threading, diff computation, visual component rendering |
-| 10 | `packages/puck-css/src/__tests__/DocumentResolutionDetail.test.tsx` | Update to verify `MergePreviewRenderer` usage per strategy, `ViewModeSelector` presence, visual cherry-pick and CRDT rendering |
-| 11 | `packages/puck-css/src/__tests__/DocumentResolutionList.test.tsx` | Update to verify diff summary badges render |
-| 12 | `packages/puck-css/src/__tests__/CrdtPreviewPanel.test.tsx` | Update to verify `<Render>` three-way comparison instead of raw JSON |
+| 1 | `packages/puck-css/src/components/merge-preview/MergePreviewRenderer.tsx` | Convert from BEM class names to inline styles. Add inline styles for: wrapper layout, side-by-side flexbox (two panels at 50% width), overlay absolute positioning, slider opacity layers, panel labels, summary text. Retain BEM class names as secondary identifiers for DOM querying and test assertions. No functional changes to rendering logic. |
+| 2 | `packages/puck-css/src/components/merge-preview/ViewModeSelector.tsx` | Convert from BEM class names to inline styles. Add inline styles for: button group layout (flexbox, gap), active/inactive button states (background, border, color). Retain BEM class names for test assertions. No functional changes. |
+| 3 | `packages/puck-css/src/utils/highlightConfig.ts` | Convert `createHighlightedConfig` wrapper divs from BEM class names to inline styles. Add inline styles for: diff highlight borders/backgrounds (green for added, red for removed, yellow for modified), diff badge positioning and styling. Retain `data-component-id` and `data-diff-type` attributes. Retain BEM class names for test assertions. No functional changes. |
+| 4 | `packages/puck-css/src/components/conflict-resolution/ComponentConflictGroup.tsx` | Convert from BEM class names to inline styles. Add inline styles for: header layout, conflict count badge, field rows, radio button labels, value display. Retain BEM class names for test assertions. No functional changes. |
+| 5 | `packages/puck-css/src/components/merge-resolution/MergeResolutionPage.tsx` | Major rewrite: activate `config` prop (remove `void _config`), compute per-document diffs using `diffPuckDataWithPositions`, pass `config` and diffs to `DocumentResolutionDetail`, pass diff counts to `DocumentResolutionList` |
+| 6 | `packages/puck-css/src/components/merge-resolution/DocumentResolutionDetail.tsx` | Major rewrite: accept `config`, diffs, and view mode props. Render `MergePreviewRenderer` for accept-draft/accept-live/unresolved strategies, wrapped in a private `StrategyEmphasisWrapper` helper that applies dimming/highlight overlays for accept-draft/accept-live. Render `CherryPickVisualPanel` for cherry-pick. Render visual `CrdtPreviewPanel` for crdt-preview. Include `ViewModeSelector` in detail header. |
+| 7 | `packages/puck-css/src/components/merge-resolution/DocumentResolutionList.tsx` | Moderate: accept `documentDiffCounts` prop, display per-document diff summary badges (+N added, -N removed, ~N modified) below each document path |
+| 8 | `packages/puck-css/src/components/merge-resolution/CrdtPreviewPanel.tsx` | Major rewrite: accept `config`, `sourceData`, `targetData`, branch names. Replace raw JSON with three-panel `<Render>` layout (Draft \| CRDT Result \| Live). Keep loading/error states. |
+| 9 | `packages/puck-css/src/components/merge-resolution/MergeResolutionToolbar.tsx` | No functional changes. Remove `ViewModeSelector` from this component (it was never added; the previous plan proposed adding it here, but this plan places it in the detail panel instead). |
+| 10 | `packages/puck-css/src/components/merge-resolution/ResolutionStrategyPicker.tsx` | No changes. |
+| 11 | `packages/puck-css/src/components/merge-resolution/index.ts` | Add exports for `ComponentClickOverlay` and `CherryPickVisualPanel` |
+| 12 | `packages/puck-css/src/index.ts` | Add re-exports for new components |
+| 13 | `packages/puck-css/src/__tests__/MergeResolutionPage.test.tsx` | Update to verify config threading, diff computation, visual component rendering |
+| 14 | `packages/puck-css/src/__tests__/DocumentResolutionDetail.test.tsx` | Update to verify `MergePreviewRenderer` usage per strategy, `ViewModeSelector` presence, visual cherry-pick and CRDT rendering |
+| 15 | `packages/puck-css/src/__tests__/DocumentResolutionList.test.tsx` | Update to verify diff summary badges render |
+| 16 | `packages/puck-css/src/__tests__/CrdtPreviewPanel.test.tsx` | Update to verify `<Render>` three-way comparison instead of raw JSON |
 
 ### Files NOT modified (explicitly preserved)
 
@@ -151,10 +159,10 @@ The downstream app can then simplify to a single "Resolve Conflicts" entry point
 | `packages/puck-css/src/__tests__/useMergeResolution.test.ts` | Hook tests unchanged; 22 tests continue passing |
 | `packages/puck-css/src/__tests__/useMergeResolution-execute.test.ts` | Execution tests unchanged; 7 tests continue passing |
 | `packages/puck-css/src/__tests__/ResolutionStrategyPicker.test.tsx` | Strategy picker tests unchanged; 5 tests continue passing |
-| `packages/puck-css/src/components/merge-preview/*` | Read-only comparison components preserved as-is; `MergePreviewRenderer` is reused directly via composition |
-| `packages/puck-css/src/components/conflict-resolution/*` | Existing conflict resolution components preserved; `ComponentConflictGroup` reused within `CherryPickVisualPanel` |
+| `packages/puck-css/src/components/merge-preview/MergePreviewPanel.tsx` | Not used by the merge-resolution flow |
+| `packages/puck-css/src/components/conflict-resolution/PuckFieldResolutionPanel.tsx` | Not used by the merge-resolution flow |
+| `packages/puck-css/src/components/conflict-resolution/RenderedResolutionPreview.tsx` | Not used by the merge-resolution flow |
 | `packages/puck-css/src/utils/puckFieldClassifier.ts` | Utility unchanged |
-| `packages/puck-css/src/utils/highlightConfig.ts` | Utility unchanged; `createHighlightedConfig` and `createDiffMap` used by `MergePreviewRenderer` |
 | `packages/puck-css/src/utils/branchDiff.ts` | Utility unchanged; `diffPuckDataWithPositions` used for computing per-document diffs |
 | `packages/puck-css/src/components/merge-resolution/MergeResolutionToolbar.tsx` | No changes needed |
 | `packages/puck-css/src/__tests__/MergeResolutionToolbar.test.tsx` | Toolbar tests unchanged |
@@ -163,6 +171,77 @@ The downstream app can then simplify to a single "Resolve Conflicts" entry point
 ---
 
 ## Detailed Component Specifications
+
+### Phase 0: Convert Reused Components to Inline Styles
+
+This phase is a prerequisite. The existing `MergePreviewRenderer`, `ViewModeSelector`, and `createHighlightedConfig` were built with BEM CSS class names and no corresponding stylesheet or inline styles. Without conversion, they will render as unstyled HTML when composed into the merge-resolution page -- the exact bug the user already reported ("resolve conflicts page is unstyled and generally not usable").
+
+#### 0.1 `MergePreviewRenderer.tsx` (inline style conversion)
+
+Add inline styles to all elements while retaining BEM class names for DOM querying and test assertions:
+
+- **Wrapper** (`merge-preview-renderer__wrapper`): `{ position: 'relative' }`
+- **Summary** (`merge-preview-renderer__summary`): `{ padding: '8px 12px', fontSize: '13px', color: '#666', borderBottom: '1px solid #e5e7eb' }`
+- **Side-by-side container** (`merge-preview-renderer--side-by-side`): `{ display: 'flex', gap: '16px' }`
+- **Panel** (`merge-preview-renderer__panel`): `{ flex: '1 1 50%', minWidth: 0, border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }`
+- **Panel label** (`merge-preview-renderer__panel-label`): `{ padding: '8px 12px', fontWeight: 600, fontSize: '13px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }`
+- **Panel content** (`merge-preview-renderer__panel-content`): `{ padding: '12px' }`
+- **Overlay container** (`merge-preview-renderer--overlay`): `{ position: 'relative' }`
+- **Overlay layers**: `{ position: 'absolute', top: 0, left: 0, width: '100%' }` for target layer; source layer is `position: relative` as the layout anchor
+- **Slider control** (`merge-preview-renderer__slider-control`): `{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 12px' }`
+- **Slider input**: `{ flex: 1 }`
+- **Slider content** (`merge-preview-renderer__slider-content`): `{ position: 'relative' }`
+- **Slider layers**: Similar to overlay layers but with existing opacity inline styles preserved
+- **Empty state** (`merge-preview-renderer--empty`): `{ padding: '40px', textAlign: 'center', color: '#999' }`
+
+No functional changes. All `<Render>` calls, config creation, diff counting, and view mode branching remain identical.
+
+#### 0.2 `ViewModeSelector.tsx` (inline style conversion)
+
+Add inline styles for the button group:
+
+- **Container** (`view-mode-selector`): `{ display: 'flex', gap: '4px' }`
+- **Button (inactive)**: `{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #d1d5db', background: '#fff', color: '#374151', cursor: 'pointer', fontSize: '13px' }`
+- **Button (active)**: Same base styles plus `{ background: '#2563eb', color: '#fff', borderColor: '#2563eb' }`
+
+Remove the `pds-button` class references as they depend on an external stylesheet not available in the library context. The BEM class name `view-mode-selector__btn` is retained for test assertions.
+
+#### 0.3 `createHighlightedConfig` in `highlightConfig.ts` (inline style conversion)
+
+The wrapper divs created by `createHighlightedConfig` currently use BEM class names (`visual-diff-highlight--added`, `visual-diff-badge--removed`, etc.) with no styles. Add inline styles:
+
+- **Highlight wrapper** (`visual-diff-highlight`):
+  - `added`: `{ border: '2px solid #22c55e', borderRadius: '4px', position: 'relative' }` (green)
+  - `removed`: `{ border: '2px solid #ef4444', borderRadius: '4px', position: 'relative', opacity: 0.6 }` (red, dimmed)
+  - `modified`: `{ border: '2px solid #eab308', borderRadius: '4px', position: 'relative' }` (yellow)
+- **Diff badge** (`visual-diff-badge`): `{ position: 'absolute', top: '-8px', right: '-8px', width: '20px', height: '20px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, color: '#fff' }`
+  - `added` background: `'#22c55e'`
+  - `removed` background: `'#ef4444'`
+  - `modified` background: `'#eab308'`
+
+The `data-component-id` and `data-diff-type` attributes are preserved unchanged -- they are critical for `ComponentClickOverlay` functionality. BEM class names are also retained for test assertions.
+
+#### 0.4 `ComponentConflictGroup.tsx` (inline style conversion)
+
+This component is reused by `CherryPickVisualPanel` for prop-level cherry-pick radio buttons. It uses BEM class names with no inline styles. Add inline styles:
+
+- **Container** (`component-conflict-group`): `{ marginBottom: '16px' }`
+- **Header** (`component-conflict-group__header`): `{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }`
+- **Title** (`component-conflict-group__title`): `{ fontSize: '15px', fontWeight: 600, margin: 0 }`
+- **Conflict count** (`component-conflict-group__conflict-count`): `{ fontSize: '12px', padding: '2px 8px', borderRadius: '10px', background: '#fef3c7', color: '#92400e' }`
+- **Fields container** (`component-conflict-group__fields`): `{ display: 'flex', flexDirection: 'column', gap: '8px' }`
+- **Field row** (`component-conflict-group__field`): `{ padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: '6px' }`
+- **Field name** (`component-conflict-group__field-name`): `{ fontWeight: 500, fontSize: '13px', marginBottom: '4px' }`
+- **Field values** (`component-conflict-group__field-values`): `{ display: 'flex', flexDirection: 'column', gap: '4px' }`
+- **Option label** (`component-conflict-group__option`): `{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }`
+- **Branch name** (`component-conflict-group__branch-name`): `{ fontWeight: 500, color: '#374151' }`
+- **Value** (`component-conflict-group__value`): `{ color: '#6b7280', fontFamily: 'monospace', fontSize: '12px' }`
+
+No functional changes. All radio button behavior, resolution callbacks, and conflict counting remain identical.
+
+#### 0.5 Test updates for Phase 0
+
+Existing tests for `MergePreviewRenderer` and `ViewModeSelector` (if any) are updated to account for inline styles. Since these are no-functional-change conversions, tests should continue asserting the same structural and behavioral properties. Any tests asserting specific CSS class names still pass since BEM classes are retained alongside inline styles.
 
 ### Phase 1: Component Click Overlay
 
@@ -429,8 +508,9 @@ Component tests need updates to match the new DOM structure:
 
 The implementation proceeds in dependency order:
 
+0. **Inline style conversions** (Phase 0) -- `MergePreviewRenderer.tsx`, `ViewModeSelector.tsx`, `highlightConfig.ts`, `ComponentConflictGroup.tsx`. No functional changes, purely adding inline styles alongside existing BEM class names. This must happen first because all subsequent phases compose these components. Update any existing tests.
 1. **`ComponentClickOverlay.tsx`** + tests -- new component, no dependencies on modified files
-2. **`CherryPickVisualPanel.tsx`** + tests -- new component, depends on `ComponentClickOverlay`, `MergePreviewRenderer`, and existing `ComponentConflictGroup`
+2. **`CherryPickVisualPanel.tsx`** + tests -- new component, depends on `ComponentClickOverlay`, `createHighlightedConfig`/`createDiffMap` utilities, and existing `ComponentConflictGroup`. Does NOT depend on `MergePreviewRenderer` (uses direct `<Render>` instances -- see Decision 3).
 3. **`CrdtPreviewPanel.tsx`** -- rewrite to use `<Render>`, update existing tests
 4. **`DocumentResolutionDetail.tsx`** -- rewrite to compose `MergePreviewRenderer`, `CherryPickVisualPanel`, visual `CrdtPreviewPanel`, and `ViewModeSelector`. Update existing tests
 5. **`DocumentResolutionList.tsx`** -- add diff summary badges, update existing tests
@@ -453,6 +533,9 @@ The implementation proceeds in dependency order:
 | `useMergeResolution-execute.test.ts` | ~7 (unchanged) | Merge execution |
 | `ResolutionStrategyPicker.test.tsx` | ~5 (unchanged) | Strategy button behavior |
 | `MergeResolutionToolbar.test.tsx` | ~9 (unchanged) | Toolbar, progress, bulk actions, shortcuts |
+| `MergePreviewRenderer.spec.tsx` (existing at `tests/`) | ~6 (updated) | Verify inline styles applied, view mode rendering, diff highlighting (Phase 0) |
+| `ViewModeSelector.spec.tsx` (new at `tests/`) | ~3 (new) | Verify inline styles applied, active/inactive states (Phase 0) |
+| `highlightConfig.spec.ts` (existing at `tests/`) | ~4 (updated) | Verify inline styles on highlight wrappers and badges (Phase 0) |
 | `MergeResolutionPage.test.tsx` | ~8 (updated) | Config threading, diff computation, visual component rendering |
 | `DocumentResolutionList.test.tsx` | ~14 (updated) | List with diff summary badges, existing keyboard navigation |
 | `DocumentResolutionDetail.test.tsx` | ~12 (updated) | Visual rendering per strategy, ViewModeSelector visibility per strategy, config threading, null snapshot edge cases |
@@ -460,7 +543,7 @@ The implementation proceeds in dependency order:
 | `ComponentClickOverlay.test.tsx` | ~6 (new) | Click targets, callbacks, selection indicators, resize handling |
 | `CherryPickVisualPanel.test.tsx` | ~8 (new) | Two-column layout, merged preview, component/prop selection |
 
-**Estimated total: ~96 tests** (43 unchanged + ~39 updated + ~14 new)
+**Estimated total: ~109 tests** (43 unchanged + ~52 updated + ~14 new)
 
 ---
 
@@ -470,7 +553,7 @@ The implementation proceeds in dependency order:
 - **Modifying `packages/css-client`** -- no API client changes needed
 - **Creating a new `createClickableConfig` utility** -- component interactivity is handled via DOM overlays, not config wrapping
 - **Creating a `VisualResolutionCompare` component** -- `MergePreviewRenderer` is reused directly via composition
-- **Modifying existing read-only comparison components** (`MergePreviewRenderer`, `VisualBranchCompare`, `ViewModeSelector`) -- reused as-is, not modified. `MergePreviewRenderer` is composed directly for accept-draft/accept-live/unresolved strategies. `CherryPickVisualPanel` uses `createHighlightedConfig`/`createDiffMap` directly instead of `MergePreviewRenderer` to enable per-panel overlay control (see Decision 3).
+- **Functionally modifying `MergePreviewRenderer`, `ViewModeSelector`, or `createHighlightedConfig`** -- these receive inline style additions only (Phase 0), not functional changes. Rendering logic, props, and behavior are unchanged. `MergePreviewRenderer` is composed directly for accept-draft/accept-live/unresolved strategies. `CherryPickVisualPanel` uses `createHighlightedConfig`/`createDiffMap` directly instead of `MergePreviewRenderer` to enable per-panel overlay control (see Decision 3).
 - **Modifying existing conflict-resolution components** (`ComponentConflictGroup`, `PuckFieldResolutionPanel`) -- reused as-is within `CherryPickVisualPanel`
 - **Adding `ViewModeSelector` to the toolbar** -- view mode is a per-document detail concern, not a toolbar concern
 - **Adding E2E/Playwright tests** -- the UX is a placeholder that may move; medium fidelity with mock-based component tests is appropriate
