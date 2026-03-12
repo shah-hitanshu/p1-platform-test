@@ -47,6 +47,7 @@ export function CrdtPreviewPanel({
   return (
     <div className={baseClass}>
       <p className={`${baseClass}__success`}>CRDT merge preview loaded.</p>
+      {/* TODO: Replace raw JSON with Puck Render component for visual preview */}
       <pre className={`${baseClass}__snapshot`}>
         {JSON.stringify(snapshot, null, 2)}
       </pre>

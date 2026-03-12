@@ -13,6 +13,7 @@ import {
   groupFieldsByComponent,
   buildMergedSnapshot,
 } from '../../utils/puckFieldClassifier.js';
+import type { ResolutionMap } from '../../utils/puckFieldClassifier.js';
 import { ComponentConflictGroup } from './ComponentConflictGroup.js';
 
 /**
@@ -34,11 +35,6 @@ export interface PuckFieldResolutionPanelProps {
 }
 
 const baseClass = 'puck-field-resolution-panel';
-
-/**
- * Tracks resolution choices keyed by "componentId:propName".
- */
-type ResolutionMap = Record<string, 'source' | 'target'>;
 
 /**
  * Builds a unique key for a field resolution entry.

@@ -60,12 +60,13 @@ export function DocumentResolutionList({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      // Guard: don't fire when input/textarea is focused
+      // Guard: don't fire when input/textarea/contentEditable is focused
       const target = e.target as HTMLElement;
       if (
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
-        target.tagName === 'SELECT'
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
       ) {
         return;
       }

@@ -192,7 +192,7 @@ describe('DocumentResolutionDetail', () => {
     expect(screen.getByText('Loading CRDT merge preview...')).toBeDefined();
   });
 
-  it('shows Load CRDT preview button when no preview fetched yet', () => {
+  it('auto-fetches CRDT preview when strategy is crdt-preview and no snapshot', () => {
     const onFetchCrdtPreview = vi.fn();
     render(
       <DocumentResolutionDetail
@@ -206,9 +206,71 @@ describe('DocumentResolutionDetail', () => {
       />
     );
 
-    const loadBtn = screen.getByText('Load CRDT preview');
-    fireEvent.click(loadBtn);
+    // Should auto-fetch on mount when strategy is crdt-preview
     expect(onFetchCrdtPreview).toHaveBeenCalledWith('doc-1');
+  });
+
+  it('does not auto-fetch CRDT preview when snapshot already exists', () => {
+    const onFetchCrdtPreview = vi.fn();
+    render(
+      <DocumentResolutionDetail
+        document={createDocument({
+          strategy: 'crdt-preview',
+          crdtPreviewSnapshot: { content: [], root: { props: {} } } as PuckData,
+        })}
+        sourceBranchName="Draft"
+        targetBranchName="Live"
+        onSetStrategy={vi.fn()}
+        onCherryPickSelection={vi.fn()}
+        onAcceptAllComponentProps={vi.fn()}
+        onFetchCrdtPreview={onFetchCrdtPreview}
+      />
+    );
+
+    // Should NOT auto-fetch since snapshot already exists
+    expect(onFetchCrdtPreview).not.toHaveBeenCalled();
+  });
+
+  it('transforms cherryPickSelections keys for ComponentConflictGroup radio buttons', () => {
+    const classifiedFields = [
+      {
+        classification: 'conflicting' as const,
+        componentId: 'h1',
+        componentType: 'Heading',
+        propName: 'text',
+        sourceValue: 'Source Title',
+        targetValue: 'Target Title',
+        path: 'content',
+      },
+    ];
+
+    // cherryPickSelections use "componentId:propName" format
+    const cherryPickSelections = {
+      'h1:text': 'source' as const,
+    };
+
+    render(
+      <DocumentResolutionDetail
+        document={createDocument({
+          strategy: 'cherry-pick',
+          classifiedFields,
+          cherryPickSelections,
+          sourceSnapshot: { content: [], root: {} } as PuckData,
+          targetSnapshot: { content: [], root: {} } as PuckData,
+        })}
+        sourceBranchName="Draft"
+        targetBranchName="Live"
+        {...defaultCallbacks}
+      />
+    );
+
+    // The radio button for source should be checked
+    // ComponentConflictGroup uses resolutions[field.propName], so the key
+    // must be transformed from "h1:text" to "text" for the radio to show checked
+    const sourceRadio = screen.getAllByRole('radio').find(
+      (r) => (r as HTMLInputElement).value === 'source' && (r as HTMLInputElement).checked
+    );
+    expect(sourceRadio).toBeDefined();
   });
 
   it('shows CrdtPreviewPanel error state', () => {

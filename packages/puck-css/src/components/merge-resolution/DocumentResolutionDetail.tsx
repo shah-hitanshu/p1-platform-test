@@ -6,7 +6,7 @@
  * via CrdtPreviewPanel, and delete-type conflict messages.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import type { DocumentConflictType } from '@pantheon/css-client';
 import type { DocumentResolution, DocumentResolutionStrategy } from '../../hooks/useMergeResolution.js';
 import { groupFieldsByComponent } from '../../utils/puckFieldClassifier.js';
@@ -30,7 +30,7 @@ export interface DocumentResolutionDetailProps {
     componentId: string,
     choice: 'source' | 'target'
   ) => void;
-  onFetchCrdtPreview: (documentId: string) => void;
+  onFetchCrdtPreview: (documentId: string) => Promise<void> | void;
 }
 
 const baseClass = 'document-resolution-detail';
@@ -42,6 +42,42 @@ function getDeleteMessage(conflictType: DocumentConflictType): string | null {
   if (conflictType === 'deleted-in-target') {
     return 'This document was deleted in Live.';
   }
+  return null;
+}
+
+/**
+ * Auto-fetches CRDT preview when strategy changes to crdt-preview.
+ * Fires once when the component mounts (i.e., strategy just became crdt-preview)
+ * and there is no existing snapshot, loading state, or error.
+ */
+function CrdtAutoFetcher({
+  documentId,
+  hasSnapshot,
+  isLoading,
+  hasError,
+  onFetch,
+}: {
+  documentId: string;
+  hasSnapshot: boolean;
+  isLoading: boolean;
+  hasError: boolean;
+  onFetch: (documentId: string) => Promise<void> | void;
+}): null {
+  // Track whether we've already triggered a fetch for this documentId
+  const hasFetchedRef = React.useRef<string | null>(null);
+
+  useEffect(() => {
+    if (
+      hasFetchedRef.current !== documentId &&
+      !hasSnapshot &&
+      !isLoading &&
+      !hasError
+    ) {
+      hasFetchedRef.current = documentId;
+      onFetch(documentId);
+    }
+  }, [documentId, hasSnapshot, isLoading, hasError, onFetch]);
+
   return null;
 }
 
@@ -122,7 +158,15 @@ export function DocumentResolutionDetail({
                 fields={group.fields}
                 sourceBranchName={sourceBranchName}
                 targetBranchName={targetBranchName}
-                resolutions={document.cherryPickSelections}
+                resolutions={
+                  // Transform cherryPickSelections from "componentId:propName" keys
+                  // to bare "propName" keys, filtered for this component group
+                  Object.fromEntries(
+                    Object.entries(document.cherryPickSelections)
+                      .filter(([k]) => k.startsWith(`${group.componentId}:`))
+                      .map(([k, v]) => [k.split(':').slice(1).join(':'), v])
+                  )
+                }
                 onResolutionChange={(componentId, propName, choice) =>
                   onCherryPickSelection(document.documentId, componentId, propName, choice)
                 }
@@ -133,16 +177,17 @@ export function DocumentResolutionDetail({
       )}
 
       {document.strategy === 'crdt-preview' && (
+        <CrdtAutoFetcher
+          documentId={document.documentId}
+          hasSnapshot={!!document.crdtPreviewSnapshot}
+          isLoading={document.crdtPreviewLoading}
+          hasError={!!document.crdtPreviewError}
+          onFetch={onFetchCrdtPreview}
+        />
+      )}
+
+      {document.strategy === 'crdt-preview' && (
         <div className={`${baseClass}__crdt-preview`}>
-          {!document.crdtPreviewSnapshot && !document.crdtPreviewLoading && !document.crdtPreviewError && (
-            <button
-              type="button"
-              className={`${baseClass}__fetch-crdt-button`}
-              onClick={() => onFetchCrdtPreview(document.documentId)}
-            >
-              Load CRDT preview
-            </button>
-          )}
           <CrdtPreviewPanel
             snapshot={document.crdtPreviewSnapshot}
             loading={document.crdtPreviewLoading}

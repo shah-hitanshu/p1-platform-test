@@ -205,6 +205,29 @@ describe('DocumentResolutionList', () => {
     expect(setRemainingStrategy).toHaveBeenCalledWith('accept-live');
   });
 
+  it('keyboard shortcuts do not fire when contentEditable element is focused', () => {
+    const goToNext = vi.fn();
+    render(
+      <DocumentResolutionList
+        {...defaultProps}
+        goToNext={goToNext}
+      />
+    );
+
+    // Create and focus a contentEditable element
+    const div = document.createElement('div');
+    div.contentEditable = 'true';
+    document.body.appendChild(div);
+    div.focus();
+
+    // Fire keyboard event on the contentEditable element
+    fireEvent.keyDown(div, { key: 'j' });
+
+    expect(goToNext).not.toHaveBeenCalled();
+
+    document.body.removeChild(div);
+  });
+
   it('keyboard shortcuts do not fire when input is focused', () => {
     const goToNext = vi.fn();
     const setStrategy = vi.fn();

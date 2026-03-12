@@ -17,6 +17,7 @@ export interface MergeResolutionToolbarProps {
   onClose: () => void;
   onExecuteMerge: () => void;
   onSetAllStrategy: (strategy: 'accept-draft' | 'accept-live') => void;
+  onSetRemainingStrategy?: (strategy: 'accept-draft' | 'accept-live') => void;
 }
 
 const baseClass = 'merge-resolution-toolbar';
@@ -31,6 +32,7 @@ export function MergeResolutionToolbar({
   onClose,
   onExecuteMerge,
   onSetAllStrategy,
+  onSetRemainingStrategy,
 }: MergeResolutionToolbarProps): React.ReactElement {
   const [showConfirm, setShowConfirm] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -99,6 +101,24 @@ export function MergeResolutionToolbar({
         >
           Accept all as Live
         </button>
+        {onSetRemainingStrategy && (
+          <>
+            <button
+              type="button"
+              className={`${baseClass}__bulk-button`}
+              onClick={() => onSetRemainingStrategy('accept-draft')}
+            >
+              Accept remaining as Draft
+            </button>
+            <button
+              type="button"
+              className={`${baseClass}__bulk-button`}
+              onClick={() => onSetRemainingStrategy('accept-live')}
+            >
+              Accept remaining as Live
+            </button>
+          </>
+        )}
         <button
           type="button"
           className={`${baseClass}__shortcuts-toggle`}

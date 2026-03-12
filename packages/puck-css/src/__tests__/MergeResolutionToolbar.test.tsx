@@ -124,6 +124,29 @@ describe('MergeResolutionToolbar', () => {
     expect(onSetAllStrategy).toHaveBeenCalledWith('accept-live');
   });
 
+  it('shows remaining strategy buttons when onSetRemainingStrategy provided', () => {
+    const onSetRemainingStrategy = vi.fn();
+    render(
+      <MergeResolutionToolbar
+        {...defaultProps}
+        onSetRemainingStrategy={onSetRemainingStrategy}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Accept remaining as Draft'));
+    expect(onSetRemainingStrategy).toHaveBeenCalledWith('accept-draft');
+
+    fireEvent.click(screen.getByText('Accept remaining as Live'));
+    expect(onSetRemainingStrategy).toHaveBeenCalledWith('accept-live');
+  });
+
+  it('does not show remaining strategy buttons when prop is not provided', () => {
+    render(<MergeResolutionToolbar {...defaultProps} />);
+
+    expect(screen.queryByText('Accept remaining as Draft')).toBeNull();
+    expect(screen.queryByText('Accept remaining as Live')).toBeNull();
+  });
+
   it('shows keyboard shortcuts when toggle clicked', () => {
     render(<MergeResolutionToolbar {...defaultProps} />);
 

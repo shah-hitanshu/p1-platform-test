@@ -5,7 +5,7 @@
  * Composes toolbar, document list, and detail panel.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import type { CSSClient } from '@pantheon/css-client';
 import { useMergeResolution } from '../../hooks/useMergeResolution.js';
 import { MergeResolutionToolbar } from './MergeResolutionToolbar.js';
@@ -55,6 +55,11 @@ export function MergeResolutionPage({
   useEffect(() => {
     hook.loadPreview();
   }, [hook.loadPreview]);
+
+  // Stable callback for execute merge to avoid re-renders
+  const handleExecuteMerge = useCallback(() => {
+    hook.executeMerge();
+  }, [hook.executeMerge]);
 
   // Notify parent on successful merge
   useEffect(() => {
@@ -113,8 +118,9 @@ export function MergeResolutionPage({
         allResolved={hook.allResolved}
         mergeExecuting={hook.mergeExecuting}
         onClose={onClose}
-        onExecuteMerge={() => hook.executeMerge()}
+        onExecuteMerge={handleExecuteMerge}
         onSetAllStrategy={hook.setAllStrategy}
+        onSetRemainingStrategy={hook.setRemainingStrategy}
       />
 
       {hook.mergeError && (
