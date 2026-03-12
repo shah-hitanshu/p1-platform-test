@@ -284,6 +284,7 @@ export function DocumentResolutionDetail({
   config,
   diffs = [],
 }: DocumentResolutionDetailProps): React.ReactElement {
+  const hasConfig = config != null;
   const [viewMode, setViewMode] = useState<ViewMode>('side-by-side');
 
   if (!doc) {
@@ -378,7 +379,7 @@ export function DocumentResolutionDetail({
       {/* Visual rendering based on strategy */}
 
       {/* accept-draft / accept-live with both snapshots: MergePreviewRenderer + emphasis */}
-      {(doc.strategy === 'accept-draft' || doc.strategy === 'accept-live') && hasBothSnapshots && config && (
+      {(doc.strategy === 'accept-draft' || doc.strategy === 'accept-live') && hasBothSnapshots && hasConfig && (
         <StrategyEmphasisWrapper strategy={doc.strategy}>
           <MergePreviewRenderer
             sourceData={doc.sourceSnapshot!}
@@ -393,7 +394,7 @@ export function DocumentResolutionDetail({
       )}
 
       {/* unresolved with both snapshots: MergePreviewRenderer without emphasis */}
-      {doc.strategy === 'unresolved' && hasBothSnapshots && config && (
+      {doc.strategy === 'unresolved' && hasBothSnapshots && hasConfig && (
         <MergePreviewRenderer
           sourceData={doc.sourceSnapshot!}
           targetData={doc.targetSnapshot!}
@@ -406,7 +407,7 @@ export function DocumentResolutionDetail({
       )}
 
       {/* cherry-pick: CherryPickVisualPanel */}
-      {doc.strategy === 'cherry-pick' && hasBothSnapshots && config && (
+      {doc.strategy === 'cherry-pick' && hasBothSnapshots && hasConfig && (
         <CherryPickVisualPanel
           document={doc}
           config={config}
@@ -419,7 +420,7 @@ export function DocumentResolutionDetail({
       )}
 
       {/* cherry-pick without config: fallback text-based view */}
-      {doc.strategy === 'cherry-pick' && !config && doc.classifiedFields && (
+      {doc.strategy === 'cherry-pick' && !hasConfig && doc.classifiedFields && (
         <div className={`${baseClass}__cherry-pick-fallback`} style={{ marginTop: '16px' }}>
           <p style={{ fontSize: '13px', color: '#666', marginBottom: '12px' }}>
             {doc.classifiedFields.filter((f) => f.classification !== 'conflicting').length > 0 &&
@@ -454,7 +455,7 @@ export function DocumentResolutionDetail({
       )}
 
       {/* Single snapshot views for delete conflicts */}
-      {hasTargetOnly && config && (
+      {hasTargetOnly && hasConfig && (
         <div className={`${baseClass}__single-panel`} style={singlePanelContainerStyle}>
           <div className={`${baseClass}__single-panel-label`} style={singlePanelLabelStyle}>
             {targetBranchName}
@@ -471,7 +472,7 @@ export function DocumentResolutionDetail({
         </div>
       )}
 
-      {hasSourceOnly && config && (
+      {hasSourceOnly && hasConfig && (
         <div className={`${baseClass}__single-panel`} style={singlePanelContainerStyle}>
           <div className={`${baseClass}__single-panel-label`} style={singlePanelLabelStyle}>
             {sourceBranchName}

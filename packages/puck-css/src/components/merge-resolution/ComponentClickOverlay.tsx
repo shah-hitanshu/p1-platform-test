@@ -154,7 +154,7 @@ export function ComponentClickOverlay({
     >
       {positions.map((pos) => {
         const selection = selections[pos.componentId] || 'none';
-        const colorStyle = selectionColors[selection] || selectionColors.none;
+        const colorStyle = selectionColors[selection] ?? selectionColors['none'] ?? {};
         const indicatorColor = selectionIndicatorColors[selection];
 
         return (
