@@ -55,7 +55,13 @@ This direct mapping means no translation layer is needed at merge execution time
 
 ### Decision 6: Reuse existing `PuckFieldResolutionPanel` internals, compose new UI around them
 
-**Why:** The existing `classifyPuckFields`, `groupFieldsByComponent`, and `buildMergedSnapshot` logic is exactly what cherry-pick resolution needs. Rather than duplicating or refactoring, the new components import these utilities directly. The existing `ComponentConflictGroup` radio-button UI is also reused as-is within the cherry-pick detail view, since it already handles per-field source/target selection.
+**Why:** The existing `classifyPuckFields`, `groupFieldsByComponent`, and `buildMergedSnapshot` logic is exactly what cherry-pick resolution needs. The existing `ComponentConflictGroup` radio-button UI is also reused as-is within the cherry-pick detail view, since it already handles per-field source/target selection.
+
+**Important implementation detail:** `buildMergedSnapshot` is currently a local (non-exported) function inside `PuckFieldResolutionPanel.tsx`. It must be extracted to `packages/puck-css/src/utils/puckFieldClassifier.ts` (alongside `classifyPuckFields` and `groupFieldsByComponent`) so both the existing `PuckFieldResolutionPanel` and the new `useMergeResolution` hook can import it. The original `PuckFieldResolutionPanel.tsx` is updated to import from the utility instead.
+
+### Decision 7: Delete-type conflicts handled as document-level choices only
+
+**Why:** When a document is `deleted-in-source` or `deleted-in-target`, prop-level cherry-picking is meaningless (there is no "other side" to compare props against). These conflicts only allow Accept Draft or Accept Live as strategies. The Cherry-pick and CRDT Preview options are disabled for delete-type conflicts. The UI shows an explanatory message (e.g., "This document was deleted in Draft" or "This document was deleted in Live") instead of a field comparison view.
 
 ---
 
@@ -89,6 +95,8 @@ This direct mapping means no translation layer is needed at merge execution time
 | 4 | `packages/css-client/src/index.ts` | Re-export new merge types |
 | 5 | `packages/puck-css/src/index.ts` | Export new merge resolution components and hook |
 | 6 | `packages/puck-css/src/components/merge-resolution/index.ts` | Barrel export |
+| 7 | `packages/puck-css/src/utils/puckFieldClassifier.ts` | Extract `buildMergedSnapshot` from `PuckFieldResolutionPanel.tsx` into this shared utility and export it |
+| 8 | `packages/puck-css/src/components/conflict-resolution/PuckFieldResolutionPanel.tsx` | Replace local `buildMergedSnapshot` with import from `../../utils/puckFieldClassifier.js` |
 
 ---
 
@@ -294,7 +302,7 @@ export interface UseMergeResolutionReturn {
 #### Key behaviors
 
 - **On mount / `loadPreview()`**: Calls `client.merge.preview(siteId, sourceBranchId, targetBranchId, { includeContent: true })`. Populates `documents` array with one `DocumentResolution` per document in `documentDiffs`. Documents without conflicts (source-only or target-only changes) are pre-resolved as `accept-draft` or `accept-live` respectively.
-- **Strategy changes**: When strategy changes to `cherry-pick`, the hook runs `classifyPuckFields(sourceSnapshot, targetSnapshot, null)` to populate `classifiedFields`. When all cherry-pick selections are made, it runs `buildMergedSnapshot` to compute `mergedSnapshot`.
+- **Strategy changes**: When strategy changes to `cherry-pick`, the hook runs `classifyPuckFields(sourceSnapshot, targetSnapshot, null)` to populate `classifiedFields`. When all cherry-pick selections are made, it runs `buildMergedSnapshot` (imported from `utils/puckFieldClassifier`) to compute `mergedSnapshot`. Cherry-pick and CRDT Preview strategies are disallowed for `deleted-in-source` / `deleted-in-target` conflicts (only Accept Draft or Accept Live make sense when one side has no document).
 - **CRDT preview**: When strategy changes to `crdt-preview`, the hook calls `client.merge.crdtPreview(...)` for the document and stores the result. If the CRDT preview fails (e.g., no CRDT state), falls back to showing an error message.
 - **Merge execution**: Maps each document's resolution to the backend format:
   - `accept-draft` → `{ strategy: 'take-source' }`
@@ -369,6 +377,7 @@ Right panel. Shows the expanded view for the currently selected document:
 - **When strategy is `accept-draft` or `accept-live`**: Shows the existing `MergePreviewRenderer` in side-by-side mode with the chosen side highlighted. Read-only visual confirmation.
 - **When strategy is `cherry-pick`**: Shows `ComponentConflictGroup` components for each component with conflicts. Uses existing radio-button UI from the conflict-resolution components. Shows auto-merged field count. Shows "Apply" that computes the merged snapshot and displays a rendered preview using `Render` from Puck.
 - **When strategy is `crdt-preview`**: Shows `CrdtPreviewPanel` with a loading state, the merged snapshot rendered via Puck's `Render`, and a side-by-side comparison with the source/target.
+- **When conflict type is `deleted-in-source` or `deleted-in-target`**: Shows only Accept Draft / Accept Live buttons (Cherry-pick and CRDT Preview are disabled). Displays an explanatory message: "This document was deleted in Draft" or "This document was deleted in Live". Shows the surviving version's snapshot as a read-only preview.
 
 #### 3.4 `ResolutionStrategyPicker`
 
@@ -394,7 +403,7 @@ Top bar containing:
 - Progress: "X of Y resolved" with progress bar
 - Bulk action buttons: "Accept all as Draft" / "Accept all as Live"
 - Keyboard shortcut hints (collapsible)
-- "Execute merge" button (enabled only when `allResolved` is true, with confirmation dialog)
+- "Execute merge" button (enabled only when `allResolved` is true). Clicking shows an inline confirmation prompt (not a separate component — a simple `window.confirm()` or inline "Are you sure?" toggle within the toolbar) summarizing the resolution choices before proceeding
 
 ### Phase 4: Integration and Exports
 
@@ -414,7 +423,9 @@ Tests cover:
 - Error handling for 4xx/5xx responses
 
 ### Phase 2: `useMergeResolution` Hook
-**Files:** `packages/puck-css/src/hooks/useMergeResolution.ts`, `packages/puck-css/src/__tests__/useMergeResolution.test.ts`
+**Prerequisite refactor:** Extract `buildMergedSnapshot` from `PuckFieldResolutionPanel.tsx` to `packages/puck-css/src/utils/puckFieldClassifier.ts` and update the import in `PuckFieldResolutionPanel.tsx`. This is a zero-behavior-change refactor — existing tests must continue to pass.
+
+**Files:** `packages/puck-css/src/utils/puckFieldClassifier.ts` (modify), `packages/puck-css/src/components/conflict-resolution/PuckFieldResolutionPanel.tsx` (modify), `packages/puck-css/src/hooks/useMergeResolution.ts`, `packages/puck-css/src/__tests__/useMergeResolution.test.ts`
 
 Tests cover:
 - Initial load calls preview API and populates document list
@@ -424,6 +435,7 @@ Tests cover:
 - `setAllStrategy` and `setRemainingStrategy` bulk operations
 - Navigation (next, previous, next-unresolved)
 - `executeMerge` maps strategies to backend format and calls execute API
+- Delete-type conflicts restrict available strategies to accept-draft/accept-live only
 - Error states (preview load failure, merge execution failure)
 
 ### Phase 3: UI Components
@@ -436,6 +448,7 @@ Tests cover:
 - Strategy picker updates on click
 - Cherry-pick view shows conflict groups
 - CRDT preview panel shows loading, error, and success states
+- Delete-type conflicts disable Cherry-pick and CRDT Preview buttons
 - Execute merge button disabled when not all resolved
 
 ### Phase 4: Exports and Integration
