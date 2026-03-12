@@ -381,35 +381,6 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   /**
-   * Create a compact summary of the current Y.Doc state for diagnostic logging.
-   * Includes content item count, types, and a truncated JSON preview.
-   */
-  private snapshotSummary(): string {
-    try {
-      const root = this.ydoc.getMap('root');
-      const json = root.toJSON() as Record<string, unknown>;
-      const content = Array.isArray(json.content)
-        ? json.content
-        : [];
-      const types = content
-        .map((c: unknown) => {
-          const obj = c as Record<string, unknown> | null;
-          if (obj !== null && typeof obj === 'object') {
-            const t = obj.type;
-            return typeof t === 'string' ? t : '?';
-          }
-          return '?';
-        })
-        .join(',');
-      const preview = JSON.stringify(json).slice(0, 200);
-      return `items=${String(content.length)} types=[${types}]`
-        + ` preview=${preview}`;
-    } catch {
-      return '<error reading snapshot>';
-    }
-  }
-
-  /**
    * Get current connection count
    */
   getConnectionCount(): number {
@@ -655,9 +626,6 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       return;
     }
 
-    const sid = JSON.stringify(this.sessionInfo);
-    console.log(`[DO-DIAG] initializeCrdtIfNeeded START session=${sid}`);
-
     const stored = await this.state.storage.get(YDOC_STORAGE_KEY);
 
     if (stored instanceof Uint8Array && stored.length > 0) {
@@ -667,21 +635,10 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
         this.initialized = true;
         // Set initial state vector hash to prevent unnecessary syncs
         this.lastSyncedStateVectorHash = this.computeStateVectorHash();
-        console.log(
-          '[DO-DIAG] initializeCrdtIfNeeded LOADED from DO storage,'
-          + ` size=${String(stored.length)},`
-          + ` ${this.snapshotSummary()}`,
-        );
       } catch (error) {
         // Invalid stored data - log and try PostgreSQL fallback
         console.warn('Failed to restore CRDT state from storage:', error);
       }
-    } else {
-      console.log(
-        '[DO-DIAG] initializeCrdtIfNeeded:'
-        + ' DO storage empty or not Uint8Array'
-        + ` (type=${typeof stored})`,
-      );
     }
 
     // Priority 2: Try to load from PostgreSQL if DO storage was empty or invalid
@@ -692,11 +649,6 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       if (hasHttpApi || hasHyperdrive) {
         try {
           await this.initializeFromPostgres();
-          console.log(
-            '[DO-DIAG] initializeCrdtIfNeeded'
-            + ' LOADED from PostgreSQL,'
-            + ` ${this.snapshotSummary()}`,
-          );
         } catch (error) {
           console.warn('Failed to initialize from PostgreSQL:', error);
           // Continue with empty state
@@ -1444,15 +1396,6 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       stateUpdate = Y.encodeStateAsUpdate(this.ydoc);
     }
 
-    console.log(
-      '[DO-DIAG] handleWebSocket SEND initial state'
-      + ` actor=${actorId},`
-      + ` size=${String(stateUpdate.length)},`
-      + ` delta=${String(stateVectorParam !== null)},`
-      + ` conns=${String(this.getConnectionCount())},`
-      + ` session=${JSON.stringify(this.sessionInfo)},`
-      + ` ${this.snapshotSummary()}`,
-    );
     server.send(stateUpdate);
 
     // Broadcast presence update to all clients (new connection joined)
@@ -1582,27 +1525,8 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
       const update = new Uint8Array(data);
 
-      // Diagnostic: snapshot BEFORE applying update
-      const beforeSummary = this.snapshotSummary();
-
       // Apply update to local doc
       Y.applyUpdate(this.ydoc, update);
-
-      // Diagnostic: snapshot AFTER applying update
-      const afterSummary = this.snapshotSummary();
-      const otherConnCount = this.state.getWebSockets()
-        .filter((c: WebSocket) => c !== ws
-          && c.readyState === WebSocket.OPEN)
-        .length;
-      console.log(
-        '[DO-DIAG] webSocketMessage'
-        + ` actor=${meta.actorId},`
-        + ` updateSize=${String(update.length)},`
-        + ` broadcastTo=${String(otherConnCount)},`
-        + ` session=${JSON.stringify(this.sessionInfo)}`
-        + `\n  BEFORE: ${beforeSummary}`
-        + `\n  AFTER:  ${afterSummary}`,
-      );
 
       // Phase 1.2: Batch broadcast — accumulate update and schedule flush
       this.enqueueBroadcast(ws, update);
@@ -1652,13 +1576,6 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
    * @param actorId - The actor ID associated with this connection
    */
   private async handleWebSocketDisconnect(server: WebSocket, actorId: string): Promise<void> {
-    console.log(
-      '[DO-DIAG] handleWebSocketDisconnect'
-      + ` actor=${actorId},`
-      + ` remainingConns=${String(this.getConnectionCount())},`
-      + ` session=${JSON.stringify(this.sessionInfo)},`
-      + ` ${this.snapshotSummary()}`,
-    );
     // Runtime manages WebSocket removal for Hibernatable API
     incrementCounter('css_ws_connections_total', { action: 'close' });
     setGauge('css_ws_connections_active', this.getConnectionCount());

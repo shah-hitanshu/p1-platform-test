@@ -1437,32 +1437,6 @@ async function handleRequest(
         break;
 
       case 'documents':
-        // Flush the source branch DO to PostgreSQL before publish to prevent
-        // stale version reads. The DO syncs to Postgres asynchronously via a
-        // queue with a 5-second idle timeout; without this flush, the publish
-        // endpoint may read and publish an older version.
-        if (
-          route.params.action === 'publish' &&
-          route.params.documentId !== undefined &&
-          route.params.branchId !== undefined &&
-          route.params.siteId !== undefined
-        ) {
-          try {
-            const sessionId = `${route.params.siteId}:${route.params.documentId}:${route.params.branchId}`;
-            console.log(`[PUBLISH-DIAG] Pre-publish flush starting, sessionId=${sessionId}`);
-            const doId = env.DOCUMENT_STATE.idFromName(sessionId);
-            const stub = env.DOCUMENT_STATE.get(doId);
-            const flushResponse = await stub.fetch(new Request('http://internal/flush', {
-              method: 'POST',
-              headers: { 'X-Session-Id': sessionId },
-            }));
-            const flushBody = await flushResponse.text();
-            console.log(`[PUBLISH-DIAG] Pre-publish flush complete, status=${String(flushResponse.status)}, body=${flushBody}`);
-          } catch (flushError) {
-            console.warn('DO flush before publish failed:', flushError);
-          }
-        }
-
         response = await handleDocumentRoutes(request, {
           siteId: route.params.siteId ?? '',
           branchId: route.params.branchId,
