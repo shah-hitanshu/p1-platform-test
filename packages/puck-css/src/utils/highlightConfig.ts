@@ -2,6 +2,9 @@
  * Highlighted Config Utility
  *
  * Creates a Puck config wrapper that adds visual diff highlighting to components.
+ *
+ * All visual styling uses inline React styles. BEM class names are retained
+ * as secondary identifiers for DOM querying and test assertions.
  */
 
 import React from 'react';
@@ -12,6 +15,54 @@ import type { ComponentDiffWithPosition } from '../types.js';
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PuckConfig = Record<string, any>;
+
+// =============================================================================
+// Inline Style Constants
+// =============================================================================
+
+const highlightStyles: Record<string, React.CSSProperties> = {
+  added: {
+    border: '2px solid #22c55e',
+    borderRadius: '4px',
+    position: 'relative',
+  },
+  removed: {
+    border: '2px solid #ef4444',
+    borderRadius: '4px',
+    position: 'relative',
+    opacity: 0.6,
+  },
+  modified: {
+    border: '2px solid #eab308',
+    borderRadius: '4px',
+    position: 'relative',
+  },
+};
+
+const badgeBaseStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: '-8px',
+  right: '-8px',
+  width: '20px',
+  height: '20px',
+  borderRadius: '50%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '12px',
+  fontWeight: 700,
+  color: '#fff',
+};
+
+const badgeBackgrounds: Record<string, string> = {
+  added: '#22c55e',
+  removed: '#ef4444',
+  modified: '#eab308',
+};
+
+// =============================================================================
+// Utilities
+// =============================================================================
 
 /**
  * Creates a map of component IDs to their diff types.
@@ -71,18 +122,28 @@ export function createHighlightedConfig(
           return renderedContent;
         }
 
+        const wrapperInlineStyle = highlightStyles[diffType] || {};
+        const badgeInlineStyle: React.CSSProperties = {
+          ...badgeBaseStyle,
+          background: badgeBackgrounds[diffType] || '#999',
+        };
+
         return React.createElement(
           'div',
           {
             className: `visual-diff-highlight visual-diff-highlight--${diffType}`,
+            style: wrapperInlineStyle,
             'data-diff-type': diffType,
             'data-component-id': id,
           },
           renderedContent,
           React.createElement(
             'div',
-            { className: `visual-diff-badge visual-diff-badge--${diffType}` },
-            diffType === 'added' ? '+' : diffType === 'removed' ? '−' : '~'
+            {
+              className: `visual-diff-badge visual-diff-badge--${diffType}`,
+              style: badgeInlineStyle,
+            },
+            diffType === 'added' ? '+' : diffType === 'removed' ? '\u2212' : '~'
           )
         );
       },

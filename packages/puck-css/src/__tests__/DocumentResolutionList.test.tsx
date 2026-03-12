@@ -2,7 +2,7 @@
  * DocumentResolutionList Tests
  *
  * Tests for the document list component - rendering, selection,
- * strategy badges, and keyboard navigation including Enter key.
+ * strategy badges, diff count badges, and keyboard navigation.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -252,5 +252,50 @@ describe('DocumentResolutionList', () => {
     expect(setStrategy).not.toHaveBeenCalled();
 
     document.body.removeChild(input);
+  });
+
+  // ===== New tests for diff count badges =====
+
+  it('shows diff count badges when diffCounts provided', () => {
+    const diffCounts = new Map([
+      ['doc-1', { added: 2, removed: 0, modified: 1 }],
+    ]);
+
+    render(
+      <DocumentResolutionList
+        {...defaultProps}
+        diffCounts={diffCounts}
+      />
+    );
+
+    expect(screen.getByText('+2 added')).toBeDefined();
+    expect(screen.getByText('~1 modified')).toBeDefined();
+    // removed count is 0, so no badge shown
+    expect(screen.queryByText(/-\d+ removed/)).toBeNull();
+  });
+
+  it('does not show diff badges for zero-count categories', () => {
+    const diffCounts = new Map([
+      ['doc-1', { added: 0, removed: 0, modified: 3 }],
+    ]);
+
+    render(
+      <DocumentResolutionList
+        {...defaultProps}
+        diffCounts={diffCounts}
+      />
+    );
+
+    expect(screen.getByText('~3 modified')).toBeDefined();
+    expect(screen.queryByText(/added/)).toBeNull();
+    expect(screen.queryByText(/removed/)).toBeNull();
+  });
+
+  it('does not show diff badges when diffCounts is not provided', () => {
+    render(<DocumentResolutionList {...defaultProps} />);
+
+    expect(screen.queryByText(/added/)).toBeNull();
+    expect(screen.queryByText(/removed/)).toBeNull();
+    expect(screen.queryByText(/modified/)).toBeNull();
   });
 });

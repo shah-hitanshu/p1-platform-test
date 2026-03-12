@@ -3,13 +3,18 @@
  *
  * Top-level page for multi-document merge conflict resolution.
  * Composes toolbar, document list, and detail panel.
+ *
+ * Computes per-document diffs and threads config + diffs to children.
  */
 
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import type { CSSClient } from '@pantheon/css-client';
 import { useMergeResolution } from '../../hooks/useMergeResolution.js';
+import { diffPuckDataWithPositions } from '../../utils/diff.js';
+import type { ComponentDiffWithPosition } from '../../types.js';
 import { MergeResolutionToolbar } from './MergeResolutionToolbar.js';
 import { DocumentResolutionList } from './DocumentResolutionList.js';
+import type { DiffCounts } from './DocumentResolutionList.js';
 import { DocumentResolutionDetail } from './DocumentResolutionDetail.js';
 
 export interface MergeResolutionPageProps {
@@ -19,7 +24,7 @@ export interface MergeResolutionPageProps {
   targetBranchId: string;
   sourceBranchName: string;
   targetBranchName: string;
-  /** Puck config for rendering previews. Reserved for future Puck Render integration. */
+  /** Puck config for rendering previews. */
   config: unknown;
   onClose: () => void;
   onMergeComplete?: () => void;
@@ -34,14 +39,10 @@ export function MergeResolutionPage({
   targetBranchId,
   sourceBranchName,
   targetBranchName,
-  // config is accepted for future Puck Render integration
-  config: _config,
+  config,
   onClose,
   onMergeComplete,
 }: MergeResolutionPageProps): React.ReactElement {
-  // Suppress unused variable lint error for config
-  void _config;
-
   const hook = useMergeResolution({
     client,
     siteId,
@@ -67,6 +68,40 @@ export function MergeResolutionPage({
       onMergeComplete();
     }
   }, [hook.mergeSuccess, onMergeComplete]);
+
+  // Compute per-document diffs
+  const documentDiffs = useMemo(() => {
+    const diffsMap = new Map<string, ComponentDiffWithPosition[]>();
+    for (const doc of hook.documents) {
+      if (doc.sourceSnapshot && doc.targetSnapshot) {
+        diffsMap.set(
+          doc.documentId,
+          diffPuckDataWithPositions(doc.sourceSnapshot, doc.targetSnapshot)
+        );
+      }
+    }
+    return diffsMap;
+  }, [hook.documents]);
+
+  // Derive diff counts for the list
+  const diffCounts = useMemo(() => {
+    const counts = new Map<string, DiffCounts>();
+    for (const [docId, diffs] of documentDiffs) {
+      const count: DiffCounts = { added: 0, removed: 0, modified: 0 };
+      for (const diff of diffs) {
+        if (diff.type === 'added') count.added++;
+        else if (diff.type === 'removed') count.removed++;
+        else if (diff.type === 'modified') count.modified++;
+      }
+      counts.set(docId, count);
+    }
+    return counts;
+  }, [documentDiffs]);
+
+  // Get diffs for the currently selected document
+  const currentDiffs = hook.currentDocument
+    ? documentDiffs.get(hook.currentDocument.documentId) || []
+    : [];
 
   // Loading state
   if (hook.previewLoading) {
@@ -140,6 +175,7 @@ export function MergeResolutionPage({
             goToDocument={hook.goToDocument}
             setStrategy={hook.setStrategy}
             setRemainingStrategy={hook.setRemainingStrategy}
+            diffCounts={diffCounts}
           />
         </div>
 
@@ -152,6 +188,8 @@ export function MergeResolutionPage({
             onCherryPickSelection={hook.setCherryPickSelection}
             onAcceptAllComponentProps={hook.acceptAllComponentProps}
             onFetchCrdtPreview={hook.fetchCrdtPreview}
+            config={config}
+            diffs={currentDiffs}
           />
         </div>
       </div>

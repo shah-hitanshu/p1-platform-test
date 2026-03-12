@@ -1,11 +1,20 @@
 /**
  * DocumentResolutionList Component
  *
- * Scrollable list of documents with strategy badges and keyboard navigation.
+ * Scrollable list of documents with strategy badges, diff summary badges,
+ * and keyboard navigation.
+ *
+ * All visual styling uses inline React styles.
  */
 
 import React, { useEffect, useRef, useCallback } from 'react';
 import type { DocumentResolution, DocumentResolutionStrategy } from '../../hooks/useMergeResolution.js';
+
+export interface DiffCounts {
+  added: number;
+  removed: number;
+  modified: number;
+}
 
 export interface DocumentResolutionListProps {
   documents: DocumentResolution[];
@@ -17,6 +26,8 @@ export interface DocumentResolutionListProps {
   setStrategy: (documentId: string, strategy: DocumentResolutionStrategy) => void;
   setRemainingStrategy: (strategy: 'accept-draft' | 'accept-live') => void;
   onToggleDetail?: () => void;
+  /** Per-document diff counts (added/removed/modified) */
+  diffCounts?: Map<string, DiffCounts>;
 }
 
 const baseClass = 'document-resolution-list';
@@ -30,8 +41,7 @@ const ulStyle: React.CSSProperties = {
 
 const liBaseStyle: React.CSSProperties = {
   display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
+  flexDirection: 'column',
   padding: '10px 12px',
   cursor: 'pointer',
   borderBottom: '1px solid #f0f0f0',
@@ -43,6 +53,12 @@ const liSelectedStyle: React.CSSProperties = {
   ...liBaseStyle,
   background: '#e8f4fd',
   borderLeft: '3px solid #0066cc',
+};
+
+const liTopRowStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
 };
 
 const pathStyle: React.CSSProperties = {
@@ -87,6 +103,27 @@ const strategyKeyMap: Record<string, DocumentResolutionStrategy> = {
   '4': 'crdt-preview',
 };
 
+// Diff count badge styles
+const diffBadgeContainerStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: '6px',
+  marginTop: '4px',
+  flexWrap: 'wrap',
+};
+
+const diffBadgeStyle: React.CSSProperties = {
+  fontSize: '10px',
+  fontWeight: 500,
+  padding: '1px 6px',
+  borderRadius: '8px',
+};
+
+const diffBadgeColors: Record<string, React.CSSProperties> = {
+  added: { background: '#dcfce7', color: '#166534' },
+  removed: { background: '#fee2e2', color: '#991b1b' },
+  modified: { background: '#fef9c3', color: '#854d0e' },
+};
+
 export function DocumentResolutionList({
   documents,
   currentIndex,
@@ -97,6 +134,7 @@ export function DocumentResolutionList({
   setStrategy,
   setRemainingStrategy,
   onToggleDetail,
+  diffCounts,
 }: DocumentResolutionListProps): React.ReactElement {
   const listRef = useRef<HTMLUListElement>(null);
   const itemRefs = useRef<Map<number, HTMLLIElement>>(new Map());
@@ -193,29 +231,65 @@ export function DocumentResolutionList({
       tabIndex={0}
       ref={listRef}
     >
-      {documents.map((doc, index) => (
-        <li
-          key={doc.documentId}
-          className={`${baseClass}__item ${index === currentIndex ? `${baseClass}__item--selected` : ''}`}
-          style={index === currentIndex ? liSelectedStyle : liBaseStyle}
-          aria-selected={index === currentIndex}
-          role="listitem"
-          ref={(el) => {
-            if (el) {
-              itemRefs.current.set(index, el);
-            }
-          }}
-          onClick={() => goToDocument(index)}
-        >
-          <span className={`${baseClass}__path`} style={pathStyle}>{doc.documentPath}</span>
-          <span
-            className={`${baseClass}__badge ${baseClass}__badge--${doc.strategy}`}
-            style={{ ...badgeBaseStyle, ...badgeColors[doc.strategy] }}
+      {documents.map((doc, index) => {
+        const counts = diffCounts?.get(doc.documentId);
+
+        return (
+          <li
+            key={doc.documentId}
+            className={`${baseClass}__item ${index === currentIndex ? `${baseClass}__item--selected` : ''}`}
+            style={index === currentIndex ? liSelectedStyle : liBaseStyle}
+            aria-selected={index === currentIndex}
+            role="listitem"
+            ref={(el) => {
+              if (el) {
+                itemRefs.current.set(index, el);
+              }
+            }}
+            onClick={() => goToDocument(index)}
           >
-            {strategyLabels[doc.strategy]}
-          </span>
-        </li>
-      ))}
+            <div style={liTopRowStyle}>
+              <span className={`${baseClass}__path`} style={pathStyle}>{doc.documentPath}</span>
+              <span
+                className={`${baseClass}__badge ${baseClass}__badge--${doc.strategy}`}
+                style={{ ...badgeBaseStyle, ...badgeColors[doc.strategy] }}
+              >
+                {strategyLabels[doc.strategy]}
+              </span>
+            </div>
+
+            {/* Diff count badges */}
+            {counts && (counts.added > 0 || counts.removed > 0 || counts.modified > 0) && (
+              <div className={`${baseClass}__diff-counts`} style={diffBadgeContainerStyle}>
+                {counts.added > 0 && (
+                  <span
+                    className={`${baseClass}__diff-badge ${baseClass}__diff-badge--added`}
+                    style={{ ...diffBadgeStyle, ...diffBadgeColors.added }}
+                  >
+                    +{counts.added} added
+                  </span>
+                )}
+                {counts.removed > 0 && (
+                  <span
+                    className={`${baseClass}__diff-badge ${baseClass}__diff-badge--removed`}
+                    style={{ ...diffBadgeStyle, ...diffBadgeColors.removed }}
+                  >
+                    -{counts.removed} removed
+                  </span>
+                )}
+                {counts.modified > 0 && (
+                  <span
+                    className={`${baseClass}__diff-badge ${baseClass}__diff-badge--modified`}
+                    style={{ ...diffBadgeStyle, ...diffBadgeColors.modified }}
+                  >
+                    ~{counts.modified} modified
+                  </span>
+                )}
+              </div>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }

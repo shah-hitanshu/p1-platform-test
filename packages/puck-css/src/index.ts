@@ -171,14 +171,19 @@ export {
   ResolutionStrategyPicker,
   CrdtPreviewPanel,
   MergeResolutionToolbar,
+  ComponentClickOverlay,
+  CherryPickVisualPanel,
 } from './components/merge-resolution/index.js';
 export type {
   MergeResolutionPageProps,
   DocumentResolutionListProps,
+  DiffCounts,
   DocumentResolutionDetailProps,
   ResolutionStrategyPickerProps,
   CrdtPreviewPanelProps,
   MergeResolutionToolbarProps,
+  ComponentClickOverlayProps,
+  CherryPickVisualPanelProps,
 } from './components/merge-resolution/index.js';
 
 // Merge Resolution Hook
