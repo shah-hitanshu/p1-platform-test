@@ -1185,22 +1185,22 @@ function CSSPuckProviderInner({
         }
       }
 
-      // When realtime is connected, wait for the DO to acknowledge receipt of
-      // ALL preceding WebSocket messages — not just pending data, but any edits
-      // sent during normal editing via saveData's applyLocalChange. The debounced
-      // save may have already cleared pendingDataRef, but the binary WS message
-      // could still be in transit. TCP ordering guarantees the ack request
-      // arrives after all binary updates on the same connection.
+      // When realtime is connected, use WebSocket-driven publish.
+      // The DO handles the entire flow: flush CRDT to Postgres, then
+      // create the checkpoint. TCP ordering guarantees all preceding
+      // binary CRDT updates are processed before the publish_request.
       if (enableRealtime && realtimeConnectedRef.current) {
-        try {
-          await realtime.waitForDelivery();
-        } catch {
-          // Best-effort: if ack fails (timeout/disconnect), proceed with
-          // publish anyway — the backend flush is still a safety net.
-          console.warn('[CSSPuckProvider] Delivery ack before publish failed, proceeding anyway');
+        const publishResult = await realtime.requestPublish();
+        if (!publishResult.success) {
+          throw new Error(publishResult.error ?? 'Publish failed');
         }
+        if (!publishResult.checkpoint) {
+          throw new Error('Publish succeeded but no checkpoint returned');
+        }
+        return publishResult.checkpoint;
       }
 
+      // Fallback: HTTP publish when realtime is not connected
       const result = await userClient.documents.publish(siteId, branchId, doc.id);
       return result.checkpoint;
     },

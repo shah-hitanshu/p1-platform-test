@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { RealtimeClient } from '@pantheon/css-client';
-import type { PuckData, ActorPresence, ActorState } from '@pantheon/css-client';
+import type { PuckData, ActorPresence, ActorState, PublishResult } from '@pantheon/css-client';
 import {
   createPuckYjsBinding,
   type PuckData as BindingPuckData,
@@ -114,6 +114,15 @@ export interface UseRealtimeReturn {
    * @throws Error if not connected or if timeout expires
    */
   waitForDelivery: () => Promise<void>;
+
+  /**
+   * Request the server to publish the current document via WebSocket.
+   * The Durable Object handles flush + publish internally, eliminating
+   * client-side orchestration and race conditions.
+   * @returns Promise that resolves with the publish result
+   * @throws Error if not connected or if timeout expires
+   */
+  requestPublish: () => Promise<PublishResult>;
 }
 
 /**
@@ -334,6 +343,14 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
     return Promise.reject(new Error('Not connected'));
   }, []);
 
+  // Request publish via WebSocket (DO handles flush + publish)
+  const requestPublish = useCallback((): Promise<PublishResult> => {
+    if (clientRef.current) {
+      return clientRef.current.requestPublish();
+    }
+    return Promise.reject(new Error('Not connected'));
+  }, []);
+
   return {
     connected,
     applyLocalChange,
@@ -344,5 +361,6 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
     presenceViaWebSocket,
     connectedDocumentPath: connectedDocumentPathRef.current,
     waitForDelivery,
+    requestPublish,
   };
 }
