@@ -217,6 +217,8 @@ interface DocumentSessionEnv {
   HYPERDRIVE?: Hyperdrive;
   /** Phase 3.2: PresenceManager DO binding for site-level presence aggregation */
   PRESENCE?: DurableObjectNamespace;
+  /** DocumentSession DO namespace for cross-branch reload after publish */
+  DOCUMENT_STATE?: DurableObjectNamespace;
 }
 
 /**
@@ -4076,7 +4078,27 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
         sourceBranchName?: string;
       } = await publishResponse.json();
 
-      // Step 3: Send success result back to client
+      // Step 3: Reload the main branch DO if we published cross-branch.
+      // Publishing from a non-main branch copies the version to main in Postgres,
+      // but the main branch DO still has stale CRDT state. Calling /reload makes
+      // it re-initialize from Postgres and broadcast the diff to connected clients.
+      if (
+        result.checkpoint.branchId !== branchId &&
+        this.env.DOCUMENT_STATE !== undefined
+      ) {
+        const mainSessionId = `${siteId}:${documentId}:${result.checkpoint.branchId}`;
+        try {
+          const mainDoId = this.env.DOCUMENT_STATE.idFromName(mainSessionId);
+          const mainStub = this.env.DOCUMENT_STATE.get(mainDoId);
+          await mainStub.fetch(new Request('http://internal/reload', {
+            method: 'POST',
+          }));
+        } catch (reloadError) {
+          console.warn('Failed to reload main branch DO after publish:', reloadError);
+        }
+      }
+
+      // Step 4: Send success result back to client
       this.sendWsMessage(sender, {
         type: 'publish_result',
         requestId,
