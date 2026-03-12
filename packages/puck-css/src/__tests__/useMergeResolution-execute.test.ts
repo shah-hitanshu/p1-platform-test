@@ -280,6 +280,29 @@ describe('useMergeResolution - executeMerge', () => {
     expect(result.current.mergeExecuting).toBe(false);
   });
 
+  it('throws error for unresolved documents instead of silent fallback', async () => {
+    const mockClient = createMockClient();
+    mockClient.merge.preview.mockResolvedValue(createMergePreview());
+    mockClient.merge.execute.mockResolvedValue({ success: true });
+    const options = createOptions(mockClient);
+
+    const { result } = renderHook(() => useMergeResolution(options));
+
+    await act(async () => {
+      await result.current.loadPreview();
+    });
+
+    // Do NOT resolve all documents — leave them unresolved
+    await act(async () => {
+      await result.current.executeMerge();
+    });
+
+    // Should set mergeError because documents are still unresolved
+    expect(result.current.mergeError).toMatch(/still unresolved/);
+    expect(result.current.mergeSuccess).toBe(false);
+    expect(mockClient.merge.execute).not.toHaveBeenCalled();
+  });
+
   it('sets mergeError on failure', async () => {
     const mockClient = createMockClient();
     mockClient.merge.preview.mockResolvedValue(createMergePreview());

@@ -2,7 +2,7 @@
  * DocumentResolutionList Tests
  *
  * Tests for the document list component - rendering, selection,
- * strategy badges, and keyboard navigation.
+ * strategy badges, and keyboard navigation including Enter key.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -70,6 +70,7 @@ describe('DocumentResolutionList', () => {
     goToDocument: vi.fn(),
     setStrategy: vi.fn(),
     setRemainingStrategy: vi.fn(),
+    onToggleDetail: vi.fn(),
   };
 
   it('renders document paths for all documents', () => {
@@ -94,6 +95,13 @@ describe('DocumentResolutionList', () => {
     const items = screen.getAllByRole('listitem');
     expect(items[1].getAttribute('aria-selected')).toBe('true');
     expect(items[0].getAttribute('aria-selected')).toBe('false');
+  });
+
+  it('uses semantic ul element', () => {
+    const { container } = render(<DocumentResolutionList {...defaultProps} />);
+
+    const list = container.querySelector('ul');
+    expect(list).not.toBeNull();
   });
 
   it('ArrowDown/J moves selection to next document', () => {
@@ -133,6 +141,19 @@ describe('DocumentResolutionList', () => {
 
     fireEvent.keyDown(container.firstElementChild!, { key: 'n' });
     expect(goToNextUnresolved).toHaveBeenCalledTimes(1);
+  });
+
+  it('Enter key calls onToggleDetail', () => {
+    const onToggleDetail = vi.fn();
+    const { container } = render(
+      <DocumentResolutionList
+        {...defaultProps}
+        onToggleDetail={onToggleDetail}
+      />
+    );
+
+    fireEvent.keyDown(container.firstElementChild!, { key: 'Enter' });
+    expect(onToggleDetail).toHaveBeenCalledTimes(1);
   });
 
   it('1/2/3/4 keys set strategy on current document', () => {

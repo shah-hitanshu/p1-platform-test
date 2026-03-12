@@ -16,6 +16,7 @@ export interface DocumentResolutionListProps {
   goToDocument: (index: number) => void;
   setStrategy: (documentId: string, strategy: DocumentResolutionStrategy) => void;
   setRemainingStrategy: (strategy: 'accept-draft' | 'accept-live') => void;
+  onToggleDetail?: () => void;
 }
 
 const baseClass = 'document-resolution-list';
@@ -44,8 +45,9 @@ export function DocumentResolutionList({
   goToDocument,
   setStrategy,
   setRemainingStrategy,
+  onToggleDetail,
 }: DocumentResolutionListProps): React.ReactElement {
-  const listRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const itemRefs = useRef<Map<number, HTMLLIElement>>(new Map());
 
   // Auto-scroll selected item into view
@@ -87,6 +89,13 @@ export function DocumentResolutionList({
         return;
       }
 
+      // Toggle detail view
+      if (key === 'Enter') {
+        e.preventDefault();
+        onToggleDetail?.();
+        return;
+      }
+
       // Strategy shortcuts
       if (key in strategyKeyMap && !e.shiftKey) {
         e.preventDefault();
@@ -117,16 +126,16 @@ export function DocumentResolutionList({
       goToNextUnresolved,
       setStrategy,
       setRemainingStrategy,
+      onToggleDetail,
     ]
   );
 
   return (
-    <div
+    <ul
       className={baseClass}
       onKeyDown={handleKeyDown}
       tabIndex={0}
       ref={listRef}
-      role="list"
     >
       {documents.map((doc, index) => (
         <li
@@ -149,6 +158,6 @@ export function DocumentResolutionList({
           </span>
         </li>
       ))}
-    </div>
+    </ul>
   );
 }

@@ -19,6 +19,7 @@ export interface MergeResolutionPageProps {
   targetBranchId: string;
   sourceBranchName: string;
   targetBranchName: string;
+  /** Puck config for rendering previews. Reserved for future Puck Render integration. */
   config: unknown;
   onClose: () => void;
   onMergeComplete?: () => void;
@@ -33,9 +34,14 @@ export function MergeResolutionPage({
   targetBranchId,
   sourceBranchName,
   targetBranchName,
+  // config is accepted for future Puck Render integration
+  config: _config,
   onClose,
   onMergeComplete,
 }: MergeResolutionPageProps): React.ReactElement {
+  // Suppress unused variable lint error for config
+  void _config;
+
   const hook = useMergeResolution({
     client,
     siteId,
@@ -111,6 +117,12 @@ export function MergeResolutionPage({
         onSetAllStrategy={hook.setAllStrategy}
       />
 
+      {hook.mergeError && (
+        <p className={`${baseClass}__merge-error`} role="alert">
+          {hook.mergeError}
+        </p>
+      )}
+
       <div className={`${baseClass}__content`}>
         <div className={`${baseClass}__list`}>
           <DocumentResolutionList
@@ -128,7 +140,12 @@ export function MergeResolutionPage({
         <div className={`${baseClass}__detail`}>
           <DocumentResolutionDetail
             document={hook.currentDocument}
+            sourceBranchName={sourceBranchName}
+            targetBranchName={targetBranchName}
             onSetStrategy={hook.setStrategy}
+            onCherryPickSelection={hook.setCherryPickSelection}
+            onAcceptAllComponentProps={hook.acceptAllComponentProps}
+            onFetchCrdtPreview={hook.fetchCrdtPreview}
           />
         </div>
       </div>

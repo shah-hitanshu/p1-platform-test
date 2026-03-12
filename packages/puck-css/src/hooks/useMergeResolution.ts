@@ -480,7 +480,9 @@ export function useMergeResolution(
             case 'crdt-preview':
               return { documentId: doc.documentId, strategy: 'merge-crdt' as const };
             default:
-              return { documentId: doc.documentId, strategy: 'take-source' as const };
+              throw new Error(
+                `Cannot execute merge: document "${doc.documentPath}" (${doc.documentId}) is still unresolved`
+              );
           }
         });
 

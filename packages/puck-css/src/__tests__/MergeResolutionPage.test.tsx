@@ -89,8 +89,8 @@ describe('MergeResolutionPage', () => {
   it('renders toolbar, document list, and detail panel', () => {
     render(<MergeResolutionPage {...defaultProps} />);
 
-    // Toolbar should show branch names
-    expect(screen.getByText(/my-feature/)).toBeDefined();
+    // Toolbar should show branch names in Draft (branch-name) -> target format
+    expect(screen.getByText(/Draft \(my-feature\) → Live/)).toBeDefined();
 
     // Document list should show document paths
     expect(screen.getByText('/home')).toBeDefined();
@@ -99,12 +99,11 @@ describe('MergeResolutionPage', () => {
     expect(screen.getByTestId('merge-resolution-detail')).toBeDefined();
   });
 
-  it('passes branch names to toolbar', () => {
+  it('passes branch names to toolbar in correct format', () => {
     render(<MergeResolutionPage {...defaultProps} />);
 
-    expect(screen.getByText(/my-feature/)).toBeDefined();
-    // Branch label contains "my-feature → Live"
-    expect(screen.getByText(/my-feature → Live/)).toBeDefined();
+    // Branch label uses "Draft (branch-name) → Live" format
+    expect(screen.getByText(/Draft \(my-feature\) → Live/)).toBeDefined();
   });
 
   it('shows loading state while preview is loading', () => {
@@ -127,6 +126,17 @@ describe('MergeResolutionPage', () => {
     render(<MergeResolutionPage {...defaultProps} />);
 
     expect(screen.getByText(/Failed to load preview/)).toBeDefined();
+  });
+
+  it('shows merge error to the user', () => {
+    hookReturnOverrides = {
+      mergeError: 'Merge execution failed due to conflict',
+    };
+
+    render(<MergeResolutionPage {...defaultProps} />);
+
+    expect(screen.getByText('Merge execution failed due to conflict')).toBeDefined();
+    expect(screen.getByRole('alert')).toBeDefined();
   });
 
   it('calls onClose when back button clicked', () => {
