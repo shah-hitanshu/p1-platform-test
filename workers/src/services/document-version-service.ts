@@ -161,6 +161,17 @@ function isForeignKeyViolation(error: unknown): boolean {
 }
 
 /**
+ * Checks if an error is a PostgreSQL unique constraint violation.
+ */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    (error as NodeJS.ErrnoException).code === '23505'
+  );
+}
+
+/**
  * Deep comparison of two values for equality.
  * Used to compare snapshots to avoid creating duplicate versions.
  */
@@ -260,6 +271,20 @@ export async function createDocumentVersion(
   } catch (error) {
     if (isForeignKeyViolation(error)) {
       throw new DocumentNotFoundError(params.documentId);
+    }
+    // Unique constraint violation on (document_id, branch_id, version_number)
+    // means a concurrent sync (e.g. queue) already wrote a version with the same
+    // version_number. Return the latest version instead of failing — the data is
+    // in Postgres, which is what the caller needs.
+    if (isUniqueViolation(error)) {
+      console.warn(
+        'createDocumentVersion: unique constraint hit for document ' +
+          `${params.documentId} on branch ${params.branchId}, returning latest version`,
+      );
+      const latest = await getLatestDocumentVersion(params.documentId, params.branchId);
+      if (latest !== null) {
+        return latest;
+      }
     }
     throw new DatabaseError('Failed to create document version', 'createDocumentVersion');
   }

@@ -64,7 +64,7 @@ import type {
   WsPresenceErrorMessage,
   WsServerMessage,
 } from '../types/websocket-messages';
-import { isWsFocusRegionUpdate, isWsPresenceHeartbeat } from '../types/websocket-messages';
+import { isWsFocusRegionUpdate, isWsPresenceHeartbeat, isWsDeliveryAckRequest, isWsPublishRequest } from '../types/websocket-messages';
 
 /**
  * Storage key for persisted Yjs document state
@@ -217,6 +217,8 @@ interface DocumentSessionEnv {
   HYPERDRIVE?: Hyperdrive;
   /** Phase 3.2: PresenceManager DO binding for site-level presence aggregation */
   PRESENCE?: DurableObjectNamespace;
+  /** DocumentSession DO namespace for cross-branch reload after publish */
+  DOCUMENT_STATE?: DurableObjectNamespace;
 }
 
 /**
@@ -381,35 +383,6 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   /**
-   * Create a compact summary of the current Y.Doc state for diagnostic logging.
-   * Includes content item count, types, and a truncated JSON preview.
-   */
-  private snapshotSummary(): string {
-    try {
-      const root = this.ydoc.getMap('root');
-      const json = root.toJSON() as Record<string, unknown>;
-      const content = Array.isArray(json.content)
-        ? json.content
-        : [];
-      const types = content
-        .map((c: unknown) => {
-          const obj = c as Record<string, unknown> | null;
-          if (obj !== null && typeof obj === 'object') {
-            const t = obj.type;
-            return typeof t === 'string' ? t : '?';
-          }
-          return '?';
-        })
-        .join(',');
-      const preview = JSON.stringify(json).slice(0, 200);
-      return `items=${String(content.length)} types=[${types}]`
-        + ` preview=${preview}`;
-    } catch {
-      return '<error reading snapshot>';
-    }
-  }
-
-  /**
    * Get current connection count
    */
   getConnectionCount(): number {
@@ -523,6 +496,10 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
         case '/sync':
           await this.initializeCrdtIfNeeded();
           return await this.handleSync(request);
+
+        case '/flush':
+          await this.initializeCrdtIfNeeded();
+          return await this.handleFlush(request);
 
         case '/initialize':
           await this.initializeCrdtIfNeeded();
@@ -651,9 +628,6 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       return;
     }
 
-    const sid = JSON.stringify(this.sessionInfo);
-    console.log(`[DO-DIAG] initializeCrdtIfNeeded START session=${sid}`);
-
     const stored = await this.state.storage.get(YDOC_STORAGE_KEY);
 
     if (stored instanceof Uint8Array && stored.length > 0) {
@@ -663,21 +637,10 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
         this.initialized = true;
         // Set initial state vector hash to prevent unnecessary syncs
         this.lastSyncedStateVectorHash = this.computeStateVectorHash();
-        console.log(
-          '[DO-DIAG] initializeCrdtIfNeeded LOADED from DO storage,'
-          + ` size=${String(stored.length)},`
-          + ` ${this.snapshotSummary()}`,
-        );
       } catch (error) {
         // Invalid stored data - log and try PostgreSQL fallback
         console.warn('Failed to restore CRDT state from storage:', error);
       }
-    } else {
-      console.log(
-        '[DO-DIAG] initializeCrdtIfNeeded:'
-        + ' DO storage empty or not Uint8Array'
-        + ` (type=${typeof stored})`,
-      );
     }
 
     // Priority 2: Try to load from PostgreSQL if DO storage was empty or invalid
@@ -688,17 +651,14 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       if (hasHttpApi || hasHyperdrive) {
         try {
           await this.initializeFromPostgres();
-          console.log(
-            '[DO-DIAG] initializeCrdtIfNeeded'
-            + ' LOADED from PostgreSQL,'
-            + ` ${this.snapshotSummary()}`,
-          );
         } catch (error) {
           console.warn('Failed to initialize from PostgreSQL:', error);
           // Continue with empty state
         }
       }
       this.initialized = true;
+      // Set hash for empty state so flush won't try to sync an empty Y.Doc
+      this.lastSyncedStateVectorHash ??= this.computeStateVectorHash();
     }
 
     // Phase 1.1: Restore persist pending flag from storage (survives hibernation)
@@ -1438,15 +1398,6 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       stateUpdate = Y.encodeStateAsUpdate(this.ydoc);
     }
 
-    console.log(
-      '[DO-DIAG] handleWebSocket SEND initial state'
-      + ` actor=${actorId},`
-      + ` size=${String(stateUpdate.length)},`
-      + ` delta=${String(stateVectorParam !== null)},`
-      + ` conns=${String(this.getConnectionCount())},`
-      + ` session=${JSON.stringify(this.sessionInfo)},`
-      + ` ${this.snapshotSummary()}`,
-    );
     server.send(stateUpdate);
 
     // Broadcast presence update to all clients (new connection joined)
@@ -1515,6 +1466,10 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    // Restore session info from storage if state.id.name is unavailable (Miniflare).
+    // webSocketMessage is called directly by the runtime — not through fetch() —
+    // so updateSessionInfoFromRequest never runs on DO restart.
+    await this.restoreSessionInfoFromStorage();
     await this.initializeCrdtIfNeeded();
 
     const meta = this.getConnectionMeta(ws);
@@ -1550,6 +1505,13 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     try {
       // Distinguish text (presence JSON) from binary (Yjs CRDT) messages
       if (typeof message === 'string') {
+        // Check for publish_request first — it's async (involves flush + HTTP)
+        // and must be handled before the sync handlePresenceMessage
+        const parsed = this.tryParseJson(message);
+        if (parsed !== null && isWsPublishRequest(parsed)) {
+          await this.handleWsPublishRequest(ws, meta, parsed);
+          return;
+        }
         this.handlePresenceMessage(ws, meta, message);
         return;
       }
@@ -1565,27 +1527,8 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
       const update = new Uint8Array(data);
 
-      // Diagnostic: snapshot BEFORE applying update
-      const beforeSummary = this.snapshotSummary();
-
       // Apply update to local doc
       Y.applyUpdate(this.ydoc, update);
-
-      // Diagnostic: snapshot AFTER applying update
-      const afterSummary = this.snapshotSummary();
-      const otherConnCount = this.state.getWebSockets()
-        .filter((c: WebSocket) => c !== ws
-          && c.readyState === WebSocket.OPEN)
-        .length;
-      console.log(
-        '[DO-DIAG] webSocketMessage'
-        + ` actor=${meta.actorId},`
-        + ` updateSize=${String(update.length)},`
-        + ` broadcastTo=${String(otherConnCount)},`
-        + ` session=${JSON.stringify(this.sessionInfo)}`
-        + `\n  BEFORE: ${beforeSummary}`
-        + `\n  AFTER:  ${afterSummary}`,
-      );
 
       // Phase 1.2: Batch broadcast — accumulate update and schedule flush
       this.enqueueBroadcast(ws, update);
@@ -1635,13 +1578,6 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
    * @param actorId - The actor ID associated with this connection
    */
   private async handleWebSocketDisconnect(server: WebSocket, actorId: string): Promise<void> {
-    console.log(
-      '[DO-DIAG] handleWebSocketDisconnect'
-      + ` actor=${actorId},`
-      + ` remainingConns=${String(this.getConnectionCount())},`
-      + ` session=${JSON.stringify(this.sessionInfo)},`
-      + ` ${this.snapshotSummary()}`,
-    );
     // Runtime manages WebSocket removal for Hibernatable API
     incrementCounter('css_ws_connections_total', { action: 'close' });
     setGauge('css_ws_connections_active', this.getConnectionCount());
@@ -1767,6 +1703,168 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       JSON.stringify(response),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     );
+  }
+
+  /**
+   * Handle /flush endpoint
+   * Synchronously flush CRDT state to PostgreSQL, bypassing the async queue.
+   * Used before publish operations to ensure the latest version is in Postgres.
+   * Returns { flushed: true } if a sync occurred, { flushed: false, reason } if not.
+   */
+  private async handleFlush(request: Request): Promise<Response> {
+    if (request.method !== 'POST') {
+      return this.errorResponse(405, 'Method not allowed. Use POST.');
+    }
+
+    // Persist to DO storage first
+    await this.flushPendingPersist();
+
+    // Always attempt to sync on flush — do not use the state vector hash check.
+    // The hash is optimized for the regular async sync (alarm-driven), but the flush
+    // is called before publish where correctness matters more than avoiding a redundant write.
+    // The SQL dedup in executeDirectSync prevents duplicate versions anyway.
+
+    // Check if sync infrastructure is configured
+    const internalApiUrl = this.env.INTERNAL_API_URL;
+    const internalSecret = this.env.INTERNAL_SECRET;
+    if (internalApiUrl === undefined || internalSecret === undefined) {
+      return new Response(
+        JSON.stringify({ flushed: false, reason: 'no_sync_config' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    // Get actor info from sync schedule (or default)
+    let actorId = 'system';
+    let actorType: 'user' | 'agent' = 'user';
+    const schedule = await this.state.storage.get<{ dueAt: number; actorId: string; actorType: 'user' | 'agent' }>(DocumentSession.SYNC_SCHEDULE_KEY);
+    if (schedule !== undefined) {
+      actorId = schedule.actorId;
+      actorType = schedule.actorType;
+    }
+
+    // Perform synchronous direct sync (bypasses queue)
+    try {
+      await this.performDirectSync(internalApiUrl, internalSecret, actorId, actorType);
+      return new Response(
+        JSON.stringify({ flushed: true }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    } catch (error) {
+      console.error('Flush failed:', error);
+      return this.errorResponse(500, `Flush failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Perform a synchronous sync to PostgreSQL, bypassing the async queue.
+   * Uses direct Hyperdrive connection when available, falls back to HTTP internal API.
+   * Unlike performSync(), this method never uses the queue and always awaits completion.
+   */
+  private async performDirectSync(
+    internalApiUrl: string,
+    internalSecret: string,
+    actorId: string,
+    actorType: 'user' | 'agent',
+  ): Promise<void> {
+    // If another sync is in progress, wait for it
+    if (this.syncInProgress !== null) {
+      await this.syncInProgress;
+    }
+
+    // Set the lock so concurrent syncs (e.g. alarm-driven) wait for us
+    const directSyncPromise = this.executeDirectSync(internalApiUrl, internalSecret, actorId, actorType);
+    this.syncInProgress = directSyncPromise;
+    try {
+      await directSyncPromise;
+    } finally {
+      this.syncInProgress = null;
+    }
+  }
+
+  /**
+   * Execute the direct sync write. Separated to enable proper syncInProgress locking.
+   */
+  private async executeDirectSync(
+    internalApiUrl: string,
+    internalSecret: string,
+    actorId: string,
+    actorType: 'user' | 'agent',
+  ): Promise<void> {
+    const root = this.ydoc.getMap('root');
+    const snapshot = root.toJSON() as Record<string, unknown>;
+    const crdtState = this.uint8ArrayToBase64(Y.encodeStateAsUpdate(this.ydoc));
+
+    // Phase 5.3: Try direct Hyperdrive path first (synchronous, no queue)
+    if (this.env.HYPERDRIVE !== undefined) {
+      try {
+        await runWithConnection(
+          this.env.HYPERDRIVE.connectionString,
+          { isHyperdrive: true },
+          async () => {
+            // Import and call batchSyncToPostgres is complex; use direct SQL instead
+            // This matches the same dedup logic as batchSyncToPostgres
+            const { documentId, branchId } = this.sessionInfo;
+            await dbQuery(
+              `INSERT INTO app.document_versions (
+                document_id, branch_id, version_number, snapshot, crdt_state,
+                source, created_by_id, created_by_type
+              )
+              SELECT $1, $2,
+                COALESCE(
+                  (SELECT MAX(version_number) FROM app.document_versions
+                   WHERE document_id = $1 AND branch_id = $2),
+                  0
+                ) + 1,
+                $3, decode($4, 'base64'), 'realtime', $5, $6
+              WHERE NOT EXISTS (
+                SELECT 1 FROM (
+                  SELECT snapshot FROM app.document_versions
+                  WHERE document_id = $1 AND branch_id = $2
+                  ORDER BY version_number DESC LIMIT 1
+                ) latest
+                WHERE latest.snapshot IS NOT DISTINCT FROM $3::jsonb
+              )`,
+              [documentId, branchId, snapshot, crdtState, actorId, actorType],
+            );
+          },
+        );
+        this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+        await this.state.storage.delete(DocumentSession.SYNC_SCHEDULE_KEY);
+        console.log(`Flushed document ${this.sessionInfo.documentId} to PostgreSQL (direct DB)`);
+        return;
+      } catch (error) {
+        console.warn('Direct DB flush failed, falling back to HTTP:', error);
+      }
+    }
+
+    // Fallback: HTTP sync (synchronous — awaits response)
+    const syncUrl = `${internalApiUrl}/internal/crdt-sync`;
+    const response = await fetch(syncUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Secret': internalSecret,
+      },
+      body: JSON.stringify({
+        siteId: this.sessionInfo.siteId,
+        documentId: this.sessionInfo.documentId,
+        branchId: this.sessionInfo.branchId,
+        snapshot,
+        crdtState,
+        actorId,
+        actorType,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP sync failed: ${String(response.status)} ${errorText}`);
+    }
+
+    this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+    await this.state.storage.delete(DocumentSession.SYNC_SCHEDULE_KEY);
+    console.log(`Flushed document ${this.sessionInfo.documentId} to PostgreSQL (HTTP)`);
   }
 
   /**
@@ -3863,8 +3961,160 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       this.handleWsFocusRegionUpdate(sender, meta, message);
     } else if (isWsPresenceHeartbeat(message)) {
       this.handleWsPresenceHeartbeat(sender, meta, message);
+    } else if (isWsDeliveryAckRequest(message)) {
+      // Acknowledge that all preceding WebSocket messages have been processed.
+      // Since WebSocket messages are TCP-ordered, by the time we process this
+      // text message, all preceding binary (Yjs) updates have already been
+      // applied to the Y.Doc.
+      this.sendWsMessage(sender, {
+        type: 'delivery_ack',
+        requestId: message.requestId,
+        timestamp: Date.now(),
+      });
     } else {
       this.sendPresenceError(sender, 'UNKNOWN_TYPE', 'Unknown message type');
+    }
+  }
+
+  /**
+   * Try to parse a JSON string, returning null on failure.
+   */
+  private tryParseJson(data: string): unknown {
+    try {
+      return JSON.parse(data);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Handle a publish_request message from a WebSocket client.
+   *
+   * TCP ordering guarantees all preceding binary CRDT updates have been
+   * applied to the Y.Doc by the time this message is processed. The handler:
+   * 1. Flushes the Y.Doc to Postgres (synchronous direct sync)
+   * 2. Calls POST /internal/publish to create the checkpoint
+   * 3. Sends the result back via WebSocket
+   */
+  private async handleWsPublishRequest(
+    sender: WebSocket,
+    meta: ConnectionMeta,
+    message: import('../types/websocket-messages').WsPublishRequestMessage,
+  ): Promise<void> {
+    const { requestId } = message;
+    const { siteId, documentId, branchId } = this.sessionInfo;
+
+    // Validate session info is available
+    if (siteId === 'unknown' || documentId === 'unknown' || branchId === 'unknown') {
+      this.sendWsMessage(sender, {
+        type: 'publish_result',
+        requestId,
+        success: false,
+        error: 'Cannot publish: session info not available',
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    const internalApiUrl = this.env.INTERNAL_API_URL;
+    const internalSecret = this.env.INTERNAL_SECRET;
+
+    if (internalApiUrl === undefined || internalSecret === undefined) {
+      this.sendWsMessage(sender, {
+        type: 'publish_result',
+        requestId,
+        success: false,
+        error: 'Cannot publish: sync infrastructure not configured',
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    try {
+      // Step 1: Flush CRDT state to Postgres
+      let actorId = meta.actorId;
+      let actorType: 'user' | 'agent' = meta.actorType;
+      const schedule = await this.state.storage.get<{ dueAt: number; actorId: string; actorType: 'user' | 'agent' }>(DocumentSession.SYNC_SCHEDULE_KEY);
+      if (schedule !== undefined) {
+        actorId = schedule.actorId;
+        actorType = schedule.actorType;
+      }
+
+      await this.flushPendingPersist();
+      await this.performDirectSync(internalApiUrl, internalSecret, actorId, actorType);
+
+      // Step 2: Call internal publish endpoint
+      const publishUrl = `${internalApiUrl}/internal/publish`;
+      const publishResponse = await fetch(publishUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': internalSecret,
+        },
+        body: JSON.stringify({
+          siteId,
+          branchId,
+          documentId,
+          createdById: meta.actorId,
+          createdByType: meta.actorType,
+        }),
+      });
+
+      if (!publishResponse.ok) {
+        const errorBody = await publishResponse.text();
+        this.sendWsMessage(sender, {
+          type: 'publish_result',
+          requestId,
+          success: false,
+          error: `Publish failed: ${errorBody}`,
+          timestamp: Date.now(),
+        });
+        return;
+      }
+
+      const result: {
+        checkpoint: import('../types').Checkpoint;
+        publishedVersionId: string;
+        sourceBranchName?: string;
+      } = await publishResponse.json();
+
+      // Step 3: Reload the main branch DO if we published cross-branch.
+      // Publishing from a non-main branch copies the version to main in Postgres,
+      // but the main branch DO still has stale CRDT state. Calling /reload makes
+      // it re-initialize from Postgres and broadcast the diff to connected clients.
+      if (
+        result.checkpoint.branchId !== branchId &&
+        this.env.DOCUMENT_STATE !== undefined
+      ) {
+        const mainSessionId = `${siteId}:${documentId}:${result.checkpoint.branchId}`;
+        try {
+          const mainDoId = this.env.DOCUMENT_STATE.idFromName(mainSessionId);
+          const mainStub = this.env.DOCUMENT_STATE.get(mainDoId);
+          await mainStub.fetch(new Request('http://internal/reload', {
+            method: 'POST',
+          }));
+        } catch (reloadError) {
+          console.warn('Failed to reload main branch DO after publish:', reloadError);
+        }
+      }
+
+      // Step 4: Send success result back to client
+      this.sendWsMessage(sender, {
+        type: 'publish_result',
+        requestId,
+        success: true,
+        publishedVersionId: result.publishedVersionId,
+        checkpoint: result.checkpoint,
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      this.sendWsMessage(sender, {
+        type: 'publish_result',
+        requestId,
+        success: false,
+        error: `Publish failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: Date.now(),
+      });
     }
   }
 

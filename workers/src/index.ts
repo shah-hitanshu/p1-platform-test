@@ -1462,7 +1462,10 @@ async function handleRequest(
               const sessionId = `${route.params.siteId}:${route.params.documentId}:${mainBranch.id}`;
               const doId = env.DOCUMENT_STATE.idFromName(sessionId);
               const stub = env.DOCUMENT_STATE.get(doId);
-              await stub.fetch(new Request('http://internal/reload', { method: 'POST' }));
+              await stub.fetch(new Request('http://internal/reload', {
+                method: 'POST',
+                headers: { 'X-Session-Id': sessionId },
+              }));
             }
           } catch (reloadError) {
             console.error('Failed to reload DO after publish:', reloadError);
