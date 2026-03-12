@@ -589,10 +589,54 @@ export interface WsPresenceErrorMessage {
 }
 
 /**
+ * Server acknowledgment that all preceding messages have been processed.
+ * Sent in response to a delivery_ack_request from the client.
+ */
+export interface WsDeliveryAckMessage {
+  type: 'delivery_ack';
+  /** Matches the requestId from the request */
+  requestId: string;
+  /** Server timestamp */
+  timestamp: number;
+}
+
+/**
+ * Result of a WebSocket-driven publish request.
+ * Sent in response to publish_request after the DO completes flush + publish.
+ */
+export interface WsPublishResultMessage {
+  type: 'publish_result';
+  /** Matches the requestId from the request */
+  requestId: string;
+  /** Whether the publish succeeded */
+  success: boolean;
+  /** The published version ID (on success) */
+  publishedVersionId?: string;
+  /** The checkpoint created by the publish (on success) */
+  checkpoint?: Checkpoint;
+  /** Error message (on failure) */
+  error?: string;
+  /** Server timestamp */
+  timestamp: number;
+}
+
+/**
+ * Result returned by requestPublish().
+ */
+export interface PublishResult {
+  success: boolean;
+  publishedVersionId?: string;
+  checkpoint?: Checkpoint;
+  error?: string;
+}
+
+/**
  * Union of all server-to-client WebSocket messages.
  */
 export type WsServerMessage =
   | WsPresenceUpdateMessage
   | WsFocusRegionBroadcastMessage
   | WsFocusRegionAckMessage
-  | WsPresenceErrorMessage;
+  | WsPresenceErrorMessage
+  | WsDeliveryAckMessage
+  | WsPublishResultMessage;

@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { RealtimeClient } from '@pantheon/css-client';
-import type { PuckData, ActorPresence, ActorState } from '@pantheon/css-client';
+import type { PuckData, ActorPresence, ActorState, PublishResult } from '@pantheon/css-client';
 import {
   createPuckYjsBinding,
   type PuckData as BindingPuckData,
@@ -106,6 +106,23 @@ export interface UseRealtimeReturn {
    * that data being sent matches the active connection's document.
    */
   connectedDocumentPath: string | null;
+
+  /**
+   * Wait for the server to acknowledge that all preceding WebSocket messages
+   * have been processed. Used before publish to ensure the DO has the latest edits.
+   * @returns Promise that resolves when the server confirms delivery
+   * @throws Error if not connected or if timeout expires
+   */
+  waitForDelivery: () => Promise<void>;
+
+  /**
+   * Request the server to publish the current document via WebSocket.
+   * The Durable Object handles flush + publish internally, eliminating
+   * client-side orchestration and race conditions.
+   * @returns Promise that resolves with the publish result
+   * @throws Error if not connected or if timeout expires
+   */
+  requestPublish: () => Promise<PublishResult>;
 }
 
 /**
@@ -318,6 +335,22 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
     }
   }, []);
 
+  // Wait for delivery acknowledgment from server
+  const waitForDelivery = useCallback((): Promise<void> => {
+    if (clientRef.current) {
+      return clientRef.current.waitForDelivery();
+    }
+    return Promise.reject(new Error('Not connected'));
+  }, []);
+
+  // Request publish via WebSocket (DO handles flush + publish)
+  const requestPublish = useCallback((): Promise<PublishResult> => {
+    if (clientRef.current) {
+      return clientRef.current.requestPublish();
+    }
+    return Promise.reject(new Error('Not connected'));
+  }, []);
+
   return {
     connected,
     applyLocalChange,
@@ -327,5 +360,7 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
     sendHeartbeat,
     presenceViaWebSocket,
     connectedDocumentPath: connectedDocumentPathRef.current,
+    waitForDelivery,
+    requestPublish,
   };
 }

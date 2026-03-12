@@ -11,6 +11,7 @@ import { WebSocket as ReconnectingWebSocket } from 'partysocket';
 import type {
   ActorPresence,
   ActorState,
+  PublishResult,
   WsFocusRegionUpdateMessage,
   WsPresenceHeartbeatMessage,
   WsServerMessage,
@@ -198,6 +199,22 @@ export class RealtimeClient {
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly RATE_THRESHOLD = 40; // Start buffering at this rate
   private static readonly RATE_WINDOW_MS = 1000; // 1-second sliding window
+
+  // Delivery acknowledgment state
+  private pendingDeliveryAcks: Map<string, {
+    resolve: () => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }> = new Map();
+  private static readonly DELIVERY_ACK_TIMEOUT_MS = 5000;
+
+  // Publish request state
+  private pendingPublishRequests: Map<string, {
+    resolve: (result: PublishResult) => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }> = new Map();
+  private static readonly PUBLISH_TIMEOUT_MS = 30000;
 
   constructor(config: RealtimeClientConfig) {
     this.config = config;
@@ -458,6 +475,20 @@ export class RealtimeClient {
     this.pendingUpdates = [];
     this.sendTimestamps = [];
 
+    // Reject all pending delivery ack promises
+    for (const [requestId, pending] of this.pendingDeliveryAcks) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error('Disconnected'));
+      this.pendingDeliveryAcks.delete(requestId);
+    }
+
+    // Reject all pending publish request promises
+    for (const [requestId, pending] of this.pendingPublishRequests) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error('Disconnected'));
+      this.pendingPublishRequests.delete(requestId);
+    }
+
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -603,6 +634,75 @@ export class RealtimeClient {
   }
 
   /**
+   * Wait for the server to acknowledge that all preceding WebSocket messages
+   * have been processed. This uses TCP ordering guarantees: a text frame sent
+   * after binary CRDT updates is guaranteed to arrive after those updates.
+   * The server echoes back a delivery_ack with the matching requestId.
+   *
+   * Used before publish to ensure the Durable Object has received and applied
+   * the latest edits before the HTTP publish request arrives.
+   *
+   * @returns Promise that resolves when the server confirms delivery
+   * @throws Error if not connected or if timeout expires (5 seconds)
+   */
+  waitForDelivery(): Promise<void> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error('Not connected'));
+    }
+
+    const requestId = crypto.randomUUID();
+
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingDeliveryAcks.delete(requestId);
+        reject(new Error('Delivery acknowledgment timed out'));
+      }, RealtimeClient.DELIVERY_ACK_TIMEOUT_MS);
+
+      this.pendingDeliveryAcks.set(requestId, { resolve, reject, timer });
+
+      this.ws!.send(JSON.stringify({
+        type: 'delivery_ack_request',
+        requestId,
+        timestamp: Date.now(),
+      }));
+    });
+  }
+
+  /**
+   * Request the server to publish the current document via WebSocket.
+   * TCP ordering guarantees all preceding binary CRDT updates have been
+   * processed before this message is handled, eliminating stale-version races.
+   *
+   * The Durable Object handles the entire flow: flush to Postgres, then
+   * call /internal/publish to create the checkpoint.
+   *
+   * @returns Promise that resolves with the publish result
+   * @throws Error if not connected or if timeout expires (30 seconds)
+   */
+  requestPublish(): Promise<PublishResult> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error('Not connected'));
+    }
+
+    const requestId = crypto.randomUUID();
+
+    return new Promise<PublishResult>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingPublishRequests.delete(requestId);
+        reject(new Error('Publish request timed out'));
+      }, RealtimeClient.PUBLISH_TIMEOUT_MS);
+
+      this.pendingPublishRequests.set(requestId, { resolve, reject, timer });
+
+      this.ws!.send(JSON.stringify({
+        type: 'publish_request',
+        requestId,
+        timestamp: Date.now(),
+      }));
+    });
+  }
+
+  /**
    * Handle incoming text (JSON) messages for presence protocol.
    * @param data - Raw JSON string from WebSocket
    */
@@ -622,6 +722,31 @@ export class RealtimeClient {
         case 'focus_region_ack':
           // Acknowledgment received
           break;
+
+        case 'delivery_ack': {
+          const pending = this.pendingDeliveryAcks.get(message.requestId);
+          if (pending) {
+            clearTimeout(pending.timer);
+            this.pendingDeliveryAcks.delete(message.requestId);
+            pending.resolve();
+          }
+          break;
+        }
+
+        case 'publish_result': {
+          const pendingPublish = this.pendingPublishRequests.get(message.requestId);
+          if (pendingPublish) {
+            clearTimeout(pendingPublish.timer);
+            this.pendingPublishRequests.delete(message.requestId);
+            pendingPublish.resolve({
+              success: message.success,
+              publishedVersionId: message.publishedVersionId,
+              checkpoint: message.checkpoint,
+              error: message.error,
+            });
+          }
+          break;
+        }
 
         case 'presence_error':
           if (message.code === 'RATE_LIMITED') {

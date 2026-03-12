@@ -63,6 +63,8 @@ export type {
   AgentStopResult,
   // Focus region types
   UpdateFocusRegionsResponse,
+  // Publish types
+  PublishResult,
 } from './types.js';
 
 // Auth utilities

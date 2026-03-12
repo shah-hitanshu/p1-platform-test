@@ -1136,11 +1136,19 @@ function CSSPuckProviderInner({
             realtime.applyLocalChange(pendingDataRef.current);
           }
           pendingDataRef.current = null;
-          // Brief delay to allow DO sync to complete
-          await new Promise(resolve => setTimeout(resolve, 1000));
         } else {
           debouncedSave.cancel();
           await performSave();
+        }
+      }
+
+      // When realtime is connected, wait for the DO to acknowledge receipt of
+      // all preceding WebSocket messages before creating the checkpoint.
+      if (enableRealtime && realtimeConnectedRef.current) {
+        try {
+          await realtime.waitForDelivery();
+        } catch {
+          console.warn('[CSSPuckProvider] Delivery ack before checkpoint failed, proceeding anyway');
         }
       }
 
@@ -1163,7 +1171,7 @@ function CSSPuckProviderInner({
         throw new Error('No document loaded to publish');
       }
 
-      // Save any pending changes first
+      // Send any pending changes before publish
       if (pendingDataRef.current) {
         if (enableRealtime && realtimeConnectedRef.current) {
           const currentPath = currentDocumentRef.current?.path ?? null;
@@ -1171,13 +1179,28 @@ function CSSPuckProviderInner({
             realtime.applyLocalChange(pendingDataRef.current);
           }
           pendingDataRef.current = null;
-          await new Promise(resolve => setTimeout(resolve, 1000));
         } else {
           debouncedSave.cancel();
           await performSave();
         }
       }
 
+      // When realtime is connected, use WebSocket-driven publish.
+      // The DO handles the entire flow: flush CRDT to Postgres, then
+      // create the checkpoint. TCP ordering guarantees all preceding
+      // binary CRDT updates are processed before the publish_request.
+      if (enableRealtime && realtimeConnectedRef.current) {
+        const publishResult = await realtime.requestPublish();
+        if (!publishResult.success) {
+          throw new Error(publishResult.error ?? 'Publish failed');
+        }
+        if (!publishResult.checkpoint) {
+          throw new Error('Publish succeeded but no checkpoint returned');
+        }
+        return publishResult.checkpoint;
+      }
+
+      // Fallback: HTTP publish when realtime is not connected
       const result = await userClient.documents.publish(siteId, branchId, doc.id);
       return result.checkpoint;
     },

@@ -1192,6 +1192,35 @@ Added published status indicators to the Puck editor UI:
 **Client type additions:** `Document.isPublished`, `Document.publishedVersionId`, `Document.publishedAt`, `Document.inherited`, `DocumentVersion.isPublished`
 **Test coverage:** 29 tests across 3 test files
 
+### Publish Race Condition Fix (2026-03-11) ✅
+
+Fixed a race condition where publishing a document could publish a stale version instead of the latest edit. The root cause: the Durable Object syncs CRDT state to Postgres asynchronously via a queue with a 5-second idle timeout, but the publish endpoint reads the latest version from Postgres. Edits made within that sync window would be missed.
+
+**Root cause analysis:**
+- DO sync to Postgres: 5-second idle timeout via async queue (`SYNC_IDLE_TIMEOUT_MS`)
+- Frontend workaround: 1-second `setTimeout` before calling publish (insufficient)
+- Publish endpoint: reads latest version from Postgres (`ORDER BY version_number DESC LIMIT 1`)
+- Race window: 4-9 seconds where the latest edit exists only in the DO's memory
+
+**Solution: WebSocket-driven publish (Option A)**
+
+Moved the entire publish orchestration to the backend. The client sends a single `publish_request` message via WebSocket, and the Durable Object handles flush + publish internally. TCP ordering guarantees all preceding CRDT binary updates are processed before the publish request.
+
+**Backend changes** (collaborative-state-system, branch `fix/flush-before-publish`):
+- Phase 1: Added `publish_request`/`publish_result` WebSocket message types and type guards
+- Phase 2: Added `POST /internal/publish` route with auth and validation
+- Phase 3: Added `handleWsPublishRequest` to DocumentSession DO — flushes CRDT to Postgres, calls `/internal/publish`, sends result back to client
+- Phase 6: Removed pre-publish flush from `index.ts` (now handled internally), removed diagnostic logging
+- Fixed unique constraint race in `createDocumentVersion` when async queue and flush compete
+
+**Frontend changes** (puck-css-integration, branch `fix/flush-before-publish`):
+- Phase 4: Added `requestPublish()` to `RealtimeClient` — sends `publish_request` via WS, returns `Promise<PublishResult>` with 30s timeout
+- Phase 5: Wired `requestPublish` through `useRealtime` hook; simplified `publishDocument` in CSSPuckProvider to use WS publish when connected, HTTP fallback when not
+
+**Test coverage:** 48 new tests across 5 test files (16 message types, 13 API route, 6 DO handler, 9 RealtimeClient, 4 integration)
+
+**Decision:** `createCheckpoint` still uses `waitForDelivery()` + HTTP — it's a separate code path creating branch-level checkpoints, not document-level publishes. Could be migrated to a similar WebSocket pattern in the future.
+
 ## Remaining Work
 
 ### Future
