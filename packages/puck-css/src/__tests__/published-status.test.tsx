@@ -41,12 +41,12 @@ describe('PublishedStatusBadge', () => {
     expect(badge!.querySelector('.pds-status-badge__status--warning')).toBeTruthy();
   });
 
-  it('renders "Draft" badge without status dot when never published', () => {
+  it('renders "Unpublished" badge without status dot when never published', () => {
     render(<PublishedStatusBadge status="draft" />);
 
-    const badge = screen.getByText('Draft').closest('.pds-status-badge');
+    const badge = screen.getByText('Unpublished').closest('.pds-status-badge');
     expect(badge).toBeTruthy();
-    // Draft should not have a status dot
+    // Unpublished should not have a status dot
     expect(badge!.querySelector('.pds-status-badge__status')).toBeNull();
   });
 

@@ -195,7 +195,7 @@ export function VisualBranchCompare({
 
       <div className={`${baseClass}__content`}>
         {changedEntries.length === 0 ? (
-          <div className={`${baseClass}__empty`}>No changes between branches</div>
+          <div className={`${baseClass}__empty`}>No changes between Drafts</div>
         ) : (
           <div className={`${baseClass}__panels`}>
             {/* After panel (source branch - current changes) */}
@@ -206,7 +206,7 @@ export function VisualBranchCompare({
               </div>
               <div className={`${baseClass}__panel-content`}>
                 {isDeletedDocument ? (
-                  <div className={`${baseClass}__empty`}>Document deleted in this branch</div>
+                  <div className={`${baseClass}__empty`}>Document deleted in this Draft</div>
                 ) : (
                   <Render
                     config={sourceConfig as Parameters<typeof Render>[0]['config']}
@@ -224,7 +224,7 @@ export function VisualBranchCompare({
               </div>
               <div className={`${baseClass}__panel-content`}>
                 {isNewDocument ? (
-                  <div className={`${baseClass}__empty`}>Document does not exist on this branch</div>
+                  <div className={`${baseClass}__empty`}>Document does not exist on this Draft</div>
                 ) : (
                   <Render
                     config={targetConfig as Parameters<typeof Render>[0]['config']}

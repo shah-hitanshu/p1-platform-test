@@ -124,7 +124,7 @@ function CSSPluginPanel({
     // Call the getter function to check current unsaved state (avoids stale closures)
     if (getHasUnsavedChanges?.()) {
       const confirmed = window.confirm(
-        'You have unsaved changes. Switch branch anyway?'
+        'You have unsaved changes. Switch Draft anyway?'
       );
       if (!confirmed) return;
     }
@@ -164,7 +164,7 @@ function CSSPluginPanel({
       {/* Branch Selection */}
       <div className="css-plugin-section">
         <label className="css-plugin-label" htmlFor="css-branch-select">
-          Branch
+          Drafts
         </label>
         <select
           id="css-branch-select"
@@ -174,8 +174,7 @@ function CSSPluginPanel({
         >
           {branches.map((branch) => (
             <option key={branch.id} value={branch.id}>
-              {branch.name}
-              {branch.isMain ? ' (main)' : ''}
+              {branch.isMain ? 'Live' : branch.name}
             </option>
           ))}
         </select>
@@ -189,7 +188,7 @@ function CSSPluginPanel({
               onClick={() => onMergeCompare(mainBranch.id)}
               style={{ marginTop: 8 }}
             >
-              Compare with main
+              Compare with Live
             </button>
           );
         })()}
@@ -248,7 +247,7 @@ function CSSPluginPanel({
                     {isInherited && (
                       <span className="pds-status-indicator pds-status-indicator--neutral pds-status-indicator--sm">
                         <span aria-hidden="true" className="pds-status-indicator__icon" role="img"></span>
-                        <span className="pds-status-indicator__label">main only</span>
+                        <span className="pds-status-indicator__label">Live only</span>
                       </span>
                     )}
                     {onDocumentDelete && (

@@ -77,7 +77,7 @@ describe('Header PublishedStatusBadge wiring', () => {
 
     render(overrides.headerActions!({ children: null }));
 
-    expect(screen.getByText('Draft')).toBeTruthy();
+    expect(screen.getByText('Unpublished')).toBeTruthy();
   });
 
   it('does not render PublishedStatusBadge when publishedStatus is not set', () => {
@@ -86,7 +86,7 @@ describe('Header PublishedStatusBadge wiring', () => {
     render(overrides.headerActions!({ children: null }));
 
     expect(screen.queryByText('Published')).toBeNull();
-    expect(screen.queryByText('Draft')).toBeNull();
+    expect(screen.queryByText('Unpublished')).toBeNull();
     expect(screen.queryByText('Unpublished changes')).toBeNull();
   });
 
@@ -246,9 +246,9 @@ describe('Document list branch indicators', () => {
 
     render(plugin.render());
 
-    // Should show a "main only" label
-    expect(screen.getByText('main only')).toBeTruthy();
-    const indicator = screen.getByText('main only').closest('.pds-status-indicator');
+    // Should show a "Live only" label
+    expect(screen.getByText('Live only')).toBeTruthy();
+    const indicator = screen.getByText('Live only').closest('.pds-status-indicator');
     expect(indicator).toBeTruthy();
     expect(indicator!.className).toContain('pds-status-indicator--neutral');
   });

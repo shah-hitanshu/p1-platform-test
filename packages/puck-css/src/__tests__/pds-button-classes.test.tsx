@@ -350,7 +350,7 @@ describe('CSSPlugin PDS button classes', () => {
       onMergeCompare: () => {},
     });
     render(plugin.render());
-    const compareBtn = screen.getByRole('button', { name: 'Compare with main' });
+    const compareBtn = screen.getByRole('button', { name: 'Compare with Live' });
     expect(compareBtn.className).toContain('pds-button');
     expect(compareBtn.className).toContain('pds-button--secondary');
   });

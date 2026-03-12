@@ -103,16 +103,14 @@ export function MergeReviewPage() {
     )
       .then((res) => {
         setBranches(res.branches ?? []);
-        // Auto-select first two branches if available
-        if (res.branches && res.branches.length >= 2) {
-          const main = res.branches.find((b) => b.name === 'main');
-          const other = res.branches.find((b) => b.name !== 'main');
-          if (main && other) {
-            setTargetBranchId(main.id);
+        // Target is always the main (Live) branch
+        const main = res.branches?.find((b) => b.isMain || b.name === 'main');
+        if (main) {
+          setTargetBranchId(main.id);
+          // Auto-select the first non-main branch as the Draft
+          const other = res.branches?.find((b) => b.id !== main.id);
+          if (other) {
             setSourceBranchId(other.id);
-          } else {
-            setSourceBranchId(res.branches[0].id);
-            setTargetBranchId(res.branches[1].id);
           }
         }
       })
@@ -120,9 +118,8 @@ export function MergeReviewPage() {
   }, []);
 
   const sourceBranch = branches.find((b) => b.id === sourceBranchId);
-  const targetBranch = branches.find((b) => b.id === targetBranchId);
-  const sourceName = sourceBranch?.name ?? 'Source';
-  const targetName = targetBranch?.name ?? 'Target';
+  const sourceName = sourceBranch?.name ?? 'Draft';
+  const targetName = 'Live';
 
   // Fetch merge preview
   const fetchPreview = useCallback(async () => {
@@ -240,38 +237,31 @@ export function MergeReviewPage() {
       {/* Branch Selectors */}
       <div style={styles.branchSelectors}>
         <div style={styles.branchField}>
-          <label style={styles.label}>Source branch</label>
+          <label style={styles.label}>Draft</label>
           <select
             value={sourceBranchId}
             onChange={(e) => setSourceBranchId(e.target.value)}
             style={styles.select}
           >
-            <option value="">Select branch</option>
-            {branches.map((b) => (
+            <option value="">Select Draft</option>
+            {branches.filter((b) => !b.isMain && b.name !== 'main').map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}
           </select>
         </div>
         <span style={styles.arrow}>&rarr;</span>
         <div style={styles.branchField}>
-          <label style={styles.label}>Target branch</label>
-          <select
-            value={targetBranchId}
-            onChange={(e) => setTargetBranchId(e.target.value)}
-            style={styles.select}
-          >
-            <option value="">Select branch</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
+          <label style={styles.label}>Live</label>
+          <div style={{ ...styles.select, display: 'flex', alignItems: 'center', background: '#f5f5f5', color: '#666' }}>
+            Live
+          </div>
         </div>
         <button
           onClick={fetchPreview}
           disabled={loading || !sourceBranchId || !targetBranchId || sourceBranchId === targetBranchId}
           style={styles.compareBtn}
         >
-          {loading ? 'Loading...' : 'Compare branches'}
+          {loading ? 'Loading...' : 'Compare Draft to Live'}
         </button>
       </div>
 

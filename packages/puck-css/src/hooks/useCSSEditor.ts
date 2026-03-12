@@ -221,14 +221,22 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   const currentVersionIsPublished = versions.find(v => v.id === currentVersionId)?.isPublished ?? false;
   const hasPublishedVersion = versions.some(v => v.isPublished);
 
+  // Look up the current document from the branch document list, which includes
+  // inherited and isPublished fields from the branch-level listing endpoint.
+  // css.currentDocument comes from the site-level getByPath endpoint and lacks these.
+  const branchDocument = css.documents.find(d => d.id === css.currentDocument?.id);
+  const inheritedAndPublished = branchDocument?.inherited && branchDocument?.isPublished;
+
   const publishedStatus: 'published' | 'unpublished-changes' | 'draft' | undefined =
     versionsLoading
       ? undefined
-      : currentVersionIsPublished
+      : inheritedAndPublished
         ? 'published'
-        : hasPublishedVersion
-          ? 'unpublished-changes'
-          : 'draft';
+        : currentVersionIsPublished
+          ? 'published'
+          : hasPublishedVersion
+            ? 'unpublished-changes'
+            : 'draft';
 
   // =========================================================================
   // Focus Region Reporting (outgoing — report local selection to server)

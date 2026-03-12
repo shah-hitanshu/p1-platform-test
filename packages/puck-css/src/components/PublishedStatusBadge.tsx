@@ -17,7 +17,7 @@ const STATUS_CONFIG = {
   draft: {
     dotClass: null,
     screenReaderLabel: null,
-    label: "Draft",
+    label: "Unpublished",
   },
 } as const;
 

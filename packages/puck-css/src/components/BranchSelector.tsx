@@ -72,7 +72,7 @@ export function BranchSelector({
 
       if (hasUnsavedChanges) {
         const confirmed = window.confirm(
-          'You have unsaved changes. They will be saved before switching branches. Continue?'
+          'You have unsaved changes. They will be saved before switching Drafts. Continue?'
         );
         if (!confirmed) {
           // Reset the select to current value
@@ -102,7 +102,7 @@ export function BranchSelector({
   return (
     <div className={`${baseClass} ${className}`}>
       <label htmlFor="branch-selector" className={`${baseClass}__label`}>
-        Branch:
+        Drafts
       </label>
       <select
         id="branch-selector"
@@ -113,8 +113,7 @@ export function BranchSelector({
       >
         {sortedBranches.map((branch) => (
           <option key={branch.id} value={branch.id}>
-            {branch.name}
-            {branch.isMain ? ' (main)' : ''}
+            {branch.isMain ? 'Live' : branch.name}
             {branch.status === 'archived' ? ' [archived]' : ''}
           </option>
         ))}

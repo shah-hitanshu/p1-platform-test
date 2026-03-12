@@ -125,7 +125,7 @@ export function BranchMergeCompare({
       <div className={`${baseClass}__content`}>
         {isEmpty ? (
           <div className={`${baseClass}__empty`}>
-            No changes between branches
+            No changes between Drafts
           </div>
         ) : (
           <>
