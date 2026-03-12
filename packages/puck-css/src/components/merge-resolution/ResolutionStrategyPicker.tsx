@@ -42,10 +42,36 @@ export function ResolutionStrategyPicker({
   const isDelete = isDeleteConflict(conflictType);
 
   return (
-    <div className={baseClass} role="group" aria-label="Resolution strategy">
+    <div
+      className={baseClass}
+      role="group"
+      aria-label="Resolution strategy"
+      style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}
+    >
       {strategies.map(({ strategy, label, disabledForDelete }) => {
         const disabled = isDelete && disabledForDelete;
         const selected = currentStrategy === strategy;
+
+        const buttonStyle: React.CSSProperties = {
+          padding: '8px 16px',
+          borderRadius: '6px',
+          border: '2px solid #ccc',
+          background: 'white',
+          cursor: 'pointer',
+          fontSize: '14px',
+          fontWeight: 500,
+          transition: 'all 0.15s',
+          ...(selected && {
+            borderColor: '#0066cc',
+            background: '#e8f4fd',
+            color: '#0066cc',
+            fontWeight: 600,
+          }),
+          ...(disabled && {
+            opacity: 0.4,
+            cursor: 'not-allowed',
+          }),
+        };
 
         return (
           <button
@@ -55,6 +81,7 @@ export function ResolutionStrategyPicker({
             aria-pressed={selected}
             disabled={disabled}
             onClick={() => onSelect(strategy)}
+            style={buttonStyle}
           >
             {label}
           </button>

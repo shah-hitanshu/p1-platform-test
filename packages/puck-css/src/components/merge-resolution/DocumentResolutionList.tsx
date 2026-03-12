@@ -21,6 +21,57 @@ export interface DocumentResolutionListProps {
 
 const baseClass = 'document-resolution-list';
 
+const ulStyle: React.CSSProperties = {
+  listStyle: 'none',
+  margin: 0,
+  padding: 0,
+  outline: 'none',
+};
+
+const liBaseStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: '10px 12px',
+  cursor: 'pointer',
+  borderBottom: '1px solid #f0f0f0',
+  transition: 'background-color 0.15s',
+  borderLeft: '3px solid transparent',
+};
+
+const liSelectedStyle: React.CSSProperties = {
+  ...liBaseStyle,
+  background: '#e8f4fd',
+  borderLeft: '3px solid #0066cc',
+};
+
+const pathStyle: React.CSSProperties = {
+  fontSize: '14px',
+  color: '#333',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  flex: 1,
+  marginRight: '8px',
+};
+
+const badgeBaseStyle: React.CSSProperties = {
+  fontSize: '11px',
+  fontWeight: 600,
+  padding: '2px 8px',
+  borderRadius: '10px',
+  whiteSpace: 'nowrap',
+  textTransform: 'uppercase',
+};
+
+const badgeColors: Record<DocumentResolutionStrategy, React.CSSProperties> = {
+  'accept-draft': { background: '#d4edda', color: '#155724' },
+  'accept-live': { background: '#cce5ff', color: '#004085' },
+  'cherry-pick': { background: '#fff3cd', color: '#856404' },
+  'crdt-preview': { background: '#e2d5f1', color: '#5a2d82' },
+  unresolved: { background: '#f8d7da', color: '#721c24' },
+};
+
 const strategyLabels: Record<DocumentResolutionStrategy, string> = {
   'accept-draft': 'Draft',
   'accept-live': 'Live',
@@ -137,6 +188,7 @@ export function DocumentResolutionList({
   return (
     <ul
       className={baseClass}
+      style={ulStyle}
       onKeyDown={handleKeyDown}
       tabIndex={0}
       ref={listRef}
@@ -145,6 +197,7 @@ export function DocumentResolutionList({
         <li
           key={doc.documentId}
           className={`${baseClass}__item ${index === currentIndex ? `${baseClass}__item--selected` : ''}`}
+          style={index === currentIndex ? liSelectedStyle : liBaseStyle}
           aria-selected={index === currentIndex}
           role="listitem"
           ref={(el) => {
@@ -154,9 +207,10 @@ export function DocumentResolutionList({
           }}
           onClick={() => goToDocument(index)}
         >
-          <span className={`${baseClass}__path`}>{doc.documentPath}</span>
+          <span className={`${baseClass}__path`} style={pathStyle}>{doc.documentPath}</span>
           <span
             className={`${baseClass}__badge ${baseClass}__badge--${doc.strategy}`}
+            style={{ ...badgeBaseStyle, ...badgeColors[doc.strategy] }}
           >
             {strategyLabels[doc.strategy]}
           </span>

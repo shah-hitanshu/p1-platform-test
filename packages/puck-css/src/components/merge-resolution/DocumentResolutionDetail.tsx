@@ -92,8 +92,8 @@ export function DocumentResolutionDetail({
 }: DocumentResolutionDetailProps): React.ReactElement {
   if (!document) {
     return (
-      <div className={baseClass} data-testid="merge-resolution-detail">
-        <p className={`${baseClass}__empty`}>Select a document to view details.</p>
+      <div className={baseClass} data-testid="merge-resolution-detail" style={{ padding: 0 }}>
+        <p className={`${baseClass}__empty`} style={{ color: '#999', fontStyle: 'italic', textAlign: 'center', padding: '40px 20px' }}>Select a document to view details.</p>
       </div>
     );
   }
@@ -109,8 +109,8 @@ export function DocumentResolutionDetail({
     : 0;
 
   return (
-    <div className={baseClass} data-testid="merge-resolution-detail">
-      <h3 className={`${baseClass}__path`}>{document.documentPath}</h3>
+    <div className={baseClass} data-testid="merge-resolution-detail" style={{ padding: 0 }}>
+      <h3 className={`${baseClass}__path`} style={{ fontSize: '18px', fontWeight: 600, margin: '0 0 16px 0', color: '#333' }}>{document.documentPath}</h3>
 
       <ResolutionStrategyPicker
         currentStrategy={document.strategy}
@@ -119,23 +119,24 @@ export function DocumentResolutionDetail({
       />
 
       {deleteMessage && (
-        <p className={`${baseClass}__delete-message`}>{deleteMessage}</p>
+        <p className={`${baseClass}__delete-message`} style={{ padding: '12px', background: '#fff3cd', borderRadius: '6px', color: '#856404', fontSize: '14px' }}>{deleteMessage}</p>
       )}
 
       {document.strategy === 'cherry-pick' && document.classifiedFields && (
-        <div className={`${baseClass}__cherry-pick`}>
+        <div className={`${baseClass}__cherry-pick`} style={{ marginTop: '16px' }}>
           {autoMergedCount > 0 && (
-            <p className={`${baseClass}__auto-merged-count`}>
+            <p className={`${baseClass}__auto-merged-count`} style={{ fontSize: '13px', color: '#666', marginBottom: '12px' }}>
               {autoMergedCount} {autoMergedCount === 1 ? 'field' : 'fields'} auto-merged
             </p>
           )}
 
           {componentGroups.map((group) => (
-            <div key={group.componentId} className={`${baseClass}__component-group`}>
-              <div className={`${baseClass}__component-actions`}>
+            <div key={group.componentId} className={`${baseClass}__component-group`} style={{ marginBottom: '16px', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '12px' }}>
+              <div className={`${baseClass}__component-actions`} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                 <button
                   type="button"
                   className={`${baseClass}__component-accept-button`}
+                  style={{ padding: '4px 10px', borderRadius: '4px', border: '1px solid #ccc', background: 'white', cursor: 'pointer', fontSize: '12px' }}
                   onClick={() =>
                     onAcceptAllComponentProps(document.documentId, group.componentId, 'source')
                   }
@@ -145,6 +146,7 @@ export function DocumentResolutionDetail({
                 <button
                   type="button"
                   className={`${baseClass}__component-accept-button`}
+                  style={{ padding: '4px 10px', borderRadius: '4px', border: '1px solid #ccc', background: 'white', cursor: 'pointer', fontSize: '12px' }}
                   onClick={() =>
                     onAcceptAllComponentProps(document.documentId, group.componentId, 'target')
                   }
@@ -187,7 +189,7 @@ export function DocumentResolutionDetail({
       )}
 
       {document.strategy === 'crdt-preview' && (
-        <div className={`${baseClass}__crdt-preview`}>
+        <div className={`${baseClass}__crdt-preview`} style={{ marginTop: '16px' }}>
           <CrdtPreviewPanel
             snapshot={document.crdtPreviewSnapshot}
             loading={document.crdtPreviewLoading}

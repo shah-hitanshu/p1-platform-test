@@ -71,7 +71,7 @@ export function MergeResolutionPage({
   // Loading state
   if (hook.previewLoading) {
     return (
-      <div className={baseClass}>
+      <div className={baseClass} style={{ fontFamily: 'system-ui, -apple-system, sans-serif', padding: 24 }}>
         <MergeResolutionToolbar
           sourceBranchName={sourceBranchName}
           targetBranchName={targetBranchName}
@@ -83,7 +83,7 @@ export function MergeResolutionPage({
           onExecuteMerge={() => {}}
           onSetAllStrategy={() => {}}
         />
-        <p className={`${baseClass}__loading`}>Loading merge preview...</p>
+        <p className={`${baseClass}__loading`} style={{ textAlign: 'center', color: '#666' }}>Loading merge preview...</p>
       </div>
     );
   }
@@ -91,7 +91,7 @@ export function MergeResolutionPage({
   // Error state
   if (hook.previewError) {
     return (
-      <div className={baseClass}>
+      <div className={baseClass} style={{ fontFamily: 'system-ui, -apple-system, sans-serif', padding: 24 }}>
         <MergeResolutionToolbar
           sourceBranchName={sourceBranchName}
           targetBranchName={targetBranchName}
@@ -103,13 +103,13 @@ export function MergeResolutionPage({
           onExecuteMerge={() => {}}
           onSetAllStrategy={() => {}}
         />
-        <p className={`${baseClass}__error`}>{hook.previewError}</p>
+        <p className={`${baseClass}__error`} style={{ background: '#fde8e8', color: '#c53030', padding: '12px 16px', borderRadius: 6 }}>{hook.previewError}</p>
       </div>
     );
   }
 
   return (
-    <div className={baseClass}>
+    <div className={baseClass} style={{ fontFamily: 'system-ui, -apple-system, sans-serif', padding: 24 }}>
       <MergeResolutionToolbar
         sourceBranchName={sourceBranchName}
         targetBranchName={targetBranchName}
@@ -124,13 +124,13 @@ export function MergeResolutionPage({
       />
 
       {hook.mergeError && (
-        <p className={`${baseClass}__merge-error`} role="alert">
+        <p className={`${baseClass}__merge-error`} role="alert" style={{ background: '#fde8e8', color: '#c53030', padding: 12, borderRadius: 6, marginBottom: 16 }}>
           {hook.mergeError}
         </p>
       )}
 
-      <div className={`${baseClass}__content`}>
-        <div className={`${baseClass}__list`}>
+      <div className={`${baseClass}__content`} style={{ display: 'flex', flexDirection: 'row', gap: 0 }}>
+        <div className={`${baseClass}__list`} style={{ width: 320, flexShrink: 0, overflowY: 'auto', maxHeight: 'calc(100vh - 200px)', borderRight: '1px solid #e5e7eb' }}>
           <DocumentResolutionList
             documents={hook.documents}
             currentIndex={hook.currentIndex}
@@ -143,7 +143,7 @@ export function MergeResolutionPage({
           />
         </div>
 
-        <div className={`${baseClass}__detail`}>
+        <div className={`${baseClass}__detail`} style={{ flexGrow: 1, overflowY: 'auto', paddingLeft: 24 }}>
           <DocumentResolutionDetail
             document={hook.currentDocument}
             sourceBranchName={sourceBranchName}
