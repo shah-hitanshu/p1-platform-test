@@ -29,11 +29,13 @@ The `useMergeResolution` hook's public API is unchanged. This is a rendering-lay
 
 **Type:** The config is typed as `unknown` in the page props (matching the existing interface) but cast to `Parameters<typeof Render>[0]['config']` at the `<Render>` call site, following the pattern established by `MergePreviewRenderer`.
 
-### Decision 3: Reuse `MergePreviewRenderer` directly; do not create a parallel comparison component
+### Decision 3: Reuse `MergePreviewRenderer` where possible; render `<Render>` directly where overlays require panel-level control
 
-**Why:** `MergePreviewRenderer` already implements side-by-side, overlay, and slider modes with diff highlighting via `createHighlightedConfig`. The visual merge resolution needs the same comparison views. Creating a parallel `VisualResolutionCompare` component would duplicate 200+ lines of rendering logic (the `SideBySideView`, `OverlayView`, `SliderView` sub-components) and create a maintenance burden where bug fixes in one must be mirrored in the other.
+**Why:** `MergePreviewRenderer` already implements side-by-side, overlay, and slider modes with diff highlighting via `createHighlightedConfig`. For strategies that only need visual comparison without interactive overlays (`accept-draft`, `accept-live`, `unresolved`), `MergePreviewRenderer` is composed directly, adding strategy-specific visual emphasis through wrapper styling (e.g., dimming the non-selected side, adding a "selected" border).
 
-Instead, `DocumentResolutionDetail` composes `MergePreviewRenderer` directly for the visual comparison (accept-draft, accept-live, unresolved strategies), adding strategy-specific visual emphasis through wrapper styling (e.g., dimming the non-selected side, adding a "selected" border). For cherry-pick and CRDT modes, purpose-built layouts render the appropriate visual content.
+**Why cherry-pick cannot use `MergePreviewRenderer`:** The cherry-pick strategy needs `ComponentClickOverlay` positioned over each rendered panel independently. `MergePreviewRenderer` renders both Draft and Live panels in a single DOM tree. For `modified` components, `data-component-id` attributes appear in BOTH panels. A single overlay wrapping the entire `MergePreviewRenderer` output cannot distinguish which panel the user clicked. Splitting into two overlays is impossible without refs to `MergePreviewRenderer`'s internal `.merge-preview-renderer__panel` divs, which it does not expose.
+
+**Solution:** `CherryPickVisualPanel` renders two separate `<Render>` instances directly (one for Draft, one for Live), each in its own container `div`, each with its own `ComponentClickOverlay`. It uses `createHighlightedConfig` and `createDiffMap` directly (the same utilities `MergePreviewRenderer` uses internally) to apply diff highlighting. This avoids modifying `MergePreviewRenderer` while giving each overlay unambiguous control over its panel. The layout is always side-by-side (no view mode selector) since component click targets require spatial stability.
 
 ### Decision 4: Component-level click selection via overlay positioned on top of `<Render>` output
 
@@ -106,9 +108,9 @@ The downstream app can then simplify to a single "Resolve Conflicts" entry point
 | # | File | Package | Purpose |
 |---|------|---------|---------|
 | 1 | `packages/puck-css/src/components/merge-resolution/ComponentClickOverlay.tsx` | puck-css | Transparent overlay that positions click targets over rendered Puck components for component-level selection |
-| 2 | `packages/puck-css/src/components/merge-resolution/CherryPickVisualPanel.tsx` | puck-css | Two-column layout: visual comparison with component click overlays + prop-level controls (left), live merged preview (right) |
+| 2 | `packages/puck-css/src/components/merge-resolution/CherryPickVisualPanel.tsx` | puck-css | Two-column layout: two direct `<Render>` instances with `createHighlightedConfig` + `ComponentClickOverlay` per panel (left), live merged preview via `<Render>` (right). Does NOT use `MergePreviewRenderer` (see Decision 3). |
 | 3 | `packages/puck-css/src/__tests__/ComponentClickOverlay.test.tsx` | puck-css | Tests for click target rendering, click callbacks, selection indicators |
-| 4 | `packages/puck-css/src/__tests__/CherryPickVisualPanel.test.tsx` | puck-css | Tests for two-column layout, merged preview rendering, component/prop selection integration |
+| 4 | `packages/puck-css/src/__tests__/CherryPickVisualPanel.test.tsx` | puck-css | Tests for two-column layout, direct `<Render>` with highlighted configs (not `MergePreviewRenderer`), merged preview rendering, component/prop selection, per-component selection state derivation |
 
 ### Files to modify (with scope of changes)
 
@@ -251,8 +253,10 @@ export interface CherryPickVisualPanelProps {
 ```
 
 **Left column (selection controls):**
-- Top section: Two rendered Puck pages in side-by-side view using `MergePreviewRenderer` (with diff highlighting via `diffs` prop passed through). The `MergePreviewRenderer` is always rendered in `side-by-side` mode here (no view mode selector). Each side has a `ComponentClickOverlay` on top. The overlay positions click targets over components that have `data-component-id` attributes (i.e., changed components only). Clicking a component in the Draft panel calls `onAcceptAllComponentProps(documentId, componentId, 'source')`. Clicking in the Live panel calls `onAcceptAllComponentProps(documentId, componentId, 'target')`.
+- Top section: Two rendered Puck pages in side-by-side layout. Each page is rendered via its own `<Render>` instance with `createHighlightedConfig` applied (NOT via `MergePreviewRenderer`, because overlays require independent panel containers -- see Decision 3). Each panel is wrapped in a container `div` with its own `ComponentClickOverlay` on top. The Draft panel uses `createHighlightedConfig(config, diffMap, 'after')` (highlights added + modified), and the Live panel uses `createHighlightedConfig(config, diffMap, 'before')` (highlights removed + modified). Clicking a component in the Draft panel calls `onAcceptAllComponentProps(documentId, componentId, 'source')`. Clicking in the Live panel calls `onAcceptAllComponentProps(documentId, componentId, 'target')`.
 - Below: `ComponentConflictGroup` instances for each component with conflicts, showing prop-level radio buttons (reusing existing component). Per-component "Accept all from Draft" / "Accept all from Live" buttons. Auto-merged field count.
+
+**Deriving per-component selection state for overlay indicators:** `CherryPickVisualPanel` derives each component's selection state from the document's `cherryPickSelections` (which are keyed `componentId:propName`). For a given component, if ALL conflicting props are resolved to `'source'`, the overlay shows a "source selected" indicator (green check). If all are `'target'`, it shows "target selected" (blue check). If mixed or any unresolved, it shows `'none'` (neutral/hover). This derivation is a pure function computed in the render path from `document.cherryPickSelections` and `document.classifiedFields`.
 
 **Right column (merged preview):**
 - Rendered via `<Render>` using the current `mergedSnapshot` from the document
@@ -400,7 +404,7 @@ Component tests need updates to match the new DOM structure:
 #### 4.3 New test files
 
 - `ComponentClickOverlay.test.tsx` (~6 tests): Overlay renders click targets for components with `data-component-id`, click events fire correct callbacks, selection indicators display, non-interactive mode disables clicks, handles empty container, updates on resize
-- `CherryPickVisualPanel.test.tsx` (~8 tests): Two-column layout renders, MergePreviewRenderer renders in left column, merged preview renders in right column with correct data, component click overlay fires acceptAllComponentProps, ComponentConflictGroup instances render for conflicting components, accept-all buttons work, empty merged snapshot shows prompt message, auto-merged count displays
+- `CherryPickVisualPanel.test.tsx` (~8 tests): Two-column layout renders, two direct `<Render>` instances with highlighted configs in left column (not `MergePreviewRenderer`), merged preview renders in right column with correct data, component click overlay fires acceptAllComponentProps, per-component selection state derived correctly from cherryPickSelections, ComponentConflictGroup instances render for conflicting components, accept-all buttons work, empty merged snapshot shows prompt message
 
 ---
 
@@ -449,7 +453,7 @@ The implementation proceeds in dependency order:
 - **Modifying `packages/css-client`** -- no API client changes needed
 - **Creating a new `createClickableConfig` utility** -- component interactivity is handled via DOM overlays, not config wrapping
 - **Creating a `VisualResolutionCompare` component** -- `MergePreviewRenderer` is reused directly via composition
-- **Modifying existing read-only comparison components** (`MergePreviewRenderer`, `VisualBranchCompare`, `ViewModeSelector`) -- reused as-is, not modified
+- **Modifying existing read-only comparison components** (`MergePreviewRenderer`, `VisualBranchCompare`, `ViewModeSelector`) -- reused as-is, not modified. `MergePreviewRenderer` is composed directly for accept-draft/accept-live/unresolved strategies. `CherryPickVisualPanel` uses `createHighlightedConfig`/`createDiffMap` directly instead of `MergePreviewRenderer` to enable per-panel overlay control (see Decision 3).
 - **Modifying existing conflict-resolution components** (`ComponentConflictGroup`, `PuckFieldResolutionPanel`) -- reused as-is within `CherryPickVisualPanel`
 - **Adding `ViewModeSelector` to the toolbar** -- view mode is a per-document detail concern, not a toolbar concern
 - **Adding E2E/Playwright tests** -- the UX is a placeholder that may move; medium fidelity with mock-based component tests is appropriate
