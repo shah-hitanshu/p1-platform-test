@@ -178,6 +178,8 @@ export interface ComponentClickOverlayProps {
    - `cursor: pointer` when interactive
    - `data-testid="component-overlay-{componentId}"` for test assertions
 
+**Important:** `data-component-id` attributes are only emitted by `createHighlightedConfig` for components that have diffs (added, removed, modified, reordered). Unchanged components do NOT receive this attribute. This is correct behavior for cherry-pick: the overlay only shows click targets for components that actually differ between branches. Components identical in both branches need no selection and are automatically included in any merged output.
+
 **Why this approach vs. config wrapping:**
 - No config regeneration on selection changes (Puck `<Render>` output stays stable)
 - Standard React event handling
@@ -188,6 +190,7 @@ export interface ComponentClickOverlayProps {
 - Components not in the DOM yet (loading): overlay renders nothing, updates on next ResizeObserver callback
 - Container resizes: overlay repositions automatically
 - Components exist in one branch but not the other: overlay only shows for components present in the rendered output
+- Unchanged components: no overlay target (correct -- they need no selection)
 
 ### Phase 2: Visual Resolution Components
 
@@ -248,7 +251,7 @@ export interface CherryPickVisualPanelProps {
 ```
 
 **Left column (selection controls):**
-- Top section: Two rendered Puck pages in side-by-side view using `MergePreviewRenderer` (with diff highlighting). Each side has a `ComponentClickOverlay` on top. Clicking a component in the Draft panel calls `onAcceptAllComponentProps(documentId, componentId, 'source')`. Clicking in the Live panel calls `onAcceptAllComponentProps(documentId, componentId, 'target')`.
+- Top section: Two rendered Puck pages in side-by-side view using `MergePreviewRenderer` (with diff highlighting via `diffs` prop passed through). The `MergePreviewRenderer` is always rendered in `side-by-side` mode here (no view mode selector). Each side has a `ComponentClickOverlay` on top. The overlay positions click targets over components that have `data-component-id` attributes (i.e., changed components only). Clicking a component in the Draft panel calls `onAcceptAllComponentProps(documentId, componentId, 'source')`. Clicking in the Live panel calls `onAcceptAllComponentProps(documentId, componentId, 'target')`.
 - Below: `ComponentConflictGroup` instances for each component with conflicts, showing prop-level radio buttons (reusing existing component). Per-component "Accept all from Draft" / "Accept all from Live" buttons. Auto-merged field count.
 
 **Right column (merged preview):**
@@ -303,20 +306,22 @@ config: unknown; // Puck config for <Render>
 diffs: ComponentDiffWithPosition[]; // Pre-computed diffs for this document
 ```
 
-**View mode:** Managed internally via `useState<ViewMode>('side-by-side')`. A `ViewModeSelector` is rendered in the detail header, next to the strategy picker.
+**View mode:** Managed internally via `useState<ViewMode>('side-by-side')`. A `ViewModeSelector` is rendered in the detail header next to the strategy picker, but **only for strategies that use `MergePreviewRenderer`** (`accept-draft`, `accept-live`, `unresolved`). For `cherry-pick` (which uses a fixed side-by-side + merged preview layout) and `crdt-preview` (which uses a fixed three-panel layout), the `ViewModeSelector` is not shown.
+
+**Null-safety for `MergePreviewRenderer`:** `MergePreviewRenderer` requires non-null `sourceData: PuckData` and `targetData: PuckData`. When either `sourceSnapshot` or `targetSnapshot` is null (delete conflicts, new documents), `MergePreviewRenderer` cannot be used. Instead, a single-panel `<Render>` view is shown for the surviving snapshot. This null guard applies to all strategies that would otherwise use `MergePreviewRenderer`.
 
 **Strategy-specific rendering:**
 
-- **`accept-draft`**: `MergePreviewRenderer` showing Draft and Live with diff highlighting. The Draft side has a green "selected" border/emphasis. The Live side is dimmed (opacity 0.6). A banner reads "Draft version will be kept."
-- **`accept-live`**: Same as accept-draft but reversed: Live side emphasized, Draft side dimmed. Banner: "Live version will be kept."
-- **`cherry-pick`**: `CherryPickVisualPanel` with visual component picker + prop-level controls + live merged preview
+- **`accept-draft`** (both snapshots available): `MergePreviewRenderer` showing Draft and Live with diff highlighting. The Draft side has a green "selected" border/emphasis. The Live side is dimmed (opacity 0.6). A banner reads "Draft version will be kept."
+- **`accept-live`** (both snapshots available): Same as accept-draft but reversed: Live side emphasized, Draft side dimmed. Banner: "Live version will be kept."
+- **`cherry-pick`** (both snapshots required -- cherry-pick is only meaningful with two versions): `CherryPickVisualPanel` with visual component picker + prop-level controls + live merged preview
 - **`crdt-preview`**: Visual `CrdtPreviewPanel` showing three-way rendered comparison (Draft | CRDT Result | Live)
-- **`unresolved`**: `MergePreviewRenderer` with standard diff highlighting, no selection emphasis. A prompt: "Select a resolution strategy above."
-- **Delete conflicts**: Single-panel view showing the surviving version rendered via `<Render>`, with a styled overlay message explaining the deletion
+- **`unresolved`** (both snapshots available): `MergePreviewRenderer` with standard diff highlighting, no selection emphasis. A prompt: "Select a resolution strategy above."
+- **Delete conflicts** (one snapshot null): Single-panel view showing the surviving version rendered via `<Render>`, with a styled overlay message explaining the deletion. `ViewModeSelector` is hidden.
 
 **Edge cases:**
-- `sourceSnapshot` is null (deleted in source): show only Live panel with "Deleted in Draft" overlay
-- `targetSnapshot` is null (new in source): show only Draft panel with "New document" overlay
+- `sourceSnapshot` is null (deleted in source): show only Live panel with "Deleted in Draft" overlay. `MergePreviewRenderer` is not used.
+- `targetSnapshot` is null (new in source): show only Draft panel with "New document" overlay. `MergePreviewRenderer` is not used.
 - Both null: show "No content available" message
 
 #### 3.3 `DocumentResolutionList` (moderate update)
@@ -388,7 +393,7 @@ Update `packages/puck-css/src/index.ts` to re-export from the barrel.
 Component tests need updates to match the new DOM structure:
 
 - `MergeResolutionPage.test.tsx`: Verify config is passed through to detail, diffs are computed and passed, visual components rendered in place of text
-- `DocumentResolutionDetail.test.tsx`: Verify mock `MergePreviewRenderer` receives correct data for each strategy, `ViewModeSelector` renders, cherry-pick visual panel renders, CRDT visual preview renders
+- `DocumentResolutionDetail.test.tsx`: Verify mock `MergePreviewRenderer` receives correct data for each strategy, `ViewModeSelector` renders only for accept-draft/accept-live/unresolved strategies (hidden for cherry-pick and crdt-preview), cherry-pick visual panel renders, CRDT visual preview renders, null snapshot edge cases show single-panel view without `MergePreviewRenderer`
 - `DocumentResolutionList.test.tsx`: Verify diff summary badges render when `diffCounts` is provided, existing keyboard navigation unchanged
 - `CrdtPreviewPanel.test.tsx`: Verify `<Render>` is used instead of raw JSON, three-way comparison renders when source/target provided
 
@@ -429,12 +434,12 @@ The implementation proceeds in dependency order:
 | `MergeResolutionToolbar.test.tsx` | ~9 (unchanged) | Toolbar, progress, bulk actions, shortcuts |
 | `MergeResolutionPage.test.tsx` | ~8 (updated) | Config threading, diff computation, visual component rendering |
 | `DocumentResolutionList.test.tsx` | ~14 (updated) | List with diff summary badges, existing keyboard navigation |
-| `DocumentResolutionDetail.test.tsx` | ~10 (updated) | Visual rendering per strategy, ViewModeSelector, config threading |
+| `DocumentResolutionDetail.test.tsx` | ~12 (updated) | Visual rendering per strategy, ViewModeSelector visibility per strategy, config threading, null snapshot edge cases |
 | `CrdtPreviewPanel.test.tsx` | ~5 (updated) | Visual `<Render>` three-way comparison, loading/error states |
 | `ComponentClickOverlay.test.tsx` | ~6 (new) | Click targets, callbacks, selection indicators, resize handling |
 | `CherryPickVisualPanel.test.tsx` | ~8 (new) | Two-column layout, merged preview, component/prop selection |
 
-**Estimated total: ~94 tests** (43 unchanged + ~37 updated + ~14 new)
+**Estimated total: ~96 tests** (43 unchanged + ~39 updated + ~14 new)
 
 ---
 
