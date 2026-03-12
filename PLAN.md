@@ -216,7 +216,7 @@ Methods (with backend API paths):
 - `listRequests(siteId, options?)` → `MergeRequest[]` — `GET /api/sites/{siteId}/merge-requests`
 - `updateRequest(siteId, requestId, params)` → `MergeRequest` — `PATCH /api/sites/{siteId}/merge-requests/{requestId}`
 - `deleteRequest(siteId, requestId)` → `void` — `DELETE /api/sites/{siteId}/merge-requests/{requestId}`
-- `executeRequest(siteId, requestId, options?)` → `MergeExecuteResult` — `POST /api/sites/{siteId}/merge-requests/{requestId}/execute` — `options` includes optional `resolutions` array and optional `defaultStrategy` (defaults to `'take-source'` to match backend behavior)
+- `executeRequest(siteId, requestId, options?)` → `MergeExecuteResult` — `POST /api/sites/{siteId}/merge-requests/{requestId}/execute` — `options` includes optional `resolutions` array. Note: the backend applies `'take-source'` as the default strategy for any conflicts without a per-document resolution; this is not client-configurable
 
 #### 1.3 Client integration (`packages/css-client/src/client.ts`)
 
@@ -381,7 +381,7 @@ Right panel. Shows the expanded view for the currently selected document:
 
 - **Strategy picker** (4 buttons with labels)
 - **When strategy is `accept-draft` or `accept-live`**: Shows the existing `MergePreviewRenderer` (from `packages/puck-css/src/components/merge-preview/`) in side-by-side mode with the chosen side highlighted. This retains the existing per-document visual comparison as a read-only confirmation of the user's choice.
-- **When strategy is `cherry-pick`**: Shows `ComponentConflictGroup` components for each component with conflicts. Uses existing radio-button UI from the conflict-resolution components. Shows auto-merged field count. Shows "Apply" that computes the merged snapshot and displays a rendered preview using `Render` from Puck.
+- **When strategy is `cherry-pick`**: Shows `ComponentConflictGroup` components for each component with conflicts. Each component group includes an "Accept all from Draft" / "Accept all from Live" button pair at the component level (calling `acceptAllComponentProps` on the hook), allowing the user to accept all props for that component at once without individually selecting each prop. Individual prop-level radio buttons (from the existing conflict-resolution UI) are also available for granular selection. Shows auto-merged field count. Shows "Apply" that computes the merged snapshot and displays a rendered preview using `Render` from Puck.
 - **When strategy is `crdt-preview`**: Shows `CrdtPreviewPanel` with a loading state, the merged snapshot rendered via Puck's `Render`, and a side-by-side comparison with the source/target.
 - **When conflict type is `deleted-in-source` or `deleted-in-target`**: Shows only Accept Draft / Accept Live buttons (Cherry-pick and CRDT Preview are disabled). Displays an explanatory message: "This document was deleted in Draft" or "This document was deleted in Live". Shows the surviving version's snapshot as a read-only preview.
 
