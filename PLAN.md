@@ -13,6 +13,20 @@ Replace the text-based merge conflict resolution UI with a fully visual experien
 
 The `useMergeResolution` hook's public API is unchanged. This is a rendering-layer replacement.
 
+### Styling Convention
+
+All new and modified components in the merge-resolution directory use **inline React styles** (via the `style` prop), matching the convention established by the existing merge-resolution components (`DocumentResolutionList`, `DocumentResolutionDetail`, `MergeResolutionToolbar`, etc.). This is distinct from the `MergePreviewRenderer` and other merge-preview components which use BEM CSS class names. The inline style convention was adopted in the previous implementation round to avoid the need for a separate CSS build step or stylesheet, since these are library components consumed by downstream apps.
+
+### Two Diff Systems
+
+This plan uses two complementary diff systems that serve different purposes:
+
+1. **`ComponentDiffWithPosition[]`** (from `diffPuckDataWithPositions` in `utils/diff.ts`): Visual component-level diffs identifying which components were added, removed, modified, or reordered between two `PuckData` snapshots. Used by `MergePreviewRenderer` and `createHighlightedConfig` for visual diff highlighting in rendered Puck output. These are computed per-document in `MergeResolutionPage` and passed to visual components.
+
+2. **`PuckFieldClassification[]`** (from `classifyPuckFields` in `utils/puckFieldClassifier.ts`): Prop-level field classifications identifying individual conflicting vs auto-merged props within components. Used by `ComponentConflictGroup` for prop-level cherry-pick radio buttons. These are already computed by the `useMergeResolution` hook and stored on each `DocumentResolution` as `classifiedFields`.
+
+Both systems are needed: `ComponentDiffWithPosition[]` drives visual highlighting in `<Render>` output and component-level click overlays, while `PuckFieldClassification[]` drives prop-level cherry-pick controls. The `CherryPickVisualPanel` consumes both: it uses `ComponentDiffWithPosition[]` (via its `diffs` prop) for `createHighlightedConfig` and `ComponentClickOverlay`, and it uses `document.classifiedFields` (via its `document` prop) for `ComponentConflictGroup` instances.
+
 ---
 
 ## Architecture Decisions
@@ -117,7 +131,7 @@ The downstream app can then simplify to a single "Resolve Conflicts" entry point
 | # | File | Change |
 |---|------|--------|
 | 1 | `packages/puck-css/src/components/merge-resolution/MergeResolutionPage.tsx` | Major rewrite: activate `config` prop (remove `void _config`), compute per-document diffs using `diffPuckDataWithPositions`, pass `config` and diffs to `DocumentResolutionDetail`, pass diff counts to `DocumentResolutionList` |
-| 2 | `packages/puck-css/src/components/merge-resolution/DocumentResolutionDetail.tsx` | Major rewrite: accept `config`, diffs, and view mode props. Render `MergePreviewRenderer` for accept-draft/accept-live/unresolved strategies with appropriate visual emphasis. Render `CherryPickVisualPanel` for cherry-pick. Render visual `CrdtPreviewPanel` for crdt-preview. Include `ViewModeSelector` in detail header. |
+| 2 | `packages/puck-css/src/components/merge-resolution/DocumentResolutionDetail.tsx` | Major rewrite: accept `config`, diffs, and view mode props. Render `MergePreviewRenderer` for accept-draft/accept-live/unresolved strategies, wrapped in a private `StrategyEmphasisWrapper` helper that applies dimming/highlight overlays for accept-draft/accept-live. Render `CherryPickVisualPanel` for cherry-pick. Render visual `CrdtPreviewPanel` for crdt-preview. Include `ViewModeSelector` in detail header. |
 | 3 | `packages/puck-css/src/components/merge-resolution/DocumentResolutionList.tsx` | Moderate: accept `documentDiffCounts` prop, display per-document diff summary badges (+N added, -N removed, ~N modified) below each document path |
 | 4 | `packages/puck-css/src/components/merge-resolution/CrdtPreviewPanel.tsx` | Major rewrite: accept `config`, `sourceData`, `targetData`, branch names. Replace raw JSON with three-panel `<Render>` layout (Draft \| CRDT Result \| Live). Keep loading/error states. |
 | 5 | `packages/puck-css/src/components/merge-resolution/MergeResolutionToolbar.tsx` | No functional changes. Remove `ViewModeSelector` from this component (it was never added; the previous plan proposed adding it here, but this plan places it in the detail panel instead). |
@@ -316,12 +330,15 @@ diffs: ComponentDiffWithPosition[]; // Pre-computed diffs for this document
 
 **Strategy-specific rendering:**
 
-- **`accept-draft`** (both snapshots available): `MergePreviewRenderer` showing Draft and Live with diff highlighting. The Draft side has a green "selected" border/emphasis. The Live side is dimmed (opacity 0.6). A banner reads "Draft version will be kept."
-- **`accept-live`** (both snapshots available): Same as accept-draft but reversed: Live side emphasized, Draft side dimmed. Banner: "Live version will be kept."
+- **`accept-draft`** (both snapshots available): `MergePreviewRenderer` showing Draft and Live with diff highlighting, wrapped in a `StrategyEmphasisWrapper` container. The wrapper renders a semi-transparent overlay `div` (absolute-positioned, `pointer-events: none`, `background: rgba(255,255,255,0.5)`) on top of the non-selected panel using the panel's DOM position (queried via `.merge-preview-renderer__panel` class selector on the wrapper's children). The selected panel gets a green border via an additional absolute-positioned highlight `div`. A banner above reads "Draft version will be kept." This overlay approach avoids modifying `MergePreviewRenderer` internals and works with inline styles (no CSS file needed). The `StrategyEmphasisWrapper` is a private helper within `DocumentResolutionDetail.tsx`, not a separate exported component.
+- **`accept-live`** (both snapshots available): Same mechanism as accept-draft but reversed: Live side highlighted, Draft side dimmed. Banner: "Live version will be kept."
 - **`cherry-pick`** (both snapshots required -- cherry-pick is only meaningful with two versions): `CherryPickVisualPanel` with visual component picker + prop-level controls + live merged preview
 - **`crdt-preview`**: Visual `CrdtPreviewPanel` showing three-way rendered comparison (Draft | CRDT Result | Live)
 - **`unresolved`** (both snapshots available): `MergePreviewRenderer` with standard diff highlighting, no selection emphasis. A prompt: "Select a resolution strategy above."
 - **Delete conflicts** (one snapshot null): Single-panel view showing the surviving version rendered via `<Render>`, with a styled overlay message explaining the deletion. `ViewModeSelector` is hidden.
+
+**`StrategyEmphasisWrapper` (private helper):**
+A small internal component within `DocumentResolutionDetail.tsx` that wraps `MergePreviewRenderer` and applies visual emphasis for `accept-draft` and `accept-live` strategies. It uses a `useEffect` + `useRef` to query the wrapper's DOM children for `.merge-preview-renderer__panel` elements, then renders absolutely-positioned overlay divs on top of the non-selected panel. This is the same overlay pattern used by `ComponentClickOverlay` but simpler (no `ResizeObserver` needed since it only applies static overlays, not interactive click targets). It re-reads panel positions on window resize via a `resize` event listener.
 
 **Edge cases:**
 - `sourceSnapshot` is null (deleted in source): show only Live panel with "Deleted in Draft" overlay. `MergePreviewRenderer` is not used.
