@@ -263,9 +263,9 @@ describe('DocumentSession WebSocket publish handler', () => {
 
     expect(publishCalls.length).toBeGreaterThanOrEqual(1);
 
-    // Parse the request body
-    const publishReq = publishCalls[0][0] as Request;
-    const body = await publishReq.json() as Record<string, unknown>;
+    // The fetch call is (url: string, options: RequestInit)
+    const publishOptions = publishCalls[0][1] as RequestInit;
+    const body = JSON.parse(publishOptions.body as string) as Record<string, unknown>;
     expect(body.siteId).toBe('mySite');
     expect(body.documentId).toBe('myDoc');
     expect(body.branchId).toBe('myBranch');
@@ -413,7 +413,8 @@ describe('DocumentSession WebSocket publish handler', () => {
     });
 
     expect(publishCalls.length).toBeGreaterThanOrEqual(1);
-    const publishReq = publishCalls[0][0] as Request;
-    expect(publishReq.headers.get('X-Internal-Secret')).toBe('my-secret-123');
+    const publishOptions = publishCalls[0][1] as RequestInit;
+    const headers = publishOptions.headers as Record<string, string>;
+    expect(headers['X-Internal-Secret']).toBe('my-secret-123');
   });
 });

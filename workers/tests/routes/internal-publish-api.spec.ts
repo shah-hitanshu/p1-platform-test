@@ -263,7 +263,7 @@ describe('Internal Publish API', () => {
 
       expect(response.status).toBe(500);
       const json = await response.json() as { error: string };
-      expect(json.error).toContain('publish');
+      expect(json.error).toContain('Publish failed');
     });
 
     it('should return 404 when document has no versions', async () => {

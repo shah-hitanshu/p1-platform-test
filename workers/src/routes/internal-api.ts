@@ -17,6 +17,7 @@ import {
 import {
   createCheckpoint,
   revertToCheckpoint,
+  publishDocument,
   BranchNotFoundError,
   CheckpointNotFoundError,
 } from '../services/checkpoint-service';
@@ -45,6 +46,17 @@ interface CrdtSyncBody {
   crdtState: string;
   actorId: string;
   actorType: 'user' | 'agent';
+}
+
+/**
+ * Request body for internal publish endpoint
+ */
+interface InternalPublishBody {
+  siteId: string;
+  branchId: string;
+  documentId: string;
+  createdById: string;
+  createdByType: 'user' | 'agent';
 }
 
 /**
@@ -261,6 +273,96 @@ async function handleLoadCrdtState(request: Request): Promise<Response> {
   } catch (error) {
     console.error('Error loading CRDT state:', error);
     return errorResponse('Failed to load CRDT state', 500);
+  }
+}
+
+// =============================================================================
+// Internal Publish Handler
+// =============================================================================
+
+/** Validation result type for internal publish */
+type InternalPublishValidation =
+  | { valid: false; error: string }
+  | { valid: true; data: InternalPublishBody };
+
+/**
+ * Validate internal publish request body
+ */
+function validateInternalPublishBody(body: unknown): InternalPublishValidation {
+  if (body === null || typeof body !== 'object') {
+    return { valid: false, error: 'Request body must be an object' };
+  }
+
+  const data = body as Record<string, unknown>;
+
+  if (typeof data.siteId !== 'string' || data.siteId.trim() === '') {
+    return { valid: false, error: 'siteId is required and must be a non-empty string' };
+  }
+
+  if (typeof data.branchId !== 'string' || data.branchId.trim() === '') {
+    return { valid: false, error: 'branchId is required and must be a non-empty string' };
+  }
+
+  if (typeof data.documentId !== 'string' || data.documentId.trim() === '') {
+    return { valid: false, error: 'documentId is required and must be a non-empty string' };
+  }
+
+  if (typeof data.createdById !== 'string' || data.createdById.trim() === '') {
+    return { valid: false, error: 'createdById is required and must be a non-empty string' };
+  }
+
+  if (data.createdByType !== 'user' && data.createdByType !== 'agent') {
+    return { valid: false, error: 'createdByType must be "user" or "agent"' };
+  }
+
+  return {
+    valid: true,
+    data: {
+      siteId: data.siteId,
+      branchId: data.branchId,
+      documentId: data.documentId,
+      createdById: data.createdById,
+      createdByType: data.createdByType,
+    },
+  };
+}
+
+/**
+ * Handle POST /internal/publish
+ * Publishes a document by creating a checkpoint with the latest version.
+ * Called by the DocumentSession DO after flushing CRDT state to Postgres.
+ */
+async function handleInternalPublish(request: Request): Promise<Response> {
+  let rawBody: unknown;
+  try {
+    rawBody = await request.json();
+  } catch {
+    return errorResponse('Invalid JSON in request body', 400);
+  }
+
+  const validation = validateInternalPublishBody(rawBody);
+  if (!validation.valid) {
+    return errorResponse(validation.error, 400);
+  }
+
+  const { data } = validation;
+
+  try {
+    const result = await publishDocument({
+      siteId: data.siteId,
+      branchId: data.branchId,
+      documentId: data.documentId,
+      createdById: data.createdById,
+      createdByType: data.createdByType,
+    });
+
+    return jsonResponse(result);
+  } catch (error) {
+    console.error('Internal publish failed:', error);
+    return errorResponse(
+      `Publish failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      500,
+    );
   }
 }
 
@@ -556,6 +658,14 @@ export async function handleInternalRoutes(
       return errorResponse('Method not allowed', 405);
     }
     return handleLoadCrdtState(request);
+  }
+
+  // Publish endpoint (called by DO after flush)
+  if (path === '/internal/publish') {
+    if (request.method !== 'POST') {
+      return errorResponse('Method not allowed', 405);
+    }
+    return handleInternalPublish(request);
   }
 
   // Agent checkpoint endpoints (Agent Politeness Protocol)

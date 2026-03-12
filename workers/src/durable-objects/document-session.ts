@@ -64,7 +64,7 @@ import type {
   WsPresenceErrorMessage,
   WsServerMessage,
 } from '../types/websocket-messages';
-import { isWsFocusRegionUpdate, isWsPresenceHeartbeat, isWsDeliveryAckRequest } from '../types/websocket-messages';
+import { isWsFocusRegionUpdate, isWsPresenceHeartbeat, isWsDeliveryAckRequest, isWsPublishRequest } from '../types/websocket-messages';
 
 /**
  * Storage key for persisted Yjs document state
@@ -1521,6 +1521,10 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    // Restore session info from storage if state.id.name is unavailable (Miniflare).
+    // webSocketMessage is called directly by the runtime — not through fetch() —
+    // so updateSessionInfoFromRequest never runs on DO restart.
+    await this.restoreSessionInfoFromStorage();
     await this.initializeCrdtIfNeeded();
 
     const meta = this.getConnectionMeta(ws);
@@ -1556,6 +1560,13 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     try {
       // Distinguish text (presence JSON) from binary (Yjs CRDT) messages
       if (typeof message === 'string') {
+        // Check for publish_request first — it's async (involves flush + HTTP)
+        // and must be handled before the sync handlePresenceMessage
+        const parsed = this.tryParseJson(message);
+        if (parsed !== null && isWsPublishRequest(parsed)) {
+          await this.handleWsPublishRequest(ws, meta, parsed);
+          return;
+        }
         this.handlePresenceMessage(ws, meta, message);
         return;
       }
@@ -1789,14 +1800,10 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     // Persist to DO storage first
     await this.flushPendingPersist();
 
-    // Check if state has changed since last sync
-    const currentHash = this.computeStateVectorHash();
-    if (currentHash === this.lastSyncedStateVectorHash) {
-      return new Response(
-        JSON.stringify({ flushed: false, reason: 'no_changes' }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      );
-    }
+    // Always attempt to sync on flush — do not use the state vector hash check.
+    // The hash is optimized for the regular async sync (alarm-driven), but the flush
+    // is called before publish where correctness matters more than avoiding a redundant write.
+    // The SQL dedup in executeDirectSync prevents duplicate versions anyway.
 
     // Check if sync infrastructure is configured
     const internalApiUrl = this.env.INTERNAL_API_URL;
@@ -4047,6 +4054,128 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       });
     } else {
       this.sendPresenceError(sender, 'UNKNOWN_TYPE', 'Unknown message type');
+    }
+  }
+
+  /**
+   * Try to parse a JSON string, returning null on failure.
+   */
+  private tryParseJson(data: string): unknown {
+    try {
+      return JSON.parse(data);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Handle a publish_request message from a WebSocket client.
+   *
+   * TCP ordering guarantees all preceding binary CRDT updates have been
+   * applied to the Y.Doc by the time this message is processed. The handler:
+   * 1. Flushes the Y.Doc to Postgres (synchronous direct sync)
+   * 2. Calls POST /internal/publish to create the checkpoint
+   * 3. Sends the result back via WebSocket
+   */
+  private async handleWsPublishRequest(
+    sender: WebSocket,
+    meta: ConnectionMeta,
+    message: import('../types/websocket-messages').WsPublishRequestMessage,
+  ): Promise<void> {
+    const { requestId } = message;
+    const { siteId, documentId, branchId } = this.sessionInfo;
+
+    // Validate session info is available
+    if (siteId === 'unknown' || documentId === 'unknown' || branchId === 'unknown') {
+      this.sendWsMessage(sender, {
+        type: 'publish_result',
+        requestId,
+        success: false,
+        error: 'Cannot publish: session info not available',
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    const internalApiUrl = this.env.INTERNAL_API_URL;
+    const internalSecret = this.env.INTERNAL_SECRET;
+
+    if (internalApiUrl === undefined || internalSecret === undefined) {
+      this.sendWsMessage(sender, {
+        type: 'publish_result',
+        requestId,
+        success: false,
+        error: 'Cannot publish: sync infrastructure not configured',
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    try {
+      // Step 1: Flush CRDT state to Postgres
+      let actorId = meta.actorId;
+      let actorType: 'user' | 'agent' = meta.actorType;
+      const schedule = await this.state.storage.get<{ dueAt: number; actorId: string; actorType: 'user' | 'agent' }>(DocumentSession.SYNC_SCHEDULE_KEY);
+      if (schedule !== undefined) {
+        actorId = schedule.actorId;
+        actorType = schedule.actorType;
+      }
+
+      await this.flushPendingPersist();
+      await this.performDirectSync(internalApiUrl, internalSecret, actorId, actorType);
+
+      // Step 2: Call internal publish endpoint
+      const publishUrl = `${internalApiUrl}/internal/publish`;
+      const publishResponse = await fetch(publishUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': internalSecret,
+        },
+        body: JSON.stringify({
+          siteId,
+          branchId,
+          documentId,
+          createdById: meta.actorId,
+          createdByType: meta.actorType,
+        }),
+      });
+
+      if (!publishResponse.ok) {
+        const errorBody = await publishResponse.text();
+        this.sendWsMessage(sender, {
+          type: 'publish_result',
+          requestId,
+          success: false,
+          error: `Publish failed: ${errorBody}`,
+          timestamp: Date.now(),
+        });
+        return;
+      }
+
+      const result: {
+        checkpoint: import('../types').Checkpoint;
+        publishedVersionId: string;
+        sourceBranchName?: string;
+      } = await publishResponse.json();
+
+      // Step 3: Send success result back to client
+      this.sendWsMessage(sender, {
+        type: 'publish_result',
+        requestId,
+        success: true,
+        publishedVersionId: result.publishedVersionId,
+        checkpoint: result.checkpoint,
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      this.sendWsMessage(sender, {
+        type: 'publish_result',
+        requestId,
+        success: false,
+        error: `Publish failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: Date.now(),
+      });
     }
   }
 

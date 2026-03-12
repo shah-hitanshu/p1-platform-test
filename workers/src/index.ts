@@ -1449,12 +1449,15 @@ async function handleRequest(
         ) {
           try {
             const sessionId = `${route.params.siteId}:${route.params.documentId}:${route.params.branchId}`;
+            console.log(`[PUBLISH-DIAG] Pre-publish flush starting, sessionId=${sessionId}`);
             const doId = env.DOCUMENT_STATE.idFromName(sessionId);
             const stub = env.DOCUMENT_STATE.get(doId);
-            const flushResponse = await stub.fetch(new Request('http://internal/flush', { method: 'POST' }));
-            if (!flushResponse.ok) {
-              console.warn('DO flush before publish failed:', await flushResponse.text());
-            }
+            const flushResponse = await stub.fetch(new Request('http://internal/flush', {
+              method: 'POST',
+              headers: { 'X-Session-Id': sessionId },
+            }));
+            const flushBody = await flushResponse.text();
+            console.log(`[PUBLISH-DIAG] Pre-publish flush complete, status=${String(flushResponse.status)}, body=${flushBody}`);
           } catch (flushError) {
             console.warn('DO flush before publish failed:', flushError);
           }
@@ -1485,7 +1488,10 @@ async function handleRequest(
               const sessionId = `${route.params.siteId}:${route.params.documentId}:${mainBranch.id}`;
               const doId = env.DOCUMENT_STATE.idFromName(sessionId);
               const stub = env.DOCUMENT_STATE.get(doId);
-              await stub.fetch(new Request('http://internal/reload', { method: 'POST' }));
+              await stub.fetch(new Request('http://internal/reload', {
+                method: 'POST',
+                headers: { 'X-Session-Id': sessionId },
+              }));
             }
           } catch (reloadError) {
             console.error('Failed to reload DO after publish:', reloadError);

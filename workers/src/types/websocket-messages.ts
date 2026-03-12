@@ -12,7 +12,7 @@
  * so presence messages can coexist with Yjs sync on the same connection.
  */
 
-import type { ActorPresence, PresenceState } from '../types';
+import type { ActorPresence, Checkpoint, PresenceState } from '../types';
 
 // =============================================================================
 // Client → Server Messages
@@ -56,9 +56,28 @@ export interface WsDeliveryAckRequestMessage {
 }
 
 /**
+ * Request the server to publish the current document.
+ * TCP ordering guarantees all preceding binary CRDT updates have been processed
+ * before this message is handled, eliminating stale-version-on-publish races.
+ *
+ * The DO handles the entire publish flow: flush to Postgres → create checkpoint.
+ */
+export interface WsPublishRequestMessage {
+  type: 'publish_request';
+  /** Unique request ID for correlating the response */
+  requestId: string;
+  /** Client timestamp for latency measurement */
+  timestamp: number;
+}
+
+/**
  * Union of all client-to-server WebSocket messages.
  */
-export type WsClientMessage = WsFocusRegionUpdateMessage | WsPresenceHeartbeatMessage | WsDeliveryAckRequestMessage;
+export type WsClientMessage =
+  | WsFocusRegionUpdateMessage
+  | WsPresenceHeartbeatMessage
+  | WsDeliveryAckRequestMessage
+  | WsPublishRequestMessage;
 
 // =============================================================================
 // Server → Client Messages
@@ -130,6 +149,26 @@ export interface WsDeliveryAckMessage {
 }
 
 /**
+ * Result of a WebSocket-driven publish request.
+ * Sent in response to publish_request after the DO completes flush + publish.
+ */
+export interface WsPublishResultMessage {
+  type: 'publish_result';
+  /** Matches the requestId from the request */
+  requestId: string;
+  /** Whether the publish succeeded */
+  success: boolean;
+  /** The published version ID (on success) */
+  publishedVersionId?: string;
+  /** The checkpoint created by the publish (on success) */
+  checkpoint?: Checkpoint;
+  /** Error message (on failure) */
+  error?: string;
+  /** Server timestamp */
+  timestamp: number;
+}
+
+/**
  * Union of all server-to-client WebSocket messages.
  */
 export type WsServerMessage =
@@ -137,7 +176,8 @@ export type WsServerMessage =
   | WsFocusRegionBroadcastMessage
   | WsFocusRegionAckMessage
   | WsPresenceErrorMessage
-  | WsDeliveryAckMessage;
+  | WsDeliveryAckMessage
+  | WsPublishResultMessage;
 
 // =============================================================================
 // Type Guards
@@ -149,7 +189,12 @@ export type WsServerMessage =
 export function isWsClientMessage(msg: unknown): msg is WsClientMessage {
   if (typeof msg !== 'object' || msg === null) return false;
   const m = msg as Record<string, unknown>;
-  return m.type === 'focus_region_update' || m.type === 'presence_heartbeat' || m.type === 'delivery_ack_request';
+  return (
+    m.type === 'focus_region_update' ||
+    m.type === 'presence_heartbeat' ||
+    m.type === 'delivery_ack_request' ||
+    m.type === 'publish_request'
+  );
 }
 
 /**
@@ -174,6 +219,19 @@ export function isWsFocusRegionUpdate(msg: unknown): msg is WsFocusRegionUpdateM
   return (
     m.type === 'focus_region_update' &&
     Array.isArray(m.focusRegions) &&
+    typeof m.timestamp === 'number'
+  );
+}
+
+/**
+ * Check if a message is a publish request.
+ */
+export function isWsPublishRequest(msg: unknown): msg is WsPublishRequestMessage {
+  if (typeof msg !== 'object' || msg === null) return false;
+  const m = msg as Record<string, unknown>;
+  return (
+    m.type === 'publish_request' &&
+    typeof m.requestId === 'string' &&
     typeof m.timestamp === 'number'
   );
 }

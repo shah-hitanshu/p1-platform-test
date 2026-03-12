@@ -1157,6 +1157,7 @@ export async function publishDocument(
   }
 
   const version = versionResult.rows[0];
+  console.log(`[PUBLISH-DIAG] Read latest version: versionId=${version.id}, versionNumber=${String(version.version_number)}, docId=${version.document_id}, branchId=${version.branch_id}`);
 
   if (version.is_tombstone) {
     await query('ROLLBACK');
