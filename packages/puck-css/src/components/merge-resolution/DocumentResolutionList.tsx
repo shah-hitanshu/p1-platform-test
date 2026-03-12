@@ -102,7 +102,10 @@ export function DocumentResolutionList({
         e.preventDefault();
         const currentDoc = documents[currentIndex];
         if (currentDoc) {
-          setStrategy(currentDoc.documentId, strategyKeyMap[key]);
+          const strategy = strategyKeyMap[key];
+          if (strategy) {
+            setStrategy(currentDoc.documentId, strategy);
+          }
         }
         return;
       }

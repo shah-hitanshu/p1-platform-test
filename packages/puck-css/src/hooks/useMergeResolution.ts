@@ -204,8 +204,8 @@ export function useMergeResolution(
             crdtPreviewSnapshot: null,
             crdtPreviewLoading: false,
             crdtPreviewError: null,
-            sourceSnapshot: (diff.sourceSnapshot as PuckData) ?? null,
-            targetSnapshot: (diff.targetSnapshot as PuckData) ?? null,
+            sourceSnapshot: (diff.sourceSnapshot as unknown as PuckData) ?? null,
+            targetSnapshot: (diff.targetSnapshot as unknown as PuckData) ?? null,
             conflictType,
             classifiedFields: null,
           };
@@ -251,7 +251,7 @@ export function useMergeResolution(
     // Search from currentIndex+1, wrapping around
     for (let i = 1; i <= documents.length; i++) {
       const idx = (currentIndex + i) % documents.length;
-      if (documents[idx].strategy === 'unresolved') {
+      if (documents[idx]?.strategy === 'unresolved') {
         setCurrentIndex(idx);
         return;
       }
