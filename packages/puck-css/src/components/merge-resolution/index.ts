@@ -2,6 +2,9 @@
  * Merge Resolution Components - Barrel Export
  */
 
+export { MergeReviewPage } from './MergeReviewPage.js';
+export type { MergeReviewPageProps } from './MergeReviewPage.js';
+
 export { MergeResolutionPage } from './MergeResolutionPage.js';
 export type { MergeResolutionPageProps } from './MergeResolutionPage.js';
 

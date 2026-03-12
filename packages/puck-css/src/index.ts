@@ -165,6 +165,7 @@ export type {
 
 // Merge Resolution Components
 export {
+  MergeReviewPage,
   MergeResolutionPage,
   DocumentResolutionList,
   DocumentResolutionDetail,
@@ -175,6 +176,7 @@ export {
   CherryPickVisualPanel,
 } from './components/merge-resolution/index.js';
 export type {
+  MergeReviewPageProps,
   MergeResolutionPageProps,
   DocumentResolutionListProps,
   DiffCounts,

@@ -6,6 +6,7 @@
  */
 
 import React, { useState } from 'react';
+import type { MergeRequestStatus } from '@pantheon/css-client';
 
 export interface MergeResolutionToolbarProps {
   sourceBranchName: string;
@@ -18,6 +19,16 @@ export interface MergeResolutionToolbarProps {
   onExecuteMerge: () => void;
   onSetAllStrategy: (strategy: 'accept-draft' | 'accept-live') => void;
   onSetRemainingStrategy?: (strategy: 'accept-draft' | 'accept-live') => void;
+  /** Current merge request, if one has been created */
+  mergeRequest?: { id: string; status: MergeRequestStatus; title: string } | null;
+  /** Whether a merge request is being created */
+  mergeRequestCreating?: boolean;
+  /** Error from merge request operations */
+  mergeRequestError?: string | null;
+  /** Create a new merge request */
+  onCreateMergeRequest?: () => void;
+  /** Approve the current merge request */
+  onApproveMergeRequest?: () => void;
 }
 
 const baseClass = 'merge-resolution-toolbar';
@@ -33,6 +44,11 @@ export function MergeResolutionToolbar({
   onExecuteMerge,
   onSetAllStrategy,
   onSetRemainingStrategy,
+  mergeRequest,
+  mergeRequestCreating,
+  mergeRequestError,
+  onCreateMergeRequest,
+  onApproveMergeRequest,
 }: MergeResolutionToolbarProps): React.ReactElement {
   const [showConfirm, setShowConfirm] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -143,37 +159,81 @@ export function MergeResolutionToolbar({
         >
           Keyboard shortcuts
         </button>
-        {showConfirm ? (
-          <span className={`${baseClass}__confirm`} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <span className={`${baseClass}__confirm-text`} style={{ fontWeight: 600, color: '#c53030' }}>Are you sure?</span>
-            <button
-              type="button"
-              className={`${baseClass}__confirm-button`}
-              style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: '#c53030', color: 'white', fontWeight: 600 }}
-              onClick={handleExecuteClick}
-              disabled={mergeExecuting}
-            >
-              {mergeExecuting ? 'Merging...' : 'Confirm merge'}
-            </button>
-            <button
-              type="button"
-              className={`${baseClass}__cancel-button`}
-              style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #ccc', background: 'white' }}
-              onClick={handleCancelConfirm}
-            >
-              Cancel
-            </button>
+        {/* Merge request error */}
+        {mergeRequestError && (
+          <span className={`${baseClass}__mr-error`} style={{ color: '#c53030', fontSize: 13, fontWeight: 500 }}>
+            {mergeRequestError}
           </span>
-        ) : (
+        )}
+
+        {/* Step 1: Create merge request */}
+        {!mergeRequest && onCreateMergeRequest && (
           <button
             type="button"
-            className={`${baseClass}__execute-button`}
-            style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: '#0066cc', color: 'white', cursor: (!allResolved || mergeExecuting) ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 600, opacity: (!allResolved || mergeExecuting) ? 0.5 : 1 }}
-            disabled={!allResolved || mergeExecuting}
-            onClick={handleExecuteClick}
+            className={`${baseClass}__create-mr-button`}
+            style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: '#0066cc', color: 'white', cursor: (!allResolved || mergeRequestCreating) ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 600, opacity: (!allResolved || mergeRequestCreating) ? 0.5 : 1 }}
+            disabled={!allResolved || mergeRequestCreating}
+            onClick={onCreateMergeRequest}
           >
-            {mergeExecuting ? 'Merging...' : 'Execute merge'}
+            {mergeRequestCreating ? 'Creating...' : 'Create merge request'}
           </button>
+        )}
+
+        {/* Step 2: Approve merge request */}
+        {mergeRequest && mergeRequest.status === 'open' && onApproveMergeRequest && (
+          <button
+            type="button"
+            className={`${baseClass}__approve-mr-button`}
+            style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: '#28a745', color: 'white', cursor: 'pointer', fontSize: 14, fontWeight: 600 }}
+            onClick={onApproveMergeRequest}
+          >
+            Approve merge request
+          </button>
+        )}
+
+        {/* Step 3: Execute merge (with confirmation) */}
+        {mergeRequest && (mergeRequest.status === 'approved' || mergeRequest.status === 'conflicted') && (
+          <>
+            {showConfirm ? (
+              <span className={`${baseClass}__confirm`} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <span className={`${baseClass}__confirm-text`} style={{ fontWeight: 600, color: '#c53030' }}>Are you sure?</span>
+                <button
+                  type="button"
+                  className={`${baseClass}__confirm-button`}
+                  style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: '#c53030', color: 'white', fontWeight: 600 }}
+                  onClick={handleExecuteClick}
+                  disabled={mergeExecuting}
+                >
+                  {mergeExecuting ? 'Merging...' : 'Confirm merge'}
+                </button>
+                <button
+                  type="button"
+                  className={`${baseClass}__cancel-button`}
+                  style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #ccc', background: 'white' }}
+                  onClick={handleCancelConfirm}
+                >
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className={`${baseClass}__execute-button`}
+                style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: '#0066cc', color: 'white', cursor: mergeExecuting ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 600, opacity: mergeExecuting ? 0.5 : 1 }}
+                disabled={mergeExecuting}
+                onClick={handleExecuteClick}
+              >
+                {mergeExecuting ? 'Merging...' : 'Execute merge'}
+              </button>
+            )}
+          </>
+        )}
+
+        {/* Merged status indicator */}
+        {mergeRequest && mergeRequest.status === 'merged' && (
+          <span className={`${baseClass}__merged-badge`} style={{ padding: '8px 16px', borderRadius: 6, background: '#d4edda', color: '#155724', fontSize: 14, fontWeight: 600 }}>
+            Merged
+          </span>
         )}
       </div>
 

@@ -7,7 +7,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import type { CSSClient, PuckData, DocumentConflictType, MergePreview } from '@pantheon/css-client';
+import type { CSSClient, PuckData, DocumentConflictType, MergePreview, MergeRequest, MergeRequestStatus } from '@pantheon/css-client';
 import {
   classifyPuckFields,
   buildMergedSnapshot,
@@ -64,6 +64,13 @@ export interface UseMergeResolutionReturn {
   mergeError: string | null;
   mergeSuccess: boolean;
 
+  mergeRequest: MergeRequest | null;
+  mergeRequestCreating: boolean;
+  mergeRequestError: string | null;
+
+  createMergeRequest: (title?: string) => Promise<void>;
+  approveMergeRequest: () => Promise<void>;
+
   goToDocument: (index: number) => void;
   goToNext: () => void;
   goToPrevious: () => void;
@@ -115,6 +122,10 @@ export function useMergeResolution(
   const [mergeExecuting, setMergeExecuting] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [mergeSuccess, setMergeSuccess] = useState(false);
+
+  const [mergeRequest, setMergeRequest] = useState<MergeRequest | null>(null);
+  const [mergeRequestCreating, setMergeRequestCreating] = useState(false);
+  const [mergeRequestError, setMergeRequestError] = useState<string | null>(null);
 
   // Derived state
   const currentDocument = useMemo(
@@ -455,17 +466,72 @@ export function useMergeResolution(
   );
 
   // =========================================================================
-  // Merge execution
+  // Merge request lifecycle
+  // =========================================================================
+
+  const createMergeRequest = useCallback(
+    async (title?: string) => {
+      setMergeRequestCreating(true);
+      setMergeRequestError(null);
+
+      try {
+        const mr = await client.merge.createRequest(siteId, {
+          sourceBranchId,
+          targetBranchId,
+          title: title ?? `Merge Draft → Live`,
+        });
+        setMergeRequest(mr);
+      } catch (err) {
+        setMergeRequestError(
+          err instanceof Error ? err.message : 'Failed to create merge request'
+        );
+      } finally {
+        setMergeRequestCreating(false);
+      }
+    },
+    [client, siteId, sourceBranchId, targetBranchId]
+  );
+
+  const approveMergeRequest = useCallback(async () => {
+    if (!mergeRequest) return;
+    setMergeRequestError(null);
+
+    try {
+      const updated = await client.merge.updateRequest(
+        siteId,
+        mergeRequest.id,
+        { status: 'approved' as MergeRequestStatus }
+      );
+      setMergeRequest(updated);
+    } catch (err) {
+      setMergeRequestError(
+        err instanceof Error ? err.message : 'Failed to approve merge request'
+      );
+    }
+  }, [client, siteId, mergeRequest]);
+
+  // =========================================================================
+  // Merge execution (via merge request)
   // =========================================================================
 
   const executeMerge = useCallback(
-    async (message?: string) => {
+    async (_message?: string) => {
+      if (!mergeRequest) {
+        setMergeError('No merge request created. Create and approve a merge request first.');
+        return;
+      }
+
+      if (mergeRequest.status !== 'approved' && mergeRequest.status !== 'conflicted') {
+        setMergeError(`Merge request must be approved before executing. Current status: ${mergeRequest.status}`);
+        return;
+      }
+
       setMergeExecuting(true);
       setMergeError(null);
       setMergeSuccess(false);
 
       try {
-        const conflictResolutions = documents.map((doc) => {
+        const resolutions = documents.map((doc) => {
           switch (doc.strategy) {
             case 'accept-draft':
               return { documentId: doc.documentId, strategy: 'take-source' as const };
@@ -486,14 +552,10 @@ export function useMergeResolution(
           }
         });
 
-        await client.merge.execute(siteId, {
-          sourceBranchId,
-          targetBranchId,
-          message,
-          conflictResolutions,
-        });
+        await client.merge.executeRequest(siteId, mergeRequest.id, { resolutions });
 
         setMergeSuccess(true);
+        setMergeRequest((prev) => prev ? { ...prev, status: 'merged' as MergeRequestStatus } : null);
       } catch (err) {
         setMergeError(
           err instanceof Error ? err.message : 'Merge execution failed'
@@ -502,7 +564,7 @@ export function useMergeResolution(
         setMergeExecuting(false);
       }
     },
-    [client, siteId, sourceBranchId, targetBranchId, documents]
+    [client, siteId, mergeRequest, documents]
   );
 
   return {
@@ -519,6 +581,13 @@ export function useMergeResolution(
     mergeExecuting,
     mergeError,
     mergeSuccess,
+
+    mergeRequest,
+    mergeRequestCreating,
+    mergeRequestError,
+
+    createMergeRequest,
+    approveMergeRequest,
 
     goToDocument,
     goToNext,

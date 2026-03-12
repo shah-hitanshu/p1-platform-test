@@ -57,10 +57,18 @@ export function MergeResolutionPage({
     hook.loadPreview();
   }, [hook.loadPreview]);
 
-  // Stable callback for execute merge to avoid re-renders
+  // Stable callbacks to avoid re-renders
   const handleExecuteMerge = useCallback(() => {
     hook.executeMerge();
   }, [hook.executeMerge]);
+
+  const handleCreateMergeRequest = useCallback(() => {
+    hook.createMergeRequest();
+  }, [hook.createMergeRequest]);
+
+  const handleApproveMergeRequest = useCallback(() => {
+    hook.approveMergeRequest();
+  }, [hook.approveMergeRequest]);
 
   // Notify parent on successful merge
   useEffect(() => {
@@ -156,11 +164,22 @@ export function MergeResolutionPage({
         onExecuteMerge={handleExecuteMerge}
         onSetAllStrategy={hook.setAllStrategy}
         onSetRemainingStrategy={hook.setRemainingStrategy}
+        mergeRequest={hook.mergeRequest}
+        mergeRequestCreating={hook.mergeRequestCreating}
+        mergeRequestError={hook.mergeRequestError}
+        onCreateMergeRequest={handleCreateMergeRequest}
+        onApproveMergeRequest={handleApproveMergeRequest}
       />
 
       {hook.mergeError && (
         <p className={`${baseClass}__merge-error`} role="alert" style={{ background: '#fde8e8', color: '#c53030', padding: 12, borderRadius: 6, marginBottom: 16 }}>
           {hook.mergeError}
+        </p>
+      )}
+
+      {hook.mergeSuccess && (
+        <p className={`${baseClass}__merge-success`} role="status" style={{ background: '#d4edda', color: '#155724', padding: 12, borderRadius: 6, marginBottom: 16 }}>
+          Merge completed successfully.
         </p>
       )}
 
