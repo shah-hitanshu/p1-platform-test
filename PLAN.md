@@ -38,6 +38,7 @@ The existing per-document visual comparisons (side-by-side, overlay, slider) are
 
 **Why:** The user explicitly called out production merges with dozens or hundreds of documents. Sequential mouse clicking through 200 documents is impractical. The design uses:
 - `J`/`K` or `ArrowDown`/`ArrowUp` to navigate between documents
+- `N` to jump to the next unresolved document
 - `1`/`2`/`3`/`4` to quickly assign strategy (Accept Draft / Accept Live / Cherry-pick / CRDT Preview)
 - `Shift+D` to accept all remaining as Draft, `Shift+L` to accept all remaining as Live
 - `Enter` to expand/collapse current document detail view
@@ -62,6 +63,10 @@ This direct mapping means no translation layer is needed at merge execution time
 ### Decision 7: Delete-type conflicts handled as document-level choices only
 
 **Why:** When a document is `deleted-in-source` or `deleted-in-target`, prop-level cherry-picking is meaningless (there is no "other side" to compare props against). These conflicts only allow Accept Draft or Accept Live as strategies. The Cherry-pick and CRDT Preview options are disabled for delete-type conflicts. The UI shows an explanatory message (e.g., "This document was deleted in Draft" or "This document was deleted in Live") instead of a field comparison view.
+
+### Decision 8: Non-conflicting documents are included in the list but pre-resolved
+
+**Why:** A merge may include documents that changed only on one side (no conflict). These are still shown in the document list so the user can review what will be merged, but they are pre-resolved (`accept-draft` for source-only changes, `accept-live` for target-only changes). The user can override these pre-resolved strategies if needed. This gives full visibility into the merge while keeping the "unresolved" count focused on actual conflicts requiring decisions.
 
 ---
 
@@ -201,17 +206,17 @@ export interface MergeRequest {
 
 #### 1.2 MergeEndpoint (`packages/css-client/src/endpoints/merge.ts`)
 
-Methods:
-- `checkMergeability(siteId, sourceBranchId, targetBranchId)` → `MergeabilityResult`
-- `preview(siteId, sourceBranchId, targetBranchId, options?)` → `MergePreview`
-- `crdtPreview(siteId, documentId, sourceBranchId, targetBranchId)` → `CrdtPreviewResult`
-- `execute(siteId, params: MergeExecuteParams)` → `MergeExecuteResult`
-- `createRequest(siteId, params)` → `MergeRequest`
-- `getRequest(siteId, requestId)` → `MergeRequest`
-- `listRequests(siteId, options?)` → `MergeRequest[]`
-- `updateRequest(siteId, requestId, params)` → `MergeRequest`
-- `deleteRequest(siteId, requestId)` → `void`
-- `executeRequest(siteId, requestId, resolutions?)` → `MergeExecuteResult`
+Methods (with backend API paths):
+- `checkMergeability(siteId, sourceBranchId, targetBranchId)` → `MergeabilityResult` — `POST /api/sites/{siteId}/merge/check`
+- `preview(siteId, sourceBranchId, targetBranchId, options?)` → `MergePreview` — `POST /api/sites/{siteId}/merge/preview`
+- `crdtPreview(siteId, documentId, sourceBranchId, targetBranchId)` → `CrdtPreviewResult` — `POST /api/sites/{siteId}/merge/crdt-preview`
+- `execute(siteId, params: MergeExecuteParams)` → `MergeExecuteResult` — `POST /api/sites/{siteId}/merge/execute`
+- `createRequest(siteId, params)` → `MergeRequest` — `POST /api/sites/{siteId}/merge-requests`
+- `getRequest(siteId, requestId)` → `MergeRequest` — `GET /api/sites/{siteId}/merge-requests/{requestId}`
+- `listRequests(siteId, options?)` → `MergeRequest[]` — `GET /api/sites/{siteId}/merge-requests`
+- `updateRequest(siteId, requestId, params)` → `MergeRequest` — `PATCH /api/sites/{siteId}/merge-requests/{requestId}`
+- `deleteRequest(siteId, requestId)` → `void` — `DELETE /api/sites/{siteId}/merge-requests/{requestId}`
+- `executeRequest(siteId, requestId, options?)` → `MergeExecuteResult` — `POST /api/sites/{siteId}/merge-requests/{requestId}/execute` — `options` includes optional `resolutions` array and optional `defaultStrategy` (defaults to `'take-source'` to match backend behavior)
 
 #### 1.3 Client integration (`packages/css-client/src/client.ts`)
 
@@ -284,8 +289,9 @@ export interface UseMergeResolutionReturn {
   setAllStrategy: (strategy: 'accept-draft' | 'accept-live') => void;
   setRemainingStrategy: (strategy: 'accept-draft' | 'accept-live') => void;
 
-  // Cherry-pick
+  // Cherry-pick (individual prop or whole component)
   setCherryPickSelection: (documentId: string, componentId: string, propName: string, choice: 'source' | 'target') => void;
+  // Sets all classified fields for the given component to 'source' or 'target' at once
   acceptAllComponentProps: (documentId: string, componentId: string, choice: 'source' | 'target') => void;
 
   // CRDT preview
@@ -374,7 +380,7 @@ Auto-scrolls the selected item into view.
 Right panel. Shows the expanded view for the currently selected document:
 
 - **Strategy picker** (4 buttons with labels)
-- **When strategy is `accept-draft` or `accept-live`**: Shows the existing `MergePreviewRenderer` in side-by-side mode with the chosen side highlighted. Read-only visual confirmation.
+- **When strategy is `accept-draft` or `accept-live`**: Shows the existing `MergePreviewRenderer` (from `packages/puck-css/src/components/merge-preview/`) in side-by-side mode with the chosen side highlighted. This retains the existing per-document visual comparison as a read-only confirmation of the user's choice.
 - **When strategy is `cherry-pick`**: Shows `ComponentConflictGroup` components for each component with conflicts. Uses existing radio-button UI from the conflict-resolution components. Shows auto-merged field count. Shows "Apply" that computes the merged snapshot and displays a rendered preview using `Render` from Puck.
 - **When strategy is `crdt-preview`**: Shows `CrdtPreviewPanel` with a loading state, the merged snapshot rendered via Puck's `Render`, and a side-by-side comparison with the source/target.
 - **When conflict type is `deleted-in-source` or `deleted-in-target`**: Shows only Accept Draft / Accept Live buttons (Cherry-pick and CRDT Preview are disabled). Displays an explanatory message: "This document was deleted in Draft" or "This document was deleted in Live". Shows the surviving version's snapshot as a read-only preview.
