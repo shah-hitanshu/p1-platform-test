@@ -640,3 +640,166 @@ export type WsServerMessage =
   | WsPresenceErrorMessage
   | WsDeliveryAckMessage
   | WsPublishResultMessage;
+
+// =============================================================================
+// Merge Types
+// =============================================================================
+
+/**
+ * Merge conflict resolution strategies (matches backend).
+ */
+export type ConflictResolutionStrategy = 'take-source' | 'take-target' | 'merge-crdt' | 'manual';
+
+/**
+ * Merge request workflow states.
+ */
+export type MergeRequestStatus = 'open' | 'approved' | 'merged' | 'closed' | 'conflicted';
+
+/**
+ * Document-level conflict types.
+ */
+export type DocumentConflictType = 'both-modified' | 'deleted-in-source' | 'deleted-in-target';
+
+/**
+ * A single document conflict in a merge.
+ */
+export interface DocumentConflict {
+  documentId: string;
+  documentPath: string;
+  conflictType: DocumentConflictType;
+  sourceVersion?: number;
+  targetVersion?: number;
+  baseVersion?: number;
+}
+
+/**
+ * Conflict details containing document and structure conflicts.
+ */
+export interface ConflictDetails {
+  documentConflicts: DocumentConflict[];
+  structureConflicts: unknown[];
+}
+
+/**
+ * Result of checking mergeability between two branches.
+ */
+export interface MergeabilityResult {
+  canMerge: boolean;
+  conflicts: DocumentConflict[];
+  mergeBase: { checkpointId: string; branchId: string };
+  changes: {
+    documentsModifiedInSource: string[];
+    documentsModifiedInTarget: string[];
+  };
+}
+
+/**
+ * Diff information for a single document in a merge.
+ */
+export interface DocumentDiff {
+  documentId: string;
+  documentPath: string;
+  sourceSnapshot: Record<string, unknown> | null;
+  targetSnapshot: Record<string, unknown> | null;
+  diffOperations: unknown[];
+}
+
+/**
+ * Preview of a merge operation between two branches.
+ */
+export interface MergePreview {
+  canMerge: boolean;
+  hasConflicts: boolean;
+  conflicts: ConflictDetails;
+  sourceChanges: { documentId: string; documentPath: string }[];
+  targetChanges: { documentId: string; documentPath: string }[];
+  mergeBase: { checkpointId: string; branchId: string } | null;
+  documentDiffs?: DocumentDiff[];
+}
+
+/**
+ * Result of a CRDT auto-merge preview for a single document.
+ */
+export interface CrdtPreviewResult {
+  success: boolean;
+  snapshot: Record<string, unknown>;
+}
+
+/**
+ * Parameters for executing a merge.
+ */
+export interface MergeExecuteParams {
+  sourceBranchId: string;
+  targetBranchId: string;
+  message?: string;
+  conflictResolutions?: {
+    documentId: string;
+    strategy: ConflictResolutionStrategy;
+    resolvedSnapshot?: Record<string, unknown>;
+  }[];
+}
+
+/**
+ * Result of executing a merge.
+ */
+export interface MergeExecuteResult {
+  success: boolean;
+  checkpointId?: string;
+  documentsUpdated?: number;
+}
+
+/**
+ * A merge request in the system.
+ */
+export interface MergeRequest {
+  id: string;
+  siteId: string;
+  sourceBranchId: string;
+  targetBranchId: string;
+  title: string;
+  description?: string;
+  status: MergeRequestStatus;
+  hasConflicts: boolean;
+  conflictDetails?: ConflictDetails;
+  createdById: string;
+  createdByType: 'user' | 'agent';
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Parameters for creating a merge request.
+ */
+export interface CreateMergeRequestParams {
+  sourceBranchId: string;
+  targetBranchId: string;
+  title: string;
+  description?: string;
+}
+
+/**
+ * Parameters for updating a merge request.
+ */
+export interface UpdateMergeRequestParams {
+  title?: string;
+  description?: string;
+  status?: MergeRequestStatus;
+}
+
+/**
+ * Options for listing merge requests.
+ */
+export interface ListMergeRequestsOptions {
+  status?: MergeRequestStatus;
+}
+
+/**
+ * Options for executing a merge request.
+ */
+export interface ExecuteMergeRequestOptions {
+  resolutions?: {
+    documentId: string;
+    strategy: ConflictResolutionStrategy;
+    resolvedSnapshot?: Record<string, unknown>;
+  }[];
+}

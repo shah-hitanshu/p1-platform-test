@@ -65,6 +65,23 @@ export type {
   UpdateFocusRegionsResponse,
   // Publish types
   PublishResult,
+  // Merge types
+  ConflictResolutionStrategy,
+  MergeRequestStatus,
+  DocumentConflictType,
+  DocumentConflict,
+  ConflictDetails,
+  MergeabilityResult,
+  DocumentDiff,
+  MergePreview,
+  CrdtPreviewResult,
+  MergeExecuteParams,
+  MergeExecuteResult,
+  MergeRequest,
+  CreateMergeRequestParams,
+  UpdateMergeRequestParams,
+  ListMergeRequestsOptions,
+  ExecuteMergeRequestOptions,
 } from './types.js';
 
 // Auth utilities

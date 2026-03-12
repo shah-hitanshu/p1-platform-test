@@ -486,3 +486,98 @@ export function groupFieldsByComponent(
 
   return Array.from(groupMap.values());
 }
+
+/**
+ * Tracks resolution choices keyed by "componentId:propName".
+ */
+export type ResolutionMap = Record<string, 'source' | 'target'>;
+
+/**
+ * Constructs a merged PuckData snapshot from resolution choices.
+ *
+ * Strategy:
+ * - Start with a deep clone of the target snapshot as the base
+ * - Apply source-only changes (overwrite with source values)
+ * - Keep target-only changes (already in target clone)
+ * - Apply user conflict resolutions (source or target)
+ *
+ * @param source - The source PuckData snapshot
+ * @param target - The target PuckData snapshot
+ * @param fields - Classified fields from classifyPuckFields
+ * @param resolutions - Map of "componentId:propName" to 'source' | 'target'
+ * @returns Merged PuckData snapshot
+ */
+export function buildMergedSnapshot(
+  source: PuckData,
+  target: PuckData,
+  fields: PuckFieldClassification[],
+  resolutions: ResolutionMap
+): PuckData {
+  // Deep clone target as starting point
+  const merged: PuckData = JSON.parse(JSON.stringify(target));
+
+  // Build lookup maps for source components
+  const sourceContentMap = new Map<string, PuckComponentData>();
+  for (const comp of source.content) {
+    sourceContentMap.set(comp.props.id, comp);
+  }
+
+  // Build lookup maps for merged (target-based) components
+  const mergedContentMap = new Map<string, PuckComponentData>();
+  for (const comp of merged.content) {
+    mergedContentMap.set(comp.props.id, comp);
+  }
+
+  // Apply field resolutions
+  for (const field of fields) {
+    const key = `${field.componentId}:${field.propName}`;
+    let useSource = false;
+
+    if (field.classification === 'source-only') {
+      // Auto-merge: take source value
+      useSource = true;
+    } else if (field.classification === 'target-only') {
+      // Auto-merge: keep target value (already in merged)
+      useSource = false;
+    } else if (field.classification === 'conflicting') {
+      // Use user's resolution
+      useSource = resolutions[key] === 'source';
+    }
+
+    if (field.componentId === 'root') {
+      // Apply to root props
+      if (useSource) {
+        if (!merged.root.props) {
+          merged.root.props = {};
+        }
+        merged.root.props[field.propName] = JSON.parse(
+          JSON.stringify(field.sourceValue)
+        );
+      }
+    } else if (field.path.startsWith('zones/')) {
+      // Apply to zone component
+      const zoneName = field.path.slice('zones/'.length);
+      const zoneComponents = merged.zones?.[zoneName];
+      if (zoneComponents) {
+        const comp = zoneComponents.find(
+          (c) => c.props.id === field.componentId
+        );
+        if (comp && useSource) {
+          comp.props[field.propName] = JSON.parse(
+            JSON.stringify(field.sourceValue)
+          );
+        }
+      }
+    } else {
+      // Apply to content component
+      const comp = mergedContentMap.get(field.componentId);
+      if (comp && useSource) {
+        comp.props[field.propName] = JSON.parse(
+          JSON.stringify(field.sourceValue)
+        );
+      }
+    }
+  }
+
+  return merged;
+}

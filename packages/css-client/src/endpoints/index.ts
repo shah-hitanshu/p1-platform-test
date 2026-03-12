@@ -14,3 +14,6 @@ export { CheckpointsEndpoint } from './checkpoints.js';
 export { PresenceEndpoint } from './presence.js';
 export { AgentRegistryEndpoint } from './agent-registry.js';
 export { AgentEditEndpoint } from './agent-edit.js';
+
+// Merge endpoints
+export { MergeEndpoint } from './merge.js';
