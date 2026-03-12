@@ -1202,19 +1202,24 @@ Fixed a race condition where publishing a document could publish a stale version
 - Publish endpoint: reads latest version from Postgres (`ORDER BY version_number DESC LIMIT 1`)
 - Race window: 4-9 seconds where the latest edit exists only in the DO's memory
 
-**Backend fix** (collaborative-state-system [PR #33](https://github.com/pantheon-systems/collaborative-state-system/pull/33)):
-- Added `/flush` endpoint on `DocumentSession` DO — synchronously writes CRDT state to Postgres via Hyperdrive, bypassing the async queue
-- Added pre-publish flush in `index.ts` — calls the source branch DO's `/flush` before executing publish
-- `performDirectSync`/`executeDirectSync` with `syncInProgress` lock and dedup against latest version only
-- Graceful degradation: flush failure logs warning but doesn't block publish
+**Solution: WebSocket-driven publish (Option A)**
 
-**Frontend fix** ([PR #14](https://github.com/pantheon-systems/puck-css-integration/pull/14)):
-- Removed the `setTimeout(1000)` hack from `publishDocument` in `CSSPuckProvider.tsx`
-- Backend flush guarantees correctness; no client-side wait needed
+Moved the entire publish orchestration to the backend. The client sends a single `publish_request` message via WebSocket, and the Durable Object handles flush + publish internally. TCP ordering guarantees all preceding CRDT binary updates are processed before the publish request.
 
-**Test coverage:** 16 new tests (9 for `/flush` endpoint, 7 for pre-publish flush logic)
+**Backend changes** (collaborative-state-system, branch `fix/flush-before-publish`):
+- Phase 1: Added `publish_request`/`publish_result` WebSocket message types and type guards
+- Phase 2: Added `POST /internal/publish` route with auth and validation
+- Phase 3: Added `handleWsPublishRequest` to DocumentSession DO — flushes CRDT to Postgres, calls `/internal/publish`, sends result back to client
+- Phase 6: Removed pre-publish flush from `index.ts` (now handled internally), removed diagnostic logging
+- Fixed unique constraint race in `createDocumentVersion` when async queue and flush compete
 
-**Decision:** The `createCheckpoint` callback still has a separate `setTimeout(1000)` — this is a distinct code path that may need the same treatment but was deferred to avoid scope creep.
+**Frontend changes** (puck-css-integration, branch `fix/flush-before-publish`):
+- Phase 4: Added `requestPublish()` to `RealtimeClient` — sends `publish_request` via WS, returns `Promise<PublishResult>` with 30s timeout
+- Phase 5: Wired `requestPublish` through `useRealtime` hook; simplified `publishDocument` in CSSPuckProvider to use WS publish when connected, HTTP fallback when not
+
+**Test coverage:** 48 new tests across 5 test files (16 message types, 13 API route, 6 DO handler, 9 RealtimeClient, 4 integration)
+
+**Decision:** `createCheckpoint` still uses `waitForDelivery()` + HTTP — it's a separate code path creating branch-level checkpoints, not document-level publishes. Could be migrated to a similar WebSocket pattern in the future.
 
 ## Remaining Work
 
