@@ -1221,6 +1221,30 @@ Moved the entire publish orchestration to the backend. The client sends a single
 
 **Decision:** `createCheckpoint` still uses `waitForDelivery()` + HTTP — it's a separate code path creating branch-level checkpoints, not document-level publishes. Could be migrated to a similar WebSocket pattern in the future.
 
+### UX Terminology Update: Live/Draft (2026-03-12, PR #15) ✅
+
+Updated all user-facing strings to use non-technical language for content editors:
+
+**Terminology changes:**
+- "branch" → "Draft" / "Drafts" in all UI labels, dialogs, and empty states
+- "main" → "Live" in dropdowns, buttons, and status indicators
+- Main branch displays as "Live" (not the internal name "main") in selectors
+- "Compare with main" → "Compare with Live"
+- "main only" status indicator → "Live only"
+
+**Published status badge fix:**
+- Renamed "Draft" badge label to "Unpublished" to avoid conflict with Draft = branch terminology
+- Fixed inherited documents from Live showing "Unpublished" instead of "Published"
+  - Root cause: `currentDocument` came from site-level `getByPath` endpoint which lacks `inherited`/`isPublished` fields
+  - Fix: look up document from `css.documents` (branch-level listing) which includes those fields
+
+**Demo app (MergeReviewPage) changes:**
+- "Source branch" → "Draft", "Target branch" → static "Live" label
+- Removed target branch dropdown (merge target is always Live)
+- Filtered main out of source Draft selector
+
+**Files changed:** 10 source files, 800/800 tests passing, 0 lint errors
+
 ## Remaining Work
 
 ### Future
