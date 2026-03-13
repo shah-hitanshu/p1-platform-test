@@ -182,11 +182,11 @@ describe('useMergeResolution', () => {
         await result.current.loadPreview();
       });
 
-      expect(result.current.documents).toHaveLength(3);
+      // Only conflicts and source changes are shown (target-only changes excluded)
+      expect(result.current.documents).toHaveLength(2);
       expect(result.current.documents[0].documentId).toBe('doc-1');
       expect(result.current.documents[0].documentPath).toBe('/home');
       expect(result.current.documents[1].documentId).toBe('doc-2');
-      expect(result.current.documents[2].documentId).toBe('doc-3');
     });
 
     it('sets source-only changes to accept-draft', async () => {
@@ -205,7 +205,7 @@ describe('useMergeResolution', () => {
       expect(doc2?.strategy).toBe('accept-draft');
     });
 
-    it('sets target-only changes to accept-live', async () => {
+    it('excludes target-only changes from document list', async () => {
       const mockClient = createMockClient();
       mockClient.merge.preview.mockResolvedValue(createMergePreview());
       const options = createOptions(mockClient);
@@ -216,9 +216,9 @@ describe('useMergeResolution', () => {
         await result.current.loadPreview();
       });
 
-      // doc-3 is in targetChanges but not in conflicts => accept-live
+      // doc-3 is only in targetChanges — should not appear in the list
       const doc3 = result.current.documents.find((d) => d.documentId === 'doc-3');
-      expect(doc3?.strategy).toBe('accept-live');
+      expect(doc3).toBeUndefined();
     });
 
     it('sets conflicting documents to unresolved', async () => {
@@ -389,8 +389,8 @@ describe('useMergeResolution', () => {
         await result.current.loadPreview();
       });
 
-      // doc-2 is already accept-draft, doc-3 is already accept-live
-      // Only doc-1 is unresolved
+      // doc-2 is already accept-draft (source-only change)
+      // Only doc-1 is unresolved (conflict)
       act(() => {
         result.current.setRemainingStrategy('accept-live');
       });
@@ -401,9 +401,6 @@ describe('useMergeResolution', () => {
       // Pre-resolved ones should keep their strategies
       const doc2 = result.current.documents.find((d) => d.documentId === 'doc-2');
       expect(doc2?.strategy).toBe('accept-draft');
-
-      const doc3 = result.current.documents.find((d) => d.documentId === 'doc-3');
-      expect(doc3?.strategy).toBe('accept-live');
     });
   });
 
@@ -534,15 +531,15 @@ describe('useMergeResolution', () => {
         await result.current.loadPreview();
       });
 
-      // doc-2 is accept-draft, doc-3 is accept-live => 2 resolved, 1 unresolved
-      expect(result.current.resolvedCount).toBe(2);
+      // doc-2 is accept-draft (source-only) => 1 resolved, doc-1 unresolved (conflict)
+      expect(result.current.resolvedCount).toBe(1);
       expect(result.current.unresolvedCount).toBe(1);
 
       act(() => {
         result.current.setStrategy('doc-1', 'accept-draft');
       });
 
-      expect(result.current.resolvedCount).toBe(3);
+      expect(result.current.resolvedCount).toBe(2);
       expect(result.current.unresolvedCount).toBe(0);
     });
 

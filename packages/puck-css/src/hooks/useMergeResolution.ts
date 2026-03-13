@@ -192,16 +192,14 @@ export function useMergeResolution(
         (preview.documentDiffs ?? []).map((d) => [d.documentId, d])
       );
 
-      // Collect all document IDs we need to process
+      // Collect document IDs from conflicts and source (Draft) changes only.
+      // Target-only changes are already on Live and are not part of the merge.
       const allDocIds = new Set<string>();
       for (const c of preview.conflicts.documentConflicts) {
         allDocIds.add(c.documentId);
       }
       for (const sc of preview.sourceChanges) {
         allDocIds.add(sc.documentId);
-      }
-      for (const tc of preview.targetChanges) {
-        allDocIds.add(tc.documentId);
       }
 
       // Fetch snapshots for non-conflicting documents in parallel
@@ -282,15 +280,11 @@ export function useMergeResolution(
           }
           strategy = 'accept-draft';
           conflictType = 'both-modified'; // Not actually a conflict
-        } else if (inTarget && !inSource) {
-          // Target-only change
-          changeType = 'changed';
-          strategy = 'accept-live';
-          conflictType = 'both-modified'; // Not actually a conflict
         } else {
-          // In both but not conflicting (shouldn't happen normally, but handle gracefully)
+          // In both sourceChanges and targetChanges but not in conflicts
+          // (shouldn't normally happen, but handle gracefully as a source change)
           changeType = 'changed';
-          strategy = 'unresolved';
+          strategy = 'accept-draft';
           conflictType = 'both-modified';
         }
 

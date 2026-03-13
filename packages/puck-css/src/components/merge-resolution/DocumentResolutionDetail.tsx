@@ -510,7 +510,7 @@ export function DocumentResolutionDetail({
             fontWeight: 500,
             marginBottom: '12px',
           }}>
-            Changed on {doc.strategy === 'accept-live' ? 'Live' : 'Draft'} only. No conflict to resolve.
+            Changed on Draft only. No conflict to resolve.
           </div>
 
           {hasBothSnapshots && hasConfig && (
