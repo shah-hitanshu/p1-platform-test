@@ -139,10 +139,10 @@ describe('MergeResolutionToolbar', () => {
       />
     );
 
-    fireEvent.click(screen.getByText('Accept all as Draft'));
+    fireEvent.click(screen.getByText('Accept all from Draft'));
     expect(onSetAllStrategy).toHaveBeenCalledWith('accept-draft');
 
-    fireEvent.click(screen.getByText('Accept all as Live'));
+    fireEvent.click(screen.getByText('Accept all from Live'));
     expect(onSetAllStrategy).toHaveBeenCalledWith('accept-live');
   });
 
@@ -155,18 +155,18 @@ describe('MergeResolutionToolbar', () => {
       />
     );
 
-    fireEvent.click(screen.getByText('Accept remaining as Draft'));
+    fireEvent.click(screen.getByText('Accept remaining from Draft'));
     expect(onSetRemainingStrategy).toHaveBeenCalledWith('accept-draft');
 
-    fireEvent.click(screen.getByText('Accept remaining as Live'));
+    fireEvent.click(screen.getByText('Accept remaining from Live'));
     expect(onSetRemainingStrategy).toHaveBeenCalledWith('accept-live');
   });
 
   it('does not show remaining strategy buttons when prop is not provided', () => {
     render(<MergeResolutionToolbar {...defaultProps} />);
 
-    expect(screen.queryByText('Accept remaining as Draft')).toBeNull();
-    expect(screen.queryByText('Accept remaining as Live')).toBeNull();
+    expect(screen.queryByText('Accept remaining from Draft')).toBeNull();
+    expect(screen.queryByText('Accept remaining from Live')).toBeNull();
   });
 
   it('shows keyboard shortcuts when toggle clicked', () => {

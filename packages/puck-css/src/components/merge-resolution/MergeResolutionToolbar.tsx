@@ -130,7 +130,7 @@ export function MergeResolutionToolbar({
           style={bulkButtonStyle}
           onClick={() => onSetAllStrategy('accept-draft')}
         >
-          Accept all as Draft
+          Accept all from Draft
         </button>
         <button
           type="button"
@@ -138,7 +138,7 @@ export function MergeResolutionToolbar({
           style={bulkButtonStyle}
           onClick={() => onSetAllStrategy('accept-live')}
         >
-          Accept all as Live
+          Accept all from Live
         </button>
         {onSetRemainingStrategy && (
           <>
@@ -148,7 +148,7 @@ export function MergeResolutionToolbar({
               style={bulkButtonStyle}
               onClick={() => onSetRemainingStrategy('accept-draft')}
             >
-              Accept remaining as Draft
+              Accept remaining from Draft
             </button>
             <button
               type="button"
@@ -156,7 +156,7 @@ export function MergeResolutionToolbar({
               style={bulkButtonStyle}
               onClick={() => onSetRemainingStrategy('accept-live')}
             >
-              Accept remaining as Live
+              Accept remaining from Live
             </button>
           </>
         )}
@@ -254,8 +254,8 @@ export function MergeResolutionToolbar({
             <dt style={{ fontWeight: 600, fontFamily: 'monospace', color: '#333' }}>K / ArrowUp</dt><dd style={{ margin: 0, color: '#666' }}>Previous document</dd>
             <dt style={{ fontWeight: 600, fontFamily: 'monospace', color: '#333' }}>N</dt><dd style={{ margin: 0, color: '#666' }}>Next unresolved</dd>
             <dt style={{ fontWeight: 600, fontFamily: 'monospace', color: '#333' }}>1 / 2 / 3 / 4</dt><dd style={{ margin: 0, color: '#666' }}>Accept Draft / Live / Cherry-pick / CRDT</dd>
-            <dt style={{ fontWeight: 600, fontFamily: 'monospace', color: '#333' }}>Shift+D</dt><dd style={{ margin: 0, color: '#666' }}>Accept all remaining as Draft</dd>
-            <dt style={{ fontWeight: 600, fontFamily: 'monospace', color: '#333' }}>Shift+L</dt><dd style={{ margin: 0, color: '#666' }}>Accept all remaining as Live</dd>
+            <dt style={{ fontWeight: 600, fontFamily: 'monospace', color: '#333' }}>Shift+D</dt><dd style={{ margin: 0, color: '#666' }}>Accept all remaining from Draft</dd>
+            <dt style={{ fontWeight: 600, fontFamily: 'monospace', color: '#333' }}>Shift+L</dt><dd style={{ margin: 0, color: '#666' }}>Accept all remaining from Live</dd>
             <dt style={{ fontWeight: 600, fontFamily: 'monospace', color: '#333' }}>Enter</dt><dd style={{ margin: 0, color: '#666' }}>Toggle detail view</dd>
           </dl>
         </div>
