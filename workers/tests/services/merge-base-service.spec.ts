@@ -383,6 +383,25 @@ describe('Phase 5.1b: Merge Base Service', () => {
       expect(sqlArg).toContain('archived_at');
     });
 
+    it('should resolve full checkpoint state at merge base time for source branch queries (issue #34)', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      // The checkpoint_docs CTE for non-publishedOnly queries also needs to
+      // resolve the full state at the merge base time, not just the single
+      // checkpoint's documents. Otherwise COW-copied documents on the source
+      // branch appear as "new" when the merge base checkpoint is empty.
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await getModifiedDocumentsSince('source-branch', 'merge-base-checkpoint-id');
+
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+
+      // checkpoint_docs must resolve the full state, not just checkpoint_id = $2
+      expect(sqlArg).not.toMatch(/checkpoint_docs[\s\S]*?WHERE\s+cd\.checkpoint_id\s*=\s*\$2\s*\)/);
+      expect(sqlArg).toContain('cp.created_at');
+    });
+
     it('should exclude archived documents not in checkpoint (created then deleted, net-zero)', async () => {
       const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
       const db = await import('../../src/db');
@@ -535,6 +554,58 @@ describe('Phase 5.1b: Merge Base Service', () => {
       // Should produce the same SQL as publishedOnly: false
       const sqlArg = vi.mocked(db.query).mock.calls[0][0];
       expect(sqlArg).toContain('current_versions');
+    });
+
+    it('should resolve full published state at merge base time, not just single checkpoint docs (issue #34)', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      // When a merge base checkpoint is incremental/empty (has 0 documents),
+      // the checkpoint_docs CTE must resolve ALL checkpoints on the branch
+      // at or before the merge base time, not just the single checkpoint.
+      // Otherwise, documents published before the merge base appear as "new"
+      // on the target branch, causing false positive conflicts.
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await getModifiedDocumentsSince('main-branch', 'merge-base-checkpoint-id', {
+        publishedOnly: true,
+      });
+
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+
+      // The checkpoint_docs CTE must NOT simply filter by checkpoint_id = $2
+      // It must resolve the full published state at the merge base checkpoint time
+      // by looking at all checkpoints on the branch at or before that time
+      expect(sqlArg).not.toMatch(/checkpoint_docs[\s\S]*?WHERE\s+cd\.checkpoint_id\s*=\s*\$2\s*\)/);
+
+      // It should reference the branch_id ($1) and use a time-based filter
+      // to get the full published state at the merge base point
+      expect(sqlArg).toContain('cp.created_at');
+      expect(sqlArg).toContain('checkpoint_docs');
+    });
+
+    it('should not report document as modified when it was published before merge base and unchanged since (issue #34)', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      // Scenario: document published at version 78 on main in an older checkpoint.
+      // Merge base checkpoint (created when branch forked) is empty/incremental.
+      // The publishedOnly query should NOT report this document as "new" on main.
+      // With the fix, checkpoint_docs resolves the full state and finds version 78
+      // matching current_versions version 78 → no difference → not returned.
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      const result = await getModifiedDocumentsSince('main-branch', 'merge-base-checkpoint-id', {
+        publishedOnly: true,
+      });
+
+      // The SQL must use DISTINCT ON with checkpoint ordering to get the latest
+      // published version of each document at or before the merge base time
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      expect(sqlArg).toMatch(/checkpoint_docs[\s\S]*?DISTINCT ON/);
+      expect(sqlArg).toMatch(/checkpoint_docs[\s\S]*?cp\.created_at/);
+
+      expect(result).toEqual([]);
     });
 
     it('should detect new published documents since checkpoint when publishedOnly is true', async () => {

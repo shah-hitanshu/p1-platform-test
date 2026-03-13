@@ -257,12 +257,19 @@ export async function getModifiedDocumentsSince(
 
   const sql = `
     WITH
-    -- Documents and versions at the checkpoint
+    -- Documents and versions at the merge base checkpoint time.
+    -- Resolves the full published state by looking at ALL checkpoints
+    -- on the branch at or before the merge base time, not just the
+    -- single checkpoint (which may be empty/incremental). (issue #34)
     checkpoint_docs AS (
-      SELECT cd.document_id, cd.document_version_id, dv.version_number
+      SELECT DISTINCT ON (cd.document_id)
+        cd.document_id, cd.document_version_id, dv.version_number
       FROM app.checkpoint_documents cd
+      INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
       INNER JOIN app.document_versions dv ON dv.id = cd.document_version_id
-      WHERE cd.checkpoint_id = $2
+      WHERE cp.branch_id = (SELECT branch_id FROM app.checkpoints WHERE id = $2)
+        AND cp.created_at <= (SELECT created_at FROM app.checkpoints WHERE id = $2)
+      ORDER BY cd.document_id, cp.created_at DESC
     ),
     -- Current latest versions on the branch
     ${currentVersionsCte}
