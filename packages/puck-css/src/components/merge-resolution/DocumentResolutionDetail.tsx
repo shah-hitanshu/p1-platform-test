@@ -303,9 +303,10 @@ export function DocumentResolutionDetail({
   }
 
   const isConflicting = doc.changeType === 'conflicting';
-  const isChanged = doc.changeType === 'changed';
-  const isAdded = doc.changeType === 'added';
-  const isDeleted = doc.changeType === 'deleted';
+  const isDeletedOnMain = doc.changeType === 'deleted-on-main';
+  const isDraftChanged = doc.changeType === 'draft-changed';
+  const isNewOnDraft = doc.changeType === 'new-on-draft';
+  const isDeletedOnDraft = doc.changeType === 'deleted-on-draft';
 
   const deleteMessage = isConflicting ? getDeleteMessage(doc.conflictType) : null;
   const hasBothSnapshots = !!doc.sourceSnapshot && !!doc.targetSnapshot;
@@ -313,7 +314,7 @@ export function DocumentResolutionDetail({
   const hasNeitherSnapshot = !doc.sourceSnapshot && !doc.targetSnapshot;
 
   // Show ViewModeSelector for comparisons (conflicts and non-conflicting changes with both snapshots)
-  const showViewModeSelector = hasBothSnapshots && (isConflicting || isChanged);
+  const showViewModeSelector = hasBothSnapshots && (isConflicting || isDraftChanged);
 
   return (
     <div className={baseClass} data-testid="merge-resolution-detail" style={{ padding: 0 }}>
@@ -340,7 +341,7 @@ export function DocumentResolutionDetail({
       {/* ================================================================= */}
       {/* CONFLICTING documents: full resolution UI                         */}
       {/* ================================================================= */}
-      {isConflicting && (
+      {(isConflicting || isDeletedOnMain) && (
         <>
           <ResolutionStrategyPicker
             currentStrategy={doc.strategy}
@@ -499,7 +500,7 @@ export function DocumentResolutionDetail({
       {/* ================================================================= */}
       {/* CHANGED documents: comparison tools, no resolution needed          */}
       {/* ================================================================= */}
-      {isChanged && (
+      {isDraftChanged && (
         <>
           <div className={`${baseClass}__banner`} style={{
             padding: '8px 12px',
@@ -510,7 +511,7 @@ export function DocumentResolutionDetail({
             fontWeight: 500,
             marginBottom: '12px',
           }}>
-            Changed on Draft only. No conflict to resolve.
+            Changed on Draft. No conflict to resolve.
           </div>
 
           {hasBothSnapshots && hasConfig && (
@@ -564,7 +565,7 @@ export function DocumentResolutionDetail({
       {/* ================================================================= */}
       {/* ADDED documents: preview only                                     */}
       {/* ================================================================= */}
-      {isAdded && (
+      {isNewOnDraft && (
         <>
           <div className={`${baseClass}__banner`} style={{
             padding: '8px 12px',
@@ -603,18 +604,40 @@ export function DocumentResolutionDetail({
       {/* ================================================================= */}
       {/* DELETED documents: path only                                      */}
       {/* ================================================================= */}
-      {isDeleted && (
-        <div className={`${baseClass}__banner`} style={{
-          padding: '8px 12px',
-          background: '#f5f5f5',
-          color: '#666',
-          borderRadius: '6px',
-          fontSize: '14px',
-          fontWeight: 500,
-          marginBottom: '12px',
-        }}>
-          This document will be removed.
-        </div>
+      {isDeletedOnDraft && (
+        <>
+          <div className={`${baseClass}__banner`} style={{
+            padding: '8px 12px',
+            background: '#f5f5f5',
+            color: '#666',
+            borderRadius: '6px',
+            fontSize: '14px',
+            fontWeight: 500,
+            marginBottom: '12px',
+          }}>
+            Deleted on Draft. This document will be removed from Live.
+          </div>
+
+          {doc.targetSnapshot && hasConfig && (
+            <div className={`${baseClass}__single-panel`} style={singlePanelContainerStyle}>
+              <div className={`${baseClass}__single-panel-label`} style={singlePanelLabelStyle}>
+                {targetBranchName} (will be deleted)
+              </div>
+              <div className={`${baseClass}__single-panel-content`} style={singlePanelContentStyle}>
+                <Render
+                  config={config as Parameters<typeof Render>[0]['config']}
+                  data={doc.targetSnapshot as Parameters<typeof Render>[0]['data']}
+                />
+              </div>
+            </div>
+          )}
+
+          {!doc.targetSnapshot && (
+            <div className={`${baseClass}__no-content`} style={noContentStyle}>
+              Published version preview not available
+            </div>
+          )}
+        </>
       )}
     </div>
   );

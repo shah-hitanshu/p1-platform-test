@@ -50,7 +50,7 @@ const mockDocuments: DocumentResolution[] = [
     documentId: 'doc-3',
     documentPath: '/contact',
     strategy: 'accept-live',
-    changeType: 'changed',
+    changeType: 'draft-changed',
     cherryPickSelections: {},
     mergedSnapshot: null,
     crdtPreviewSnapshot: null,

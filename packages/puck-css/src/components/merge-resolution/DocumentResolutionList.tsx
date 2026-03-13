@@ -105,16 +105,18 @@ const strategyKeyMap: Record<string, DocumentResolutionStrategy> = {
 
 const changeTypeBadgeColors: Record<DocumentChangeType, React.CSSProperties> = {
   conflicting: { background: '#f8d7da', color: '#721c24' },
-  changed: { background: '#cce5ff', color: '#004085' },
-  added: { background: '#d4edda', color: '#155724' },
-  deleted: { background: '#f5f5f5', color: '#666' },
+  'deleted-on-main': { background: '#f8d7da', color: '#721c24' },
+  'draft-changed': { background: '#cce5ff', color: '#004085' },
+  'new-on-draft': { background: '#d4edda', color: '#155724' },
+  'deleted-on-draft': { background: '#f5f5f5', color: '#666' },
 };
 
 const changeTypeLabels: Record<DocumentChangeType, string> = {
   conflicting: 'Conflict',
-  changed: 'Changed',
-  added: 'New',
-  deleted: 'Deleted',
+  'deleted-on-main': 'Deleted on Live',
+  'draft-changed': 'Changed',
+  'new-on-draft': 'New',
+  'deleted-on-draft': 'Deleted',
 };
 
 // Diff count badge styles
@@ -264,7 +266,7 @@ export function DocumentResolutionList({
           >
             <div style={liTopRowStyle}>
               <span className={`${baseClass}__path`} style={pathStyle}>{doc.documentPath}</span>
-              {doc.changeType === 'conflicting' ? (
+              {(doc.changeType === 'conflicting' || doc.changeType === 'deleted-on-main') ? (
                 <span
                   className={`${baseClass}__badge ${baseClass}__badge--${doc.strategy}`}
                   style={{ ...badgeBaseStyle, ...badgeColors[doc.strategy] }}

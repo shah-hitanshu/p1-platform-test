@@ -705,14 +705,27 @@ export interface DocumentDiff {
 }
 
 /**
+ * A document that was modified on a branch since the merge base.
+ */
+export interface MergeDocumentChange {
+  documentId: string;
+  documentPath: string;
+  latestVersionId?: string | null;
+  latestVersionNumber?: number | null;
+  baseVersionId?: string | null;
+  baseVersionNumber?: number | null;
+  isDeleted?: boolean;
+}
+
+/**
  * Preview of a merge operation between two branches.
  */
 export interface MergePreview {
   canMerge: boolean;
   hasConflicts: boolean;
   conflicts: ConflictDetails;
-  sourceChanges: { documentId: string; documentPath: string }[];
-  targetChanges: { documentId: string; documentPath: string }[];
+  sourceChanges: MergeDocumentChange[];
+  targetChanges: MergeDocumentChange[];
   mergeBase: { checkpointId: string; branchId: string } | null;
   documentDiffs?: DocumentDiff[];
 }

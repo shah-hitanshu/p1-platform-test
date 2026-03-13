@@ -26,7 +26,12 @@ export type DocumentResolutionStrategy =
   | 'unresolved';
 
 /** How this document changed in the merge */
-export type DocumentChangeType = 'conflicting' | 'changed' | 'added' | 'deleted';
+export type DocumentChangeType =
+  | 'new-on-draft'       // New doc created on Draft, doesn't exist on Live
+  | 'draft-changed'      // Doc edited on Draft, Live version is older than branch point
+  | 'conflicting'        // Both branches edited the doc (Live version newer than branch point)
+  | 'deleted-on-draft'   // Doc deleted on Draft, still exists on Live
+  | 'deleted-on-main';   // Doc deleted on Live, still exists on Draft (needs resolution)
 
 export interface DocumentResolution {
   documentId: string;
@@ -267,23 +272,35 @@ export function useMergeResolution(
         let conflictType: DocumentConflictType;
 
         if (isConflicting) {
-          changeType = 'conflicting';
+          if (conflict?.conflictType === 'deleted-in-target') {
+            changeType = 'deleted-on-main';
+          } else {
+            changeType = 'conflicting';
+          }
           strategy = 'unresolved';
           conflictType = conflict?.conflictType ?? 'both-modified';
         } else if (inSource && !inTarget) {
-          // Source-only change: could be added or changed
+          const sourceChange = sourceChangeMap.get(docId);
           const snapshots = fetchedSnapshots.get(docId);
-          if (snapshots?.target === null) {
-            changeType = 'added';
+
+          if (sourceChange?.isDeleted) {
+            // State 5: Document deleted on Draft
+            changeType = 'deleted-on-draft';
+            strategy = 'accept-draft'; // Will delete on merge
+          } else if (snapshots?.target === null) {
+            // State 1: New document on Draft, doesn't exist on Live
+            changeType = 'new-on-draft';
+            strategy = 'accept-draft';
           } else {
-            changeType = 'changed';
+            // State 3: Document changed on Draft, Live version is older
+            changeType = 'draft-changed';
+            strategy = 'accept-draft';
           }
-          strategy = 'accept-draft';
           conflictType = 'both-modified'; // Not actually a conflict
         } else {
           // In both sourceChanges and targetChanges but not in conflicts
           // (shouldn't normally happen, but handle gracefully as a source change)
-          changeType = 'changed';
+          changeType = 'draft-changed';
           strategy = 'accept-draft';
           conflictType = 'both-modified';
         }
@@ -322,12 +339,13 @@ export function useMergeResolution(
         });
       }
 
-      // Sort: conflicting first, then added, changed, deleted
+      // Sort: conflicting first, then deleted-on-main, new, changed, deleted-on-draft
       const changeTypeOrder: Record<DocumentChangeType, number> = {
         conflicting: 0,
-        added: 1,
-        changed: 2,
-        deleted: 3,
+        'deleted-on-main': 1,
+        'new-on-draft': 2,
+        'draft-changed': 3,
+        'deleted-on-draft': 4,
       };
       docs.sort((a, b) => changeTypeOrder[a.changeType] - changeTypeOrder[b.changeType]);
 

@@ -72,7 +72,7 @@ export function MergeResolutionPage({
 
   // Count actual conflicts (not auto-merged changes)
   const conflictCount = useMemo(
-    () => hook.documents.filter((d) => d.changeType === 'conflicting').length,
+    () => hook.documents.filter((d) => d.changeType === 'conflicting' || d.changeType === 'deleted-on-main').length,
     [hook.documents]
   );
 
