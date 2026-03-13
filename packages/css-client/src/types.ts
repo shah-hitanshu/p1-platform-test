@@ -715,6 +715,8 @@ export interface MergeDocumentChange {
   baseVersionId?: string | null;
   baseVersionNumber?: number | null;
   isDeleted?: boolean;
+  /** Whether CRDT state is available for this document (for CRDT merge strategy). */
+  hasCrdtState?: boolean;
 }
 
 /**

@@ -48,6 +48,8 @@ export interface DocumentResolution {
   targetSnapshot: PuckData | null;
   conflictType: DocumentConflictType;
   classifiedFields: PuckFieldClassification[] | null;
+  /** Whether CRDT state is available for this document. */
+  hasCrdtState: boolean;
 }
 
 export interface UseMergeResolutionOptions {
@@ -191,6 +193,15 @@ export function useMergeResolution(
       const targetChangeMap = new Map(
         preview.targetChanges.map((c) => [c.documentId, c])
       );
+
+      // Build hasCrdtState lookup from sourceChanges and targetChanges
+      const crdtStateMap = new Set<string>();
+      for (const c of preview.sourceChanges) {
+        if (c.hasCrdtState) crdtStateMap.add(c.documentId);
+      }
+      for (const c of preview.targetChanges) {
+        if (c.hasCrdtState) crdtStateMap.add(c.documentId);
+      }
 
       // Build diff map for quick lookup
       const diffMap = new Map(
@@ -347,6 +358,7 @@ export function useMergeResolution(
           targetSnapshot,
           conflictType,
           classifiedFields: null,
+          hasCrdtState: crdtStateMap.has(docId),
         });
       }
 
@@ -422,6 +434,11 @@ export function useMergeResolution(
             isDeleteConflict(doc.conflictType) &&
             (strategy === 'cherry-pick' || strategy === 'crdt-preview')
           ) {
+            return doc;
+          }
+
+          // Disallow crdt-preview when no CRDT state is available
+          if (strategy === 'crdt-preview' && !doc.hasCrdtState) {
             return doc;
           }
 

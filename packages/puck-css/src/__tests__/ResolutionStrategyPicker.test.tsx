@@ -87,6 +87,35 @@ describe('ResolutionStrategyPicker', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it('hides CRDT merge button when hasCrdtState is false', () => {
+    render(
+      <ResolutionStrategyPicker
+        currentStrategy="unresolved"
+        conflictType="both-modified"
+        onSelect={vi.fn()}
+        hasCrdtState={false}
+      />
+    );
+
+    expect(screen.getByText('Accept Draft')).toBeDefined();
+    expect(screen.getByText('Accept Live')).toBeDefined();
+    expect(screen.getByText('Cherry-pick')).toBeDefined();
+    expect(screen.queryByText('CRDT merge')).toBeNull();
+  });
+
+  it('shows CRDT merge button when hasCrdtState is true', () => {
+    render(
+      <ResolutionStrategyPicker
+        currentStrategy="unresolved"
+        conflictType="both-modified"
+        onSelect={vi.fn()}
+        hasCrdtState={true}
+      />
+    );
+
+    expect(screen.getByText('CRDT merge')).toBeDefined();
+  });
+
   it('disables Cherry-pick and CRDT merge for deleted-in-target', () => {
     const onSelect = vi.fn();
     render(

@@ -244,7 +244,10 @@ describe('useMergeResolution - executeMerge', () => {
 
   it('maps crdt-preview to merge-crdt', async () => {
     const mockClient = createMockClient();
-    mockClient.merge.preview.mockResolvedValue(createMergePreview());
+    const preview = createMergePreview();
+    // Mark doc-1 as having CRDT state so the strategy can be selected
+    preview.sourceChanges[0].hasCrdtState = true;
+    mockClient.merge.preview.mockResolvedValue(preview);
     mockClient.merge.crdtPreview.mockResolvedValue({ success: true, snapshot: { content: [], root: {} } });
     const options = createOptions(mockClient);
 

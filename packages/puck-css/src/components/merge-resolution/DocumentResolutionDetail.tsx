@@ -349,6 +349,7 @@ export function DocumentResolutionDetail({
             currentStrategy={doc.strategy}
             conflictType={doc.conflictType}
             onSelect={(strategy) => onSetStrategy(doc.documentId, strategy)}
+            hasCrdtState={doc.hasCrdtState}
           />
 
           {deleteMessage && (
