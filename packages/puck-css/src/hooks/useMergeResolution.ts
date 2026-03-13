@@ -322,6 +322,17 @@ export function useMergeResolution(
           }
         }
 
+        // Skip conflicts where source and target content is identical —
+        // no user action needed, the merge can proceed with either version.
+        if (
+          isConflicting &&
+          sourceSnapshot &&
+          targetSnapshot &&
+          JSON.stringify(sourceSnapshot) === JSON.stringify(targetSnapshot)
+        ) {
+          continue;
+        }
+
         docs.push({
           documentId: docId,
           documentPath: docPath,

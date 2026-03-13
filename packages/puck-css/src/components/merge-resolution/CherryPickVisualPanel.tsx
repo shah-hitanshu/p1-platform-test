@@ -19,6 +19,7 @@ import type { DocumentResolution } from '../../hooks/useMergeResolution.js';
 import type { ComponentDiffWithPosition } from '../../types.js';
 import { createDiffMap, createHighlightedConfig } from '../../utils/highlightConfig.js';
 import { groupFieldsByComponent } from '../../utils/puckFieldClassifier.js';
+import { ScaledContent } from '../merge-preview/ScaledContent.js';
 import { ComponentClickOverlay } from './ComponentClickOverlay.js';
 import { ComponentConflictGroup } from '../conflict-resolution/ComponentConflictGroup.js';
 
@@ -275,10 +276,12 @@ export function CherryPickVisualPanel({
                 style={panelContentStyle}
                 ref={sourceContainerRef}
               >
-                <Render
-                  config={sourceHighlightedConfig as Parameters<typeof Render>[0]['config']}
-                  data={sourceData as Parameters<typeof Render>[0]['data']}
-                />
+                <ScaledContent>
+                  <Render
+                    config={sourceHighlightedConfig as Parameters<typeof Render>[0]['config']}
+                    data={sourceData as Parameters<typeof Render>[0]['data']}
+                  />
+                </ScaledContent>
               </div>
               <ComponentClickOverlay
                 containerRef={sourceContainerRef}
@@ -301,10 +304,12 @@ export function CherryPickVisualPanel({
                 style={panelContentStyle}
                 ref={targetContainerRef}
               >
-                <Render
-                  config={targetHighlightedConfig as Parameters<typeof Render>[0]['config']}
-                  data={targetData as Parameters<typeof Render>[0]['data']}
-                />
+                <ScaledContent>
+                  <Render
+                    config={targetHighlightedConfig as Parameters<typeof Render>[0]['config']}
+                    data={targetData as Parameters<typeof Render>[0]['data']}
+                  />
+                </ScaledContent>
               </div>
               <ComponentClickOverlay
                 containerRef={targetContainerRef}
@@ -399,10 +404,12 @@ export function CherryPickVisualPanel({
             style={mergedPreviewContentStyle}
           >
             {doc.mergedSnapshot ? (
-              <Render
-                config={config as Parameters<typeof Render>[0]['config']}
-                data={doc.mergedSnapshot as Parameters<typeof Render>[0]['data']}
-              />
+              <ScaledContent>
+                <Render
+                  config={config as Parameters<typeof Render>[0]['config']}
+                  data={doc.mergedSnapshot as Parameters<typeof Render>[0]['data']}
+                />
+              </ScaledContent>
             ) : (
               <p
                 className="cherry-pick-visual-panel__merged-prompt"

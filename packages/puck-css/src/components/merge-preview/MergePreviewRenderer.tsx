@@ -13,6 +13,7 @@ import { Render } from '@puckeditor/core';
 import type { PuckData } from '@pantheon/css-client';
 import type { ComponentDiffWithPosition } from '../../types.js';
 import { createDiffMap, createHighlightedConfig } from '../../utils/highlightConfig.js';
+import { ScaledContent } from './ScaledContent.js';
 import type { ViewMode } from './ViewModeSelector.js';
 
 /**
@@ -80,6 +81,7 @@ const panelLabelStyle: React.CSSProperties = {
 
 const panelContentStyle: React.CSSProperties = {
   padding: '12px',
+  overflow: 'hidden',
 };
 
 const overlayContainerStyle: React.CSSProperties = {
@@ -190,10 +192,12 @@ function SideBySideView({
           {sourceBranchName}
         </div>
         <div className="merge-preview-renderer__panel-content" style={panelContentStyle}>
-          <Render
-            config={beforeConfig as Parameters<typeof Render>[0]['config']}
-            data={sourceData as Parameters<typeof Render>[0]['data']}
-          />
+          <ScaledContent>
+            <Render
+              config={beforeConfig as Parameters<typeof Render>[0]['config']}
+              data={sourceData as Parameters<typeof Render>[0]['data']}
+            />
+          </ScaledContent>
         </div>
       </div>
       <div className="merge-preview-renderer__panel" style={panelStyle}>
@@ -201,10 +205,12 @@ function SideBySideView({
           {targetBranchName}
         </div>
         <div className="merge-preview-renderer__panel-content" style={panelContentStyle}>
-          <Render
-            config={afterConfig as Parameters<typeof Render>[0]['config']}
-            data={targetData as Parameters<typeof Render>[0]['data']}
-          />
+          <ScaledContent>
+            <Render
+              config={afterConfig as Parameters<typeof Render>[0]['config']}
+              data={targetData as Parameters<typeof Render>[0]['data']}
+            />
+          </ScaledContent>
         </div>
       </div>
     </div>

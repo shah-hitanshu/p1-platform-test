@@ -11,6 +11,7 @@
 import React from 'react';
 import { Render } from '@puckeditor/core';
 import type { PuckData } from '@pantheon/css-client';
+import { ScaledContent } from '../merge-preview/ScaledContent.js';
 
 export interface CrdtPreviewPanelProps {
   snapshot: PuckData | null;
@@ -145,10 +146,12 @@ export function CrdtPreviewPanel({
               {sourceBranchName || 'Draft'}
             </div>
             <div className={`${baseClass}__panel-content`} style={panelContentStyle}>
-              <Render
-                config={config as Parameters<typeof Render>[0]['config']}
-                data={sourceData as Parameters<typeof Render>[0]['data']}
-              />
+              <ScaledContent>
+                <Render
+                  config={config as Parameters<typeof Render>[0]['config']}
+                  data={sourceData as Parameters<typeof Render>[0]['data']}
+                />
+              </ScaledContent>
             </div>
           </div>
 
@@ -158,10 +161,12 @@ export function CrdtPreviewPanel({
               Auto-merged
             </div>
             <div className={`${baseClass}__panel-content`} style={panelContentStyle}>
-              <Render
-                config={config as Parameters<typeof Render>[0]['config']}
-                data={snapshot as Parameters<typeof Render>[0]['data']}
-              />
+              <ScaledContent>
+                <Render
+                  config={config as Parameters<typeof Render>[0]['config']}
+                  data={snapshot as Parameters<typeof Render>[0]['data']}
+                />
+              </ScaledContent>
             </div>
           </div>
 
@@ -171,10 +176,12 @@ export function CrdtPreviewPanel({
               {targetBranchName || 'Live'}
             </div>
             <div className={`${baseClass}__panel-content`} style={panelContentStyle}>
-              <Render
-                config={config as Parameters<typeof Render>[0]['config']}
-                data={targetData as Parameters<typeof Render>[0]['data']}
-              />
+              <ScaledContent>
+                <Render
+                  config={config as Parameters<typeof Render>[0]['config']}
+                  data={targetData as Parameters<typeof Render>[0]['data']}
+                />
+              </ScaledContent>
             </div>
           </div>
         </div>
@@ -191,10 +198,12 @@ export function CrdtPreviewPanel({
             Auto-merged
           </div>
           <div className={`${baseClass}__panel-content`} style={panelContentStyle}>
-            <Render
-              config={config as Parameters<typeof Render>[0]['config']}
-              data={snapshot as Parameters<typeof Render>[0]['data']}
-            />
+            <ScaledContent>
+              <Render
+                config={config as Parameters<typeof Render>[0]['config']}
+                data={snapshot as Parameters<typeof Render>[0]['data']}
+              />
+            </ScaledContent>
           </div>
         </div>
       </div>
