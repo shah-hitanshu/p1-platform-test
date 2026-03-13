@@ -538,6 +538,26 @@ export function DocumentResolutionDetail({
               </div>
             </div>
           )}
+
+          {!hasBothSnapshots && !hasSourceOnly && !doc.targetSnapshot && (
+            <div className={`${baseClass}__no-content`} style={noContentStyle}>
+              Document preview not available
+            </div>
+          )}
+
+          {!hasBothSnapshots && !hasSourceOnly && doc.targetSnapshot && hasConfig && (
+            <div className={`${baseClass}__single-panel`} style={singlePanelContainerStyle}>
+              <div className={`${baseClass}__single-panel-label`} style={singlePanelLabelStyle}>
+                {targetBranchName}
+              </div>
+              <div className={`${baseClass}__single-panel-content`} style={singlePanelContentStyle}>
+                <Render
+                  config={config as Parameters<typeof Render>[0]['config']}
+                  data={doc.targetSnapshot as Parameters<typeof Render>[0]['data']}
+                />
+              </div>
+            </div>
+          )}
         </>
       )}
 
