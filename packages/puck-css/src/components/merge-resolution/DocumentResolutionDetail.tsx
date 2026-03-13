@@ -17,6 +17,7 @@ import { ResolutionStrategyPicker } from './ResolutionStrategyPicker.js';
 import { CrdtPreviewPanel } from './CrdtPreviewPanel.js';
 import { CherryPickVisualPanel } from './CherryPickVisualPanel.js';
 import { MergePreviewRenderer } from '../merge-preview/MergePreviewRenderer.js';
+import { ScaledContent } from '../merge-preview/ScaledContent.js';
 import { ViewModeSelector } from '../merge-preview/ViewModeSelector.js';
 import type { ViewMode } from '../merge-preview/ViewModeSelector.js';
 
@@ -461,10 +462,12 @@ export function DocumentResolutionDetail({
                 {targetBranchName}
               </div>
               <div className={`${baseClass}__single-panel-content`} style={singlePanelContentStyle}>
-                <Render
-                  config={config as Parameters<typeof Render>[0]['config']}
-                  data={doc.targetSnapshot as Parameters<typeof Render>[0]['data']}
-                />
+                <ScaledContent>
+                  <Render
+                    config={config as Parameters<typeof Render>[0]['config']}
+                    data={doc.targetSnapshot as Parameters<typeof Render>[0]['data']}
+                  />
+                </ScaledContent>
               </div>
               <div className={`${baseClass}__overlay-message`} style={overlayMessageStyle}>
                 Deleted in Draft
@@ -478,10 +481,12 @@ export function DocumentResolutionDetail({
                 {sourceBranchName}
               </div>
               <div className={`${baseClass}__single-panel-content`} style={singlePanelContentStyle}>
-                <Render
-                  config={config as Parameters<typeof Render>[0]['config']}
-                  data={doc.sourceSnapshot as Parameters<typeof Render>[0]['data']}
-                />
+                <ScaledContent>
+                  <Render
+                    config={config as Parameters<typeof Render>[0]['config']}
+                    data={doc.sourceSnapshot as Parameters<typeof Render>[0]['data']}
+                  />
+                </ScaledContent>
               </div>
               <div className={`${baseClass}__overlay-message`} style={overlayMessageStyle}>
                 New document
@@ -532,10 +537,12 @@ export function DocumentResolutionDetail({
                 {sourceBranchName}
               </div>
               <div className={`${baseClass}__single-panel-content`} style={singlePanelContentStyle}>
-                <Render
-                  config={config as Parameters<typeof Render>[0]['config']}
-                  data={doc.sourceSnapshot as Parameters<typeof Render>[0]['data']}
-                />
+                <ScaledContent>
+                  <Render
+                    config={config as Parameters<typeof Render>[0]['config']}
+                    data={doc.sourceSnapshot as Parameters<typeof Render>[0]['data']}
+                  />
+                </ScaledContent>
               </div>
             </div>
           )}
@@ -552,10 +559,12 @@ export function DocumentResolutionDetail({
                 {targetBranchName}
               </div>
               <div className={`${baseClass}__single-panel-content`} style={singlePanelContentStyle}>
-                <Render
-                  config={config as Parameters<typeof Render>[0]['config']}
-                  data={doc.targetSnapshot as Parameters<typeof Render>[0]['data']}
-                />
+                <ScaledContent>
+                  <Render
+                    config={config as Parameters<typeof Render>[0]['config']}
+                    data={doc.targetSnapshot as Parameters<typeof Render>[0]['data']}
+                  />
+                </ScaledContent>
               </div>
             </div>
           )}
@@ -585,10 +594,12 @@ export function DocumentResolutionDetail({
                 {sourceBranchName} (new)
               </div>
               <div className={`${baseClass}__single-panel-content`} style={singlePanelContentStyle}>
-                <Render
-                  config={config as Parameters<typeof Render>[0]['config']}
-                  data={doc.sourceSnapshot as Parameters<typeof Render>[0]['data']}
-                />
+                <ScaledContent>
+                  <Render
+                    config={config as Parameters<typeof Render>[0]['config']}
+                    data={doc.sourceSnapshot as Parameters<typeof Render>[0]['data']}
+                  />
+                </ScaledContent>
               </div>
             </div>
           )}
@@ -624,10 +635,12 @@ export function DocumentResolutionDetail({
                 {targetBranchName} (will be deleted)
               </div>
               <div className={`${baseClass}__single-panel-content`} style={singlePanelContentStyle}>
-                <Render
-                  config={config as Parameters<typeof Render>[0]['config']}
-                  data={doc.targetSnapshot as Parameters<typeof Render>[0]['data']}
-                />
+                <ScaledContent>
+                  <Render
+                    config={config as Parameters<typeof Render>[0]['config']}
+                    data={doc.targetSnapshot as Parameters<typeof Render>[0]['data']}
+                  />
+                </ScaledContent>
               </div>
             </div>
           )}
