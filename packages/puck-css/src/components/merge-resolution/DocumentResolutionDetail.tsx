@@ -93,6 +93,7 @@ const singlePanelContainerStyle: React.CSSProperties = {
   border: '1px solid #e5e7eb',
   borderRadius: '8px',
   overflow: 'hidden',
+  maxWidth: '50%',
 };
 
 const singlePanelLabelStyle: React.CSSProperties = {
