@@ -59,6 +59,7 @@ function createDocument(overrides: Partial<DocumentResolution> = {}): DocumentRe
     documentId: 'doc-1',
     documentPath: '/home',
     strategy: 'unresolved',
+    changeType: 'conflicting',
     cherryPickSelections: {},
     mergedSnapshot: null,
     crdtPreviewSnapshot: null,
@@ -413,7 +414,7 @@ describe('DocumentResolutionDetail', () => {
     expect(screen.getByText('Live version will be kept.')).toBeDefined();
   });
 
-  it('hides ViewModeSelector for cherry-pick strategy', () => {
+  it('shows ViewModeSelector for cherry-pick strategy with both snapshots', () => {
     render(
       <DocumentResolutionDetail
         document={createDocument({
@@ -429,8 +430,8 @@ describe('DocumentResolutionDetail', () => {
       />
     );
 
-    // ViewModeSelector should NOT be present for cherry-pick
-    expect(screen.queryByText('Side by side')).toBeNull();
+    // ViewModeSelector is shown for conflicting docs with both snapshots
+    expect(screen.getByText('Side by side')).toBeDefined();
   });
 
   it('hides ViewModeSelector for crdt-preview strategy', () => {

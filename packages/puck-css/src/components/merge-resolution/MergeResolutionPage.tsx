@@ -70,6 +70,12 @@ export function MergeResolutionPage({
     hook.approveMergeRequest();
   }, [hook.approveMergeRequest]);
 
+  // Count actual conflicts (not auto-merged changes)
+  const conflictCount = useMemo(
+    () => hook.documents.filter((d) => d.changeType === 'conflicting').length,
+    [hook.documents]
+  );
+
   // Notify parent on successful merge
   useEffect(() => {
     if (hook.mergeSuccess && onMergeComplete) {
@@ -158,6 +164,7 @@ export function MergeResolutionPage({
         targetBranchName={targetBranchName}
         resolvedCount={hook.resolvedCount}
         totalCount={hook.totalCount}
+        conflictCount={conflictCount}
         allResolved={hook.allResolved}
         mergeExecuting={hook.mergeExecuting}
         onClose={onClose}

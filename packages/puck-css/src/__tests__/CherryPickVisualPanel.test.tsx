@@ -69,6 +69,7 @@ function createDocument(overrides: Partial<DocumentResolution> = {}): DocumentRe
     documentId: 'doc-1',
     documentPath: '/home',
     strategy: 'cherry-pick',
+    changeType: 'conflicting',
     cherryPickSelections: {},
     mergedSnapshot: null,
     crdtPreviewSnapshot: null,

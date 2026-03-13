@@ -49,6 +49,7 @@ const defaultHookReturn = {
       documentId: 'doc-1',
       documentPath: '/home',
       strategy: 'unresolved' as const,
+      changeType: 'conflicting' as const,
       cherryPickSelections: {},
       mergedSnapshot: null,
       crdtPreviewSnapshot: null,
@@ -71,6 +72,9 @@ const defaultHookReturn = {
   mergeExecuting: false,
   mergeError: null,
   mergeSuccess: false,
+  mergeRequest: null,
+  mergeRequestCreating: false,
+  mergeRequestError: null,
   goToDocument: vi.fn(),
   goToNext: vi.fn(),
   goToPrevious: vi.fn(),
@@ -83,6 +87,8 @@ const defaultHookReturn = {
   fetchCrdtPreview: vi.fn(),
   executeMerge: mockExecuteMerge,
   loadPreview: mockLoadPreview,
+  createMergeRequest: vi.fn(),
+  approveMergeRequest: vi.fn(),
 };
 
 let hookReturnOverrides: Record<string, unknown> = {};
@@ -208,6 +214,7 @@ describe('MergeResolutionPage', () => {
       currentDocument: {
         ...defaultHookReturn.documents[0],
         strategy: 'unresolved' as const,
+        changeType: 'conflicting' as const,
       },
     };
 

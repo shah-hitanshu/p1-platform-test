@@ -20,6 +20,7 @@ const mockDocuments: DocumentResolution[] = [
     documentId: 'doc-1',
     documentPath: '/home',
     strategy: 'accept-draft',
+    changeType: 'conflicting',
     cherryPickSelections: {},
     mergedSnapshot: null,
     crdtPreviewSnapshot: null,
@@ -34,6 +35,7 @@ const mockDocuments: DocumentResolution[] = [
     documentId: 'doc-2',
     documentPath: '/about',
     strategy: 'unresolved',
+    changeType: 'conflicting',
     cherryPickSelections: {},
     mergedSnapshot: null,
     crdtPreviewSnapshot: null,
@@ -48,6 +50,7 @@ const mockDocuments: DocumentResolution[] = [
     documentId: 'doc-3',
     documentPath: '/contact',
     strategy: 'accept-live',
+    changeType: 'changed',
     cherryPickSelections: {},
     mergedSnapshot: null,
     crdtPreviewSnapshot: null,
@@ -81,12 +84,15 @@ describe('DocumentResolutionList', () => {
     expect(screen.getByText('/contact')).toBeDefined();
   });
 
-  it('shows strategy badge for each document', () => {
+  it('shows strategy badge for conflicting docs and change type badge for non-conflicting', () => {
     render(<DocumentResolutionList {...defaultProps} />);
 
+    // doc-1: changeType='conflicting', strategy='accept-draft' => shows "Draft"
     expect(screen.getByText('Draft')).toBeDefined();
+    // doc-2: changeType='conflicting', strategy='unresolved' => shows "Unresolved"
     expect(screen.getByText('Unresolved')).toBeDefined();
-    expect(screen.getByText('Live')).toBeDefined();
+    // doc-3: changeType='changed' => shows change type label "Changed" instead of strategy
+    expect(screen.getByText('Changed')).toBeDefined();
   });
 
   it('highlights currently selected document', () => {

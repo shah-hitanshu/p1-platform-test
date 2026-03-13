@@ -302,25 +302,22 @@ export function DocumentResolutionDetail({
     );
   }
 
-  const deleteMessage = getDeleteMessage(doc.conflictType);
+  const isConflicting = doc.changeType === 'conflicting';
+  const isChanged = doc.changeType === 'changed';
+  const isAdded = doc.changeType === 'added';
+  const isDeleted = doc.changeType === 'deleted';
+
+  const deleteMessage = isConflicting ? getDeleteMessage(doc.conflictType) : null;
   const hasBothSnapshots = !!doc.sourceSnapshot && !!doc.targetSnapshot;
   const hasSourceOnly = !!doc.sourceSnapshot && !doc.targetSnapshot;
-  const hasTargetOnly = !doc.sourceSnapshot && !!doc.targetSnapshot;
   const hasNeitherSnapshot = !doc.sourceSnapshot && !doc.targetSnapshot;
 
-  // Strategies that use MergePreviewRenderer + ViewModeSelector
-  const usesMergePreview =
-    hasBothSnapshots &&
-    (doc.strategy === 'accept-draft' ||
-     doc.strategy === 'accept-live' ||
-     doc.strategy === 'unresolved');
-
-  // Strategies that show ViewModeSelector
-  const showViewModeSelector = usesMergePreview;
+  // Show ViewModeSelector for comparisons (conflicts and non-conflicting changes with both snapshots)
+  const showViewModeSelector = hasBothSnapshots && (isConflicting || isChanged);
 
   return (
     <div className={baseClass} data-testid="merge-resolution-detail" style={{ padding: 0 }}>
-      {/* Header with path, view mode selector, and strategy picker */}
+      {/* Header with path, change type indicator, and view mode selector */}
       <div className={`${baseClass}__header`} style={detailHeaderStyle}>
         <h3 className={`${baseClass}__path`} style={{
           fontSize: '18px',
@@ -340,159 +337,263 @@ export function DocumentResolutionDetail({
         )}
       </div>
 
-      <ResolutionStrategyPicker
-        currentStrategy={doc.strategy}
-        conflictType={doc.conflictType}
-        onSelect={(strategy) => onSetStrategy(doc.documentId, strategy)}
-      />
-
-      {/* Delete message */}
-      {deleteMessage && (
-        <p className={`${baseClass}__delete-message`} style={{
-          padding: '12px',
-          background: '#fff3cd',
-          borderRadius: '6px',
-          color: '#856404',
-          fontSize: '14px',
-        }}>
-          {deleteMessage}
-        </p>
-      )}
-
-      {/* Strategy banner */}
-      {doc.strategy === 'accept-draft' && hasBothSnapshots && (
-        <div className={`${baseClass}__banner`} style={bannerStyles['accept-draft']}>
-          Draft version will be kept.
-        </div>
-      )}
-      {doc.strategy === 'accept-live' && hasBothSnapshots && (
-        <div className={`${baseClass}__banner`} style={bannerStyles['accept-live']}>
-          Live version will be kept.
-        </div>
-      )}
-      {doc.strategy === 'unresolved' && hasBothSnapshots && (
-        <div className={`${baseClass}__banner`} style={bannerStyles.unresolved}>
-          Select a resolution strategy above.
-        </div>
-      )}
-
-      {/* Visual rendering based on strategy */}
-
-      {/* accept-draft / accept-live with both snapshots: MergePreviewRenderer + emphasis */}
-      {(doc.strategy === 'accept-draft' || doc.strategy === 'accept-live') && hasBothSnapshots && hasConfig && (
-        <StrategyEmphasisWrapper strategy={doc.strategy}>
-          <MergePreviewRenderer
-            sourceData={doc.sourceSnapshot!}
-            targetData={doc.targetSnapshot!}
-            diffs={diffs}
-            config={config}
-            viewMode={viewMode}
-            sourceBranchName={sourceBranchName}
-            targetBranchName={targetBranchName}
-          />
-        </StrategyEmphasisWrapper>
-      )}
-
-      {/* unresolved with both snapshots: MergePreviewRenderer without emphasis */}
-      {doc.strategy === 'unresolved' && hasBothSnapshots && hasConfig && (
-        <MergePreviewRenderer
-          sourceData={doc.sourceSnapshot!}
-          targetData={doc.targetSnapshot!}
-          diffs={diffs}
-          config={config}
-          viewMode={viewMode}
-          sourceBranchName={sourceBranchName}
-          targetBranchName={targetBranchName}
-        />
-      )}
-
-      {/* cherry-pick: CherryPickVisualPanel */}
-      {doc.strategy === 'cherry-pick' && hasBothSnapshots && hasConfig && (
-        <CherryPickVisualPanel
-          document={doc}
-          config={config}
-          diffs={diffs}
-          sourceBranchName={sourceBranchName}
-          targetBranchName={targetBranchName}
-          onCherryPickSelection={onCherryPickSelection}
-          onAcceptAllComponentProps={onAcceptAllComponentProps}
-        />
-      )}
-
-      {/* cherry-pick without config: fallback text-based view */}
-      {doc.strategy === 'cherry-pick' && !hasConfig && doc.classifiedFields && (
-        <div className={`${baseClass}__cherry-pick-fallback`} style={{ marginTop: '16px' }}>
-          <p style={{ fontSize: '13px', color: '#666', marginBottom: '12px' }}>
-            {doc.classifiedFields.filter((f) => f.classification !== 'conflicting').length > 0 &&
-              `${doc.classifiedFields.filter((f) => f.classification !== 'conflicting').length} fields auto-merged`}
-          </p>
-        </div>
-      )}
-
-      {/* crdt-preview */}
-      {doc.strategy === 'crdt-preview' && (
+      {/* ================================================================= */}
+      {/* CONFLICTING documents: full resolution UI                         */}
+      {/* ================================================================= */}
+      {isConflicting && (
         <>
-          <CrdtAutoFetcher
-            documentId={doc.documentId}
-            hasSnapshot={!!doc.crdtPreviewSnapshot}
-            isLoading={doc.crdtPreviewLoading}
-            hasError={!!doc.crdtPreviewError}
-            onFetch={onFetchCrdtPreview}
+          <ResolutionStrategyPicker
+            currentStrategy={doc.strategy}
+            conflictType={doc.conflictType}
+            onSelect={(strategy) => onSetStrategy(doc.documentId, strategy)}
           />
-          <div className={`${baseClass}__crdt-preview`} style={{ marginTop: '16px' }}>
-            <CrdtPreviewPanel
-              snapshot={doc.crdtPreviewSnapshot}
-              loading={doc.crdtPreviewLoading}
-              error={doc.crdtPreviewError}
+
+          {deleteMessage && (
+            <p className={`${baseClass}__delete-message`} style={{
+              padding: '12px',
+              background: '#fff3cd',
+              borderRadius: '6px',
+              color: '#856404',
+              fontSize: '14px',
+            }}>
+              {deleteMessage}
+            </p>
+          )}
+
+          {/* Strategy banners */}
+          {doc.strategy === 'accept-draft' && hasBothSnapshots && (
+            <div className={`${baseClass}__banner`} style={bannerStyles['accept-draft']}>
+              Draft version will be kept.
+            </div>
+          )}
+          {doc.strategy === 'accept-live' && hasBothSnapshots && (
+            <div className={`${baseClass}__banner`} style={bannerStyles['accept-live']}>
+              Live version will be kept.
+            </div>
+          )}
+          {doc.strategy === 'unresolved' && hasBothSnapshots && (
+            <div className={`${baseClass}__banner`} style={bannerStyles.unresolved}>
+              Select a resolution strategy above.
+            </div>
+          )}
+
+          {/* accept-draft / accept-live with emphasis */}
+          {(doc.strategy === 'accept-draft' || doc.strategy === 'accept-live') && hasBothSnapshots && hasConfig && (
+            <StrategyEmphasisWrapper strategy={doc.strategy}>
+              <MergePreviewRenderer
+                sourceData={doc.sourceSnapshot!}
+                targetData={doc.targetSnapshot!}
+                diffs={diffs}
+                config={config}
+                viewMode={viewMode}
+                sourceBranchName={sourceBranchName}
+                targetBranchName={targetBranchName}
+              />
+            </StrategyEmphasisWrapper>
+          )}
+
+          {/* unresolved: MergePreviewRenderer without emphasis */}
+          {doc.strategy === 'unresolved' && hasBothSnapshots && hasConfig && (
+            <MergePreviewRenderer
+              sourceData={doc.sourceSnapshot!}
+              targetData={doc.targetSnapshot!}
+              diffs={diffs}
               config={config}
-              sourceData={doc.sourceSnapshot}
-              targetData={doc.targetSnapshot}
+              viewMode={viewMode}
               sourceBranchName={sourceBranchName}
               targetBranchName={targetBranchName}
             />
-          </div>
+          )}
+
+          {/* cherry-pick */}
+          {doc.strategy === 'cherry-pick' && hasBothSnapshots && hasConfig && (
+            <CherryPickVisualPanel
+              document={doc}
+              config={config}
+              diffs={diffs}
+              sourceBranchName={sourceBranchName}
+              targetBranchName={targetBranchName}
+              onCherryPickSelection={onCherryPickSelection}
+              onAcceptAllComponentProps={onAcceptAllComponentProps}
+            />
+          )}
+
+          {/* cherry-pick without config: fallback */}
+          {doc.strategy === 'cherry-pick' && !hasConfig && doc.classifiedFields && (
+            <div className={`${baseClass}__cherry-pick-fallback`} style={{ marginTop: '16px' }}>
+              <p style={{ fontSize: '13px', color: '#666', marginBottom: '12px' }}>
+                {doc.classifiedFields.filter((f) => f.classification !== 'conflicting').length > 0 &&
+                  `${doc.classifiedFields.filter((f) => f.classification !== 'conflicting').length} fields auto-merged`}
+              </p>
+            </div>
+          )}
+
+          {/* crdt-preview */}
+          {doc.strategy === 'crdt-preview' && (
+            <>
+              <CrdtAutoFetcher
+                documentId={doc.documentId}
+                hasSnapshot={!!doc.crdtPreviewSnapshot}
+                isLoading={doc.crdtPreviewLoading}
+                hasError={!!doc.crdtPreviewError}
+                onFetch={onFetchCrdtPreview}
+              />
+              <div className={`${baseClass}__crdt-preview`} style={{ marginTop: '16px' }}>
+                <CrdtPreviewPanel
+                  snapshot={doc.crdtPreviewSnapshot}
+                  loading={doc.crdtPreviewLoading}
+                  error={doc.crdtPreviewError}
+                  config={config}
+                  sourceData={doc.sourceSnapshot}
+                  targetData={doc.targetSnapshot}
+                  sourceBranchName={sourceBranchName}
+                  targetBranchName={targetBranchName}
+                />
+              </div>
+            </>
+          )}
+
+          {/* Single snapshot views for delete conflicts */}
+          {!doc.sourceSnapshot && doc.targetSnapshot && hasConfig && (
+            <div className={`${baseClass}__single-panel`} style={singlePanelContainerStyle}>
+              <div className={`${baseClass}__single-panel-label`} style={singlePanelLabelStyle}>
+                {targetBranchName}
+              </div>
+              <div className={`${baseClass}__single-panel-content`} style={singlePanelContentStyle}>
+                <Render
+                  config={config as Parameters<typeof Render>[0]['config']}
+                  data={doc.targetSnapshot as Parameters<typeof Render>[0]['data']}
+                />
+              </div>
+              <div className={`${baseClass}__overlay-message`} style={overlayMessageStyle}>
+                Deleted in Draft
+              </div>
+            </div>
+          )}
+
+          {hasSourceOnly && hasConfig && (
+            <div className={`${baseClass}__single-panel`} style={singlePanelContainerStyle}>
+              <div className={`${baseClass}__single-panel-label`} style={singlePanelLabelStyle}>
+                {sourceBranchName}
+              </div>
+              <div className={`${baseClass}__single-panel-content`} style={singlePanelContentStyle}>
+                <Render
+                  config={config as Parameters<typeof Render>[0]['config']}
+                  data={doc.sourceSnapshot as Parameters<typeof Render>[0]['data']}
+                />
+              </div>
+              <div className={`${baseClass}__overlay-message`} style={overlayMessageStyle}>
+                New document
+              </div>
+            </div>
+          )}
+
+          {hasNeitherSnapshot && (
+            <div className={`${baseClass}__no-content`} style={noContentStyle}>
+              No content available
+            </div>
+          )}
         </>
       )}
 
-      {/* Single snapshot views for delete conflicts */}
-      {hasTargetOnly && hasConfig && (
-        <div className={`${baseClass}__single-panel`} style={singlePanelContainerStyle}>
-          <div className={`${baseClass}__single-panel-label`} style={singlePanelLabelStyle}>
-            {targetBranchName}
+      {/* ================================================================= */}
+      {/* CHANGED documents: comparison tools, no resolution needed          */}
+      {/* ================================================================= */}
+      {isChanged && (
+        <>
+          <div className={`${baseClass}__banner`} style={{
+            padding: '8px 12px',
+            background: '#e8f4fd',
+            color: '#004085',
+            borderRadius: '6px',
+            fontSize: '14px',
+            fontWeight: 500,
+            marginBottom: '12px',
+          }}>
+            Changed on {doc.strategy === 'accept-live' ? 'Live' : 'Draft'} only. No conflict to resolve.
           </div>
-          <div className={`${baseClass}__single-panel-content`} style={singlePanelContentStyle}>
-            <Render
-              config={config as Parameters<typeof Render>[0]['config']}
-              data={doc.targetSnapshot as Parameters<typeof Render>[0]['data']}
+
+          {hasBothSnapshots && hasConfig && (
+            <MergePreviewRenderer
+              sourceData={doc.sourceSnapshot!}
+              targetData={doc.targetSnapshot!}
+              diffs={diffs}
+              config={config}
+              viewMode={viewMode}
+              sourceBranchName={sourceBranchName}
+              targetBranchName={targetBranchName}
             />
-          </div>
-          <div className={`${baseClass}__overlay-message`} style={overlayMessageStyle}>
-            Deleted in Draft
-          </div>
-        </div>
+          )}
+
+          {hasSourceOnly && hasConfig && (
+            <div className={`${baseClass}__single-panel`} style={singlePanelContainerStyle}>
+              <div className={`${baseClass}__single-panel-label`} style={singlePanelLabelStyle}>
+                {sourceBranchName}
+              </div>
+              <div className={`${baseClass}__single-panel-content`} style={singlePanelContentStyle}>
+                <Render
+                  config={config as Parameters<typeof Render>[0]['config']}
+                  data={doc.sourceSnapshot as Parameters<typeof Render>[0]['data']}
+                />
+              </div>
+            </div>
+          )}
+        </>
       )}
 
-      {hasSourceOnly && hasConfig && (
-        <div className={`${baseClass}__single-panel`} style={singlePanelContainerStyle}>
-          <div className={`${baseClass}__single-panel-label`} style={singlePanelLabelStyle}>
-            {sourceBranchName}
+      {/* ================================================================= */}
+      {/* ADDED documents: preview only                                     */}
+      {/* ================================================================= */}
+      {isAdded && (
+        <>
+          <div className={`${baseClass}__banner`} style={{
+            padding: '8px 12px',
+            background: '#d4edda',
+            color: '#155724',
+            borderRadius: '6px',
+            fontSize: '14px',
+            fontWeight: 500,
+            marginBottom: '12px',
+          }}>
+            New document created on Draft.
           </div>
-          <div className={`${baseClass}__single-panel-content`} style={singlePanelContentStyle}>
-            <Render
-              config={config as Parameters<typeof Render>[0]['config']}
-              data={doc.sourceSnapshot as Parameters<typeof Render>[0]['data']}
-            />
-          </div>
-          <div className={`${baseClass}__overlay-message`} style={overlayMessageStyle}>
-            New document
-          </div>
-        </div>
+
+          {doc.sourceSnapshot && hasConfig && (
+            <div className={`${baseClass}__single-panel`} style={singlePanelContainerStyle}>
+              <div className={`${baseClass}__single-panel-label`} style={singlePanelLabelStyle}>
+                {sourceBranchName} (new)
+              </div>
+              <div className={`${baseClass}__single-panel-content`} style={singlePanelContentStyle}>
+                <Render
+                  config={config as Parameters<typeof Render>[0]['config']}
+                  data={doc.sourceSnapshot as Parameters<typeof Render>[0]['data']}
+                />
+              </div>
+            </div>
+          )}
+
+          {!doc.sourceSnapshot && (
+            <div className={`${baseClass}__no-content`} style={noContentStyle}>
+              Document preview not available
+            </div>
+          )}
+        </>
       )}
 
-      {/* Both snapshots null */}
-      {hasNeitherSnapshot && (
-        <div className={`${baseClass}__no-content`} style={noContentStyle}>
-          No content available
+      {/* ================================================================= */}
+      {/* DELETED documents: path only                                      */}
+      {/* ================================================================= */}
+      {isDeleted && (
+        <div className={`${baseClass}__banner`} style={{
+          padding: '8px 12px',
+          background: '#f5f5f5',
+          color: '#666',
+          borderRadius: '6px',
+          fontSize: '14px',
+          fontWeight: 500,
+          marginBottom: '12px',
+        }}>
+          This document will be removed.
         </div>
       )}
     </div>

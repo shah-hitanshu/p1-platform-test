@@ -8,7 +8,7 @@
  */
 
 import React, { useEffect, useRef, useCallback } from 'react';
-import type { DocumentResolution, DocumentResolutionStrategy } from '../../hooks/useMergeResolution.js';
+import type { DocumentResolution, DocumentResolutionStrategy, DocumentChangeType } from '../../hooks/useMergeResolution.js';
 
 export interface DiffCounts {
   added: number;
@@ -101,6 +101,20 @@ const strategyKeyMap: Record<string, DocumentResolutionStrategy> = {
   '2': 'accept-live',
   '3': 'cherry-pick',
   '4': 'crdt-preview',
+};
+
+const changeTypeBadgeColors: Record<DocumentChangeType, React.CSSProperties> = {
+  conflicting: { background: '#f8d7da', color: '#721c24' },
+  changed: { background: '#cce5ff', color: '#004085' },
+  added: { background: '#d4edda', color: '#155724' },
+  deleted: { background: '#f5f5f5', color: '#666' },
+};
+
+const changeTypeLabels: Record<DocumentChangeType, string> = {
+  conflicting: 'Conflict',
+  changed: 'Changed',
+  added: 'New',
+  deleted: 'Deleted',
 };
 
 // Diff count badge styles
@@ -250,12 +264,21 @@ export function DocumentResolutionList({
           >
             <div style={liTopRowStyle}>
               <span className={`${baseClass}__path`} style={pathStyle}>{doc.documentPath}</span>
-              <span
-                className={`${baseClass}__badge ${baseClass}__badge--${doc.strategy}`}
-                style={{ ...badgeBaseStyle, ...badgeColors[doc.strategy] }}
-              >
-                {strategyLabels[doc.strategy]}
-              </span>
+              {doc.changeType === 'conflicting' ? (
+                <span
+                  className={`${baseClass}__badge ${baseClass}__badge--${doc.strategy}`}
+                  style={{ ...badgeBaseStyle, ...badgeColors[doc.strategy] }}
+                >
+                  {strategyLabels[doc.strategy]}
+                </span>
+              ) : (
+                <span
+                  className={`${baseClass}__badge ${baseClass}__badge--${doc.changeType}`}
+                  style={{ ...badgeBaseStyle, ...changeTypeBadgeColors[doc.changeType] }}
+                >
+                  {changeTypeLabels[doc.changeType]}
+                </span>
+              )}
             </div>
 
             {/* Diff count badges */}

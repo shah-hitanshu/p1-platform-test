@@ -25,10 +25,15 @@ export type DocumentResolutionStrategy =
   | 'crdt-preview'
   | 'unresolved';
 
+/** How this document changed in the merge */
+export type DocumentChangeType = 'conflicting' | 'changed' | 'added' | 'deleted';
+
 export interface DocumentResolution {
   documentId: string;
   documentPath: string;
   strategy: DocumentResolutionStrategy;
+  /** How this document changed in the merge */
+  changeType: DocumentChangeType;
   cherryPickSelections: Record<string, 'source' | 'target'>;
   mergedSnapshot: PuckData | null;
   crdtPreviewSnapshot: PuckData | null;
@@ -174,54 +179,165 @@ export function useMergeResolution(
         preview.conflicts.documentConflicts.map((c) => [c.documentId, c])
       );
 
-      // Build source-only and target-only sets
-      const sourceDocIds = new Set(
-        preview.sourceChanges.map((c) => c.documentId)
+      // Build source and target change sets
+      const sourceChangeMap = new Map(
+        preview.sourceChanges.map((c) => [c.documentId, c])
       );
-      const targetDocIds = new Set(
-        preview.targetChanges.map((c) => c.documentId)
+      const targetChangeMap = new Map(
+        preview.targetChanges.map((c) => [c.documentId, c])
       );
 
-      const docs: DocumentResolution[] = (preview.documentDiffs ?? []).map(
-        (diff) => {
-          const conflict = conflictMap.get(diff.documentId);
-          const conflictType: DocumentConflictType =
-            conflict?.conflictType ?? 'both-modified';
+      // Build diff map for quick lookup
+      const diffMap = new Map(
+        (preview.documentDiffs ?? []).map((d) => [d.documentId, d])
+      );
 
-          let strategy: DocumentResolutionStrategy;
-          if (conflictDocIds.has(diff.documentId)) {
-            strategy = 'unresolved';
-          } else if (
-            sourceDocIds.has(diff.documentId) &&
-            !targetDocIds.has(diff.documentId)
-          ) {
-            strategy = 'accept-draft';
-          } else if (
-            targetDocIds.has(diff.documentId) &&
-            !sourceDocIds.has(diff.documentId)
-          ) {
-            strategy = 'accept-live';
-          } else {
-            // Both changed but no conflict listed => default unresolved
-            strategy = 'unresolved';
-          }
+      // Collect all document IDs we need to process
+      const allDocIds = new Set<string>();
+      for (const c of preview.conflicts.documentConflicts) {
+        allDocIds.add(c.documentId);
+      }
+      for (const sc of preview.sourceChanges) {
+        allDocIds.add(sc.documentId);
+      }
+      for (const tc of preview.targetChanges) {
+        allDocIds.add(tc.documentId);
+      }
+
+      // Fetch snapshots for non-conflicting documents in parallel
+      const snapshotFetches = new Map<string, Promise<{ source: PuckData | null; target: PuckData | null }>>();
+
+      for (const docId of allDocIds) {
+        // Conflicting documents have snapshots from documentDiffs
+        if (conflictDocIds.has(docId) && diffMap.has(docId)) {
+          continue;
+        }
+
+        // For non-conflicting docs, fetch snapshots via versions API
+        snapshotFetches.set(docId, (async () => {
+          const results = await Promise.allSettled([
+            sourceChangeMap.has(docId)
+              ? client.versions.getLatest(siteId, sourceBranchId, docId)
+              : Promise.reject(new Error('not in source')),
+            targetChangeMap.has(docId)
+              ? client.versions.getLatest(siteId, targetBranchId, docId)
+              : Promise.reject(new Error('not in target')),
+          ]);
+
+          const sourceResult = results[0];
+          const targetResult = results[1];
 
           return {
-            documentId: diff.documentId,
-            documentPath: diff.documentPath,
-            strategy,
-            cherryPickSelections: {},
-            mergedSnapshot: null,
-            crdtPreviewSnapshot: null,
-            crdtPreviewLoading: false,
-            crdtPreviewError: null,
-            sourceSnapshot: (diff.sourceSnapshot as unknown as PuckData) ?? null,
-            targetSnapshot: (diff.targetSnapshot as unknown as PuckData) ?? null,
-            conflictType,
-            classifiedFields: null,
+            source: sourceResult.status === 'fulfilled'
+              ? (sourceResult.value.snapshot as unknown as PuckData)
+              : null,
+            target: targetResult.status === 'fulfilled'
+              ? (targetResult.value.snapshot as unknown as PuckData)
+              : null,
           };
+        })());
+      }
+
+      // Wait for all snapshot fetches
+      const fetchedSnapshots = new Map<string, { source: PuckData | null; target: PuckData | null }>();
+      for (const [docId, fetchPromise] of snapshotFetches) {
+        try {
+          fetchedSnapshots.set(docId, await fetchPromise);
+        } catch {
+          fetchedSnapshots.set(docId, { source: null, target: null });
         }
-      );
+      }
+
+      // Build document resolutions for all documents
+      const docs: DocumentResolution[] = [];
+
+      for (const docId of allDocIds) {
+        const conflict = conflictMap.get(docId);
+        const diff = diffMap.get(docId);
+        const inSource = sourceChangeMap.has(docId);
+        const inTarget = targetChangeMap.has(docId);
+        const isConflicting = conflictDocIds.has(docId);
+
+        // Determine change path info
+        const docPath = conflict?.documentPath
+          ?? diff?.documentPath
+          ?? sourceChangeMap.get(docId)?.documentPath
+          ?? targetChangeMap.get(docId)?.documentPath
+          ?? docId;
+
+        // Determine changeType, strategy, and conflictType
+        let changeType: DocumentChangeType;
+        let strategy: DocumentResolutionStrategy;
+        let conflictType: DocumentConflictType;
+
+        if (isConflicting) {
+          changeType = 'conflicting';
+          strategy = 'unresolved';
+          conflictType = conflict?.conflictType ?? 'both-modified';
+        } else if (inSource && !inTarget) {
+          // Source-only change: could be added or changed
+          const snapshots = fetchedSnapshots.get(docId);
+          if (snapshots?.target === null) {
+            changeType = 'added';
+          } else {
+            changeType = 'changed';
+          }
+          strategy = 'accept-draft';
+          conflictType = 'both-modified'; // Not actually a conflict
+        } else if (inTarget && !inSource) {
+          // Target-only change
+          changeType = 'changed';
+          strategy = 'accept-live';
+          conflictType = 'both-modified'; // Not actually a conflict
+        } else {
+          // In both but not conflicting (shouldn't happen normally, but handle gracefully)
+          changeType = 'changed';
+          strategy = 'unresolved';
+          conflictType = 'both-modified';
+        }
+
+        // Get snapshots
+        let sourceSnapshot: PuckData | null = null;
+        let targetSnapshot: PuckData | null = null;
+
+        if (isConflicting && diff) {
+          // Use snapshots from documentDiffs for conflicting docs
+          sourceSnapshot = (diff.sourceSnapshot as unknown as PuckData) ?? null;
+          targetSnapshot = (diff.targetSnapshot as unknown as PuckData) ?? null;
+        } else {
+          // Use fetched snapshots for non-conflicting docs
+          const snapshots = fetchedSnapshots.get(docId);
+          if (snapshots) {
+            sourceSnapshot = snapshots.source;
+            targetSnapshot = snapshots.target;
+          }
+        }
+
+        docs.push({
+          documentId: docId,
+          documentPath: docPath,
+          strategy,
+          changeType,
+          cherryPickSelections: {},
+          mergedSnapshot: null,
+          crdtPreviewSnapshot: null,
+          crdtPreviewLoading: false,
+          crdtPreviewError: null,
+          sourceSnapshot,
+          targetSnapshot,
+          conflictType,
+          classifiedFields: null,
+        });
+      }
+
+      // Sort: conflicting first, then added, changed, deleted
+      const changeTypeOrder: Record<DocumentChangeType, number> = {
+        conflicting: 0,
+        added: 1,
+        changed: 2,
+        deleted: 3,
+      };
+      docs.sort((a, b) => changeTypeOrder[a.changeType] - changeTypeOrder[b.changeType]);
 
       setDocuments(docs);
       setCurrentIndex(0);

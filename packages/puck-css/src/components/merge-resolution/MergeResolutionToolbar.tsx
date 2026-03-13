@@ -13,6 +13,8 @@ export interface MergeResolutionToolbarProps {
   targetBranchName: string;
   resolvedCount: number;
   totalCount: number;
+  /** Number of documents that are actual conflicts requiring resolution */
+  conflictCount?: number;
   allResolved: boolean;
   mergeExecuting: boolean;
   onClose: () => void;
@@ -44,6 +46,7 @@ export function MergeResolutionToolbar({
   onExecuteMerge,
   onSetAllStrategy,
   onSetRemainingStrategy,
+  conflictCount,
   mergeRequest,
   mergeRequestCreating,
   mergeRequestError,
@@ -95,7 +98,14 @@ export function MergeResolutionToolbar({
 
       <div className={`${baseClass}__center`} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'center', minWidth: 200 }}>
         <span className={`${baseClass}__progress`} style={{ fontSize: 13, color: '#555', whiteSpace: 'nowrap' }}>
-          {resolvedCount} of {totalCount} resolved
+          {conflictCount != null && conflictCount > 0
+            ? `${conflictCount - (totalCount - resolvedCount)} of ${conflictCount} conflicts resolved`
+            : `${totalCount} documents`}
+          {conflictCount != null && totalCount > conflictCount && (
+            <span style={{ color: '#999', marginLeft: 4 }}>
+              ({totalCount - conflictCount} auto-merged)
+            </span>
+          )}
         </span>
         <div
           className={`${baseClass}__progress-bar`}

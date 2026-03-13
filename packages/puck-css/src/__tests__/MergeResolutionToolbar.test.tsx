@@ -24,10 +24,25 @@ describe('MergeResolutionToolbar', () => {
     onSetAllStrategy: vi.fn(),
   };
 
-  it('shows progress as X of Y resolved', () => {
+  it('shows progress as X of Y documents when no conflictCount', () => {
     render(<MergeResolutionToolbar {...defaultProps} />);
 
-    expect(screen.getByText(/3 of 12 resolved/)).toBeDefined();
+    expect(screen.getByText(/12 documents/)).toBeDefined();
+  });
+
+  it('shows conflict-specific progress when conflictCount provided', () => {
+    // resolvedCount=10, totalCount=12, conflictCount=5
+    // formula: conflictCount - (totalCount - resolvedCount) = 5 - (12-10) = 3
+    // renders "3 of 5 conflicts resolved"
+    render(
+      <MergeResolutionToolbar
+        {...defaultProps}
+        resolvedCount={10}
+        conflictCount={5}
+      />
+    );
+
+    expect(screen.getByText(/3 of 5 conflicts resolved/)).toBeDefined();
   });
 
   it('shows branch direction label in Draft (branch-name) -> Live format', () => {
@@ -44,19 +59,24 @@ describe('MergeResolutionToolbar', () => {
     expect(progressBar.getAttribute('aria-valuenow')).toBe('25');
   });
 
-  it('Execute Merge button disabled when not all resolved', () => {
-    render(<MergeResolutionToolbar {...defaultProps} />);
-
-    const executeBtn = screen.getByText('Execute merge');
-    expect(executeBtn.closest('button')?.disabled).toBe(true);
-  });
-
-  it('Execute Merge button enabled when all resolved', () => {
+  it('shows Create merge request button when no mergeRequest provided', () => {
     render(
       <MergeResolutionToolbar
         {...defaultProps}
-        allResolved={true}
-        resolvedCount={12}
+        onCreateMergeRequest={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Create merge request')).toBeDefined();
+    // Create merge request should be disabled when not all resolved
+    expect(screen.getByText('Create merge request').closest('button')?.disabled).toBe(true);
+  });
+
+  it('Execute Merge button shown when mergeRequest has approved status', () => {
+    render(
+      <MergeResolutionToolbar
+        {...defaultProps}
+        mergeRequest={{ id: 'mr-1', status: 'approved', title: 'Test MR' }}
       />
     );
 
@@ -72,6 +92,7 @@ describe('MergeResolutionToolbar', () => {
         allResolved={true}
         resolvedCount={12}
         onExecuteMerge={onExecuteMerge}
+        mergeRequest={{ id: 'mr-1', status: 'approved', title: 'Test MR' }}
       />
     );
 
@@ -96,6 +117,7 @@ describe('MergeResolutionToolbar', () => {
         {...defaultProps}
         allResolved={true}
         resolvedCount={12}
+        mergeRequest={{ id: 'mr-1', status: 'approved', title: 'Test MR' }}
       />
     );
 

@@ -40,12 +40,12 @@ function createMockClient() {
       preview: vi.fn(),
       crdtPreview: vi.fn(),
       execute: vi.fn(),
-      createRequest: vi.fn(),
+      createRequest: vi.fn().mockResolvedValue({ id: 'mr-1', status: 'open', title: 'Test merge' }),
       getRequest: vi.fn(),
       listRequests: vi.fn(),
-      updateRequest: vi.fn(),
+      updateRequest: vi.fn().mockResolvedValue({ id: 'mr-1', status: 'approved', title: 'Test merge' }),
       deleteRequest: vi.fn(),
-      executeRequest: vi.fn(),
+      executeRequest: vi.fn().mockResolvedValue({ success: true, checkpointId: 'cp-2', documentsUpdated: 4 }),
     },
     sites: {},
     branches: {},
@@ -140,7 +140,6 @@ describe('useMergeResolution - executeMerge', () => {
   it('maps accept-draft to take-source', async () => {
     const mockClient = createMockClient();
     mockClient.merge.preview.mockResolvedValue(createMergePreview());
-    mockClient.merge.execute.mockResolvedValue({ success: true, checkpointId: 'cp-2', documentsUpdated: 4 });
     const options = createOptions(mockClient);
 
     const { result } = renderHook(() => useMergeResolution(options));
@@ -154,18 +153,24 @@ describe('useMergeResolution - executeMerge', () => {
     });
 
     await act(async () => {
+      await result.current.createMergeRequest();
+    });
+    await act(async () => {
+      await result.current.approveMergeRequest();
+    });
+
+    await act(async () => {
       await result.current.executeMerge('Test merge');
     });
 
-    const call = mockClient.merge.execute.mock.calls[0];
-    const resolutions = call[1].conflictResolutions;
+    const call = mockClient.merge.executeRequest.mock.calls[0];
+    const resolutions = call[2].resolutions;
     expect(resolutions[0].strategy).toBe('take-source');
   });
 
   it('maps accept-live to take-target', async () => {
     const mockClient = createMockClient();
     mockClient.merge.preview.mockResolvedValue(createMergePreview());
-    mockClient.merge.execute.mockResolvedValue({ success: true, checkpointId: 'cp-2', documentsUpdated: 4 });
     const options = createOptions(mockClient);
 
     const { result } = renderHook(() => useMergeResolution(options));
@@ -179,18 +184,24 @@ describe('useMergeResolution - executeMerge', () => {
     });
 
     await act(async () => {
+      await result.current.createMergeRequest();
+    });
+    await act(async () => {
+      await result.current.approveMergeRequest();
+    });
+
+    await act(async () => {
       await result.current.executeMerge();
     });
 
-    const call = mockClient.merge.execute.mock.calls[0];
-    const resolutions = call[1].conflictResolutions;
+    const call = mockClient.merge.executeRequest.mock.calls[0];
+    const resolutions = call[2].resolutions;
     expect(resolutions[0].strategy).toBe('take-target');
   });
 
   it('maps cherry-pick to manual with resolvedSnapshot', async () => {
     const mockClient = createMockClient();
     mockClient.merge.preview.mockResolvedValue(createMergePreview());
-    mockClient.merge.execute.mockResolvedValue({ success: true, checkpointId: 'cp-2', documentsUpdated: 4 });
     const options = createOptions(mockClient);
 
     const { result } = renderHook(() => useMergeResolution(options));
@@ -214,11 +225,18 @@ describe('useMergeResolution - executeMerge', () => {
     });
 
     await act(async () => {
+      await result.current.createMergeRequest();
+    });
+    await act(async () => {
+      await result.current.approveMergeRequest();
+    });
+
+    await act(async () => {
       await result.current.executeMerge();
     });
 
-    const call = mockClient.merge.execute.mock.calls[0];
-    const resolutions = call[1].conflictResolutions;
+    const call = mockClient.merge.executeRequest.mock.calls[0];
+    const resolutions = call[2].resolutions;
     const cherryPickRes = resolutions.find((r: { documentId: string }) => r.documentId === 'doc-1');
     expect(cherryPickRes.strategy).toBe('manual');
     expect(cherryPickRes.resolvedSnapshot).toBeDefined();
@@ -228,7 +246,6 @@ describe('useMergeResolution - executeMerge', () => {
     const mockClient = createMockClient();
     mockClient.merge.preview.mockResolvedValue(createMergePreview());
     mockClient.merge.crdtPreview.mockResolvedValue({ success: true, snapshot: { content: [], root: {} } });
-    mockClient.merge.execute.mockResolvedValue({ success: true, checkpointId: 'cp-2', documentsUpdated: 4 });
     const options = createOptions(mockClient);
 
     const { result } = renderHook(() => useMergeResolution(options));
@@ -247,11 +264,18 @@ describe('useMergeResolution - executeMerge', () => {
     });
 
     await act(async () => {
+      await result.current.createMergeRequest();
+    });
+    await act(async () => {
+      await result.current.approveMergeRequest();
+    });
+
+    await act(async () => {
       await result.current.executeMerge();
     });
 
-    const call = mockClient.merge.execute.mock.calls[0];
-    const resolutions = call[1].conflictResolutions;
+    const call = mockClient.merge.executeRequest.mock.calls[0];
+    const resolutions = call[2].resolutions;
     const crdtRes = resolutions.find((r: { documentId: string }) => r.documentId === 'doc-1');
     expect(crdtRes.strategy).toBe('merge-crdt');
   });
@@ -259,7 +283,6 @@ describe('useMergeResolution - executeMerge', () => {
   it('sets mergeSuccess on success', async () => {
     const mockClient = createMockClient();
     mockClient.merge.preview.mockResolvedValue(createMergePreview());
-    mockClient.merge.execute.mockResolvedValue({ success: true, checkpointId: 'cp-2', documentsUpdated: 4 });
     const options = createOptions(mockClient);
 
     const { result } = renderHook(() => useMergeResolution(options));
@@ -270,6 +293,13 @@ describe('useMergeResolution - executeMerge', () => {
 
     act(() => {
       result.current.setAllStrategy('accept-draft');
+    });
+
+    await act(async () => {
+      await result.current.createMergeRequest();
+    });
+    await act(async () => {
+      await result.current.approveMergeRequest();
     });
 
     await act(async () => {
@@ -283,13 +313,20 @@ describe('useMergeResolution - executeMerge', () => {
   it('throws error for unresolved documents instead of silent fallback', async () => {
     const mockClient = createMockClient();
     mockClient.merge.preview.mockResolvedValue(createMergePreview());
-    mockClient.merge.execute.mockResolvedValue({ success: true });
     const options = createOptions(mockClient);
 
     const { result } = renderHook(() => useMergeResolution(options));
 
     await act(async () => {
       await result.current.loadPreview();
+    });
+
+    // Create and approve merge request but do NOT resolve documents
+    await act(async () => {
+      await result.current.createMergeRequest();
+    });
+    await act(async () => {
+      await result.current.approveMergeRequest();
     });
 
     // Do NOT resolve all documents — leave them unresolved
@@ -300,13 +337,13 @@ describe('useMergeResolution - executeMerge', () => {
     // Should set mergeError because documents are still unresolved
     expect(result.current.mergeError).toMatch(/still unresolved/);
     expect(result.current.mergeSuccess).toBe(false);
-    expect(mockClient.merge.execute).not.toHaveBeenCalled();
+    expect(mockClient.merge.executeRequest).not.toHaveBeenCalled();
   });
 
   it('sets mergeError on failure', async () => {
     const mockClient = createMockClient();
     mockClient.merge.preview.mockResolvedValue(createMergePreview());
-    mockClient.merge.execute.mockRejectedValue(new Error('Merge failed'));
+    mockClient.merge.executeRequest.mockRejectedValue(new Error('Merge failed'));
     const options = createOptions(mockClient);
 
     const { result } = renderHook(() => useMergeResolution(options));
@@ -317,6 +354,13 @@ describe('useMergeResolution - executeMerge', () => {
 
     act(() => {
       result.current.setAllStrategy('accept-draft');
+    });
+
+    await act(async () => {
+      await result.current.createMergeRequest();
+    });
+    await act(async () => {
+      await result.current.approveMergeRequest();
     });
 
     await act(async () => {

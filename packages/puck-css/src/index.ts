@@ -192,6 +192,7 @@ export type {
 export { useMergeResolution } from './hooks/useMergeResolution.js';
 export type {
   DocumentResolutionStrategy,
+  DocumentChangeType,
   DocumentResolution,
   UseMergeResolutionOptions,
   UseMergeResolutionReturn,
