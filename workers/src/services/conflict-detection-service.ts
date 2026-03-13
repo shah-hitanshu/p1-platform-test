@@ -167,6 +167,7 @@ export async function detectConflicts(
         sourceVersion: sourceDoc.latestVersionNumber ?? undefined,
         targetVersion: targetDoc.latestVersionNumber ?? undefined,
         baseVersion: sourceDoc.baseVersionNumber ?? undefined,
+        crdtMergePossible: sourceDoc.hasCrdtState === true && targetDoc.hasCrdtState === true,
       });
     }
   }

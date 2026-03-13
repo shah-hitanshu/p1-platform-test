@@ -36,6 +36,7 @@ export interface ModifiedDocument {
   baseVersionId: string | null;
   baseVersionNumber: number | null;
   isDeleted?: boolean;
+  hasCrdtState?: boolean;
 }
 
 /**
@@ -113,6 +114,7 @@ interface ModifiedDocumentRow {
   base_version_id: string | null;
   base_version_number: number | null;
   is_deleted?: boolean;
+  has_crdt_state?: boolean;
   source?: string;
   snapshot?: Record<string, unknown> | null;
 }
@@ -239,7 +241,8 @@ export async function getModifiedDocumentsSince(
         dv.version_number,
         dv.source,
         dv.snapshot,
-        dv.is_tombstone
+        dv.is_tombstone,
+        dv.crdt_state IS NOT NULL AS has_crdt_state
       FROM app.checkpoint_documents cd
       INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
       INNER JOIN app.document_versions dv ON dv.id = cd.document_version_id
@@ -249,7 +252,8 @@ export async function getModifiedDocumentsSince(
     : `
     current_versions AS (
       SELECT DISTINCT ON (dv.document_id)
-        dv.document_id, dv.id AS version_id, dv.version_number, dv.source, dv.snapshot, dv.is_tombstone
+        dv.document_id, dv.id AS version_id, dv.version_number, dv.source, dv.snapshot, dv.is_tombstone,
+        dv.crdt_state IS NOT NULL AS has_crdt_state
       FROM app.document_versions dv
       WHERE dv.branch_id = $1
       ORDER BY dv.document_id, dv.version_number DESC
@@ -282,7 +286,8 @@ export async function getModifiedDocumentsSince(
       cd.document_version_id AS base_version_id,
       cd.version_number AS base_version_number,
       cv.source,
-      cv.is_tombstone AS is_deleted
+      cv.is_tombstone AS is_deleted,
+      cv.has_crdt_state
     FROM current_versions cv
     LEFT JOIN checkpoint_docs cd ON cv.document_id = cd.document_id
     INNER JOIN app.documents d ON d.id = cv.document_id
@@ -309,6 +314,7 @@ export async function getModifiedDocumentsSince(
     baseVersionId: row.base_version_id,
     baseVersionNumber: row.base_version_number,
     isDeleted: row.is_deleted === true,
+    hasCrdtState: row.has_crdt_state === true,
   }));
 }
 

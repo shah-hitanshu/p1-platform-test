@@ -443,6 +443,126 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
     });
   });
 
+  describe('crdtMergePossible on conflicts', () => {
+    it('should set crdtMergePossible true when both versions have CRDT state', async () => {
+      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
+      const mergeBaseService = await import('../../src/services/merge-base-service');
+
+      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+        checkpointId: 'checkpoint-123',
+        branchId: 'main-branch',
+        createdAt: '2026-01-20T10:00:00.000Z',
+      });
+
+      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+        .mockResolvedValueOnce([
+          {
+            documentId: 'doc-1',
+            documentPath: 'pages/home',
+            latestVersionId: 'v1-source',
+            latestVersionNumber: 3,
+            baseVersionId: 'v0',
+            baseVersionNumber: 1,
+            hasCrdtState: true,
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            documentId: 'doc-1',
+            documentPath: 'pages/home',
+            latestVersionId: 'v1-target',
+            latestVersionNumber: 2,
+            baseVersionId: 'v0',
+            baseVersionNumber: 1,
+            hasCrdtState: true,
+          },
+        ]);
+
+      const result = await detectConflicts('source-branch', 'target-branch');
+
+      expect(result.conflicts.documentConflicts).toHaveLength(1);
+      expect(result.conflicts.documentConflicts[0].crdtMergePossible).toBe(true);
+    });
+
+    it('should set crdtMergePossible false when source is missing CRDT state', async () => {
+      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
+      const mergeBaseService = await import('../../src/services/merge-base-service');
+
+      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+        checkpointId: 'checkpoint-123',
+        branchId: 'main-branch',
+        createdAt: '2026-01-20T10:00:00.000Z',
+      });
+
+      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+        .mockResolvedValueOnce([
+          {
+            documentId: 'doc-1',
+            documentPath: 'pages/home',
+            latestVersionId: 'v1-source',
+            latestVersionNumber: 3,
+            baseVersionId: 'v0',
+            baseVersionNumber: 1,
+            hasCrdtState: false,
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            documentId: 'doc-1',
+            documentPath: 'pages/home',
+            latestVersionId: 'v1-target',
+            latestVersionNumber: 2,
+            baseVersionId: 'v0',
+            baseVersionNumber: 1,
+            hasCrdtState: true,
+          },
+        ]);
+
+      const result = await detectConflicts('source-branch', 'target-branch');
+
+      expect(result.conflicts.documentConflicts).toHaveLength(1);
+      expect(result.conflicts.documentConflicts[0].crdtMergePossible).toBe(false);
+    });
+
+    it('should set crdtMergePossible false when hasCrdtState is undefined', async () => {
+      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
+      const mergeBaseService = await import('../../src/services/merge-base-service');
+
+      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+        checkpointId: 'checkpoint-123',
+        branchId: 'main-branch',
+        createdAt: '2026-01-20T10:00:00.000Z',
+      });
+
+      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+        .mockResolvedValueOnce([
+          {
+            documentId: 'doc-1',
+            documentPath: 'pages/home',
+            latestVersionId: 'v1-source',
+            latestVersionNumber: 3,
+            baseVersionId: 'v0',
+            baseVersionNumber: 1,
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            documentId: 'doc-1',
+            documentPath: 'pages/home',
+            latestVersionId: 'v1-target',
+            latestVersionNumber: 2,
+            baseVersionId: 'v0',
+            baseVersionNumber: 1,
+          },
+        ]);
+
+      const result = await detectConflicts('source-branch', 'target-branch');
+
+      expect(result.conflicts.documentConflicts).toHaveLength(1);
+      expect(result.conflicts.documentConflicts[0].crdtMergePossible).toBe(false);
+    });
+  });
+
   describe('checkMergeability', () => {
     it('should return canMerge true when no conflicts', async () => {
       const { checkMergeability } = await import('../../src/services/conflict-detection-service');

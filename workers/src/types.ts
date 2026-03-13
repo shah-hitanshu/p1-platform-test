@@ -341,6 +341,8 @@ export interface DocumentConflict {
   conflictType: DocumentConflictType;
   sourceVersion?: number;
   targetVersion?: number;
+  baseVersion?: number;
+  crdtMergePossible?: boolean;
 }
 
 /**
