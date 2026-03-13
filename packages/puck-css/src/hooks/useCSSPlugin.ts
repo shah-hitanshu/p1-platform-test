@@ -20,8 +20,8 @@ import type { DocumentVersion, ActorPresence, RegisteredAgent } from '@pantheon/
 export interface UseCSSPluginOptions {
   /** Callback when user selection changes in the Puck editor */
   onSelectionChange?: (path: string | null, itemId: string | null) => void;
-  /** Callback when "Compare with main" is clicked */
-  onMergeCompare?: (targetBranchId: string) => void;
+  /** Puck config for rendering merge previews. Enables the built-in merge review overlay. */
+  puckConfig?: unknown;
   /** List of versions for the current document */
   versions?: DocumentVersion[];
   /** Whether versions are loading */
@@ -102,7 +102,7 @@ export function useCSSPlugin(options: UseCSSPluginOptions = {}): PuckPlugin {
     // Selection tracking
     onSelectionChange: options.onSelectionChange,
     // Merge comparison
-    onMergeCompare: options.onMergeCompare,
+    puckConfig: options.puckConfig,
     // Presence/Agent features
     showPresenceIndicator: options.showPresenceIndicator,
     presence: options.presence ?? css.presence?.actors,
