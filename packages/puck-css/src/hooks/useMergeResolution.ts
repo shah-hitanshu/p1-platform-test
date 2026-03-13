@@ -213,15 +213,13 @@ export function useMergeResolution(
           continue;
         }
 
-        // For non-conflicting docs, fetch snapshots via versions API
+        // For non-conflicting docs, fetch snapshots via versions API.
+        // Always try both branches — a doc may exist on the other branch
+        // via COW inheritance even if it wasn't changed there.
         snapshotFetches.set(docId, (async () => {
           const results = await Promise.allSettled([
-            sourceChangeMap.has(docId)
-              ? client.versions.getLatest(siteId, sourceBranchId, docId)
-              : Promise.reject(new Error('not in source')),
-            targetChangeMap.has(docId)
-              ? client.versions.getLatest(siteId, targetBranchId, docId)
-              : Promise.reject(new Error('not in target')),
+            client.versions.getLatest(siteId, sourceBranchId, docId),
+            client.versions.getLatest(siteId, targetBranchId, docId),
           ]);
 
           const sourceResult = results[0];
