@@ -331,12 +331,9 @@ vi.mock('../../src/services/branch-invalidation-service', () => ({
 
 describe('post-merge KV invalidation', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
-    // Re-apply default mocks after reset
-    const { assertPermission } = require('../../src/auth/authorization');
-    assertPermission.mockResolvedValue(undefined);
-    const { writeBranchInvalidation } = require('../../src/services/branch-invalidation-service');
-    writeBranchInvalidation.mockResolvedValue(undefined);
+    // clearAllMocks resets call counts but preserves mock implementations
+    // set by vi.mock() at module scope — no require() re-wiring needed.
+    vi.clearAllMocks();
   });
 
   afterEach(() => {
