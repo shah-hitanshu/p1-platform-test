@@ -4,7 +4,7 @@
 
 **Goal:** After a merge writes new document versions to the target branch in PostgreSQL, signal active Durable Objects on that branch to reload their state — using a pull-based KV invalidation pattern that is O(1) at merge time and only causes work in DOs that are actually alive.
 
-**Architecture:** After a successful merge, the worker writes a timestamp to a KV key `branch-version:{branchId}`. Each DocumentSession DO stores the last-seen timestamp in memory. On every alarm tick (60s interval), and on every HTTP `fetch()` entry point, the DO reads its branch's KV timestamp; if the KV value is newer than the last-seen value, the DO calls its existing `handleReload()` method to re-initialize from PostgreSQL and broadcast diffs to connected WebSocket clients. This reuses `CONFIG_KV` (already bound to the worker) with a new binding added to the DO's env interface. The KV write is a single `put()` with no read-before-write, eliminating race conditions on concurrent merges.
+**Architecture:** After a successful merge, the merge route handler writes a timestamp to a KV key `branch-version:{branchId}`. Each DocumentSession DO stores the last-seen timestamp in memory. On every alarm tick (60s interval) and on every HTTP `fetch()` entry point for CRDT endpoints, the DO reads its branch's KV timestamp; if the KV value is newer than the last-seen value, the DO calls its existing reload logic to re-initialize from PostgreSQL and broadcast diffs to connected WebSocket clients. This reuses `CONFIG_KV` (already bound to the worker) with a `branch-version:` key prefix. The KV write is a single `put()` with no read-before-write, eliminating race conditions on concurrent merges.
 
 **Tech Stack:** Cloudflare Workers, Durable Objects, KV (`CONFIG_KV`), Vitest, TypeScript
 
@@ -14,11 +14,13 @@
 
 2. **Timestamp-based signal rather than integer counter.** A timestamp requires no read-before-write — just `put(Date.now().toString())`. Concurrent merges both write a recent timestamp; neither signal is "lost." An integer counter would need `get()` then `put()`, introducing a race where two concurrent merges read the same value and one increment is swallowed. While harmless in practice (the DO still reloads), the timestamp approach is simpler and more debuggable.
 
-3. **Check invalidation in `fetch()` router + `alarm()` only, not in `webSocketMessage()`.** The `webSocketMessage()` handler fires on every WebSocket frame (every keystroke, cursor move, awareness update). Adding a KV read per message would be expensive at scale. The alarm runs every 60 seconds, providing a reasonable upper bound on staleness for idle connections. Active HTTP requests (like `/snapshot` or `/apply`) check immediately. If 60s proves too slow, a throttled check in `webSocketMessage()` is an easy follow-up — but not in this initial implementation.
+3. **Check invalidation in `fetch()` CRDT endpoints + `alarm()` only, not in `webSocketMessage()`.** The `webSocketMessage()` handler fires on every WebSocket frame (every keystroke, cursor move, awareness update). Adding a KV read per message would be expensive at scale. The alarm runs every 60 seconds, providing a reasonable upper bound on staleness for idle connections. Active HTTP requests (like `/snapshot` or `/apply`) check immediately. If 60s proves too slow, a throttled check in `webSocketMessage()` is an easy follow-up — but not in this initial implementation.
 
-4. **Invalidation signal written in `index.ts` after merge route returns success**, matching the existing post-publish reload pattern at line 1452. This keeps side-effect logic in the top-level router rather than buried in service functions, and ensures the KV write only happens after a successful merge commit.
+4. **Invalidation signal written in `merge-api.ts` route handler, not in `index.ts`.** The existing post-publish reload in `index.ts` (line 1452) works because the documentId and siteId are in URL params. For merges, the `targetBranchId` is in the request body, already consumed by the route handler. Placing the KV write inside `merge-api.ts` (where `targetBranchId` is already parsed and validated) avoids duplicating body parsing in `index.ts`. The KV namespace is threaded through `MergeRouteContext` as `configKV`.
 
-5. **DO does NOT need `DOCUMENT_STATE` self-reference for invalidation.** The DO checks KV passively; it does not need to call other DOs. The existing `/reload` mechanism is invoked internally by the DO on itself.
+5. **DO does NOT need `DOCUMENT_STATE` self-reference for invalidation.** The DO checks KV passively; it does not need to call other DOs. The reload logic is invoked internally.
+
+6. **Extract shared reload-and-broadcast logic (DRY).** The DO's existing `handleReload()` method (line 1937) and the new `checkBranchInvalidation()` need identical reload-and-broadcast logic. A private `reloadFromPostgres()` method is extracted and used by both, eliminating duplication.
 
 ---
 
@@ -44,9 +46,6 @@ Create `workers/tests/services/branch-invalidation-service.spec.ts`:
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// We'll import these after implementation exists
-// import { writeBranchInvalidation, getBranchVersion } from '../../src/services/branch-invalidation-service';
 
 /**
  * Minimal mock of Cloudflare KV namespace
@@ -270,11 +269,12 @@ git commit -m "feat: add branch invalidation service for KV-based DO invalidatio
 ### Task 2: Wire KV invalidation signal into merge routes
 
 **Files:**
-- Modify: `workers/src/index.ts:1487-1498` (the `case 'merge':` block)
+- Modify: `workers/src/routes/merge-api.ts` (add `configKV` to context, add post-merge KV write)
+- Modify: `workers/src/index.ts:1487-1498` (pass `configKV` through to merge route context)
 - Modify: `workers/src/services/index.ts` (add export)
 - Test: `workers/tests/routes/post-merge-invalidation.spec.ts`
 
-After a successful merge execute (either direct or via merge request), write the invalidation signal for the target branch. This mirrors the post-publish DO reload pattern at lines 1452-1473 of `index.ts`.
+After a successful merge execute (either direct or via merge request), write the invalidation signal for the target branch. The KV write is placed inside `merge-api.ts` because the `targetBranchId` is available in the parsed request body there, whereas `index.ts` only has URL-level params (siteId, action) — it would require re-parsing the response or duplicating body parsing to get the targetBranchId.
 
 **Step 1: Write the failing tests**
 
@@ -286,6 +286,9 @@ Create `workers/tests/routes/post-merge-invalidation.spec.ts`:
  *
  * Verifies that after a successful merge execute, a branch
  * invalidation signal is written to CONFIG_KV for the target branch.
+ *
+ * These tests mock the service layer and verify that the route handler
+ * calls writeBranchInvalidation with the correct arguments.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -316,6 +319,12 @@ vi.mock('../../src/services', () => ({
   MissingCrdtStateError: class extends Error {},
 }));
 
+// Mock the auth module to allow all permissions
+vi.mock('../../src/auth/authorization', () => ({
+  assertPermission: vi.fn().mockResolvedValue(undefined),
+  AuthorizationError: class extends Error {},
+}));
+
 vi.mock('../../src/services/branch-invalidation-service', () => ({
   writeBranchInvalidation: vi.fn().mockResolvedValue(undefined),
 }));
@@ -323,6 +332,11 @@ vi.mock('../../src/services/branch-invalidation-service', () => ({
 describe('post-merge KV invalidation', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    // Re-apply default mocks after reset
+    const { assertPermission } = require('../../src/auth/authorization');
+    assertPermission.mockResolvedValue(undefined);
+    const { writeBranchInvalidation } = require('../../src/services/branch-invalidation-service');
+    writeBranchInvalidation.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -335,7 +349,6 @@ describe('post-merge KV invalidation', () => {
       '../../src/services/branch-invalidation-service'
     );
 
-    // executeMerge returns success with the target branch info
     (executeMerge as ReturnType<typeof vi.fn>).mockResolvedValue({
       success: true,
       mergeRequestId: 'mr-1',
@@ -343,7 +356,6 @@ describe('post-merge KV invalidation', () => {
       documentsUpdated: 2,
     });
 
-    // Import and call the merge route handler
     const { handleMergeRoutes } = await import('../../src/routes/merge-api');
 
     const request = new Request('http://localhost/api/sites/site-1/merge/execute', {
@@ -391,8 +403,6 @@ describe('post-merge KV invalidation', () => {
     });
 
     const mockKV = {} as KVNamespace;
-    // The route should catch the error and return an error response
-    // but NOT write invalidation
     await handleMergeRoutes(request, {
       siteId: 'site-1',
       operation: 'execute',
@@ -534,7 +544,7 @@ Expected: FAIL — `configKV` is not a valid property on `MergeRouteContext`.
 
 **Step 3: Implement the changes**
 
-3a. Add `configKV` to `MergeRouteContext` in `workers/src/routes/merge-api.ts`:
+3a. Add `configKV` to `MergeRouteContext` in `workers/src/routes/merge-api.ts` (line 36):
 
 ```typescript
 export interface MergeRouteContext {
@@ -549,7 +559,13 @@ export interface MergeRouteContext {
 }
 ```
 
-3b. Add post-merge invalidation to `handleExecuteMerge` in `workers/src/routes/merge-api.ts`. After the `return jsonResponse(result)` calls for both the resolution and simple merge paths, refactor to capture the result and write invalidation before returning:
+3b. Add the import at the top of `workers/src/routes/merge-api.ts`:
+
+```typescript
+import { writeBranchInvalidation } from '../services/branch-invalidation-service';
+```
+
+3c. Refactor `handleExecuteMerge` in `workers/src/routes/merge-api.ts` (line 168) to capture the result, write invalidation, then return:
 
 ```typescript
 async function handleExecuteMerge(
@@ -577,7 +593,6 @@ async function handleExecuteMerge(
       createdByType: context.principal.type as 'user' | 'agent',
     });
   } else {
-    // Otherwise execute simple merge
     result = await executeMerge({
       sourceBranchId: body.sourceBranchId,
       targetBranchId: body.targetBranchId,
@@ -600,9 +615,7 @@ async function handleExecuteMerge(
 }
 ```
 
-3c. Add the same pattern to `handleExecuteMergeRequest`:
-
-After the merge executes successfully and before returning the response, add:
+3d. Add invalidation to `handleExecuteMergeRequest` in `workers/src/routes/merge-api.ts` (line 441). Replace lines 497-499 (the comment and return) with:
 
 ```typescript
   // Write branch invalidation signal (fire-and-forget, errors swallowed)
@@ -617,13 +630,7 @@ After the merge executes successfully and before returning the response, add:
   return jsonResponse(result);
 ```
 
-3d. Add the import at the top of `merge-api.ts`:
-
-```typescript
-import { writeBranchInvalidation } from '../services/branch-invalidation-service';
-```
-
-3e. Pass `configKV` from `index.ts` into the merge route context at line 1488:
+3e. Pass `configKV` from `index.ts` into the merge route context. In `workers/src/index.ts` at line 1488, add `configKV: env.CONFIG_KV,` to the context object:
 
 ```typescript
       case 'merge':
@@ -641,9 +648,10 @@ import { writeBranchInvalidation } from '../services/branch-invalidation-service
         break;
 ```
 
-3f. Export `writeBranchInvalidation` and `getBranchVersion` from `workers/src/services/index.ts`:
+3f. Export `writeBranchInvalidation` and `getBranchVersion` from `workers/src/services/index.ts`. Add at the end of the file:
 
 ```typescript
+// Branch Invalidation Service
 export { writeBranchInvalidation, getBranchVersion } from './branch-invalidation-service';
 ```
 
@@ -663,70 +671,25 @@ Expected: 0 new errors
 cd /Users/chris.yates/src/collaborative-state-system/.worktrees/pull-based-do-invalidation
 git add workers/tests/routes/post-merge-invalidation.spec.ts
 git commit -m "test: add post-merge KV invalidation route tests (red)"
-git add workers/src/routes/merge-api.ts workers/src/index.ts workers/src/services/index.ts workers/src/services/branch-invalidation-service.ts
+git add workers/src/routes/merge-api.ts workers/src/index.ts workers/src/services/index.ts
 git commit -m "feat: write branch invalidation signal to KV after merge"
 ```
 
 ---
 
-### Task 3: Add CONFIG_KV binding to DocumentSession DO env
+### Task 3: Extract shared reload logic and add pull-based invalidation check to DocumentSession DO
 
 **Files:**
-- Modify: `workers/src/durable-objects/document-session.ts:205-222` (DocumentSessionEnv interface)
-- Modify: `workers/wrangler.jsonc` (no change needed — KV is already available to DOs in the same worker; DOs share bindings with the parent worker)
-
-**Important note on Cloudflare architecture:** In Cloudflare Workers, Durable Objects defined in the same worker script automatically have access to all bindings defined at the top level of `wrangler.jsonc` (KV namespaces, queues, etc.). The `DocumentSessionEnv` TypeScript interface just needs to declare the binding for type safety. No wrangler config changes are required.
-
-**Step 1: Add CONFIG_KV to the DocumentSessionEnv interface**
-
-In `workers/src/durable-objects/document-session.ts`, add to the `DocumentSessionEnv` interface:
-
-```typescript
-interface DocumentSessionEnv {
-  API_URL?: string;
-  ENVIRONMENT?: string;
-  /** Internal API URL for syncing to PostgreSQL */
-  INTERNAL_API_URL?: string;
-  /** Shared secret for internal API authentication */
-  INTERNAL_SECRET?: string;
-  /** Enable detailed DO alarm/cleanup metrics (can be high volume) */
-  DO_ALARM_METRICS_ENABLED?: string;
-  /** Phase 5.1: Queue binding for async DO-to-PostgreSQL sync */
-  SYNC_QUEUE?: Queue;
-  /** Phase 5.3: Hyperdrive binding for direct DB access from DOs */
-  HYPERDRIVE?: Hyperdrive;
-  /** Phase 3.2: PresenceManager DO binding for site-level presence aggregation */
-  PRESENCE?: DurableObjectNamespace;
-  /** DocumentSession DO namespace for cross-branch reload after publish */
-  DOCUMENT_STATE?: DurableObjectNamespace;
-  /** KV namespace for branch invalidation signals (pull-based DO invalidation) */
-  CONFIG_KV?: KVNamespace;
-}
-```
-
-This is a type-only change with no runtime effect. It will be used in Task 4.
-
-**Step 2: Commit**
-
-```bash
-cd /Users/chris.yates/src/collaborative-state-system/.worktrees/pull-based-do-invalidation
-git add workers/src/durable-objects/document-session.ts
-git commit -m "feat: add CONFIG_KV to DocumentSessionEnv for invalidation"
-```
-
----
-
-### Task 4: Add pull-based invalidation check to DocumentSession DO
-
-**Files:**
-- Modify: `workers/src/durable-objects/document-session.ts` (add invalidation check logic)
+- Modify: `workers/src/durable-objects/document-session.ts` (add `CONFIG_KV` to env interface, extract `reloadFromPostgres()`, add invalidation check logic, wire into `fetch()` and `alarm()`)
 - Test: `workers/tests/durable-objects/document-session-invalidation.spec.ts`
 
 The DO checks the KV branch version timestamp on two triggers:
-1. In `fetch()` — before dispatching to any CRDT endpoint (after `initializeCrdtIfNeeded()`)
+1. In `fetch()` — after `initializeCrdtIfNeeded()` for CRDT endpoints (but NOT `/reload` — that would be circular)
 2. In `alarm()` — during the periodic tick
 
-If the KV timestamp is newer than the last-seen value stored in memory, the DO calls its existing `handleReload()` logic internally (re-init from Postgres, broadcast diff to WebSocket clients).
+If the KV timestamp is newer than the last-seen value stored in memory, the DO calls its reload logic internally (re-init from Postgres, broadcast diff to WebSocket clients).
+
+To avoid duplicating the reload-and-broadcast logic from `handleReload()` (line 1937), we first extract a private `reloadFromPostgres()` method that both `handleReload()` and `checkBranchInvalidation()` call.
 
 **Step 1: Write the failing tests**
 
@@ -865,14 +828,6 @@ describe('DocumentSession pull-based KV invalidation', () => {
 
     const response = await session.fetch(new Request('http://localhost/snapshot'));
     expect(response.status).toBe(200);
-
-    // Only the initial init fetch should have happened, no reload
-    // (initializeFromPostgres is called once)
-    const initCalls = mockFetch.mock.calls.filter(
-      (call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('/internal/'),
-    );
-    // The DO should initialize normally without any KV-related issues
-    expect(response.status).toBe(200);
   });
 
   it('should not reload when KV has no entry for this branch', async () => {
@@ -948,7 +903,6 @@ describe('DocumentSession pull-based KV invalidation', () => {
     await session.fetch(new Request('http://localhost/snapshot'));
 
     // Fetch count should not increase (no new initializeFromPostgres)
-    // Allow for minor variations in mock call patterns
     const fetchCountAfterSecond = mockFetch.mock.calls.length;
     expect(fetchCountAfterSecond).toBe(fetchCountAfterFirst);
   });
@@ -1013,18 +967,106 @@ describe('DocumentSession pull-based KV invalidation', () => {
 Run: `cd /Users/chris.yates/src/collaborative-state-system/.worktrees/pull-based-do-invalidation/workers && pnpm test -- tests/durable-objects/document-session-invalidation.spec.ts`
 Expected: FAIL — the DO does not yet check KV for invalidation.
 
-**Step 3: Implement invalidation check in DocumentSession**
+**Step 3: Implement changes in DocumentSession**
 
-Add the following to `workers/src/durable-objects/document-session.ts`:
+3a. Add `CONFIG_KV` to the `DocumentSessionEnv` interface in `workers/src/durable-objects/document-session.ts` (line 205):
 
-3a. Add a new instance variable near the top of the `DocumentSession` class (around line 253):
+```typescript
+interface DocumentSessionEnv {
+  API_URL?: string;
+  ENVIRONMENT?: string;
+  /** Internal API URL for syncing to PostgreSQL */
+  INTERNAL_API_URL?: string;
+  /** Shared secret for internal API authentication */
+  INTERNAL_SECRET?: string;
+  /** Enable detailed DO alarm/cleanup metrics (can be high volume) */
+  DO_ALARM_METRICS_ENABLED?: string;
+  /** Phase 5.1: Queue binding for async DO-to-PostgreSQL sync */
+  SYNC_QUEUE?: Queue;
+  /** Phase 5.3: Hyperdrive binding for direct DB access from DOs */
+  HYPERDRIVE?: Hyperdrive;
+  /** Phase 3.2: PresenceManager DO binding for site-level presence aggregation */
+  PRESENCE?: DurableObjectNamespace;
+  /** DocumentSession DO namespace for cross-branch reload after publish */
+  DOCUMENT_STATE?: DurableObjectNamespace;
+  /** KV namespace for branch invalidation signals (pull-based DO invalidation) */
+  CONFIG_KV?: KVNamespace;
+}
+```
+
+3b. Add a new instance variable near the top of the `DocumentSession` class (after line 253):
 
 ```typescript
   /** Last-seen branch invalidation timestamp from KV (pull-based invalidation) */
   private lastSeenBranchVersion = 0;
 ```
 
-3b. Add a private method `checkBranchInvalidation()`:
+3c. Extract a private `reloadFromPostgres()` method that contains the reload-and-broadcast logic currently in `handleReload()` (line 1937). This method will be called by both `handleReload()` and `checkBranchInvalidation()`:
+
+```typescript
+  /**
+   * Reload Y.Doc from PostgreSQL and broadcast diff to WebSocket clients.
+   *
+   * Shared by handleReload() (HTTP /reload endpoint) and
+   * checkBranchInvalidation() (pull-based KV invalidation).
+   *
+   * @returns The reloaded snapshot as a plain object
+   */
+  private async reloadFromPostgres(): Promise<Record<string, unknown>> {
+    // Capture the old state vector before reload
+    const oldStateVector = Y.encodeStateVector(this.ydoc);
+
+    // Create a fresh Y.Doc and reload from PostgreSQL
+    this.ydoc = new Y.Doc();
+    this.initialized = false;
+    await this.initializeFromPostgres();
+    this.initialized = true;
+
+    // Compute the diff from old state to new state
+    const diff = Y.encodeStateAsUpdate(this.ydoc, oldStateVector);
+
+    // Broadcast diff to all connected WebSocket clients
+    if (diff.length > 0) {
+      for (const conn of this.state.getWebSockets()) {
+        if (conn.readyState === WebSocket.OPEN) {
+          conn.send(diff);
+        }
+      }
+    }
+
+    // Persist the reloaded state
+    await this.persist();
+    this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+
+    const root = this.ydoc.getMap('root');
+    return root.toJSON();
+  }
+```
+
+3d. Refactor `handleReload()` (line 1937) to use the extracted method:
+
+```typescript
+  private async handleReload(request: Request): Promise<Response> {
+    if (request.method !== 'POST') {
+      return this.errorResponse(405, 'Method not allowed. Use POST.');
+    }
+
+    try {
+      const snapshot = await this.reloadFromPostgres();
+      return new Response(
+        JSON.stringify({
+          success: true,
+          snapshot,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    } catch (error) {
+      return this.errorResponse(500, `Failed to reload: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+```
+
+3e. Add a private method `checkBranchInvalidation()`:
 
 ```typescript
   /**
@@ -1064,24 +1106,7 @@ Add the following to `workers/src/durable-objects/document-session.ts`:
       this.lastSeenBranchVersion = kvTimestamp;
 
       if (this.initialized) {
-        // Capture old state, reload, compute diff, broadcast
-        const oldStateVector = Y.encodeStateVector(this.ydoc);
-        this.ydoc = new Y.Doc();
-        this.initialized = false;
-        await this.initializeFromPostgres();
-        this.initialized = true;
-
-        const diff = Y.encodeStateAsUpdate(this.ydoc, oldStateVector);
-        if (diff.length > 0) {
-          for (const conn of this.state.getWebSockets()) {
-            if (conn.readyState === WebSocket.OPEN) {
-              conn.send(diff);
-            }
-          }
-        }
-
-        await this.persist();
-        this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+        await this.reloadFromPostgres();
       }
     } catch (error) {
       console.warn('Branch invalidation check failed:', error);
@@ -1089,59 +1114,50 @@ Add the following to `workers/src/durable-objects/document-session.ts`:
   }
 ```
 
-3c. Call `checkBranchInvalidation()` in the `fetch()` router, after `initializeCrdtIfNeeded()` returns for CRDT endpoints. Add a single call right after the switch statement's CRDT block initialization, before the handler runs. The cleanest approach is to add the check after `initializeCrdtIfNeeded()` completes but before returning the handler result.
-
-Modify the fetch handler at the top of the switch, by adding the invalidation check as a helper call inside each CRDT case. A cleaner approach: extract the invalidation check to run once before the switch for all CRDT paths. Restructure the CRDT cases:
+3f. Wire `checkBranchInvalidation()` into the `fetch()` handler. In the switch statement at line 482, add `await this.checkBranchInvalidation();` after `await this.initializeCrdtIfNeeded();` for CRDT endpoints EXCEPT `/reload` (to avoid circular reload). Replace each CRDT case block as follows:
 
 ```typescript
-      switch (path) {
-        // CRDT endpoints — need full Y.Doc initialization
         case '/snapshot':
-        case '/apply':
-        case '/connect':
-        case '/sync':
-        case '/flush':
-        case '/initialize':
-        case '/reload':
           await this.initializeCrdtIfNeeded();
           await this.checkBranchInvalidation();
-          break;
-
-        // ... metadata endpoints stay unchanged
-      }
-
-      // Now dispatch to the specific handler
-      switch (path) {
-        case '/snapshot':
           return this.handleSnapshot();
+
         case '/apply':
+          await this.initializeCrdtIfNeeded();
+          await this.checkBranchInvalidation();
           return await this.handleApplyOperations(request);
-        // ... etc
-      }
+
+        case '/connect':
+          await this.initializeCrdtIfNeeded();
+          await this.checkBranchInvalidation();
+          return this.handleWebSocket(request);
+
+        case '/sync':
+          await this.initializeCrdtIfNeeded();
+          await this.checkBranchInvalidation();
+          return await this.handleSync(request);
+
+        case '/flush':
+          await this.initializeCrdtIfNeeded();
+          await this.checkBranchInvalidation();
+          return await this.handleFlush(request);
+
+        case '/initialize':
+          await this.initializeCrdtIfNeeded();
+          await this.checkBranchInvalidation();
+          return await this.handleInitialize(request);
+
+        case '/reload':
+          await this.initializeCrdtIfNeeded();
+          return await this.handleReload(request);
 ```
 
-Alternatively, to minimize diff size, add the invalidation check as a single line after each `initializeCrdtIfNeeded()` call in the existing switch. Since the pattern is consistent, add it only once by refactoring the switch into two passes.
-
-The simplest minimal-diff approach: add `await this.checkBranchInvalidation();` after each `await this.initializeCrdtIfNeeded();` line in the CRDT cases. But this is repetitive. Instead, extract a helper:
+3g. Wire `checkBranchInvalidation()` into `alarm()` (line 2517). Add after `initializeCrdtIfNeeded()`:
 
 ```typescript
-  /** Initialize CRDT and check for branch invalidation */
-  private async initializeAndCheckInvalidation(): Promise<void> {
+    // Restore state after potential hibernation wake
     await this.initializeCrdtIfNeeded();
     await this.checkBranchInvalidation();
-  }
-```
-
-Then replace `await this.initializeCrdtIfNeeded();` with `await this.initializeAndCheckInvalidation();` for the CRDT endpoints `/snapshot`, `/apply`, `/connect`, `/sync`, `/flush`, `/initialize` (but NOT `/reload` — that would be circular).
-
-3d. Call `checkBranchInvalidation()` in `alarm()`, after `initializeCrdtIfNeeded()` at line 2517:
-
-```typescript
-  async alarm(): Promise<void> {
-    await this.restoreSessionInfoFromStorage();
-    await this.initializeCrdtIfNeeded();
-    await this.checkBranchInvalidation(); // <-- add this line
-    // ... rest of alarm handler
 ```
 
 **Step 4: Run tests to verify they pass**
@@ -1152,7 +1168,7 @@ Expected: PASS (all 6 tests)
 **Step 5: Run the full test suite**
 
 Run: `cd /Users/chris.yates/src/collaborative-state-system/.worktrees/pull-based-do-invalidation/workers && pnpm test`
-Expected: All existing tests still pass; no regressions.
+Expected: All existing tests still pass; no regressions. The `handleReload` refactor is a pure extraction — behavior is identical.
 
 **Step 6: Lint**
 
@@ -1171,14 +1187,14 @@ git commit -m "feat: add pull-based KV invalidation check to DocumentSession DO"
 
 ---
 
-### Task 5: Full integration verification and cleanup
+### Task 4: Full integration verification and cleanup
 
 **Files:** (no new files — verification and final cleanup only)
 
 **Step 1: Run the complete test suite**
 
 Run: `cd /Users/chris.yates/src/collaborative-state-system/.worktrees/pull-based-do-invalidation/workers && pnpm test`
-Expected: All tests pass, including the new tests from Tasks 1-4.
+Expected: All tests pass, including the new tests from Tasks 1-3.
 
 **Step 2: Run linting**
 
@@ -1203,5 +1219,3 @@ workers/tests/services/branch-invalidation-service.spec.ts
 ```
 
 **Step 4: Update PROGRESS.md**
-
-Add an entry documenting the pull-based DO invalidation feature, the design decisions (timestamp over counter, CONFIG_KV reuse, fetch+alarm check points), and the test coverage.
