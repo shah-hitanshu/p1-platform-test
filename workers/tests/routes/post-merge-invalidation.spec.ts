@@ -250,4 +250,40 @@ describe('post-merge KV invalidation', () => {
     expect(response.status).toBe(200);
     expect(writeBranchInvalidation).toHaveBeenCalledWith(mockKV, 'branch-target');
   });
+
+  it('should succeed without writing invalidation when configKV is undefined', async () => {
+    const { executeMerge } = await import('../../src/services');
+    const { writeBranchInvalidation } = await import(
+      '../../src/services/branch-invalidation-service'
+    );
+
+    (executeMerge as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      mergeRequestId: 'mr-1',
+      checkpointId: 'cp-1',
+      documentsUpdated: 1,
+    });
+
+    const { handleMergeRoutes } = await import('../../src/routes/merge-api');
+
+    const request = new Request('http://localhost/api/sites/site-1/merge/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sourceBranchId: 'branch-source',
+        targetBranchId: 'branch-target',
+        message: 'Test merge without KV',
+      }),
+    });
+
+    // No configKV in context
+    const response = await handleMergeRoutes(request, {
+      siteId: 'site-1',
+      operation: 'execute',
+      principal: { id: 'user-1', type: 'user', email: 'test@test.com' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(writeBranchInvalidation).not.toHaveBeenCalled();
+  });
 });

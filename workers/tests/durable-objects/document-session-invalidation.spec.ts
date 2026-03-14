@@ -262,4 +262,64 @@ describe('DocumentSession pull-based KV invalidation', () => {
     // The WebSocket should have received the diff
     expect(mockWs.send).toHaveBeenCalled();
   });
+
+  it('should detect merge via alarm() and reload (idle DO path)', async () => {
+    const mockKV = createMockKV({});
+    const mockEnv = createMockEnv(mockKV);
+    const { DocumentSession } = await import('../../src/durable-objects/document-session');
+    const session = new DocumentSession(mockState as unknown, mockEnv);
+
+    // Initialize the DO via fetch first
+    await session.fetch(new Request('http://localhost/snapshot'));
+
+    // Now simulate a merge by setting a KV timestamp
+    const mergeTimestamp = (Date.now() + 1000).toString();
+    (mockKV.get as Mock).mockImplementation((key: string) => {
+      if (key === 'branch-version:branch-1') return Promise.resolve(mergeTimestamp);
+      return Promise.resolve(null);
+    });
+
+    // Mock reload response with new content
+    mockFetch.mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({
+          found: true,
+          snapshot: { title: 'Alarm Reloaded' },
+          crdtState: null,
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+
+    const fetchCountBeforeAlarm = mockFetch.mock.calls.length;
+
+    // Trigger alarm — should detect staleness and reload
+    await session.alarm();
+
+    // Verify that a reload was triggered (fetch count increased)
+    expect(mockFetch.mock.calls.length).toBeGreaterThan(fetchCountBeforeAlarm);
+  });
+
+  it('should NOT check KV for branch invalidation on /reload endpoint (avoids circular reload)', async () => {
+    const mergeTimestamp = Date.now().toString();
+    const mockKV = createMockKV({ 'branch-version:branch-1': mergeTimestamp });
+    const mockEnv = createMockEnv(mockKV);
+    const { DocumentSession } = await import('../../src/durable-objects/document-session');
+    const session = new DocumentSession(mockState as unknown, mockEnv);
+
+    // Initialize the DO
+    await session.fetch(new Request('http://localhost/snapshot'));
+
+    // Clear KV mock call history after initialization
+    (mockKV.get as Mock).mockClear();
+
+    // Send a POST /reload request
+    await session.fetch(new Request('http://localhost/reload', { method: 'POST' }));
+
+    // KV.get should NOT have been called during the /reload request
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(mockKV.get).not.toHaveBeenCalled();
+  });
 });
