@@ -1940,12 +1940,6 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   }
 
   /**
-   * Handle /reload endpoint
-   * Re-initializes the Y.Doc from PostgreSQL and broadcasts the diff
-   * to all connected WebSocket clients. Used after external publish
-   * operations that write directly to PostgreSQL.
-   */
-  /**
    * Reload Y.Doc from PostgreSQL and broadcast diff to WebSocket clients.
    *
    * Shared by handleReload() (HTTP /reload endpoint) and
