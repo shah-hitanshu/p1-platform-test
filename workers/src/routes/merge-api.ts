@@ -29,6 +29,7 @@ import {
   MissingCrdtStateError,
 } from '../services';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
+import { writeBranchInvalidation } from '../services/branch-invalidation-service';
 
 /**
  * Request context for merge routes
@@ -40,6 +41,8 @@ export interface MergeRouteContext {
   executeRequest?: boolean;
   mergeRequestId?: string;
   principal: AuthenticatedPrincipal;
+  /** KV namespace for writing branch invalidation signals after merge */
+  configKV?: KVNamespace;
 }
 
 /**
@@ -177,9 +180,11 @@ async function handleExecuteMerge(
 
   await assertPermission(context.principal, context.siteId, body.sourceBranchId, 'canMerge');
 
+  let result;
+
   // If conflict resolutions are provided, use executeMergeWithResolution
   if (body.conflictResolutions !== undefined && body.conflictResolutions.length > 0) {
-    const result = await executeMergeWithResolution({
+    result = await executeMergeWithResolution({
       sourceBranchId: body.sourceBranchId,
       targetBranchId: body.targetBranchId,
       message: body.message ?? 'Merge with resolutions',
@@ -187,18 +192,25 @@ async function handleExecuteMerge(
       createdById: context.principal.id,
       createdByType: context.principal.type as 'user' | 'agent',
     });
-
-    return jsonResponse(result);
+  } else {
+    // Otherwise execute simple merge
+    result = await executeMerge({
+      sourceBranchId: body.sourceBranchId,
+      targetBranchId: body.targetBranchId,
+      message: body.message ?? 'Merge',
+      createdById: context.principal.id,
+      createdByType: context.principal.type as 'user' | 'agent',
+    });
   }
 
-  // Otherwise execute simple merge
-  const result = await executeMerge({
-    sourceBranchId: body.sourceBranchId,
-    targetBranchId: body.targetBranchId,
-    message: body.message ?? 'Merge',
-    createdById: context.principal.id,
-    createdByType: context.principal.type as 'user' | 'agent',
-  });
+  // Write branch invalidation signal (fire-and-forget, errors swallowed)
+  if (context.configKV !== undefined) {
+    try {
+      await writeBranchInvalidation(context.configKV, body.targetBranchId);
+    } catch (error) {
+      console.warn('Failed to write branch invalidation after merge:', error);
+    }
+  }
 
   return jsonResponse(result);
 }
@@ -495,6 +507,15 @@ async function handleExecuteMergeRequest(
   }
 
   // Note: executeMerge already updates the merge request status to 'merged'
+
+  // Write branch invalidation signal (fire-and-forget, errors swallowed)
+  if (context.configKV !== undefined) {
+    try {
+      await writeBranchInvalidation(context.configKV, mergeRequest.targetBranchId);
+    } catch (error) {
+      console.warn('Failed to write branch invalidation after merge request execute:', error);
+    }
+  }
 
   return jsonResponse(result);
 }

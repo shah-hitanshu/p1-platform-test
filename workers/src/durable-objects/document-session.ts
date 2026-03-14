@@ -219,6 +219,8 @@ interface DocumentSessionEnv {
   PRESENCE?: DurableObjectNamespace;
   /** DocumentSession DO namespace for cross-branch reload after publish */
   DOCUMENT_STATE?: DurableObjectNamespace;
+  /** KV namespace for branch invalidation signals (pull-based DO invalidation) */
+  CONFIG_KV?: KVNamespace;
 }
 
 /**
@@ -251,6 +253,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
   /** Last synced state vector hash for change detection */
   private lastSyncedStateVectorHash: string | null = null;
+
+  /** Last-seen branch invalidation timestamp from KV (pull-based invalidation) */
+  private lastSeenBranchVersion = 0;
 
   // =============================================================================
   // Phase 1.1: Debounced Persistence
@@ -483,26 +488,32 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
         // CRDT endpoints — need full Y.Doc initialization
         case '/snapshot':
           await this.initializeCrdtIfNeeded();
+          await this.checkBranchInvalidation();
           return this.handleSnapshot();
 
         case '/apply':
           await this.initializeCrdtIfNeeded();
+          await this.checkBranchInvalidation();
           return await this.handleApplyOperations(request);
 
         case '/connect':
           await this.initializeCrdtIfNeeded();
+          await this.checkBranchInvalidation();
           return this.handleWebSocket(request);
 
         case '/sync':
           await this.initializeCrdtIfNeeded();
+          await this.checkBranchInvalidation();
           return await this.handleSync(request);
 
         case '/flush':
           await this.initializeCrdtIfNeeded();
+          await this.checkBranchInvalidation();
           return await this.handleFlush(request);
 
         case '/initialize':
           await this.initializeCrdtIfNeeded();
+          await this.checkBranchInvalidation();
           return await this.handleInitialize(request);
 
         case '/reload':
@@ -1934,47 +1945,104 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
    * to all connected WebSocket clients. Used after external publish
    * operations that write directly to PostgreSQL.
    */
+  /**
+   * Reload Y.Doc from PostgreSQL and broadcast diff to WebSocket clients.
+   *
+   * Shared by handleReload() (HTTP /reload endpoint) and
+   * checkBranchInvalidation() (pull-based KV invalidation).
+   *
+   * @returns The reloaded snapshot as a plain object
+   */
+  private async reloadFromPostgres(): Promise<Record<string, unknown>> {
+    // Capture the old state vector before reload
+    const oldStateVector = Y.encodeStateVector(this.ydoc);
+
+    // Create a fresh Y.Doc and reload from PostgreSQL
+    this.ydoc = new Y.Doc();
+    this.initialized = false;
+    await this.initializeFromPostgres();
+    this.initialized = true;
+
+    // Compute the diff from old state to new state
+    const diff = Y.encodeStateAsUpdate(this.ydoc, oldStateVector);
+
+    // Broadcast diff to all connected WebSocket clients
+    if (diff.length > 0) {
+      for (const conn of this.state.getWebSockets()) {
+        if (conn.readyState === WebSocket.OPEN) {
+          conn.send(diff);
+        }
+      }
+    }
+
+    // Persist the reloaded state
+    await this.persist();
+    this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+
+    const root = this.ydoc.getMap('root');
+    return root.toJSON();
+  }
+
   private async handleReload(request: Request): Promise<Response> {
     if (request.method !== 'POST') {
       return this.errorResponse(405, 'Method not allowed. Use POST.');
     }
 
     try {
-      // Capture the old state vector before reload
-      const oldStateVector = Y.encodeStateVector(this.ydoc);
-
-      // Create a fresh Y.Doc and reload from PostgreSQL
-      this.ydoc = new Y.Doc();
-      this.initialized = false;
-      await this.initializeFromPostgres();
-      this.initialized = true;
-
-      // Compute the diff from old state to new state
-      const diff = Y.encodeStateAsUpdate(this.ydoc, oldStateVector);
-
-      // Broadcast diff to all connected WebSocket clients
-      if (diff.length > 0) {
-        for (const conn of this.state.getWebSockets()) {
-          if (conn.readyState === WebSocket.OPEN) {
-            conn.send(diff);
-          }
-        }
-      }
-
-      // Persist the reloaded state
-      await this.persist();
-      this.lastSyncedStateVectorHash = this.computeStateVectorHash();
-
-      const root = this.ydoc.getMap('root');
+      const snapshot = await this.reloadFromPostgres();
       return new Response(
         JSON.stringify({
           success: true,
-          snapshot: root.toJSON(),
+          snapshot,
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       );
     } catch (error) {
       return this.errorResponse(500, `Failed to reload: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Pull-based invalidation check.
+   *
+   * Reads the branch version timestamp from CONFIG_KV and compares
+   * it to the last-seen value. If the KV value is newer, the DO
+   * reloads its Y.Doc from PostgreSQL and broadcasts the diff to
+   * all connected WebSocket clients.
+   *
+   * Errors are swallowed — KV unavailability should never break
+   * normal DO operation.
+   */
+  private async checkBranchInvalidation(): Promise<void> {
+    const kv = this.env.CONFIG_KV;
+    if (kv === undefined) {
+      return;
+    }
+
+    try {
+      const branchId = this.sessionInfo.branchId;
+      if (branchId === '') {
+        return;
+      }
+
+      const value = await kv.get(`branch-version:${branchId}`);
+      if (value === null) {
+        return;
+      }
+
+      const kvTimestamp = Number(value);
+      if (Number.isNaN(kvTimestamp) || kvTimestamp <= this.lastSeenBranchVersion) {
+        return;
+      }
+
+      // KV has a newer timestamp — reload from PostgreSQL
+      this.lastSeenBranchVersion = kvTimestamp;
+
+      if (this.initialized) {
+        await this.reloadFromPostgres();
+      }
+    } catch (error) {
+      console.warn('Branch invalidation check failed:', error);
     }
   }
 
@@ -2515,6 +2583,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
     // Restore state after potential hibernation wake
     await this.initializeCrdtIfNeeded();
+    await this.checkBranchInvalidation();
 
     const startTime = Date.now();
     const metricsEnabled = this.isAlarmMetricsEnabled();

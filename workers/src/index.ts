@@ -1494,6 +1494,7 @@ async function handleRequest(
           executeRequest: route.params.action === 'execute-request',
           mergeRequestId: route.params.mergeRequestId,
           principal,
+          configKV: env.CONFIG_KV,
         });
         break;
 

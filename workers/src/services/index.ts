@@ -495,6 +495,9 @@ export {
   AgentNotFoundError as PresenceRollupAgentNotFoundError,
 } from './presence-rollup-service';
 
+// Branch Invalidation Service
+export { writeBranchInvalidation, getBranchVersion } from './branch-invalidation-service';
+
 // Site Settings Service
 export {
   getSiteSettings,
