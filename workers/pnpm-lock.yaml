@@ -985,8 +985,8 @@ packages:
     resolution: {integrity: sha512-f7ccFPK3SXFHpx15UIGyRJ/FJQctuKZ0zVuN3frBo4HnK3cay9VEW0R6yPYFHC0AgqhukPzKjq22t5DmAyqGyw==}
     engines: {node: '>=16'}
 
-  flatted@3.3.3:
-    resolution: {integrity: sha512-GX+ysw4PBCz0PzosHDepZGANEuFCMLrnRTiEy9McGjmkCQYwRq4A/X786G/fjM/+OjsWSU1ZrY5qyARZmO/uwg==}
+  flatted@3.4.1:
+    resolution: {integrity: sha512-IxfVbRFVlV8V/yRaGzk0UVIcsKKHMSfYw66T/u4nTwlWteQePsxe//LjudR1AMX4tZW3WFCh3Zqa/sjlqpbURQ==}
 
   foreground-child@3.3.1:
     resolution: {integrity: sha512-gIXjKqtFuWEgzFRJA9WCQeSJLZDjgJUOMCMzxtvFq/37KojM1BFGufqsCy0r4qSQmYLsZYMeyRqzIWOMup03sw==}
@@ -1417,8 +1417,8 @@ packages:
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
-  undici@7.24.1:
-    resolution: {integrity: sha512-5xoBibbmnjlcR3jdqtY2Lnx7WbrD/tHlT01TmvqZUFVc9Q1w4+j5hbnapTqbcXITMH1ovjq/W7BkqBilHiVAaA==}
+  undici@7.24.2:
+    resolution: {integrity: sha512-P9J1HWYV/ajFr8uCqk5QixwiRKmB1wOamgS0e+o2Z4A44Ej2+thFVRLG/eA7qprx88XXhnV5Bl8LHXTURpzB3Q==}
     engines: {node: '>=20.18.1'}
 
   unenv@2.0.0-rc.14:
@@ -2350,10 +2350,10 @@ snapshots:
 
   flat-cache@4.0.1:
     dependencies:
-      flatted: 3.3.3
+      flatted: 3.4.1
       keyv: 4.5.4
 
-  flatted@3.3.3: {}
+  flatted@3.4.1: {}
 
   foreground-child@3.3.1:
     dependencies:
@@ -2513,7 +2513,7 @@ snapshots:
       exit-hook: 2.2.1
       glob-to-regexp: 0.4.1
       stoppable: 1.1.0
-      undici: 7.24.1
+      undici: 7.24.2
       workerd: 1.20250718.0
       ws: 8.18.0
       youch: 3.3.4
@@ -2792,7 +2792,7 @@ snapshots:
 
   undici-types@6.21.0: {}
 
-  undici@7.24.1: {}
+  undici@7.24.2: {}
 
   unenv@2.0.0-rc.14:
     dependencies:
