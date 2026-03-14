@@ -41,6 +41,10 @@ export interface CreateCheckpointParams {
   operationType?: string;
   /** JSON paths of regions affected by this checkpoint */
   affectedRegions?: string[];
+  /** Explicit document versions to capture. When provided, skips the
+   *  automatic document_versions query and uses only these entries.
+   *  Used by merge to ensure only merge-touched documents are checkpointed. */
+  documentVersionIds?: { documentId: string; documentVersionId: string }[];
 }
 
 /**
@@ -448,48 +452,60 @@ export async function createCheckpoint(
     const insertRow = getFirstRow(checkpointResult.rows);
     const checkpoint = mapRowToCheckpoint(insertRow);
 
-    // Determine incremental mode from the CTE result
-    const isIncremental = insertRow.parent_checkpoint_id != null;
-    const parentCreatedAt = insertRow.parent_created_at;
+    // Determine which document versions to capture in this checkpoint.
+    // When explicit documentVersionIds are provided (e.g. from merge),
+    // use only those — never sweep in unrelated documents.
+    let docVersionRows: { document_id: string; document_version_id: string }[];
 
-    // Get document versions — incremental only captures changes since parent
-    let latestVersionsResult: { rows: { document_id: string; document_version_id: string }[] };
-
-    if (isIncremental && parentCreatedAt != null && parentCreatedAt !== '') {
-      // Incremental: only documents changed since the parent checkpoint
-      latestVersionsResult = await query<{ document_id: string; document_version_id: string }>(
-        `SELECT document_id, document_version_id FROM (
-          SELECT DISTINCT ON (dv.document_id)
-            dv.document_id, dv.id as document_version_id, dv.is_tombstone
-          FROM app.document_versions dv
-          WHERE dv.branch_id = $1 AND dv.created_at > $2
-          ORDER BY dv.document_id, dv.version_number DESC
-        ) latest
-        WHERE latest.is_tombstone = false`,
-        [params.branchId, parentCreatedAt],
-      );
+    if (params.documentVersionIds !== undefined) {
+      // Explicit list — used by merge to capture only merge-touched documents
+      docVersionRows = params.documentVersionIds.map((dv) => ({
+        document_id: dv.documentId,
+        document_version_id: dv.documentVersionId,
+      }));
     } else {
-      // Full: all latest versions for the branch
-      latestVersionsResult = await query<{ document_id: string; document_version_id: string }>(
-        `SELECT document_id, document_version_id FROM (
-          SELECT DISTINCT ON (dv.document_id)
-            dv.document_id, dv.id as document_version_id, dv.is_tombstone
-          FROM app.document_versions dv
-          WHERE dv.branch_id = $1
-          ORDER BY dv.document_id, dv.version_number DESC
-        ) latest
-        WHERE latest.is_tombstone = false`,
-        [params.branchId],
-      );
+      // Automatic mode: determine incremental vs full from the CTE result
+      const isIncremental = insertRow.parent_checkpoint_id != null;
+      const parentCreatedAt = insertRow.parent_created_at;
+
+      if (isIncremental && parentCreatedAt != null && parentCreatedAt !== '') {
+        // Incremental: only documents changed since the parent checkpoint
+        const result = await query<{ document_id: string; document_version_id: string }>(
+          `SELECT document_id, document_version_id FROM (
+            SELECT DISTINCT ON (dv.document_id)
+              dv.document_id, dv.id as document_version_id, dv.is_tombstone
+            FROM app.document_versions dv
+            WHERE dv.branch_id = $1 AND dv.created_at > $2
+            ORDER BY dv.document_id, dv.version_number DESC
+          ) latest
+          WHERE latest.is_tombstone = false`,
+          [params.branchId, parentCreatedAt],
+        );
+        docVersionRows = result.rows;
+      } else {
+        // Full: all latest versions for the branch
+        const result = await query<{ document_id: string; document_version_id: string }>(
+          `SELECT document_id, document_version_id FROM (
+            SELECT DISTINCT ON (dv.document_id)
+              dv.document_id, dv.id as document_version_id, dv.is_tombstone
+            FROM app.document_versions dv
+            WHERE dv.branch_id = $1
+            ORDER BY dv.document_id, dv.version_number DESC
+          ) latest
+          WHERE latest.is_tombstone = false`,
+          [params.branchId],
+        );
+        docVersionRows = result.rows;
+      }
     }
 
     // Insert checkpoint_documents entries
-    if (latestVersionsResult.rows.length > 0) {
-      const values = latestVersionsResult.rows
+    if (docVersionRows.length > 0) {
+      const values = docVersionRows
         .map((_, i) => `($1, $${String(i * 2 + 2)}, $${String(i * 2 + 3)})`)
         .join(', ');
       const flatParams: unknown[] = [checkpoint.id];
-      for (const row of latestVersionsResult.rows) {
+      for (const row of docVersionRows) {
         flatParams.push(row.document_id, row.document_version_id);
       }
 
@@ -528,7 +544,7 @@ export async function createCheckpoint(
 
     return {
       checkpoint,
-      documentCount: latestVersionsResult.rows.length,
+      documentCount: docVersionRows.length,
     };
   } catch (error) {
     await query('ROLLBACK');

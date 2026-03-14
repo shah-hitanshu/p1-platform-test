@@ -219,20 +219,21 @@ export async function executeMerge(
   }
 
   // 5. Copy source changes to target branch
-  const documentsUpdated = await copySourceChangesToTarget(
+  const copiedVersions = await copySourceChangesToTarget(
     mergeRequest,
     detectionResult,
     mergedById,
     mergedByType,
   );
 
-  // 6. Create post-merge checkpoint
+  // 6. Create post-merge checkpoint with only merge-touched documents
   const checkpointResult = await createCheckpoint({
     branchId: mergeRequest.targetBranchId,
     name: `Merge: ${mergeRequest.title}`,
     checkpointType: 'post_merge',
     createdById: mergedById,
     createdByType: mergedByType,
+    documentVersionIds: copiedVersions,
   });
 
   // 7. Update merge request status to merged
@@ -246,7 +247,7 @@ export async function executeMerge(
     success: true,
     mergeRequestId,
     checkpointId: checkpointResult.checkpoint.id,
-    documentsUpdated,
+    documentsUpdated: copiedVersions.length,
   };
 }
 
@@ -285,6 +286,10 @@ export async function executeMergeWithResolution(
 
   let conflictsResolved = 0;
 
+  // Track all document versions created/referenced by this merge so that
+  // the post-merge checkpoint captures ONLY merge-touched documents.
+  const mergedDocVersions: MergedDocumentVersion[] = [];
+
   // Build a map of per-document resolutions for quick lookup
   const resolutionMap = new Map<string, DocumentResolution>();
   if (resolutions !== undefined) {
@@ -314,7 +319,7 @@ export async function executeMergeWithResolution(
             `Manual resolution for document "${conflict.documentId}" requires a resolvedSnapshot`,
           );
         }
-        await createDocumentVersion({
+        const manualVersion = await createDocumentVersion({
           documentId: conflict.documentId,
           branchId: mergeRequest.targetBranchId,
           snapshot: docResolution.resolvedSnapshot,
@@ -322,6 +327,10 @@ export async function executeMergeWithResolution(
           createdById: mergedById,
           createdByType: mergedByType,
           skipDuplicateCheck: true,
+        });
+        mergedDocVersions.push({
+          documentId: conflict.documentId,
+          documentVersionId: manualVersion.id,
         });
         conflictsResolved++;
       } else if (strategy === 'merge-crdt') {
@@ -333,7 +342,7 @@ export async function executeMergeWithResolution(
           targetChange.latestVersionId !== null &&
           targetChange.latestVersionId !== ''
         ) {
-          await resolveWithCrdtMerge({
+          const crdtResult = await resolveWithCrdtMerge({
             documentId: conflict.documentId,
             sourceBranchId: mergeRequest.sourceBranchId,
             targetBranchId: mergeRequest.targetBranchId,
@@ -342,14 +351,22 @@ export async function executeMergeWithResolution(
             resolvedById: mergedById,
             resolvedByType: mergedByType,
           });
+          if (crdtResult.resultVersionId !== undefined) {
+            mergedDocVersions.push({
+              documentId: conflict.documentId,
+              documentVersionId: crdtResult.resultVersionId,
+            });
+          }
           conflictsResolved++;
         }
       } else {
         // take-source or take-target: resolve individually
         const resolutionResult = await resolveAllConflicts({
-          mergeRequestId,
+          sourceBranchId: mergeRequest.sourceBranchId,
+          targetBranchId: mergeRequest.targetBranchId,
           conflicts: [{
             documentId: conflict.documentId,
+            documentPath: sourceChange?.documentPath ?? targetChange?.documentPath ?? '',
             conflictType: conflict.conflictType,
             sourceVersionId: sourceChange?.latestVersionId ?? '',
             targetVersionId: targetChange?.latestVersionId ?? '',
@@ -358,26 +375,36 @@ export async function executeMergeWithResolution(
           resolvedById: mergedById,
           resolvedByType: mergedByType,
         });
+        for (const res of resolutionResult.resolutions) {
+          if (res.resolved && res.resultVersionId !== undefined) {
+            mergedDocVersions.push({
+              documentId: res.documentId,
+              documentVersionId: res.resultVersionId,
+            });
+          }
+        }
         conflictsResolved += resolutionResult.resolvedCount;
       }
     }
   }
 
   // 5. Copy non-conflicting source changes to target
-  const documentsUpdated = await copySourceChangesToTarget(
+  const copiedVersions = await copySourceChangesToTarget(
     mergeRequest,
     detectionResult,
     mergedById,
     mergedByType,
   );
+  mergedDocVersions.push(...copiedVersions);
 
-  // 6. Create post-merge checkpoint
+  // 6. Create post-merge checkpoint with only merge-touched documents
   const checkpointResult = await createCheckpoint({
     branchId: mergeRequest.targetBranchId,
     name: `Merge: ${mergeRequest.title}`,
     checkpointType: 'post_merge',
     createdById: mergedById,
     createdByType: mergedByType,
+    documentVersionIds: mergedDocVersions,
   });
 
   // 7. Update merge request status
@@ -391,7 +418,7 @@ export async function executeMergeWithResolution(
     success: true,
     mergeRequestId,
     checkpointId: checkpointResult.checkpoint.id,
-    documentsUpdated,
+    documentsUpdated: copiedVersions.length,
     conflictsResolved,
   };
 }
@@ -436,17 +463,24 @@ export async function previewMerge(
 // Helper Functions
 // =============================================================================
 
+/** A document version created or referenced during a merge. */
+interface MergedDocumentVersion {
+  documentId: string;
+  documentVersionId: string;
+}
+
 /**
  * Copy source branch changes to target branch.
  * Creates new document versions on the target branch.
+ * Returns the list of document/version pairs that were created.
  */
 async function copySourceChangesToTarget(
   mergeRequest: MergeRequest,
   detectionResult: ConflictDetectionResult,
   mergedById: string,
   mergedByType: 'user' | 'agent',
-): Promise<number> {
-  let documentsUpdated = 0;
+): Promise<MergedDocumentVersion[]> {
+  const mergedVersions: MergedDocumentVersion[] = [];
 
   // Get conflicting document IDs to skip
   const conflictingDocIds = new Set(
@@ -467,7 +501,7 @@ async function copySourceChangesToTarget(
 
     // Create version on target branch
     // Always create for merge operations — the source='merge' marker matters for history.
-    await createDocumentVersion({
+    const newVersion = await createDocumentVersion({
       documentId: change.documentId,
       branchId: mergeRequest.targetBranchId,
       snapshot: sourceVersion.snapshot,
@@ -478,9 +512,12 @@ async function copySourceChangesToTarget(
       skipDuplicateCheck: true,
     });
 
-    documentsUpdated++;
+    mergedVersions.push({
+      documentId: change.documentId,
+      documentVersionId: newVersion.id,
+    });
   }
 
-  return documentsUpdated;
+  return mergedVersions;
 }
 
