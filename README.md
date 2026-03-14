@@ -7,8 +7,8 @@ Integration between [Puck Editor](https://puckeditor.com) and the Collaborative 
 - **Auto-save** - Automatic saving with configurable debounce (default 3 seconds)
 - **Version History** - Every save creates a new document version
 - **Branching** - Work on different branches with easy switching
-- **Publishing** - Create checkpoints (named snapshots) for releases
-- **Conflict Detection** - Detect and resolve merge conflicts between branches
+- **Publishing** - Create checkpoints (named snapshots) for releases, with published status indicators
+- **Visual Merge Review** - Built-in overlay for reviewing and resolving branch merge conflicts with side-by-side previews
 - **User Attribution** - Track who made each change
 - **Real-time Collaboration** - Multiple users can edit simultaneously with Yjs CRDT sync
 - **Presence Awareness** - See who's viewing/editing documents in real-time
@@ -189,6 +189,8 @@ Multiple users editing the same document will see each other's changes merged au
 
 If you are building custom UI with `useCSSEditor`, the `realtimeConnected` property is available for displaying connection status.
 
+When real-time is enabled, publishing is coordinated through the WebSocket connection. This ensures all pending CRDT updates are flushed to the server before the checkpoint is created, eliminating stale-version races. If the WebSocket is disconnected, publishing falls back to the standard HTTP API automatically.
+
 ## Presence
 
 Presence awareness is also config-only:
@@ -203,33 +205,21 @@ NEXT_PUBLIC_CSS_ENABLE_PRESENCE=true
 - **Agent activity banner** — shown when an AI agent is actively editing
 - **Focus region highlighting** — outlines the component another user has selected, with a badge showing their initial. Applied via CSS to Puck's existing DOM elements with zero impact on scroll or performance
 
-## Branch Merge Comparison
+## Merge Review
 
-When working on a non-main branch, the CSS plugin panel shows a "Compare with main" link below the branch selector. By default, `useCSSEditor` navigates to `/merge` — your app needs a route there to handle the comparison. The merge page reads the current branch from `CSSPuckProvider` context.
+When working on a Draft branch (any non-main branch), the CSS plugin panel shows a **"Compare with Live"** button below the branch selector. Clicking it opens a built-in full-screen overlay for reviewing and merging changes — no additional route or page is required.
 
-To customize the navigation (e.g., use a router push or a different path), pass `onMergeCompare` via `pluginOptions`:
+The merge review overlay provides:
 
-```tsx
-const { puckKey, puckProps } = useCSSEditor({
-  documentPath: '/home',
-  puckConfig,
-  pluginOptions: {
-    onMergeCompare: () => {
-      router.push('/review');
-    },
-  },
-});
-```
+- **Document categorization** — changed, added, and deleted documents are grouped automatically
+- **Resolution strategies** — for each document, choose Accept Draft, Accept Live, Cherry-pick (per-field selection), or CRDT merge (when CRDT state is available)
+- **Visual previews** — side-by-side, overlay, or slider views for comparing Draft and Live versions at 25% scale
+- **Bulk actions** — accept all remaining conflicts from Draft or Live in one click
+- **Keyboard navigation** — arrow keys to move between documents, shortcuts for resolution strategies
 
-If you are using the lower-level `useCSSPlugin` or `createCSSPlugin` directly, you must provide `onMergeCompare` yourself — no default is set at that layer:
+The overlay activates automatically when `puckConfig` is provided to the plugin. Documents where Draft and Live versions are identical are silently skipped to reduce noise.
 
-```tsx
-const plugin = useCSSPlugin({
-  onMergeCompare: () => {
-    window.location.assign('/merge');
-  },
-});
-```
+The UI uses **Live/Draft terminology**: the main branch is labeled "Live" and working branches are labeled "Draft" throughout the editor interface, including the branch selector, merge review, and status indicators.
 
 ## Advanced: Low-Level API
 
