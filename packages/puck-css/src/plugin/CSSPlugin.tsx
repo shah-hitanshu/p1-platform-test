@@ -12,6 +12,7 @@ import { VersionPublishedBadge } from '../components/VersionPublishedBadge.js';
 import { AgentActivityBanner } from '../components/presence/AgentActivityBanner.js';
 import { PuckSelectionTracker } from '../components/PuckSelectionTracker.js';
 import { useCSSPuck } from '../CSSPuckContext.js';
+import { MergeReviewPage } from '../components/merge-resolution/MergeReviewPage.js';
 
 /**
  * Props for the CSS Plugin panel content
@@ -64,8 +65,8 @@ interface CSSPluginPanelProps {
   showFocusRegions?: boolean;
   /** Regions being edited by agents */
   agentEditingRegions?: string[];
-  /** Callback when "Compare with main" is clicked. Receives the main branch ID. */
-  onMergeCompare?: (targetBranchId: string) => void;
+  /** Puck config for rendering merge previews. When provided, enables the built-in merge review overlay. */
+  puckConfig?: unknown;
 }
 
 /**
@@ -110,13 +111,14 @@ function CSSPluginPanel({
   // Focus regions are shown within AgentActivityBanner
   showFocusRegions: _showFocusRegions = false,
   agentEditingRegions: _agentEditingRegions = [],
-  onMergeCompare,
+  puckConfig,
 }: CSSPluginPanelProps): React.ReactElement {
   // Suppress unused variable warnings - these are passed through for future use
   void _showFocusRegions;
   void _agentEditingRegions;
   const [isCreating, setIsCreating] = useState(false);
   const [newDocPath, setNewDocPath] = useState('');
+  const [showMergeReview, setShowMergeReview] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
   const handleBranchChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -160,6 +162,30 @@ function CSSPluginPanel({
   }, [onDocumentDelete]);
 
   return (
+    <>
+    {/* Merge Review Overlay */}
+    {showMergeReview && puckConfig != null && (
+      <div
+        className="css-plugin-merge-overlay"
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          background: '#fff',
+          zIndex: 10000,
+          overflow: 'auto',
+        }}
+      >
+        <MergeReviewPage
+          config={puckConfig}
+          onClose={() => setShowMergeReview(false)}
+          onMergeComplete={() => setShowMergeReview(false)}
+        />
+      </div>
+    )}
+
     <div className="css-plugin-panel">
       {/* Branch Selection */}
       <div className="css-plugin-section">
@@ -178,20 +204,16 @@ function CSSPluginPanel({
             </option>
           ))}
         </select>
-        {onMergeCompare && currentBranch && !currentBranch.isMain && (() => {
-          const mainBranch = branches.find((b) => b.isMain);
-          if (!mainBranch) return null;
-          return (
-            <button
-              type="button"
-              className="pds-button pds-button--secondary pds-button--sm"
-              onClick={() => onMergeCompare(mainBranch.id)}
-              style={{ marginTop: 8 }}
-            >
-              Compare with Live
-            </button>
-          );
-        })()}
+        {puckConfig != null && currentBranch && !currentBranch.isMain && (
+          <button
+            type="button"
+            className="pds-button pds-button--secondary pds-button--sm"
+            onClick={() => setShowMergeReview(true)}
+            style={{ marginTop: 8 }}
+          >
+            Compare with Live
+          </button>
+        )}
       </div>
 
       {/* Document Management */}
@@ -361,6 +383,7 @@ function CSSPluginPanel({
         </div>
       )}
     </div>
+    </>
   );
 }
 
@@ -563,8 +586,8 @@ export interface CSSPluginOptions {
   showFocusRegions?: boolean;
   /** Regions currently being edited by agents */
   agentEditingRegions?: string[];
-  /** Callback when "Compare with main" is clicked. Receives the main branch ID. */
-  onMergeCompare?: (targetBranchId: string) => void;
+  /** Puck config for rendering merge previews. When provided, enables the built-in merge review overlay. */
+  puckConfig?: unknown;
   // Focus Region Reporting
   /**
    * Callback when user selection changes in the Puck editor.
@@ -663,7 +686,7 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
           onAgentAction={options.onAgentAction}
           showFocusRegions={options.showFocusRegions}
           agentEditingRegions={options.agentEditingRegions}
-          onMergeCompare={options.onMergeCompare}
+          puckConfig={options.puckConfig}
         />
       </>
     ),

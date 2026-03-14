@@ -368,3 +368,36 @@ describe('groupFieldsByComponent', () => {
     expect(groups).toHaveLength(0);
   });
 });
+
+describe('deepEqual - array vs object distinction', () => {
+  it('should treat arrays and objects with same keys as different (conflicting)', () => {
+    // An array [1, 2] and an object {0: 1, 1: 2} should NOT be equal.
+    // This is tested indirectly through classifyPuckFields since deepEqual is private.
+    const source: PuckData = {
+      content: [
+        {
+          type: 'Data',
+          props: { id: 'd1', items: [1, 2] },
+        },
+      ],
+      root: { props: {} },
+    };
+
+    const target: PuckData = {
+      content: [
+        {
+          type: 'Data',
+          props: { id: 'd1', items: { 0: 1, 1: 2 } },
+        },
+      ],
+      root: { props: {} },
+    };
+
+    const fields = classifyPuckFields(source, target, null);
+
+    // Since source has array and target has object, they should differ
+    const itemsField = fields.find((f) => f.propName === 'items');
+    expect(itemsField).toBeDefined();
+    expect(itemsField?.classification).toBe('conflicting');
+  });
+});

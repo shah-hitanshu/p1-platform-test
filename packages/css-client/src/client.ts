@@ -16,6 +16,7 @@ import {
   PresenceEndpoint,
   AgentRegistryEndpoint,
   AgentEditEndpoint,
+  MergeEndpoint,
 } from './endpoints/index.js';
 
 /**
@@ -122,6 +123,11 @@ export class CSSClient {
    */
   public readonly agentEdit: AgentEditEndpoint;
 
+  /**
+   * Merge operations (checks, previews, execution, merge requests).
+   */
+  public readonly merge: MergeEndpoint;
+
   constructor(config: CSSClientConfig | InternalConfig) {
     // Check if this is an internal config (has baseEndpoint)
     if ('baseEndpoint' in config) {
@@ -150,6 +156,9 @@ export class CSSClient {
     this.presence = new PresenceEndpoint(this.baseEndpoint);
     this.agentRegistry = new AgentRegistryEndpoint(this.baseEndpoint);
     this.agentEdit = new AgentEditEndpoint(this.baseEndpoint);
+
+    // Merge endpoints
+    this.merge = new MergeEndpoint(this.baseEndpoint);
   }
 
   /**

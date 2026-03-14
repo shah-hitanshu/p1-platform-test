@@ -263,18 +263,8 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   // Plugin & Overrides (composed hooks)
   // =========================================================================
 
-  // Default merge-compare handler: navigates to the merge page.
-  // The merge page reads the current branch from CSSPuckProvider context.
-  const defaultMergeCompare = useCallback(
-    () => {
-      window.location.assign('/merge');
-    },
-    [],
-  );
-
   const cssPlugin = useCSSPlugin({
     onSelectionChange: handleSelectionChange,
-    onMergeCompare: defaultMergeCompare,
     ...pluginOptions,
     versions,
     versionsLoading,

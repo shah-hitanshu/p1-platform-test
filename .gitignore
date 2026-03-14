@@ -42,3 +42,6 @@ playwright-report/
 
 # Local npm config with real tokens
 .npmrc.local
+
+# Worktrees
+.worktrees/

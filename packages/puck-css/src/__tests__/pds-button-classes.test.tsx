@@ -347,7 +347,7 @@ describe('CSSPlugin PDS button classes', () => {
       ],
       currentBranch: { id: '1', name: 'feature', isMain: false, siteId: 's1', createdAt: '' },
       onBranchSwitch: () => {},
-      onMergeCompare: () => {},
+      puckConfig: {},
     });
     render(plugin.render());
     const compareBtn = screen.getByRole('button', { name: 'Compare with Live' });

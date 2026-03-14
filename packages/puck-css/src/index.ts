@@ -163,6 +163,41 @@ export type {
   MergePreviewPanelProps,
 } from './components/merge-preview/index.js';
 
+// Merge Resolution Components
+export {
+  MergeReviewPage,
+  MergeResolutionPage,
+  DocumentResolutionList,
+  DocumentResolutionDetail,
+  ResolutionStrategyPicker,
+  CrdtPreviewPanel,
+  MergeResolutionToolbar,
+  ComponentClickOverlay,
+  CherryPickVisualPanel,
+} from './components/merge-resolution/index.js';
+export type {
+  MergeReviewPageProps,
+  MergeResolutionPageProps,
+  DocumentResolutionListProps,
+  DiffCounts,
+  DocumentResolutionDetailProps,
+  ResolutionStrategyPickerProps,
+  CrdtPreviewPanelProps,
+  MergeResolutionToolbarProps,
+  ComponentClickOverlayProps,
+  CherryPickVisualPanelProps,
+} from './components/merge-resolution/index.js';
+
+// Merge Resolution Hook
+export { useMergeResolution } from './hooks/useMergeResolution.js';
+export type {
+  DocumentResolutionStrategy,
+  DocumentChangeType,
+  DocumentResolution,
+  UseMergeResolutionOptions,
+  UseMergeResolutionReturn,
+} from './hooks/useMergeResolution.js';
+
 // Conflict Resolution Components (Puck-aware)
 export {
   PuckFieldResolutionPanel,
@@ -233,10 +268,12 @@ export {
   classifyPuckFields,
   getReadablePropPath,
   groupFieldsByComponent,
+  buildMergedSnapshot,
 } from './utils/puckFieldClassifier.js';
 export type {
   PuckFieldClassification,
   PuckComponentConflict,
+  ResolutionMap,
 } from './utils/puckFieldClassifier.js';
 
 // Branch Diff Utilities

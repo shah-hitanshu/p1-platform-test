@@ -3,6 +3,9 @@
  *
  * Renders diff-highlighted content in side-by-side, overlay, or slider mode.
  * Uses Puck's Render component with highlighted configs for visual comparison.
+ *
+ * All visual styling uses inline React styles. BEM class names are retained
+ * as secondary identifiers for DOM querying and test assertions.
  */
 
 import React, { useMemo, useState } from 'react';
@@ -10,6 +13,7 @@ import { Render } from '@puckeditor/core';
 import type { PuckData } from '@pantheon/css-client';
 import type { ComponentDiffWithPosition } from '../../types.js';
 import { createDiffMap, createHighlightedConfig } from '../../utils/highlightConfig.js';
+import { ScaledContent } from './ScaledContent.js';
 import type { ViewMode } from './ViewModeSelector.js';
 
 /**
@@ -38,6 +42,87 @@ export interface MergePreviewRendererProps {
   /** Name of the target branch. */
   targetBranchName: string;
 }
+
+// =============================================================================
+// Inline Style Constants
+// =============================================================================
+
+const wrapperStyle: React.CSSProperties = {
+  position: 'relative',
+};
+
+const summaryStyle: React.CSSProperties = {
+  padding: '8px 12px',
+  fontSize: '13px',
+  color: '#666',
+  borderBottom: '1px solid #e5e7eb',
+};
+
+const sideBySideContainerStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: '16px',
+};
+
+const panelStyle: React.CSSProperties = {
+  flex: '1 1 50%',
+  minWidth: 0,
+  border: '1px solid #e5e7eb',
+  borderRadius: '8px',
+  overflow: 'hidden',
+};
+
+const panelLabelStyle: React.CSSProperties = {
+  padding: '8px 12px',
+  fontWeight: 600,
+  fontSize: '13px',
+  background: '#f9fafb',
+  borderBottom: '1px solid #e5e7eb',
+};
+
+const panelContentStyle: React.CSSProperties = {
+  padding: '12px',
+  overflow: 'hidden',
+};
+
+const overlayContainerStyle: React.CSSProperties = {
+  position: 'relative',
+};
+
+const overlaySourceLayerStyle: React.CSSProperties = {
+  position: 'relative',
+};
+
+const overlayTargetLayerStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  width: '100%',
+};
+
+const sliderControlStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+  padding: '8px 12px',
+};
+
+const sliderInputStyle: React.CSSProperties = {
+  flex: 1,
+};
+
+const sliderContentStyle: React.CSSProperties = {
+  position: 'relative',
+};
+
+const emptyStyle: React.CSSProperties = {
+  padding: '40px',
+  textAlign: 'center',
+  color: '#999',
+};
+
+// =============================================================================
+// Helpers
+// =============================================================================
 
 /**
  * Counts diffs by type, returning only non-unchanged counts.
@@ -71,6 +156,10 @@ function formatChangeSummary(counts: {
   return parts.join(', ');
 }
 
+// =============================================================================
+// Sub-components
+// =============================================================================
+
 /**
  * Renders side-by-side comparison panels.
  */
@@ -94,23 +183,34 @@ function SideBySideView({
   targetBranchName: string;
 }): React.ReactElement {
   return (
-    <div className="merge-preview-renderer merge-preview-renderer--side-by-side">
-      <div className="merge-preview-renderer__panel">
-        <div className="merge-preview-renderer__panel-label">{sourceBranchName}</div>
-        <div className="merge-preview-renderer__panel-content">
-          <Render
-            config={beforeConfig as Parameters<typeof Render>[0]['config']}
-            data={sourceData as Parameters<typeof Render>[0]['data']}
-          />
+    <div
+      className="merge-preview-renderer merge-preview-renderer--side-by-side"
+      style={sideBySideContainerStyle}
+    >
+      <div className="merge-preview-renderer__panel" style={panelStyle}>
+        <div className="merge-preview-renderer__panel-label" style={panelLabelStyle}>
+          {sourceBranchName}
+        </div>
+        <div className="merge-preview-renderer__panel-content" style={panelContentStyle}>
+          <ScaledContent>
+            <Render
+              config={beforeConfig as Parameters<typeof Render>[0]['config']}
+              data={sourceData as Parameters<typeof Render>[0]['data']}
+            />
+          </ScaledContent>
         </div>
       </div>
-      <div className="merge-preview-renderer__panel">
-        <div className="merge-preview-renderer__panel-label">{targetBranchName}</div>
-        <div className="merge-preview-renderer__panel-content">
-          <Render
-            config={afterConfig as Parameters<typeof Render>[0]['config']}
-            data={targetData as Parameters<typeof Render>[0]['data']}
-          />
+      <div className="merge-preview-renderer__panel" style={panelStyle}>
+        <div className="merge-preview-renderer__panel-label" style={panelLabelStyle}>
+          {targetBranchName}
+        </div>
+        <div className="merge-preview-renderer__panel-content" style={panelContentStyle}>
+          <ScaledContent>
+            <Render
+              config={afterConfig as Parameters<typeof Render>[0]['config']}
+              data={targetData as Parameters<typeof Render>[0]['data']}
+            />
+          </ScaledContent>
         </div>
       </div>
     </div>
@@ -140,16 +240,29 @@ function OverlayView({
   targetBranchName: string;
 }): React.ReactElement {
   return (
-    <div className="merge-preview-renderer merge-preview-renderer--overlay">
-      <div className="merge-preview-renderer__overlay-layer merge-preview-renderer__overlay-layer--source">
-        <div className="merge-preview-renderer__panel-label">{sourceBranchName}</div>
+    <div
+      className="merge-preview-renderer merge-preview-renderer--overlay"
+      style={overlayContainerStyle}
+    >
+      <div
+        className="merge-preview-renderer__overlay-layer merge-preview-renderer__overlay-layer--source"
+        style={overlaySourceLayerStyle}
+      >
+        <div className="merge-preview-renderer__panel-label" style={panelLabelStyle}>
+          {sourceBranchName}
+        </div>
         <Render
           config={beforeConfig as Parameters<typeof Render>[0]['config']}
           data={sourceData as Parameters<typeof Render>[0]['data']}
         />
       </div>
-      <div className="merge-preview-renderer__overlay-layer merge-preview-renderer__overlay-layer--target">
-        <div className="merge-preview-renderer__panel-label">{targetBranchName}</div>
+      <div
+        className="merge-preview-renderer__overlay-layer merge-preview-renderer__overlay-layer--target"
+        style={overlayTargetLayerStyle}
+      >
+        <div className="merge-preview-renderer__panel-label" style={panelLabelStyle}>
+          {targetBranchName}
+        </div>
         <Render
           config={afterConfig as Parameters<typeof Render>[0]['config']}
           data={targetData as Parameters<typeof Render>[0]['data']}
@@ -184,9 +297,14 @@ function SliderView({
   const [sliderValue, setSliderValue] = useState(50);
 
   return (
-    <div className="merge-preview-renderer merge-preview-renderer--slider">
-      <div className="merge-preview-renderer__slider-control">
-        <span className="merge-preview-renderer__panel-label">{sourceBranchName}</span>
+    <div
+      className="merge-preview-renderer merge-preview-renderer--slider"
+      style={{ position: 'relative' }}
+    >
+      <div className="merge-preview-renderer__slider-control" style={sliderControlStyle}>
+        <span className="merge-preview-renderer__panel-label" style={panelLabelStyle}>
+          {sourceBranchName}
+        </span>
         <input
           type="range"
           min={0}
@@ -194,13 +312,16 @@ function SliderView({
           value={sliderValue}
           onChange={(e) => setSliderValue(Number(e.target.value))}
           className="merge-preview-renderer__slider-input"
+          style={sliderInputStyle}
         />
-        <span className="merge-preview-renderer__panel-label">{targetBranchName}</span>
+        <span className="merge-preview-renderer__panel-label" style={panelLabelStyle}>
+          {targetBranchName}
+        </span>
       </div>
-      <div className="merge-preview-renderer__slider-content">
+      <div className="merge-preview-renderer__slider-content" style={sliderContentStyle}>
         <div
           className="merge-preview-renderer__slider-layer merge-preview-renderer__slider-layer--source"
-          style={{ opacity: 1 - sliderValue / 100 }}
+          style={{ opacity: 1 - sliderValue / 100, position: 'relative' }}
         >
           <Render
             config={beforeConfig as Parameters<typeof Render>[0]['config']}
@@ -209,7 +330,13 @@ function SliderView({
         </div>
         <div
           className="merge-preview-renderer__slider-layer merge-preview-renderer__slider-layer--target"
-          style={{ opacity: sliderValue / 100 }}
+          style={{
+            opacity: sliderValue / 100,
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+          }}
         >
           <Render
             config={afterConfig as Parameters<typeof Render>[0]['config']}
@@ -220,6 +347,10 @@ function SliderView({
     </div>
   );
 }
+
+// =============================================================================
+// Main Component
+// =============================================================================
 
 /**
  * Renders diff-highlighted content in the selected view mode.
@@ -271,7 +402,10 @@ export function MergePreviewRenderer({
 
   if (!hasChanges) {
     return (
-      <div className="merge-preview-renderer merge-preview-renderer--empty">
+      <div
+        className="merge-preview-renderer merge-preview-renderer--empty"
+        style={emptyStyle}
+      >
         <p>No changes</p>
       </div>
     );
@@ -290,7 +424,7 @@ export function MergePreviewRenderer({
     targetBranchName,
   };
 
-  // Overlay and slider modes are pure visual comparisons —
+  // Overlay and slider modes are pure visual comparisons --
   // diff highlighting is redundant and visually noisy.
   const visualProps = {
     sourceData,
@@ -302,8 +436,8 @@ export function MergePreviewRenderer({
   };
 
   return (
-    <div className="merge-preview-renderer__wrapper">
-      <div className="merge-preview-renderer__summary">
+    <div className="merge-preview-renderer__wrapper" style={wrapperStyle}>
+      <div className="merge-preview-renderer__summary" style={summaryStyle}>
         {changeSummary}
       </div>
 

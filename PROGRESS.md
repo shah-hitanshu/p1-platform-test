@@ -1245,6 +1245,40 @@ Updated all user-facing strings to use non-technical language for content editor
 
 **Files changed:** 10 source files, 800/800 tests passing, 0 lint errors
 
+### Merge Resolution Improvements (2026-03-13) ✅
+
+Series of refinements to the merge conflict resolution UI based on live testing with the backend.
+
+#### Document Merge State Restructuring
+Aligned frontend `DocumentChangeType` with the backend's 10-state document merge matrix (from CSV spec). Changed from 4 types (`conflicting`, `changed`, `added`, `deleted`) to 5 backend-aligned types:
+- `new-on-draft` — New document created on Draft, doesn't exist on Live
+- `draft-changed` — Document edited on Draft, Live version is older than branch point
+- `conflicting` — Both branches edited the document (needs resolution)
+- `deleted-on-draft` — Document deleted on Draft, still exists on Live
+- `deleted-on-main` — Document deleted on Live, still exists on Draft (needs resolution)
+
+5 states are hidden per the spec: `published-on-main`, `unchanged-on-draft`, `both-deleted`, `deleted-new-draft`, `no-document`.
+
+**Key decisions:**
+- User decided to show only source (Draft) changes — target-only changes are already on Live and not part of the merge review
+- Button labels changed from "Accept all as Draft/Live" to "Accept all from Draft/Live" per user feedback
+- Added `MergeDocumentChange` interface to css-client with `isDeleted` field for tombstone detection
+- Sort order: conflicting → deleted-on-main → new-on-draft → draft-changed → deleted-on-draft
+
+#### Identical Conflict Filtering
+Conflicts where source and target snapshots have identical content are now filtered out entirely. The backend may flag documents as conflicting (both branches modified them) even when the resulting content is the same. These no longer appear in the review list since no user action is needed.
+
+#### Scaled Preview Panels
+All `<Render>` preview panels now display at 25% zoom using a shared `ScaledContent` component with `ResizeObserver`-based height adjustment. Applied consistently across:
+- Side-by-side comparison panels (MergePreviewRenderer)
+- Cherry-pick visual panels (source, target, and merged preview)
+- CRDT three-way comparison panels (Draft, Auto-merged, Live)
+- Single-panel views in DocumentResolutionDetail (new, changed, deleted documents)
+
+Single-panel views are also constrained to 50% max width to avoid excessively wide layouts.
+
+**Files changed:** 9 source files + 1 new (`ScaledContent.tsx`), 917/917 tests passing
+
 ## Remaining Work
 
 ### Future
