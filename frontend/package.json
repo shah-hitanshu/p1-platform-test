@@ -30,7 +30,8 @@
       "@babel/runtime": ">=7.26.10",
       "prismjs": ">=1.30.0",
       "markdown-to-jsx": ">=7.4.0",
-      "minimatch": ">=10.2.1"
+      "minimatch": ">=10.2.1",
+      "undici": ">=7.24.0"
     }
   },
   "devDependencies": {
