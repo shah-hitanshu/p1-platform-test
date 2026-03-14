@@ -72,7 +72,7 @@ export function parseOriginPatterns(corsOrigins: string): CorsPattern[] {
     } else if (wildcardCount === 1) {
       // Single wildcard — convert to regex
       // `*` matches a single DNS label: one or more alphanumeric/hyphen chars (no dots)
-      const escaped = escapeRegex(entry).replace('*', '[a-zA-Z0-9-]+');
+      const escaped = escapeRegex(entry).replace(/\*/g, '[a-zA-Z0-9-]+');
       patterns.push({
         type: 'wildcard-subdomain',
         regex: new RegExp(`^${escaped}$`),
