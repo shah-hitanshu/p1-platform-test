@@ -33,7 +33,8 @@
       "esbuild": "^0.25.0",
       "minimatch": ">=10.2.3",
       "markdown-it": ">=14.1.1",
-      "rollup": ">=4.59.0"
+      "rollup": ">=4.59.0",
+      "flatted": ">=3.4.0"
     }
   }
 }

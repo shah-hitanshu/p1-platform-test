@@ -9,6 +9,7 @@ overrides:
   minimatch: '>=10.2.3'
   markdown-it: '>=14.1.1'
   rollup: '>=4.59.0'
+  flatted: '>=3.4.0'
 
 importers:
 
@@ -1691,8 +1692,8 @@ packages:
     resolution: {integrity: sha512-b6suED+5/3rTpUBdG1gupIl8MPFCAMA0QXwmljLhvCUKcUvdE4gWky9zpuGCcXHOsz4J9wPGNWq6OKpmIzz3hQ==}
     hasBin: true
 
-  flatted@3.3.3:
-    resolution: {integrity: sha512-GX+ysw4PBCz0PzosHDepZGANEuFCMLrnRTiEy9McGjmkCQYwRq4A/X786G/fjM/+OjsWSU1ZrY5qyARZmO/uwg==}
+  flatted@3.4.1:
+    resolution: {integrity: sha512-IxfVbRFVlV8V/yRaGzk0UVIcsKKHMSfYw66T/u4nTwlWteQePsxe//LjudR1AMX4tZW3WFCh3Zqa/sjlqpbURQ==}
 
   for-each@0.3.5:
     resolution: {integrity: sha512-dKx12eRCVIzqCxFGplyFKJMPvLEWgmNtUrpTiJIR5u97zEhRG8ySrtboPHZXx7daLxQVrl643cTzbab2tkQjxg==}
@@ -5016,13 +5017,13 @@ snapshots:
 
   flat-cache@3.2.0:
     dependencies:
-      flatted: 3.3.3
+      flatted: 3.4.1
       keyv: 4.5.4
       rimraf: 3.0.2
 
   flat@5.0.2: {}
 
-  flatted@3.3.3: {}
+  flatted@3.4.1: {}
 
   for-each@0.3.5:
     dependencies:
