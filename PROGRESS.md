@@ -3435,6 +3435,22 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 
 **Decision:** Trimmed-down implementation of issue #31. Skipped: site-level document endpoints (publish state is branch-contextual), `unpublishedChanges` field (expensive, better as dedicated diff endpoint). Added guidance for puck-css-integration frontend on issue #31.
 
+#### Bug Fix: Post-merge checkpoint accidentally publishing all documents
+- [x] **Root cause:** `createCheckpoint` forced a full snapshot for `post_merge` type (NULL `parent_checkpoint_id`), which swept the latest `document_versions` for every document on the branch into `checkpoint_documents` — including unpublished realtime edits
+- [x] **Impact:** 3 bad post_merge checkpoints (3/13 and 3/14) each contained 19 documents instead of only the 5 that were actually merged. This falsely published 3 documents (emerson, new-test, new/newthing), promoted unpublished edits on 2 documents (formula-1 v78->v93, c-demo v8->v9), and added 9 redundant entries
+- [x] **Fix:** Added optional `documentVersionIds` parameter to `CreateCheckpointParams`. When provided, the checkpoint captures only those specific document/version pairs instead of querying `document_versions`. Both `executeMerge` and `executeMergeWithResolution` now track all document versions created during conflict resolution and source-change copying, passing only those to the post-merge checkpoint
+- [x] **Data remediation:** Deleted 42 swept-in `checkpoint_documents` rows from the 3 bad checkpoints, restoring correct published state
+- [x] Files changed: `checkpoint-service.ts`, `merge-execution-service.ts`
+- [x] Commit: `c2a8b13`
+
+#### Bug Fix: resolveAllConflicts called with wrong parameters
+- [x] **Root cause:** `executeMergeWithResolution` passed `mergeRequestId` to `resolveAllConflicts` where `sourceBranchId` and `targetBranchId` were expected. Also missing required `documentPath` field on `ConflictWithVersions`
+- [x] **Impact:** When a merge had conflicts and user selected take-source or take-target resolution, `resolveWithTakeSource` tried to create a version on branch `undefined`, silently failing. The merge was still marked as successful despite the resolution failure
+- [x] **Fix:** Now correctly passes `mergeRequest.sourceBranchId` and `mergeRequest.targetBranchId`, and includes `documentPath` from the source/target change detection result
+- [x] Fixed in same commit as checkpoint fix: `c2a8b13`
+
+**Decision:** These two bugs were discovered while investigating why a merge from a branch into main created a checkpoint but didn't copy document content. The investigation revealed that (1) the conflict was falsely detected as "both-modified" because unpublished realtime edits on main were swept into prior merge checkpoints, making the merge base comparison incorrect, and (2) even when the user selected a resolution strategy, the resolution silently failed due to the wrong parameters.
+
 #### Remaining
 - [ ] UX confirmation prompt in puck-css-integration before publish (separate project)
 - [ ] Phase 7: Publish-propagation foundation (future)
