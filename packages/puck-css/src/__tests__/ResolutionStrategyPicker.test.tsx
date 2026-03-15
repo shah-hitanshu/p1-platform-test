@@ -23,7 +23,7 @@ describe('ResolutionStrategyPicker', () => {
     expect(screen.getByText('Accept Draft')).toBeDefined();
     expect(screen.getByText('Accept Live')).toBeDefined();
     expect(screen.getByText('Cherry-pick')).toBeDefined();
-    expect(screen.getByText('CRDT merge')).toBeDefined();
+    expect(screen.getByText('Auto merge')).toBeDefined();
   });
 
   it('highlights selected strategy', () => {
@@ -61,11 +61,11 @@ describe('ResolutionStrategyPicker', () => {
     fireEvent.click(screen.getByText('Cherry-pick'));
     expect(onSelect).toHaveBeenCalledWith('cherry-pick');
 
-    fireEvent.click(screen.getByText('CRDT merge'));
+    fireEvent.click(screen.getByText('Auto merge'));
     expect(onSelect).toHaveBeenCalledWith('crdt-preview');
   });
 
-  it('disables Cherry-pick and CRDT merge for deleted-in-source', () => {
+  it('disables Cherry-pick and Auto merge for deleted-in-source', () => {
     const onSelect = vi.fn();
     render(
       <ResolutionStrategyPicker
@@ -76,7 +76,7 @@ describe('ResolutionStrategyPicker', () => {
     );
 
     const cherryPickBtn = screen.getByText('Cherry-pick').closest('button');
-    const crdtBtn = screen.getByText('CRDT merge').closest('button');
+    const crdtBtn = screen.getByText('Auto merge').closest('button');
 
     expect(cherryPickBtn?.disabled).toBe(true);
     expect(crdtBtn?.disabled).toBe(true);
@@ -87,7 +87,7 @@ describe('ResolutionStrategyPicker', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('hides CRDT merge button when hasCrdtState is false', () => {
+  it('hides Auto merge button when hasCrdtState is false', () => {
     render(
       <ResolutionStrategyPicker
         currentStrategy="unresolved"
@@ -100,10 +100,10 @@ describe('ResolutionStrategyPicker', () => {
     expect(screen.getByText('Accept Draft')).toBeDefined();
     expect(screen.getByText('Accept Live')).toBeDefined();
     expect(screen.getByText('Cherry-pick')).toBeDefined();
-    expect(screen.queryByText('CRDT merge')).toBeNull();
+    expect(screen.queryByText('Auto merge')).toBeNull();
   });
 
-  it('shows CRDT merge button when hasCrdtState is true', () => {
+  it('shows Auto merge button when hasCrdtState is true', () => {
     render(
       <ResolutionStrategyPicker
         currentStrategy="unresolved"
@@ -113,10 +113,10 @@ describe('ResolutionStrategyPicker', () => {
       />
     );
 
-    expect(screen.getByText('CRDT merge')).toBeDefined();
+    expect(screen.getByText('Auto merge')).toBeDefined();
   });
 
-  it('disables Cherry-pick and CRDT merge for deleted-in-target', () => {
+  it('disables Cherry-pick and Auto merge for deleted-in-target', () => {
     const onSelect = vi.fn();
     render(
       <ResolutionStrategyPicker
@@ -127,7 +127,7 @@ describe('ResolutionStrategyPicker', () => {
     );
 
     const cherryPickBtn = screen.getByText('Cherry-pick').closest('button');
-    const crdtBtn = screen.getByText('CRDT merge').closest('button');
+    const crdtBtn = screen.getByText('Auto merge').closest('button');
 
     expect(cherryPickBtn?.disabled).toBe(true);
     expect(crdtBtn?.disabled).toBe(true);

@@ -29,7 +29,7 @@ const strategies: StrategyButton[] = [
   { strategy: 'accept-draft', label: 'Accept Draft', disabledForDelete: false },
   { strategy: 'accept-live', label: 'Accept Live', disabledForDelete: false },
   { strategy: 'cherry-pick', label: 'Cherry-pick', disabledForDelete: true },
-  { strategy: 'crdt-preview', label: 'CRDT merge', disabledForDelete: true },
+  { strategy: 'crdt-preview', label: 'Auto merge', disabledForDelete: true },
 ];
 
 function isDeleteConflict(conflictType: DocumentConflictType): boolean {

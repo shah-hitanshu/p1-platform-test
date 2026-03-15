@@ -92,7 +92,7 @@ const strategyLabels: Record<DocumentResolutionStrategy, string> = {
   'accept-draft': 'Draft',
   'accept-live': 'Live',
   'cherry-pick': 'Cherry-pick',
-  'crdt-preview': 'CRDT',
+  'crdt-preview': 'Auto',
   unresolved: 'Unresolved',
 };
 

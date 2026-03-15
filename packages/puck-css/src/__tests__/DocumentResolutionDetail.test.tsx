@@ -229,7 +229,7 @@ describe('DocumentResolutionDetail', () => {
     );
 
     // CrdtPreviewPanel renders loading state
-    expect(screen.getByText('Loading CRDT merge preview...')).toBeDefined();
+    expect(screen.getByText('Loading auto merge preview...')).toBeDefined();
   });
 
   it('auto-fetches CRDT preview when strategy is crdt-preview and no snapshot', () => {

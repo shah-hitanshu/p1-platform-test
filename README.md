@@ -212,7 +212,7 @@ When working on a Draft branch (any non-main branch), the CSS plugin panel shows
 The merge review overlay provides:
 
 - **Document categorization** — changed, added, and deleted documents are grouped automatically
-- **Resolution strategies** — for each document, choose Accept Draft, Accept Live, Cherry-pick (per-field selection), or CRDT merge (when CRDT state is available)
+- **Resolution strategies** — for each document, choose Accept Draft, Accept Live, Cherry-pick (per-field selection), or Auto merge (when real-time collaboration state is available)
 - **Visual previews** — side-by-side, overlay, or slider views for comparing Draft and Live versions at 25% scale
 - **Bulk actions** — accept all remaining conflicts from Draft or Live in one click
 - **Keyboard navigation** — arrow keys to move between documents, shortcuts for resolution strategies

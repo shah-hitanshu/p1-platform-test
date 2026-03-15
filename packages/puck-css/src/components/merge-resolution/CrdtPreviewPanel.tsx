@@ -111,7 +111,7 @@ export function CrdtPreviewPanel({
     return (
       <div className={baseClass} style={containerStyle}>
         <p className={`${baseClass}__loading`} style={loadingStyle}>
-          Loading CRDT merge preview...
+          Loading auto merge preview...
         </p>
       </div>
     );
@@ -129,7 +129,7 @@ export function CrdtPreviewPanel({
     return (
       <div className={baseClass} style={containerStyle}>
         <p className={`${baseClass}__empty`} style={emptyStyle}>
-          No CRDT preview available.
+          No auto merge preview available.
         </p>
       </div>
     );
@@ -214,7 +214,7 @@ export function CrdtPreviewPanel({
   return (
     <div className={baseClass} style={containerStyle}>
       <p className={`${baseClass}__success`} style={{ color: '#155724', fontWeight: 500, marginBottom: '8px' }}>
-        CRDT merge preview loaded.
+        Auto merge preview loaded.
       </p>
       <pre className={`${baseClass}__snapshot`} style={{
         background: '#f5f5f5',

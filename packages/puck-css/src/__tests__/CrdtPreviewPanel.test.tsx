@@ -34,7 +34,7 @@ describe('CrdtPreviewPanel', () => {
   it('shows loading state', () => {
     render(<CrdtPreviewPanel snapshot={null} loading={true} error={null} />);
 
-    expect(screen.getByText('Loading CRDT merge preview...')).toBeDefined();
+    expect(screen.getByText('Loading auto merge preview...')).toBeDefined();
   });
 
   it('shows error state', () => {
@@ -52,7 +52,7 @@ describe('CrdtPreviewPanel', () => {
   it('shows empty state when no snapshot', () => {
     render(<CrdtPreviewPanel snapshot={null} loading={false} error={null} />);
 
-    expect(screen.getByText('No CRDT preview available.')).toBeDefined();
+    expect(screen.getByText('No auto merge preview available.')).toBeDefined();
   });
 
   it('shows success state with snapshot data (no config fallback)', () => {
@@ -63,7 +63,7 @@ describe('CrdtPreviewPanel', () => {
 
     render(<CrdtPreviewPanel snapshot={snapshot} loading={false} error={null} />);
 
-    expect(screen.getByText('CRDT merge preview loaded.')).toBeDefined();
+    expect(screen.getByText('Auto merge preview loaded.')).toBeDefined();
     // Snapshot should be rendered as JSON when no config
     expect(screen.getByText(/merged/)).toBeDefined();
   });
