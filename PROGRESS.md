@@ -3451,6 +3451,16 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 
 **Decision:** These two bugs were discovered while investigating why a merge from a branch into main created a checkpoint but didn't copy document content. The investigation revealed that (1) the conflict was falsely detected as "both-modified" because unpublished realtime edits on main were swept into prior merge checkpoints, making the merge base comparison incorrect, and (2) even when the user selected a resolution strategy, the resolution silently failed due to the wrong parameters.
 
+#### Bug Fix: Tombstoned documents visible in content-pages and admin UI
+- [x] **Root cause:** Content-pages API (`handleGetContentPages`) did not filter out documents whose latest version is a tombstone. The admin frontend did not display tombstone/deleted state, showing all documents as "Active"
+- [x] **Impact:** Documents deleted via merge appeared in content-pages listings with `{"_deleted": true}` snapshot data. The admin frontend showed these deleted documents with an "Active" status badge
+- [x] **Fix (backend):** Added `if (version.isTombstone === true) return null;` to `handleGetContentPages` to exclude tombstoned documents from content-pages listings
+- [x] **Fix (frontend):** Added `isTombstone` to the `DocumentVersion` TypeScript interface. Updated `DocumentPage.tsx` to display a "Deleted" danger tag in the header and "Deleted" status in the details section for tombstoned documents
+- [x] **Related:** Created issue [puck-css-integration#17](https://github.com/pantheon-systems/puck-css-integration/issues/17) for hiding tombstoned documents in the Puck editor
+- [x] Files changed: `content-api.ts`, `frontend/src/api/documents.ts`, `frontend/src/pages/DocumentPage.tsx`
+- [x] Commit: `abaf242`
+
 #### Remaining
 - [ ] UX confirmation prompt in puck-css-integration before publish (separate project)
+- [ ] Hide tombstoned documents in Puck editor ([puck-css-integration#17](https://github.com/pantheon-systems/puck-css-integration/issues/17))
 - [ ] Phase 7: Publish-propagation foundation (future)
