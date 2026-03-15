@@ -113,6 +113,7 @@ interface DocumentVersion {
   createdByType: 'user' | 'agent' | 'system';
   createdAt: string;
   isPublished?: boolean;
+  isTombstone?: boolean;
   sourceBranchId?: string;
   sourceVersionId?: string;
   publishedToVersionId?: string;

@@ -212,6 +212,9 @@ export function DocumentPage() {
             <h1 className="document-title">
               <code>{document?.path}</code>
             </h1>
+            {latestVersion?.isTombstone === true && (
+              <Tag type="danger" data-testid="deleted-tag">Deleted</Tag>
+            )}
             {document?.archivedAt && (
               <Tag type="default">Archived</Tag>
             )}
@@ -447,7 +450,11 @@ export function DocumentPage() {
           <div className="detail-item">
             <label className="detail-label">Status</label>
             <div className="detail-value">
-              {document?.archivedAt ? (
+              {latestVersion?.isTombstone === true ? (
+                <span className="status-indicator status-archived-text">
+                  Deleted
+                </span>
+              ) : document?.archivedAt ? (
                 <span className="status-indicator status-archived-text">
                   Archived on {formatDate(document.archivedAt)}
                 </span>

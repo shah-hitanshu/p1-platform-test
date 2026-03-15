@@ -223,6 +223,7 @@ async function handleGetContentPages(
     documents.map(async (doc) => {
       const version = await getVersion(doc.id, branch.id);
       if (version === null) return null;
+      if (version.isTombstone === true) return null;
       return {
         path: doc.path,
         documentId: doc.id,
