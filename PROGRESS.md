@@ -1279,6 +1279,14 @@ Single-panel views are also constrained to 50% max width to avoid excessively wi
 
 **Files changed:** 9 source files + 1 new (`ScaledContent.tsx`), 917/917 tests passing
 
+### README Update (2026-03-15) ✅
+
+Updated README.md to reflect PRs #13–#16:
+- **Features list**: Updated "Publishing" to mention published status indicators; renamed "Conflict Detection" to "Visual Merge Review" with built-in overlay description
+- **Real-time Collaboration section**: Added paragraph on WebSocket-driven publish (CRDT flush before checkpoint, automatic HTTP fallback)
+- **Merge Review section**: Rewrote former "Branch Merge Comparison" section — removed outdated `onMergeCompare` callback/route pattern, documented the built-in full-screen overlay with document categorization, resolution strategies, visual previews, bulk actions, and keyboard navigation
+- **Live/Draft terminology**: Documented that the UI uses "Live" for the main branch and "Draft" for working branches throughout the editor interface
+
 ## Remaining Work
 
 ### Future
