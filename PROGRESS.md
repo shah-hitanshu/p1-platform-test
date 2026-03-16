@@ -1287,6 +1287,16 @@ Updated README.md to reflect PRs #13–#16:
 - **Merge Review section**: Rewrote former "Branch Merge Comparison" section — removed outdated `onMergeCompare` callback/route pattern, documented the built-in full-screen overlay with document categorization, resolution strategies, visual previews, bulk actions, and keyboard navigation
 - **Live/Draft terminology**: Documented that the UI uses "Live" for the main branch and "Draft" for working branches throughout the editor interface
 
+### Tombstone Document Filtering (2026-03-15) ✅
+
+Fixed tombstoned/deleted documents appearing in the Puck editor's document list after branch merges (issue #17).
+
+- **Backend fix** (collaborative-state-system): merge execution now sets `is_tombstone = true` when writing `{"_deleted": true}` snapshots. The `listDocumentsOnBranch` query already filters on this column.
+- **Client-side safety net** (puck-css): added `archived` filter in `CSSPluginPanel` to exclude `archived === true` documents from the document list, in case the backend returns them.
+- **UX label update**: renamed "CRDT merge" to "Auto merge" across all strategy picker buttons, document list badges, keyboard shortcut help, and preview panel messages. Internal code unchanged.
+
+**Files changed:** 1 source file (`CSSPlugin.tsx`), 1 test file, 922/922 tests passing
+
 ## Remaining Work
 
 ### Future
