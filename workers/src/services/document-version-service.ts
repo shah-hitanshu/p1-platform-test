@@ -31,6 +31,8 @@ export interface CreateDocumentVersionParams {
    * @default false
    */
   skipDuplicateCheck?: boolean;
+  /** Mark this version as a tombstone (document deletion). */
+  isTombstone?: boolean;
 }
 
 /**
@@ -248,11 +250,11 @@ export async function createDocumentVersion(
     const result = await query<DocumentVersionRow>(
       `INSERT INTO app.document_versions (
         document_id, branch_id, version_number, snapshot, crdt_state,
-        source, created_by_id, created_by_type
+        source, created_by_id, created_by_type, is_tombstone
       )
       SELECT $1, $2,
         COALESCE(MAX(version_number), 0) + 1,
-        $3, $4, $5, $6, $7
+        $3, $4, $5, $6, $7, $8
       FROM app.document_versions
       WHERE document_id = $1 AND branch_id = $2
       RETURNING *`,
@@ -264,6 +266,7 @@ export async function createDocumentVersion(
         params.source,
         params.createdById,
         params.createdByType,
+        params.isTombstone === true,
       ],
     );
 

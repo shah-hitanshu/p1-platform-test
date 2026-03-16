@@ -205,6 +205,7 @@ async function resolveWithTakeSource(
     source: 'merge',
     createdById: resolvedById,
     createdByType: resolvedByType,
+    isTombstone: sourceVersion.isTombstone,
   });
 
   return {
@@ -416,6 +417,7 @@ export async function resolveDeletedConflict(
       source: 'merge',
       createdById: resolvedById,
       createdByType: resolvedByType,
+      isTombstone: sourceVersion.isTombstone,
     });
 
     return {

@@ -510,6 +510,7 @@ async function copySourceChangesToTarget(
       createdById: mergedById,
       createdByType: mergedByType,
       skipDuplicateCheck: true,
+      isTombstone: sourceVersion.isTombstone,
     });
 
     mergedVersions.push({
