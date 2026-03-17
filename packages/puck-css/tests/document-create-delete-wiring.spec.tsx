@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act, waitFor, render, screen } from '@testing-library/react';
 import React from 'react';
 import type { CSSClient, Branch, PuckData } from '@pantheon/css-client';
 
@@ -186,55 +186,39 @@ describe('useCSSPlugin auto-wires document create/delete from context', () => {
   it('useCSSPlugin wires onDocumentCreate from context when not explicitly provided', async () => {
     const wrapper = createProviderWrapper(client);
 
-    const { result } = renderHook(() => {
+    // Component that renders the plugin panel to actual DOM
+    function PluginRenderer() {
       const plugin = useCSSPlugin();
-      const ctx = useCSSPuck();
-      return { plugin, ctx };
-    }, { wrapper });
+      return <>{plugin.render()}</>;
+    }
 
+    render(
+      React.createElement(wrapper, null, React.createElement(PluginRenderer))
+    );
+
+    // Wait for documents to load, then the "+" button should appear
     await waitFor(() => {
-      expect(result.current.ctx.branchId).toBe('branch-1');
+      expect(screen.getByRole('button', { name: '+' })).toBeDefined();
     });
-
-    // The plugin render function should produce a tree that includes
-    // the create button — this means onDocumentCreate was wired from context
-    const rendered = result.current.plugin.render();
-    // Walk the rendered tree to find the create button
-    const pluginPanel = findInTree(rendered, (node) =>
-      node?.props?.className?.includes?.('css-plugin-section-header')
-    );
-    const createButton = findInTree(rendered, (node) =>
-      node?.props?.children === '+' && node?.type === 'button'
-    );
-
-    expect(createButton).not.toBeNull();
   });
 
   it('useCSSPlugin wires onDocumentDelete from context when not explicitly provided', async () => {
     const wrapper = createProviderWrapper(client);
 
-    const { result } = renderHook(() => {
+    function PluginRenderer() {
       const plugin = useCSSPlugin();
-      const ctx = useCSSPuck();
-      return { plugin, ctx };
-    }, { wrapper });
+      return <>{plugin.render()}</>;
+    }
 
-    await waitFor(() => {
-      expect(result.current.ctx.branchId).toBe('branch-1');
-    });
-
-    // Wait for documents to load
-    await waitFor(() => {
-      expect(result.current.ctx.documents.length).toBeGreaterThan(0);
-    });
-
-    // The plugin render should produce delete buttons for each document
-    const rendered = result.current.plugin.render();
-    const deleteButton = findInTree(rendered, (node) =>
-      node?.props?.['aria-label']?.startsWith?.('Delete ')
+    render(
+      React.createElement(wrapper, null, React.createElement(PluginRenderer))
     );
 
-    expect(deleteButton).not.toBeNull();
+    // Wait for documents to load, then delete buttons should appear
+    await waitFor(() => {
+      const deleteButtons = screen.getAllByRole('button', { name: /Delete/ });
+      expect(deleteButtons.length).toBeGreaterThan(0);
+    });
   });
 
   it('createDocument calls client.documents.create and refreshes the list', async () => {
@@ -276,28 +260,3 @@ describe('useCSSPlugin auto-wires document create/delete from context', () => {
   });
 });
 
-// =============================================================================
-// Utility: walk a React element tree
-// =============================================================================
-
-function findInTree(
-  node: React.ReactElement | null | undefined,
-  predicate: (node: React.ReactElement) => boolean,
-): React.ReactElement | null {
-  if (!node || typeof node !== 'object') return null;
-  if (predicate(node)) return node;
-
-  const children = node.props?.children;
-  if (!children) return null;
-
-  if (Array.isArray(children)) {
-    for (const child of children) {
-      const found = findInTree(child, predicate);
-      if (found) return found;
-    }
-  } else if (typeof children === 'object') {
-    return findInTree(children, predicate);
-  }
-
-  return null;
-}

@@ -376,6 +376,18 @@ export interface CSSPuckContextValue {
    */
   documentsLoading: boolean;
 
+  /**
+   * Create a new document on the current branch.
+   * Creates the document and an initial empty version, then refreshes the document list.
+   */
+  createDocument: (path: string) => Promise<void>;
+
+  /**
+   * Delete a document on the current branch.
+   * Deletes the document and refreshes the document list.
+   */
+  deleteDocument: (documentId: string, path: string) => Promise<void>;
+
   // =========================================================================
   // Presence Values (Phase 9)
   // =========================================================================

@@ -379,7 +379,36 @@ function CSSPuckProviderInner({
   const {
     documents: branchDocuments,
     loading: documentsLoading,
+    create: createDocumentRaw,
+    remove: removeDocumentRaw,
   } = useDocuments({ client: userClient, siteId, branchId });
+
+  // Stable document create/delete callbacks
+  const branchIdRef = useRef(branchId);
+  branchIdRef.current = branchId;
+  const createDocumentRawRef = useRef(createDocumentRaw);
+  createDocumentRawRef.current = createDocumentRaw;
+  const stableCreateDocument = useCallback(
+    async (path: string): Promise<void> => {
+      if (!branchIdRef.current) {
+        throw new Error('Cannot create document: no branch selected');
+      }
+      await createDocumentRawRef.current(path);
+    },
+    []
+  );
+
+  const removeDocumentRawRef = useRef(removeDocumentRaw);
+  removeDocumentRawRef.current = removeDocumentRaw;
+  const stableDeleteDocument = useCallback(
+    async (documentId: string, _path: string): Promise<void> => {
+      if (!branchIdRef.current) {
+        throw new Error('Cannot delete document: no branch selected');
+      }
+      await removeDocumentRawRef.current(documentId);
+    },
+    []
+  );
 
   // Load branches
   const refreshBranches = useCallback(async () => {
@@ -1452,6 +1481,8 @@ function CSSPuckProviderInner({
       // Documents (Item 8)
       documents: branchDocuments,
       documentsLoading,
+      createDocument: stableCreateDocument,
+      deleteDocument: stableDeleteDocument,
       branches,
       currentBranch,
       refreshBranches,
@@ -1505,6 +1536,8 @@ function CSSPuckProviderInner({
       safeData,
       branchDocuments,
       documentsLoading,
+      stableCreateDocument,
+      stableDeleteDocument,
       branches,
       currentBranch,
       refreshBranches,
