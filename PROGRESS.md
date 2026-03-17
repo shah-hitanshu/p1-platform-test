@@ -1297,6 +1297,19 @@ Fixed tombstoned/deleted documents appearing in the Puck editor's document list 
 
 **Files changed:** 1 source file (`CSSPlugin.tsx`), 1 test file, 922/922 tests passing
 
+### Document Create/Delete Button Regression Fix (2026-03-17) ✅
+
+Restored the document creation (+) and deletion (×) buttons in the CSS plugin panel. The buttons were silently lost because `useDocuments` had `create`/`remove` methods but they were never exposed on `CSSPuckContextValue`, so `useCSSPlugin` couldn't wire them to the plugin panel.
+
+- Added `createDocument` and `deleteDocument` to `CSSPuckContextValue` type
+- Exposed stable callbacks from `CSSPuckProvider` using the existing ref-based pattern
+- Auto-wired in `useCSSPlugin` with `??` fallback from context (consumers can still override)
+- Added `branchId` guards to prevent operations when no branch is selected
+- Delete button retains `window.confirm` confirmation step
+- 17 regression tests (11 UI-level, 6 integration-level), 939/939 tests passing
+
+**Files changed:** 3 source files (`types.ts`, `CSSPuckProvider.tsx`, `useCSSPlugin.ts`), 2 test files
+
 ## Remaining Work
 
 ### Future
