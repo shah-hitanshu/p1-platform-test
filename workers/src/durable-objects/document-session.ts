@@ -623,7 +623,41 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     // Restore persisted edit sessions from DO storage
     await this.restoreEditSessions();
 
+    // Clean up orphaned presence records (agents marked as editing with no matching session)
+    await this.cleanupOrphanedPresence();
+
     this.metadataInitialized = true;
+  }
+
+  /**
+   * Clean up orphaned presence records during initialization.
+   * Removes agent presence entries in "editing" state that have no matching edit session.
+   * This handles cases where a session was removed but the presence record was not cleaned up.
+   */
+  private async cleanupOrphanedPresence(): Promise<void> {
+    try {
+      const allPresences = this.presenceManager.getAll();
+      let orphanedCount = 0;
+
+      for (const presence of allPresences) {
+        if (presence.actorType === 'agent' && presence.state === 'editing') {
+          const hasMatchingSession = Array.from(this.editSessions.values()).some(
+            (session) => session.agentId === presence.actorId,
+          );
+          if (!hasMatchingSession) {
+            this.presenceManager.unregisterByActorId(presence.actorId);
+            orphanedCount++;
+          }
+        }
+      }
+
+      if (orphanedCount > 0) {
+        await this.persistPresence();
+        console.log(`Cleaned up ${String(orphanedCount)} orphaned agent presence record(s)`);
+      }
+    } catch (error) {
+      console.warn('Failed to clean up orphaned presence:', error);
+    }
   }
 
   /**
@@ -2611,9 +2645,10 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     // Run cleanup
     const cleanupStats = this.runCleanup();
 
-    // Persist edit sessions if any were cleared during cleanup
+    // Persist edit sessions and presence if any were cleared during cleanup
     if (cleanupStats.sessionsCleared > 0) {
       await this.persistEditSessions();
+      await this.persistPresence();
     }
 
     // Record metrics if enabled
@@ -2717,8 +2752,15 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     for (const [id, session] of this.editSessions.entries()) {
       if (now - session.startedAt > MAX_EDIT_SESSION_AGE_MS) {
         this.editSessions.delete(id);
+        this.presenceManager.unregisterByActorId(session.agentId);
+        this.pushPresenceUpdate('leave', session.agentId);
         sessionsCleared++;
       }
+    }
+
+    // Notify connected WebSocket clients of agent departures from orphaned sessions
+    if (sessionsCleared > 0) {
+      this.broadcastPresenceUpdate();
     }
 
     // Log cleanup for debugging (only when something was cleared)

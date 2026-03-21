@@ -1495,3 +1495,344 @@ describe('Phase 4.6: Agent /apply Session Enforcement', () => {
     });
   });
 });
+
+// =============================================================================
+// Phase A: Orphaned Session Cleanup Tests
+//
+// These tests verify that when agent edit sessions expire (>MAX_EDIT_SESSION_AGE_MS),
+// the corresponding agent presence records are also cleaned up, and that presence
+// is properly persisted and validated on DO restore.
+//
+// The key bug scenario: an agent's presence has RECENT activity (not stale) but
+// the session has been running for >10 minutes. clearStale() won't clear the
+// presence (it's fresh), but the session should be deleted AND the presence
+// should be unregistered.
+// =============================================================================
+
+describe('Phase A: Orphaned Session Cleanup', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.resetModules();
+  });
+
+  describe('runCleanup should clear presence for expired sessions', () => {
+    it('should unregister agent presence when orphaned edit session is cleaned up even if presence is fresh', async () => {
+      // Use fake timers from the start so we can control time precisely
+      vi.useFakeTimers();
+      const baseTime = Date.now();
+
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      // Start an edit session at time T (registers presence with lastActivityAt=T)
+      const startResponse = await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'agent-orphan-test',
+            trigger: 'human_requested',
+            intent: 'Test orphaned session cleanup',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+
+      expect(startResponse.status).toBe(200);
+
+      // Verify presence is registered
+      let presenceResponse = await session.fetch(
+        new Request('http://localhost/presences'),
+      );
+      let presenceBody = (await presenceResponse.json()) as { presences: Array<{ actorId: string }> };
+      expect(presenceBody.presences.find(
+        (p) => p.actorId === 'agent-orphan-test',
+      )).toBeDefined();
+
+      // Verify edit session exists
+      let sessionsResponse = await session.fetch(
+        new Request('http://localhost/edit-sessions'),
+      );
+      let sessionsBody = (await sessionsResponse.json()) as { sessions: unknown[] };
+      expect(sessionsBody.sessions.length).toBe(1);
+
+      // Advance time to T+550s (session not yet expired, presence not stale)
+      vi.setSystemTime(baseTime + 550_000);
+
+      // Simulate agent activity to keep presence fresh (apply an edit)
+      await session.fetch(
+        new Request('http://localhost/apply', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Actor-Type': 'agent',
+          },
+          body: JSON.stringify({
+            actorId: 'agent-orphan-test',
+            editSessionId: ((await startResponse.clone().json()) as { editSessionId: string }).editSessionId,
+            operations: [
+              { type: 'set', path: 'root.title', value: 'Still active' },
+            ],
+          }),
+        }),
+      );
+
+      // Now advance to T+601s: session expired (>600s), but presence is fresh
+      // (lastActivityAt was updated at T+550s, so only 51s stale, well under 120s threshold)
+      vi.setSystemTime(baseTime + 601_000);
+
+      // Trigger alarm (which calls runCleanup)
+      await session.alarm();
+
+      // Verify edit session is cleaned up
+      sessionsResponse = await session.fetch(
+        new Request('http://localhost/edit-sessions'),
+      );
+      sessionsBody = (await sessionsResponse.json()) as { sessions: unknown[] };
+      expect(sessionsBody.sessions.length).toBe(0);
+
+      // Verify agent presence is ALSO cleaned up even though it was "fresh"
+      // This is the core bug: without the fix, clearStale() won't clear this
+      // because lastActivityAt is recent, but the session has expired
+      presenceResponse = await session.fetch(
+        new Request('http://localhost/presences'),
+      );
+      presenceBody = (await presenceResponse.json()) as { presences: Array<{ actorId: string }> };
+      const orphanedPresence = presenceBody.presences.find(
+        (p) => p.actorId === 'agent-orphan-test',
+      );
+      expect(orphanedPresence).toBeUndefined();
+
+      vi.useRealTimers();
+    });
+
+    it('should clean up multiple orphaned sessions and their fresh presence records', async () => {
+      vi.useFakeTimers();
+      const baseTime = Date.now();
+
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      // Start two edit sessions from different agents
+      const start1 = await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'agent-orphan-1',
+            trigger: 'human_requested',
+            intent: 'First orphan',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+      const start1Body = (await start1.json()) as { editSessionId: string };
+
+      const start2 = await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'agent-orphan-2',
+            trigger: 'human_requested',
+            intent: 'Second orphan',
+            targetRegions: ['/content/1'],
+          }),
+        }),
+      );
+      const start2Body = (await start2.json()) as { editSessionId: string };
+
+      // Verify both are present
+      let presenceResponse = await session.fetch(
+        new Request('http://localhost/presences'),
+      );
+      let presenceBody = (await presenceResponse.json()) as { presences: Array<{ actorId: string }> };
+      expect(presenceBody.presences.length).toBe(2);
+
+      // Advance to T+550s and make both agents active (fresh presence)
+      vi.setSystemTime(baseTime + 550_000);
+
+      await session.fetch(
+        new Request('http://localhost/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Actor-Type': 'agent' },
+          body: JSON.stringify({
+            actorId: 'agent-orphan-1',
+            editSessionId: start1Body.editSessionId,
+            operations: [{ type: 'set', path: 'root.title', value: 'Active 1' }],
+          }),
+        }),
+      );
+
+      await session.fetch(
+        new Request('http://localhost/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Actor-Type': 'agent' },
+          body: JSON.stringify({
+            actorId: 'agent-orphan-2',
+            editSessionId: start2Body.editSessionId,
+            operations: [{ type: 'set', path: 'root.body', value: 'Active 2' }],
+          }),
+        }),
+      );
+
+      // Advance past session expiry (T+601s) - presence still fresh (51s since activity)
+      vi.setSystemTime(baseTime + 601_000);
+
+      await session.alarm();
+
+      // Both presences should be cleaned up along with their sessions
+      presenceResponse = await session.fetch(
+        new Request('http://localhost/presences'),
+      );
+      presenceBody = (await presenceResponse.json()) as { presences: Array<{ actorId: string }> };
+      expect(presenceBody.presences.length).toBe(0);
+
+      vi.useRealTimers();
+    });
+
+    it('should persist presence state after orphaned session cleanup', async () => {
+      vi.useFakeTimers();
+      const baseTime = Date.now();
+
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      // Start an edit session
+      const startResp = await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'agent-persist-test',
+            trigger: 'human_requested',
+            intent: 'Test presence persistence after cleanup',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+      const startBody = (await startResp.json()) as { editSessionId: string };
+
+      // Keep presence fresh with activity at T+550s
+      vi.setSystemTime(baseTime + 550_000);
+
+      await session.fetch(
+        new Request('http://localhost/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Actor-Type': 'agent' },
+          body: JSON.stringify({
+            actorId: 'agent-persist-test',
+            editSessionId: startBody.editSessionId,
+            operations: [{ type: 'set', path: 'root.title', value: 'Active' }],
+          }),
+        }),
+      );
+
+      // Clear mock call history so we only see calls from alarm()
+      state.storage.put.mockClear();
+
+      // Expire the session
+      vi.setSystemTime(baseTime + 601_000);
+      await session.alarm();
+
+      vi.useRealTimers();
+
+      // Verify presence state was persisted to storage after orphaned session cleanup
+      const putCalls = state.storage.put.mock.calls;
+      const presencePersistCall = putCalls.find(
+        (call) => call[0] === 'presenceState',
+      );
+      expect(presencePersistCall).toBeDefined();
+    });
+  });
+
+  describe('session/presence consistency on restore', () => {
+    it('should clean up agent presence that has no matching edit session after restore', async () => {
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const now = Date.now();
+
+      // Pre-populate storage with an expired session AND its presence
+      // The session is >600s old so it won't be restored, but the presence
+      // has a recent lastActivityAt (from just before the DO was evicted)
+      const state = createMockState();
+      state.storage.get.mockImplementation(async (key: string) => {
+        if (key === 'editSessions') {
+          return JSON.stringify({
+            'expired-session-1': {
+              id: 'expired-session-1',
+              agentId: 'agent-expired',
+              trigger: 'human_requested',
+              intent: 'Expired session',
+              targetRegions: ['/content/0'],
+              startedAt: now - 700_000, // 700s ago - expired
+            },
+          });
+        }
+        if (key === 'presenceState') {
+          // Presence was recently active (30s ago) - won't be cleared by clearStale
+          return {
+            presences: [
+              {
+                id: 'presence-expired',
+                actorId: 'agent-expired',
+                actorType: 'agent',
+                role: 'agent',
+                name: 'Expired Agent',
+                state: 'editing',
+                lastActivityAt: new Date(now - 30_000).toISOString(),
+                joinedAt: new Date(now - 700_000).toISOString(),
+              },
+            ],
+            actorIdIndex: {
+              'agent-expired': 'presence-expired',
+            },
+          };
+        }
+        return undefined;
+      });
+
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      // Trigger initialization
+      await session.fetch(new Request('http://localhost/presences'));
+
+      // The expired session should NOT be restored
+      const sessionsResponse = await session.fetch(
+        new Request('http://localhost/edit-sessions'),
+      );
+      const sessionsBody = (await sessionsResponse.json()) as { sessions: unknown[] };
+      expect(sessionsBody.sessions.length).toBe(0);
+
+      // After alarm, the orphaned presence (has no matching session) should be cleaned
+      await session.alarm();
+
+      const postAlarmPresence = await session.fetch(
+        new Request('http://localhost/presences'),
+      );
+      const postAlarmBody = (await postAlarmPresence.json()) as { presences: Array<{ actorId: string }> };
+      const expiredPresence = postAlarmBody.presences.find(
+        (p) => p.actorId === 'agent-expired',
+      );
+      expect(expiredPresence).toBeUndefined();
+    });
+  });
+});

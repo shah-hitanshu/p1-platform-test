@@ -3460,6 +3460,16 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - [x] Files changed: `content-api.ts`, `frontend/src/api/documents.ts`, `frontend/src/pages/DocumentPage.tsx`
 - [x] Commit: `abaf242`
 
+#### Bug Fix: Agent presence not cleaned up when edit sessions expire (ghost presence)
+- [x] **Root cause:** `runCleanup()` deleted orphaned edit sessions (>10 min) but did not unregister the agent's presence record. If the MCP server crashed or disconnected without calling `complete_edit_session` or `abort_edit_session`, the agent appeared as permanently editing on the frontend
+- [x] **Impact:** Ghost agent presence records persisted indefinitely, showing agents as "editing" in the frontend presence view even after sessions expired
+- [x] **Fix 1:** `runCleanup()` now calls `presenceManager.unregisterByActorId()` and `broadcastPresenceUpdate()` when deleting expired sessions, matching the pattern used by agent-edit-complete and agent-edit-abort
+- [x] **Fix 2:** `alarm()` handler now persists presence state to DO storage after orphaned session cleanup
+- [x] **Fix 3:** New `cleanupOrphanedPresence()` method runs during DO initialization after restore, removing agent presence records in "editing" state that have no matching edit session (handles DO eviction/restart scenarios)
+- [x] Files changed: `workers/src/durable-objects/document-session.ts`
+- [x] Test commit: `5c215b9`, Implementation commit: `916cf3e`
+- [x] Tests: 4 new tests (44 total in agent-politeness suite), 2511 backend tests passing
+
 #### Remaining
 - [ ] UX confirmation prompt in puck-css-integration before publish (separate project)
 - [ ] Hide tombstoned documents in Puck editor ([puck-css-integration#17](https://github.com/pantheon-systems/puck-css-integration/issues/17))
