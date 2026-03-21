@@ -24,7 +24,7 @@ The existing `site-api-token-service.ts` does not update `last_used_at` on valid
 
 Site token revocation is scoped by `siteId` because tokens belong to sites. Agent key revocation is scoped by `agentId` because keys belong to agents. The `revokeKey(keyId, agentId)` signature ensures a key can only be revoked through its owning agent, preventing cross-agent revocation.
 
-### 4. `listKeys` returns both active and revoked keys
+### 4. `listKeys` returns only active (non-revoked) keys
 
 Following the pattern from `site-api-token-service.ts`, `listKeys` only returns active (non-revoked) keys by default. This is the expected behavior for admin UIs showing manageable keys.
 
