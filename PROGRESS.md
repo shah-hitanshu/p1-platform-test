@@ -3470,7 +3470,57 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - [x] Test commit: `5c215b9`, Implementation commit: `916cf3e`
 - [x] Tests: 4 new tests (44 total in agent-politeness suite), 2511 backend tests passing
 
-#### Remaining
+### Phase B: MCP Server Auth Hardening — Agent API Keys
+
+**Status:** In Progress (B1-B5 complete, B5b and B6-B8 remaining)
+
+#### B1 — Migration 027: agent_api_keys table
+- [x] Migration `027_agent_api_keys` creates `agent_api_keys` table with `id`, `agent_id`, `key_hash`, `key_prefix`, `label`, `created_by`, `created_at`, `revoked_at`
+- [x] Indexes on `key_hash` (unique), `agent_id`, `created_by`
+- [x] Merged via PR
+
+#### B2 — Agent API Key Service
+- [x] `workers/src/services/agent-api-key-service.ts` with `generateKey`, `validateKey`, `listKeys`, `revokeKey`
+- [x] SHA-256 hashing for key storage, `aak_` prefix for key format
+- [x] 26 unit tests in `workers/tests/services/agent-api-key-service.spec.ts`
+- [x] Merged via PR
+- [x] Test commit: `de33c18`, Implementation commit: `c6286bc`
+
+#### B3 — AgentApiKeyProvider (IdentityProvider)
+- [x] `workers/src/auth/agent-api-key-provider.ts` — authenticates `aak_` prefixed keys via `validateKey`
+- [x] `canVerifyToken()` returns false (not JWTs), `validateToken()` returns null
+- [x] `validateAgentKey()` delegates to agent-api-key-service, returns principal with `type: 'agent'`, `authProvider: 'agent_key'`
+- [x] Added `'agent_key'` to `AuthProvider` union type in `workers/src/types.ts`
+- [x] 19 unit tests in `workers/tests/auth/agent-api-key-provider.spec.ts`
+- [x] Built via trycycle (2 plan-editor rounds, 1 review round)
+- [x] Test commit: `e7ab6ba`, Implementation commit: `99480ae`
+
+#### B4 — Wire AgentApiKeyProvider into MultiProvider + Auth Barrel
+- [x] Added `AgentApiKeyProvider` import and registration in `getIdentityProvider()` in `workers/src/index.ts`
+- [x] Added `AgentApiKeyProvider` re-export from `workers/src/auth/index.ts`
+- [x] `authenticate()` already routed non-`sat_` X-API-Key values to `validateAgentKey()` — no changes needed
+- [x] 4 routing tests in `workers/tests/auth/aak-key-routing.spec.ts` (header, query param, invalid, barrel export)
+- [x] Test commit: `56c7ce8`, Implementation commit: `0f2cbcb`
+
+#### B5 — Agent Key Management API Endpoints
+- [x] `workers/src/routes/agent-key-api.ts` — REST API for agent key CRUD
+- [x] POST `/api/agents/:agentId/keys` — generate key (user-only)
+- [x] GET `/api/agents/:agentId/keys` — list keys (user-only)
+- [x] DELETE `/api/agents/:agentId/keys/:keyId` — revoke key (user-only)
+- [x] Only `user` principals can manage keys (agents/service principals get 403)
+- [x] Route wired into `workers/src/index.ts` with regex pattern
+- [x] 10 unit tests in `workers/tests/routes/agent-key-api.spec.ts`
+- [x] Test commit: `dc2361e`, Implementation commit: `7ca304b`
+
+**Tests:** 2594 backend tests passing after B1-B5
+
+#### Remaining (Phase B)
+- [ ] B5b: Agent site role management API (assign/revoke agent roles on sites)
+- [ ] B6: MCP server auth integration (use agent keys for MCP tool calls)
+- [ ] B7: Frontend agent management UI
+- [ ] B8: End-to-end integration tests
+
+#### Remaining (Other)
 - [ ] UX confirmation prompt in puck-css-integration before publish (separate project)
 - [ ] Hide tombstoned documents in Puck editor ([puck-css-integration#17](https://github.com/pantheon-systems/puck-css-integration/issues/17))
 - [ ] Phase 7: Publish-propagation foundation (future)
