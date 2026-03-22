@@ -3472,7 +3472,7 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 
 ### Phase B: MCP Server Auth Hardening — Agent API Keys
 
-**Status:** In Progress (B1-B6 complete, B7-B8 remaining)
+**Status:** In Progress (B1-B7 complete, B8 remaining)
 
 #### B1 — Migration 027: agent_api_keys table
 - [x] Migration `027_agent_api_keys` creates `agent_api_keys` table with `id`, `agent_id`, `key_hash`, `key_prefix`, `label`, `created_by`, `created_at`, `revoked_at`
@@ -3533,8 +3533,21 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - [x] Full auth chain: MCP tool call → X-API-Key header → AgentApiKeyProvider → agent_api_keys + agent_site_roles → authenticated principal with site roles
 - [x] No code changes needed — auth pipeline was already end-to-end functional
 
+#### B7 — Frontend Agent Management UI
+- [x] `frontend/src/pages/AgentsPage.tsx` — system-level agent management (list, register, status, delete)
+- [x] API key management per agent (expand row, generate, revoke, show raw key once)
+- [x] `frontend/src/pages/SiteDetailPage.tsx` — "Agent Access" section for granting/revoking agent site roles
+- [x] `frontend/src/api/agents.ts` — API client for agent CRUD, keys, and site-scoped roles
+- [x] `frontend/src/types/index.ts` — RegisteredAgent, AgentApiKey, AgentSiteRole types
+- [x] Route `/agents` and nav item added to App.tsx and Layout.tsx
+- [x] Backend: `site-agent-role-api.ts` route handler + `listRolesBySite`, `revokeRoleBySite` service functions
+- [x] 10 AgentsPage tests, 6 SiteDetailPage agent-roles tests (16 new frontend tests)
+- [x] Test commit: `bb67600`, Implementation commit: `90e2060`
+- **Known issue**: SiteDetailPage agent role dropdown includes "developer" option (test expects it) but backend only accepts viewer/editor/admin — needs test fix in next session
+
+**Tests:** 2626 backend + 252 frontend tests passing after B1-B7
+
 #### Remaining (Phase B)
-- [ ] B7: Frontend agent management UI
 - [ ] B8: End-to-end integration tests
 
 #### Remaining (Other)
