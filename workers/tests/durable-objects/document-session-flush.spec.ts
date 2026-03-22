@@ -150,8 +150,8 @@ describe('DocumentSession /flush endpoint', () => {
     });
   });
 
-  describe('no-op when state unchanged', () => {
-    it('should return flushed: false when no edits have been made', async () => {
+  describe('flush always syncs', () => {
+    it('should return flushed: true even when no edits have been made', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const session = new DocumentSession(createMockState() as unknown, createFlushEnv());
 
@@ -160,8 +160,7 @@ describe('DocumentSession /flush endpoint', () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.flushed).toBe(false);
-      expect(data.reason).toBe('no_changes');
+      expect(data.flushed).toBe(true);
     });
   });
 
@@ -345,12 +344,11 @@ describe('DocumentSession /flush endpoint', () => {
       const data1 = await response1.json();
       expect(data1.flushed).toBe(true);
 
-      // Second flush — no new edits, should be no-op
+      // Second flush — no new edits, but flush always syncs (by design)
       const flush2 = new Request('http://localhost/flush', { method: 'POST' });
       const response2 = await session.fetch(flush2);
       const data2 = await response2.json();
-      expect(data2.flushed).toBe(false);
-      expect(data2.reason).toBe('no_changes');
+      expect(data2.flushed).toBe(true);
     });
   });
 });
