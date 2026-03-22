@@ -69,6 +69,9 @@ describe('B8: Agent Auth Flow - End-to-End Integration', () => {
   let testOrgId: string;
   let testSiteId: string;
   let testAgentId: string;
+  let rawKey: string;
+  let keyId: string;
+  let roleId: string;
 
   beforeAll(async () => {
     const { connection, sql: pgSql } = createRealDatabaseConnection(CONNECTION_STRING);
@@ -137,10 +140,8 @@ describe('B8: Agent Auth Flow - End-to-End Integration', () => {
     expect(result.metadata.agentId).toBe(testAgentId);
     expect(result.metadata.revokedAt).toBeNull();
 
-    // Store the raw key for later authentication steps
-    // We use a describe-level variable to pass between ordered tests
-    (globalThis as Record<string, unknown>).__e2eAgentKey = result.key;
-    (globalThis as Record<string, unknown>).__e2eKeyId = result.metadata.id;
+    rawKey = result.key;
+    keyId = result.metadata.id;
   });
 
   it('Step 3: Grant the agent an editor role on the test site', async () => {
@@ -157,11 +158,10 @@ describe('B8: Agent Auth Flow - End-to-End Integration', () => {
     expect(role.role).toBe('editor');
     expect(role.revokedAt).toBeNull();
 
-    (globalThis as Record<string, unknown>).__e2eRoleId = role.id;
+    roleId = role.id;
   });
 
   it('Step 4: Authenticate with the agent key and verify pantheonSiteRoles', async () => {
-    const rawKey = (globalThis as Record<string, unknown>).__e2eAgentKey as string;
     expect(rawKey).toBeDefined();
 
     // Use the AgentApiKeyProvider to authenticate
@@ -180,8 +180,8 @@ describe('B8: Agent Auth Flow - End-to-End Integration', () => {
   });
 
   it('Step 5: Revoke the key and verify auth fails', async () => {
-    const rawKey = (globalThis as Record<string, unknown>).__e2eAgentKey as string;
-    const keyId = (globalThis as Record<string, unknown>).__e2eKeyId as string;
+    expect(rawKey).toBeDefined();
+    expect(keyId).toBeDefined();
 
     // Revoke the key
     const revoked = await revokeKey(keyId, testAgentId);
@@ -198,7 +198,7 @@ describe('B8: Agent Auth Flow - End-to-End Integration', () => {
   });
 
   it('Step 6: Revoke the site role and verify the agent no longer has it', async () => {
-    const roleId = (globalThis as Record<string, unknown>).__e2eRoleId as string;
+    expect(roleId).toBeDefined();
 
     // Revoke the role
     const revoked = await revokeRole(roleId, testAgentId);

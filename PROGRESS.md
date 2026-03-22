@@ -3472,7 +3472,7 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 
 ### Phase B: MCP Server Auth Hardening — Agent API Keys
 
-**Status:** In Progress (B1-B7 complete, B8 remaining)
+**Status:** Complete
 
 #### B1 — Migration 027: agent_api_keys table
 - [x] Migration `027_agent_api_keys` creates `agent_api_keys` table with `id`, `agent_id`, `key_hash`, `key_prefix`, `label`, `created_by`, `created_at`, `revoked_at`
@@ -3543,12 +3543,21 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 - [x] Backend: `site-agent-role-api.ts` route handler + `listRolesBySite`, `revokeRoleBySite` service functions
 - [x] 10 AgentsPage tests, 6 SiteDetailPage agent-roles tests (16 new frontend tests)
 - [x] Test commit: `bb67600`, Implementation commit: `90e2060`
-- **Known issue**: SiteDetailPage agent role dropdown includes "developer" option (test expects it) but backend only accepts viewer/editor/admin — needs test fix in next session
+- Fixed: removed "developer" role from dropdown (only viewer/editor/admin), updated test to use "editor"
 
 **Tests:** 2626 backend + 252 frontend tests passing after B1-B7
 
-#### Remaining (Phase B)
-- [ ] B8: End-to-end integration tests
+#### B8 — End-to-End Integration Tests
+- [x] `workers/tests/integration/agent-auth-flow.integration.spec.ts` — 7 integration tests against real PostgreSQL
+- [x] Full auth lifecycle: register agent → generate key → grant role → authenticate → verify pantheonSiteRoles → revoke key → verify auth fails → revoke role → verify mapping cleared
+- [x] Bonus test: CASCADE delete of keys/roles when agent is deleted
+- [x] Applied pending migration 028 (agent_site_roles table)
+- [x] Bug fix: removed invalid "developer" role from SiteDetailPage dropdown and test (commit `5bb3103`)
+- [x] Test commit: `733b194`
+
+**Tests:** 2626 backend + 252 frontend + 7 integration tests passing after B1-B8
+
+**Phase B is complete.** All agent API key auth hardening work is done.
 
 #### Remaining (Other)
 - [ ] UX confirmation prompt in puck-css-integration before publish (separate project)
