@@ -16,6 +16,12 @@ import {
 } from '../api/collaborators';
 import type { AddCollaboratorParams } from '../api/collaborators';
 import {
+  listSiteAgentRoles,
+  grantSiteAgentRole,
+  revokeSiteAgentRole,
+  listAgents,
+} from '../api/agents';
+import {
   listSiteTokens,
   generateSiteToken as generateSiteTokenApi,
   revokeSiteToken as revokeSiteTokenApi,
@@ -28,7 +34,7 @@ import { ApiResponse } from '../components/ApiResponse';
 import { CacheSettings } from '../components/CacheSettings';
 import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import { ScopeSelector } from '../components/ScopeSelector';
-import type { Site, Branch, Collaborator, SystemUser, SiteApiToken } from '../types';
+import type { Site, Branch, Collaborator, SystemUser, SiteApiToken, AgentSiteRole, RegisteredAgent } from '../types';
 import {
   Button,
   RouterLinkButton,
@@ -76,6 +82,21 @@ export function SiteDetailPage() {
   const [selectedCollaboratorRole, setSelectedCollaboratorRole] = useState('developer');
   const [collaboratorToRemove, setCollaboratorToRemove] = useState<Collaborator | null>(null);
 
+  // Agent access state
+  const { data: agentRoles, execute: fetchAgentRoles } =
+    useApi<AgentSiteRole[], [string]>(listSiteAgentRoles);
+  const { data: allAgents, execute: fetchAllAgents } =
+    useApi<RegisteredAgent[], []>(listAgents);
+  const { execute: grantRoleRequest, isLoading: isGranting, error: grantError } =
+    useApi<AgentSiteRole, [string, { agentId: string; role: string }]>(grantSiteAgentRole);
+  const { execute: revokeRoleRequest, isLoading: isRevoking, error: revokeRoleError } =
+    useApi<void, [string, string]>(revokeSiteAgentRole);
+
+  const [showGrantForm, setShowGrantForm] = useState(false);
+  const [selectedAgentId, setSelectedAgentId] = useState('');
+  const [selectedAgentRole, setSelectedAgentRole] = useState('editor');
+  const [roleToRevoke, setRoleToRevoke] = useState<AgentSiteRole | null>(null);
+
   // Token state
   const { data: tokens, isLoading: tokensLoading, error: tokensError, execute: fetchTokens } =
     useApi<SiteApiToken[], [string]>(listSiteTokens);
@@ -103,10 +124,12 @@ export function SiteDetailPage() {
       fetchBranches(siteId);
       fetchCollaborators(siteId);
       fetchSystemUsers();
+      fetchAgentRoles(siteId);
+      fetchAllAgents();
       fetchTokens(siteId);
       fetchSettings(siteId);
     }
-  }, [siteId, fetchSite, fetchBranches, fetchCollaborators, fetchSystemUsers, fetchTokens, fetchSettings]);
+  }, [siteId, fetchSite, fetchBranches, fetchCollaborators, fetchSystemUsers, fetchAgentRoles, fetchAllAgents, fetchTokens, fetchSettings]);
 
   const handleCreateBranch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -167,6 +190,32 @@ export function SiteDetailPage() {
     if (result !== null) {
       setCollaboratorToRemove(null);
       fetchCollaborators(siteId);
+    }
+  };
+
+  const handleGrantAgentRole = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAgentId || !siteId) return;
+
+    const result = await grantRoleRequest(siteId, {
+      agentId: selectedAgentId,
+      role: selectedAgentRole,
+    });
+    if (result) {
+      setSelectedAgentId('');
+      setSelectedAgentRole('editor');
+      setShowGrantForm(false);
+      fetchAgentRoles(siteId);
+    }
+  };
+
+  const handleRevokeAgentRole = async () => {
+    if (!roleToRevoke || !siteId) return;
+
+    const result = await revokeRoleRequest(siteId, roleToRevoke.id);
+    if (result !== null) {
+      setRoleToRevoke(null);
+      fetchAgentRoles(siteId);
     }
   };
 
@@ -569,6 +618,115 @@ export function SiteDetailPage() {
         )}
       </section>
 
+      {/* Agent Access Section */}
+      <section className="agent-access-section" data-testid="agent-access-section">
+        <div className="section-header">
+          <h2 className="section-title">Agent Access</h2>
+          <Button
+            type={showGrantForm ? 'secondary' : 'primary'}
+            onClick={() => setShowGrantForm(!showGrantForm)}
+            data-testid="grant-agent-btn"
+          >
+            {showGrantForm ? 'Cancel' : '+ Grant access'}
+          </Button>
+        </div>
+
+        {showGrantForm && (
+          <div className="create-form-container" data-testid="grant-agent-form">
+            <form onSubmit={handleGrantAgentRole} className="create-form">
+              <div className="form-fields">
+                <select
+                  value={selectedAgentId}
+                  onChange={(e) => setSelectedAgentId(e.target.value)}
+                  className="pds-select"
+                  aria-label="Select agent"
+                  data-testid="agent-select"
+                >
+                  <option value="">Select an agent...</option>
+                  {allAgents
+                    ?.filter((agent) => !agentRoles?.some((r) => r.agentId === agent.id))
+                    .map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.name}
+                      </option>
+                    ))}
+                </select>
+                <select
+                  value={selectedAgentRole}
+                  onChange={(e) => setSelectedAgentRole(e.target.value)}
+                  className="pds-select"
+                  aria-label="Agent role"
+                  data-testid="agent-role-select"
+                >
+                  <option value="viewer">Viewer</option>
+                  <option value="editor">Editor</option>
+                  <option value="developer">Developer</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <Button
+                type="primary"
+                isSubmit
+                onClick={() => {}}
+                disabled={isGranting || !selectedAgentId}
+                isLoading={isGranting}
+                data-testid="submit-grant-btn"
+              >
+                {isGranting ? 'Granting...' : 'Grant'}
+              </Button>
+            </form>
+            {grantError && (
+              <Alert type="danger" className="create-error-alert" data-testid="grant-error">
+                {grantError}
+              </Alert>
+            )}
+          </div>
+        )}
+
+        {agentRoles && agentRoles.length > 0 ? (
+          <div className="agent-roles-table-container">
+            <table className="agent-roles-table" data-testid="agent-roles-table">
+              <thead>
+                <tr>
+                  <th>Agent</th>
+                  <th>Role</th>
+                  <th>Granted</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {agentRoles.map((role) => (
+                  <tr key={role.id} data-testid={`agent-role-row-${role.id}`}>
+                    <td className="agent-name">{role.agentName}</td>
+                    <td>
+                      <Tag type={getRoleTagType(role.role)}>
+                        {role.role}
+                      </Tag>
+                    </td>
+                    <td className="agent-role-date">
+                      {new Date(role.grantedAt).toLocaleDateString()}
+                    </td>
+                    <td className="agent-role-actions">
+                      <Button
+                        type="danger"
+                        onClick={() => setRoleToRevoke(role)}
+                        data-testid={`revoke-role-${role.id}`}
+                      >
+                        Revoke
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty-state" data-testid="agent-roles-empty">
+            <p>No agents have access to this site. Grant access to allow agents to interact with this site.</p>
+          </div>
+        )}
+      </section>
+
       {/* API Tokens Section */}
       <section className="tokens-section" data-testid="tokens-section">
         <div className="section-header">
@@ -735,6 +893,16 @@ export function SiteDetailPage() {
         onCancel={() => setTokenToRevoke(null)}
         isDeleting={isRevokingToken}
         error={revokeTokenError}
+      />
+
+      <ConfirmDeleteModal
+        isOpen={roleToRevoke !== null}
+        resourceType="agent role"
+        resourceName={roleToRevoke?.agentName ?? ''}
+        onConfirm={handleRevokeAgentRole}
+        onCancel={() => setRoleToRevoke(null)}
+        isDeleting={isRevoking}
+        error={revokeRoleError}
       />
     </div>
   );

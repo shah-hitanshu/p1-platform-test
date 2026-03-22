@@ -17,6 +17,7 @@ export function Layout() {
     { path: '/', label: 'Dashboard' },
     { path: '/sites', label: 'Sites' },
     { path: '/users', label: 'Users' },
+    { path: '/agents', label: 'Agents' },
   ];
 
   return (

@@ -93,11 +93,11 @@ export async function listAgentKeys(agentId: string): Promise<AgentApiKey[]> {
  */
 export async function generateAgentKey(
   agentId: string,
-  params: { name: string },
+  params?: { name: string },
 ): Promise<GenerateAgentKeyResult> {
   return apiPost<GenerateAgentKeyResult>(
     `/api/agents/${agentId}/keys`,
-    params,
+    params ?? { name: 'Generated key' },
   );
 }
 

@@ -1,0 +1,146 @@
+/**
+ * Agents Page Styles
+ *
+ * Follows the same pattern as UsersPage.css.
+ */
+
+.agents-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.agents-table-container {
+  background-color: var(--dt-color-white, #fff);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.agents-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.agents-table th,
+.agents-table td {
+  padding: 14px 20px;
+  text-align: left;
+}
+
+.agents-table th {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--dt-color-gray-5, #6c757d);
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.agents-table td {
+  font-size: 0.9375rem;
+  color: var(--dt-color-gray-7, #333);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
+}
+
+.agents-table tr:last-child td {
+  border-bottom: none;
+}
+
+.agents-table tr:hover td {
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+}
+
+.agent-name {
+  font-weight: 500;
+}
+
+.agent-description {
+  color: var(--dt-color-gray-5, #6c757d);
+  font-size: 0.8125rem;
+}
+
+.status-select {
+  flex: none;
+  width: auto;
+  min-width: 120px;
+  padding: 6px 8px;
+  font-size: 0.8125rem;
+}
+
+.agent-actions {
+  text-align: right;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.keys-section {
+  padding: 16px 20px;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
+}
+
+.keys-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.keys-header h4 {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--dt-color-gray-6, #495057);
+}
+
+.keys-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.keys-table th,
+.keys-table td {
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.keys-table th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--dt-color-gray-5, #6c757d);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
+}
+
+.keys-table td {
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
+}
+
+.key-prefix {
+  font-family: monospace;
+  font-size: 0.8125rem;
+}
+
+.new-key-alert {
+  margin-bottom: 12px;
+}
+
+.new-key-value {
+  font-family: monospace;
+  word-break: break-all;
+}
+
+.empty-keys {
+  color: var(--dt-color-gray-4, #adb5bd);
+  font-size: 0.875rem;
+  padding: 8px 0;
+}
+
+.empty-state-hint {
+  margin-top: 8px;
+  font-size: 0.875rem;
+  color: var(--dt-color-gray-4, #adb5bd);
+}
