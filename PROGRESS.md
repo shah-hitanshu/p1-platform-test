@@ -3472,7 +3472,7 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 
 ### Phase B: MCP Server Auth Hardening — Agent API Keys
 
-**Status:** In Progress (B1-B5 complete, B5b and B6-B8 remaining)
+**Status:** In Progress (B1-B5b complete, B6-B8 remaining)
 
 #### B1 — Migration 027: agent_api_keys table
 - [x] Migration `027_agent_api_keys` creates `agent_api_keys` table with `id`, `agent_id`, `key_hash`, `key_prefix`, `label`, `created_by`, `created_at`, `revoked_at`
@@ -3514,8 +3514,19 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 
 **Tests:** 2594 backend tests passing after B1-B5
 
+#### B5b — Agent Site Role Management API
+- [x] Migration `028_agent_site_roles` creates `agent_site_roles` table with unique partial index (one active role per agent+site)
+- [x] `workers/src/services/agent-site-role-service.ts` — `grantRole` (upsert), `revokeRole`, `listRoles`, `getRolesForAgent`
+- [x] Role→PantheonRole mapping: viewer→team_member, editor→developer, admin→admin
+- [x] `workers/src/routes/agent-role-api.ts` — POST/GET/DELETE on `/api/agents/:agentId/roles`
+- [x] Only `user` principals can manage roles (agents/service principals get 403)
+- [x] Auth integration: `AgentApiKeyProvider.validateAgentKey()` now calls `getRolesForAgent()` to populate `pantheonSiteRoles` on agent principals
+- [x] 18 service tests, 12 route tests, 2 auth integration tests (32 new tests)
+- [x] Test commit: `d7f6b66`, Implementation commit: `177b694`
+
+**Tests:** 2626 backend tests passing after B1-B5b
+
 #### Remaining (Phase B)
-- [ ] B5b: Agent site role management API (assign/revoke agent roles on sites)
 - [ ] B6: MCP server auth integration (use agent keys for MCP tool calls)
 - [ ] B7: Frontend agent management UI
 - [ ] B8: End-to-end integration tests
