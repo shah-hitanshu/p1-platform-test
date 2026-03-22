@@ -18,6 +18,7 @@ import { GoogleIdentityProvider } from './auth/google-identity-provider';
 import { Auth0IdentityProvider } from './auth/auth0-identity-provider';
 import type { AuthenticatedPrincipal, MockIdentityConfig } from './types';
 import { AuthorizationError } from './auth/authorization';
+import { AgentApiKeyProvider } from './auth/agent-api-key-provider';
 
 // Route handlers
 import { handleSiteRoutes } from './routes/site-api';
@@ -266,6 +267,9 @@ function getIdentityProvider(env: Env): MultiProviderIdentityProvider {
 
   // Site API token provider (always available — validates sat_ tokens against DB)
   providers.push(new SiteApiTokenProvider());
+
+  // Agent API key provider (always available — validates aak_ keys against DB)
+  providers.push(new AgentApiKeyProvider());
 
   return new MultiProviderIdentityProvider(providers);
 }

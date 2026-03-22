@@ -24,3 +24,7 @@ export {
   Auth0IdentityProvider,
   type Auth0IdentityProviderOptions,
 } from './auth0-identity-provider';
+
+export {
+  AgentApiKeyProvider,
+} from './agent-api-key-provider';
