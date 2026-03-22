@@ -660,7 +660,6 @@ export function SiteDetailPage() {
                 >
                   <option value="viewer">Viewer</option>
                   <option value="editor">Editor</option>
-                  <option value="developer">Developer</option>
                   <option value="admin">Admin</option>
                 </select>
               </div>

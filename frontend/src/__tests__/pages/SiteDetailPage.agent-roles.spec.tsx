@@ -130,7 +130,7 @@ describe('Agent Access Section', () => {
         agentId: 'agent-1',
         agentName: 'Deploy Bot',
         siteId: 'site-123',
-        role: 'developer',
+        role: 'editor',
         grantedAt: '2026-01-15T00:00:00Z',
       },
       {
@@ -186,7 +186,7 @@ describe('Agent Access Section', () => {
       agentId: 'agent-1',
       agentName: 'Deploy Bot',
       siteId: 'site-123',
-      role: 'developer',
+      role: 'editor',
       grantedAt: '2026-03-22T00:00:00Z',
     });
 
@@ -203,13 +203,13 @@ describe('Agent Access Section', () => {
     });
 
     await user.selectOptions(screen.getByTestId('agent-select'), 'agent-1');
-    await user.selectOptions(screen.getByTestId('agent-role-select'), 'developer');
+    await user.selectOptions(screen.getByTestId('agent-role-select'), 'editor');
     await user.click(screen.getByTestId('submit-grant-btn'));
 
     await waitFor(() => {
       expect(mockGrantSiteAgentRole).toHaveBeenCalledWith('site-123', {
         agentId: 'agent-1',
-        role: 'developer',
+        role: 'editor',
       });
     });
   });
@@ -222,7 +222,7 @@ describe('Agent Access Section', () => {
         agentId: 'agent-1',
         agentName: 'Deploy Bot',
         siteId: 'site-123',
-        role: 'developer',
+        role: 'editor',
         grantedAt: '2026-01-15T00:00:00Z',
       },
     ]);
