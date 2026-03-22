@@ -142,6 +142,45 @@ export async function listRoles(agentId: string): Promise<AgentSiteRole[]> {
 }
 
 /**
+ * List active (non-revoked) agent roles for a site.
+ * Joins with agents table to include agent name.
+ */
+export async function listRolesBySite(siteId: string): Promise<(AgentSiteRole & { agentName: string })[]> {
+  const result = await query<RoleRow & { agent_name: string }>(
+    `SELECT r.*, a.name AS agent_name
+     FROM app.agent_site_roles r
+     JOIN app.agents a ON a.id = r.agent_id
+     WHERE r.site_id = $1 AND r.revoked_at IS NULL
+     ORDER BY r.granted_at DESC`,
+    [siteId],
+  );
+
+  return result.rows.map((row) => ({
+    ...mapRowToRole(row),
+    agentName: row.agent_name,
+  }));
+}
+
+/**
+ * Revoke a site role by roleId (site-scoped, no agentId required).
+ *
+ * @returns true if revoked, false if not found
+ */
+export async function revokeRoleBySite(
+  roleId: string,
+  siteId: string,
+): Promise<boolean> {
+  const result = await query(
+    `UPDATE app.agent_site_roles
+     SET revoked_at = NOW()
+     WHERE id = $1 AND site_id = $2 AND revoked_at IS NULL`,
+    [roleId, siteId],
+  );
+
+  return (result.rowCount ?? 0) > 0;
+}
+
+/**
  * Get a mapping of site IDs to PantheonRole for an agent.
  *
  * Used for authorization: maps agent roles to Pantheon equivalents.

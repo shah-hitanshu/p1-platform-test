@@ -258,6 +258,43 @@ export interface SiteApiToken {
   revokedAt: string | null;
 }
 
+// Registered Agent types (from agent registry)
+export interface RegisteredAgent {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  capabilities: string[];
+  status: 'active' | 'suspended' | 'disabled';
+  settings: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Agent API Key types
+export interface AgentApiKey {
+  id: string;
+  agentId: string;
+  prefix: string;
+  name: string;
+  createdBy: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+}
+
+// Agent Site Role types
+export interface AgentSiteRole {
+  id: string;
+  agentId: string;
+  siteId: string;
+  role: 'viewer' | 'editor' | 'admin';
+  grantedBy: string;
+  grantedAt: string;
+  revokedAt: string | null;
+  agentName?: string;
+}
+
 // Node types
 export interface StructureNode {
   id: string;
