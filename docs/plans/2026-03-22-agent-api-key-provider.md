@@ -42,45 +42,15 @@
 
 **Justification:** Unlike site API tokens which have explicit scope grants (`read:published`, etc.), agent keys derive their permissions from site-level role assignments. Adding scopes would create a conflicting authorization model.
 
----
+### D6: TDD commit ordering -- type change bundled with implementation
 
-## Task 1: Add `'agent_key'` to the `AuthProvider` type
+**Decision:** The `AuthProvider` type change (adding `'agent_key'`) is committed together with the implementation in Task 2, not as a separate commit before tests.
 
-**Files:**
-- Modify: `workers/src/types.ts:482`
-
-**Step 1: Update the AuthProvider type union**
-
-In `workers/src/types.ts` at line 482, change:
-
-```typescript
-export type AuthProvider = 'auth0' | 'google' | 'mock' | 'site_token' | 'unknown';
-```
-
-to:
-
-```typescript
-export type AuthProvider = 'auth0' | 'google' | 'mock' | 'site_token' | 'agent_key' | 'unknown';
-```
-
-**Justification:** The `IdentityProvider.name` property is typed as `AuthProvider`. Without this addition, `readonly name = 'agent_key' as const` would be a type error. The value is inserted alphabetically before `'unknown'` to maintain the existing ordering convention (specific providers, then the fallback).
-
-**Step 2: Verify no type errors introduced**
-
-Run: `cd /Users/chris.yates/src/collaborative-state-system/workers/.worktrees/add-agent-api-key-provider && npx tsc --noEmit --pretty 2>&1 | head -20`
-Expected: No new errors (existing errors may appear but no new ones referencing `AuthProvider`)
-
-**Step 3: Commit the type change**
-
-```bash
-cd /Users/chris.yates/src/collaborative-state-system/workers/.worktrees/add-agent-api-key-provider
-git add workers/src/types.ts
-git commit -m "feat(auth): add 'agent_key' to AuthProvider type union (B3)"
-```
+**Justification:** The project's TDD workflow requires: (a) write tests, (b) verify red, (c) commit tests, (d) write implementation, (e) lint, (f) verify green. The type change is part of the implementation -- tests fail because the module doesn't exist (red state), not because of the type union. Committing the type change before tests would create a third commit that breaks the two-commit TDD cadence (tests commit, then implementation commit). This matches the workflow described in the project CLAUDE.md section 3.
 
 ---
 
-## Task 2: Write the failing test file
+## Task 1: Write the failing test file
 
 **Files:**
 - Create: `workers/tests/auth/agent-api-key-provider.spec.ts`
@@ -379,12 +349,29 @@ git commit -m "test(auth): add agent API key provider tests - red state (B3)"
 
 ---
 
-## Task 3: Implement the AgentApiKeyProvider
+## Task 2: Implement the AgentApiKeyProvider and update AuthProvider type
 
 **Files:**
+- Modify: `workers/src/types.ts:482` -- add `'agent_key'` to `AuthProvider` union
 - Create: `workers/src/auth/agent-api-key-provider.ts`
 
-**Step 1: Write the implementation**
+**Step 1: Update the AuthProvider type union**
+
+In `workers/src/types.ts` at line 482, change:
+
+```typescript
+export type AuthProvider = 'auth0' | 'google' | 'mock' | 'site_token' | 'unknown';
+```
+
+to:
+
+```typescript
+export type AuthProvider = 'auth0' | 'google' | 'mock' | 'site_token' | 'agent_key' | 'unknown';
+```
+
+**Justification:** The `IdentityProvider.name` property is typed as `AuthProvider`. Without this addition, `readonly name = 'agent_key' as const` would be a type error. The value is inserted alphabetically before `'unknown'` to maintain the existing ordering convention (specific providers, then the fallback).
+
+**Step 2: Write the implementation**
 
 Create `workers/src/auth/agent-api-key-provider.ts`:
 
@@ -461,26 +448,26 @@ export class AgentApiKeyProvider implements IdentityProvider {
 }
 ```
 
-**Step 2: Run linting**
+**Step 3: Run linting**
 
 Run: `cd /Users/chris.yates/src/collaborative-state-system/workers/.worktrees/add-agent-api-key-provider && pnpm lint`
 Expected: 0 errors, 0 warnings (or only pre-existing warnings unrelated to new files)
 
-**Step 3: Run tests to verify they pass (green state)**
+**Step 4: Run tests to verify they pass (green state)**
 
 Run: `cd /Users/chris.yates/src/collaborative-state-system/workers/.worktrees/add-agent-api-key-provider && pnpm test -- --run workers/tests/auth/agent-api-key-provider.spec.ts`
 Expected: All 15 tests PASS
 
-**Step 4: Run the full test suite to check for regressions**
+**Step 5: Run the full test suite to check for regressions**
 
 Run: `cd /Users/chris.yates/src/collaborative-state-system/workers/.worktrees/add-agent-api-key-provider && pnpm test -- --run`
 Expected: All existing tests continue to pass. The `AuthProvider` type expansion is backward-compatible since it is a union type and existing values remain valid.
 
-**Step 5: Commit the implementation**
+**Step 6: Commit the implementation**
 
 ```bash
 cd /Users/chris.yates/src/collaborative-state-system/workers/.worktrees/add-agent-api-key-provider
-git add workers/src/auth/agent-api-key-provider.ts
+git add workers/src/types.ts workers/src/auth/agent-api-key-provider.ts
 git commit -m "feat(auth): implement AgentApiKeyProvider for aak_ key authentication (B3)"
 ```
 
@@ -495,12 +482,12 @@ After all tasks are complete, verify:
 3. `workers/tests/auth/agent-api-key-provider.spec.ts` -- all tests pass
 4. `pnpm lint` -- no errors in new files
 5. `pnpm test -- --run` -- full suite passes (no regressions)
-6. Three commits on branch: type change, tests, implementation
+6. Two commits on branch: tests (red), then implementation + type change (green)
 
 ## Files Changed Summary
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `workers/src/types.ts` | Modify line 482 | Add `'agent_key'` to `AuthProvider` union |
 | `workers/tests/auth/agent-api-key-provider.spec.ts` | Create | 15 unit tests covering interface, token rejection, key validation |
+| `workers/src/types.ts` | Modify line 482 | Add `'agent_key'` to `AuthProvider` union |
 | `workers/src/auth/agent-api-key-provider.ts` | Create | `AgentApiKeyProvider` class implementing `IdentityProvider` |
