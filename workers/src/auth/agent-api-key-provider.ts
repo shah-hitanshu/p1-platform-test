@@ -12,6 +12,7 @@
 import type { AuthenticatedPrincipal } from '../types';
 import type { IdentityProvider } from './identity-provider';
 import { validateKey } from '../services/agent-api-key-service';
+import { getRolesForAgent } from '../services/agent-site-role-service';
 
 const KEY_PREFIX = 'aak_';
 
@@ -59,10 +60,13 @@ export class AgentApiKeyProvider implements IdentityProvider {
       return null;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    const pantheonSiteRoles = (await getRolesForAgent(result.agentId)) ?? {};
+
     return {
       id: result.agentId,
       type: 'agent',
-      pantheonSiteRoles: {},
+      pantheonSiteRoles,
       tokenExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       authProvider: 'agent_key',
     };
