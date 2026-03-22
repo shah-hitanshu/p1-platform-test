@@ -36,6 +36,7 @@ import { handleRealtimeRoutes } from './routes/realtime-api';
 import { handleInternalRoutes } from './routes/internal-api';
 import { handlePresenceRoutes } from './routes/presence-api';
 import { handleSiteTokenRoutes } from './routes/site-token-api';
+import { handleAgentKeyRoutes } from './routes/agent-key-api';
 import { handleSiteSettingsRoutes } from './routes/site-settings-api';
 import { handleContentRoutes } from './routes/content-api';
 
@@ -539,6 +540,7 @@ interface RouteParams {
   organizationId?: string;
   agentId?: string;
   tokenId?: string;
+  keyId?: string;
 }
 
 function parseRoute(path: string): { handler: string; params: RouteParams } | null {
@@ -1098,6 +1100,15 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
     };
   }
 
+  // Agent key routes: /api/agents/{agentId}/keys(/{keyId})
+  const agentKeyMatch = /^\/api\/agents\/([^/]+)\/keys(?:\/([^/]+))?$/.exec(normalizedPath);
+  if (agentKeyMatch) {
+    return {
+      handler: 'agent-keys',
+      params: { agentId: agentKeyMatch[1], keyId: agentKeyMatch[2] },
+    };
+  }
+
   // Agent presence: /api/organizations/{orgId}/agents/{agentId}/presence
   const agentPresenceMatch = /^\/api\/organizations\/([^/]+)\/agents\/([^/]+)\/presence$/.exec(normalizedPath);
   if (agentPresenceMatch) {
@@ -1573,6 +1584,14 @@ async function handleRequest(
           agentId: route.params.agentId,
           principal,
         }, env);
+        break;
+
+      case 'agent-keys':
+        response = await handleAgentKeyRoutes(request, {
+          agentId: route.params.agentId,
+          keyId: route.params.keyId,
+          principal,
+        });
         break;
 
       default:
