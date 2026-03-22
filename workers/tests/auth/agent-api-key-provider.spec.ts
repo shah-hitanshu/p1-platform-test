@@ -13,6 +13,11 @@ vi.mock('../../src/services/agent-api-key-service', () => ({
   validateKey: vi.fn(),
 }));
 
+// Mock the agent site role service
+vi.mock('../../src/services/agent-site-role-service', () => ({
+  getRolesForAgent: vi.fn(),
+}));
+
 describe('AgentApiKeyProvider', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -267,6 +272,56 @@ describe('AgentApiKeyProvider', () => {
 
       expect(agentKeyService.validateKey).toHaveBeenCalledWith('aak_testkey789xyz');
       expect(agentKeyService.validateKey).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ===========================================================================
+  // site role integration
+  // ===========================================================================
+
+  describe('site role integration', () => {
+    it('should populate pantheonSiteRoles from agent site roles', async () => {
+      const { AgentApiKeyProvider } = await import('../../src/auth/agent-api-key-provider');
+      const agentKeyService = await import('../../src/services/agent-api-key-service');
+      const agentSiteRoleService = await import('../../src/services/agent-site-role-service');
+      const provider = new AgentApiKeyProvider();
+
+      vi.mocked(agentKeyService.validateKey).mockResolvedValue({
+        keyId: 'key-uuid-123',
+        agentId: 'agent-uuid-456',
+      });
+
+      vi.mocked(agentSiteRoleService.getRolesForAgent).mockResolvedValue({
+        'site-uuid-1': 'developer',
+        'site-uuid-2': 'team_member',
+      });
+
+      const principal = await provider.validateAgentKey('aak_validkey123abc');
+
+      expect(principal).not.toBeNull();
+      expect(principal?.pantheonSiteRoles).toEqual({
+        'site-uuid-1': 'developer',
+        'site-uuid-2': 'team_member',
+      });
+    });
+
+    it('should return empty pantheonSiteRoles when agent has no site roles', async () => {
+      const { AgentApiKeyProvider } = await import('../../src/auth/agent-api-key-provider');
+      const agentKeyService = await import('../../src/services/agent-api-key-service');
+      const agentSiteRoleService = await import('../../src/services/agent-site-role-service');
+      const provider = new AgentApiKeyProvider();
+
+      vi.mocked(agentKeyService.validateKey).mockResolvedValue({
+        keyId: 'key-uuid-123',
+        agentId: 'agent-uuid-456',
+      });
+
+      vi.mocked(agentSiteRoleService.getRolesForAgent).mockResolvedValue({});
+
+      const principal = await provider.validateAgentKey('aak_validkey123abc');
+
+      expect(principal).not.toBeNull();
+      expect(principal?.pantheonSiteRoles).toEqual({});
     });
   });
 });
