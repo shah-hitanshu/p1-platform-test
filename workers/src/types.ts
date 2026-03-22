@@ -479,7 +479,7 @@ export interface ApprovalRequest {
 // =============================================================================
 
 /** Authentication provider that validated the token */
-export type AuthProvider = 'auth0' | 'google' | 'mock' | 'site_token' | 'unknown';
+export type AuthProvider = 'auth0' | 'google' | 'mock' | 'site_token' | 'agent_key' | 'unknown';
 
 /**
  * Pre-validated identity from Pantheon Identity Service.
