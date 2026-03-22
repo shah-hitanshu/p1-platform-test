@@ -3472,7 +3472,7 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 
 ### Phase B: MCP Server Auth Hardening — Agent API Keys
 
-**Status:** In Progress (B1-B5b complete, B6-B8 remaining)
+**Status:** In Progress (B1-B6 complete, B7-B8 remaining)
 
 #### B1 — Migration 027: agent_api_keys table
 - [x] Migration `027_agent_api_keys` creates `agent_api_keys` table with `id`, `agent_id`, `key_hash`, `key_prefix`, `label`, `created_by`, `created_at`, `revoked_at`
@@ -3526,8 +3526,14 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 
 **Tests:** 2626 backend tests passing after B1-B5b
 
+#### B6 — MCP Server Auth Integration
+- [x] Already complete — the MCP server (`examples/collaborative-state-mcp/`) sends `AGENT_API_KEY` via `X-API-Key` header on every request
+- [x] Backend routes `aak_` prefixed keys to `AgentApiKeyProvider.validateAgentKey()` (wired in B4)
+- [x] `validateAgentKey()` populates `pantheonSiteRoles` from `agent_site_roles` (wired in B5b)
+- [x] Full auth chain: MCP tool call → X-API-Key header → AgentApiKeyProvider → agent_api_keys + agent_site_roles → authenticated principal with site roles
+- [x] No code changes needed — auth pipeline was already end-to-end functional
+
 #### Remaining (Phase B)
-- [ ] B6: MCP server auth integration (use agent keys for MCP tool calls)
 - [ ] B7: Frontend agent management UI
 - [ ] B8: End-to-end integration tests
 
