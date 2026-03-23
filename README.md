@@ -14,6 +14,7 @@ A collaborative JSON state versioning system with git-like branching, real-time 
   - [Testing](#testing)
   - [Database Migrations](#database-migrations)
   - [Linting and Type Checking](#linting-and-type-checking)
+- [Agent Registration and MCP Server](#agent-registration-and-mcp-server)
 - [API Reference](#api-reference)
 - [Infrastructure](#infrastructure)
   - [Docker Services](#docker-services)
@@ -378,6 +379,61 @@ pnpm lint:fix
 # Type check (no emit)
 pnpm typecheck
 ```
+
+---
+
+## Agent Registration and MCP Server
+
+The system supports AI agents that authenticate with API keys and follow the Agent Politeness protocol to safely edit documents alongside human users.
+
+### Registering an Agent
+
+1. **Navigate to the Agents page** at http://localhost:5173/agents
+2. **Click "+ Register agent"** and provide a name and description
+3. **Generate an API key** by expanding the agent row and clicking "Generate key"
+4. **Copy the key immediately** -- it starts with `aak_` and is shown only once
+5. **Grant site access** on the site's detail page under "Agent Access" (roles: viewer, editor, or admin)
+
+### Connecting the MCP Server
+
+The MCP server in `examples/collaborative-state-mcp/` enables Claude Desktop or Claude Code to use the agent's credentials to read and edit documents.
+
+```bash
+cd examples/collaborative-state-mcp
+pnpm install && pnpm build
+cp .env.example .env
+# Edit .env with your AGENT_ID and AGENT_API_KEY
+```
+
+**Claude Code:**
+```bash
+claude mcp add collaborative-state \
+  node /path/to/examples/collaborative-state-mcp/dist/index.js \
+  -e WORKER_API_URL=http://localhost:8787 \
+  -e AGENT_ID=<your-agent-id> \
+  -e AGENT_API_KEY=<your-aak_key>
+```
+
+**Claude Desktop:** Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "collaborative-state": {
+      "command": "node",
+      "args": ["/path/to/examples/collaborative-state-mcp/dist/index.js"],
+      "env": {
+        "WORKER_API_URL": "http://localhost:8787",
+        "AGENT_ID": "<your-agent-id>",
+        "AGENT_API_KEY": "<your-aak_key>"
+      }
+    }
+  }
+}
+```
+
+**Local dev shortcut:** The backend ships with a mock agent (`test-agent-key-zappy`) that works without registration. See `.env.example` for pre-configured values.
+
+For the full guide including curl-based registration, role mapping, troubleshooting, and the edit workflow, see [`examples/collaborative-state-mcp/README.md`](examples/collaborative-state-mcp/README.md).
 
 ---
 

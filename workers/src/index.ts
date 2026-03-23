@@ -37,6 +37,9 @@ import { handleInternalRoutes } from './routes/internal-api';
 import { handlePresenceRoutes } from './routes/presence-api';
 import { handleSiteTokenRoutes } from './routes/site-token-api';
 import { handleAgentKeyRoutes } from './routes/agent-key-api';
+import { handleAgentRoutes } from './routes/agent-api';
+import { handleAgentRoleRoutes } from './routes/agent-role-api';
+import { handleSiteAgentRoleRoutes } from './routes/site-agent-role-api';
 import { handleSiteSettingsRoutes } from './routes/site-settings-api';
 import { handleContentRoutes } from './routes/content-api';
 
@@ -1109,6 +1112,37 @@ function parseRoute(path: string): { handler: string; params: RouteParams } | nu
     };
   }
 
+  // Agent CRUD: /api/organizations/{orgId}/agents(/{agentId}(/status))
+  const agentCrudMatch = /^\/api\/organizations\/([^/]+)\/agents(?:\/([^/]+?)(?:\/(status))?)?$/.exec(normalizedPath);
+  if (agentCrudMatch) {
+    return {
+      handler: 'agents',
+      params: {
+        organizationId: agentCrudMatch[1],
+        agentId: agentCrudMatch[2],
+        subResource: agentCrudMatch[3] as 'status' | undefined,
+      },
+    };
+  }
+
+  // Agent role routes: /api/agents/{agentId}/roles(/{roleId})
+  const agentRoleMatch = /^\/api\/agents\/([^/]+)\/roles(?:\/([^/]+))?$/.exec(normalizedPath);
+  if (agentRoleMatch) {
+    return {
+      handler: 'agent-roles',
+      params: { agentId: agentRoleMatch[1], roleId: agentRoleMatch[2] },
+    };
+  }
+
+  // Site agent role routes: /api/sites/{siteId}/agent-roles(/{roleId})
+  const siteAgentRoleMatch = /^\/api\/sites\/([^/]+)\/agent-roles(?:\/([^/]+))?$/.exec(normalizedPath);
+  if (siteAgentRoleMatch) {
+    return {
+      handler: 'site-agent-roles',
+      params: { siteId: siteAgentRoleMatch[1], roleId: siteAgentRoleMatch[2] },
+    };
+  }
+
   // Agent presence: /api/organizations/{orgId}/agents/{agentId}/presence
   const agentPresenceMatch = /^\/api\/organizations\/([^/]+)\/agents\/([^/]+)\/presence$/.exec(normalizedPath);
   if (agentPresenceMatch) {
@@ -1590,6 +1624,31 @@ async function handleRequest(
         response = await handleAgentKeyRoutes(request, {
           agentId: route.params.agentId,
           keyId: route.params.keyId,
+          principal,
+        });
+        break;
+
+      case 'agents':
+        response = await handleAgentRoutes(request, {
+          organizationId: route.params.organizationId,
+          agentId: route.params.agentId,
+          subResource: route.params.subResource,
+          principal,
+        });
+        break;
+
+      case 'agent-roles':
+        response = await handleAgentRoleRoutes(request, {
+          agentId: route.params.agentId,
+          roleId: route.params.roleId,
+          principal,
+        });
+        break;
+
+      case 'site-agent-roles':
+        response = await handleSiteAgentRoleRoutes(request, {
+          siteId: route.params.siteId,
+          roleId: route.params.roleId,
           principal,
         });
         break;

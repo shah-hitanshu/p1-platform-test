@@ -1,30 +1,17 @@
 # Collaborative State MCP Server
 
-An MCP (Model Context Protocol) server that enables Claude Desktop to interact with the Collaborative State System. This allows you to edit documents collaboratively while respecting human presence through the Agent Politeness workflow.
-
-## Overview
-
-This MCP server exposes the following tools to Claude Desktop:
-
-| Tool | Description |
-|------|-------------|
-| `list_sites` | List all sites accessible to the agent |
-| `list_branches` | List all branches for a site |
-| `list_documents` | List all documents in a site branch |
-| `get_document` | Get document content (optionally a specific region) |
-| `check_edit_permission` | Check if editing is allowed (respects human presence) |
-| `start_edit_session` | Start an edit session and create a checkpoint |
-| `apply_document_edits` | Apply JSON Patch operations to document (requires edit_session_id) |
-| `complete_edit_session` | Complete session and create final checkpoint |
-| `abort_edit_session` | Abort session and roll back changes |
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that enables AI assistants like Claude to read and edit documents in the Collaborative State System. The server authenticates as a registered agent and follows the Agent Politeness protocol to safely coexist with human editors.
 
 ## Prerequisites
 
-1. **Node.js 20+** installed
-2. **Local Collaborative State Worker** running at `http://localhost:8787`
-3. **Claude Desktop** with MCP support
+- Node.js 20+
+- pnpm
+- A running Collaborative State System backend (local or remote)
+- A registered agent with an API key and site role grants
 
-## Installation
+## Quick Start
+
+### 1. Install and build
 
 ```bash
 cd examples/collaborative-state-mcp
@@ -32,209 +19,246 @@ pnpm install
 pnpm build
 ```
 
-## Configuration
+### 2. Register an agent and generate an API key
 
-### Environment Variables
+You can do this through the **admin UI**, via **curl**, or use the **local dev shortcut**.
 
-| Variable | Required | Description | Default |
-|----------|----------|-------------|---------|
-| `WORKER_API_URL` | Yes | URL of the Collaborative State Worker | - |
-| `AGENT_ID` | Yes | Agent ID from mock-identity.config.json | - |
-| `AGENT_API_KEY` | Yes | Agent API key from mock-identity.config.json | - |
-| `DEFAULT_SITE_ID` | No | Default site ID for operations | - |
-| `DEFAULT_BRANCH_ID` | No | Default branch ID for operations | - |
+#### Option A: Admin UI
 
-### Setup .env File
+1. Start the frontend (`make frontend-dev`) and navigate to http://localhost:5173/agents
+2. Click **"+ Register agent"**, enter a name and description, then click **Register**
+3. Expand the agent row and click **"Generate key"**
+4. Copy the key immediately -- it starts with `aak_` and is shown only once
+5. Navigate to a site's detail page and grant the agent a role under **Agent Access**
+
+#### Option B: curl
+
+Requires a valid user auth token (from the mock identity provider or Auth0).
+
+```bash
+# Default organization ID (from seed data)
+ORG_ID="00000000-0000-0000-0000-000000000000"
+
+# 1. Register the agent
+curl -s -X POST http://localhost:8787/api/organizations/$ORG_ID/agents \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <user-token>" \
+  -d '{"name": "My MCP Agent", "description": "Claude integration"}'
+# Note the "id" from the response
+
+# 2. Generate an API key
+AGENT_ID="<agent-id-from-above>"
+curl -s -X POST http://localhost:8787/api/agents/$AGENT_ID/keys \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <user-token>" \
+  -d '{"name": "Claude Desktop Key"}'
+# Copy the "key" field (starts with aak_) -- shown only once
+
+# 3. Grant the agent a site role
+SITE_ID="<target-site-id>"
+curl -s -X POST http://localhost:8787/api/agents/$AGENT_ID/roles \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <user-token>" \
+  -d "{\"siteId\": \"$SITE_ID\", \"role\": \"editor\"}"
+```
+
+Valid roles: `viewer` (read-only), `editor` (read/write), `admin` (full access).
+
+#### Option C: Local dev shortcut (mock identity)
+
+For local development, the backend includes a pre-configured mock agent. No registration or key generation needed:
+
+| Field | Value |
+|-------|-------|
+| Agent ID | `a0000000-0000-0000-0000-000000000001` |
+| API Key | `test-agent-key-zappy` |
+| Name | Zappy AI Assistant |
+| Site access | `site-123` (editor) |
+
+Copy the example config which is pre-populated with these values:
 
 ```bash
 cp .env.example .env
-# Edit .env with your values
 ```
 
-For local development, use the pre-configured agent from `workers/mock-identity.config.json`:
+### 3. Configure environment
 
-```env
+Create or edit the `.env` file:
+
+```bash
+# Required
 WORKER_API_URL=http://localhost:8787
-AGENT_ID=agent-zappy
-AGENT_API_KEY=test-agent-key-zappy
-DEFAULT_SITE_ID=site-123
+AGENT_ID=<your-agent-id>
+AGENT_API_KEY=<your-aak_key>
+
+# Optional -- set defaults so tools don't require siteId/branchId every call
+DEFAULT_SITE_ID=<site-id>
 DEFAULT_BRANCH_ID=main
 ```
 
-## Claude Desktop Configuration
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `WORKER_API_URL` | Yes | Backend URL (e.g., `http://localhost:8787`) |
+| `AGENT_ID` | Yes | UUID of the registered agent |
+| `AGENT_API_KEY` | Yes | API key (`aak_...` for real keys, or mock key for local dev) |
+| `DEFAULT_SITE_ID` | No | Default site for tool calls |
+| `DEFAULT_BRANCH_ID` | No | Default branch for tool calls |
 
-Add this to your Claude Desktop configuration file:
+### 4. Connect to Claude Desktop
 
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+Edit your Claude Desktop config:
+
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Linux:** `~/.config/Claude/claude_desktop_config.json`
 
 ```json
 {
   "mcpServers": {
     "collaborative-state": {
       "command": "node",
-      "args": ["/path/to/collaborative-state-system/examples/collaborative-state-mcp/dist/index.js"],
+      "args": ["/absolute/path/to/examples/collaborative-state-mcp/dist/index.js"],
       "env": {
         "WORKER_API_URL": "http://localhost:8787",
-        "AGENT_ID": "agent-zappy",
-        "AGENT_API_KEY": "test-agent-key-zappy"
+        "AGENT_ID": "<your-agent-id>",
+        "AGENT_API_KEY": "<your-aak_key>"
       }
     }
   }
 }
 ```
 
-Restart Claude Desktop after updating the configuration.
+Restart Claude Desktop after saving.
+
+### 5. Connect to Claude Code
+
+```bash
+claude mcp add collaborative-state \
+  node /absolute/path/to/examples/collaborative-state-mcp/dist/index.js \
+  -e WORKER_API_URL=http://localhost:8787 \
+  -e AGENT_ID=<your-agent-id> \
+  -e AGENT_API_KEY=<your-aak_key>
+```
+
+## Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `list_sites` | List all sites accessible to the agent |
+| `list_branches` | List all branches for a site |
+| `list_documents` | List all documents on a branch |
+| `get_document` | Fetch document content as JSON |
+| `check_edit_permission` | Check if the agent can edit (respects human presence) |
+| `start_edit_session` | Begin an edit session with checkpoint protection |
+| `apply_document_edits` | Apply JSON Patch operations (requires `edit_session_id`) |
+| `complete_edit_session` | Finish editing and create a final checkpoint |
+| `abort_edit_session` | Cancel editing and roll back changes |
+
+## Agent Politeness Workflow
+
+The MCP server follows the **Agent Politeness** protocol. Agents must check for human presence before editing and operate within edit sessions that provide checkpoint-based rollback:
+
+```
+1. check_edit_permission  -->  Is a human currently editing?
+       |                           |
+       | No                        | Yes --> Wait or skip
+       v
+2. start_edit_session     -->  Creates safety checkpoint, returns editSessionId
+       |
+       v
+3. get_document           -->  Read current content
+       |
+       v
+4. apply_document_edits   -->  Apply changes (MUST include editSessionId)
+       |
+       v
+5. complete_edit_session  -->  Finalize with checkpoint
+```
+
+If a human begins editing while the agent has an active session, the agent should call `abort_edit_session` to roll back gracefully.
+
+## Authentication
+
+The MCP server sends the agent API key via the `X-API-Key` header on every request. The backend authentication flow:
+
+1. Recognizes the `aak_` prefix and routes to the `AgentApiKeyProvider`
+2. Validates the key by comparing its SHA-256 hash against the database
+3. Looks up the agent's per-site roles from the `agent_site_roles` table
+4. Returns an authenticated principal with `type: 'agent'` and populated `pantheonSiteRoles`
+
+For local development with mock identity, the `MockIdentityProvider` handles non-`aak_` keys by matching against the hardcoded mock agent list.
+
+### Role Mapping
+
+Agent site roles map to internal authorization levels:
+
+| Agent Role | Pantheon Role | Capabilities |
+|------------|---------------|--------------|
+| `viewer` | `team_member` | Read documents and branches |
+| `editor` | `developer` | Read and edit documents |
+| `admin` | `admin` | Full access including branch and site management |
 
 ## Usage Examples
 
-### Example 1: Discover Available Sites
+### Discover available sites
 
 ```
 You: What sites can you work with?
-
-Claude: [Uses list_sites tool]
-I have access to 2 sites:
-- My Site (id: site-123)
-- Other Site (id: site-456)
+Claude: [Uses list_sites] I have access to "My Site" (site-123).
 ```
 
-### Example 2: View Document Content
+### View document content
 
 ```
 You: What's on the home page?
-
-Claude: [Uses list_branches, list_documents, get_document tools]
-The home page contains:
-- Title: "Welcome to Our Site"
-- Body: "This is the main content..."
+Claude: [Uses list_documents, get_document]
+        The home page has a title "Welcome" and body content...
 ```
 
-### Example 3: Edit Document Content
+### Edit a document
 
 ```
-You: Fix the grammar in the body text on /home
-
-Claude: [Uses check_edit_permission] Checking if I can edit...
-       [Uses start_edit_session] Starting edit session... (editSessionId: session-xyz789)
-       [Uses get_document] Fetching current content...
-       [Uses apply_document_edits with edit_session_id] Applying corrections...
-       [Uses complete_edit_session] Completing session...
-
-Done! I fixed 3 grammatical issues. Checkpoint: checkpoint-abc123
-```
-
-### Example 4: Handle Human Conflict
-
-```
-You: Update the title on /about
-
-Claude: [Uses check_edit_permission]
-Edit permission denied: A human user is currently editing the document.
-I'll wait and try again later, or you can ask me once they're done.
+You: Fix the typo in the about page title
+Claude: [Uses check_edit_permission] Checking permissions...
+        [Uses start_edit_session] Starting session...
+        [Uses get_document] Reading current content...
+        [Uses apply_document_edits] Applying fix...
+        [Uses complete_edit_session] Done! Changes saved.
 ```
 
 ## Development
 
-### Run Tests
-
 ```bash
-pnpm test
+pnpm dev          # Watch mode (recompiles on changes)
+pnpm build        # One-time build
+pnpm test         # Run tests
+pnpm lint         # Lint source code
+pnpm inspector    # Launch MCP Inspector for interactive debugging
 ```
-
-### Run Linting
-
-```bash
-pnpm lint
-```
-
-### Build
-
-```bash
-pnpm build
-```
-
-### Test with MCP Inspector
-
-```bash
-pnpm inspector
-```
-
-This opens the MCP Inspector tool where you can test tools manually.
-
-## Workflow Diagram
-
-```
-User Request
-     |
-     v
-[check_edit_permission] ──> Denied? ──> Report to user
-     |
-     | Allowed
-     v
-[start_edit_session] ──> Creates checkpoint, returns editSessionId
-     |
-     | Store editSessionId!
-     v
-[get_document] ──> Fetch current content
-     |
-     v
-[apply_document_edits] ──> Apply changes (MUST include editSessionId)
-     |
-     v
-[complete_edit_session] ──> Create final checkpoint
-     |                         |
-     v                         v
-  Success                Error? ──> [abort_edit_session]
-```
-
-**Important:** The `apply_document_edits` tool requires the `edit_session_id` returned from `start_edit_session`. The backend enforces this requirement to ensure all agent edits occur within a proper edit session with checkpoint protection.
-
-## Troubleshooting
-
-### "WORKER_API_URL environment variable is required"
-
-Make sure you have set the environment variables either in your `.env` file or in the Claude Desktop configuration.
-
-### "Agent is suspended" or "Agent is disabled"
-
-Check the agent status in `workers/mock-identity.config.json`. The agent must have status `active`.
-
-### "Permission denied: active_human_collaborator"
-
-A human user is currently editing the document. Wait for them to finish or ask the user to try later.
-
-### "editSessionId is required for agents"
-
-You tried to apply edits without an active edit session. Always call `start_edit_session` first and include the returned `edit_session_id` in your `apply_document_edits` call.
-
-### "Invalid or expired edit session"
-
-The edit session has expired or was already completed/aborted. Start a new edit session with `start_edit_session`.
-
-### Tools Not Appearing in Claude Desktop
-
-1. Verify the path in `claude_desktop_config.json` is correct
-2. Ensure you've run `pnpm build`
-3. Check Claude Desktop logs for errors
-4. Restart Claude Desktop
 
 ## Architecture
 
 ```
-Claude Desktop
+Claude Desktop / Claude Code
      |
      | (MCP Protocol over stdio)
      v
-collaborative-state-mcp
+collaborative-state-mcp (this server)
      |
-     | (HTTP/REST)
+     | (HTTP + X-API-Key header)
      v
 Collaborative State Worker (localhost:8787)
      |
-     v
-DocumentSession Durable Object
+     |--- PostgreSQL (versions, roles, keys)
+     |--- Durable Objects (real-time CRDT state)
 ```
 
-## License
+## Troubleshooting
 
-Part of the Collaborative State System project.
+| Problem | Solution |
+|---------|----------|
+| "Authentication required" | Verify `AGENT_API_KEY` is correct and not revoked |
+| "Forbidden" on operations | Grant the agent a site role (viewer/editor/admin) |
+| "Agent cannot edit" | A human is editing the document; wait and retry |
+| "editSessionId is required" | Call `start_edit_session` before `apply_document_edits` |
+| Tools not appearing in Claude | Check the path to `dist/index.js`, run `pnpm build`, restart Claude |
+| Agent is suspended/disabled | Update agent status to `active` via the admin UI |
