@@ -202,22 +202,16 @@ AGENT_ID=<registered-agent-uuid>
 
 ---
 
-## Open Questions
+## Decisions
 
-1. **Shared vs. per-environment agents?** Should the MCP server use one agent identity across all environments, or a separate registered agent per environment (sandbox, production)?
-   - **Recommendation:** Separate agents per environment. Limits blast radius and allows different role grants.
+Resolved 2026-03-23:
 
-2. **MCP server URL structure?** Options:
-   - Subdomain: `mcp.css.example.com`
-   - Path prefix on existing worker: `css.example.com/mcp/`
-   - Separate worker: `css-mcp.example.com`
-   - **Recommendation:** Separate worker on a subdomain. Keeps deployment independent.
+1. **Per-environment agents.** Separate registered agent per environment (sandbox, production). Limits blast radius, allows different role grants, and provides clear audit separation.
 
-3. **Token lifetime?** How long should MCP access tokens live before requiring re-auth?
-   - **Recommendation:** 8 hours (a workday). Refresh tokens with 30-day lifetime.
+2. **Separate worker on a subdomain.** e.g., `mcp.css.example.com`. Independent deploy cycle, no routing conflicts with CSS backend OAuth/API paths.
 
-4. **Rate limiting?** Should the MCP server enforce per-user rate limits?
-   - **Recommendation:** Yes, via Cloudflare's built-in rate limiting. Prevents runaway agent loops.
+3. **1-hour access tokens, 30-day refresh tokens.** Short access tokens limit leak exposure. Claude Desktop/Code handles OAuth refresh automatically per the MCP spec. Users re-authenticate roughly once a month.
 
-5. **Existing stdio MCP server?** Keep it for local development or deprecate?
-   - **Recommendation:** Keep it. Local stdio is simpler for development and doesn't require OAuth setup.
+4. **Rate limiting at 100 tool calls/min/user.** Cloudflare built-in rate limiting. Returns `429` with `Retry-After` so Claude backs off naturally. Tunable after observing sandbox usage.
+
+5. **Keep the local stdio MCP server.** Simpler for development -- no OAuth setup, no network dependency. Shared tool definitions and API client code between local and remote servers.
