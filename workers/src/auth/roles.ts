@@ -134,6 +134,21 @@ export function maxRole(a: RoleName, b: RoleName | undefined): RoleName {
 }
 
 /**
+ * Returns the lower of two roles based on privilege level.
+ * Used for permission intersection when an agent acts on behalf of a user --
+ * the effective role is min(agentRole, userRole) to prevent privilege escalation.
+ *
+ * @param a - First role name
+ * @param b - Second role name
+ * @returns The role with lower privileges
+ */
+export function minRole(a: RoleName, b: RoleName): RoleName {
+  const indexA = ROLE_ORDER.indexOf(a);
+  const indexB = ROLE_ORDER.indexOf(b);
+  return indexA < indexB ? a : b;
+}
+
+/**
  * Checks if a role meets or exceeds a minimum required role level.
  *
  * @param role - The role to check

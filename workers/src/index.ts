@@ -46,6 +46,7 @@ import { handleContentRoutes } from './routes/content-api';
 // Auth providers
 import { SiteApiTokenProvider } from './auth/site-token-provider';
 import { isServicePrincipalAllowed } from './auth/service-principal';
+import { extractActingUser } from './auth/acting-user';
 
 // MAS client
 import { MASClient } from './services/mas-client';
@@ -1340,6 +1341,13 @@ async function handleRequest(
       origin,
       env,
     );
+  }
+
+  // Extract acting-user identity from agent requests (MCP server forwarding)
+  const actingUser = extractActingUser(request.headers, principal);
+  if (actingUser) {
+    principal.actingUserId = actingUser.actingUserId;
+    principal.actingUserEmail = actingUser.actingUserEmail;
   }
 
   // Service principal scope enforcement

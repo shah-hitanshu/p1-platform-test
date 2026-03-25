@@ -3559,6 +3559,57 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 
 **Phase B is complete.** All agent API key auth hardening work is done.
 
+### Phase C: Remote MCP Server with OAuth 2.0 (Branch: `main`)
+
+**Status:** Complete (C1-C4)
+**Plan:** `docs/plans/2026-03-23-remote-mcp-server-oauth.md`
+**Test Plan:** `docs/plans/2026-03-23-remote-mcp-server-oauth-test-plan.md`
+**Proposal:** `docs/proposals/PROPOSAL-004-remote-mcp-server-oauth.md`
+
+#### C1 — Remote MCP Server (Cloudflare Worker)
+- [x] `workers/mcp-server/src/index.ts` — Worker entry point using `@cloudflare/workers-oauth-provider` OAuthProvider
+- [x] OAuthProvider wraps fetch handler, intercepts OAuth paths (`/authorize`, `/token`, `/revoke`, `/.well-known/oauth-authorization-server`)
+- [x] `apiRoute: '/mcp'` protected by Bearer token validation, `accessTokenTTL: 3600`
+- [x] `sessionIdGenerator: undefined` for stateless per-request MCP server lifecycle
+- [x] `WebStandardStreamableHTTPServerTransport` (Cloudflare Workers compatible, not Node.js `StreamableHTTPServerTransport`)
+- [x] `workers/mcp-server/src/health.ts` — extracted health check (avoids `cloudflare:` protocol import in tests)
+- [x] `workers/mcp-server/src/mcp-handler.ts` — MCP server factory registering all 11 tools
+- [x] `workers/mcp-server/src/shared/tools.ts` — tool definitions and handlers (list_sites, list_branches, list_documents, get_document, check_edit_permission, start_edit_session, apply_document_edits, complete_edit_session, abort_edit_session, get_branch_presence, get_document_presence)
+- [x] `workers/mcp-server/src/shared/api-client.ts` — McpApiClient with acting-user header forwarding
+- [x] Defensive logging for undefined `ctx.props`, `getOAuthHelpers()` helper for OAUTH_PROVIDER binding
+- [x] 76 tests across 13 test files; 0 lint errors
+
+#### C2 — Google OAuth Integration (Upstream IdP)
+- [x] `workers/mcp-server/src/auth/google-handler.ts` — authorization code flow with Google as upstream IdP
+- [x] Handles `/authorize` redirect to Google, `/callback` token exchange
+- [x] Try-catch around error response JSON parsing for non-JSON error bodies
+- [x] `workers/mcp-server/wrangler.jsonc` — Worker config with OAUTH_KV binding (hardcoded name in library)
+- [x] 8 Google handler tests, 6 OAuth integration tests, 6 E2E flow tests
+
+#### C3 — Acting-User Forwarding & Permission Intersection (CSS Backend)
+- [x] `workers/src/auth/acting-user.ts` — `extractActingUser()` only trusts agent principals; silently rejects user/service/guest
+- [x] `workers/src/auth/authorization.ts` — `getEffectiveRole()` applies `minRole(agentRole, actingUserSiteRole)` for agents with `actingUserEmail`
+- [x] `workers/src/auth/roles.ts` — added `minRole()` alongside existing `maxRole()`
+- [x] `workers/src/types.ts` — added optional `actingUserId` and `actingUserEmail` to `AuthenticatedPrincipal`
+- [x] `workers/src/index.ts` — extracts acting-user headers after auth, enriches principal
+- [x] PantheonRole mapping: `team_member` -> EDITOR, `developer` -> EDITOR, `admin`/`owner` -> ADMIN (no PantheonRole maps to VIEWER)
+- [x] 7 acting-user tests, 10 permission-intersection tests (5 pure `minRole` + 5 `getEffectiveRole` integration)
+
+#### C4 — Terraform Infrastructure
+- [x] `terraform/modules/cloudflare-mcp/main.tf` — KV namespace resource for OAuth token storage
+- [x] `terraform/environments/sbx1/main.tf` — `module "cloudflare_mcp"` block with outputs
+- [x] Outputs: `mcp_oauth_kv_id`, `mcp_worker_name`
+- [x] 4 Terraform validation tests
+
+#### Key Design Decisions
+- **Stateless per-request MCP server** — `sessionIdGenerator: undefined` creates fresh server+transport per request, no session state to corrupt
+- **`cloudflare:` protocol limitation** — OAuthProvider uses `cloudflare:` imports not available in Vitest; tests verify configuration via source file reading instead of runtime instantiation
+- **Health check extraction** — `handleHealthCheck()` moved to separate `health.ts` module to enable test imports without triggering `cloudflare:` protocol errors
+- **OAUTH_KV binding name hardcoded** — the `@cloudflare/workers-oauth-provider` library requires this exact name (discovered by inspecting compiled source)
+- **Permission intersection** — agents acting on behalf of users get `min(agentRole, actingUserSiteRole)`, never exceeding the human user's access level
+
+**Tests:** 76 MCP server tests + 17 backend auth tests = 93 new tests; 2651 total backend tests passing; 0 lint errors
+
 #### Remaining (Other)
 - [ ] UX confirmation prompt in puck-css-integration before publish (separate project)
 - [ ] Hide tombstoned documents in Puck editor ([puck-css-integration#17](https://github.com/pantheon-systems/puck-css-integration/issues/17))

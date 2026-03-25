@@ -1,0 +1,58 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/schemas/config.json",
+
+  "name": "css-mcp-server",
+  "main": "src/index.ts",
+
+  "compatibility_date": "2024-12-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // KV namespace for OAuth token storage (used by @cloudflare/workers-oauth-provider)
+  // The library requires the binding name to be "OAUTH_KV"
+  "kv_namespaces": [
+    { "binding": "OAUTH_KV", "id": "local-mcp-oauth-kv", "preview_id": "local-mcp-oauth-kv-preview" }
+  ],
+
+  // Non-secret environment variables
+  "vars": {
+    "ENVIRONMENT": "local",
+    "CSS_BACKEND_URL": "http://localhost:8787",
+    "MCP_SERVER_NAME": "collaborative-state-mcp",
+    "MCP_SERVER_VERSION": "0.1.0"
+  },
+
+  // Local development
+  "dev": {
+    "port": 8788,
+    "local_protocol": "http",
+    "ip": "0.0.0.0"
+  },
+
+  // Environment overrides
+  "env": {
+    "sbx1": {
+      "name": "css-mcp-server-sbx1",
+      "vars": {
+        "ENVIRONMENT": "sbx1",
+        "CSS_BACKEND_URL": "https://collaborative-state-worker-sbx1.chris-801.workers.dev",
+        "MCP_SERVER_NAME": "collaborative-state-mcp",
+        "MCP_SERVER_VERSION": "0.1.0"
+      },
+      "kv_namespaces": [
+        { "binding": "OAUTH_KV", "id": "REPLACE_WITH_SBX1_MCP_OAUTH_KV_ID" }
+      ]
+    },
+    "production": {
+      "name": "css-mcp-server-prod",
+      "vars": {
+        "ENVIRONMENT": "production",
+        "CSS_BACKEND_URL": "https://collaborative-state-worker-prod.pantheon.workers.dev",
+        "MCP_SERVER_NAME": "collaborative-state-mcp",
+        "MCP_SERVER_VERSION": "0.1.0"
+      },
+      "kv_namespaces": [
+        { "binding": "OAUTH_KV", "id": "REPLACE_WITH_PROD_MCP_OAUTH_KV_ID" }
+      ]
+    }
+  }
+}

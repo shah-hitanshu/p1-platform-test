@@ -21,7 +21,7 @@ import type {
   PantheonRole,
 } from '../types';
 import { query } from '../db';
-import { ROLES, mapPantheonRole, mapAgentRole, maxRole } from './roles';
+import { ROLES, mapPantheonRole, mapAgentRole, maxRole, minRole } from './roles';
 import type { MASClient } from '../services/mas-client';
 
 /**
@@ -243,10 +243,50 @@ export async function getEffectiveRole(
   // Step 3: Effective role is the higher of the two
   const effectiveRoleName = maxRole(baselineRoleName, grantRoleName);
 
+  // Step 4: Permission intersection for acting-user requests
+  // When an agent acts on behalf of a user, the effective role is
+  // min(agentEffectiveRole, actingUserSiteRole) to prevent privilege escalation.
+  let finalRoleName = effectiveRoleName;
+  if (principal.type === 'agent' && principal.actingUserEmail !== undefined && principal.actingUserEmail !== '') {
+    const actingUserSiteRole = await getActingUserSiteRole(principal.actingUserEmail, siteId);
+    finalRoleName = minRole(effectiveRoleName, actingUserSiteRole);
+  }
+
   return {
-    role: ROLES[effectiveRoleName],
-    roleName: effectiveRoleName,
+    role: ROLES[finalRoleName],
+    roleName: finalRoleName,
   };
+}
+
+/**
+ * Look up an acting user's effective site role from the database.
+ * Used for permission intersection when an agent acts on behalf of a user.
+ *
+ * Lookup path: users.email -> users.id -> user_site_roles.user_id
+ *
+ * If the user has never been added to the users allowlist, the
+ * query returns no rows and the effective role is NO_ACCESS.
+ */
+async function getActingUserSiteRole(actingUserEmail: string, siteId: string): Promise<RoleName> {
+  const result = await query<{ role: PantheonRole; source: string }>(
+    `SELECT usr.role, usr.source FROM app.user_site_roles usr
+     JOIN app.users u ON u.id::text = usr.user_id
+     WHERE u.email = $1 AND usr.site_id = $2`,
+    [actingUserEmail.toLowerCase(), siteId],
+  );
+
+  if (result.rows.length === 0) {
+    return 'NO_ACCESS';
+  }
+
+  // Resolve dual-source rows (local + MAS) by taking the max role,
+  // consistent with getDualSourceRole() behavior.
+  let resolvedRole: RoleName = 'NO_ACCESS';
+  for (const row of result.rows) {
+    resolvedRole = maxRole(resolvedRole, mapPantheonRole(row.role));
+  }
+
+  return resolvedRole;
 }
 
 /**

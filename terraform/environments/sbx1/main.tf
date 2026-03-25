@@ -123,6 +123,17 @@ module "cloudflare" {
 }
 
 # -----------------------------------------------------------------------------
+# MCP Server Module (OAuth KV)
+# -----------------------------------------------------------------------------
+
+module "cloudflare_mcp" {
+  source = "../../modules/cloudflare-mcp"
+
+  environment           = local.environment
+  cloudflare_account_id = var.cloudflare_account_id
+}
+
+# -----------------------------------------------------------------------------
 # Outputs
 # -----------------------------------------------------------------------------
 
@@ -172,4 +183,15 @@ output "worker_name" {
 output "frontend_worker_name" {
   description = "Cloudflare Worker name (frontend)"
   value       = module.cloudflare.frontend_worker_name
+}
+
+# MCP Server outputs
+output "mcp_oauth_kv_id" {
+  description = "MCP OAuth KV namespace ID for wrangler.jsonc"
+  value       = module.cloudflare_mcp.mcp_oauth_kv_id
+}
+
+output "mcp_worker_name" {
+  description = "MCP Worker name"
+  value       = module.cloudflare_mcp.mcp_worker_name
 }

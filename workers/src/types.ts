@@ -506,6 +506,10 @@ export interface AuthenticatedPrincipal {
   siteId?: string;
   /** System-level role from the users allowlist ('admin' or 'member') */
   systemRole?: string;
+  /** Acting user ID forwarded from MCP server (agent principals only) */
+  actingUserId?: string;
+  /** Acting user email forwarded from MCP server (agent principals only) */
+  actingUserEmail?: string;
 }
 
 /**
