@@ -3610,7 +3610,41 @@ The Terraform setup was written early as scaffolding and drifted significantly f
 
 **Tests:** 76 MCP server tests + 17 backend auth tests = 93 new tests; 2651 total backend tests passing; 0 lint errors
 
+**Merged:** PR #43 squash-merged to main on 2026-03-25 (`7f1f2f6`)
+
+#### Post-Merge Review Fixes (included in PR #43)
+- [x] Fixed `getActingUserSiteRole()` dual-source row handling — was using `LIMIT 1` which could return a lower-privilege MAS row; now iterates all rows with `maxRole()`, consistent with `getDualSourceRole()` behavior
+- [x] Synced remote MCP server tool descriptions with workflow guidance (see MCP Tool Description Overhaul below)
+
+#### Known Residual Items
+- [ ] OAuth state parameter uses base64 without HMAC signing — harden before production deployment
+- [ ] `ctx.props` access relies on undocumented `@cloudflare/workers-oauth-provider` interface — mitigated with warn-and-continue logging
+- [ ] Placeholder KV namespace IDs in `wrangler.jsonc` — populated from Terraform outputs at deploy time
+- [ ] Stale TODO in `examples/collaborative-state-mcp/src/tools.ts:379`: `trigger: 'autonomous'` hardcoded for testing — evaluate whether this should be configurable
+
 #### Remaining (Other)
 - [ ] UX confirmation prompt in puck-css-integration before publish (separate project)
 - [ ] Hide tombstoned documents in Puck editor ([puck-css-integration#17](https://github.com/pantheon-systems/puck-css-integration/issues/17))
 - [ ] Phase 7: Publish-propagation foundation (future)
+
+### MCP Tool Description Overhaul (2026-03-25)
+
+**Status:** Complete
+**Commits:** `eb1a2e1` (local MCP server on main), included in PR #43 merge for remote MCP server
+
+#### Context
+An MCP agent corrupted document `d529463d-d0a4-4993-bdd0-424b2cb4da2a` on the Audi Demo site by appending a duplicate `content` object instead of modifying the existing one. The frontend only reads `content.0`, so the new content was silently ignored. Root cause: the agent didn't understand the Puck document schema and wasn't guided to confirm ambiguous operations with the user.
+
+#### Changes
+Updated all 11 MCP tool descriptions in both `examples/collaborative-state-mcp/src/tools.ts` and `workers/mcp-server/src/shared/tools.ts` with behavioral workflow guidance:
+
+- **`get_document`**: Explains Puck document schema (`content` array of components + `root` props object). Instructs agent to summarize document structure to user before proposing changes.
+- **`start_edit_session`**: 4-step workflow requiring the agent to have read the document first, describe intent clearly, and confirm with the user whether to overwrite or add content when the request is ambiguous.
+- **`apply_document_edits`**: Explicit path format examples (correct: `content.0.props.title`, wrong: `content[0].props.title` and `/content/0/props/title`). Critical guidelines: ask user before adding to existing content, never create duplicate top-level keys, target specific property paths.
+- **`complete_edit_session`**: Suggests verifying changes with `get_document` before completing; points to `abort_edit_session` as escape hatch.
+- **`check_edit_permission`**: Emphasizes specificity in region claims, no auto-retry on denial.
+- **All tools**: Cross-reference workflow sequencing (which tools to call before/after).
+- **`path` field schema**: Updated description with explicit anti-pattern examples for bracket notation corruption.
+
+#### Decision
+Chose tool description guidance over server-side validation. The agent needs to understand the document model and confirm ambiguous operations with the user — hard validation alone wouldn't prevent the "append vs overwrite" confusion.
