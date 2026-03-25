@@ -14,4 +14,7 @@ export interface Env {
 
   // KV binding (used by @cloudflare/workers-oauth-provider)
   OAUTH_KV: KVNamespace;
+
+  // Service binding to the API worker (avoids worker-to-worker fetch 1042 errors)
+  CSS_BACKEND?: Fetcher;
 }

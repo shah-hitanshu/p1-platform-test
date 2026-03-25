@@ -1999,5 +1999,146 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       vi.useRealTimers();
     });
   });
+
+  describe('restoreEditSessions should roll back expired sessions on DO restore', () => {
+    it('should roll back expired sessions with checkpoints when DO wakes from hibernation', async () => {
+      vi.useFakeTimers();
+      const baseTime = Date.now();
+
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      // Create first DO instance and start an autonomous edit session
+      const state1 = createMockState();
+      const env1 = createMockEnv();
+      env1.INTERNAL_API_URL = 'http://localhost:8787';
+      const session1 = new DocumentSession(state1, env1);
+
+      const startResponse = await session1.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'agent-restore-test',
+            trigger: 'autonomous',
+            intent: 'Test restore rollback',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+      expect(startResponse.status).toBe(200);
+
+      // Capture what was stored in DO storage (the serialized edit sessions)
+      const storagePutCalls = (state1.storage.put as Mock).mock.calls;
+      const editSessionsPut = storagePutCalls.find(
+        (call: unknown[]) => call[0] === 'editSessions',
+      );
+      expect(editSessionsPut).toBeDefined();
+      const storedSessionsJson = editSessionsPut![1] as string;
+
+      // Advance time past expiration (>10 minutes)
+      vi.setSystemTime(baseTime + 601_000);
+
+      // Create a NEW DO instance (simulating DO waking from hibernation)
+      // Pre-load storage.get to return the stale sessions
+      const state2 = createMockState();
+      const env2 = createMockEnv();
+      env2.INTERNAL_API_URL = 'http://localhost:8787';
+      (state2.storage.get as Mock).mockImplementation((key: string) => {
+        if (key === 'editSessions') {
+          return Promise.resolve(storedSessionsJson);
+        }
+        return Promise.resolve(undefined);
+      });
+
+      const session2 = new DocumentSession(state2, env2);
+
+      // Trigger metadata initialization (which calls restoreEditSessions)
+      // A presence check is sufficient to trigger initializeMetadataIfNeeded
+      const presenceResponse = await session2.fetch(
+        new Request('http://localhost/presences'),
+      );
+      expect(presenceResponse.status).toBe(200);
+
+      // Verify the expired session was NOT restored
+      const sessionsResponse = await session2.fetch(
+        new Request('http://localhost/edit-sessions'),
+      );
+      const sessionsBody = (await sessionsResponse.json()) as { sessions: unknown[] };
+      expect(sessionsBody.sessions.length).toBe(0);
+
+      // Verify the cleaned-up sessions were persisted back to storage
+      const state2PutCalls = (state2.storage.put as Mock).mock.calls;
+      const cleanedPut = state2PutCalls.find(
+        (call: unknown[]) => call[0] === 'editSessions',
+      );
+      expect(cleanedPut).toBeDefined();
+
+      vi.useRealTimers();
+    });
+
+    it('should keep non-expired sessions when restoring from storage', async () => {
+      vi.useFakeTimers();
+      const baseTime = Date.now();
+
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      // Create first DO instance and start an edit session
+      const state1 = createMockState();
+      const env1 = createMockEnv();
+      const session1 = new DocumentSession(state1, env1);
+
+      const startResponse = await session1.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'agent-restore-keep',
+            trigger: 'human_requested',
+            intent: 'Test non-expired restore',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+      expect(startResponse.status).toBe(200);
+
+      // Capture stored sessions
+      const storagePutCalls = (state1.storage.put as Mock).mock.calls;
+      const editSessionsPut = storagePutCalls.find(
+        (call: unknown[]) => call[0] === 'editSessions',
+      );
+      const storedSessionsJson = editSessionsPut![1] as string;
+
+      // Advance time but NOT past expiration (only 5 minutes)
+      vi.setSystemTime(baseTime + 300_000);
+
+      // Create a new DO instance with the stored sessions
+      const state2 = createMockState();
+      const env2 = createMockEnv();
+      (state2.storage.get as Mock).mockImplementation((key: string) => {
+        if (key === 'editSessions') {
+          return Promise.resolve(storedSessionsJson);
+        }
+        return Promise.resolve(undefined);
+      });
+
+      const session2 = new DocumentSession(state2, env2);
+
+      // Trigger initialization
+      await session2.fetch(new Request('http://localhost/presences'));
+
+      // Verify the session WAS restored (not expired yet)
+      const sessionsResponse = await session2.fetch(
+        new Request('http://localhost/edit-sessions'),
+      );
+      const sessionsBody = (await sessionsResponse.json()) as { sessions: unknown[] };
+      expect(sessionsBody.sessions.length).toBe(1);
+
+      vi.useRealTimers();
+    });
+  });
 });
 

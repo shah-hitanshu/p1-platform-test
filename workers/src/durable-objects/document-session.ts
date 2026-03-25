@@ -746,13 +746,47 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
       const sessions = JSON.parse(stored) as Record<string, AgentEditSession>;
       const now = Date.now();
+      let expiredCount = 0;
+      let rolledBackCount = 0;
 
       for (const [key, session] of Object.entries(sessions)) {
-        // Skip sessions that have exceeded the maximum age
+        // Roll back and discard sessions that have exceeded the maximum age
         if (now - session.startedAt > MAX_EDIT_SESSION_AGE_MS) {
+          expiredCount++;
+          if (session.checkpointId !== undefined) {
+            try {
+              const rolledBack = await this.rollbackToAgentCheckpoint(
+                session.checkpointId,
+                session.agentId,
+                'Expired edit session rolled back on DO restore',
+              );
+              if (rolledBack) {
+                rolledBackCount++;
+                console.log(
+                  `Rolled back expired edit session ${key} to checkpoint ${session.checkpointId} on restore`,
+                );
+              } else {
+                console.warn(
+                  `Failed to roll back expired edit session ${key} (checkpoint ${session.checkpointId}) on restore`,
+                );
+              }
+            } catch (error) {
+              console.error(`Error rolling back expired edit session ${key} on restore:`, error);
+            }
+          }
+          // Clean up presence for the expired agent
+          this.presenceManager.unregisterByActorId(session.agentId);
           continue;
         }
         this.editSessions.set(key, session);
+      }
+
+      if (expiredCount > 0) {
+        console.log(
+          `Cleaned up ${String(expiredCount)} expired edit session(s) on restore (${String(rolledBackCount)} rolled back)`,
+        );
+        // Persist the cleaned-up sessions map (expired ones removed)
+        await this.persistEditSessions();
       }
 
       if (this.editSessions.size > 0) {

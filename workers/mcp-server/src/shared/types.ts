@@ -8,4 +8,6 @@ export interface McpApiClientConfig {
   agentId: string;
   agentApiKey: string;
   actingUser?: ActingUser;
+  /** Service binding fetcher — bypasses worker-to-worker fetch restrictions */
+  fetcher?: Fetcher;
 }

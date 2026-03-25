@@ -40,6 +40,10 @@
       },
       "kv_namespaces": [
         { "binding": "OAUTH_KV", "id": "57760de9030e441bad5e205e4a8ec82d" }
+      ],
+      // Service binding to the API worker — avoids worker-to-worker fetch 1042 errors
+      "services": [
+        { "binding": "CSS_BACKEND", "service": "collaborative-state-worker-sbx1" }
       ]
     },
     "production": {

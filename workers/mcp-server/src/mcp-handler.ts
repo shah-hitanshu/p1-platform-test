@@ -18,6 +18,7 @@ export interface McpHandlerConfig {
   serverName: string;
   serverVersion: string;
   actingUser?: ActingUser;
+  fetcher?: Fetcher;
 }
 
 export function createMcpServer(config: McpHandlerConfig): McpServer {
@@ -26,6 +27,7 @@ export function createMcpServer(config: McpHandlerConfig): McpServer {
     agentId: config.agentId,
     agentApiKey: config.agentApiKey,
     actingUser: config.actingUser,
+    fetcher: config.fetcher,
   });
 
   const handlers = createToolHandlers(apiClient);

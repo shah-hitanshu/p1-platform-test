@@ -190,6 +190,7 @@ export class McpApiClient {
   private readonly agentId: string;
   private readonly agentApiKey: string;
   private readonly actingUser?: ActingUser;
+  private readonly fetcher?: Fetcher;
 
   constructor(config: McpApiClientConfig) {
     if (!config.baseUrl) {
@@ -206,6 +207,18 @@ export class McpApiClient {
     this.agentId = config.agentId;
     this.agentApiKey = config.agentApiKey;
     this.actingUser = config.actingUser;
+    this.fetcher = config.fetcher;
+  }
+
+  /**
+   * Fetch wrapper that uses the service binding when available,
+   * falling back to global fetch for local development.
+   */
+  private doFetch(url: string, init: RequestInit): Promise<Response> {
+    if (this.fetcher) {
+      return this.fetcher.fetch(url, init);
+    }
+    return fetch(url, init);
   }
 
   /**
@@ -286,7 +299,7 @@ export class McpApiClient {
 
   async listSites(): Promise<ListSitesResponse> {
     const url = `${this.baseUrl}/api/sites`;
-    const response = await fetch(url, {
+    const response = await this.doFetch(url, {
       method: 'GET',
       headers: this.getHeaders(),
     });
@@ -295,7 +308,7 @@ export class McpApiClient {
 
   async listBranches(siteId: string): Promise<ListBranchesResponse> {
     const url = `${this.baseUrl}/api/sites/${siteId}/branches`;
-    const response = await fetch(url, {
+    const response = await this.doFetch(url, {
       method: 'GET',
       headers: this.getHeaders(),
     });
@@ -304,7 +317,7 @@ export class McpApiClient {
 
   async listDocuments(siteId: string, branchId: string): Promise<ListDocumentsResponse> {
     const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents`;
-    const response = await fetch(url, {
+    const response = await this.doFetch(url, {
       method: 'GET',
       headers: this.getHeaders(),
     });
@@ -317,7 +330,7 @@ export class McpApiClient {
     documentPath: string,
   ): Promise<DocumentSnapshot> {
     const url = this.buildDocumentUrl(siteId, branchId, documentPath);
-    const response = await fetch(url, {
+    const response = await this.doFetch(url, {
       method: 'GET',
       headers: this.getHeaders(),
     });
@@ -338,7 +351,7 @@ export class McpApiClient {
       request.requestedById,
       request.operationType,
     );
-    const response = await fetch(url, {
+    const response = await this.doFetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -378,7 +391,7 @@ export class McpApiClient {
       request.requestedById,
       request.operationType,
     );
-    const response = await fetch(url, {
+    const response = await this.doFetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -400,7 +413,7 @@ export class McpApiClient {
       request.documentPath,
       'edits',
     );
-    const response = await fetch(url, {
+    const response = await this.doFetch(url, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify({
@@ -421,7 +434,7 @@ export class McpApiClient {
       request.documentPath,
       'agent-edit-complete',
     );
-    const response = await fetch(url, {
+    const response = await this.doFetch(url, {
       method: 'POST',
       headers: {
         ...this.getHeaders(),
@@ -443,7 +456,7 @@ export class McpApiClient {
     if (request.reason !== undefined && request.reason !== '') {
       body.reason = request.reason;
     }
-    const response = await fetch(url, {
+    const response = await this.doFetch(url, {
       method: 'POST',
       headers: {
         ...this.getHeaders(),
@@ -459,7 +472,7 @@ export class McpApiClient {
     branchId: string,
   ): Promise<BranchPresenceResponse> {
     const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/presence`;
-    const response = await fetch(url, {
+    const response = await this.doFetch(url, {
       method: 'GET',
       headers: this.getHeaders(),
     });
@@ -473,7 +486,7 @@ export class McpApiClient {
   ): Promise<DocumentPresenceResponse> {
     const encodedPath = encodeURIComponent(documentPath);
     const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents/${encodedPath}/presence`;
-    const response = await fetch(url, {
+    const response = await this.doFetch(url, {
       method: 'GET',
       headers: this.getHeaders(),
     });

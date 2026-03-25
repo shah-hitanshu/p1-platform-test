@@ -37,6 +37,18 @@ interface UserProps {
 
 const mcpApiHandler: ExportedHandler<Env> = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    // GET /mcp is for SSE notification streams which require persistent sessions.
+    // Stateless workers don't support long-lived SSE, so reject GET requests.
+    // The MCP client will fall back to POST-only mode.
+    if (request.method === 'GET') {
+      return new Response('SSE not supported in stateless mode', { status: 405 });
+    }
+
+    // DELETE /mcp is for session termination — not applicable without sessions.
+    if (request.method === 'DELETE') {
+      return new Response(null, { status: 204 });
+    }
+
     // Extract user props from the authenticated context.
     // OAuthProvider sets ctx.props with the user identity from the OAuth token.
     // If props is undefined, the request may have bypassed token validation
@@ -53,9 +65,13 @@ const mcpApiHandler: ExportedHandler<Env> = {
       serverName: env.MCP_SERVER_NAME,
       serverVersion: env.MCP_SERVER_VERSION,
       actingUser: props ? { id: props.userId, email: props.email } : undefined,
+      fetcher: env.CSS_BACKEND,
     });
 
-    const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+    });
     await server.connect(transport);
     return transport.handleRequest(request);
   },
