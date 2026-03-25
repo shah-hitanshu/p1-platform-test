@@ -61,6 +61,8 @@ interface CSSPluginPanelProps {
   availableAgents?: RegisteredAgent[];
   /** Callback when agent action is triggered */
   onAgentAction?: (agentId: string, intent: string, targetRegions?: string[]) => void;
+  /** Callback when stop agent button is clicked */
+  onStopAgent?: (agent: ActorPresence) => void;
   /** Whether to show focus regions */
   showFocusRegions?: boolean;
   /** Regions being edited by agents */
@@ -108,6 +110,7 @@ function CSSPluginPanel({
   showAgentActions = false,
   availableAgents = [],
   onAgentAction,
+  onStopAgent,
   // Focus regions are shown within AgentActivityBanner
   showFocusRegions: _showFocusRegions = false,
   agentEditingRegions: _agentEditingRegions = [],
@@ -366,7 +369,7 @@ function CSSPluginPanel({
             <label className="css-plugin-label">Agent Activity</label>
           </div>
           {activeAgents.map((agent) => (
-            <AgentActivityBanner key={agent.id} agent={agent} showIdle />
+            <AgentActivityBanner key={agent.id} agent={agent} showIdle onStopAgent={onStopAgent} />
           ))}
         </div>
       )}
@@ -583,6 +586,8 @@ export interface CSSPluginOptions {
   availableAgents?: RegisteredAgent[];
   /** Callback when agent action is triggered */
   onAgentAction?: (agentId: string, intent: string, targetRegions?: string[]) => void;
+  /** Callback when stop agent button is clicked */
+  onStopAgent?: (agent: ActorPresence) => void;
   /** Whether to show focus regions being edited */
   showFocusRegions?: boolean;
   /** Regions currently being edited by agents */
@@ -685,6 +690,7 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
           showAgentActions={options.showAgentActions}
           availableAgents={options.availableAgents}
           onAgentAction={options.onAgentAction}
+          onStopAgent={options.onStopAgent}
           showFocusRegions={options.showFocusRegions}
           agentEditingRegions={options.agentEditingRegions}
           puckConfig={options.puckConfig}

@@ -419,6 +419,12 @@ export interface CSSPuckContextValue {
   // =========================================================================
 
   /**
+   * Stop an agent's edit session (human-initiated).
+   * Calls the backend to roll back the agent's changes and end its session.
+   */
+  stopAgent: (agent: ActorPresence) => Promise<void>;
+
+  /**
    * Active conflict notifications.
    */
   conflicts: ConflictNotification[];

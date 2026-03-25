@@ -77,7 +77,7 @@ export function useCSSOverrides(options: UseCSSOverridesOptions = {}): PuckOverr
     showAgentActivityBanner: options.showAgentActivityBanner ?? (css.presence?.hasActiveAgents ?? false),
     activeAgents: css.presence?.agents?.filter(a => a.state === 'editing'),
     isAgentEditing: css.presence?.hasActiveAgents ?? false,
-    onStopAgent: options.onStopAgent,
+    onStopAgent: options.onStopAgent ?? css.stopAgent,
     publishedStatus: options.publishedStatus,
   };
 

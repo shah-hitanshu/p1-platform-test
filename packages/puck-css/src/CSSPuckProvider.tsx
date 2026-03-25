@@ -1153,6 +1153,29 @@ function CSSPuckProviderInner({
     setConflicts((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
+  // Stop an agent's edit session (human-initiated)
+  const handleStopAgent = useCallback(
+    async (agent: ActorPresence) => {
+      const documentPath = currentDocumentRef.current?.path;
+      if (!documentPath) {
+        notificationContext.addError('Cannot stop agent: no document loaded');
+        return;
+      }
+      try {
+        await userClient.agentEdit.stopAgent(siteId, branchId, documentPath, agent.actorId);
+        notificationContext.addSuccess(`Agent "${agent.name}" has been stopped`);
+        // Refresh presence to reflect the agent's removal
+        if (presenceEnabled) {
+          void fetchPresenceRef.current();
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        notificationContext.addError(`Failed to stop agent: ${message}`);
+      }
+    },
+    [userClient, siteId, branchId, notificationContext, presenceEnabled]
+  );
+
   // Create checkpoint
   const createCheckpoint = useCallback(
     async (name?: string): Promise<Checkpoint> => {
@@ -1387,6 +1410,13 @@ function CSSPuckProviderInner({
     []
   );
 
+  const handleStopAgentRef = useRef(handleStopAgent);
+  handleStopAgentRef.current = handleStopAgent;
+  const stableStopAgent = useCallback(
+    (agent: ActorPresence) => handleStopAgentRef.current(agent),
+    []
+  );
+
   // =========================================================================
   // Stable Getters (Items 2 & 3)
   // =========================================================================
@@ -1507,6 +1537,7 @@ function CSSPuckProviderInner({
       get presence() { return presenceStateRef.current; },
       agentEdit: agentEditCapabilities,
       triggerAgent: triggerAgentFn,
+      stopAgent: stableStopAgent,
       conflicts,
       dismissConflict,
     }),
@@ -1557,6 +1588,7 @@ function CSSPuckProviderInner({
       // Phase 9 dependencies (presenceState excluded — accessed via getter/ref)
       agentEditCapabilities,
       triggerAgentFn,
+      stableStopAgent,
       conflicts,
       dismissConflict,
     ]

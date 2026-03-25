@@ -111,6 +111,7 @@ export function useCSSPlugin(options: UseCSSPluginOptions = {}): PuckPlugin {
     showAgentActions: options.showAgentActions,
     availableAgents: options.availableAgents,
     onAgentAction: options.onAgentAction,
+    onStopAgent: css.stopAgent,
     showFocusRegions: options.showFocusRegions,
     agentEditingRegions: options.agentEditingRegions,
   };
