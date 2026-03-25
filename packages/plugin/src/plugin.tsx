@@ -1,0 +1,74 @@
+"use client";
+
+import { DEFAULT_MEDIA_PATTERNS } from "./patterns";
+import { MediaConfigProvider, type MediaConfig } from "./context";
+import { MediaFieldRender } from "./components/media-field";
+
+export interface MediaPluginOptions {
+  /** The base URL of the Cloudflare Worker media API */
+  workerUrl: string;
+  /** Site identifier used to scope media to a specific site */
+  siteId: string;
+  /** Function that returns the current auth token, or null if unauthenticated */
+  getAuthToken: () => string | null;
+  /** Field name patterns that trigger the media picker (defaults to common image URL patterns) */
+  fieldNamePatterns?: RegExp[];
+}
+
+/**
+ * Creates a Puck plugin that automatically replaces text fields matching
+ * image/media URL patterns with a media library picker backed by Cloudflare R2.
+ *
+ * Usage:
+ * ```tsx
+ * const mediaPlugin = createMediaPlugin({
+ *   workerUrl: "https://media.example.com",
+ *   siteId: "my-site",
+ *   getAuthToken: () => localStorage.getItem("token"),
+ * });
+ *
+ * <Puck plugins={[mediaPlugin]} config={config} data={data} />
+ * ```
+ */
+export function createMediaPlugin(options: MediaPluginOptions) {
+  const patterns = options.fieldNamePatterns ?? DEFAULT_MEDIA_PATTERNS;
+  const config: MediaConfig = {
+    workerUrl: options.workerUrl,
+    siteId: options.siteId,
+    getAuthToken: options.getAuthToken,
+  };
+
+  return {
+    name: "p1-media-r2",
+    overrides: {
+      fieldTypes: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        text: (props: any) => {
+          const { children, name, field, value, onChange, readOnly, id } = props;
+          const isMediaField = patterns.some((p: RegExp) => p.test(name));
+
+          if (!isMediaField) {
+            return <>{children}</>;
+          }
+
+          return (
+            <MediaConfigProvider config={config}>
+              <MediaFieldRender
+                field={{
+                  type: "custom" as const,
+                  label: field?.label ?? name,
+                  render: () => <></>,
+                }}
+                name={name}
+                id={id ?? name}
+                value={value ?? ""}
+                onChange={onChange}
+                readOnly={readOnly}
+              />
+            </MediaConfigProvider>
+          );
+        },
+      },
+    },
+  };
+}

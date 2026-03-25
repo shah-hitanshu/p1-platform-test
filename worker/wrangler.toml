@@ -1,0 +1,10 @@
+name = "p1-media"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "p1-media"
+
+[vars]
+CSS_BASE_URL = "https://collaborative-state-worker.pantheon.workers.dev"
