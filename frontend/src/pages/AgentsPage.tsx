@@ -98,8 +98,8 @@ export function AgentsPage() {
     try {
       const result = await generateAgentKeyApi(agentId);
       if (result) {
-        const rawKey = (result as Record<string, unknown>).token as string | undefined
-          ?? (result as Record<string, unknown>).key as string | undefined
+        const rawKey = (result as unknown as Record<string, unknown>).token as string | undefined
+          ?? (result as unknown as Record<string, unknown>).key as string | undefined
           ?? null;
         setNewKeyValue(rawKey);
 
