@@ -74,7 +74,7 @@ const ApplyDocumentEditsInputSchema = z.object({
     .array(
       z.object({
         type: z.enum(['add', 'remove', 'replace', 'move', 'reorder']).describe('Operation type'),
-        path: z.string().describe('Dot-notation path to the property (e.g., "content.0.props.title" NOT "/content/0/props/title")'),
+        path: z.string().describe('Dot-notation path using numeric indices for arrays. Example: "content.0.props.title" — NOT "content[0].props.title" (bracket notation corrupts the document) and NOT "/content/0/props/title" (JSON Pointer format)'),
         content: z.unknown().optional().describe('Content for add/replace operations'),
         index: z.number().optional().describe('Index for array operations'),
         fromIndex: z.number().optional().describe('Source index for reorder operations'),
@@ -119,67 +119,67 @@ export function getToolDefinitions(): ToolDefinition[] {
     {
       name: 'list_sites',
       description:
-        'List all sites accessible to you. Use this to discover what sites are available before working with documents.',
+        'List all sites accessible to you. Use this as your starting point to discover available sites before working with documents. Each site has a unique UUID — use that site_id in all subsequent calls.',
       inputSchema: ListSitesInputSchema,
     },
     {
       name: 'list_branches',
       description:
-        'List all branches for a site. Use this to discover what branches are available (e.g., "main", "staging").',
+        'List all branches for a site. Every site has a "main" branch (marked [default]). Edits typically happen on non-main branches and are published to main. Use the branch_id UUID in subsequent calls — never use the branch name as an identifier.',
       inputSchema: ListBranchesInputSchema,
     },
     {
       name: 'list_documents',
       description:
-        'List all documents in a site branch. Use this to discover what documents are available to edit.',
+        'List all documents in a site branch. Returns document paths (e.g., "/home", "/about") and their IDs. Use the document path when calling get_document or starting edit sessions.',
       inputSchema: ListDocumentsInputSchema,
     },
     {
       name: 'get_document',
       description:
-        'Get the content of a document. Optionally specify a region to get just a portion of the document.',
+        'Get the full content of a document, or a specific region of it. IMPORTANT: Always call this BEFORE making any edits to understand the document\'s current structure. Documents follow the Puck editor schema: "content" is an array of components (each with a "type" and "props" object), and "root" is a props object for page-level settings. After retrieving a document, summarize its structure to the user (e.g., "This document has 3 components: Hero, TextBlock, Footer") before proposing changes. This prevents accidentally duplicating or misplacing content. Use the optional "region" parameter with a JSON Pointer path (e.g., "/content") to retrieve just a portion of a large document.',
       inputSchema: GetDocumentInputSchema,
     },
     {
       name: 'check_edit_permission',
       description:
-        'Check if you have permission to edit a document. Always call this before starting an edit session to ensure no humans are actively editing.',
+        'Check if you have permission to edit a document. You MUST call this before start_edit_session to verify no humans are actively editing the same regions. Specify target_regions as JSON paths for the areas you intend to modify (e.g., ["/content/0/props", "/content/1"]). Be specific — only claim regions you actually plan to change. If permission is denied due to conflicts, inform the user and wait rather than retrying immediately.',
       inputSchema: CheckEditPermissionInputSchema,
     },
     {
       name: 'start_edit_session',
       description:
-        'Start an edit session on a document. This reserves the regions for editing and creates a checkpoint for rollback. Call check_edit_permission first.',
+        'Start an edit session on a document. This reserves your target regions and creates a checkpoint that enables rollback if something goes wrong. You must call check_edit_permission first. IMPORTANT WORKFLOW: (1) You MUST have called get_document already to understand the current content. (2) Describe your intent clearly — this is visible to other collaborators. (3) Only reserve target_regions you actually plan to modify. (4) If the user\'s request is ambiguous (e.g., "update the content"), confirm with them whether they want to overwrite existing content or add new content before starting the session.',
       inputSchema: StartEditSessionInputSchema,
     },
     {
       name: 'apply_document_edits',
       description:
-        'Apply edit operations to modify document content. REQUIRES a valid edit_session_id from start_edit_session - the backend enforces this. Use dot-notation paths like "content.0.props.title" (NOT JSON Pointer format).',
+        'Apply edit operations to modify document content. REQUIRES a valid edit_session_id from start_edit_session. PATH FORMAT: Use dot-notation with numeric indices for arrays. CORRECT: "content.0.props.title". WRONG: "content[0].props.title" (creates a literal key "[0]" — corrupts the document). WRONG: "/content/0/props/title" (JSON Pointer format). OPERATIONS: "replace" overwrites a value at an existing path (use for modifying existing content). "add" inserts new content. "remove" deletes content at a path. "move" moves an array element from one index to another. "reorder" reorders elements within an array. CRITICAL GUIDELINES: Before using "add" on a path that already has content, ask the user if they want to overwrite (use "replace") or add alongside the existing content. Never create duplicate top-level keys — a document should have exactly one "content" array and one "root" object. When modifying a component\'s properties, target the specific property path (e.g., "content.0.props.title") rather than replacing the entire component, to preserve other properties. If you need to replace an entire component, use "replace" on "content.N" where N is the component\'s index.',
       inputSchema: ApplyDocumentEditsInputSchema,
     },
     {
       name: 'complete_edit_session',
       description:
-        'Complete an edit session successfully. This creates a checkpoint with your changes. Always call this after finishing edits.',
+        'Complete an edit session successfully and save your changes. This creates a post-edit checkpoint. Always call this when you are done making edits — do not leave sessions open. Before completing, consider using get_document to verify your changes look correct. If the result is not what you expected, use abort_edit_session instead.',
       inputSchema: CompleteEditSessionInputSchema,
     },
     {
       name: 'abort_edit_session',
       description:
-        'Abort an edit session and roll back changes. Use this if something goes wrong or the user wants to cancel.',
+        'Abort an edit session and roll back all changes to the pre-edit checkpoint. Use this when: something went wrong during editing, the user wants to cancel, or you realize your edits produced unexpected results (use get_document to check). Provide a reason so the rollback is auditable. After aborting, you can start a fresh edit session if needed.',
       inputSchema: AbortEditSessionInputSchema,
     },
     {
       name: 'get_branch_presence',
       description:
-        'Get presence information for all documents on a branch. Shows who is currently viewing or editing each document.',
+        'Get presence information for all documents on a branch. Shows who is currently viewing or editing each document. Use this to understand the collaboration landscape before making edits — it helps you avoid conflicts with other editors.',
       inputSchema: GetBranchPresenceInputSchema,
     },
     {
       name: 'get_document_presence',
       description:
-        'Get presence information for a specific document. Shows actors currently viewing or editing, their state, and intent.',
+        'Get detailed presence information for a specific document. Shows all actors (humans and agents) currently viewing or editing, their focus regions, state, and intent. Check this before editing to understand if anyone else is actively working on the document.',
       inputSchema: GetDocumentPresenceInputSchema,
     },
   ];
