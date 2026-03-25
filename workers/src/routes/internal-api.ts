@@ -68,6 +68,7 @@ interface AgentCheckpointStartBody {
   intent: string;
   trigger: CheckpointTrigger;
   targetRegions?: string[];
+  forceFullSnapshot?: boolean;
 }
 
 /**
@@ -409,6 +410,7 @@ function validateAgentCheckpointStartBody(body: unknown): AgentCheckpointStartVa
       intent: data.intent,
       trigger: data.trigger as CheckpointTrigger,
       targetRegions: Array.isArray(data.targetRegions) ? data.targetRegions as string[] : undefined,
+      forceFullSnapshot: data.forceFullSnapshot === true,
     },
   };
 }
@@ -519,6 +521,7 @@ async function handleAgentCheckpointStart(request: Request): Promise<Response> {
       description: `Pre-edit checkpoint: ${data.intent}`,
       trigger: data.trigger,
       affectedRegions: data.targetRegions,
+      forceFullSnapshot: data.forceFullSnapshot === true,
     });
 
     return jsonResponse({

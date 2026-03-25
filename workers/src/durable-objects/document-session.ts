@@ -1664,7 +1664,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     if (remainingWebSockets.length === 0) {
       // Run one final cleanup before syncing
       // (Cleanup alarm will self-stop if no data to track)
-      const cleanupStats = this.runCleanup();
+      const cleanupStats = await this.runCleanup();
 
       // Persist edit sessions if any were cleared during cleanup
       if (cleanupStats.sessionsCleared > 0) {
@@ -2642,8 +2642,8 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       await this.syncToPostgres(syncSchedule.actorId, syncSchedule.actorType);
     }
 
-    // Run cleanup
-    const cleanupStats = this.runCleanup();
+    // Run cleanup (async — may roll back orphaned edit sessions)
+    const cleanupStats = await this.runCleanup();
 
     // Persist edit sessions and presence if any were cleared during cleanup
     if (cleanupStats.sessionsCleared > 0) {
@@ -2723,14 +2723,19 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
    * Clears stale presence entries, focus regions, active regions, and orphaned edit sessions.
    * Self-stops the cleanup timer when the DO is truly idle (no data to clean).
    *
+   * Expired edit sessions with a pre-edit checkpoint are rolled back to ensure
+   * partial agent edits do not persist when the agent disconnects without
+   * completing or aborting the session.
+   *
    * @returns Stats about what was cleaned up
    */
-  private runCleanup(): {
+  private async runCleanup(): Promise<{
     presenceCleared: number;
     focusCleared: number;
     sessionsCleared: number;
+    sessionsRolledBack: number;
     regionsCleared: boolean;
-    } {
+    }> {
     const now = Date.now();
 
     // Clear stale presence entries
@@ -2748,9 +2753,36 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     }
 
     // Clear orphaned edit sessions (sessions older than MAX_EDIT_SESSION_AGE_MS)
+    // Roll back sessions that have a pre-edit checkpoint to undo partial edits
     let sessionsCleared = 0;
+    let sessionsRolledBack = 0;
     for (const [id, session] of this.editSessions.entries()) {
       if (now - session.startedAt > MAX_EDIT_SESSION_AGE_MS) {
+        // Roll back to pre-edit checkpoint if one exists (autonomous sessions)
+        if (session.checkpointId !== undefined) {
+          try {
+            const rolledBack = await this.rollbackToAgentCheckpoint(
+              session.checkpointId,
+              session.agentId,
+              'Orphaned edit session expired without completion',
+            );
+            if (rolledBack) {
+              sessionsRolledBack++;
+              console.log(
+                `Rolled back orphaned edit session ${id} to checkpoint ${session.checkpointId}`,
+              );
+            } else {
+              console.warn(
+                `Failed to roll back orphaned edit session ${id} (checkpoint ${session.checkpointId})`,
+              );
+            }
+          } catch (error) {
+            console.error(
+              `Error rolling back orphaned edit session ${id}:`, error,
+            );
+          }
+        }
+
         this.editSessions.delete(id);
         this.presenceManager.unregisterByActorId(session.agentId);
         this.pushPresenceUpdate('leave', session.agentId);
@@ -2765,13 +2797,16 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
     // Log cleanup for debugging (only when something was cleared)
     if (presenceCleared > 0 || sessionsCleared > 0 || focusCleared > 0) {
+      const rollbackInfo = sessionsRolledBack > 0
+        ? ` (${String(sessionsRolledBack)} rolled back)`
+        : '';
       console.log(
         `Cleanup: cleared ${String(presenceCleared)} presence, ` +
-        `${String(focusCleared)} focus, ${String(sessionsCleared)} edit sessions`,
+        `${String(focusCleared)} focus, ${String(sessionsCleared)} edit sessions${rollbackInfo}`,
       );
     }
 
-    return { presenceCleared, focusCleared, sessionsCleared, regionsCleared };
+    return { presenceCleared, focusCleared, sessionsCleared, sessionsRolledBack, regionsCleared };
   }
 
   /**
@@ -2958,6 +2993,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
               description: `Pre-edit checkpoint: ${intent}`,
               trigger,
               affectedRegions: targetRegions,
+              forceFullSnapshot: true,
             }),
         );
         console.log(`Created pre-edit checkpoint ${result.checkpoint.id} for agent ${agentId} (direct DB)`);
@@ -2988,6 +3024,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
           intent,
           trigger,
           targetRegions,
+          forceFullSnapshot: true,
         }),
       });
 

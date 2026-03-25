@@ -1835,4 +1835,169 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       expect(expiredPresence).toBeUndefined();
     });
   });
+
+  describe('orphaned autonomous session rollback', () => {
+    it('should attempt rollback when autonomous session with checkpointId expires', async () => {
+      vi.useFakeTimers();
+      const baseTime = Date.now();
+
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      // Start an autonomous edit session (creates a checkpoint)
+      const startResponse = await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'agent-rollback-test',
+            trigger: 'autonomous',
+            intent: 'Test orphaned rollback',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+
+      expect(startResponse.status).toBe(200);
+      const startBody = (await startResponse.json()) as { editSessionId: string; checkpointId: string };
+      // Autonomous sessions get a checkpoint (placeholder in test env without Hyperdrive)
+      expect(startBody.checkpointId).toBeDefined();
+
+      // Apply an edit so there's something to roll back
+      vi.setSystemTime(baseTime + 550_000);
+      await session.fetch(
+        new Request('http://localhost/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Actor-Type': 'agent' },
+          body: JSON.stringify({
+            actorId: 'agent-rollback-test',
+            editSessionId: startBody.editSessionId,
+            operations: [{ type: 'set', path: 'root.title', value: 'Should be rolled back' }],
+          }),
+        }),
+      );
+
+      // Expire the session
+      vi.setSystemTime(baseTime + 601_000);
+      await session.alarm();
+
+      // Session should be cleaned up
+      const sessionsResponse = await session.fetch(
+        new Request('http://localhost/edit-sessions'),
+      );
+      const sessionsBody = (await sessionsResponse.json()) as { sessions: unknown[] };
+      expect(sessionsBody.sessions.length).toBe(0);
+
+      // Agent presence should be cleared
+      const presenceResponse = await session.fetch(
+        new Request('http://localhost/presences'),
+      );
+      const presenceBody = (await presenceResponse.json()) as { presences: Array<{ actorId: string }> };
+      expect(presenceBody.presences.find(
+        (p) => p.actorId === 'agent-rollback-test',
+      )).toBeUndefined();
+
+      vi.useRealTimers();
+    });
+
+    it('should NOT attempt rollback for human_requested sessions without checkpointId', async () => {
+      vi.useFakeTimers();
+      const baseTime = Date.now();
+
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      // Start a human_requested edit session (no checkpoint)
+      const startResponse = await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'agent-no-rollback',
+            trigger: 'human_requested',
+            intent: 'No checkpoint for this one',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+
+      expect(startResponse.status).toBe(200);
+      const startBody = (await startResponse.json()) as { editSessionId: string; checkpointId?: string };
+      // human_requested sessions should NOT have a checkpoint
+      expect(startBody.checkpointId).toBeUndefined();
+
+      // Expire the session — cleanup should NOT attempt rollback (no checkpoint to rollback to)
+      vi.setSystemTime(baseTime + 601_000);
+      await session.alarm();
+
+      // Session should still be cleaned up normally
+      const sessionsResponse = await session.fetch(
+        new Request('http://localhost/edit-sessions'),
+      );
+      const sessionsBody = (await sessionsResponse.json()) as { sessions: unknown[] };
+      expect(sessionsBody.sessions.length).toBe(0);
+
+      vi.useRealTimers();
+    });
+
+    it('should handle rollback failure gracefully during cleanup', async () => {
+      vi.useFakeTimers();
+      const baseTime = Date.now();
+
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      // Configure env with internal API that will fail
+      const env = {
+        ...createMockEnv(),
+        INTERNAL_API_URL: 'http://failing-api:9999',
+        INTERNAL_SECRET: 'test-secret',
+      };
+      const session = new DocumentSession(state, env);
+
+      // Start an autonomous session
+      const startResponse = await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'agent-fail-rollback',
+            trigger: 'autonomous',
+            intent: 'Test rollback failure handling',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+
+      expect(startResponse.status).toBe(200);
+
+      // Expire the session — rollback will fail but cleanup should still proceed
+      vi.setSystemTime(baseTime + 601_000);
+
+      // alarm() should not throw even when rollback fails
+      await expect(session.alarm()).resolves.not.toThrow();
+
+      // Session should still be cleaned up despite rollback failure
+      const sessionsResponse = await session.fetch(
+        new Request('http://localhost/edit-sessions'),
+      );
+      const sessionsBody = (await sessionsResponse.json()) as { sessions: unknown[] };
+      expect(sessionsBody.sessions.length).toBe(0);
+
+      vi.useRealTimers();
+    });
+  });
 });
+

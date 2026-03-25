@@ -573,6 +573,7 @@ describe('Phase 1.2: Internal API Routes', () => {
         description: 'Pre-edit checkpoint: Update hero section',
         trigger: 'autonomous',
         affectedRegions: ['root.hero'],
+        forceFullSnapshot: false,
       });
     });
 

@@ -41,6 +41,10 @@ export interface CreateCheckpointParams {
   operationType?: string;
   /** JSON paths of regions affected by this checkpoint */
   affectedRegions?: string[];
+  /** Force a full snapshot of all branch documents, ignoring incremental logic.
+   *  Required for agent_pre_edit checkpoints so rollback can restore all
+   *  documents the agent might edit, not just those changed since the parent. */
+  forceFullSnapshot?: boolean;
   /** Explicit document versions to capture. When provided, skips the
    *  automatic document_versions query and uses only these entries.
    *  Used by merge to ensure only merge-touched documents are checkpointed. */
@@ -465,7 +469,8 @@ export async function createCheckpoint(
       }));
     } else {
       // Automatic mode: determine incremental vs full from the CTE result
-      const isIncremental = insertRow.parent_checkpoint_id != null;
+      // forceFullSnapshot overrides incremental logic (used by agent_pre_edit)
+      const isIncremental = insertRow.parent_checkpoint_id != null && params.forceFullSnapshot !== true;
       const parentCreatedAt = insertRow.parent_created_at;
 
       if (isIncremental && parentCreatedAt != null && parentCreatedAt !== '') {
