@@ -39,7 +39,7 @@
         "MCP_SERVER_VERSION": "0.1.0"
       },
       "kv_namespaces": [
-        { "binding": "OAUTH_KV", "id": "REPLACE_WITH_SBX1_MCP_OAUTH_KV_ID" }
+        { "binding": "OAUTH_KV", "id": "57760de9030e441bad5e205e4a8ec82d" }
       ]
     },
     "production": {
