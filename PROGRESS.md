@@ -3648,3 +3648,29 @@ Updated all 11 MCP tool descriptions in both `examples/collaborative-state-mcp/s
 
 #### Decision
 Chose tool description guidance over server-side validation. The agent needs to understand the document model and confirm ambiguous operations with the user — hard validation alone wouldn't prevent the "append vs overwrite" confusion.
+
+### Refactor: Split Large Files for Manageability (2026-03-26)
+
+**Status:** Complete
+**Branch:** `refactor/split-large-files`
+**Commits:** `ad430b9` through `2bc6d81` (6 commits)
+
+#### Context
+Six files exceeded 800-1,700 lines, making them difficult to navigate and maintain. Split each into focused modules following the same patterns established in the document-session.ts refactor (Waves 1-4).
+
+#### Changes
+
+| Original File | Before | After | Extracted Modules |
+|---|---:|---:|---|
+| `types.ts` | 847 | 97 (barrel) | `types/enums.ts` (147), `types/domain.ts` (267), `types/auth.ts` (168), `types/structures.ts` (134), `types/presence.ts` (146), `types/audit.ts` (38) |
+| `checkpoint-service.ts` | 1,267 | 439 | `checkpoint-types.ts` (282), `checkpoint-mappers.ts` (100), `checkpoint-queries.ts` (411), `checkpoint-publish.ts` (146) |
+| `document-service.ts` | 956 | 347 | `document-types.ts` (326), `branch-document-service.ts` (375) |
+| `structure-service.ts` | 958 | 398 | `structure-types.ts` (293), `node-service.ts` (350) |
+| `realtime-api.ts` | 1,118 | 443 | `realtime-utils.ts` (266), `realtime-validators.ts` (457) |
+| `index.ts` | 1,680 | 431 | `routes/route-parser.ts` (645), `routes/route-dispatch.ts` (242), `middleware/authentication.ts` (284), `middleware/health.ts` (77), `utils/http-helpers.ts` (68) |
+
+#### Key patterns
+- Each parent file re-exports everything from extracted modules for **zero-impact backward compatibility** — no consumer imports needed to change
+- Extracted modules import from sibling/types modules, **never from the parent** (no circular imports)
+- Type-only imports (`import type`) used for cross-module type references to avoid runtime circular dependencies
+- All 2,654 tests pass, zero lint errors on new files

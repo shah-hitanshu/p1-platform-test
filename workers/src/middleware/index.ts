@@ -15,3 +15,18 @@ export type {
   AgentStatusResult,
   MiddlewareFunction,
 } from './agent-status-middleware';
+
+// Authentication Middleware
+export {
+  DEFAULT_MOCK_CONFIG,
+  hasOAuthProviders,
+  getIdentityProvider,
+  getMASClient,
+  authenticate,
+  getMockIdentityProvider,
+  handleAuthRoutes,
+} from './authentication';
+
+// Health Check
+export { handleHealth } from './health';
+export type { HealthResponse } from './health';

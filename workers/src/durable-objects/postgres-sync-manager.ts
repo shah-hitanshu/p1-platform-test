@@ -1,0 +1,522 @@
+/**
+ * PostgreSQL Sync Manager for DocumentSession
+ *
+ * Handles initialization from PostgreSQL and bidirectional sync
+ * between Durable Object storage and PostgreSQL.
+ * Extracted from document-session.ts for maintainability.
+ */
+
+import * as Y from 'yjs';
+import { runWithConnection, query as dbQuery } from '../db';
+import type { DocumentSessionEnv, SessionInfo } from './document-session-types';
+import { YDOC_STORAGE_KEY, SYNC_IDLE_TIMEOUT_MS } from './document-session-types';
+import { applySnapshotToYMap } from './crdt-operations';
+
+/** Storage key for sync schedule (survives hibernation) */
+export const SYNC_SCHEDULE_KEY = 'syncSchedule';
+
+export class PostgresSyncManager {
+  /** Promise tracking an in-progress sync to prevent concurrent syncs */
+  private syncInProgress: Promise<void> | null = null;
+
+  /** Last synced state vector hash for change detection */
+  lastSyncedStateVectorHash: string | null = null;
+
+  /** Flag indicating if a cleanup alarm has been scheduled */
+  cleanupAlarmScheduled = false;
+
+  constructor(
+    private readonly env: DocumentSessionEnv,
+    private readonly getSessionInfo: () => SessionInfo,
+    private readonly getYdoc: () => Y.Doc,
+    private readonly storage: DurableObjectStorage,
+  ) {}
+
+  /** Accessor for current session info (follows reassignment in DocumentSession) */
+  private get sessionInfo(): SessionInfo {
+    return this.getSessionInfo();
+  }
+
+  // =============================================================================
+  // Initialization Methods
+  // =============================================================================
+
+  /**
+   * Load initial state from PostgreSQL.
+   * Phase 5.3: Tries direct Hyperdrive first, falls back to HTTP.
+   */
+  async initializeFromPostgres(): Promise<void> {
+    const { siteId, documentId, branchId } = this.sessionInfo;
+
+    if (
+      siteId === 'unknown'
+      || documentId === 'unknown'
+      || branchId === 'unknown'
+    ) {
+      return;
+    }
+
+    // Phase 5.3: Try direct Hyperdrive path first
+    if (this.env.HYPERDRIVE !== undefined) {
+      try {
+        const loaded = await this.initializeFromHyperdrive();
+        if (loaded) return;
+      } catch (error) {
+        console.warn(
+          'Hyperdrive init failed, falling back to HTTP:',
+          error,
+        );
+      }
+    }
+
+    await this.initializeFromHttpApi();
+  }
+
+  /**
+   * Phase 5.3: Initialize from PostgreSQL via Hyperdrive.
+   * @returns true if state was loaded
+   */
+  private async initializeFromHyperdrive(): Promise<boolean> {
+    if (this.env.HYPERDRIVE === undefined) return false;
+
+    const { documentId, branchId } = this.sessionInfo;
+
+    interface VersionRow {
+      snapshot: Record<string, unknown>;
+      crdt_state: Buffer | null;
+    }
+
+    const result = await runWithConnection(
+      this.env.HYPERDRIVE.connectionString,
+      { isHyperdrive: true },
+      async () => dbQuery<VersionRow>(
+        `SELECT dv.snapshot, dv.crdt_state
+         FROM app.document_versions dv
+         WHERE dv.document_id = $1 AND dv.branch_id = $2
+         ORDER BY dv.version_number DESC LIMIT 1`,
+        [documentId, branchId],
+      ),
+    );
+
+    if (result.rows.length === 0) return false;
+    const row = result.rows[0];
+
+    if (row.crdt_state !== null) {
+      const base64 = row.crdt_state.toString('base64');
+      Y.applyUpdate(this.getYdoc(), this.base64ToUint8Array(base64));
+      console.log(
+        `Initialized doc ${documentId} from Hyperdrive CRDT state`,
+      );
+      await this.persist();
+      this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+      return true;
+    }
+
+    if (typeof row.snapshot === 'object') {
+      const root = this.getYdoc().getMap('root');
+      applySnapshotToYMap(root, row.snapshot);
+      console.log(
+        `Initialized doc ${documentId} from Hyperdrive snapshot`,
+      );
+      await this.persist();
+      this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Load initial state via HTTP internal API (fallback path).
+   */
+  private async initializeFromHttpApi(): Promise<void> {
+    if (
+      this.env.INTERNAL_API_URL === undefined
+      || this.env.INTERNAL_SECRET === undefined
+    ) {
+      return;
+    }
+
+    const { siteId, documentId, branchId } = this.sessionInfo;
+    const url = new URL(
+      `${this.env.INTERNAL_API_URL}/internal/crdt-state`,
+    );
+    url.searchParams.set('siteId', siteId);
+    url.searchParams.set('documentId', documentId);
+    url.searchParams.set('branchId', branchId);
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: { 'X-Internal-Secret': this.env.INTERNAL_SECRET },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) return;
+      throw new Error(
+        `Failed to load from PostgreSQL: ${String(response.status)}`,
+      );
+    }
+
+    const rawData = await response.json();
+    const data = rawData as {
+      found: boolean;
+      snapshot?: Record<string, unknown>;
+      crdtState?: string | null;
+    };
+
+    if (!data.found) return;
+
+    if (typeof data.crdtState === 'string' && data.crdtState !== '') {
+      Y.applyUpdate(
+        this.getYdoc(),
+        this.base64ToUint8Array(data.crdtState),
+      );
+      console.log(
+        `Initialized doc ${documentId} from PostgreSQL CRDT state`,
+      );
+      await this.persist();
+      this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+      return;
+    }
+
+    if (
+      data.snapshot !== undefined
+      && typeof data.snapshot === 'object'
+    ) {
+      const root = this.getYdoc().getMap('root');
+      applySnapshotToYMap(root, data.snapshot);
+      console.log(
+        `Initialized doc ${documentId} from PostgreSQL snapshot`,
+      );
+      await this.persist();
+      this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+    }
+  }
+
+  // =============================================================================
+  // Sync Methods
+  // =============================================================================
+
+  /**
+   * Sync current CRDT state to PostgreSQL via the internal API.
+   * Called from alarm handler when sync schedule is due, or on last client disconnect.
+   * Uses a lock to prevent concurrent syncs which could create duplicate versions.
+   *
+   * @param actorId - Actor ID for sync attribution (from stored schedule or caller)
+   * @param actorType - Actor type for sync attribution
+   */
+  async syncToPostgres(actorId?: string, actorType?: 'user' | 'agent'): Promise<void> {
+    // If a sync is already in progress, wait for it to complete and return.
+    if (this.syncInProgress !== null) {
+      console.log('Sync skipped: another sync is already in progress');
+      await this.syncInProgress;
+      return;
+    }
+
+    // Read sync schedule from storage if no actor info provided
+    let syncActorId = actorId;
+    let syncActorType = actorType ?? 'user' as const;
+    if (syncActorId === undefined) {
+      const schedule = await this.storage.get<{ dueAt: number; actorId: string; actorType: 'user' | 'agent' }>(SYNC_SCHEDULE_KEY);
+      if (schedule !== undefined) {
+        syncActorId = schedule.actorId;
+        syncActorType = schedule.actorType;
+      }
+    }
+
+    if (syncActorId === undefined) {
+      console.log('Sync skipped: no sync schedule or actor info available');
+      return;
+    }
+
+    // Check if internal API is configured
+    const internalApiUrl = this.env.INTERNAL_API_URL;
+    const internalSecret = this.env.INTERNAL_SECRET;
+    if (internalApiUrl === undefined || internalSecret === undefined) {
+      console.log('Sync skipped: INTERNAL_API_URL or INTERNAL_SECRET not configured');
+      return;
+    }
+
+    // Set the lock before starting the sync
+    this.syncInProgress = this.performSync(internalApiUrl, internalSecret, syncActorId, syncActorType);
+
+    try {
+      await this.syncInProgress;
+    } finally {
+      this.syncInProgress = null;
+    }
+  }
+
+  /**
+   * Perform the actual sync operation.
+   * Separated from syncToPostgres to enable proper locking.
+   * @param internalApiUrl - The internal API URL (pre-validated)
+   * @param internalSecret - The internal secret (pre-validated)
+   * @param actorId - Actor ID for sync attribution
+   * @param actorType - Actor type for sync attribution
+   */
+  private async performSync(
+    internalApiUrl: string,
+    internalSecret: string,
+    actorId: string,
+    actorType: 'user' | 'agent',
+  ): Promise<void> {
+    try {
+      const root = this.getYdoc().getMap('root');
+      const snapshot = root.toJSON() as Record<string, unknown>;
+      const crdtState = this.uint8ArrayToBase64(Y.encodeStateAsUpdate(this.getYdoc()));
+
+      // Phase 5.1: Prefer queue-based sync when available
+      if (this.env.SYNC_QUEUE !== undefined) {
+        await this.env.SYNC_QUEUE.send({
+          siteId: this.sessionInfo.siteId,
+          documentId: this.sessionInfo.documentId,
+          branchId: this.sessionInfo.branchId,
+          snapshot,
+          crdtState,
+          actorId,
+          actorType,
+          timestamp: Date.now(),
+        });
+        this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+        await this.storage.delete(SYNC_SCHEDULE_KEY);
+        console.log(`Queued sync for document ${this.sessionInfo.documentId}`);
+        return;
+      }
+
+      // Fallback: direct HTTP sync via internal API
+      const syncUrl = `${internalApiUrl}/internal/crdt-sync`;
+
+      const response = await fetch(syncUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': internalSecret,
+        },
+        body: JSON.stringify({
+          siteId: this.sessionInfo.siteId,
+          documentId: this.sessionInfo.documentId,
+          branchId: this.sessionInfo.branchId,
+          snapshot,
+          crdtState,
+          actorId,
+          actorType,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Sync to PostgreSQL failed: ${String(response.status)} ${errorText}`);
+      } else {
+        console.log(`Synced document ${this.sessionInfo.documentId} to PostgreSQL`);
+        // Update the state vector hash and clear sync schedule after successful sync
+        this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+        await this.storage.delete(SYNC_SCHEDULE_KEY);
+      }
+    } catch (error) {
+      console.error('Error syncing to PostgreSQL:', error);
+    }
+  }
+
+  /**
+   * Perform a synchronous sync to PostgreSQL, bypassing the async queue.
+   * Uses direct Hyperdrive connection when available, falls back to HTTP internal API.
+   * Unlike performSync(), this method never uses the queue and always awaits completion.
+   */
+  async performDirectSync(
+    internalApiUrl: string,
+    internalSecret: string,
+    actorId: string,
+    actorType: 'user' | 'agent',
+  ): Promise<void> {
+    // If another sync is in progress, wait for it
+    if (this.syncInProgress !== null) {
+      await this.syncInProgress;
+    }
+
+    // Set the lock so concurrent syncs (e.g. alarm-driven) wait for us
+    const directSyncPromise = this.executeDirectSync(internalApiUrl, internalSecret, actorId, actorType);
+    this.syncInProgress = directSyncPromise;
+    try {
+      await directSyncPromise;
+    } finally {
+      this.syncInProgress = null;
+    }
+  }
+
+  /**
+   * Execute the direct sync write. Separated to enable proper syncInProgress locking.
+   */
+  private async executeDirectSync(
+    internalApiUrl: string,
+    internalSecret: string,
+    actorId: string,
+    actorType: 'user' | 'agent',
+  ): Promise<void> {
+    const root = this.getYdoc().getMap('root');
+    const snapshot = root.toJSON() as Record<string, unknown>;
+    const crdtState = this.uint8ArrayToBase64(Y.encodeStateAsUpdate(this.getYdoc()));
+
+    // Phase 5.3: Try direct Hyperdrive path first (synchronous, no queue)
+    if (this.env.HYPERDRIVE !== undefined) {
+      try {
+        await runWithConnection(
+          this.env.HYPERDRIVE.connectionString,
+          { isHyperdrive: true },
+          async () => {
+            // Import and call batchSyncToPostgres is complex; use direct SQL instead
+            // This matches the same dedup logic as batchSyncToPostgres
+            const { documentId, branchId } = this.sessionInfo;
+            await dbQuery(
+              `INSERT INTO app.document_versions (
+                document_id, branch_id, version_number, snapshot, crdt_state,
+                source, created_by_id, created_by_type
+              )
+              SELECT $1, $2,
+                COALESCE(
+                  (SELECT MAX(version_number) FROM app.document_versions
+                   WHERE document_id = $1 AND branch_id = $2),
+                  0
+                ) + 1,
+                $3, decode($4, 'base64'), 'realtime', $5, $6
+              WHERE NOT EXISTS (
+                SELECT 1 FROM (
+                  SELECT snapshot FROM app.document_versions
+                  WHERE document_id = $1 AND branch_id = $2
+                  ORDER BY version_number DESC LIMIT 1
+                ) latest
+                WHERE latest.snapshot IS NOT DISTINCT FROM $3::jsonb
+              )`,
+              [documentId, branchId, snapshot, crdtState, actorId, actorType],
+            );
+          },
+        );
+        this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+        await this.storage.delete(SYNC_SCHEDULE_KEY);
+        console.log(`Flushed document ${this.sessionInfo.documentId} to PostgreSQL (direct DB)`);
+        return;
+      } catch (error) {
+        console.warn('Direct DB flush failed, falling back to HTTP:', error);
+      }
+    }
+
+    // Fallback: HTTP sync (synchronous — awaits response)
+    const syncUrl = `${internalApiUrl}/internal/crdt-sync`;
+    const response = await fetch(syncUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Secret': internalSecret,
+      },
+      body: JSON.stringify({
+        siteId: this.sessionInfo.siteId,
+        documentId: this.sessionInfo.documentId,
+        branchId: this.sessionInfo.branchId,
+        snapshot,
+        crdtState,
+        actorId,
+        actorType,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP sync failed: ${String(response.status)} ${errorText}`);
+    }
+
+    this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+    await this.storage.delete(SYNC_SCHEDULE_KEY);
+    console.log(`Flushed document ${this.sessionInfo.documentId} to PostgreSQL (HTTP)`);
+  }
+
+  // =============================================================================
+  // Scheduling Methods
+  // =============================================================================
+
+  /**
+   * Schedule a sync to PostgreSQL after idle timeout using DO alarms.
+   * Uses storage-backed scheduling so the sync survives hibernation.
+   * Debounces by updating the dueAt time on each call.
+   *
+   * @param actorId - ID of the actor making the edit
+   * @param actorType - Type of actor ('user' or 'agent')
+   */
+  async scheduleSync(actorId: string, actorType: 'user' | 'agent'): Promise<void> {
+    // Check if the document has actually changed by comparing state vectors
+    const currentHash = this.computeStateVectorHash();
+    if (currentHash === this.lastSyncedStateVectorHash) {
+      console.log('Sync skipped: state vector unchanged (no actual content changes)');
+      return;
+    }
+
+    // Only schedule if we have internal API configured
+    if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
+      return;
+    }
+
+    // Store sync schedule in DO storage (survives hibernation)
+    const dueAt = Date.now() + SYNC_IDLE_TIMEOUT_MS;
+    await this.storage.put(SYNC_SCHEDULE_KEY, {
+      dueAt,
+      actorId,
+      actorType,
+    });
+
+    // Set alarm to fire at the due time, replacing stale or later alarms
+    const existingAlarm = await this.storage.getAlarm();
+    const now = Date.now();
+    if (existingAlarm === null || existingAlarm > dueAt || existingAlarm < now) {
+      await this.storage.setAlarm(dueAt);
+      this.cleanupAlarmScheduled = true;
+    }
+  }
+
+  // =============================================================================
+  // Hash & Change Detection
+  // =============================================================================
+
+  /**
+   * Compute a simple hash of the Yjs state vector for change detection.
+   * Uses a fast string-based hash of the base64-encoded state vector.
+   */
+  computeStateVectorHash(): string {
+    const stateVector = Y.encodeStateVector(this.getYdoc());
+    return this.uint8ArrayToBase64(stateVector);
+  }
+
+  // =============================================================================
+  // Persistence & Encoding Utilities
+  // =============================================================================
+
+  /**
+   * Persist the current Yjs document state to DO storage.
+   */
+  private async persist(): Promise<void> {
+    const update = Y.encodeStateAsUpdate(this.getYdoc());
+    await this.storage.put(YDOC_STORAGE_KEY, update);
+  }
+
+  /**
+   * Decode base64 string to Uint8Array
+   */
+  private base64ToUint8Array(base64: string): Uint8Array {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  /**
+   * Convert Uint8Array to base64 string
+   */
+  private uint8ArrayToBase64(bytes: Uint8Array): string {
+    let binary = '';
+    for (const byte of bytes) {
+      binary += String.fromCharCode(byte);
+    }
+    return btoa(binary);
+  }
+
+}

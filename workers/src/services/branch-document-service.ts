@@ -1,0 +1,375 @@
+/**
+ * Branch-Scoped Document Operations
+ *
+ * Operations for managing documents within the context of a branch:
+ * listing, creating, checking existence, and deleting (tombstoning).
+ *
+ * @see collaborative-state-system-architecture-v2.2.md Section "Documents"
+ */
+
+import type { Document } from '../types';
+import { query } from '../db';
+import type {
+  ListDocumentsOnBranchOptions,
+  CreateDocumentOnBranchParams,
+  CreateDocumentOnBranchResult,
+  DeleteDocumentOnBranchParams,
+  DocumentVersionRow,
+  DocumentOnBranchRow,
+  DocumentRow,
+} from './document-types';
+import {
+  escapeLikePattern,
+  isTombstoneRow,
+  mapRowToDocumentOnBranch,
+  mapRowToDocument,
+  mapRowToDocumentVersion,
+  validatePath,
+  isUniqueConstraintViolation,
+  isForeignKeyViolation,
+  SiteNotFoundError,
+  DuplicateDocumentPathError,
+  DocumentNotFoundError,
+} from './document-types';
+import type { DocumentOnBranch } from './document-types';
+
+/**
+ * Lists documents that have versions on a specific branch.
+ * Excludes documents that have been tombstoned (deleted) on the branch.
+ *
+ * @param branchId - The branch ID
+ * @param options - Filtering options
+ * @returns Array of documents
+ */
+export async function listDocumentsOnBranch(
+  branchId: string,
+  options: ListDocumentsOnBranchOptions = {},
+): Promise<DocumentOnBranch[]> {
+  const { pathPrefix, mainBranchId } = options;
+
+  if (mainBranchId !== undefined && mainBranchId !== '') {
+    // Copy-on-write query: include documents from branch + inherited from main
+    // Includes publish state via LEFT JOIN LATERAL on checkpoint_documents
+    let sql = `
+      SELECT DISTINCT d.*, false AS inherited,
+        pub.document_version_id AS published_version_id,
+        pub.published_at
+      FROM app.documents d
+      INNER JOIN app.document_versions dv ON dv.document_id = d.id
+      LEFT JOIN LATERAL (
+        SELECT cd.document_version_id, cp.created_at AS published_at
+        FROM app.checkpoint_documents cd
+        INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+        WHERE cd.document_id = d.id AND cp.branch_id = $2
+        ORDER BY cp.created_at DESC
+        LIMIT 1
+      ) pub ON true
+      WHERE dv.branch_id = $1
+        AND d.archived_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM app.document_versions dv2
+          WHERE dv2.document_id = d.id
+            AND dv2.branch_id = $1
+            AND dv2.is_tombstone = true
+            AND dv2.version_number = (
+              SELECT MAX(dv3.version_number)
+              FROM app.document_versions dv3
+              WHERE dv3.document_id = d.id AND dv3.branch_id = $1
+            )
+        )`;
+
+    const params: unknown[] = [branchId, mainBranchId];
+
+    if (pathPrefix !== undefined && pathPrefix !== '') {
+      const escapedPrefix = escapeLikePattern(pathPrefix) + '%';
+      params.push(escapedPrefix);
+      sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\\\'`;
+    }
+
+    sql += `
+
+      UNION
+
+      SELECT DISTINCT d.*, true AS inherited,
+        pub.document_version_id AS published_version_id,
+        pub.published_at
+      FROM app.documents d
+      INNER JOIN app.document_versions dv ON dv.document_id = d.id
+      INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
+      INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+      LEFT JOIN LATERAL (
+        SELECT cd2.document_version_id, cp2.created_at AS published_at
+        FROM app.checkpoint_documents cd2
+        INNER JOIN app.checkpoints cp2 ON cp2.id = cd2.checkpoint_id
+        WHERE cd2.document_id = d.id AND cp2.branch_id = $2
+        ORDER BY cp2.created_at DESC
+        LIMIT 1
+      ) pub ON true
+      WHERE dv.branch_id = $2
+        AND cp.branch_id = $2
+        AND d.archived_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM app.document_versions dv_branch
+          WHERE dv_branch.document_id = d.id
+            AND dv_branch.branch_id = $1
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM app.document_versions dv_tomb
+          WHERE dv_tomb.document_id = d.id
+            AND dv_tomb.branch_id = $2
+            AND dv_tomb.is_tombstone = true
+            AND dv_tomb.version_number = (
+              SELECT MAX(dv_latest.version_number)
+              FROM app.document_versions dv_latest
+              WHERE dv_latest.document_id = d.id AND dv_latest.branch_id = $2
+            )
+        )`;
+
+    if (pathPrefix !== undefined && pathPrefix !== '') {
+      sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\\\'`;
+    }
+
+    sql += ' ORDER BY path ASC';
+
+    const result = await query<DocumentOnBranchRow>(sql, params);
+
+    return result.rows.map(mapRowToDocumentOnBranch);
+  }
+
+  // Original query: only documents with versions on the branch
+  // When called without mainBranchId, the branchId itself is treated as main
+  let sql = `
+    SELECT DISTINCT d.*, false AS inherited,
+      pub.document_version_id AS published_version_id,
+      pub.published_at
+    FROM app.documents d
+    INNER JOIN app.document_versions dv ON dv.document_id = d.id
+    LEFT JOIN LATERAL (
+      SELECT cd.document_version_id, cp.created_at AS published_at
+      FROM app.checkpoint_documents cd
+      INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+      WHERE cd.document_id = d.id AND cp.branch_id = $1
+      ORDER BY cp.created_at DESC
+      LIMIT 1
+    ) pub ON true
+    WHERE dv.branch_id = $1
+      AND d.archived_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM app.document_versions dv2
+        WHERE dv2.document_id = d.id
+          AND dv2.branch_id = $1
+          AND dv2.is_tombstone = true
+          AND dv2.version_number = (
+            SELECT MAX(dv3.version_number)
+            FROM app.document_versions dv3
+            WHERE dv3.document_id = d.id AND dv3.branch_id = $1
+          )
+      )`;
+
+  const params: unknown[] = [branchId];
+
+  if (pathPrefix !== undefined && pathPrefix !== '') {
+    params.push(escapeLikePattern(pathPrefix) + '%');
+    sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\\\'`;
+  }
+
+  sql += ' ORDER BY d.path ASC';
+
+  const result = await query<DocumentOnBranchRow>(sql, params);
+
+  return result.rows.map(mapRowToDocumentOnBranch);
+}
+
+/**
+ * Creates a document and its initial version on a branch atomically.
+ * If the document path already exists (site-level), reuses the existing document
+ * and creates a new version on the branch.
+ *
+ * @param params - Document creation parameters
+ * @returns The created document and version
+ * @throws SiteNotFoundError if site does not exist
+ * @throws InvalidDocumentPathError if path format is invalid
+ */
+export async function createDocumentOnBranch(
+  params: CreateDocumentOnBranchParams,
+): Promise<CreateDocumentOnBranchResult> {
+  validatePath(params.path);
+
+  try {
+    await query('BEGIN');
+
+    let document: Document;
+    let isRecreation = false;
+
+    // Try to create the document using SAVEPOINT to handle unique constraint violations
+    // PostgreSQL aborts transactions on errors, so we need SAVEPOINT to recover
+    await query('SAVEPOINT insert_doc');
+    try {
+      const docResult = await query<DocumentRow>(
+        `INSERT INTO app.documents (site_id, path)
+         VALUES ($1, $2)
+         RETURNING *`,
+        [params.siteId, params.path],
+      );
+      await query('RELEASE SAVEPOINT insert_doc');
+      document = mapRowToDocument(docResult.rows[0]);
+    } catch (docError) {
+      // Rollback to savepoint to clear the error state and allow further queries
+      await query('ROLLBACK TO SAVEPOINT insert_doc');
+
+      // If document already exists, find it
+      if (isUniqueConstraintViolation(docError)) {
+        const existingResult = await query<DocumentRow>(
+          `SELECT * FROM app.documents
+           WHERE site_id = $1 AND path = $2 AND archived_at IS NULL`,
+          [params.siteId, params.path],
+        );
+        if (existingResult.rows.length === 0) {
+          await query('ROLLBACK');
+          throw new DuplicateDocumentPathError(params.path, params.siteId);
+        }
+        document = mapRowToDocument(existingResult.rows[0]);
+
+        // Check if the latest version on this branch is a tombstone
+        // If so, this is a recreation - we should start fresh
+        const latestVersionResult = await query<DocumentVersionRow>(
+          `SELECT * FROM app.document_versions
+           WHERE document_id = $1 AND branch_id = $2
+           ORDER BY version_number DESC
+           LIMIT 1`,
+          [document.id, params.branchId],
+        );
+
+        if (latestVersionResult.rows.length > 0) {
+          const latestVersion = latestVersionResult.rows[0];
+          if (isTombstoneRow(latestVersion)) {
+            // This is a recreation after tombstone - delete all versions on this branch
+            // to start fresh with version 1
+            await query(
+              `DELETE FROM app.document_versions
+               WHERE document_id = $1 AND branch_id = $2`,
+              [document.id, params.branchId],
+            );
+            isRecreation = true;
+          } else {
+            // Document exists and is not tombstoned - this is a duplicate
+            await query('ROLLBACK');
+            throw new DuplicateDocumentPathError(params.path, params.siteId);
+          }
+        }
+        // If no versions exist on this branch, it's fine to create version 1
+      } else if (isForeignKeyViolation(docError)) {
+        await query('ROLLBACK');
+        throw new SiteNotFoundError(params.siteId);
+      } else {
+        throw docError;
+      }
+    }
+
+    // Create the initial version with provided snapshot or empty object
+    // After deletion of tombstoned versions, this will be version 1
+    const versionResult = await query<DocumentVersionRow>(
+      `INSERT INTO app.document_versions (
+        document_id, branch_id, version_number, snapshot, crdt_state,
+        source, created_by_id, created_by_type
+      )
+      SELECT $1, $2,
+        COALESCE(MAX(version_number), 0) + 1,
+        $3, NULL, $4, $5, $6
+      FROM app.document_versions
+      WHERE document_id = $1 AND branch_id = $2
+      RETURNING *`,
+      [
+        document.id,
+        params.branchId,
+        params.snapshot ?? {},
+        isRecreation ? 'recreate' : 'edit',
+        params.createdById,
+        params.createdByType,
+      ],
+    );
+
+    await query('COMMIT');
+
+    return {
+      document,
+      version: mapRowToDocumentVersion(versionResult.rows[0]),
+    };
+  } catch (error) {
+    await query('ROLLBACK');
+    throw error;
+  }
+}
+
+/**
+ * Checks if a document exists (has a non-tombstoned version) on a branch.
+ *
+ * @param documentId - The document ID
+ * @param branchId - The branch ID
+ * @returns True if document exists on branch and is not tombstoned
+ */
+export async function documentExistsOnBranch(
+  documentId: string,
+  branchId: string,
+): Promise<boolean> {
+  // Check if document has any version on this branch where:
+  // 1. The latest version is NOT a tombstone
+  const result = await query<{ exists: boolean }>(
+    `SELECT EXISTS(
+       SELECT 1 FROM app.document_versions dv
+       WHERE dv.document_id = $1
+         AND dv.branch_id = $2
+         AND dv.version_number = (
+           SELECT MAX(dv2.version_number)
+           FROM app.document_versions dv2
+           WHERE dv2.document_id = $1 AND dv2.branch_id = $2
+         )
+         AND dv.is_tombstone = false
+     ) as exists`,
+    [documentId, branchId],
+  );
+
+  return result.rows[0]?.exists ?? false;
+}
+
+/**
+ * Soft-deletes a document on a branch by creating a tombstone version.
+ * The document remains visible on other branches.
+ *
+ * @param params - Delete parameters
+ * @returns True if tombstone created successfully
+ * @throws DocumentNotFoundError if document does not exist
+ */
+export async function deleteDocumentOnBranch(
+  params: DeleteDocumentOnBranchParams,
+): Promise<boolean> {
+  try {
+    await query<DocumentVersionRow>(
+      `INSERT INTO app.document_versions (
+        document_id, branch_id, version_number, snapshot, crdt_state,
+        source, created_by_id, created_by_type, is_tombstone
+      )
+      SELECT $1, $2,
+        COALESCE(MAX(version_number), 0) + 1,
+        $3, NULL, $4, $5, $6, true
+      FROM app.document_versions
+      WHERE document_id = $1 AND branch_id = $2
+      RETURNING *`,
+      [
+        params.documentId,
+        params.branchId,
+        { _deleted: true },
+        'edit',
+        params.deletedById,
+        params.deletedByType,
+      ],
+    );
+
+    return true;
+  } catch (error) {
+    if (isForeignKeyViolation(error)) {
+      throw new DocumentNotFoundError(params.documentId);
+    }
+    throw error;
+  }
+}
