@@ -35,8 +35,9 @@ All endpoints return JSON (except image serving) and include CORS headers. Authe
 
 | Binding | Type | Description |
 |---------|------|-------------|
-| `MEDIA_BUCKET` | R2 Bucket | The `p1-media` R2 bucket |
-| `CSS_BASE_URL` | Variable | Base URL for the CSS auth service |
+| `MEDIA_BUCKET` | R2 Bucket | The `p1-media` R2 bucket (no API token needed — binding provides access) |
+| `CSS_SERVICE` | Service Binding | Binding to the CSS worker (avoids Cloudflare error 1042 for same-account worker-to-worker requests) |
+| `CSS_BASE_URL` | Variable | Base URL for the CSS auth service (used as the URL in service binding requests so the CSS worker receives the correct `Host` header) |
 
 ## Setup
 
@@ -55,7 +56,22 @@ pnpm install
 
 ### Configure Wrangler
 
-The worker configuration is in `worker/wrangler.toml`. The default settings point to the `p1-media` R2 bucket and the production CSS endpoint. Adjust `CSS_BASE_URL` if you need to target a different environment.
+The worker configuration is in `worker/wrangler.toml`. Update these settings for your environment:
+
+```toml
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "p1-media"          # Your R2 bucket name
+
+[[services]]
+binding = "CSS_SERVICE"
+service = "your-css-worker-name"  # Name of your deployed CSS worker
+
+[vars]
+CSS_BASE_URL = "https://your-css-worker.workers.dev"  # Public URL of the CSS worker
+```
+
+The R2 bucket must exist in the same Cloudflare account as the worker. The service binding connects to the CSS worker for auth validation — this avoids Cloudflare's error 1042 restriction on same-account worker-to-worker fetch.
 
 ## Development
 
@@ -137,6 +153,44 @@ const mediaPlugin = createMediaPlugin({
 
 function Editor() {
   return <Puck plugins={[mediaPlugin]} config={config} data={data} />;
+}
+```
+
+### Integration with puck-css (CSSApp / useCSSEditor)
+
+When using `@pantheon/puck-css`, the `additionalPlugins` option has a known stale-ref issue with `useMemo`. Instead, manually merge the media plugin's overrides with the CSS overrides:
+
+```tsx
+import { createMediaPlugin } from "@pantheon/p1-media-r2";
+import { CSSApp, useCSSEditor, useCSSAuth } from "@pantheon/puck-css";
+import { Puck } from "@puckeditor/core";
+
+function EditorContent() {
+  const { token } = useCSSAuth();
+
+  const mediaPlugin = useMemo(
+    () =>
+      createMediaPlugin({
+        workerUrl: "https://p1-media.your-account.workers.dev",
+        siteId: "your-site-id",
+        getAuthToken: () => token,
+      }),
+    [token],
+  );
+
+  const { puckKey, puckProps } = useCSSEditor({ /* ... */ });
+
+  // Merge media plugin overrides with CSS overrides
+  const cssOverrides = puckProps.overrides;
+  const mergedOverrides = {
+    ...cssOverrides,
+    fieldTypes: {
+      ...cssOverrides?.fieldTypes,
+      ...mediaPlugin.overrides.fieldTypes,
+    },
+  };
+
+  return <Puck key={puckKey} {...puckProps} overrides={mergedOverrides} />;
 }
 ```
 
