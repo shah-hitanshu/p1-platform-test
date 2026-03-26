@@ -51,7 +51,7 @@ export default {
     try {
       // GET /image/* — public, no auth required
       if (request.method === 'GET' && path.startsWith('/image/')) {
-        const fullKey = path.slice('/image/'.length);
+        const fullKey = decodeURIComponent(path.slice('/image/'.length));
         // Extract siteId as the first path segment
         const slashIndex = fullKey.indexOf('/');
         if (slashIndex === -1) {
@@ -138,7 +138,7 @@ export default {
           response = jsonResponse({ error: 'siteId query param required' }, 400);
           return addCorsHeaders(response);
         }
-        const key = path.slice('/media/'.length);
+        const key = decodeURIComponent(path.slice('/media/'.length));
         response = await handleDelete(request, env, siteId, key);
         return addCorsHeaders(response);
       }

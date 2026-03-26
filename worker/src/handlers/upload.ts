@@ -26,10 +26,11 @@ export async function handleUpload(
     },
   });
 
+  const encodedKey = key.split('/').map(encodeURIComponent).join('/');
   return new Response(
     JSON.stringify({
       key,
-      url: `${workerUrl}/image/${key}`,
+      url: `${workerUrl}/image/${encodedKey}`,
       filename: sanitized,
       size: file.size,
       contentType: file.type,

@@ -28,9 +28,10 @@ export async function handleList(
         continue;
       }
 
+      const encodedKey = object.key.split('/').map(encodeURIComponent).join('/');
       items.push({
         key: object.key,
-        url: `${workerUrl}/image/${object.key}`,
+        url: `${workerUrl}/image/${encodedKey}`,
         filename,
         size: object.size,
         lastModified: object.uploaded?.toISOString(),
