@@ -63,6 +63,40 @@ export default {
         return addCorsHeaders(response);
       }
 
+      // GET /debug-auth — test auth validation (temporary)
+      if (request.method === 'GET' && path === '/debug-auth') {
+        const authHeader = request.headers.get('Authorization');
+        const hasService = !!env.CSS_SERVICE;
+        let cssStatus = -1;
+        let cssBody = '';
+        try {
+          let cssResp: Response;
+          if (env.CSS_SERVICE) {
+            cssResp = await env.CSS_SERVICE.fetch(
+              new Request(`${env.CSS_BASE_URL}/api/auth/me`, {
+                method: 'GET',
+                headers: authHeader ? { Authorization: authHeader } : {},
+              }),
+            );
+          } else {
+            cssResp = await fetch(`${env.CSS_BASE_URL}/api/auth/me`, {
+              method: 'GET',
+              headers: authHeader ? { Authorization: authHeader } : {},
+            });
+          }
+          cssStatus = cssResp.status;
+          cssBody = await cssResp.text();
+        } catch (e) {
+          cssBody = String(e);
+        }
+        response = jsonResponse({
+          hasService,
+          cssStatus,
+          cssBody: cssBody.substring(0, 200),
+        }, 200);
+        return addCorsHeaders(response);
+      }
+
       // GET /media — list media (auth required)
       if (request.method === 'GET' && path === '/media') {
         if (!(await validateAuth(request, env))) {

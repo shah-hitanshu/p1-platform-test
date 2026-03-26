@@ -6,5 +6,9 @@ compatibility_date = "2024-01-01"
 binding = "MEDIA_BUCKET"
 bucket_name = "p1-media"
 
+[[services]]
+binding = "CSS_SERVICE"
+service = "collaborative-state-worker-sbx1"
+
 [vars]
-CSS_BASE_URL = "https://collaborative-state-worker.pantheon.workers.dev"
+CSS_BASE_URL = "https://collaborative-state-worker-sbx1.chris-801.workers.dev"

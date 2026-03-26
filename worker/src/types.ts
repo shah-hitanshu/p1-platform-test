@@ -1,6 +1,7 @@
 export interface Env {
   MEDIA_BUCKET: R2Bucket;
   CSS_BASE_URL: string;
+  CSS_SERVICE?: Fetcher;
 }
 
 export interface MediaItem {

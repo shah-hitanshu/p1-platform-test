@@ -45,7 +45,10 @@ export function createMediaPlugin(options: MediaPluginOptions) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         text: (props: any) => {
           const { children, name, field, value, onChange, readOnly, id } = props;
-          const isMediaField = patterns.some((p: RegExp) => p.test(name));
+          // Puck passes qualified names for array items (e.g. "slides[0].imageUrl").
+          // Extract the last segment so patterns match the bare field name.
+          const bareFieldName = name?.split(".").pop() ?? name;
+          const isMediaField = patterns.some((p: RegExp) => p.test(bareFieldName));
 
           if (!isMediaField) {
             return <>{children}</>;

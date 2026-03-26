@@ -126,6 +126,34 @@ export function MediaLibrary({ isOpen, onClose, onSelect }: MediaLibraryProps) {
     handleUpload(e.dataTransfer.files);
   };
 
+  const deleteMedia = async (item: MediaItem) => {
+    const confirmed = window.confirm(
+      `Delete "${item.filename}"? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    try {
+      const params = new URLSearchParams({ siteId: config.siteId });
+      const encodedKey = item.key
+        .split("/")
+        .map(encodeURIComponent)
+        .join("/");
+      const response = await fetch(
+        config.workerUrl + "/media/" + encodedKey + "?" + params.toString(),
+        {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        },
+      );
+      if (response.ok) {
+        await fetchMedia(searchQuery || undefined);
+      } else {
+        console.error("Failed to delete media:", response.statusText);
+      }
+    } catch (error) {
+      console.error("Failed to delete media:", error);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -296,6 +324,7 @@ export function MediaLibrary({ isOpen, onClose, onSelect }: MediaLibraryProps) {
                 <div
                   key={item.key}
                   style={{
+                    position: "relative",
                     cursor: "pointer",
                     border: "2px solid transparent",
                     borderRadius: "8px",
@@ -309,11 +338,60 @@ export function MediaLibrary({ isOpen, onClose, onSelect }: MediaLibraryProps) {
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.borderColor = "#2563eb";
+                    const btn = e.currentTarget.querySelector(
+                      "[data-delete-btn]",
+                    ) as HTMLElement | null;
+                    if (btn) btn.style.opacity = "1";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.borderColor = "transparent";
+                    const btn = e.currentTarget.querySelector(
+                      "[data-delete-btn]",
+                    ) as HTMLElement | null;
+                    if (btn) btn.style.opacity = "0.6";
                   }}
                 >
+                  <button
+                    data-delete-btn
+                    title="Delete image"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteMedia(item);
+                    }}
+                    style={{
+                      position: "absolute",
+                      top: "4px",
+                      right: "4px",
+                      zIndex: 1,
+                      width: "24px",
+                      height: "24px",
+                      padding: 0,
+                      border: "none",
+                      borderRadius: "4px",
+                      backgroundColor: "rgba(0, 0, 0, 0.55)",
+                      color: "white",
+                      fontSize: "14px",
+                      lineHeight: "24px",
+                      textAlign: "center",
+                      cursor: "pointer",
+                      opacity: 0.6,
+                      transition: "opacity 0.15s, background-color 0.15s",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.opacity = "1";
+                      e.currentTarget.style.backgroundColor =
+                        "rgba(220, 38, 38, 0.9)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor =
+                        "rgba(0, 0, 0, 0.55)";
+                    }}
+                  >
+                    &times;
+                  </button>
                   <img
                     src={item.url}
                     alt={item.filename}

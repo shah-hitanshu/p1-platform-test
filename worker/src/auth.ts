@@ -24,12 +24,24 @@ export async function validateAuth(
   }
 
   try {
-    const response = await fetch(`${env.CSS_BASE_URL}/api/auth/me`, {
-      method: 'POST',
-      headers: {
-        Authorization: authHeader,
-      },
-    });
+    let response: Response;
+
+    if (env.CSS_SERVICE) {
+      // Use service binding to avoid Cloudflare's same-account
+      // Worker-to-Worker fetch restriction (error 1042).
+      // Must use the real CSS URL so the receiving worker gets the correct Host header.
+      response = await env.CSS_SERVICE.fetch(
+        new Request(`${env.CSS_BASE_URL}/api/auth/me`, {
+          method: 'GET',
+          headers: { Authorization: authHeader },
+        }),
+      );
+    } else {
+      response = await fetch(`${env.CSS_BASE_URL}/api/auth/me`, {
+        method: 'GET',
+        headers: { Authorization: authHeader },
+      });
+    }
 
     const valid = response.ok;
 

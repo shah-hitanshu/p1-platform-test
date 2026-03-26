@@ -63,12 +63,33 @@ describe('validateAuth', () => {
     expect(globalThis.fetch).toHaveBeenCalledWith(
       'https://css.example.com/api/auth/me',
       expect.objectContaining({
-        method: 'POST',
+        method: 'GET',
         headers: expect.objectContaining({
           Authorization: `Bearer ${token}`,
         }),
       }),
     );
+  });
+
+  it('uses service binding with real CSS_BASE_URL when CSS_SERVICE is available', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    const env: Env = {
+      MEDIA_BUCKET: {} as R2Bucket,
+      CSS_BASE_URL: 'https://css.example.com',
+      CSS_SERVICE: { fetch: mockFetch } as unknown as Fetcher,
+    };
+    const token = 'service-binding-token-' + Math.random();
+    const request = createRequest(`Bearer ${token}`);
+
+    const result = await validateAuth(request, env);
+    expect(result).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    // Verify the request uses the real CSS URL, not a synthetic one
+    const calledRequest = mockFetch.mock.calls[0][0] as Request;
+    expect(calledRequest.url).toBe('https://css.example.com/api/auth/me');
+    expect(calledRequest.method).toBe('GET');
+    expect(calledRequest.headers.get('Authorization')).toBe(`Bearer ${token}`);
   });
 
   it('returns false when CSS backend returns 401', async () => {
