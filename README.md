@@ -189,6 +189,10 @@ Multiple users editing the same document will see each other's changes merged au
 
 If you are building custom UI with `useCSSEditor`, the `realtimeConnected` property is available for displaying connection status.
 
+### Action Metadata
+
+`CSSPuckProvider` captures Puck editor action metadata (action type, component type, component ID, zone, etc.) via an `onAction` handler and exposes it as `handleAction` on the context. When real-time is enabled, `RealtimeClient.applyLocalChange` accepts optional action metadata. After sending a binary CRDT update, the client sends the metadata as a JSON text message (`{ type: 'action_metadata', actionType, actionMetadata }`) over the WebSocket. The backend uses this metadata to build rich version history with human-readable change descriptions.
+
 When real-time is enabled, publishing is coordinated through the WebSocket connection. This ensures all pending CRDT updates are flushed to the server before the checkpoint is created, eliminating stale-version races. If the WebSocket is disconnected, publishing falls back to the standard HTTP API automatically.
 
 ## Presence

@@ -320,6 +320,13 @@ export interface CSSPuckContextValue {
    */
   sendFocusRegions: (regions: string[]) => boolean;
 
+  /**
+   * Handle Puck action events. Pass as the `onAction` prop to `<Puck>`.
+   * Captures the action type and metadata so they can be included in
+   * the sync payload for backend version storage.
+   */
+  handleAction: (action: Record<string, unknown>) => void;
+
   // =========================================================================
   // Stable Getters (avoid stale closures, referentially stable)
   // =========================================================================

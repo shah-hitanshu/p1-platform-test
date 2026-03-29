@@ -84,7 +84,6 @@ const badgeColors: Record<DocumentResolutionStrategy, React.CSSProperties> = {
   'accept-draft': { background: '#d4edda', color: '#155724' },
   'accept-live': { background: '#cce5ff', color: '#004085' },
   'cherry-pick': { background: '#fff3cd', color: '#856404' },
-  'crdt-preview': { background: '#e2d5f1', color: '#5a2d82' },
   unresolved: { background: '#f8d7da', color: '#721c24' },
 };
 
@@ -92,7 +91,6 @@ const strategyLabels: Record<DocumentResolutionStrategy, string> = {
   'accept-draft': 'Draft',
   'accept-live': 'Live',
   'cherry-pick': 'Cherry-pick',
-  'crdt-preview': 'Auto',
   unresolved: 'Unresolved',
 };
 
@@ -100,7 +98,6 @@ const strategyKeyMap: Record<string, DocumentResolutionStrategy> = {
   '1': 'accept-draft',
   '2': 'accept-live',
   '3': 'cherry-pick',
-  '4': 'crdt-preview',
 };
 
 const changeTypeBadgeColors: Record<DocumentChangeType, React.CSSProperties> = {

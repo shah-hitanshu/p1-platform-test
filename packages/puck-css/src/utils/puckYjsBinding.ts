@@ -52,39 +52,149 @@ interface BindingState {
 }
 
 /**
+ * Incrementally patch a Y.Map to match a plain object.
+ * Only touches keys/values that actually differ, minimising Yjs operations
+ * (and therefore the size of the update binary that is broadcast).
+ */
+export function patchYMap(
+  ymap: Y.Map<unknown>,
+  newObj: Record<string, unknown>,
+): void {
+  // Remove keys that no longer exist
+  for (const key of ymap.keys()) {
+    if (!(key in newObj)) {
+      ymap.delete(key);
+    }
+  }
+
+  for (const [key, newVal] of Object.entries(newObj)) {
+    const curVal = ymap.get(key);
+
+    // If both sides are Y.Map / plain-object, recurse
+    if (
+      curVal instanceof Y.Map &&
+      newVal !== null &&
+      typeof newVal === 'object' &&
+      !Array.isArray(newVal)
+    ) {
+      patchYMap(curVal, newVal as Record<string, unknown>);
+      continue;
+    }
+
+    // If both sides are Y.Array / plain-array, patch the array
+    if (curVal instanceof Y.Array && Array.isArray(newVal)) {
+      patchYArray(curVal, newVal);
+      continue;
+    }
+
+    // For primitives, skip if unchanged
+    if (
+      !(curVal instanceof Y.Map) &&
+      !(curVal instanceof Y.Array) &&
+      JSON.stringify(curVal) === JSON.stringify(newVal)
+    ) {
+      continue;
+    }
+
+    // Value changed type or is a different primitive – replace wholesale
+    ymap.set(key, toYjsValue(newVal));
+  }
+}
+
+/**
+ * Incrementally patch a Y.Array to match a plain array.
+ * Patches items in-place where possible, appends/trims as needed.
+ */
+export function patchYArray(
+  yarr: Y.Array<unknown>,
+  newArr: unknown[],
+): void {
+  const minLen = Math.min(yarr.length, newArr.length);
+
+  for (let i = 0; i < minLen; i++) {
+    const curItem = yarr.get(i);
+    const newItem = newArr[i];
+
+    // If both are Y.Map / plain-object, patch in place
+    if (
+      curItem instanceof Y.Map &&
+      newItem !== null &&
+      typeof newItem === 'object' &&
+      !Array.isArray(newItem)
+    ) {
+      patchYMap(curItem, newItem as Record<string, unknown>);
+      continue;
+    }
+
+    // If both are Y.Array / plain-array, patch in place
+    if (curItem instanceof Y.Array && Array.isArray(newItem)) {
+      patchYArray(curItem, newItem);
+      continue;
+    }
+
+    // For primitives, skip if unchanged
+    if (
+      !(curItem instanceof Y.Map) &&
+      !(curItem instanceof Y.Array) &&
+      JSON.stringify(curItem) === JSON.stringify(newItem)
+    ) {
+      continue;
+    }
+
+    // Different – delete and re-insert at same index
+    yarr.delete(i, 1);
+    yarr.insert(i, [toYjsValue(newItem)]);
+  }
+
+  // Append new items
+  if (newArr.length > yarr.length) {
+    const toAdd = newArr.slice(yarr.length).map((item) => toYjsValue(item));
+    yarr.push(toAdd);
+  }
+
+  // Trim excess items from the end
+  if (yarr.length > newArr.length) {
+    yarr.delete(newArr.length, yarr.length - newArr.length);
+  }
+}
+
+/**
  * Convert a Puck data structure to a Yjs Y.Map.
+ * When the root map already has data, uses incremental patching to minimise
+ * the number of Yjs operations (reducing flicker and broadcast size).
  *
  * @param data - The PuckData to convert
  * @param root - The Y.Map to populate
  */
 export function puckDataToYMap(data: PuckData, root: Y.Map<unknown>): void {
   root.doc?.transact(() => {
-    // Clear existing data
-    for (const key of root.keys()) {
-      root.delete(key);
-    }
-
-    // Convert content array
-    const contentArray = new Y.Array();
-    for (const item of data.content) {
-      contentArray.push([toYjsValue(item)]);
-    }
-    root.set('content', contentArray);
-
-    // Convert root data
-    root.set('root', toYjsValue(data.root));
-
-    // Convert zones if present
-    if (data.zones) {
-      const zonesMap = new Y.Map();
-      for (const [key, components] of Object.entries(data.zones)) {
-        const zoneArray = new Y.Array();
-        for (const component of components) {
-          zoneArray.push([toYjsValue(component)]);
-        }
-        zonesMap.set(key, zoneArray);
+    if (root.size > 0) {
+      // Incremental update – only touch what changed
+      patchYMap(root, data as unknown as Record<string, unknown>);
+    } else {
+      // Full creation – first time populating the map
+      // Convert content array
+      const contentArray = new Y.Array();
+      for (const item of data.content) {
+        contentArray.push([toYjsValue(item)]);
       }
-      root.set('zones', zonesMap);
+      root.set('content', contentArray);
+
+      // Convert root data
+      root.set('root', toYjsValue(data.root));
+
+      // Convert zones if present
+      if (data.zones) {
+        const zonesMap = new Y.Map();
+        for (const [key, components] of Object.entries(data.zones)) {
+          const zoneArray = new Y.Array();
+          for (const component of components) {
+            zoneArray.push([toYjsValue(component)]);
+          }
+          zonesMap.set(key, zoneArray);
+        }
+        root.set('zones', zonesMap);
+      }
     }
   }, LOCAL_ORIGIN);
 }

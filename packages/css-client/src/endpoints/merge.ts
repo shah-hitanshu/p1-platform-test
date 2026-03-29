@@ -7,7 +7,6 @@
 import type {
   MergeabilityResult,
   MergePreview,
-  CrdtPreviewResult,
   MergeExecuteParams,
   MergeExecuteResult,
   MergeRequest,
@@ -56,24 +55,6 @@ export class MergeEndpoint {
           targetBranchId,
           ...(options?.includeContent !== undefined && { includeContent: options.includeContent }),
         }),
-      }
-    );
-  }
-
-  /**
-   * Get a CRDT auto-merge preview for a single document.
-   */
-  async crdtPreview(
-    siteId: string,
-    documentId: string,
-    sourceBranchId: string,
-    targetBranchId: string
-  ): Promise<CrdtPreviewResult> {
-    return this.base.request<CrdtPreviewResult>(
-      `/api/sites/${siteId}/merge/crdt-preview`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ documentId, sourceBranchId, targetBranchId }),
       }
     );
   }

@@ -2,9 +2,8 @@
  * DocumentResolutionDetail Tests
  *
  * Tests for the detail panel: strategy picker, visual comparison via
- * MergePreviewRenderer, cherry-pick via CherryPickVisualPanel, CRDT
- * preview via CrdtPreviewPanel, ViewModeSelector visibility, and
- * delete conflict messages.
+ * MergePreviewRenderer, cherry-pick via CherryPickVisualPanel,
+ * ViewModeSelector visibility, and delete conflict messages.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -62,9 +61,6 @@ function createDocument(overrides: Partial<DocumentResolution> = {}): DocumentRe
     changeType: 'conflicting',
     cherryPickSelections: {},
     mergedSnapshot: null,
-    crdtPreviewSnapshot: null,
-    crdtPreviewLoading: false,
-    crdtPreviewError: null,
     sourceSnapshot: null,
     targetSnapshot: null,
     conflictType: 'both-modified',
@@ -77,7 +73,6 @@ const defaultCallbacks = {
   onSetStrategy: vi.fn(),
   onCherryPickSelection: vi.fn(),
   onAcceptAllComponentProps: vi.fn(),
-  onFetchCrdtPreview: vi.fn(),
 };
 
 // =============================================================================
@@ -201,7 +196,6 @@ describe('DocumentResolutionDetail', () => {
         onSetStrategy={vi.fn()}
         onCherryPickSelection={vi.fn()}
         onAcceptAllComponentProps={onAcceptAllComponentProps}
-        onFetchCrdtPreview={vi.fn()}
       />
     );
 
@@ -213,62 +207,6 @@ describe('DocumentResolutionDetail', () => {
 
     fireEvent.click(liveBtns[0]);
     expect(onAcceptAllComponentProps).toHaveBeenCalledWith('doc-1', 'h1', 'target');
-  });
-
-  it('uses CrdtPreviewPanel for crdt-preview strategy', () => {
-    render(
-      <DocumentResolutionDetail
-        document={createDocument({
-          strategy: 'crdt-preview',
-          crdtPreviewLoading: true,
-        })}
-        sourceBranchName="Draft"
-        targetBranchName="Live"
-        {...defaultCallbacks}
-      />
-    );
-
-    // CrdtPreviewPanel renders loading state
-    expect(screen.getByText('Loading auto merge preview...')).toBeDefined();
-  });
-
-  it('auto-fetches CRDT preview when strategy is crdt-preview and no snapshot', () => {
-    const onFetchCrdtPreview = vi.fn();
-    render(
-      <DocumentResolutionDetail
-        document={createDocument({ strategy: 'crdt-preview' })}
-        sourceBranchName="Draft"
-        targetBranchName="Live"
-        onSetStrategy={vi.fn()}
-        onCherryPickSelection={vi.fn()}
-        onAcceptAllComponentProps={vi.fn()}
-        onFetchCrdtPreview={onFetchCrdtPreview}
-      />
-    );
-
-    // Should auto-fetch on mount when strategy is crdt-preview
-    expect(onFetchCrdtPreview).toHaveBeenCalledWith('doc-1');
-  });
-
-  it('does not auto-fetch CRDT preview when snapshot already exists', () => {
-    const onFetchCrdtPreview = vi.fn();
-    render(
-      <DocumentResolutionDetail
-        document={createDocument({
-          strategy: 'crdt-preview',
-          crdtPreviewSnapshot: { content: [], root: { props: {} } } as PuckData,
-        })}
-        sourceBranchName="Draft"
-        targetBranchName="Live"
-        onSetStrategy={vi.fn()}
-        onCherryPickSelection={vi.fn()}
-        onAcceptAllComponentProps={vi.fn()}
-        onFetchCrdtPreview={onFetchCrdtPreview}
-      />
-    );
-
-    // Should NOT auto-fetch since snapshot already exists
-    expect(onFetchCrdtPreview).not.toHaveBeenCalled();
   });
 
   it('transforms cherryPickSelections keys for ComponentConflictGroup radio buttons', () => {
@@ -310,22 +248,6 @@ describe('DocumentResolutionDetail', () => {
       (r) => (r as HTMLInputElement).value === 'source' && (r as HTMLInputElement).checked
     );
     expect(sourceRadio).toBeDefined();
-  });
-
-  it('shows CrdtPreviewPanel error state', () => {
-    render(
-      <DocumentResolutionDetail
-        document={createDocument({
-          strategy: 'crdt-preview',
-          crdtPreviewError: 'CRDT state not available',
-        })}
-        sourceBranchName="Draft"
-        targetBranchName="Live"
-        {...defaultCallbacks}
-      />
-    );
-
-    expect(screen.getByText('CRDT state not available')).toBeDefined();
   });
 
   // ===== New tests for visual merge resolution =====
@@ -434,24 +356,6 @@ describe('DocumentResolutionDetail', () => {
     expect(screen.getByText('Side by side')).toBeDefined();
   });
 
-  it('hides ViewModeSelector for crdt-preview strategy', () => {
-    render(
-      <DocumentResolutionDetail
-        document={createDocument({
-          strategy: 'crdt-preview',
-          crdtPreviewLoading: true,
-        })}
-        sourceBranchName="Draft"
-        targetBranchName="Live"
-        config={mockConfig}
-        {...defaultCallbacks}
-      />
-    );
-
-    // ViewModeSelector should NOT be present for crdt-preview
-    expect(screen.queryByText('Side by side')).toBeNull();
-  });
-
   it('shows single panel with "Deleted in Draft" when sourceSnapshot is null', () => {
     render(
       <DocumentResolutionDetail
@@ -508,27 +412,6 @@ describe('DocumentResolutionDetail', () => {
     );
 
     expect(screen.getByText('No content available')).toBeDefined();
-  });
-
-  it('renders CrdtPreviewPanel with three-way comparison when all data available', () => {
-    render(
-      <DocumentResolutionDetail
-        document={createDocument({
-          strategy: 'crdt-preview',
-          crdtPreviewSnapshot: { content: [{ type: 'Heading', props: { id: 'h1', text: 'CRDT' } }], root: { props: {} } } as PuckData,
-          sourceSnapshot,
-          targetSnapshot,
-        })}
-        sourceBranchName="Draft"
-        targetBranchName="Live"
-        config={mockConfig}
-        {...defaultCallbacks}
-      />
-    );
-
-    // Three Render instances (Draft, CRDT Result, Live)
-    expect(screen.getAllByTestId('puck-render').length).toBe(3);
-    expect(screen.getByText('Auto-merged')).toBeDefined();
   });
 
   it('renders merged preview in cherry-pick right column', () => {

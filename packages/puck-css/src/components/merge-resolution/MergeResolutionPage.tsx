@@ -213,7 +213,6 @@ export function MergeResolutionPage({
             onSetStrategy={hook.setStrategy}
             onCherryPickSelection={hook.setCherryPickSelection}
             onAcceptAllComponentProps={hook.acceptAllComponentProps}
-            onFetchCrdtPreview={hook.fetchCrdtPreview}
             config={config}
             diffs={currentDiffs}
           />

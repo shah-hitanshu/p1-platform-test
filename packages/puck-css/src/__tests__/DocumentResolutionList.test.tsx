@@ -23,9 +23,6 @@ const mockDocuments: DocumentResolution[] = [
     changeType: 'conflicting',
     cherryPickSelections: {},
     mergedSnapshot: null,
-    crdtPreviewSnapshot: null,
-    crdtPreviewLoading: false,
-    crdtPreviewError: null,
     sourceSnapshot: null,
     targetSnapshot: null,
     conflictType: 'both-modified',
@@ -38,9 +35,6 @@ const mockDocuments: DocumentResolution[] = [
     changeType: 'conflicting',
     cherryPickSelections: {},
     mergedSnapshot: null,
-    crdtPreviewSnapshot: null,
-    crdtPreviewLoading: false,
-    crdtPreviewError: null,
     sourceSnapshot: null,
     targetSnapshot: null,
     conflictType: 'both-modified',
@@ -53,9 +47,6 @@ const mockDocuments: DocumentResolution[] = [
     changeType: 'draft-changed',
     cherryPickSelections: {},
     mergedSnapshot: null,
-    crdtPreviewSnapshot: null,
-    crdtPreviewLoading: false,
-    crdtPreviewError: null,
     sourceSnapshot: null,
     targetSnapshot: null,
     conflictType: 'both-modified',
@@ -162,7 +153,7 @@ describe('DocumentResolutionList', () => {
     expect(onToggleDetail).toHaveBeenCalledTimes(1);
   });
 
-  it('1/2/3/4 keys set strategy on current document', () => {
+  it('1/2/3 keys set strategy on current document', () => {
     const setStrategy = vi.fn();
     const { container } = render(
       <DocumentResolutionList
@@ -180,9 +171,6 @@ describe('DocumentResolutionList', () => {
 
     fireEvent.keyDown(container.firstElementChild!, { key: '3' });
     expect(setStrategy).toHaveBeenCalledWith('doc-1', 'cherry-pick');
-
-    fireEvent.keyDown(container.firstElementChild!, { key: '4' });
-    expect(setStrategy).toHaveBeenCalledWith('doc-1', 'crdt-preview');
   });
 
   it('Shift+D calls setRemainingStrategy with accept-draft', () => {

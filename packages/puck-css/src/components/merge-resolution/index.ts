@@ -17,9 +17,6 @@ export type { DocumentResolutionDetailProps } from './DocumentResolutionDetail.j
 export { ResolutionStrategyPicker } from './ResolutionStrategyPicker.js';
 export type { ResolutionStrategyPickerProps } from './ResolutionStrategyPicker.js';
 
-export { CrdtPreviewPanel } from './CrdtPreviewPanel.js';
-export type { CrdtPreviewPanelProps } from './CrdtPreviewPanel.js';
-
 export { MergeResolutionToolbar } from './MergeResolutionToolbar.js';
 export type { MergeResolutionToolbarProps } from './MergeResolutionToolbar.js';
 

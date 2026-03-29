@@ -1310,6 +1310,20 @@ Restored the document creation (+) and deletion (×) buttons in the CSS plugin p
 
 **Files changed:** 3 source files (`types.ts`, `CSSPuckProvider.tsx`, `useCSSPlugin.ts`), 2 test files
 
+### Phase 2: Version Storage — Action Metadata Capture (2026-03-27) ✅
+
+Redesigned version storage to capture rich action metadata from the Puck editor, enabling human-readable version history.
+
+**Action Metadata Capture:**
+- `CSSPuckProvider` now captures Puck editor action metadata (action type, component type, component ID, zone, etc.) via an `onAction` handler
+- Exposes `handleAction` on the context for wiring into `<Puck onAction={...}>`
+- Metadata includes: `actionType`, `componentType`, `componentId`, `zone`, and other action-specific fields
+
+**RealtimeClient Changes:**
+- `applyLocalChange` now accepts optional action metadata as a second argument
+- After sending a binary CRDT update over WebSocket, the client sends action metadata as a JSON text message: `{ type: 'action_metadata', actionType, actionMetadata }`
+- Backend stores this metadata alongside version records for rich version history descriptions
+
 ## Remaining Work
 
 ### Future

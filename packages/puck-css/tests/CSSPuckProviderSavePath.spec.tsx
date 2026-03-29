@@ -260,7 +260,8 @@ describe('CSSPuckProvider Save Path - Realtime vs REST', () => {
     expect(client.versions.create).not.toHaveBeenCalled();
 
     // CRDT path should have been used — applyLocalChange called in saveData
-    expect(mockApplyLocalChange).toHaveBeenCalledWith(mockPuckData);
+    // Second arg is action metadata (undefined when no Puck action captured)
+    expect(mockApplyLocalChange).toHaveBeenCalledWith(mockPuckData, undefined);
 
     // Save status should be 'saved' (realtime path marks it saved)
     expect(result.current.saveStatus).toBe('saved');

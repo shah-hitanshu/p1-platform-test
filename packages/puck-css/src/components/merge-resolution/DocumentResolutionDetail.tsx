@@ -3,7 +3,7 @@
  *
  * Expanded view for a single document showing strategy options,
  * visual comparison via MergePreviewRenderer, cherry-pick visual panel,
- * CRDT preview, and delete-type conflict messages.
+ * and delete-type conflict messages.
  *
  * All visual styling uses inline React styles.
  */
@@ -14,7 +14,6 @@ import { Render } from '@puckeditor/core';
 import type { DocumentResolution, DocumentResolutionStrategy } from '../../hooks/useMergeResolution.js';
 import type { ComponentDiffWithPosition } from '../../types.js';
 import { ResolutionStrategyPicker } from './ResolutionStrategyPicker.js';
-import { CrdtPreviewPanel } from './CrdtPreviewPanel.js';
 import { CherryPickVisualPanel } from './CherryPickVisualPanel.js';
 import { MergePreviewRenderer } from '../merge-preview/MergePreviewRenderer.js';
 import { ScaledContent } from '../merge-preview/ScaledContent.js';
@@ -37,7 +36,6 @@ export interface DocumentResolutionDetailProps {
     componentId: string,
     choice: 'source' | 'target'
   ) => void;
-  onFetchCrdtPreview: (documentId: string) => Promise<void> | void;
   /** Puck config for <Render> */
   config?: unknown;
   /** Pre-computed diffs for this document */
@@ -146,39 +144,6 @@ function getDeleteMessage(conflictType: DocumentConflictType): string | null {
 }
 
 /**
- * Auto-fetches CRDT preview when strategy changes to crdt-preview.
- */
-function CrdtAutoFetcher({
-  documentId,
-  hasSnapshot,
-  isLoading,
-  hasError,
-  onFetch,
-}: {
-  documentId: string;
-  hasSnapshot: boolean;
-  isLoading: boolean;
-  hasError: boolean;
-  onFetch: (documentId: string) => Promise<void> | void;
-}): null {
-  const hasFetchedRef = React.useRef<string | null>(null);
-
-  useEffect(() => {
-    if (
-      hasFetchedRef.current !== documentId &&
-      !hasSnapshot &&
-      !isLoading &&
-      !hasError
-    ) {
-      hasFetchedRef.current = documentId;
-      onFetch(documentId);
-    }
-  }, [documentId, hasSnapshot, isLoading, hasError, onFetch]);
-
-  return null;
-}
-
-/**
  * StrategyEmphasisWrapper: wraps MergePreviewRenderer and applies visual
  * emphasis for accept-draft and accept-live strategies.
  * Uses DOM queries to position dimming overlays on the non-selected panel.
@@ -282,7 +247,6 @@ export function DocumentResolutionDetail({
   onSetStrategy,
   onCherryPickSelection,
   onAcceptAllComponentProps,
-  onFetchCrdtPreview,
   config,
   diffs = [],
 }: DocumentResolutionDetailProps): React.ReactElement {
@@ -349,7 +313,6 @@ export function DocumentResolutionDetail({
             currentStrategy={doc.strategy}
             conflictType={doc.conflictType}
             onSelect={(strategy) => onSetStrategy(doc.documentId, strategy)}
-            hasCrdtState={doc.hasCrdtState}
           />
 
           {deleteMessage && (
@@ -430,31 +393,6 @@ export function DocumentResolutionDetail({
                   `${doc.classifiedFields.filter((f) => f.classification !== 'conflicting').length} fields auto-merged`}
               </p>
             </div>
-          )}
-
-          {/* crdt-preview */}
-          {doc.strategy === 'crdt-preview' && (
-            <>
-              <CrdtAutoFetcher
-                documentId={doc.documentId}
-                hasSnapshot={!!doc.crdtPreviewSnapshot}
-                isLoading={doc.crdtPreviewLoading}
-                hasError={!!doc.crdtPreviewError}
-                onFetch={onFetchCrdtPreview}
-              />
-              <div className={`${baseClass}__crdt-preview`} style={{ marginTop: '16px' }}>
-                <CrdtPreviewPanel
-                  snapshot={doc.crdtPreviewSnapshot}
-                  loading={doc.crdtPreviewLoading}
-                  error={doc.crdtPreviewError}
-                  config={config}
-                  sourceData={doc.sourceSnapshot}
-                  targetData={doc.targetSnapshot}
-                  sourceBranchName={sourceBranchName}
-                  targetBranchName={targetBranchName}
-                />
-              </div>
-            </>
           )}
 
           {/* Single snapshot views for delete conflicts */}

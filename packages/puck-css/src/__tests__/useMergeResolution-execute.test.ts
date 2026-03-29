@@ -38,7 +38,6 @@ function createMockClient() {
     merge: {
       checkMergeability: vi.fn(),
       preview: vi.fn(),
-      crdtPreview: vi.fn(),
       execute: vi.fn(),
       createRequest: vi.fn().mockResolvedValue({ id: 'mr-1', status: 'open', title: 'Test merge' }),
       getRequest: vi.fn(),
@@ -240,47 +239,6 @@ describe('useMergeResolution - executeMerge', () => {
     const cherryPickRes = resolutions.find((r: { documentId: string }) => r.documentId === 'doc-1');
     expect(cherryPickRes.strategy).toBe('manual');
     expect(cherryPickRes.resolvedSnapshot).toBeDefined();
-  });
-
-  it('maps crdt-preview to merge-crdt', async () => {
-    const mockClient = createMockClient();
-    const preview = createMergePreview();
-    // Mark doc-1 as having CRDT state so the strategy can be selected
-    preview.sourceChanges[0].hasCrdtState = true;
-    mockClient.merge.preview.mockResolvedValue(preview);
-    mockClient.merge.crdtPreview.mockResolvedValue({ success: true, snapshot: { content: [], root: {} } });
-    const options = createOptions(mockClient);
-
-    const { result } = renderHook(() => useMergeResolution(options));
-
-    await act(async () => {
-      await result.current.loadPreview();
-    });
-
-    act(() => {
-      result.current.setStrategy('doc-1', 'crdt-preview');
-    });
-
-    // Resolve remaining
-    act(() => {
-      result.current.setRemainingStrategy('accept-draft');
-    });
-
-    await act(async () => {
-      await result.current.createMergeRequest();
-    });
-    await act(async () => {
-      await result.current.approveMergeRequest();
-    });
-
-    await act(async () => {
-      await result.current.executeMerge();
-    });
-
-    const call = mockClient.merge.executeRequest.mock.calls[0];
-    const resolutions = call[2].resolutions;
-    const crdtRes = resolutions.find((r: { documentId: string }) => r.documentId === 'doc-1');
-    expect(crdtRes.strategy).toBe('merge-crdt');
   });
 
   it('sets mergeSuccess on success', async () => {

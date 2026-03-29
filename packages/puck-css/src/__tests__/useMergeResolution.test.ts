@@ -39,7 +39,6 @@ function createMockClient() {
     merge: {
       checkMergeability: vi.fn(),
       preview: vi.fn(),
-      crdtPreview: vi.fn(),
       execute: vi.fn(),
       createRequest: vi.fn(),
       getRequest: vi.fn(),
@@ -325,36 +324,6 @@ describe('useMergeResolution', () => {
       expect(doc1?.strategy).toBe('unresolved');
     });
 
-    it('disallows crdt-preview for deleted-in-target conflicts', async () => {
-      const mockClient = createMockClient();
-      const preview = createMergePreview({
-        conflicts: {
-          documentConflicts: [
-            {
-              documentId: 'doc-1',
-              documentPath: '/home',
-              conflictType: 'deleted-in-target',
-            },
-          ],
-          structureConflicts: [],
-        },
-      });
-      mockClient.merge.preview.mockResolvedValue(preview);
-      const options = createOptions(mockClient);
-
-      const { result } = renderHook(() => useMergeResolution(options));
-
-      await act(async () => {
-        await result.current.loadPreview();
-      });
-
-      act(() => {
-        result.current.setStrategy('doc-1', 'crdt-preview');
-      });
-
-      const doc1 = result.current.documents.find((d) => d.documentId === 'doc-1');
-      expect(doc1?.strategy).toBe('unresolved');
-    });
   });
 
   describe('bulk operations', () => {
@@ -564,55 +533,4 @@ describe('useMergeResolution', () => {
     });
   });
 
-  describe('CRDT preview', () => {
-    it('fetchCrdtPreview calls client.merge.crdtPreview and stores result', async () => {
-      const mockClient = createMockClient();
-      mockClient.merge.preview.mockResolvedValue(createMergePreview());
-      mockClient.merge.crdtPreview.mockResolvedValue({
-        success: true,
-        snapshot: { content: [], root: {} },
-      });
-      const options = createOptions(mockClient);
-
-      const { result } = renderHook(() => useMergeResolution(options));
-
-      await act(async () => {
-        await result.current.loadPreview();
-      });
-
-      await act(async () => {
-        await result.current.fetchCrdtPreview('doc-1');
-      });
-
-      expect(mockClient.merge.crdtPreview).toHaveBeenCalledWith(
-        'site-1',
-        'doc-1',
-        'branch-source',
-        'branch-target'
-      );
-
-      const doc1 = result.current.documents.find((d) => d.documentId === 'doc-1');
-      expect(doc1?.crdtPreviewSnapshot).toEqual({ content: [], root: {} });
-    });
-
-    it('fetchCrdtPreview sets error on failure', async () => {
-      const mockClient = createMockClient();
-      mockClient.merge.preview.mockResolvedValue(createMergePreview());
-      mockClient.merge.crdtPreview.mockRejectedValue(new Error('CRDT not available'));
-      const options = createOptions(mockClient);
-
-      const { result } = renderHook(() => useMergeResolution(options));
-
-      await act(async () => {
-        await result.current.loadPreview();
-      });
-
-      await act(async () => {
-        await result.current.fetchCrdtPreview('doc-1');
-      });
-
-      const doc1 = result.current.documents.find((d) => d.documentId === 'doc-1');
-      expect(doc1?.crdtPreviewError).toBe('CRDT not available');
-    });
-  });
 });

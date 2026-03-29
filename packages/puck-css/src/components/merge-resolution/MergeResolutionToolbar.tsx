@@ -253,7 +253,7 @@ export function MergeResolutionToolbar({
             <dt style={{ fontWeight: 600, fontFamily: 'monospace', color: '#333' }}>J / ArrowDown</dt><dd style={{ margin: 0, color: '#666' }}>Next document</dd>
             <dt style={{ fontWeight: 600, fontFamily: 'monospace', color: '#333' }}>K / ArrowUp</dt><dd style={{ margin: 0, color: '#666' }}>Previous document</dd>
             <dt style={{ fontWeight: 600, fontFamily: 'monospace', color: '#333' }}>N</dt><dd style={{ margin: 0, color: '#666' }}>Next unresolved</dd>
-            <dt style={{ fontWeight: 600, fontFamily: 'monospace', color: '#333' }}>1 / 2 / 3 / 4</dt><dd style={{ margin: 0, color: '#666' }}>Accept Draft / Live / Cherry-pick / Auto</dd>
+            <dt style={{ fontWeight: 600, fontFamily: 'monospace', color: '#333' }}>1 / 2 / 3</dt><dd style={{ margin: 0, color: '#666' }}>Accept Draft / Live / Cherry-pick</dd>
             <dt style={{ fontWeight: 600, fontFamily: 'monospace', color: '#333' }}>Shift+D</dt><dd style={{ margin: 0, color: '#666' }}>Accept all remaining from Draft</dd>
             <dt style={{ fontWeight: 600, fontFamily: 'monospace', color: '#333' }}>Shift+L</dt><dd style={{ margin: 0, color: '#666' }}>Accept all remaining from Live</dd>
             <dt style={{ fontWeight: 600, fontFamily: 'monospace', color: '#333' }}>Enter</dt><dd style={{ margin: 0, color: '#666' }}>Toggle detail view</dd>

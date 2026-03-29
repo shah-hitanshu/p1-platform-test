@@ -165,6 +165,11 @@ function CSSPuckProviderInner({
   const currentDocumentRef = useRef<Document | null>(null);
   const initializedRef = useRef(false);
 
+  // Track the latest Puck action metadata for inclusion in sync payloads.
+  // Set by handleAction (Puck's onAction callback), consumed by saveData
+  // when sending changes via realtime, then cleared.
+  const lastActionRef = useRef<{ actionType: string; actionMetadata: Record<string, unknown> } | null>(null);
+
   // Tracks the document path that the current data in state belongs to.
   // Set alongside every setCurrentData call to record the data's origin.
   // Checked before every write (realtime or REST) to prevent cross-document
@@ -253,6 +258,7 @@ function CSSPuckProviderInner({
     actorId: userId,
     actorType: 'user',
     enabled: enableRealtime && !!wsBaseUrl,
+    initialData: currentData,
     // WebSocket presence callbacks - receive instant presence updates
     onPresenceUpdate: (actors) => {
       // Mark WebSocket presence as active
@@ -557,6 +563,24 @@ function CSSPuckProviderInner({
     setAutoSavePaused(false);
   }, [debouncedSave]);
 
+  // Capture Puck action metadata from the onAction callback.
+  // This captures the action type and relevant metadata fields so they
+  // can be included in the sync payload for backend version storage.
+  const handleAction = useCallback((action: Record<string, unknown>) => {
+    const actionMetadata: Record<string, unknown> = {};
+
+    if (action.componentType) actionMetadata.componentType = action.componentType;
+    if (action.componentId) actionMetadata.componentId = action.componentId;
+    if (action.zone) actionMetadata.zone = action.zone;
+    if (action.sourceIndex !== undefined) actionMetadata.sourceIndex = action.sourceIndex;
+    if (action.destinationIndex !== undefined) actionMetadata.destinationIndex = action.destinationIndex;
+
+    lastActionRef.current = {
+      actionType: (action.type as string) || 'unknown',
+      actionMetadata,
+    };
+  }, []);
+
   // Public save function (triggers debounce)
   // Also resumes auto-save if paused, per user requirement
   // Sends changes via WebSocket when realtime is enabled (but not for remote updates)
@@ -615,7 +639,9 @@ function CSSPuckProviderInner({
           }
 
           // Local user edit — send via WebSocket (DO handles persistence)
-          realtime.applyLocalChange(data);
+          realtime.applyLocalChange(data, lastActionRef.current ?? undefined);
+          // Clear after sending
+          lastActionRef.current = null;
           // Still trigger debounced save as fallback, but performSave will
           // skip the REST call when realtimeConnectedRef is true.
         }
@@ -1530,6 +1556,8 @@ function CSSPuckProviderInner({
       remoteSyncKey,
       // WebSocket presence - send focus regions via WebSocket when connected
       sendFocusRegions: realtime.sendFocusRegions,
+      // Puck action metadata capture - pass as onAction to <Puck>
+      handleAction,
       // Phase 9: Presence & Agent values
       // Use getter to avoid context recreation on every presence update.
       // Presence changes frequently (focus region broadcasts) but shouldn't
@@ -1585,6 +1613,7 @@ function CSSPuckProviderInner({
       realtime.connected,
       remoteSyncKey,
       realtime.sendFocusRegions,
+      handleAction,
       // Phase 9 dependencies (presenceState excluded — accessed via getter/ref)
       agentEditCapabilities,
       triggerAgentFn,

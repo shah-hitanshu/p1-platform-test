@@ -22,7 +22,6 @@ export type DocumentResolutionStrategy =
   | 'accept-draft'
   | 'accept-live'
   | 'cherry-pick'
-  | 'crdt-preview'
   | 'unresolved';
 
 /** How this document changed in the merge */
@@ -41,15 +40,10 @@ export interface DocumentResolution {
   changeType: DocumentChangeType;
   cherryPickSelections: Record<string, 'source' | 'target'>;
   mergedSnapshot: PuckData | null;
-  crdtPreviewSnapshot: PuckData | null;
-  crdtPreviewLoading: boolean;
-  crdtPreviewError: string | null;
   sourceSnapshot: PuckData | null;
   targetSnapshot: PuckData | null;
   conflictType: DocumentConflictType;
   classifiedFields: PuckFieldClassification[] | null;
-  /** Whether CRDT state is available for this document. */
-  hasCrdtState: boolean;
 }
 
 export interface UseMergeResolutionOptions {
@@ -104,7 +98,6 @@ export interface UseMergeResolutionReturn {
     choice: 'source' | 'target'
   ) => void;
 
-  fetchCrdtPreview: (documentId: string) => Promise<void>;
   executeMerge: (message?: string) => Promise<void>;
   loadPreview: () => Promise<void>;
 }
@@ -193,15 +186,6 @@ export function useMergeResolution(
       const targetChangeMap = new Map(
         preview.targetChanges.map((c) => [c.documentId, c])
       );
-
-      // Build hasCrdtState lookup from sourceChanges and targetChanges
-      const crdtStateMap = new Set<string>();
-      for (const c of preview.sourceChanges) {
-        if (c.hasCrdtState) crdtStateMap.add(c.documentId);
-      }
-      for (const c of preview.targetChanges) {
-        if (c.hasCrdtState) crdtStateMap.add(c.documentId);
-      }
 
       // Build diff map for quick lookup
       const diffMap = new Map(
@@ -351,14 +335,10 @@ export function useMergeResolution(
           changeType,
           cherryPickSelections: {},
           mergedSnapshot: null,
-          crdtPreviewSnapshot: null,
-          crdtPreviewLoading: false,
-          crdtPreviewError: null,
           sourceSnapshot,
           targetSnapshot,
           conflictType,
           classifiedFields: null,
-          hasCrdtState: crdtStateMap.has(docId),
         });
       }
 
@@ -429,16 +409,11 @@ export function useMergeResolution(
         prev.map((doc) => {
           if (doc.documentId !== documentId) return doc;
 
-          // Disallow cherry-pick and crdt-preview for delete conflicts
+          // Disallow cherry-pick for delete conflicts
           if (
             isDeleteConflict(doc.conflictType) &&
-            (strategy === 'cherry-pick' || strategy === 'crdt-preview')
+            strategy === 'cherry-pick'
           ) {
-            return doc;
-          }
-
-          // Disallow crdt-preview when no CRDT state is available
-          if (strategy === 'crdt-preview' && !doc.hasCrdtState) {
             return doc;
           }
 
@@ -566,60 +541,6 @@ export function useMergeResolution(
   );
 
   // =========================================================================
-  // CRDT preview
-  // =========================================================================
-
-  const fetchCrdtPreview = useCallback(
-    async (documentId: string) => {
-      // Set loading state
-      setDocuments((prev) =>
-        prev.map((doc) =>
-          doc.documentId === documentId
-            ? { ...doc, crdtPreviewLoading: true, crdtPreviewError: null }
-            : doc
-        )
-      );
-
-      try {
-        const result = await client.merge.crdtPreview(
-          siteId,
-          documentId,
-          sourceBranchId,
-          targetBranchId
-        );
-
-        setDocuments((prev) =>
-          prev.map((doc) =>
-            doc.documentId === documentId
-              ? {
-                  ...doc,
-                  crdtPreviewSnapshot: result.snapshot as unknown as PuckData,
-                  crdtPreviewLoading: false,
-                }
-              : doc
-          )
-        );
-      } catch (err) {
-        setDocuments((prev) =>
-          prev.map((doc) =>
-            doc.documentId === documentId
-              ? {
-                  ...doc,
-                  crdtPreviewError:
-                    err instanceof Error
-                      ? err.message
-                      : 'Failed to fetch CRDT preview',
-                  crdtPreviewLoading: false,
-                }
-              : doc
-          )
-        );
-      }
-    },
-    [client, siteId, sourceBranchId, targetBranchId]
-  );
-
-  // =========================================================================
   // Merge request lifecycle
   // =========================================================================
 
@@ -697,8 +618,6 @@ export function useMergeResolution(
                 strategy: 'manual' as const,
                 resolvedSnapshot: doc.mergedSnapshot as unknown as Record<string, unknown>,
               };
-            case 'crdt-preview':
-              return { documentId: doc.documentId, strategy: 'merge-crdt' as const };
             default:
               throw new Error(
                 `Cannot execute merge: document "${doc.documentPath}" (${doc.documentId}) is still unresolved`
@@ -755,7 +674,6 @@ export function useMergeResolution(
     setCherryPickSelection,
     acceptAllComponentProps,
 
-    fetchCrdtPreview,
     executeMerge,
     loadPreview,
   };

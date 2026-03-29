@@ -45,6 +45,18 @@ export interface UseRealtimeParams {
    */
   sessionId?: string;
 
+  /**
+   * Initial data to seed the Y.Doc with before connecting.
+   * When provided, the Y.Doc will be populated with this data before
+   * the WebSocket connects, allowing the server to send only a delta
+   * instead of the full CRDT state. This eliminates the redundant
+   * full-doc re-render on page load.
+   *
+   * Tracked via ref (not in effect deps) to avoid triggering reconnection
+   * when data changes during editing.
+   */
+  initialData?: PuckData | null;
+
   /** Whether real-time is enabled */
   enabled?: boolean;
 
@@ -72,7 +84,7 @@ export interface UseRealtimeReturn {
   connected: boolean;
 
   /** Apply a local change (will be synced to other clients) */
-  applyLocalChange: (data: PuckData) => void;
+  applyLocalChange: (data: PuckData, actionMeta?: { actionType: string; actionMetadata: Record<string, unknown> }) => void;
 
   /** Get the current snapshot from the Yjs document. Returns null if not connected. */
   getSnapshot: () => PuckData | null;
@@ -187,6 +199,11 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
   const onPresenceUpdateRef = useRef(onPresenceUpdate);
   const onFocusRegionBroadcastRef = useRef(onFocusRegionBroadcast);
 
+  const initialDataRef = useRef(params.initialData);
+  // Keep ref in sync but do NOT add to effect deps — changing data
+  // during editing must not trigger a WebSocket reconnection.
+  initialDataRef.current = params.initialData;
+
   // Keep callback refs up to date
   useEffect(() => {
     onRemoteUpdateRef.current = onRemoteUpdate;
@@ -280,6 +297,16 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
     );
     bindingRef.current = binding;
 
+    // Seed Y.Doc with initial REST data before connecting.
+    // This populates the client's Y.Doc so the server can send a delta
+    // instead of the full CRDT state on initial connect.
+    // Safe because:
+    // - applyLocalChange uses LOCAL_ORIGIN (observer ignores local changes)
+    // - this.ws is null at this point (update listener won't try to send)
+    if (initialDataRef.current) {
+      binding.applyLocalChange(initialDataRef.current as unknown as BindingPuckData);
+    }
+
     // Connect to the document session
     client.connect({
       siteId,
@@ -303,8 +330,13 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
   }, [baseUrl, apiKey, siteId, branchId, documentPath, actorId, actorType, sessionId, enabled]);
 
   // Apply local change function
-  const applyLocalChange = useCallback((data: PuckData) => {
+  const applyLocalChange = useCallback((data: PuckData, actionMeta?: { actionType: string; actionMetadata: Record<string, unknown> }) => {
     if (bindingRef.current) {
+      // Set action metadata on the RealtimeClient before applying the change.
+      // The client's ydoc 'update' handler will send it after the CRDT update.
+      if (actionMeta && clientRef.current) {
+        clientRef.current.setActionMetadata(actionMeta);
+      }
       bindingRef.current.applyLocalChange(data as unknown as BindingPuckData);
     }
   }, [connected]);

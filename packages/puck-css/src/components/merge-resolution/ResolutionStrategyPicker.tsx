@@ -1,8 +1,8 @@
 /**
  * ResolutionStrategyPicker Component
  *
- * Four-button toggle group for choosing a merge resolution strategy.
- * Cherry-pick and CRDT merge are disabled for delete-type conflicts.
+ * Three-button toggle group for choosing a merge resolution strategy.
+ * Cherry-pick is disabled for delete-type conflicts.
  */
 
 import React from 'react';
@@ -13,8 +13,6 @@ export interface ResolutionStrategyPickerProps {
   currentStrategy: DocumentResolutionStrategy;
   conflictType: DocumentConflictType;
   onSelect: (strategy: DocumentResolutionStrategy) => void;
-  /** Whether CRDT state is available. When false, the CRDT merge button is hidden. */
-  hasCrdtState?: boolean;
 }
 
 const baseClass = 'resolution-strategy-picker';
@@ -29,7 +27,6 @@ const strategies: StrategyButton[] = [
   { strategy: 'accept-draft', label: 'Accept Draft', disabledForDelete: false },
   { strategy: 'accept-live', label: 'Accept Live', disabledForDelete: false },
   { strategy: 'cherry-pick', label: 'Cherry-pick', disabledForDelete: true },
-  { strategy: 'crdt-preview', label: 'Auto merge', disabledForDelete: true },
 ];
 
 function isDeleteConflict(conflictType: DocumentConflictType): boolean {
@@ -40,7 +37,6 @@ export function ResolutionStrategyPicker({
   currentStrategy,
   conflictType,
   onSelect,
-  hasCrdtState = true,
 }: ResolutionStrategyPickerProps): React.ReactElement {
   const isDelete = isDeleteConflict(conflictType);
 
@@ -51,9 +47,7 @@ export function ResolutionStrategyPicker({
       aria-label="Resolution strategy"
       style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}
     >
-      {strategies
-        .filter(({ strategy }) => strategy !== 'crdt-preview' || hasCrdtState)
-        .map(({ strategy, label, disabledForDelete }) => {
+      {strategies.map(({ strategy, label, disabledForDelete }) => {
         const disabled = isDelete && disabledForDelete;
         const selected = currentStrategy === strategy;
 

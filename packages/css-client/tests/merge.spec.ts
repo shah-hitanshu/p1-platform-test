@@ -159,48 +159,6 @@ describe('MergeEndpoint', () => {
     });
   });
 
-  describe('crdtPreview', () => {
-    it('sends POST to /api/sites/{siteId}/merge/crdt-preview', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true, snapshot: {} }),
-      });
-
-      await client.merge.crdtPreview(siteId, 'doc-1', sourceBranchId, targetBranchId);
-
-      expect(mockFetch).toHaveBeenCalledWith(
-        `${baseUrl}/api/sites/${siteId}/merge/crdt-preview`,
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({
-            documentId: 'doc-1',
-            sourceBranchId,
-            targetBranchId,
-          }),
-        })
-      );
-    });
-
-    it('returns typed CrdtPreviewResult', async () => {
-      const mockResult = {
-        success: true,
-        snapshot: { content: [{ type: 'Text', props: { id: 't1', text: 'merged' } }], root: {} },
-      };
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => mockResult,
-      });
-
-      const result = await client.merge.crdtPreview(siteId, 'doc-1', sourceBranchId, targetBranchId);
-
-      expect(result.success).toBe(true);
-      expect(result.snapshot).toEqual(mockResult.snapshot);
-    });
-  });
-
   describe('execute', () => {
     it('sends POST to /api/sites/{siteId}/merge/execute with conflict resolutions', async () => {
       mockFetch.mockResolvedValueOnce({

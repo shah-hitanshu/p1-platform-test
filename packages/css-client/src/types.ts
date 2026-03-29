@@ -648,7 +648,7 @@ export type WsServerMessage =
 /**
  * Merge conflict resolution strategies (matches backend).
  */
-export type ConflictResolutionStrategy = 'take-source' | 'take-target' | 'merge-crdt' | 'manual';
+export type ConflictResolutionStrategy = 'take-source' | 'take-target' | 'manual';
 
 /**
  * Merge request workflow states.
@@ -715,8 +715,6 @@ export interface MergeDocumentChange {
   baseVersionId?: string | null;
   baseVersionNumber?: number | null;
   isDeleted?: boolean;
-  /** Whether CRDT state is available for this document (for CRDT merge strategy). */
-  hasCrdtState?: boolean;
 }
 
 /**
@@ -730,14 +728,6 @@ export interface MergePreview {
   targetChanges: MergeDocumentChange[];
   mergeBase: { checkpointId: string; branchId: string } | null;
   documentDiffs?: DocumentDiff[];
-}
-
-/**
- * Result of a CRDT auto-merge preview for a single document.
- */
-export interface CrdtPreviewResult {
-  success: boolean;
-  snapshot: Record<string, unknown>;
 }
 
 /**

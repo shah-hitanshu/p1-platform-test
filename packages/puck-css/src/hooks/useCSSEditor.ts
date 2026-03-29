@@ -28,6 +28,13 @@ export interface UseCSSEditorOptions {
   puckConfig: unknown;
   /** Additional plugins to include after the CSS plugin */
   additionalPlugins?: PuckPlugin[];
+  /**
+   * Additional overrides to merge with CSS overrides.
+   * Merged with stable memoization to prevent Puck's appStore.setState
+   * from firing on every render (which causes preview iframe re-renders).
+   * Nested objects (e.g. fieldTypes) are shallow-merged.
+   */
+  additionalOverrides?: PuckOverrides;
   /** Customization options for overrides */
   overrideOptions?: UseCSSOverridesOptions;
   /** Customization options for the CSS plugin (versions are managed internally) */
@@ -104,6 +111,7 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
     documentPath,
     puckConfig,
     additionalPlugins,
+    additionalOverrides,
     overrideOptions,
     pluginOptions,
     onSelectionChange,
@@ -333,6 +341,35 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   }, [css.isViewingHistoricalVersion]);
 
   // =========================================================================
+  // Stable merged overrides
+  // =========================================================================
+
+  // Merge additional overrides (e.g. from media plugins) with CSS overrides.
+  // Uses ref pattern to keep the merge stable — only recomputes when
+  // cssOverrides changes, not when additionalOverrides reference changes
+  // (which would happen every render if the consumer doesn't memoize).
+  const additionalOverridesRef = useRef(additionalOverrides);
+  additionalOverridesRef.current = additionalOverrides;
+
+  const mergedOverrides = useMemo(() => {
+    const extra = additionalOverridesRef.current;
+    if (!extra) return cssOverrides;
+
+    // Shallow merge top-level, then shallow merge nested objects like fieldTypes
+    const merged = { ...cssOverrides } as Record<string, unknown>;
+    for (const [key, value] of Object.entries(extra)) {
+      const existing = merged[key];
+      if (existing && typeof existing === 'object' && !Array.isArray(existing) &&
+          value && typeof value === 'object' && !Array.isArray(value)) {
+        merged[key] = { ...existing as Record<string, unknown>, ...value as Record<string, unknown> };
+      } else {
+        merged[key] = value;
+      }
+    }
+    return merged as PuckOverrides;
+  }, [cssOverrides]);
+
+  // =========================================================================
   // Assemble puckProps
   // =========================================================================
 
@@ -349,10 +386,10 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
       data: css.safeData,
       onChange,
       plugins,
-      overrides: cssOverrides,
+      overrides: mergedOverrides,
       ...(permissions ? { permissions } : {}),
     }),
-    [puckConfig, css.safeData, onChange, plugins, cssOverrides, permissions]
+    [puckConfig, css.safeData, onChange, plugins, mergedOverrides, permissions]
   );
 
   return {

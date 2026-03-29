@@ -74,7 +74,6 @@ export type {
   MergeabilityResult,
   DocumentDiff,
   MergePreview,
-  CrdtPreviewResult,
   MergeExecuteParams,
   MergeExecuteResult,
   MergeRequest,

@@ -216,6 +216,9 @@ export class RealtimeClient {
   }> = new Map();
   private static readonly PUBLISH_TIMEOUT_MS = 30000;
 
+  // Action metadata state — best-effort metadata sent alongside CRDT updates
+  private pendingActionMetadata: { actionType: string; actionMetadata: Record<string, unknown> } | null = null;
+
   constructor(config: RealtimeClientConfig) {
     this.config = config;
     this.ydoc = new Y.Doc();
@@ -225,6 +228,8 @@ export class RealtimeClient {
       // Only broadcast if this update didn't come from remote
       if (origin !== 'remote' && this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.rateLimitedSend(update);
+        // Send any pending action metadata after the CRDT update
+        this.sendPendingActionMetadata();
       }
     });
   }
@@ -277,19 +282,23 @@ export class RealtimeClient {
     const baseWsUrl = url.toString();
 
     // Create a URL provider function for PartySocket.
-    // On initial connect, returns the base URL (no state vector).
-    // On reconnect (hasConnectedOnce === true), appends the client's Yjs
-    // state vector as a base64-encoded query parameter so the server can
-    // respond with only the delta instead of the full CRDT history.
+    // Appends the client's Yjs state vector as a base64-encoded query
+    // parameter whenever the Y.Doc has meaningful content (seeded from
+    // REST or from a prior session), so the server can respond with only
+    // the delta instead of the full CRDT history.
     const urlProvider = (): string => {
-      if (!this.hasConnectedOnce) {
+      const sv = Y.encodeStateVector(this.ydoc);
+      // A fresh Y.Doc has a trivial state vector (length 1, value [0]).
+      // If the doc has been seeded with data, the state vector will be longer.
+      // Send it on both initial connect and reconnect so the server can
+      // respond with only the delta.
+      if (sv.length <= 1) {
         return baseWsUrl;
       }
-      const reconnectUrl = new URL(baseWsUrl);
-      const sv = Y.encodeStateVector(this.ydoc);
+      const connectUrl = new URL(baseWsUrl);
       const svBase64 = btoa(String.fromCharCode(...sv));
-      reconnectUrl.searchParams.set('stateVector', svBase64);
-      return reconnectUrl.toString();
+      connectUrl.searchParams.set('stateVector', svBase64);
+      return connectUrl.toString();
     };
 
     // Create ReconnectingWebSocket with URL provider and reconnection options
@@ -311,12 +320,15 @@ export class RealtimeClient {
     this.ws.addEventListener('open', () => {
       this.connected = true;
 
-      // On reconnect, send local state to ensure bidirectional sync.
-      // This ensures any edits made while disconnected are sent to the server,
-      // where Yjs will merge them with the server's state and broadcast to other clients.
-      if (this.hasConnectedOnce && this.ws) {
-        const localState = Y.encodeStateAsUpdate(this.ydoc);
-        this.ws.send(localState);
+      // Send local state when doc has content (seeded or from prior session).
+      // On initial connect with seeded data, this ensures bidirectional sync.
+      // On reconnect, this sends any edits made while disconnected.
+      if (this.ws) {
+        const root = this.ydoc.getMap('root');
+        if (root.size > 0) {
+          const localState = Y.encodeStateAsUpdate(this.ydoc);
+          this.ws.send(localState);
+        }
       }
 
       this.hasConnectedOnce = true;
@@ -506,6 +518,36 @@ export class RealtimeClient {
   applyLocalUpdate(update: Uint8Array): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.rateLimitedSend(update);
+    }
+  }
+
+  /**
+   * Set pending action metadata to be sent after the next CRDT update.
+   * The metadata is best-effort — if the WebSocket is not open or the
+   * send fails, the CRDT update still goes through without metadata.
+   *
+   * @param meta - Action type and metadata from Puck's onAction callback
+   */
+  setActionMetadata(meta: { actionType: string; actionMetadata: Record<string, unknown> } | null): void {
+    this.pendingActionMetadata = meta;
+  }
+
+  /**
+   * Send any pending action metadata as a text message and clear it.
+   * Called after a CRDT update is sent to associate the metadata with
+   * the most recent edit.
+   */
+  sendPendingActionMetadata(): void {
+    if (this.pendingActionMetadata && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(JSON.stringify({
+          type: 'action_metadata',
+          ...this.pendingActionMetadata,
+        }));
+      } catch {
+        // Best-effort — don't break the CRDT sync if metadata send fails
+      }
+      this.pendingActionMetadata = null;
     }
   }
 
