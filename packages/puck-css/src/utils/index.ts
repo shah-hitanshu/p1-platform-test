@@ -3,6 +3,7 @@
  */
 
 export { debounce } from './debounce.js';
+export { throttle } from './throttle.js';
 export { withRetry } from './retry.js';
 export type { RetryOptions } from './retry.js';
 export { diffPuckData, getChangedComponents, countChanges, hasRootChanged } from './diff.js';

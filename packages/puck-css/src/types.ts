@@ -78,6 +78,15 @@ export interface CSSPuckConfig {
    */
   realtimeApiKey?: string;
 
+  /**
+   * Throttle interval for realtime sync in milliseconds.
+   * Controls max frequency of WebSocket sends during rapid editing.
+   * Leading + trailing edge: first change sends immediately, then at most
+   * one send per interval, with guaranteed final send.
+   * @default 250
+   */
+  realtimeSyncInterval?: number;
+
   // =========================================================================
   // Presence Props (Phase 9)
   // =========================================================================

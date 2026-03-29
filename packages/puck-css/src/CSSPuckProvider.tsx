@@ -19,6 +19,7 @@ import { NotificationProvider, useNotifications } from './NotificationContext.js
 import { PresenceContext } from './PresenceContext.js';
 import type { PresenceContextValue } from './PresenceContext.js';
 import { debounce } from './utils/debounce.js';
+import { throttle } from './utils/throttle.js';
 import { withRetry } from './utils/retry.js';
 import { useRealtime } from './hooks/useRealtime.js';
 import { useDocuments } from './hooks/useDocuments.js';
@@ -91,6 +92,7 @@ function CSSPuckProviderInner({
   enableRealtime = false,
   wsBaseUrl,
   realtimeApiKey,
+  realtimeSyncInterval = 250,
   // Phase 9: Presence props
   presenceEnabled = false,
   presencePollingInterval = 5000,
@@ -551,6 +553,28 @@ function CSSPuckProviderInner({
     };
   }, [debouncedSave]);
 
+  // Throttled realtime sync — rate-limits WebSocket sends during rapid edits.
+  // Leading + trailing edge: first change sends immediately, subsequent changes
+  // coalesce into sends every realtimeSyncInterval ms.
+  const throttledRealtimeSync = useMemo(
+    () =>
+      throttle((data: PuckData, actionMeta?: { actionType: string; actionMetadata: Record<string, unknown> }) => {
+        realtime.applyLocalChange(data, actionMeta);
+        // Data has been sent to the DO — update save status
+        pendingDataRef.current = null;
+        setSaveStatus('saved');
+        setLastSaved(new Date());
+      }, realtimeSyncInterval),
+    [realtime, realtimeSyncInterval]
+  );
+
+  // Cleanup throttle on unmount — flush to ensure final state is sent
+  useEffect(() => {
+    return () => {
+      throttledRealtimeSync.flush();
+    };
+  }, [throttledRealtimeSync]);
+
   // Pause auto-save
   const pauseAutoSave = useCallback(() => {
     debouncedSave.pause();
@@ -638,30 +662,33 @@ function CSSPuckProviderInner({
             return;
           }
 
-          // Local user edit — send via WebSocket (DO handles persistence)
-          realtime.applyLocalChange(data, lastActionRef.current ?? undefined);
-          // Clear after sending
+          // Local user edit — throttle WebSocket sends
+          throttledRealtimeSync(data, lastActionRef.current ?? undefined);
           lastActionRef.current = null;
-          // Still trigger debounced save as fallback, but performSave will
-          // skip the REST call when realtimeConnectedRef is true.
+
+          // Set pending data for getHasUnsavedChanges but don't trigger
+          // debouncedSave — the throttle callback handles save status.
+          pendingDataRef.current = data;
+          return;
         }
       }
 
-      // Only mark data as pending for local user edits (not remote syncs)
+      // Non-realtime path: mark data as pending and trigger debounced REST save
       pendingDataRef.current = data;
 
-      // Resume on next edit if paused
       if (debouncedSave.isPaused()) {
         debouncedSave.resume();
         setAutoSavePaused(false);
       }
       debouncedSave();
     },
-    [debouncedSave, enableRealtime, realtime]
+    [debouncedSave, enableRealtime, realtime, throttledRealtimeSync]
   );
 
   // Force immediate save
   const saveNow = useCallback(async () => {
+    // Flush any throttled realtime sync
+    throttledRealtimeSync.flush();
     debouncedSave.cancel();
 
     // When realtime is connected, ensure the latest data is sent via WebSocket
@@ -681,7 +708,7 @@ function CSSPuckProviderInner({
     }
 
     await performSave();
-  }, [debouncedSave, performSave, enableRealtime, realtime]);
+  }, [debouncedSave, performSave, enableRealtime, realtime, throttledRealtimeSync]);
 
   // Load document by path
   const loadDocument = useCallback(
@@ -689,6 +716,9 @@ function CSSPuckProviderInner({
       // Cancel any pending remote sync to prevent race conditions
       // where a stale remote update overrides the document we're loading
       cancelPendingRemoteSync();
+
+      // Flush any throttled realtime sync before switching documents
+      throttledRealtimeSync.flush();
 
       // Increment load request counter and capture for staleness detection.
       // If a newer loadDocument call starts before our awaits resolve, the
@@ -759,7 +789,7 @@ function CSSPuckProviderInner({
         throw error;
       }
     },
-    [userClient, siteId, branchId, cancelPendingRemoteSync, enableRealtime]
+    [userClient, siteId, branchId, cancelPendingRemoteSync, enableRealtime, throttledRealtimeSync]
   );
 
   // Load a specific version into the editor

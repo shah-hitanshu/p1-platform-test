@@ -243,6 +243,7 @@ export type {
 
 // Utilities
 export { debounce } from './utils/debounce.js';
+export { throttle } from './utils/throttle.js';
 export { withRetry } from './utils/retry.js';
 export {
   diffPuckData,
