@@ -149,18 +149,12 @@ export class ManualResolutionError extends Error {
  *
  * - take-source: Copy source version's snapshot to target branch
  * - take-target: Keep target version unchanged
- * - merge-crdt: Not supported here (use Phase 5.2c)
- * - manual: Not supported (requires manual intervention)
+ * - manual: Use client-provided merged snapshot
  */
 export async function resolveConflict(
   params: ResolveConflictParams,
 ): Promise<ConflictResolutionResult> {
   const { strategy } = params;
-
-  // Validate strategy - reject unsupported strategies
-  if (strategy === 'merge-crdt') {
-    throw new UnsupportedStrategyError('merge-crdt');
-  }
 
   // Handle manual strategy
   if (strategy === 'manual') {
@@ -201,7 +195,7 @@ async function resolveWithTakeSource(
   const newVersion = await createDocumentVersion({
     documentId,
     branchId: targetBranchId,
-    snapshot: sourceVersion.snapshot,
+    snapshot: sourceVersion.snapshot ?? {},
     source: 'merge',
     createdById: resolvedById,
     createdByType: resolvedByType,
@@ -413,7 +407,7 @@ export async function resolveDeletedConflict(
     const newVersion = await createDocumentVersion({
       documentId,
       branchId: targetBranchId,
-      snapshot: sourceVersion.snapshot,
+      snapshot: sourceVersion.snapshot ?? {},
       source: 'merge',
       createdById: resolvedById,
       createdByType: resolvedByType,

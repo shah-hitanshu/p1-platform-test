@@ -10,8 +10,9 @@ export interface SyncQueueMessage {
   documentId: string;
   branchId: string;
   snapshot: Record<string, unknown>;
-  crdtState: string; // base64-encoded Yjs state
   actorId: string;
   actorType: 'user' | 'agent';
   timestamp: number;
+  actionType?: string; // Puck action type (e.g., "insert", "reorder", "set")
+  actionMetadata?: Record<string, unknown>; // Additional Puck action context
 }

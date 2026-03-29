@@ -148,8 +148,12 @@ export interface DocumentVersion {
   documentId: string;
   branchId: string;
   versionNumber: number;
-  snapshot: Record<string, unknown>;
-  crdtState?: string; // Base64-encoded CRDT state
+  snapshot?: Record<string, unknown>;
+  patch?: unknown[]; // RFC 6902 JSON Patch operations array
+  /** @deprecated CRDT state is no longer stored. Column removed in migration 030. */
+  crdtState?: string;
+  actionType?: string; // Puck action type (e.g., "insert", "reorder", "set")
+  actionMetadata?: Record<string, unknown>; // Additional Puck action context
   source: DocumentVersionSource;
   createdById: string;
   createdByType: 'user' | 'agent' | 'system';
@@ -217,7 +221,6 @@ export interface DocumentConflict {
   sourceVersion?: number;
   targetVersion?: number;
   baseVersion?: number;
-  crdtMergePossible?: boolean;
 }
 
 /**

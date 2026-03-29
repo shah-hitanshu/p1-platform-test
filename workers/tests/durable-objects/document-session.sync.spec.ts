@@ -369,7 +369,6 @@ describe('DO-to-PostgreSQL Sync Pipeline', () => {
       expect(body.actorId).toBe('user-1');
       expect(body.actorType).toBe('user');
       expect(body.snapshot).toBeDefined();
-      expect(body.crdtState).toBeDefined();
     });
 
     it('should not sync when schedule is not yet due', async () => {
@@ -619,9 +618,6 @@ describe('DO-to-PostgreSQL Sync Pipeline', () => {
       const snapshot = body.snapshot as Record<string, unknown>;
       expect(snapshot.title).toBe('E2E Title');
       expect(snapshot.content).toBe('E2E Content');
-      expect(body.crdtState).toBeDefined();
-      expect(typeof body.crdtState).toBe('string');
-      expect((body.crdtState as string).length).toBeGreaterThan(0);
       expect(body.actorId).toBe('user-1');
       expect(body.actorType).toBe('user');
 

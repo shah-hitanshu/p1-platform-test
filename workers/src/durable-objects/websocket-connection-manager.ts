@@ -12,7 +12,7 @@ import type { ConnectionMeta, ActorPresence } from '../types';
 import type {
   WsPresenceErrorMessage,
 } from '../types/websocket-messages';
-import { isWsPublishRequest } from '../types/websocket-messages';
+import { isWsPublishRequest, isWsActionMetadata } from '../types/websocket-messages';
 import { incrementCounter, setGauge } from '../services/metrics-service';
 import type { PresenceManager } from '../services/presence-service';
 import type {
@@ -363,6 +363,15 @@ export async function handleWebSocketMessage(
         await deps.handleWsPublishRequest(ws, meta, parsed);
         return;
       }
+      // Capture action metadata from Puck client — store on syncManager
+      // so the next scheduleSync includes it in the sync payload
+      if (parsed !== null && isWsActionMetadata(parsed)) {
+        deps.syncManager.pendingActionMetadata = {
+          actionType: parsed.actionType,
+          actionMetadata: parsed.actionMetadata,
+        };
+        return;
+      }
       deps.handlePresenceMessage(ws, meta, message);
       return;
     }
@@ -387,8 +396,9 @@ export async function handleWebSocketMessage(
     // Phase 1.1: Debounced persistence — mark pending instead of persisting directly
     await deps.markPersistPending();
 
-    // Schedule sync to PostgreSQL after idle timeout
-    await deps.syncManager.scheduleSync(meta.actorId, meta.actorType);
+    // Schedule sync to PostgreSQL after idle timeout, passing any pending action metadata
+    const pendingMeta = deps.syncManager.pendingActionMetadata;
+    await deps.syncManager.scheduleSync(meta.actorId, meta.actorType, pendingMeta);
   } catch (error) {
     console.error('Error handling WebSocket message:', error);
   }

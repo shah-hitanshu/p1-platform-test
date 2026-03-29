@@ -1106,7 +1106,6 @@ describe('Phase 1.4: DocumentSession PostgreSQL Initialization', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           snapshot: { root: { title: 'From PostgreSQL' } },
-          crdtState: null,  // No CRDT state, just snapshot
         }),
       });
       const response = await session.fetch(request);
@@ -1124,36 +1123,6 @@ describe('Phase 1.4: DocumentSession PostgreSQL Initialization', () => {
       }
     });
 
-    it('should be able to initialize from CRDT state', async () => {
-      const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const Y = await import('yjs');
-
-      // Create a valid Yjs CRDT state
-      const testDoc = new Y.Doc();
-      const root = testDoc.getMap('root');
-      root.set('title', 'From CRDT State');
-      const crdtBytes = Y.encodeStateAsUpdate(testDoc);
-      const crdtBase64 = btoa(String.fromCharCode(...crdtBytes));
-
-      const session = new DocumentSession(mockState as unknown, mockEnv);
-
-      // Initialize from real CRDT state
-      const request = new Request('http://localhost/initialize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          snapshot: { root: { title: 'Test' } },
-          crdtState: crdtBase64,
-        }),
-      });
-      const response = await session.fetch(request);
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.success).toBe(true);
-      // CRDT state should take precedence over snapshot
-      expect(data.snapshot.title).toBe('From CRDT State');
-    });
   });
 });
 

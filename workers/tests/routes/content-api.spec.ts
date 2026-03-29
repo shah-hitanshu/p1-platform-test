@@ -21,6 +21,7 @@ vi.mock('../../src/services', () => ({
   getLatestPublishedDocumentVersion: vi.fn(),
   getLatestDocumentVersionWithFallback: vi.fn(),
   listDocumentsOnBranch: vi.fn(),
+  reconstructVersionSnapshot: vi.fn(),
 }));
 
 vi.mock('../../src/services/site-settings-service', () => ({
@@ -102,6 +103,23 @@ const mockDraftVersion: DocumentVersion = {
   createdById: 'user-1',
   createdByType: 'user',
   createdAt: '2026-03-08T10:00:00.000Z',
+};
+
+const mockDiffOnlyVersion: DocumentVersion = {
+  id: 'version-uuid-diff',
+  documentId: 'doc-uuid-abc',
+  branchId: 'branch-main-uuid',
+  versionNumber: 16,
+  // snapshot is undefined — this is a diff-only version
+  source: 'edit',
+  createdById: 'user-1',
+  createdByType: 'user',
+  createdAt: '2026-03-09T10:00:00.000Z',
+};
+
+const mockReconstructedSnapshot = {
+  root: { props: { title: 'Reconstructed Page' } },
+  content: [{ type: 'Hero', props: { heading: 'Rebuilt from diffs' } }],
 };
 
 const mockTombstonedVersion: DocumentVersion = {
@@ -471,6 +489,138 @@ describe('Content Delivery API Routes', () => {
       });
 
       expect(response.status).toBe(404);
+    });
+
+    it('should reconstruct snapshot when version.snapshot is null (diff-only version)', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestPublishedDocumentVersion).mockResolvedValue(mockDiffOnlyVersion);
+      vi.mocked(services.reconstructVersionSnapshot).mockResolvedValue(mockReconstructedSnapshot);
+      setupSettingsMocks(settingsService, 120);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.data).toEqual(mockReconstructedSnapshot);
+      expect(services.reconstructVersionSnapshot).toHaveBeenCalledWith(
+        'doc-uuid-abc',
+        'branch-main-uuid',
+        16,
+      );
+    });
+
+    it('should not call reconstructVersionSnapshot when version has a snapshot', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestPublishedDocumentVersion).mockResolvedValue(mockPublishedVersion);
+      setupSettingsMocks(settingsService, 120);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.data).toEqual(mockPublishedVersion.snapshot);
+      expect(services.reconstructVersionSnapshot).not.toHaveBeenCalled();
+    });
+
+    it('should return null data when reconstruction fails for diff-only version', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestPublishedDocumentVersion).mockResolvedValue(mockDiffOnlyVersion);
+      vi.mocked(services.reconstructVersionSnapshot).mockResolvedValue(null);
+      setupSettingsMocks(settingsService, 120);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.data).toBeNull();
+    });
+
+    it('should reconstruct snapshot for diff-only version on non-main branch', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      const featureDiffVersion: DocumentVersion = {
+        ...mockDiffOnlyVersion,
+        branchId: 'branch-feature-uuid',
+        versionNumber: 5,
+      };
+
+      vi.mocked(services.getBranch).mockResolvedValue(mockFeatureBranch);
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestDocumentVersionWithFallback).mockResolvedValue({
+        version: featureDiffVersion,
+        inherited: false,
+      });
+      vi.mocked(services.reconstructVersionSnapshot).mockResolvedValue(mockReconstructedSnapshot);
+      setupSettingsMocks(settingsService, 5);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=branch-feature-uuid',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.data).toEqual(mockReconstructedSnapshot);
+      expect(services.reconstructVersionSnapshot).toHaveBeenCalledWith(
+        'doc-uuid-abc',
+        'branch-feature-uuid',
+        5,
+      );
     });
 
     it('should return 304 when If-None-Match header matches ETag', async () => {

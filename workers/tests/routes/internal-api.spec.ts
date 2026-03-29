@@ -64,7 +64,6 @@ describe('Phase 1.2: Internal API Routes', () => {
     documentId: string;
     branchId: string;
     snapshot: Record<string, unknown>;
-    crdtState: string;
     actorId: string;
     actorType: 'user' | 'agent';
   }
@@ -76,7 +75,6 @@ describe('Phase 1.2: Internal API Routes', () => {
       documentId: 'pages/home',
       branchId: 'branch-uuid-456',
       snapshot: { root: { title: 'Test Document' } },
-      crdtState: 'base64encodedcrdtstate==',
       actorId: 'user-uuid-789',
       actorType: 'user',
       ...overrides,
@@ -137,7 +135,6 @@ describe('Phase 1.2: Internal API Routes', () => {
         branchId: 'branch-uuid-456',
         versionNumber: 1,
         snapshot: { root: { title: 'Test' } },
-        crdtState: 'base64==',
         source: 'realtime',
         createdById: 'user-uuid-789',
         createdByType: 'user',
@@ -176,7 +173,6 @@ describe('Phase 1.2: Internal API Routes', () => {
         branchId: 'branch-uuid-456',
         versionNumber: 1,
         snapshot: { root: { title: 'Test' } },
-        crdtState: 'base64==',
         source: 'realtime',
         createdById: 'user-uuid-789',
         createdByType: 'user',
@@ -200,7 +196,6 @@ describe('Phase 1.2: Internal API Routes', () => {
         documentId: syncBody.documentId,
         branchId: syncBody.branchId,
         snapshot: syncBody.snapshot,
-        crdtState: syncBody.crdtState,
         actorId: syncBody.actorId,
         actorType: syncBody.actorType,
       });
@@ -216,7 +211,6 @@ describe('Phase 1.2: Internal API Routes', () => {
         branchId: 'branch-uuid-456',
         versionNumber: 5,
         snapshot: { root: { title: 'Test' } },
-        crdtState: 'base64==',
         source: 'realtime' as const,
         createdById: 'user-uuid-789',
         createdByType: 'user' as const,
@@ -364,27 +358,6 @@ describe('Phase 1.2: Internal API Routes', () => {
       expect(response.status).toBe(400);
       const body = await response.json();
       expect(body.error).toContain('branchId');
-    });
-
-    it('should require crdtState', async () => {
-      const { handleInternalRoutes } = await import('../../src/routes/internal-api');
-
-      const request = new Request('http://localhost/internal/crdt-sync', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Internal-Secret': 'correct-secret',
-        },
-        body: JSON.stringify(createValidSyncBody({ crdtState: '' })),
-      });
-
-      const response = await handleInternalRoutes(request, {
-        internalSecret: 'correct-secret',
-      });
-
-      expect(response.status).toBe(400);
-      const body = await response.json();
-      expect(body.error).toContain('crdtState');
     });
 
     it('should require actorId', async () => {

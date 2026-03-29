@@ -16,17 +16,13 @@ import {
   updateMergeRequest,
   updateMergeRequestStatus,
   deleteMergeRequest,
-  getLatestDocumentVersion,
   getMainBranch,
-  mergeCrdtStates,
   MergeRequestNotFoundError,
   SourceBranchNotFoundError,
   TargetBranchNotFoundError,
   MergeConflictsError,
   MergeNotAllowedError,
   MergeExecutionError,
-  InvalidCrdtStateError,
-  MissingCrdtStateError,
 } from '../services';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
 import { writeBranchInvalidation } from '../services/branch-invalidation-service';
@@ -36,7 +32,7 @@ import { writeBranchInvalidation } from '../services/branch-invalidation-service
  */
 export interface MergeRouteContext {
   siteId: string;
-  operation?: 'check' | 'execute' | 'preview' | 'crdt-preview';
+  operation?: 'check' | 'execute' | 'preview';
   mergeRequests?: boolean;
   executeRequest?: boolean;
   mergeRequestId?: string;
@@ -69,15 +65,6 @@ interface MergePreviewBody {
   targetBranchId?: string;
   /** When true, includes full document snapshots and diff operations */
   includeContent?: boolean;
-}
-
-/**
- * Request body for CRDT merge preview
- */
-interface CrdtPreviewBody {
-  documentId?: string;
-  sourceBranchId?: string;
-  targetBranchId?: string;
 }
 
 /**
@@ -237,59 +224,6 @@ async function handlePreviewMerge(
   );
 
   return jsonResponse(result);
-}
-
-/**
- * Handle POST /api/sites/{siteId}/merge/crdt-preview - Preview CRDT Merge
- *
- * Returns a merged snapshot without committing any changes.
- */
-async function handleCrdtPreview(
-  request: Request,
-  context: MergeRouteContext,
-): Promise<Response> {
-  const body = await parseJsonBody<CrdtPreviewBody>(request);
-
-  if (body.documentId === undefined || body.documentId === '') {
-    return errorResponse('documentId is required', 400);
-  }
-
-  if (body.sourceBranchId === undefined || body.targetBranchId === undefined) {
-    return errorResponse('Both sourceBranchId and targetBranchId are required', 400);
-  }
-
-  await assertPermission(context.principal, context.siteId, body.sourceBranchId, 'canView');
-
-  // Get latest document versions on each branch
-  const sourceVersion = await getLatestDocumentVersion(body.documentId, body.sourceBranchId);
-  if (sourceVersion === null) {
-    return errorResponse('Source document version not found', 404);
-  }
-
-  const targetVersion = await getLatestDocumentVersion(body.documentId, body.targetBranchId);
-  if (targetVersion === null) {
-    return errorResponse('Target document version not found', 404);
-  }
-
-  // Validate both have CRDT state
-  if (sourceVersion.crdtState === undefined || sourceVersion.crdtState === '') {
-    return errorResponse('Source version is missing CRDT state required for merge', 422);
-  }
-
-  if (targetVersion.crdtState === undefined || targetVersion.crdtState === '') {
-    return errorResponse('Target version is missing CRDT state required for merge', 422);
-  }
-
-  // Merge CRDT states — pure function, no commit
-  const mergeResult = mergeCrdtStates({
-    sourceState: sourceVersion.crdtState,
-    targetState: targetVersion.crdtState,
-  });
-
-  return jsonResponse({
-    success: mergeResult.success,
-    snapshot: mergeResult.mergedSnapshot,
-  });
 }
 
 /**
@@ -492,7 +426,7 @@ async function handleExecuteMergeRequest(
       resolutionStrategy: 'take-source', // Default for any conflicts without a per-document resolution
       resolutions: resolutions.map((r) => ({
         documentId: r.documentId,
-        strategy: r.strategy as 'take-source' | 'take-target' | 'merge-crdt' | 'manual',
+        strategy: r.strategy as 'take-source' | 'take-target' | 'manual',
         resolvedSnapshot: r.resolvedSnapshot,
       })),
       mergedById: context.principal.id,
@@ -543,8 +477,6 @@ export async function handleMergeRoutes(
           return await handleExecuteMerge(request, context);
         case 'preview':
           return await handlePreviewMerge(request, context);
-        case 'crdt-preview':
-          return await handleCrdtPreview(request, context);
         default:
           return errorResponse('Unknown operation', 400);
       }
@@ -622,18 +554,6 @@ export async function handleMergeRoutes(
         mergeRequestId: error.mergeRequestId,
       });
     }
-    if (error instanceof InvalidCrdtStateError) {
-      return errorResponse(error.message, 422, {
-        source: error.source,
-        reason: error.reason,
-      });
-    }
-    if (error instanceof MissingCrdtStateError) {
-      return errorResponse(error.message, 422, {
-        versionId: error.versionId,
-      });
-    }
-
     // Re-throw unknown errors
     throw error;
   }

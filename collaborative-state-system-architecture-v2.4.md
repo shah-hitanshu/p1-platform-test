@@ -2,8 +2,10 @@
 
 ## Architecture Specification
 
-**Version:** 2.3
+**Version:** 2.4
 **Status:** Scope-Focused Architecture
+
+> **v2.4 Changes**: Introduced JSON diff-based version storage (Phase 2). Document versions are now stored as either baselines (full JSON snapshots) or diffs (RFC 6902 JSON patches). `crdt_state` is deprecated. New columns: `patch`, `action_type`, `action_metadata`. Puck editor actions are captured alongside CRDT updates for rich version history. Forward diffs are computed in the document-version-service. Historical versions can be reconstructed by replaying patches from the nearest baseline.
 
 > **v2.3 Changes**: Added Agent Politeness System with organization-level configuration, agent registry, enhanced checkpoints with full metadata, presence/awareness system, activity detection, and region-aware conflict resolution for human-agent collaboration.
 
@@ -254,10 +256,12 @@ The following diagram illustrates how Sites, Documents, Branches, and Checkpoint
           │         ┌──────────────────────────┴──────────────────────────┐
           │         │                                                      │
           └────────►│              DOCUMENT VERSION                        │
-                    │  (snapshot of document content on a specific branch) │
+                    │  (snapshot or diff of document on a specific branch) │
                     │  - version_number                                    │
-                    │  - snapshot (JSON)                                   │
-                    │  - crdt_state (for merge support)                    │
+                    │  - snapshot (JSON, nullable — null for diffs)        │
+                    │  - patch (RFC 6902 JSON patch, null for baselines)   │
+                    │  - action_type / action_metadata (Puck actions)      │
+                    │  - crdt_state (deprecated, no longer written)        │
                     └──────────────────────────────────────────────────────┘
 
 Key Relationships:
@@ -340,9 +344,11 @@ Branch Lineage:
 
 ### Decision 7: PostgreSQL for Version Control, Durable Objects for Real-Time
 
-**Choice:** PostgreSQL (CloudSQL) stores site metadata, branches, checkpoints, and document snapshots. Cloudflare Durable Objects host live CRDT sessions **and** presence aggregation. No additional real-time storage layer (e.g., Firestore) is used.
+**Choice:** PostgreSQL (CloudSQL) stores site metadata, branches, checkpoints, and document versions (as baselines or JSON diffs). Cloudflare Durable Objects host live CRDT sessions **and** presence aggregation. No additional real-time storage layer (e.g., Firestore) is used.
 
 **Rationale:** PostgreSQL provides transactional guarantees, relational queries, and recursive CTEs for graph traversal (merge-base calculation). Durable Objects provide WebSocket termination, in-memory CRDT state, and automatic persistence—ideal for real-time collaboration. Presence aggregation across documents is handled by dedicated `BranchPresence` Durable Objects rather than a third storage system, keeping the architecture to two storage tiers. Durable Object storage is replicated across multiple Cloudflare data centers for durability; cross-region active-active access is unnecessary for presence data since it is inherently ephemeral and tied to live WebSocket connections.
+
+**Version Storage Model (Phase 2):** Document versions use a baseline+diff strategy to optimize storage while preserving full history. Version 1 and the latest version are always stored as baselines (full JSON snapshots) for fast access. Published versions (checkpoints) are also always baselines. When a new version is created, the previous version is retroactively converted from a baseline to a forward diff (RFC 6902 JSON patch). Any historical version can be reconstructed via `reconstructVersionSnapshot()`, which replays patches forward from the nearest baseline. CRDT state (`crdt_state`) is no longer written to PostgreSQL and will be fully removed in Phase 3.
 
 **Tradeoff:** Two storage systems to maintain. The clear separation of concerns (version control vs. real-time) justifies this. Presence rollups require inter-DO communication (document session DOs notifying the branch presence DO), but this is straightforward internal fetch calls within Cloudflare's network.
 
@@ -495,7 +501,11 @@ CREATE INDEX idx_branches_status ON app.branches(site_id, status);
 -- Ensure only one main branch per site
 CREATE UNIQUE INDEX idx_branches_main ON app.branches(site_id) WHERE is_main = TRUE;
 
--- Document versions (snapshots of document state on a branch)
+-- Document versions (baselines or diffs of document state on a branch)
+-- Version 1 is always a permanent baseline (full snapshot).
+-- The latest version is always a baseline for fast access.
+-- Published versions (checkpoints) are always baselines.
+-- Previous versions are retroactively converted to diffs when a new version is created.
 CREATE TABLE app.document_versions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     document_id UUID NOT NULL REFERENCES app.documents(id),
@@ -504,11 +514,18 @@ CREATE TABLE app.document_versions (
     -- Version metadata
     version_number INTEGER NOT NULL,
 
-    -- Content snapshot
-    snapshot JSONB NOT NULL,
+    -- Content snapshot (full JSON — null for diff versions)
+    snapshot JSONB,
 
-    -- CRDT state for merge support
+    -- Forward diff to next version (RFC 6902 JSON Patch — null for baselines)
+    patch JSONB,
+
+    -- CRDT state (DEPRECATED — no longer written, retained for Phase 3 removal)
     crdt_state BYTEA,
+
+    -- Puck editor action metadata
+    action_type TEXT,           -- e.g. 'insert', 'move', 'replace', 'delete', 'reorder'
+    action_metadata JSONB,      -- Puck-specific action details (component type, zone, index, etc.)
 
     -- What created this version
     source TEXT NOT NULL DEFAULT 'edit',
@@ -799,12 +816,23 @@ interface DocumentVersion {
   documentId: string;
   branchId: string;
   versionNumber: number;
-  snapshot: Record<string, unknown>;
-  crdtState?: Uint8Array;
+  snapshot: Record<string, unknown> | null;  // null for diff versions
+  patch?: JsonPatch[];                        // RFC 6902 forward diff (null for baselines)
+  crdtState?: Uint8Array;                     // DEPRECATED — no longer written
+  actionType?: string;                        // Puck action: 'insert', 'move', 'replace', etc.
+  actionMetadata?: Record<string, unknown>;   // Puck action details (component, zone, index)
   source: 'edit' | 'merge' | 'revert' | 'checkpoint';
   createdById: string;
   createdByType: 'user' | 'agent' | 'system';
   createdAt: Date;
+}
+
+// RFC 6902 JSON Patch operation
+interface JsonPatch {
+  op: 'add' | 'remove' | 'replace' | 'move' | 'copy' | 'test';
+  path: string;
+  value?: unknown;
+  from?: string;
 }
 
 // Checkpoint types (enhanced for agent politeness)
@@ -1015,8 +1043,19 @@ export class DocumentSession {
         const stateUpdate = Y.encodeStateAsUpdate(this.ydoc);
         server.send(stateUpdate);
 
-        // Handle incoming updates
+        // Handle incoming updates (binary CRDT updates and text action messages)
         server.addEventListener('message', async (event) => {
+            if (typeof event.data === 'string') {
+                // Text message: Puck editor action metadata
+                // { type: 'action', actionType: 'insert', metadata: { componentType: 'Hero', zone: 'content', index: 0 } }
+                // Stored alongside the next version for rich version history
+                const action = JSON.parse(event.data);
+                if (action.type === 'action') {
+                    this.pendingAction = { actionType: action.actionType, metadata: action.metadata };
+                }
+                return;
+            }
+
             const update = new Uint8Array(event.data as ArrayBuffer);
 
             // Apply to local doc
@@ -1142,6 +1181,13 @@ export class DocumentSession {
     private async persist(): Promise<void> {
         const update = Y.encodeStateAsUpdate(this.ydoc);
         await this.state.storage.put('ydoc', update);
+
+        // Note: The DO no longer sends CRDT state to PostgreSQL.
+        // When syncing to PostgreSQL, the document-version-service
+        // receives the JSON snapshot and computes forward diffs
+        // (RFC 6902 JSON patches) against the previous version.
+        // The pending Puck action metadata (if any) is included
+        // in the sync payload for storage in action_type/action_metadata.
     }
 
     // Helper methods for nested operations omitted for brevity
@@ -2027,12 +2073,14 @@ When merging branches that both modified the same document:
 |----------|----------|-------------|
 | `take-source` | Use source branch version | Source work supersedes target |
 | `take-target` | Keep target branch version | Target work takes priority |
-| `merge-crdt` | Apply CRDT merge | Changes are additive/compatible |
+| `merge-crdt` | Apply CRDT merge (deprecated — see note) | Changes are additive/compatible |
 | `manual` | User provides resolved state | Complex semantic conflicts |
 
-### CRDT Merge Behavior
+### CRDT Merge Behavior (Deprecated)
 
-When `merge-crdt` is selected, the system:
+> **Note (v2.4):** With Phase 2, `crdt_state` is no longer written to PostgreSQL. The `merge-crdt` strategy is deprecated and will be removed in Phase 3. Use `take-source`, `take-target`, or `manual` resolution instead.
+
+When `merge-crdt` was selected, the system:
 
 1. Gets CRDT state vectors from both versions
 2. Computes missing updates from each side
@@ -3127,9 +3175,12 @@ The following tables remain in this service but are flagged as candidates for ex
 | **Site** | Scoped collection of modifications to content, components, templates, or media; typically scoped to a single site |
 | **Document** | Single JSON object identified by path; represents a page or content unit |
 | **Branch** | Named initiative for collaborative work |
-| **Checkpoint** | Named snapshot of branch state |
+| **Checkpoint** | Named snapshot of branch state; checkpoint versions are always baselines |
+| **Baseline** | A document version stored as a full JSON snapshot (version 1, latest, and checkpoints are always baselines) |
+| **Diff** | A document version stored as an RFC 6902 JSON patch (forward diff to the next version) |
+| **Action Metadata** | Puck editor action details (action_type, action_metadata) captured alongside version changes for rich history |
 | **Live State** | Current CRDT state of documents on a branch |
-| **CRDT** | Conflict-free Replicated Data Type; enables automatic merge |
+| **CRDT** | Conflict-free Replicated Data Type; enables automatic merge (deprecated for version storage in Phase 2) |
 | **Merge Base** | Common ancestor checkpoint of two branches |
 | **Durable Object** | Cloudflare edge compute with persistent state; used for both `DocumentSession` (CRDT editing) and `BranchPresence` (presence aggregation) |
 | **Audit Log** | Append-only record of all system actions |

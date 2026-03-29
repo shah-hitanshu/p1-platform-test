@@ -27,6 +27,7 @@ vi.mock('../../src/services', () => ({
   getDocumentVersion: vi.fn(),
   listDocumentVersions: vi.fn(),
   createDocumentVersion: vi.fn(),
+  reconstructVersionSnapshot: vi.fn(),
   SiteNotFoundError: class SiteNotFoundError extends Error {
     override name = 'SiteNotFoundError';
     constructor(public siteId: string) {
@@ -1856,6 +1857,110 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         });
 
         expect(response.status).toBe(405);
+      });
+
+      it('should reconstruct snapshot when version has null snapshot (diff-only)', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+        vi.mocked(services.getDocumentVersion).mockResolvedValueOnce({
+          id: 'version-diff-only',
+          documentId: 'doc-1',
+          branchId: 'branch-1',
+          versionNumber: 5,
+          // snapshot is undefined — diff-only version
+          source: 'edit',
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T12:00:00.000Z',
+        });
+        const reconstructedSnapshot = { content: [{ type: 'Text', props: { text: 'Rebuilt' } }], root: {} };
+        vi.mocked(services.reconstructVersionSnapshot).mockResolvedValueOnce(reconstructedSnapshot);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions/version-diff-only',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          versionsPath: true,
+          versionAction: 'by-id',
+          versionId: 'version-diff-only',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.snapshot).toEqual(reconstructedSnapshot);
+        expect(services.reconstructVersionSnapshot).toHaveBeenCalledWith('doc-1', 'branch-1', 5);
+      });
+
+      it('should not call reconstructVersionSnapshot when version has a snapshot', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+        vi.mocked(services.getDocumentVersion).mockResolvedValueOnce({
+          id: 'version-with-snapshot',
+          documentId: 'doc-1',
+          branchId: 'branch-1',
+          versionNumber: 3,
+          snapshot: { content: [{ type: 'Heading', props: { title: 'Has snapshot' } }], root: {} },
+          source: 'edit',
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T11:00:00.000Z',
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions/version-with-snapshot',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          versionsPath: true,
+          versionAction: 'by-id',
+          versionId: 'version-with-snapshot',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.snapshot).toEqual({ content: [{ type: 'Heading', props: { title: 'Has snapshot' } }], root: {} });
+        expect(services.reconstructVersionSnapshot).not.toHaveBeenCalled();
       });
     });
 

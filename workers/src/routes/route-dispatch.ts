@@ -132,8 +132,8 @@ export async function dispatchRoute(
     case 'merge':
       return await handleMergeRoutes(request, {
         siteId: route.params.siteId ?? '',
-        operation: ['check', 'execute', 'preview', 'crdt-preview'].includes(route.params.action ?? '')
-          ? (route.params.action as 'check' | 'execute' | 'preview' | 'crdt-preview')
+        operation: ['check', 'execute', 'preview'].includes(route.params.action ?? '')
+          ? (route.params.action as 'check' | 'execute' | 'preview')
           : undefined,
         mergeRequests: route.params.action === 'requests',
         executeRequest: route.params.action === 'execute-request',

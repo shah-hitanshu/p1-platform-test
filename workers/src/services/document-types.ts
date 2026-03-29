@@ -114,7 +114,6 @@ export interface DocumentVersion {
   branchId: string;
   versionNumber: number;
   snapshot: Record<string, unknown>;
-  crdtState?: string;
   source: string;
   createdById: string;
   createdByType: 'user' | 'agent' | 'system';
@@ -130,7 +129,6 @@ export interface DocumentVersionRow {
   branch_id: string;
   version_number: number;
   snapshot: Record<string, unknown>;
-  crdt_state: Buffer | null;
   source: string;
   created_by_id: string;
   created_by_type: 'user' | 'agent' | 'system';
@@ -317,7 +315,6 @@ export function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersio
     branchId: row.branch_id,
     versionNumber: row.version_number,
     snapshot: row.snapshot,
-    crdtState: row.crdt_state ? row.crdt_state.toString('base64') : undefined,
     source: row.source,
     createdById: row.created_by_id,
     createdByType: row.created_by_type,

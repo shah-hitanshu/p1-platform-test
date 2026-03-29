@@ -628,7 +628,6 @@ describe('Phase 3.1: Document Service', () => {
       branch_id: string;
       version_number: number;
       snapshot: Record<string, unknown>;
-      crdt_state: Buffer | null;
       source: string;
       created_by_id: string;
       created_by_type: 'user' | 'agent' | 'system';
@@ -644,7 +643,6 @@ describe('Phase 3.1: Document Service', () => {
         branch_id: 'branch-uuid-456',
         version_number: 1,
         snapshot: {},
-        crdt_state: null,
         source: 'edit',
         created_by_id: 'user-uuid-789',
         created_by_type: 'user',

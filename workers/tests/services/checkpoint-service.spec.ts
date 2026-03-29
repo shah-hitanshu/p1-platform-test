@@ -46,7 +46,6 @@ describe('Phase 3.3: Checkpoint Service', () => {
     branch_id: string;
     version_number: number;
     snapshot: Record<string, unknown>;
-    crdt_state: Buffer | null;
     source: DocumentVersionSource;
     created_by_id: string;
     created_by_type: 'user' | 'agent' | 'system';
@@ -89,7 +88,6 @@ describe('Phase 3.3: Checkpoint Service', () => {
       branch_id: 'branch-uuid-789',
       version_number: 1,
       snapshot: { title: 'Test Document', content: [] },
-      crdt_state: null,
       source: 'edit',
       created_by_id: 'user-uuid-001',
       created_by_type: 'user',

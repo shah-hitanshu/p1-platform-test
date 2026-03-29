@@ -47,7 +47,6 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
     branch_id: string;
     version_number: number;
     snapshot: Record<string, unknown>;
-    crdt_state: Buffer | null;
     source: DocumentVersionSource;
     created_by_id: string;
     created_by_type: 'user' | 'agent' | 'system';
@@ -63,7 +62,6 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
       branch_id: 'branch-uuid-456',
       version_number: 1,
       snapshot: { root: { title: 'Test' } },
-      crdt_state: null,
       source: 'realtime',
       created_by_id: 'user-uuid-001',
       created_by_type: 'user',
@@ -89,10 +87,8 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
       );
       const db = await import('../../src/db');
 
-      const crdtStateBase64 = Buffer.from('mock-crdt-state').toString('base64');
       const mockRow = createMockVersionRow({
         version_number: 3,
-        crdt_state: Buffer.from('mock-crdt-state'),
         snapshot: { root: { title: 'New Content' } },
       });
       vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
@@ -101,7 +97,7 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
         documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: { root: { title: 'New Content' } },
-        crdtState: crdtStateBase64,
+
         actorId: 'user-uuid-001',
         actorType: 'user',
       });
@@ -113,7 +109,6 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
       expect(result.branchId).toBe('branch-uuid-456');
       expect(result.versionNumber).toBe(3);
       expect(result.source).toBe('realtime');
-      expect(result.crdtState).toBe(crdtStateBase64);
 
       // Verify only ONE query was executed (not 2-3)
       expect(db.query).toHaveBeenCalledTimes(1);
@@ -132,7 +127,7 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
         documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: { root: { title: 'Same Content' } },
-        crdtState: 'base64==',
+
         actorId: 'user-uuid-001',
         actorType: 'user',
       });
@@ -147,7 +142,6 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
       );
       const db = await import('../../src/db');
 
-      const crdtStateBase64 = Buffer.from('test-crdt').toString('base64');
       const mockRow = createMockVersionRow();
       vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
 
@@ -155,7 +149,7 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
         documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: { root: { title: 'Test' } },
-        crdtState: crdtStateBase64,
+
         actorId: 'user-uuid-001',
         actorType: 'user',
       });
@@ -168,15 +162,13 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
       expect(queryStr).toContain('INSERT INTO app.document_versions');
       expect(queryStr).toContain('RETURNING');
 
-      // Verify parameters: documentId, branchId, snapshot, crdtBuffer, actorId, actorType
+      // Verify parameters: documentId, branchId, snapshot, actorId, actorType
       expect(queryParams[0]).toBe('doc-uuid-123'); // documentId
       expect(queryParams[1]).toBe('branch-uuid-456'); // branchId
       // snapshot should be JSON
       expect(queryParams[2]).toEqual({ root: { title: 'Test' } });
-      // crdtState should be a Buffer
-      expect(Buffer.isBuffer(queryParams[3])).toBe(true);
-      expect(queryParams[4]).toBe('user-uuid-001'); // actorId
-      expect(queryParams[5]).toBe('user'); // actorType
+      expect(queryParams[3]).toBe('user-uuid-001'); // actorId
+      expect(queryParams[4]).toBe('user'); // actorType
     });
 
     it('should create first version when no prior versions exist', async () => {
@@ -192,7 +184,7 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
         documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: { root: { title: 'First Version' } },
-        crdtState: 'base64==',
+
         actorId: 'user-uuid-001',
         actorType: 'user',
       });
@@ -219,7 +211,7 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
         documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: { root: {} },
-        crdtState: 'base64==',
+
         actorId: 'agent-uuid-001',
         actorType: 'agent',
       });
@@ -229,35 +221,6 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
       }
       expect(result.createdById).toBe('agent-uuid-001');
       expect(result.createdByType).toBe('agent');
-    });
-
-    it('should handle null CRDT state (empty string)', async () => {
-      const { syncCrdtToPostgresConsolidated } = await import(
-        '../../src/services/crdt-sync-service'
-      );
-      const db = await import('../../src/db');
-
-      const mockRow = createMockVersionRow({ crdt_state: null });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
-
-      const result = await syncCrdtToPostgresConsolidated({
-        documentId: 'doc-uuid-123',
-        branchId: 'branch-uuid-456',
-        snapshot: { root: {} },
-        crdtState: '',
-        actorId: 'user-uuid-001',
-        actorType: 'user',
-      });
-
-      if (result === null) {
-        throw new Error('Expected result to not be null');
-      }
-      expect(result.crdtState).toBeUndefined();
-
-      // Verify null was passed for crdtState
-      const call = vi.mocked(db.query).mock.calls[0] as [string, unknown[]];
-      const queryParams = call[1];
-      expect(queryParams[3]).toBeNull(); // crdtBuffer should be null for empty string
     });
 
     it('should throw on database errors', async () => {
@@ -273,7 +236,7 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
           documentId: 'doc-uuid-123',
           branchId: 'branch-uuid-456',
           snapshot: { root: {} },
-          crdtState: 'base64==',
+  
           actorId: 'user-uuid-001',
           actorType: 'user',
         }),
@@ -291,7 +254,7 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
           documentId: '',
           branchId: 'branch-uuid-456',
           snapshot: { root: {} },
-          crdtState: 'base64==',
+  
           actorId: 'user-uuid-001',
           actorType: 'user',
         }),
@@ -303,7 +266,7 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
           documentId: 'doc-uuid-123',
           branchId: '',
           snapshot: { root: {} },
-          crdtState: 'base64==',
+  
           actorId: 'user-uuid-001',
           actorType: 'user',
         }),
@@ -315,7 +278,7 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
           documentId: 'doc-uuid-123',
           branchId: 'branch-uuid-456',
           snapshot: { root: {} },
-          crdtState: 'base64==',
+  
           actorId: '',
           actorType: 'user',
         }),
@@ -342,7 +305,7 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
         documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: { root: {} },
-        crdtState: 'base64==',
+
         actorId: 'user-uuid-001',
         actorType: 'user',
       });

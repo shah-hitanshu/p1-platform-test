@@ -44,7 +44,6 @@ describe('publishDocument', () => {
     branch_id: string;
     version_number: number;
     snapshot: Record<string, unknown>;
-    crdt_state: Buffer | null;
     is_tombstone: boolean;
   }
 
@@ -73,7 +72,6 @@ describe('publishDocument', () => {
       branch_id: 'source-branch-uuid',
       version_number: 3,
       snapshot: { title: 'Published content' },
-      crdt_state: null,
       is_tombstone: false,
       ...overrides,
     };

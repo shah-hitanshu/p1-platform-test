@@ -30,7 +30,7 @@ import type {
 import { VALID_OPERATION_TYPES } from './document-session-types';
 import { applyOperation, initializeFromSnapshot } from './crdt-operations';
 import { validateActorId, validateOperation } from './session-validators';
-import { base64ToUint8Array, errorResponse } from './websocket-utils';
+import { errorResponse } from './websocket-utils';
 import { SYNC_SCHEDULE_KEY } from './postgres-sync-manager';
 import type { PostgresSyncManager } from './postgres-sync-manager';
 import { getAllConnections } from './session-id-parser';
@@ -402,18 +402,11 @@ export async function handleInitialize(
   }
 
   const snapshot = body.snapshot as Record<string, unknown>;
-  const crdtState = typeof body.crdtState === 'string' ? body.crdtState : null;
 
   try {
     const ydoc = deps.getYdoc();
-    if (crdtState !== null && crdtState !== '') {
-      // Initialize from CRDT state (base64 encoded)
-      const crdtBytes = base64ToUint8Array(crdtState);
-      Y.applyUpdate(ydoc, crdtBytes);
-    } else {
-      // Initialize from JSON snapshot
-      initializeFromSnapshot(ydoc, snapshot);
-    }
+    // Initialize from JSON snapshot
+    initializeFromSnapshot(ydoc, snapshot);
 
     // Persist the initialized state
     await deps.persist();
@@ -458,11 +451,7 @@ export async function reloadFromPostgres(deps: CrdtEndpointDeps): Promise<Record
 
   // Broadcast diff to all connected WebSocket clients
   if (diff.length > 0) {
-    for (const conn of deps.getWebSockets()) {
-      if (conn.readyState === WebSocket.OPEN) {
-        conn.send(diff);
-      }
-    }
+    deps.broadcastUpdate(diff);
   }
 
   // Persist the reloaded state

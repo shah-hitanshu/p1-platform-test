@@ -15,6 +15,12 @@ import { applySnapshotToYMap } from './crdt-operations';
 /** Storage key for sync schedule (survives hibernation) */
 export const SYNC_SCHEDULE_KEY = 'syncSchedule';
 
+/** Action metadata captured from the Puck client's WebSocket text messages */
+export interface PendingActionMetadata {
+  actionType: string;
+  actionMetadata?: Record<string, unknown>;
+}
+
 export class PostgresSyncManager {
   /** Promise tracking an in-progress sync to prevent concurrent syncs */
   private syncInProgress: Promise<void> | null = null;
@@ -24,6 +30,9 @@ export class PostgresSyncManager {
 
   /** Flag indicating if a cleanup alarm has been scheduled */
   cleanupAlarmScheduled = false;
+
+  /** Pending action metadata from the most recent client edit */
+  pendingActionMetadata: PendingActionMetadata | null = null;
 
   constructor(
     private readonly env: DocumentSessionEnv,
@@ -83,14 +92,13 @@ export class PostgresSyncManager {
 
     interface VersionRow {
       snapshot: Record<string, unknown>;
-      crdt_state: Buffer | null;
     }
 
     const result = await runWithConnection(
       this.env.HYPERDRIVE.connectionString,
       { isHyperdrive: true },
       async () => dbQuery<VersionRow>(
-        `SELECT dv.snapshot, dv.crdt_state
+        `SELECT dv.snapshot
          FROM app.document_versions dv
          WHERE dv.document_id = $1 AND dv.branch_id = $2
          ORDER BY dv.version_number DESC LIMIT 1`,
@@ -100,17 +108,6 @@ export class PostgresSyncManager {
 
     if (result.rows.length === 0) return false;
     const row = result.rows[0];
-
-    if (row.crdt_state !== null) {
-      const base64 = row.crdt_state.toString('base64');
-      Y.applyUpdate(this.getYdoc(), this.base64ToUint8Array(base64));
-      console.log(
-        `Initialized doc ${documentId} from Hyperdrive CRDT state`,
-      );
-      await this.persist();
-      this.lastSyncedStateVectorHash = this.computeStateVectorHash();
-      return true;
-    }
 
     if (typeof row.snapshot === 'object') {
       const root = this.getYdoc().getMap('root');
@@ -161,23 +158,9 @@ export class PostgresSyncManager {
     const data = rawData as {
       found: boolean;
       snapshot?: Record<string, unknown>;
-      crdtState?: string | null;
     };
 
     if (!data.found) return;
-
-    if (typeof data.crdtState === 'string' && data.crdtState !== '') {
-      Y.applyUpdate(
-        this.getYdoc(),
-        this.base64ToUint8Array(data.crdtState),
-      );
-      console.log(
-        `Initialized doc ${documentId} from PostgreSQL CRDT state`,
-      );
-      await this.persist();
-      this.lastSyncedStateVectorHash = this.computeStateVectorHash();
-      return;
-    }
 
     if (
       data.snapshot !== undefined
@@ -216,12 +199,28 @@ export class PostgresSyncManager {
     // Read sync schedule from storage if no actor info provided
     let syncActorId = actorId;
     let syncActorType = actorType ?? 'user' as const;
+    let syncActionType: string | undefined;
+    let syncActionMetadata: Record<string, unknown> | undefined;
     if (syncActorId === undefined) {
-      const schedule = await this.storage.get<{ dueAt: number; actorId: string; actorType: 'user' | 'agent' }>(SYNC_SCHEDULE_KEY);
+      const schedule = await this.storage.get<{
+        dueAt: number;
+        actorId: string;
+        actorType: 'user' | 'agent';
+        actionType?: string;
+        actionMetadata?: Record<string, unknown>;
+      }>(SYNC_SCHEDULE_KEY);
       if (schedule !== undefined) {
         syncActorId = schedule.actorId;
         syncActorType = schedule.actorType;
+        syncActionType = schedule.actionType;
+        syncActionMetadata = schedule.actionMetadata;
       }
+    }
+
+    // Use in-memory pending metadata if not read from schedule
+    if (syncActionType === undefined && this.pendingActionMetadata !== null) {
+      syncActionType = this.pendingActionMetadata.actionType;
+      syncActionMetadata = this.pendingActionMetadata.actionMetadata;
     }
 
     if (syncActorId === undefined) {
@@ -238,7 +237,7 @@ export class PostgresSyncManager {
     }
 
     // Set the lock before starting the sync
-    this.syncInProgress = this.performSync(internalApiUrl, internalSecret, syncActorId, syncActorType);
+    this.syncInProgress = this.performSync(internalApiUrl, internalSecret, syncActorId, syncActorType, syncActionType, syncActionMetadata);
 
     try {
       await this.syncInProgress;
@@ -254,17 +253,20 @@ export class PostgresSyncManager {
    * @param internalSecret - The internal secret (pre-validated)
    * @param actorId - Actor ID for sync attribution
    * @param actorType - Actor type for sync attribution
+   * @param actionType - Optional Puck action type
+   * @param actionMetadata - Optional action metadata
    */
   private async performSync(
     internalApiUrl: string,
     internalSecret: string,
     actorId: string,
     actorType: 'user' | 'agent',
+    actionType?: string,
+    actionMetadata?: Record<string, unknown>,
   ): Promise<void> {
     try {
       const root = this.getYdoc().getMap('root');
       const snapshot = root.toJSON() as Record<string, unknown>;
-      const crdtState = this.uint8ArrayToBase64(Y.encodeStateAsUpdate(this.getYdoc()));
 
       // Phase 5.1: Prefer queue-based sync when available
       if (this.env.SYNC_QUEUE !== undefined) {
@@ -273,12 +275,14 @@ export class PostgresSyncManager {
           documentId: this.sessionInfo.documentId,
           branchId: this.sessionInfo.branchId,
           snapshot,
-          crdtState,
           actorId,
           actorType,
           timestamp: Date.now(),
+          ...(actionType !== undefined ? { actionType } : {}),
+          ...(actionMetadata !== undefined ? { actionMetadata } : {}),
         });
         this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+        this.pendingActionMetadata = null;
         await this.storage.delete(SYNC_SCHEDULE_KEY);
         console.log(`Queued sync for document ${this.sessionInfo.documentId}`);
         return;
@@ -298,9 +302,10 @@ export class PostgresSyncManager {
           documentId: this.sessionInfo.documentId,
           branchId: this.sessionInfo.branchId,
           snapshot,
-          crdtState,
           actorId,
           actorType,
+          ...(actionType !== undefined ? { actionType } : {}),
+          ...(actionMetadata !== undefined ? { actionMetadata } : {}),
         }),
       });
 
@@ -311,6 +316,7 @@ export class PostgresSyncManager {
         console.log(`Synced document ${this.sessionInfo.documentId} to PostgreSQL`);
         // Update the state vector hash and clear sync schedule after successful sync
         this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+        this.pendingActionMetadata = null;
         await this.storage.delete(SYNC_SCHEDULE_KEY);
       }
     } catch (error) {
@@ -355,7 +361,6 @@ export class PostgresSyncManager {
   ): Promise<void> {
     const root = this.getYdoc().getMap('root');
     const snapshot = root.toJSON() as Record<string, unknown>;
-    const crdtState = this.uint8ArrayToBase64(Y.encodeStateAsUpdate(this.getYdoc()));
 
     // Phase 5.3: Try direct Hyperdrive path first (synchronous, no queue)
     if (this.env.HYPERDRIVE !== undefined) {
@@ -364,12 +369,10 @@ export class PostgresSyncManager {
           this.env.HYPERDRIVE.connectionString,
           { isHyperdrive: true },
           async () => {
-            // Import and call batchSyncToPostgres is complex; use direct SQL instead
-            // This matches the same dedup logic as batchSyncToPostgres
             const { documentId, branchId } = this.sessionInfo;
             await dbQuery(
               `INSERT INTO app.document_versions (
-                document_id, branch_id, version_number, snapshot, crdt_state,
+                document_id, branch_id, version_number, snapshot,
                 source, created_by_id, created_by_type
               )
               SELECT $1, $2,
@@ -378,7 +381,7 @@ export class PostgresSyncManager {
                    WHERE document_id = $1 AND branch_id = $2),
                   0
                 ) + 1,
-                $3, decode($4, 'base64'), 'realtime', $5, $6
+                $3, 'realtime', $4, $5
               WHERE NOT EXISTS (
                 SELECT 1 FROM (
                   SELECT snapshot FROM app.document_versions
@@ -387,7 +390,7 @@ export class PostgresSyncManager {
                 ) latest
                 WHERE latest.snapshot IS NOT DISTINCT FROM $3::jsonb
               )`,
-              [documentId, branchId, snapshot, crdtState, actorId, actorType],
+              [documentId, branchId, snapshot, actorId, actorType],
             );
           },
         );
@@ -413,7 +416,6 @@ export class PostgresSyncManager {
         documentId: this.sessionInfo.documentId,
         branchId: this.sessionInfo.branchId,
         snapshot,
-        crdtState,
         actorId,
         actorType,
       }),
@@ -440,8 +442,18 @@ export class PostgresSyncManager {
    *
    * @param actorId - ID of the actor making the edit
    * @param actorType - Type of actor ('user' or 'agent')
+   * @param actionMetadata - Optional action metadata from the Puck client
    */
-  async scheduleSync(actorId: string, actorType: 'user' | 'agent'): Promise<void> {
+  async scheduleSync(
+    actorId: string,
+    actorType: 'user' | 'agent',
+    actionMetadata?: PendingActionMetadata | null,
+  ): Promise<void> {
+    // Capture action metadata if provided (latest wins on debounce)
+    if (actionMetadata !== undefined && actionMetadata !== null) {
+      this.pendingActionMetadata = actionMetadata;
+    }
+
     // Check if the document has actually changed by comparing state vectors
     const currentHash = this.computeStateVectorHash();
     if (currentHash === this.lastSyncedStateVectorHash) {
@@ -460,6 +472,10 @@ export class PostgresSyncManager {
       dueAt,
       actorId,
       actorType,
+      ...(this.pendingActionMetadata !== null ? {
+        actionType: this.pendingActionMetadata.actionType,
+        actionMetadata: this.pendingActionMetadata.actionMetadata,
+      } : {}),
     });
 
     // Set alarm to fire at the due time, replacing stale or later alarms
@@ -494,18 +510,6 @@ export class PostgresSyncManager {
   private async persist(): Promise<void> {
     const update = Y.encodeStateAsUpdate(this.getYdoc());
     await this.storage.put(YDOC_STORAGE_KEY, update);
-  }
-
-  /**
-   * Decode base64 string to Uint8Array
-   */
-  private base64ToUint8Array(base64: string): Uint8Array {
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes;
   }
 
   /**

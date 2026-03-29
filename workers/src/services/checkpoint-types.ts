@@ -184,7 +184,6 @@ export interface VersionWithDocumentRow {
   branch_id: string;
   version_number: number;
   snapshot: Record<string, unknown>;
-  crdt_state: Buffer | null;
   source: string;
   created_by_id: string;
   created_by_type: 'user' | 'agent' | 'system';

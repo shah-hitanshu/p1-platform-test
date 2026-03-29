@@ -536,7 +536,7 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
 
   // Merge routes
   // /api/sites/{siteId}/merge/{operation}
-  const mergeOpMatch = /^\/api\/sites\/([^/]+)\/merge\/(check|execute|preview|crdt-preview)$/.exec(normalizedPath);
+  const mergeOpMatch = /^\/api\/sites\/([^/]+)\/merge\/(check|execute|preview)$/.exec(normalizedPath);
   if (mergeOpMatch) {
     return {
       handler: 'merge',

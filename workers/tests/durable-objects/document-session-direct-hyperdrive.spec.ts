@@ -12,8 +12,6 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
-import * as Y from 'yjs';
-
 // Mock cloudflare:workers DurableObject base class
 vi.mock('cloudflare:workers', () => ({
   DurableObject: class DurableObject {
@@ -109,23 +107,6 @@ function createMockEnv(overrides: Partial<MockEnv> = {}): MockEnv {
   };
 }
 
-/**
- * Create a base64 encoded Yjs update for testing.
- */
-function createBase64CrdtState(data: Record<string, unknown>): string {
-  const doc = new Y.Doc();
-  const root = doc.getMap('root');
-  for (const [key, value] of Object.entries(data)) {
-    root.set(key, value);
-  }
-  const update = Y.encodeStateAsUpdate(doc);
-  let binary = '';
-  for (const byte of update) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary);
-}
-
 // =============================================================================
 // Tests
 // =============================================================================
@@ -161,14 +142,12 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
       const db = await import('../../src/db');
 
       // Mock the database query to return document data
-      const crdtState = createBase64CrdtState({ title: 'From DB' });
       (db.runWithConnection as ReturnType<typeof vi.fn>).mockImplementation(
         async (_connStr: string, _opts: unknown, fn: () => Promise<unknown>) => fn(),
       );
       (db.query as ReturnType<typeof vi.fn>).mockResolvedValue({
         rows: [{
           snapshot: { title: 'From DB' },
-          crdt_state: Buffer.from(crdtState, 'base64'),
         }],
         rowCount: 1,
       });
@@ -192,37 +171,7 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
       );
     });
 
-    it('should prefer CRDT state over snapshot from Hyperdrive query', async () => {
-      const db = await import('../../src/db');
-
-      const crdtState = createBase64CrdtState({ title: 'CRDT State' });
-      (db.runWithConnection as ReturnType<typeof vi.fn>).mockImplementation(
-        async (_connStr: string, _opts: unknown, fn: () => Promise<unknown>) => fn(),
-      );
-      (db.query as ReturnType<typeof vi.fn>).mockResolvedValue({
-        rows: [{
-          snapshot: { title: 'Snapshot Only' },
-          crdt_state: Buffer.from(crdtState, 'base64'),
-        }],
-        rowCount: 1,
-      });
-
-      const env = createMockEnv({
-        HYPERDRIVE: { connectionString: 'postgresql://user:pass@host:5432/db' },
-      });
-
-      const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, env);
-
-      const req = new Request('http://localhost/snapshot');
-      const response = await session.fetch(req);
-      const result = await response.json();
-
-      // Should have used CRDT state (title: 'CRDT State'), not snapshot (title: 'Snapshot Only')
-      expect(result.snapshot.title).toBe('CRDT State');
-    });
-
-    it('should use snapshot when no CRDT state is available from Hyperdrive', async () => {
+    it('should use snapshot from Hyperdrive query', async () => {
       const db = await import('../../src/db');
 
       (db.runWithConnection as ReturnType<typeof vi.fn>).mockImplementation(
@@ -231,7 +180,6 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
       (db.query as ReturnType<typeof vi.fn>).mockResolvedValue({
         rows: [{
           snapshot: { title: 'Snapshot Only' },
-          crdt_state: null,
         }],
         rowCount: 1,
       });
@@ -253,14 +201,11 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
 
   describe('fallback to HTTP internal API', () => {
     it('should fall back to HTTP when HYPERDRIVE is not available', async () => {
-      const crdtState = createBase64CrdtState({ title: 'From HTTP' });
-
       // Mock HTTP API response
       globalThis.fetch = vi.fn().mockResolvedValue(
         new Response(JSON.stringify({
           found: true,
           snapshot: { title: 'From HTTP' },
-          crdtState,
         }), { status: 200 }),
       );
 
@@ -295,14 +240,11 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
         new Error('Hyperdrive connection failed'),
       );
 
-      const crdtState = createBase64CrdtState({ title: 'HTTP Fallback' });
-
       // Mock HTTP API response for fallback
       globalThis.fetch = vi.fn().mockResolvedValue(
         new Response(JSON.stringify({
           found: true,
           snapshot: { title: 'HTTP Fallback' },
-          crdtState,
         }), { status: 200 }),
       );
 

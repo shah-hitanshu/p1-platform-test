@@ -26,7 +26,6 @@ describe('Document Version provenance field mapping', () => {
     branch_id: string;
     version_number: number;
     snapshot: Record<string, unknown>;
-    crdt_state: null;
     source: string;
     created_by_id: string;
     created_by_type: string;
@@ -46,7 +45,6 @@ describe('Document Version provenance field mapping', () => {
       branch_id: 'branch-1',
       version_number: 3,
       snapshot: { title: 'Hello' },
-      crdt_state: null,
       source: 'edit',
       created_by_id: 'user-1',
       created_by_type: 'user',

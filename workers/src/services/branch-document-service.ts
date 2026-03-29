@@ -270,12 +270,12 @@ export async function createDocumentOnBranch(
     // After deletion of tombstoned versions, this will be version 1
     const versionResult = await query<DocumentVersionRow>(
       `INSERT INTO app.document_versions (
-        document_id, branch_id, version_number, snapshot, crdt_state,
+        document_id, branch_id, version_number, snapshot,
         source, created_by_id, created_by_type
       )
       SELECT $1, $2,
         COALESCE(MAX(version_number), 0) + 1,
-        $3, NULL, $4, $5, $6
+        $3, $4, $5, $6
       FROM app.document_versions
       WHERE document_id = $1 AND branch_id = $2
       RETURNING *`,
@@ -346,12 +346,12 @@ export async function deleteDocumentOnBranch(
   try {
     await query<DocumentVersionRow>(
       `INSERT INTO app.document_versions (
-        document_id, branch_id, version_number, snapshot, crdt_state,
+        document_id, branch_id, version_number, snapshot,
         source, created_by_id, created_by_type, is_tombstone
       )
       SELECT $1, $2,
         COALESCE(MAX(version_number), 0) + 1,
-        $3, NULL, $4, $5, $6, true
+        $3, $4, $5, $6, true
       FROM app.document_versions
       WHERE document_id = $1 AND branch_id = $2
       RETURNING *`,

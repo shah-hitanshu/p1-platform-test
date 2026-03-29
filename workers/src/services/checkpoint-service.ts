@@ -316,7 +316,7 @@ export async function revertToCheckpoint(
       // Batch INSERT: single query for all documents at once
       await query(
         `INSERT INTO app.document_versions (
-          document_id, branch_id, version_number, snapshot, crdt_state,
+          document_id, branch_id, version_number, snapshot,
           source, created_by_id, created_by_type
         )
         SELECT
@@ -324,7 +324,6 @@ export async function revertToCheckpoint(
           $1,
           lv.max_version + 1,
           dv.snapshot,
-          dv.crdt_state,
           'revert',
           $2,
           $3
@@ -343,20 +342,18 @@ export async function revertToCheckpoint(
       for (const doc of documentsAtCheckpoint) {
         await query(
           `INSERT INTO app.document_versions (
-            document_id, branch_id, version_number, snapshot, crdt_state,
+            document_id, branch_id, version_number, snapshot,
             source, created_by_id, created_by_type
           )
           SELECT $1, $2,
             COALESCE(MAX(version_number), 0) + 1,
-            $3, $4, 'revert', $5, $6
+            $3, 'revert', $4, $5
           FROM app.document_versions
           WHERE document_id = $1 AND branch_id = $2`,
           [
             doc.documentId,
             checkpoint.branchId,
             doc.snapshot,
-            doc.crdtState !== undefined && doc.crdtState !== '' ?
-              Buffer.from(doc.crdtState, 'base64') : null,
             params.createdById,
             params.createdByType,
           ],

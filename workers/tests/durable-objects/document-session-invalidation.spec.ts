@@ -110,7 +110,7 @@ describe('DocumentSession pull-based KV invalidation', () => {
     // Mock global fetch for internal API calls (Hyperdrive/HTTP init)
     mockFetch = vi.fn().mockImplementation(() =>
       Promise.resolve(
-        new Response(JSON.stringify({ found: true, snapshot: { title: 'Test' }, crdtState: null }), {
+        new Response(JSON.stringify({ found: true, snapshot: { title: 'Test' } }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),
@@ -175,7 +175,6 @@ describe('DocumentSession pull-based KV invalidation', () => {
         new Response(JSON.stringify({
           found: true,
           snapshot: { title: 'Merged Content' },
-          crdtState: null,
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -248,7 +247,6 @@ describe('DocumentSession pull-based KV invalidation', () => {
         new Response(JSON.stringify({
           found: true,
           snapshot: { title: 'After Merge' },
-          crdtState: null,
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -285,7 +283,6 @@ describe('DocumentSession pull-based KV invalidation', () => {
         new Response(JSON.stringify({
           found: true,
           snapshot: { title: 'Alarm Reloaded' },
-          crdtState: null,
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },

@@ -27,6 +27,7 @@ import {
   getDocumentVersion,
   listDocumentVersions,
   createDocumentVersion,
+  reconstructVersionSnapshot,
   SiteNotFoundError,
   DuplicateDocumentPathError,
   InvalidDocumentPathError,
@@ -428,6 +429,21 @@ async function handleGetDocumentVersionById(
   // Validate version exists and belongs to this document/branch
   if (version?.documentId !== documentId || version.branchId !== branchId) {
     return errorResponse('Version not found', 404);
+  }
+
+  // If snapshot is null (diff-only version), reconstruct from baseline + patches
+  if (version.snapshot == null) {
+    try {
+      const reconstructed = await reconstructVersionSnapshot(
+        documentId,
+        branchId,
+        version.versionNumber,
+      );
+      return jsonResponse({ ...version, snapshot: reconstructed });
+    } catch (err) {
+      console.error('reconstructVersionSnapshot failed:', err);
+      return errorResponse('Failed to reconstruct version snapshot', 500);
+    }
   }
 
   return jsonResponse(version);

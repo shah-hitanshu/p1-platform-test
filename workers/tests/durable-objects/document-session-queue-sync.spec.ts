@@ -6,7 +6,7 @@
  *
  * Key behaviors:
  * - When SYNC_QUEUE is available, performSync sends to the queue instead of HTTP
- * - Queue message contains correct siteId, documentId, branchId, snapshot, crdtState
+ * - Queue message contains correct siteId, documentId, branchId, snapshot
  * - State vector hash and sync schedule are updated after successful queue send
  * - Falls back to fetch() when SYNC_QUEUE is not available
  */
@@ -208,7 +208,6 @@ describe('Phase 5.1: Queue-Based Sync in DocumentSession', () => {
         actorType: 'user',
       });
       expect(sentMessage.snapshot).toBeDefined();
-      expect(sentMessage.crdtState).toBeDefined();
       expect(sentMessage.timestamp).toBeDefined();
 
       // fetch should NOT have been called for sync (it may be called for other things like init)
@@ -241,7 +240,6 @@ describe('Phase 5.1: Queue-Based Sync in DocumentSession', () => {
       if (mockQueue.send.mock.calls.length > 0) {
         const sentMessage = mockQueue.send.mock.calls[0][0] as Record<string, unknown>;
         expect(typeof sentMessage.timestamp).toBe('number');
-        expect(typeof sentMessage.crdtState).toBe('string');
         expect(typeof sentMessage.siteId).toBe('string');
         expect(typeof sentMessage.documentId).toBe('string');
         expect(typeof sentMessage.branchId).toBe('string');

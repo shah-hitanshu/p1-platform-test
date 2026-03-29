@@ -25,10 +25,6 @@ vi.mock('../../src/services/conflict-resolution-service', () => ({
   resolveDeletedConflict: vi.fn(),
 }));
 
-vi.mock('../../src/services/crdt-merge-service', () => ({
-  resolveWithCrdtMerge: vi.fn(),
-}));
-
 vi.mock('../../src/services/merge-request-service', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/services/merge-request-service')>();
   return {
@@ -875,117 +871,6 @@ describe('Phase 5.3: Merge Execution Service', () => {
       expect(result.conflictsResolved).toBe(1);
     });
 
-    it('should execute merge with merge-crdt resolution strategy', async () => {
-      const { executeMergeWithResolution } = await import(
-        '../../src/services/merge-execution-service'
-      );
-      const conflictDetection = await import('../../src/services/conflict-detection-service');
-      const crdtMerge = await import('../../src/services/crdt-merge-service');
-      const mergeRequestService = await import('../../src/services/merge-request-service');
-      const checkpointService = await import('../../src/services/checkpoint-service');
-
-      vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
-        id: 'mr-1',
-        siteId: 'site-1',
-        sourceBranchId: 'source-branch',
-        targetBranchId: 'target-branch',
-        title: 'Feature merge',
-        status: 'approved',
-        hasConflicts: true,
-        createdById: 'user-1',
-        createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T10:00:00.000Z',
-      });
-
-      vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
-        hasConflicts: true,
-        conflicts: {
-          documentConflicts: [
-            {
-              documentId: 'doc-1',
-              documentPath: 'pages/home',
-              conflictType: 'both-modified',
-              sourceVersion: 3,
-              targetVersion: 2,
-            },
-          ],
-          structureConflicts: [],
-        },
-        mergeBase: {
-          checkpointId: 'checkpoint-base',
-          branchId: 'target-branch',
-          createdAt: '2026-01-15T10:00:00.000Z',
-        },
-        sourceChanges: [
-          {
-            documentId: 'doc-1',
-            documentPath: 'pages/home',
-            latestVersionId: 'v1-source',
-            latestVersionNumber: 3,
-            baseVersionId: 'v0',
-            baseVersionNumber: 1,
-          },
-        ],
-        targetChanges: [
-          {
-            documentId: 'doc-1',
-            documentPath: 'pages/home',
-            latestVersionId: 'v1-target',
-            latestVersionNumber: 2,
-            baseVersionId: 'v0',
-            baseVersionNumber: 1,
-          },
-        ],
-      });
-
-      // Mock CRDT merge resolution
-      vi.mocked(crdtMerge.resolveWithCrdtMerge).mockResolvedValueOnce({
-        resolved: true,
-        documentId: 'doc-1',
-        strategy: 'merge-crdt',
-        resultVersionId: 'merged-v1',
-        resolvedById: 'user-1',
-        resolvedByType: 'user',
-      });
-
-      vi.mocked(checkpointService.createCheckpoint).mockResolvedValueOnce({
-        checkpoint: {
-          id: 'checkpoint-merged',
-          branchId: 'target-branch',
-          name: 'Post-merge checkpoint',
-          checkpointType: 'post_merge',
-          createdAt: '2026-01-20T11:00:00.000Z',
-          createdById: 'user-1',
-          createdByType: 'user',
-        },
-        documentCount: 1,
-      });
-
-      vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
-        id: 'mr-1',
-        siteId: 'site-1',
-        sourceBranchId: 'source-branch',
-        targetBranchId: 'target-branch',
-        title: 'Feature merge',
-        status: 'merged',
-        hasConflicts: false,
-        createdById: 'user-1',
-        createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T11:00:00.000Z',
-      });
-
-      const result = await executeMergeWithResolution({
-        mergeRequestId: 'mr-1',
-        resolutionStrategy: 'merge-crdt',
-        mergedById: 'user-1',
-        mergedByType: 'user',
-      });
-
-      expect(result.success).toBe(true);
-      expect(crdtMerge.resolveWithCrdtMerge).toHaveBeenCalled();
-    });
   });
 
   describe('previewMerge', () => {

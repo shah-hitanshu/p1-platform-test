@@ -43,7 +43,6 @@ interface CrdtSyncBody {
   documentId: string;
   branchId: string;
   snapshot: Record<string, unknown>;
-  crdtState: string;
   actorId: string;
   actorType: 'user' | 'agent';
 }
@@ -154,11 +153,6 @@ function validateCrdtSyncBody(body: unknown): { valid: false; error: string } | 
     return { valid: false, error: 'snapshot is required and must be an object' };
   }
 
-  // Validate crdtState
-  if (typeof data.crdtState !== 'string' || data.crdtState.trim() === '') {
-    return { valid: false, error: 'crdtState is required and must be a non-empty string' };
-  }
-
   // Validate actorId
   if (typeof data.actorId !== 'string' || data.actorId.trim() === '') {
     return { valid: false, error: 'actorId is required and must be a non-empty string' };
@@ -176,7 +170,6 @@ function validateCrdtSyncBody(body: unknown): { valid: false; error: string } | 
       documentId: data.documentId,
       branchId: data.branchId,
       snapshot: data.snapshot as Record<string, unknown>,
-      crdtState: data.crdtState,
       actorId: data.actorId,
       actorType: data.actorType,
     },
@@ -214,7 +207,6 @@ async function handleCrdtSync(request: Request): Promise<Response> {
       documentId: data.documentId,
       branchId: data.branchId,
       snapshot: data.snapshot,
-      crdtState: data.crdtState,
       actorId: data.actorId,
       actorType: data.actorType,
     });
@@ -265,11 +257,10 @@ async function handleLoadCrdtState(request: Request): Promise<Response> {
       return jsonResponse({ found: false }, 404);
     }
 
-    // Return snapshot and CRDT state
+    // Return snapshot
     return jsonResponse({
       found: true,
       snapshot: result.snapshot,
-      crdtState: result.crdtState ?? null,
     });
   } catch (error) {
     console.error('Error loading CRDT state:', error);

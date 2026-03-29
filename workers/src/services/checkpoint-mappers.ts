@@ -51,7 +51,6 @@ export function mapRowToCheckpointDocumentVersion(row: VersionWithDocumentRow): 
     branchId: row.branch_id,
     versionNumber: row.version_number,
     snapshot: row.snapshot,
-    crdtState: row.crdt_state ? row.crdt_state.toString('base64') : undefined,
     source: row.source as CheckpointDocumentVersion['source'],
     createdById: row.created_by_id,
     createdByType: row.created_by_type,

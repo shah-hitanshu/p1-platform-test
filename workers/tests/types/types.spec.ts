@@ -169,10 +169,9 @@ describe('Phase 1.3: Core TypeScript Types', () => {
       const values: ConflictResolutionStrategy[] = [
         'take-source',
         'take-target',
-        'merge-crdt',
         'manual',
       ];
-      expect(values).toHaveLength(4);
+      expect(values).toHaveLength(3);
     });
 
     it('should define StructureType union', () => {
@@ -296,22 +295,6 @@ describe('Phase 1.3: Core TypeScript Types', () => {
         expect(version.versionNumber).toBe(1);
       });
 
-      it('should allow optional crdtState as base64 string', () => {
-        const version: DocumentVersion = {
-          id: 'version-123',
-          documentId: 'doc-123',
-          branchId: 'branch-123',
-          versionNumber: 1,
-          snapshot: {},
-          crdtState: 'base64encodedstate==',
-          source: 'merge',
-          createdById: 'system',
-          createdByType: 'system',
-          createdAt: '2024-01-01T00:00:00Z',
-        };
-        assertType<DocumentVersion>(version);
-        expect(version.crdtState).toBeDefined();
-      });
     });
   });
 

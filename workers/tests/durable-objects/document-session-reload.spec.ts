@@ -121,7 +121,7 @@ describe('DocumentSession /reload endpoint', () => {
     // Each call needs a fresh Response (Response bodies are consumed on read)
     mockFetch.mockImplementation(() =>
       Promise.resolve(
-        new Response(JSON.stringify({ found: true, snapshot: { title: 'Test' }, crdtState: null }), {
+        new Response(JSON.stringify({ found: true, snapshot: { title: 'Test' } }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),
@@ -176,7 +176,6 @@ describe('DocumentSession /reload endpoint', () => {
       new Response(JSON.stringify({
         found: true,
         snapshot: newSnapshot,
-        crdtState: null,
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -244,7 +243,6 @@ describe('DocumentSession /reload endpoint', () => {
       new Response(JSON.stringify({
         found: true,
         snapshot: { title: 'Updated Title' },
-        crdtState: null,
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -283,7 +281,6 @@ describe('DocumentSession /reload endpoint', () => {
         new Response(JSON.stringify({
           found: true,
           snapshot: newSnapshot,
-          crdtState: null,
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -308,7 +305,6 @@ describe('DocumentSession /reload endpoint', () => {
       new Response(JSON.stringify({
         found: true,
         snapshot: { title: 'Persisted Content' },
-        crdtState: null,
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },

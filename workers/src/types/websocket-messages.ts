@@ -71,13 +71,29 @@ export interface WsPublishRequestMessage {
 }
 
 /**
+ * Action metadata sent by the Puck client after a CRDT update.
+ * Describes the user action that produced the preceding binary Yjs update,
+ * so the sync pipeline can record it alongside the version snapshot.
+ */
+export interface WsActionMetadataMessage {
+  type: 'action_metadata';
+  /** Puck action type (e.g., "insert", "reorder", "set", "delete") */
+  actionType: string;
+  /** Additional context about the action (component type, path, etc.) */
+  actionMetadata?: Record<string, unknown>;
+  /** Client timestamp for latency measurement */
+  timestamp: number;
+}
+
+/**
  * Union of all client-to-server WebSocket messages.
  */
 export type WsClientMessage =
   | WsFocusRegionUpdateMessage
   | WsPresenceHeartbeatMessage
   | WsDeliveryAckRequestMessage
-  | WsPublishRequestMessage;
+  | WsPublishRequestMessage
+  | WsActionMetadataMessage;
 
 // =============================================================================
 // Server → Client Messages
@@ -193,7 +209,20 @@ export function isWsClientMessage(msg: unknown): msg is WsClientMessage {
     m.type === 'focus_region_update' ||
     m.type === 'presence_heartbeat' ||
     m.type === 'delivery_ack_request' ||
-    m.type === 'publish_request'
+    m.type === 'publish_request' ||
+    m.type === 'action_metadata'
+  );
+}
+
+/**
+ * Check if a message is an action metadata message.
+ */
+export function isWsActionMetadata(msg: unknown): msg is WsActionMetadataMessage {
+  if (typeof msg !== 'object' || msg === null) return false;
+  const m = msg as Record<string, unknown>;
+  return (
+    m.type === 'action_metadata' &&
+    typeof m.actionType === 'string'
   );
 }
 

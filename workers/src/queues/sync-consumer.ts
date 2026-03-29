@@ -57,9 +57,10 @@ export async function handleSyncQueue(
       documentId: msg.documentId,
       branchId: msg.branchId,
       snapshot: msg.snapshot,
-      crdtState: msg.crdtState,
       actorId: msg.actorId,
       actorType: msg.actorType,
+      actionType: msg.actionType,
+      actionMetadata: msg.actionMetadata,
     }));
 
     // Open single connection per batch and persist

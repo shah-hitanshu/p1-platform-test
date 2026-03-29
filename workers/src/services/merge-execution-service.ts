@@ -14,7 +14,6 @@
 import { detectConflicts } from './conflict-detection-service';
 import type { ConflictDetectionResult } from './conflict-detection-service';
 import { resolveAllConflicts } from './conflict-resolution-service';
-import { resolveWithCrdtMerge } from './crdt-merge-service';
 import {
   getMergeRequest,
   updateMergeRequestStatus,
@@ -59,7 +58,7 @@ export interface ExecuteMergeResult {
  */
 export interface DocumentResolution {
   documentId: string;
-  strategy: 'take-source' | 'take-target' | 'merge-crdt' | 'manual';
+  strategy: 'take-source' | 'take-target' | 'manual';
   /** Required when strategy is 'manual'. The client-provided merged snapshot. */
   resolvedSnapshot?: Record<string, unknown>;
 }
@@ -70,7 +69,7 @@ export interface DocumentResolution {
 export interface ExecuteMergeWithResolutionParams {
   mergeRequestId: string;
   /** Default strategy applied to conflicts without a per-document resolution. */
-  resolutionStrategy: 'take-source' | 'take-target' | 'merge-crdt';
+  resolutionStrategy: 'take-source' | 'take-target';
   /** Optional per-document resolutions that override the default strategy. */
   resolutions?: DocumentResolution[];
   mergedById: string;
@@ -333,32 +332,6 @@ export async function executeMergeWithResolution(
           documentVersionId: manualVersion.id,
         });
         conflictsResolved++;
-      } else if (strategy === 'merge-crdt') {
-        if (
-          sourceChange !== undefined &&
-          sourceChange.latestVersionId !== null &&
-          sourceChange.latestVersionId !== '' &&
-          targetChange !== undefined &&
-          targetChange.latestVersionId !== null &&
-          targetChange.latestVersionId !== ''
-        ) {
-          const crdtResult = await resolveWithCrdtMerge({
-            documentId: conflict.documentId,
-            sourceBranchId: mergeRequest.sourceBranchId,
-            targetBranchId: mergeRequest.targetBranchId,
-            sourceVersionId: sourceChange.latestVersionId,
-            targetVersionId: targetChange.latestVersionId,
-            resolvedById: mergedById,
-            resolvedByType: mergedByType,
-          });
-          if (crdtResult.resultVersionId !== undefined) {
-            mergedDocVersions.push({
-              documentId: conflict.documentId,
-              documentVersionId: crdtResult.resultVersionId,
-            });
-          }
-          conflictsResolved++;
-        }
       } else {
         // take-source or take-target: resolve individually
         const resolutionResult = await resolveAllConflicts({
@@ -504,8 +477,7 @@ async function copySourceChangesToTarget(
     const newVersion = await createDocumentVersion({
       documentId: change.documentId,
       branchId: mergeRequest.targetBranchId,
-      snapshot: sourceVersion.snapshot,
-      crdtState: sourceVersion.crdtState,
+      snapshot: sourceVersion.snapshot ?? {},
       source: 'merge',
       createdById: mergedById,
       createdByType: mergedByType,

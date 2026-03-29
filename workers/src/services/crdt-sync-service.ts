@@ -6,7 +6,7 @@
  *
  * This enables:
  * 1. Durability: DO state is persisted to PostgreSQL for disaster recovery
- * 2. Merge support: merge-crdt strategy can access CRDT state from document_versions
+ * 2. Merge support: document state can be reconstructed from PostgreSQL
  * 3. State continuity: DOs can initialize from PostgreSQL if their local storage is empty
  */
 
@@ -34,8 +34,6 @@ export interface ConsolidatedSyncParams {
   branchId: string;
   /** The current document snapshot (JSON representation) */
   snapshot: Record<string, unknown>;
-  /** Base64-encoded CRDT state from Y.encodeStateAsUpdate() */
-  crdtState: string;
   /** The actor performing the sync */
   actorId: string;
   /** Type of actor (user or agent) */
@@ -54,8 +52,6 @@ export interface SyncCrdtToPostgresParams {
   branchId: string;
   /** The current document snapshot (JSON representation) */
   snapshot: Record<string, unknown>;
-  /** Base64-encoded CRDT state from Y.encodeStateAsUpdate() */
-  crdtState: string;
   /** The actor performing the sync */
   actorId: string;
   /** Type of actor (user or agent) */
@@ -68,8 +64,6 @@ export interface SyncCrdtToPostgresParams {
 export interface LoadCrdtStateResult {
   /** The document snapshot */
   snapshot: Record<string, unknown>;
-  /** Base64-encoded CRDT state (undefined if version has no CRDT state) */
-  crdtState: string | undefined;
 }
 
 // =============================================================================
@@ -138,7 +132,6 @@ export async function syncCrdtToPostgres(
     documentId: document.id,
     branchId: params.branchId,
     snapshot: params.snapshot,
-    crdtState: params.crdtState,
     source: 'realtime',
     createdById: params.actorId,
     createdByType: params.actorType,
@@ -183,8 +176,7 @@ export async function loadLatestCrdtState(
   }
 
   return {
-    snapshot: version.snapshot,
-    crdtState: version.crdtState,
+    snapshot: version.snapshot ?? {},
   };
 }
 
@@ -201,7 +193,6 @@ interface DocumentVersionRow {
   branch_id: string;
   version_number: number;
   snapshot: Record<string, unknown>;
-  crdt_state: Buffer | null;
   source: DocumentVersionSource;
   created_by_id: string;
   created_by_type: 'user' | 'agent' | 'system';
@@ -218,7 +209,6 @@ function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersion {
     branchId: row.branch_id,
     versionNumber: row.version_number,
     snapshot: row.snapshot,
-    crdtState: row.crdt_state ? row.crdt_state.toString('base64') : undefined,
     source: row.source,
     createdById: row.created_by_id,
     createdByType: row.created_by_type,
@@ -256,12 +246,6 @@ export async function syncCrdtToPostgresConsolidated(
     throw new SyncError('Actor ID is required');
   }
 
-  // Convert base64 CRDT state to buffer if provided
-  const crdtBuffer =
-    params.crdtState !== ''
-      ? Buffer.from(params.crdtState, 'base64')
-      : null;
-
   const result = await query<DocumentVersionRow>(
     `WITH latest AS (
       SELECT snapshot FROM app.document_versions
@@ -269,11 +253,11 @@ export async function syncCrdtToPostgresConsolidated(
       ORDER BY version_number DESC LIMIT 1
     )
     INSERT INTO app.document_versions (
-      document_id, branch_id, version_number, snapshot, crdt_state,
+      document_id, branch_id, version_number, snapshot,
       source, created_by_id, created_by_type
     )
     SELECT $1, $2, COALESCE(MAX(version_number), 0) + 1,
-      $3, $4, 'realtime', $5, $6
+      $3, 'realtime', $4, $5
     FROM app.document_versions
     WHERE document_id = $1 AND branch_id = $2
       AND NOT EXISTS (
@@ -284,7 +268,6 @@ export async function syncCrdtToPostgresConsolidated(
       params.documentId,
       params.branchId,
       params.snapshot,
-      crdtBuffer,
       params.actorId,
       params.actorType,
     ],

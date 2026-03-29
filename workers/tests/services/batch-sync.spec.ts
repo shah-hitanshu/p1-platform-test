@@ -37,7 +37,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
     branch_id: string;
     version_number: number;
     snapshot: Record<string, unknown>;
-    crdt_state: Buffer | null;
     source: DocumentVersionSource;
     created_by_id: string;
     created_by_type: 'user' | 'agent' | 'system';
@@ -53,7 +52,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
       branch_id: 'branch-uuid-456',
       version_number: 1,
       snapshot: { root: { title: 'Test' } },
-      crdt_state: null,
       source: 'realtime',
       created_by_id: 'user-uuid-001',
       created_by_type: 'user',
@@ -106,7 +104,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
           documentId: 'doc-001',
           branchId: 'branch-001',
           snapshot: { root: { title: 'Doc 1' } },
-          crdtState: 'base64-1',
           actorId: 'user-001',
           actorType: 'user',
         },
@@ -114,7 +111,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
           documentId: 'doc-002',
           branchId: 'branch-001',
           snapshot: { root: { title: 'Doc 2' } },
-          crdtState: 'base64-2',
           actorId: 'user-001',
           actorType: 'user',
         },
@@ -122,7 +118,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
           documentId: 'doc-003',
           branchId: 'branch-001',
           snapshot: { root: { title: 'Doc 3' } },
-          crdtState: 'base64-3',
           actorId: 'agent-001',
           actorType: 'agent',
         },
@@ -164,7 +159,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
           documentId: 'doc-001',
           branchId: 'branch-001',
           snapshot: { root: { title: 'Single' } },
-          crdtState: 'base64-single',
           actorId: 'user-001',
           actorType: 'user',
         },
@@ -200,7 +194,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
           documentId: 'doc-001',
           branchId: 'branch-001',
           snapshot: { root: { title: 'Changed' } },
-          crdtState: 'base64-1',
           actorId: 'user-001',
           actorType: 'user',
         },
@@ -208,7 +201,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
           documentId: 'doc-002',
           branchId: 'branch-001',
           snapshot: { root: { title: 'Same as latest' } },
-          crdtState: 'base64-2',
           actorId: 'user-001',
           actorType: 'user',
         },
@@ -216,7 +208,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
           documentId: 'doc-003',
           branchId: 'branch-001',
           snapshot: { root: { title: 'New Doc' } },
-          crdtState: 'base64-3',
           actorId: 'agent-001',
           actorType: 'agent',
         },
@@ -240,7 +231,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
           documentId: 'doc-001',
           branchId: 'branch-001',
           snapshot: { root: { title: 'Same' } },
-          crdtState: 'base64-1',
           actorId: 'user-001',
           actorType: 'user',
         },
@@ -248,7 +238,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
           documentId: 'doc-002',
           branchId: 'branch-001',
           snapshot: { root: { title: 'Same' } },
-          crdtState: 'base64-2',
           actorId: 'user-001',
           actorType: 'user',
         },
@@ -274,64 +263,12 @@ describe('Phase 5.2: Batch Sync Function', () => {
           documentId: 'doc-001',
           branchId: 'branch-001',
           snapshot: { root: {} },
-          crdtState: 'base64',
           actorId: 'user-001',
           actorType: 'user',
         },
       ]);
 
       expect(result.inserted[0].source).toBe('realtime');
-    });
-
-    it('should convert crdtState base64 strings to Buffers', async () => {
-      const { batchSyncToPostgres } = await import(
-        '../../src/services/document-version-service'
-      );
-      const db = await import('../../src/db');
-
-      const crdtBase64 = Buffer.from('crdt-data').toString('base64');
-      const mockRow = createMockVersionRow({
-        crdt_state: Buffer.from('crdt-data'),
-      });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
-
-      await batchSyncToPostgres([
-        {
-          documentId: 'doc-001',
-          branchId: 'branch-001',
-          snapshot: { root: {} },
-          crdtState: crdtBase64,
-          actorId: 'user-001',
-          actorType: 'user',
-        },
-      ]);
-
-      // Verify the query was called
-      expect(db.query).toHaveBeenCalledTimes(1);
-    });
-
-    it('should handle items with empty CRDT state', async () => {
-      const { batchSyncToPostgres } = await import(
-        '../../src/services/document-version-service'
-      );
-      const db = await import('../../src/db');
-
-      const mockRow = createMockVersionRow({ crdt_state: null });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
-
-      const result = await batchSyncToPostgres([
-        {
-          documentId: 'doc-001',
-          branchId: 'branch-001',
-          snapshot: { root: {} },
-          crdtState: '',
-          actorId: 'user-001',
-          actorType: 'user',
-        },
-      ]);
-
-      expect(result.inserted).toHaveLength(1);
-      expect(result.inserted[0].crdtState).toBeUndefined();
     });
 
     it('should throw on database errors', async () => {
@@ -348,7 +285,7 @@ describe('Phase 5.2: Batch Sync Function', () => {
             documentId: 'doc-001',
             branchId: 'branch-001',
             snapshot: { root: {} },
-            crdtState: 'base64',
+
             actorId: 'user-001',
             actorType: 'user',
           },
@@ -383,7 +320,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
           documentId: 'doc-001',
           branchId: 'branch-001',
           snapshot: { root: { title: 'User edit' } },
-          crdtState: 'base64-1',
           actorId: 'user-001',
           actorType: 'user',
         },
@@ -391,7 +327,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
           documentId: 'doc-002',
           branchId: 'branch-001',
           snapshot: { root: { title: 'Agent edit' } },
-          crdtState: 'base64-2',
           actorId: 'agent-001',
           actorType: 'agent',
         },
@@ -429,7 +364,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
           documentId: 'doc-001',
           branchId: 'branch-A',
           snapshot: { root: { title: 'On branch A' } },
-          crdtState: 'base64-1',
           actorId: 'user-001',
           actorType: 'user',
         },
@@ -437,7 +371,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
           documentId: 'doc-001',
           branchId: 'branch-B',
           snapshot: { root: { title: 'On branch B' } },
-          crdtState: 'base64-2',
           actorId: 'user-001',
           actorType: 'user',
         },

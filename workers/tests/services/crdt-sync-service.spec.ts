@@ -49,7 +49,6 @@ describe('Phase 1.1: CRDT Sync Service', () => {
     branch_id: string;
     version_number: number;
     snapshot: Record<string, unknown>;
-    crdt_state: Buffer | null;
     source: DocumentVersionSource;
     created_by_id: string;
     created_by_type: 'user' | 'agent' | 'system';
@@ -74,7 +73,6 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       branch_id: 'branch-uuid-456',
       version_number: 1,
       snapshot: { root: { title: 'Test' } },
-      crdt_state: null,
       source: 'edit',
       created_by_id: 'user-uuid-001',
       created_by_type: 'user',
@@ -111,7 +109,6 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         branchId: mockVersion.branch_id,
         versionNumber: mockVersion.version_number,
         snapshot: mockVersion.snapshot,
-        crdtState: undefined,
         source: mockVersion.source,
         createdById: mockVersion.created_by_id,
         createdByType: mockVersion.created_by_type,
@@ -123,7 +120,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: { root: { title: 'Test Document' } },
-        crdtState: 'base64encodedstate==',
+
         actorId: 'user-uuid-001',
         actorType: 'user' as const,
       };
@@ -157,9 +154,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       // Mock getLatestDocumentVersion to return null (no existing version to compare)
       vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
 
-      const crdtStateBase64 = Buffer.from('mock-crdt-state').toString('base64');
       const mockVersion = createMockVersion({
-        crdt_state: Buffer.from('mock-crdt-state'),
         source: 'realtime',
       });
       vi.mocked(documentVersionService.createDocumentVersion).mockResolvedValue({
@@ -168,7 +163,6 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         branchId: mockVersion.branch_id,
         versionNumber: mockVersion.version_number,
         snapshot: mockVersion.snapshot,
-        crdtState: crdtStateBase64,
         source: 'realtime',
         createdById: mockVersion.created_by_id,
         createdByType: mockVersion.created_by_type,
@@ -180,7 +174,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: { root: { title: 'Test' } },
-        crdtState: crdtStateBase64,
+
         actorId: 'user-uuid-001',
         actorType: 'user',
       });
@@ -189,12 +183,11 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: { root: { title: 'Test' } },
-        crdtState: crdtStateBase64,
+
         source: 'realtime',
         createdById: 'user-uuid-001',
         createdByType: 'user',
       });
-      expect(result.crdtState).toBe(crdtStateBase64);
       expect(result.source).toBe('realtime');
     });
 
@@ -210,7 +203,6 @@ describe('Phase 1.1: CRDT Sync Service', () => {
           documentId: 'nonexistent-doc-uuid',
           branchId: 'branch-uuid-456',
           snapshot: { root: {} },
-          crdtState: 'base64==',
           actorId: 'user-uuid-001',
           actorType: 'user',
         }),
@@ -243,7 +235,6 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         branchId: mockVersion.branch_id,
         versionNumber: mockVersion.version_number,
         snapshot: mockVersion.snapshot,
-        crdtState: undefined,
         source: 'realtime',
         createdById: 'agent-uuid-001',
         createdByType: 'agent',
@@ -255,7 +246,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: { root: {} },
-        crdtState: 'base64==',
+
         actorId: 'agent-uuid-001',
         actorType: 'agent',
       });
@@ -292,7 +283,6 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         branchId: mockVersion.branch_id,
         versionNumber: mockVersion.version_number,
         snapshot: {},
-        crdtState: undefined,
         source: 'realtime',
         createdById: mockVersion.created_by_id,
         createdByType: mockVersion.created_by_type,
@@ -304,7 +294,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: {},
-        crdtState: 'base64==',
+
         actorId: 'user-uuid-001',
         actorType: 'user',
       });
@@ -335,7 +325,6 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         branchId: mockVersion.branch_id,
         versionNumber: mockVersion.version_number,
         snapshot: existingSnapshot,
-        crdtState: 'existing-crdt-state',
         source: 'realtime',
         createdById: mockVersion.created_by_id,
         createdByType: mockVersion.created_by_type,
@@ -347,7 +336,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: existingSnapshot, // Same as latest version
-        crdtState: 'new-crdt-state',
+
         actorId: 'user-uuid-001',
         actorType: 'user',
       });
@@ -381,7 +370,6 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         branchId: existingVersion.branch_id,
         versionNumber: 1,
         snapshot: existingSnapshot,
-        crdtState: 'existing-crdt-state',
         source: 'realtime',
         createdById: existingVersion.created_by_id,
         createdByType: existingVersion.created_by_type,
@@ -395,7 +383,6 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         branchId: newVersion.branch_id,
         versionNumber: 2,
         snapshot: newSnapshot,
-        crdtState: 'new-crdt-state',
         source: 'realtime',
         createdById: newVersion.created_by_id,
         createdByType: newVersion.created_by_type,
@@ -407,7 +394,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         documentId: 'doc-uuid-123',
         branchId: 'branch-uuid-456',
         snapshot: newSnapshot, // Different from latest version
-        crdtState: 'new-crdt-state',
+
         actorId: 'user-uuid-001',
         actorType: 'user',
       });
@@ -436,17 +423,13 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         createdAt: mockDoc.created_at,
       });
 
-      const crdtStateBase64 = Buffer.from('mock-crdt-state').toString('base64');
-      const mockVersion = createMockVersion({
-        crdt_state: Buffer.from('mock-crdt-state'),
-      });
+      const mockVersion = createMockVersion();
       vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue({
         id: mockVersion.id,
         documentId: mockVersion.document_id,
         branchId: mockVersion.branch_id,
         versionNumber: mockVersion.version_number,
         snapshot: mockVersion.snapshot,
-        crdtState: crdtStateBase64,
         source: mockVersion.source,
         createdById: mockVersion.created_by_id,
         createdByType: mockVersion.created_by_type,
@@ -457,7 +440,6 @@ describe('Phase 1.1: CRDT Sync Service', () => {
 
       expect(result).not.toBeNull();
       expect(result?.snapshot).toEqual({ root: { title: 'Test' } });
-      expect(result?.crdtState).toBe(crdtStateBase64);
     });
 
     it('should return null when document does not exist', async () => {
@@ -489,40 +471,6 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       const result = await loadLatestCrdtState('site-uuid-456', 'doc-uuid-123', 'branch-uuid-456');
 
       expect(result).toBeNull();
-    });
-
-    it('should return snapshot with undefined crdtState when version has no CRDT state', async () => {
-      const { loadLatestCrdtState } = await import('../../src/services/crdt-sync-service');
-      const documentService = await import('../../src/services/document-service');
-      const documentVersionService = await import('../../src/services/document-version-service');
-
-      const mockDoc = createMockDocument();
-      vi.mocked(documentService.getDocument).mockResolvedValue({
-        id: mockDoc.id,
-        siteId: mockDoc.site_id,
-        path: mockDoc.path,
-        createdAt: mockDoc.created_at,
-      });
-
-      const mockVersion = createMockVersion({ crdt_state: null });
-      vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue({
-        id: mockVersion.id,
-        documentId: mockVersion.document_id,
-        branchId: mockVersion.branch_id,
-        versionNumber: mockVersion.version_number,
-        snapshot: mockVersion.snapshot,
-        crdtState: undefined, // No CRDT state
-        source: mockVersion.source,
-        createdById: mockVersion.created_by_id,
-        createdByType: mockVersion.created_by_type,
-        createdAt: mockVersion.created_at,
-      });
-
-      const result = await loadLatestCrdtState('site-uuid-456', 'doc-uuid-123', 'branch-uuid-456');
-
-      expect(result).not.toBeNull();
-      expect(result?.snapshot).toEqual({ root: { title: 'Test' } });
-      expect(result?.crdtState).toBeUndefined();
     });
 
     it('should use correct document lookup parameters', async () => {

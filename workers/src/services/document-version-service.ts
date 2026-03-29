@@ -9,6 +9,7 @@
 
 import type { DocumentVersion, DocumentVersionSource } from '../types';
 import { query } from '../db';
+import { compare as jsonPatchCompare, applyPatch } from 'fast-json-patch';
 
 // =============================================================================
 // Types
@@ -21,10 +22,12 @@ export interface CreateDocumentVersionParams {
   documentId: string;
   branchId: string;
   snapshot: Record<string, unknown>;
-  crdtState?: string; // Base64 encoded
+  patch?: unknown[]; // RFC 6902 JSON Patch operations
   source: DocumentVersionSource;
   createdById: string;
   createdByType: 'user' | 'agent' | 'system';
+  actionType?: string; // Puck action type (e.g., "insert", "reorder", "set")
+  actionMetadata?: Record<string, unknown>; // Additional Puck action context
   /**
    * Skip duplicate snapshot check and always create a new version.
    * Use for reverts or explicit version creation where duplicates are intentional.
@@ -51,8 +54,7 @@ interface DocumentVersionRow {
   document_id: string;
   branch_id: string;
   version_number: number;
-  snapshot: Record<string, unknown>;
-  crdt_state: Buffer | null;
+  snapshot: Record<string, unknown> | null;
   source: DocumentVersionSource;
   created_by_id: string;
   created_by_type: 'user' | 'agent' | 'system';
@@ -63,6 +65,9 @@ interface DocumentVersionRow {
   source_version_id: string | null;
   published_to_version_id: string | null;
   source_branch_name?: string | null;
+  patch: import('fast-json-patch').Operation[] | null;
+  action_type: string | null;
+  action_metadata: Record<string, unknown> | null;
 }
 
 // =============================================================================
@@ -118,8 +123,10 @@ function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersion {
     documentId: row.document_id,
     branchId: row.branch_id,
     versionNumber: row.version_number,
-    snapshot: row.snapshot,
-    crdtState: row.crdt_state ? row.crdt_state.toString('base64') : undefined,
+    snapshot: row.snapshot ?? undefined,
+    patch: row.patch ?? undefined,
+    actionType: row.action_type ?? undefined,
+    actionMetadata: row.action_metadata ?? undefined,
     source: row.source,
     createdById: row.created_by_id,
     createdByType: row.created_by_type,
@@ -227,8 +234,9 @@ export async function createDocumentVersion(
   }
 
   // Check for duplicate snapshot unless explicitly skipped
+  let latestVersion: DocumentVersion | null = null;
   if (params.skipDuplicateCheck !== true) {
-    const latestVersion = await getLatestDocumentVersion(
+    latestVersion = await getLatestDocumentVersion(
       params.documentId,
       params.branchId,
     );
@@ -240,21 +248,60 @@ export async function createDocumentVersion(
     }
   }
 
-  // Convert base64 CRDT state to buffer if provided
-  const crdtBuffer = params.crdtState !== undefined && params.crdtState !== ''
-    ? Buffer.from(params.crdtState, 'base64')
-    : null;
+  // Compute forward diff from previous version to new version.
+  // The diff is stored on the NEW version (patch = how to get from previous to this).
+  // The previous version's snapshot is nulled (unless it's v1, the permanent baseline).
+  // Both operations use a single CTE for atomicity — if the INSERT fails, the
+  // UPDATE rolls back too.
+  if (latestVersion === null && params.skipDuplicateCheck !== true) {
+    latestVersion = await getLatestDocumentVersion(
+      params.documentId,
+      params.branchId,
+    );
+  }
+
+  let forwardPatch: unknown[] | null = null;
+  if (latestVersion?.snapshot != null) {
+    try {
+      const patchOps = jsonPatchCompare(
+        latestVersion.snapshot,
+        params.snapshot,
+      );
+      if (patchOps.length > 0) {
+        forwardPatch = patchOps;
+      }
+    } catch (diffError) {
+      // If diff computation fails, proceed with full baseline — no data loss
+      console.warn('Failed to compute diff, storing full baseline:', diffError);
+    }
+  }
 
   try {
-    // Use a subquery to auto-increment version number
+    // Use a CTE to atomically:
+    // 1. Null previous version's snapshot (convert to diff-only) — skip v1 (permanent baseline)
+    // 2. Insert new version as baseline with full snapshot + forward patch
+    const shouldNullPrevious = latestVersion != null
+      && latestVersion.versionNumber > 1
+      && forwardPatch != null;
+
     const result = await query<DocumentVersionRow>(
-      `INSERT INTO app.document_versions (
-        document_id, branch_id, version_number, snapshot, crdt_state,
+      `WITH nullify_previous AS (
+        UPDATE app.document_versions
+        SET snapshot = NULL
+        WHERE id = $11::uuid
+          AND $12::boolean = true
+        RETURNING id
+      )
+      INSERT INTO app.document_versions (
+        document_id, branch_id, version_number, snapshot,
+        patch, action_type, action_metadata,
         source, created_by_id, created_by_type, is_tombstone
       )
       SELECT $1, $2,
         COALESCE(MAX(version_number), 0) + 1,
-        $3, $4, $5, $6, $7, $8
+        $3,
+        $4, $5, $6,
+        $7, $8, $9, $10
       FROM app.document_versions
       WHERE document_id = $1 AND branch_id = $2
       RETURNING *`,
@@ -262,15 +309,30 @@ export async function createDocumentVersion(
         params.documentId,
         params.branchId,
         params.snapshot,
-        crdtBuffer,
+        forwardPatch ? JSON.stringify(forwardPatch) : (params.patch ? JSON.stringify(params.patch) : null),
+        params.actionType ?? null,
+        params.actionMetadata ? JSON.stringify(params.actionMetadata) : null,
         params.source,
         params.createdById,
         params.createdByType,
         params.isTombstone === true,
+        shouldNullPrevious && latestVersion
+          ? latestVersion.id
+          : '00000000-0000-0000-0000-000000000000',
+        shouldNullPrevious,
       ],
     );
 
-    return mapRowToDocumentVersion(getFirstRow(result.rows));
+    const newVersion = mapRowToDocumentVersion(getFirstRow(result.rows));
+    if (forwardPatch && latestVersion) {
+      console.log(
+        `Created v${String(newVersion.versionNumber)} with `
+        + `${String(forwardPatch.length)} patch ops, `
+        + `nulled v${String(latestVersion.versionNumber)} snapshot`,
+      );
+    }
+
+    return newVersion;
   } catch (error) {
     if (isForeignKeyViolation(error)) {
       throw new DocumentNotFoundError(params.documentId);
@@ -483,6 +545,69 @@ export async function getDocumentVersionByNumber(
 }
 
 // =============================================================================
+// Version Snapshot Reconstruction
+// =============================================================================
+
+/**
+ * Reconstructs the full snapshot for a given version by finding the nearest
+ * baseline (a version with a non-null snapshot) and applying all intermediate
+ * RFC 6902 JSON patches forward.
+ *
+ * @param documentId - The document ID
+ * @param branchId - The branch ID
+ * @param versionNumber - The version number to reconstruct
+ * @returns The reconstructed snapshot, or null if the version or baseline is not found
+ */
+export async function reconstructVersionSnapshot(
+  documentId: string,
+  branchId: string,
+  versionNumber: number,
+): Promise<Record<string, unknown> | null> {
+  // 1. Get the requested version
+  const version = await getDocumentVersionByNumber(documentId, branchId, versionNumber);
+  if (!version) return null;
+
+  // If it's a baseline (has snapshot), return directly
+  if (version.snapshot) return version.snapshot;
+
+  // 2. Find nearest baseline at or before this version
+  const baselineResult = await query<DocumentVersionRow>(
+    `SELECT * FROM app.document_versions
+     WHERE document_id = $1 AND branch_id = $2 AND version_number <= $3 AND snapshot IS NOT NULL
+     ORDER BY version_number DESC LIMIT 1`,
+    [documentId, branchId, versionNumber],
+  );
+
+  const baseline = baselineResult.rows[0];
+  if (!baseline?.snapshot) return null;
+
+  // 3. Load all diff versions between baseline and requested version (exclusive baseline, inclusive target)
+  const diffsResult = await query<DocumentVersionRow>(
+    `SELECT * FROM app.document_versions
+     WHERE document_id = $1 AND branch_id = $2
+       AND version_number > $3 AND version_number <= $4
+     ORDER BY version_number ASC`,
+    [documentId, branchId, baseline.version_number, versionNumber],
+  );
+
+  // 4. Apply patches forward — each version's patch is the forward diff from its predecessor
+  let snapshot: Record<string, unknown> = typeof baseline.snapshot === 'string'
+    ? JSON.parse(baseline.snapshot) as Record<string, unknown>
+    : structuredClone(baseline.snapshot);
+  for (const diffRow of diffsResult.rows) {
+    if (diffRow.patch) {
+      const ops = typeof diffRow.patch === 'string'
+        ? JSON.parse(diffRow.patch) as import('fast-json-patch').Operation[]
+        : diffRow.patch;
+      const patchResult = applyPatch(snapshot, ops, false, false);
+      snapshot = patchResult.newDocument;
+    }
+  }
+
+  return snapshot;
+}
+
+// =============================================================================
 // Phase 5.2: Batch Sync (for future Queue consumer use)
 // =============================================================================
 
@@ -493,9 +618,11 @@ export interface BatchSyncPayload {
   documentId: string;
   branchId: string;
   snapshot: Record<string, unknown>;
-  crdtState: string;
   actorId: string;
   actorType: 'user' | 'agent';
+  patch?: unknown[]; // RFC 6902 JSON Patch operations
+  actionType?: string; // Puck action type
+  actionMetadata?: Record<string, unknown>; // Puck action context
 }
 
 /**
@@ -576,36 +703,37 @@ export async function batchSyncToPostgres(
   }
 
   // Build arrays for each column to use with unnest()
-  // Note: crdt_state is passed as base64 text[] and decoded in SQL because
-  // the postgres driver cannot serialize Buffer[] as a PostgreSQL bytea[] array.
   const documentIds: string[] = [];
   const branchIds: string[] = [];
   const snapshots: (Record<string, unknown>)[] = [];
-  const crdtStates: (string | null)[] = [];
   const actorIds: string[] = [];
   const actorTypes: string[] = [];
+  const actionTypes: (string | null)[] = [];
+  const actionMetadatas: (string | null)[] = [];
 
   for (const payload of payloads) {
     documentIds.push(payload.documentId);
     branchIds.push(payload.branchId);
     snapshots.push(payload.snapshot);
-    crdtStates.push(payload.crdtState !== '' ? payload.crdtState : null);
     actorIds.push(payload.actorId);
     actorTypes.push(payload.actorType);
+    actionTypes.push(payload.actionType ?? null);
+    actionMetadatas.push(payload.actionMetadata ? JSON.stringify(payload.actionMetadata) : null);
   }
 
   // Use a CTE-based approach: for each input row, check if the latest snapshot
   // matches. If it does, skip the insert (dedup). Otherwise, compute the next
-  // version number and insert.
+  // version number and insert as a baseline (full snapshot).
   const result = await query<DocumentVersionRow>(
     `WITH input_rows AS (
       SELECT
         unnest($1::uuid[]) AS document_id,
         unnest($2::uuid[]) AS branch_id,
         unnest($3::jsonb[]) AS snapshot,
-        decode(unnest($4::text[]), 'base64') AS crdt_state,
-        unnest($5::uuid[]) AS actor_id,
-        unnest($6::text[]) AS actor_type
+        unnest($4::uuid[]) AS actor_id,
+        unnest($5::text[]) AS actor_type,
+        unnest($6::text[]) AS action_type,
+        unnest($7::jsonb[]) AS action_metadata
     ),
     deduped AS (
       SELECT ir.*
@@ -618,7 +746,8 @@ export async function batchSyncToPostgres(
       WHERE latest.snapshot IS DISTINCT FROM ir.snapshot
     )
     INSERT INTO app.document_versions (
-      document_id, branch_id, version_number, snapshot, crdt_state,
+      document_id, branch_id, version_number, snapshot,
+      action_type, action_metadata,
       source, created_by_id, created_by_type
     )
     SELECT
@@ -633,16 +762,59 @@ export async function batchSyncToPostgres(
         ORDER BY d.document_id
       ),
       d.snapshot,
-      d.crdt_state,
+      d.action_type,
+      d.action_metadata,
       'realtime',
       d.actor_id,
       d.actor_type
     FROM deduped d
     RETURNING *`,
-    [documentIds, branchIds, snapshots, crdtStates, actorIds, actorTypes],
+    [documentIds, branchIds, snapshots, actorIds, actorTypes, actionTypes, actionMetadatas],
   );
 
   const inserted = result.rows.map(mapRowToDocumentVersion);
+
+  // Post-insert: compute forward diffs and convert previous versions.
+  // For each inserted version:
+  // 1. Compute forward patch from previous version's snapshot → this version's snapshot
+  // 2. Store the forward patch on THIS version (patch = how to get from prev to this)
+  // 3. Null previous version's snapshot (unless it's v1, the permanent baseline)
+  for (const insertedVersion of inserted) {
+    try {
+      const prevResult = await query<DocumentVersionRow>(
+        `SELECT * FROM app.document_versions
+         WHERE document_id = $1 AND branch_id = $2 AND version_number = $3`,
+        [insertedVersion.documentId, insertedVersion.branchId, insertedVersion.versionNumber - 1],
+      );
+      const prevRow = prevResult.rows[0];
+      if (prevRow?.snapshot != null && insertedVersion.snapshot != null) {
+        const patchOps = jsonPatchCompare(
+          prevRow.snapshot,
+          insertedVersion.snapshot,
+        );
+        if (patchOps.length > 0) {
+          // Store forward patch on the NEW version, null previous snapshot atomically
+          const shouldNullPrev = prevRow.version_number > 1;
+          await query(
+            `WITH update_new AS (
+              UPDATE app.document_versions SET patch = $1 WHERE id = $2
+            )
+            UPDATE app.document_versions SET snapshot = NULL
+            WHERE id = $3 AND $4::boolean = true`,
+            [
+              JSON.stringify(patchOps),
+              insertedVersion.id,
+              prevRow.id,
+              shouldNullPrev,
+            ],
+          );
+        }
+      }
+    } catch (diffError) {
+      // If diff conversion fails, both versions keep full snapshots — no data loss
+      console.warn('batchSync: failed to convert previous version to diff:', diffError);
+    }
+  }
 
   return {
     inserted,

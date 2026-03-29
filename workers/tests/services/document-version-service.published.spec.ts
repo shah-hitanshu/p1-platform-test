@@ -21,7 +21,7 @@ describe('Document Version isPublished flag', () => {
           branch_id: 'branch-1',
           version_number: 3,
           snapshot: { title: 'Hello' },
-          crdt_state: null,
+
           source: 'edit',
           created_by_id: 'user-1',
           created_by_type: 'user',
@@ -47,7 +47,7 @@ describe('Document Version isPublished flag', () => {
           branch_id: 'branch-1',
           version_number: 4,
           snapshot: { title: 'Draft' },
-          crdt_state: null,
+
           source: 'edit',
           created_by_id: 'user-1',
           created_by_type: 'user',
@@ -76,7 +76,7 @@ describe('Document Version isPublished flag', () => {
             branch_id: 'branch-1',
             version_number: 3,
             snapshot: { title: 'v3' },
-            crdt_state: null,
+  
             source: 'edit',
             created_by_id: 'user-1',
             created_by_type: 'user',
@@ -89,7 +89,7 @@ describe('Document Version isPublished flag', () => {
             branch_id: 'branch-1',
             version_number: 2,
             snapshot: { title: 'v2' },
-            crdt_state: null,
+  
             source: 'edit',
             created_by_id: 'user-1',
             created_by_type: 'user',
@@ -102,7 +102,7 @@ describe('Document Version isPublished flag', () => {
             branch_id: 'branch-1',
             version_number: 1,
             snapshot: { title: 'v1' },
-            crdt_state: null,
+  
             source: 'edit',
             created_by_id: 'user-1',
             created_by_type: 'user',
@@ -133,7 +133,7 @@ describe('Document Version isPublished flag', () => {
           branch_id: 'branch-1',
           version_number: 1,
           snapshot: { title: 'Hello' },
-          crdt_state: null,
+
           source: 'edit',
           created_by_id: 'user-1',
           created_by_type: 'user',

@@ -102,15 +102,17 @@ export async function computeDocumentDiff(
     throw new DocumentVersionNotFoundError(targetVersionId);
   }
 
+  // Versions used for diff should always be baselines with snapshots.
+  // If snapshot is missing (diff version), use empty object as fallback.
+  const sourceSnap = sourceVersion.snapshot ?? {};
+  const targetSnap = targetVersion.snapshot ?? {};
+
   // Compute diff operations
-  const diffOperations = computeJsonDiff(
-    sourceVersion.snapshot,
-    targetVersion.snapshot,
-  );
+  const diffOperations = computeJsonDiff(sourceSnap, targetSnap);
 
   return {
-    sourceSnapshot: sourceVersion.snapshot,
-    targetSnapshot: targetVersion.snapshot,
+    sourceSnapshot: sourceSnap,
+    targetSnapshot: targetSnap,
     diffOperations,
   };
 }

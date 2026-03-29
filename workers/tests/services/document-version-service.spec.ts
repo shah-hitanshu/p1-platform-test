@@ -27,7 +27,6 @@ describe('Phase 3.3: Document Version Service', () => {
     branch_id: string;
     version_number: number;
     snapshot: Record<string, unknown>;
-    crdt_state: Buffer | null;
     source: DocumentVersionSource;
     created_by_id: string;
     created_by_type: 'user' | 'agent' | 'system';
@@ -42,7 +41,6 @@ describe('Phase 3.3: Document Version Service', () => {
       branch_id: 'branch-uuid-789',
       version_number: 1,
       snapshot: { title: 'Test Document', content: [] },
-      crdt_state: null,
       source: 'edit',
       created_by_id: 'user-uuid-001',
       created_by_type: 'user',
@@ -79,27 +77,6 @@ describe('Phase 3.3: Document Version Service', () => {
       expect(result.createdByType).toBe('user');
     });
 
-    it('should create a version with CRDT state', async () => {
-      const { createDocumentVersion } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
-      const crdtBuffer = Buffer.from('mock-crdt-state');
-      const mockRow = createMockVersionRow({ crdt_state: crdtBuffer });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
-
-      const result = await createDocumentVersion({
-        documentId: 'doc-uuid-456',
-        branchId: 'branch-uuid-789',
-        snapshot: { title: 'Test' },
-        crdtState: 'bW9jay1jcmR0LXN0YXRl', // base64 encoded
-        source: 'edit',
-        createdById: 'user-uuid-001',
-        createdByType: 'user',
-      });
-
-      expect(result.crdtState).toBeDefined();
-    });
-
     it('should support different source types', async () => {
       const { createDocumentVersion } = await import('../../src/services/document-version-service');
       const db = await import('../../src/db');
@@ -131,8 +108,10 @@ describe('Phase 3.3: Document Version Service', () => {
       (error as NodeJS.ErrnoException).code = '23503';
 
       // First call is getLatestDocumentVersion (returns null - no existing version)
-      // Second call is the INSERT which fails with FK error
+      // Second call is getLatestDocumentVersion again (for diff computation, returns null)
+      // Third call is the INSERT which fails with FK error
       vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rows: [] })
         .mockRejectedValueOnce(error);
 
@@ -224,7 +203,7 @@ describe('Phase 3.3: Document Version Service', () => {
       });
 
       // First call: getLatestDocumentVersion returns existing version with different snapshot
-      // Second call: INSERT returns new version
+      // Second call: CTE with UPDATE (null previous snapshot) + INSERT (new baseline)
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [mockExistingVersion] })
         .mockResolvedValueOnce({ rows: [mockNewVersion] });
@@ -240,7 +219,7 @@ describe('Phase 3.3: Document Version Service', () => {
 
       // Should create new version
       expect(result.versionNumber).toBe(6);
-      // query should be called twice (check + insert)
+      // query should be called twice (check latest + CTE insert with nullify)
       expect(db.query).toHaveBeenCalledTimes(2);
     });
 

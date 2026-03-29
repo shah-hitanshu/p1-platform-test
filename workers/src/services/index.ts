@@ -97,6 +97,7 @@ export {
   listDocumentVersions,
   getDocumentVersionByNumber,
   getLatestDocumentVersionWithFallback,
+  reconstructVersionSnapshot,
   // Note: DocumentNotFoundError already exported from document-service
   InvalidDocumentVersionParamsError,
 } from './document-version-service';
@@ -217,21 +218,6 @@ export type {
   ResolveDeletedConflictParams,
   DeletedConflictResolutionResult,
 } from './conflict-resolution-service';
-
-// CRDT Merge Service
-export {
-  mergeCrdtStates,
-  resolveWithCrdtMerge,
-  extractSnapshotFromYDoc,
-  InvalidCrdtStateError,
-  MissingCrdtStateError,
-} from './crdt-merge-service';
-
-export type {
-  MergeCrdtStatesParams,
-  MergeCrdtStatesResult,
-  ResolveWithCrdtMergeParams,
-} from './crdt-merge-service';
 
 // Merge Execution Service
 export {

@@ -78,7 +78,7 @@ export type ApproverMode = 'role_based' | 'explicit' | 'both';
 /**
  * Strategies for resolving merge conflicts.
  */
-export type ConflictResolutionStrategy = 'take-source' | 'take-target' | 'merge-crdt' | 'manual';
+export type ConflictResolutionStrategy = 'take-source' | 'take-target' | 'manual';
 
 /**
  * Types of site structures.

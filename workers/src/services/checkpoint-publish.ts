@@ -40,10 +40,9 @@ export async function publishDocument(
     branch_id: string;
     version_number: number;
     snapshot: Record<string, unknown>;
-    crdt_state: Buffer | null;
     is_tombstone: boolean;
   }>(
-    `SELECT id, document_id, branch_id, version_number, snapshot, crdt_state, is_tombstone
+    `SELECT id, document_id, branch_id, version_number, snapshot, is_tombstone
      FROM app.document_versions
      WHERE document_id = $1 AND branch_id = $2
      ORDER BY version_number DESC
@@ -70,14 +69,14 @@ export async function publishDocument(
     if (params.branchId !== mainBranch.id) {
       const copyResult = await query<{ id: string; version_number: number }>(
         `INSERT INTO app.document_versions (
-          document_id, branch_id, version_number, snapshot, crdt_state,
+          document_id, branch_id, version_number, snapshot,
           source, created_by_id, created_by_type,
           source_branch_id, source_version_id
         )
         SELECT $1, $2,
           COALESCE(MAX(version_number), 0) + 1,
-          $3, $4, 'publish', $5, $6,
-          $7, $8
+          $3, 'publish', $4, $5,
+          $6, $7
         FROM app.document_versions
         WHERE document_id = $1 AND branch_id = $2
         RETURNING id, version_number`,
@@ -85,7 +84,6 @@ export async function publishDocument(
           params.documentId,
           mainBranch.id,
           version.snapshot,
-          version.crdt_state,
           params.createdById,
           params.createdByType,
           params.branchId,
