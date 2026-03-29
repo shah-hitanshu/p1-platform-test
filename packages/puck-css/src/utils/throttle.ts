@@ -7,7 +7,8 @@
  * latest arguments if any calls were made during the wait (trailing edge).
  */
 
-type AnyFunction = (...args: unknown[]) => void;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyFunction = (...args: any[]) => void;
 
 interface ThrottledFunction<T extends AnyFunction> {
   (...args: Parameters<T>): void;

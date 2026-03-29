@@ -556,16 +556,22 @@ function CSSPuckProviderInner({
   // Throttled realtime sync — rate-limits WebSocket sends during rapid edits.
   // Leading + trailing edge: first change sends immediately, subsequent changes
   // coalesce into sends every realtimeSyncInterval ms.
+  // NOTE: Use a ref for realtime.applyLocalChange to avoid recreating the throttle
+  // on every render — useRealtime returns a new object each render, but its
+  // individual methods (applyLocalChange) are stable useCallbacks.
+  const applyLocalChangeRef = useRef(realtime.applyLocalChange);
+  applyLocalChangeRef.current = realtime.applyLocalChange;
+
   const throttledRealtimeSync = useMemo(
     () =>
       throttle((data: PuckData, actionMeta?: { actionType: string; actionMetadata: Record<string, unknown> }) => {
-        realtime.applyLocalChange(data, actionMeta);
+        applyLocalChangeRef.current(data, actionMeta);
         // Data has been sent to the DO — update save status
         pendingDataRef.current = null;
         setSaveStatus('saved');
         setLastSaved(new Date());
       }, realtimeSyncInterval),
-    [realtime, realtimeSyncInterval]
+    [realtimeSyncInterval]
   );
 
   // Cleanup throttle on unmount — flush to ensure final state is sent
