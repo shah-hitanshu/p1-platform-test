@@ -550,10 +550,12 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     const mergedUpdate: Uint8Array = this.pendingBroadcastUpdates.length === 1
       ? this.pendingBroadcastUpdates[0]!
       : Y.mergeUpdates(this.pendingBroadcastUpdates);
+
     this.pendingBroadcastUpdates = [];
     this.pendingBroadcastSenders = [];
 
-    for (const conn of this.state.getWebSockets()) {
+    const allConns = [...this.state.getWebSockets()];
+    for (const conn of allConns) {
       if (!senders.has(conn) && conn.readyState === WebSocket.OPEN) {
         conn.send(mergedUpdate);
       }
