@@ -44,13 +44,14 @@ export function throttle<T extends AnyFunction>(func: T, interval: number): Thro
   };
 
   const throttled = ((...args: Parameters<T>): void => {
+    // Always store latest args — trailing-edge only.
+    // Leading edge is intentionally skipped because Puck's onChange fires
+    // with data one keystroke behind the actual input (React state lags
+    // the DOM). Deferring to the trailing edge ensures the next onChange
+    // has caught up before we send.
+    storedArgs = args;
     if (timerId === null) {
-      // No timer running -- execute immediately (leading edge) and start timer
-      func(...args);
       startTimer();
-    } else {
-      // Timer running -- store latest args for trailing edge
-      storedArgs = args;
     }
   }) as ThrottledFunction<T>;
 

@@ -200,6 +200,12 @@ export class RealtimeClient {
   private static readonly RATE_THRESHOLD = 40; // Start buffering at this rate
   private static readonly RATE_WINDOW_MS = 1000; // 1-second sliding window
 
+  // Echo suppression: track the last JSON snapshot sent to the DO.
+  // If a Y.Doc update produces the same JSON snapshot as we last sent,
+  // it's a no-op echo (typically from Puck's onChange after receiving
+  // a remote sync) and should NOT be sent to avoid overwriting newer data.
+  private lastSentSnapshot: string | null = null;
+
   // Delivery acknowledgment state
   private pendingDeliveryAcks: Map<string, {
     resolve: () => void;
@@ -227,9 +233,25 @@ export class RealtimeClient {
     this.ydoc.on('update', (update: Uint8Array, origin: unknown) => {
       // Only broadcast if this update didn't come from remote
       if (origin !== 'remote' && this.ws && this.ws.readyState === WebSocket.OPEN) {
+        const root = this.ydoc.getMap('root');
+        const currentSnapshot = JSON.stringify(root.toJSON());
+
+        // Echo suppression: if the Y.Doc's JSON snapshot hasn't changed since
+        // the last time we sent (or since the last remote update), this is a
+        // no-op full-rebuild echo. Don't send it — it would overwrite newer
+        // data on the DO if another client has edited since.
+        if (currentSnapshot === this.lastSentSnapshot) {
+          return;
+        }
+
+        this.lastSentSnapshot = currentSnapshot;
         this.rateLimitedSend(update);
         // Send any pending action metadata after the CRDT update
         this.sendPendingActionMetadata();
+      } else if (origin === 'remote') {
+        // Track the remote snapshot so we can detect echoes
+        const root = this.ydoc.getMap('root');
+        this.lastSentSnapshot = JSON.stringify(root.toJSON());
       }
     });
   }

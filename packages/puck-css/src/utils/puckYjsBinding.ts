@@ -167,6 +167,17 @@ export function patchYArray(
  * @param root - The Y.Map to populate
  */
 export function puckDataToYMap(data: PuckData, root: Y.Map<unknown>): void {
+  // Top-level no-op guard: if the Y.Doc already contains identical data,
+  // skip the entire transaction. This prevents echo loops where a receiving
+  // client's Puck onChange re-sends data that's already in the Y.Doc.
+  if (root.size > 0) {
+    const currentJson = JSON.stringify(root.toJSON());
+    const newJson = JSON.stringify(data);
+    if (currentJson === newJson) {
+      return;
+    }
+  }
+
   root.doc?.transact(() => {
     if (root.size > 0) {
       // Incremental update – only touch what changed

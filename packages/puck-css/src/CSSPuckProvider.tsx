@@ -19,7 +19,6 @@ import { NotificationProvider, useNotifications } from './NotificationContext.js
 import { PresenceContext } from './PresenceContext.js';
 import type { PresenceContextValue } from './PresenceContext.js';
 import { debounce } from './utils/debounce.js';
-import { throttle } from './utils/throttle.js';
 import { withRetry } from './utils/retry.js';
 import { useRealtime } from './hooks/useRealtime.js';
 import { useDocuments } from './hooks/useDocuments.js';
@@ -92,7 +91,7 @@ function CSSPuckProviderInner({
   enableRealtime = false,
   wsBaseUrl,
   realtimeApiKey,
-  realtimeSyncInterval = 250,
+  realtimeSyncInterval: _realtimeSyncInterval = 250,
   // Phase 9: Presence props
   presenceEnabled = false,
   presencePollingInterval = 5000,
@@ -224,6 +223,12 @@ function CSSPuckProviderInner({
   // Delay for debouncing remote sync updates (ms)
   const REMOTE_SYNC_DEBOUNCE_DELAY = 50;
 
+  // Track the last data synced from a remote update so we can detect echo onChange events.
+  // When Puck fires onChange after we call setCurrentData with remote data, the data
+  // will match this ref. This is more reliable than a timeout-based guard because it
+  // doesn't depend on React's rendering timing.
+  const lastRemoteSyncDataRef = useRef<string | null>(null);
+
   // Ref to track viewingVersion for use in callbacks (avoids stale closure)
   const viewingVersionRef = useRef<DocumentVersion | null>(null);
 
@@ -326,6 +331,9 @@ function CSSPuckProviderInner({
           // Also increment counter as backup (for returnToLatest and other paths)
           pendingRemoteUpdatesRef.current += 1;
 
+          // Store a fingerprint of the remote data so we can detect echo onChange events
+          lastRemoteSyncDataRef.current = JSON.stringify(dataToSync);
+
           // Update current data when remote changes arrive
           currentDataDocumentPathRef.current = currentDocumentRef.current?.path ?? null;
           setCurrentData(dataToSync);
@@ -334,10 +342,12 @@ function CSSPuckProviderInner({
 
           pendingRemoteDataRef.current = null;
 
-          // Clear the flag and reset the counter after a short delay to ensure
-          // all onChange events are captured. React may batch state updates and
-          // fire onChange asynchronously. 100ms should be enough for React to
-          // process the state changes.
+          // Clear the flag after a delay to ensure all onChange echoes are captured.
+          // React 19 concurrent rendering can defer onChange well beyond 100ms.
+          // Using 1000ms to be safe — genuine local edits on this browser will
+          // be rare while remote updates are streaming in (user is editing on
+          // the other browser). The flag is also cleared early by a genuine
+          // user input event (see useEffect below).
           //
           // IMPORTANT: Also reset pendingRemoteUpdatesRef to 0. If the remote
           // data is identical to the current editor state (e.g. the initial Yjs
@@ -347,12 +357,16 @@ function CSSPuckProviderInner({
           setTimeout(() => {
             isApplyingRemoteSyncRef.current = false;
             pendingRemoteUpdatesRef.current = 0;
-          }, 100);
+          }, 2000);
         }
         remoteSyncTimerRef.current = null;
       }, REMOTE_SYNC_DEBOUNCE_DELAY);
     },
   });
+
+  // Keep a stable ref to realtime for use in callbacks without dependency churn
+  const realtimeRef = useRef(realtime);
+  realtimeRef.current = realtime;
 
   // Cleanup remote sync timer on unmount
   useEffect(() => {
@@ -360,6 +374,69 @@ function CSSPuckProviderInner({
       if (remoteSyncTimerRef.current) {
         clearTimeout(remoteSyncTimerRef.current);
       }
+    };
+  }, []);
+
+  // PuckDataCapture catch-up: detects data that Puck's onChange missed.
+  // Puck's onChange can miss the very last keystroke in a typing burst because
+  // createOnChange dispatches asynchronously (via resolveComponentData) and
+  // the Zustand subscriber may not fire for the final state update in time.
+  // PuckDataCapture subscribes to Puck's Zustand store independently via
+  // createUsePuck() and writes the true current data to this ref.
+  // The onDataChange callback debounces and compares with what saveData last
+  // sent — if they differ, it pushes the corrected data through realtime.
+  const realtimeDataCaptureRef = useRef<PuckData | null>(null);
+  const lastSentDataRef = useRef<string | null>(null);
+  const captureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Track the last data sent via saveData so we can detect missed updates.
+  // Updated in saveData's realtime branch (the happy path).
+  const trackSentData = useCallback((data: PuckData) => {
+    lastSentDataRef.current = JSON.stringify(data);
+  }, []);
+
+  // Callback for PuckDataCapture.onDataChange — fires when Puck's store
+  // updates (may fire for changes that onChange misses).
+  const handleRealtimeDataCapture = useCallback((data: PuckData) => {
+    if (!enableRealtime) return;
+
+    // Don't capture during remote sync application
+    if (isApplyingRemoteSyncRef.current) return;
+
+    // Debounce: wait 400ms after the last store update to allow onChange
+    // to process normally. If onChange already sent this data, the JSON
+    // comparison below will no-op.
+    if (captureTimerRef.current) clearTimeout(captureTimerRef.current);
+    captureTimerRef.current = setTimeout(() => {
+      if (!realtimeConnectedRef.current) return;
+      if (isApplyingRemoteSyncRef.current) return;
+      if (viewingVersionRef.current !== null) return;
+
+      const dataJson = JSON.stringify(data);
+
+      // If saveData already sent this exact data, no catch-up needed
+      if (dataJson === lastSentDataRef.current) return;
+
+      // Data origin guard
+      const currentPath = currentDocumentRef.current?.path ?? null;
+      const dataOriginPath = currentDataDocumentPathRef.current;
+      if (dataOriginPath !== currentPath) return;
+
+      console.log('[CSSPuckProvider] PuckDataCapture catch-up: sending missed data');
+      realtimeRef.current.applyLocalChange(data);
+      lastSentDataRef.current = dataJson;
+
+      // Also update pendingDataRef so save status reflects the sent data
+      pendingDataRef.current = data;
+      setSaveStatus('saved');
+      setLastSaved(new Date());
+    }, 400);
+  }, [enableRealtime]);
+
+  // Cleanup capture timer on unmount
+  useEffect(() => {
+    return () => {
+      if (captureTimerRef.current) clearTimeout(captureTimerRef.current);
     };
   }, []);
 
@@ -553,34 +630,6 @@ function CSSPuckProviderInner({
     };
   }, [debouncedSave]);
 
-  // Throttled realtime sync — rate-limits WebSocket sends during rapid edits.
-  // Leading + trailing edge: first change sends immediately, subsequent changes
-  // coalesce into sends every realtimeSyncInterval ms.
-  // NOTE: Use a ref for realtime.applyLocalChange to avoid recreating the throttle
-  // on every render — useRealtime returns a new object each render, but its
-  // individual methods (applyLocalChange) are stable useCallbacks.
-  const applyLocalChangeRef = useRef(realtime.applyLocalChange);
-  applyLocalChangeRef.current = realtime.applyLocalChange;
-
-  const throttledRealtimeSync = useMemo(
-    () =>
-      throttle((data: PuckData, actionMeta?: { actionType: string; actionMetadata: Record<string, unknown> }) => {
-        applyLocalChangeRef.current(data, actionMeta);
-        // Data has been sent to the DO — update save status
-        pendingDataRef.current = null;
-        setSaveStatus('saved');
-        setLastSaved(new Date());
-      }, realtimeSyncInterval),
-    [realtimeSyncInterval]
-  );
-
-  // Cleanup throttle on unmount — flush to ensure final state is sent
-  useEffect(() => {
-    return () => {
-      throttledRealtimeSync.flush();
-    };
-  }, [throttledRealtimeSync]);
-
   // Pause auto-save
   const pauseAutoSave = useCallback(() => {
     debouncedSave.pause();
@@ -668,18 +717,32 @@ function CSSPuckProviderInner({
             return;
           }
 
-          // Local user edit — throttle WebSocket sends
-          throttledRealtimeSync(data, lastActionRef.current ?? undefined);
-          lastActionRef.current = null;
+          // Echo detection: if this onChange data matches the last remote sync we applied,
+          // this is a delayed echo from React re-rendering after setCurrentData — NOT a
+          // local user edit. The timeout-based guard (isApplyingRemoteSyncRef) can miss
+          // these if React's onChange fires >100ms after setCurrentData.
+          // Don't clear the ref on match — multiple echo onChange events can fire from
+          // a single remote sync (data prop change + setData dispatch). Only clear when
+          // we see genuinely different data (a real local edit).
+          if (lastRemoteSyncDataRef.current !== null) {
+            const dataFingerprint = JSON.stringify(data);
+            if (dataFingerprint === lastRemoteSyncDataRef.current) {
+              return;
+            }
+            // Data differs from last remote sync — this is a genuine local edit, clear the ref
+            lastRemoteSyncDataRef.current = null;
+          }
 
-          // Set pending data for getHasUnsavedChanges but don't trigger
-          // debouncedSave — the throttle callback handles save status.
-          pendingDataRef.current = data;
-          return;
+          // Local user edit — send via WebSocket (DO handles persistence)
+          realtime.applyLocalChange(data);
+          trackSentData(data);
+          lastActionRef.current = null;
+          // Still trigger debounced save as fallback, but performSave will
+          // skip the REST call when realtimeConnectedRef is true.
         }
       }
 
-      // Non-realtime path: mark data as pending and trigger debounced REST save
+      // Mark data as pending and trigger debounced save
       pendingDataRef.current = data;
 
       if (debouncedSave.isPaused()) {
@@ -688,13 +751,11 @@ function CSSPuckProviderInner({
       }
       debouncedSave();
     },
-    [debouncedSave, enableRealtime, realtime, throttledRealtimeSync]
+    [debouncedSave, enableRealtime, realtime.connected, trackSentData]
   );
 
   // Force immediate save
   const saveNow = useCallback(async () => {
-    // Flush any throttled realtime sync
-    throttledRealtimeSync.flush();
     debouncedSave.cancel();
 
     // When realtime is connected, ensure the latest data is sent via WebSocket
@@ -714,7 +775,7 @@ function CSSPuckProviderInner({
     }
 
     await performSave();
-  }, [debouncedSave, performSave, enableRealtime, realtime, throttledRealtimeSync]);
+  }, [debouncedSave, performSave, enableRealtime]);
 
   // Load document by path
   const loadDocument = useCallback(
@@ -722,9 +783,6 @@ function CSSPuckProviderInner({
       // Cancel any pending remote sync to prevent race conditions
       // where a stale remote update overrides the document we're loading
       cancelPendingRemoteSync();
-
-      // Flush any throttled realtime sync before switching documents
-      throttledRealtimeSync.flush();
 
       // Increment load request counter and capture for staleness detection.
       // If a newer loadDocument call starts before our awaits resolve, the
@@ -795,7 +853,7 @@ function CSSPuckProviderInner({
         throw error;
       }
     },
-    [userClient, siteId, branchId, cancelPendingRemoteSync, enableRealtime, throttledRealtimeSync]
+    [userClient, siteId, branchId, cancelPendingRemoteSync, enableRealtime]
   );
 
   // Load a specific version into the editor
@@ -1604,6 +1662,9 @@ function CSSPuckProviderInner({
       stopAgent: stableStopAgent,
       conflicts,
       dismissConflict,
+      // Internal: realtime data capture for catch-up (sends missed keystrokes)
+      _realtimeDataCaptureRef: enableRealtime ? realtimeDataCaptureRef : null,
+      _onRealtimeDataCapture: enableRealtime ? handleRealtimeDataCapture : null,
     }),
     [
       userClient,
@@ -1650,12 +1711,14 @@ function CSSPuckProviderInner({
       remoteSyncKey,
       realtime.sendFocusRegions,
       handleAction,
+      handleRealtimeDataCapture,
       // Phase 9 dependencies (presenceState excluded — accessed via getter/ref)
       agentEditCapabilities,
       triggerAgentFn,
       stableStopAgent,
       conflicts,
       dismissConflict,
+      enableRealtime,
     ]
   );
 

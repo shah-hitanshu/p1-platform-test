@@ -449,6 +449,23 @@ export interface CSSPuckContextValue {
    * Dismiss a conflict notification by ID.
    */
   dismissConflict: (id: string) => void;
+
+  // =========================================================================
+  // Internal: Realtime Data Capture (for PuckDataCapture correction pass)
+  // =========================================================================
+
+  /**
+   * Ref that PuckDataCapture writes the true current Puck data to.
+   * @internal
+   */
+  _realtimeDataCaptureRef: React.MutableRefObject<PuckData | null> | null;
+
+  /**
+   * Callback for PuckDataCapture to signal new data is available.
+   * Debounced internally to act as a correction pass after onChange settles.
+   * @internal
+   */
+  _onRealtimeDataCapture: ((data: PuckData) => void) | null;
 }
 
 /**

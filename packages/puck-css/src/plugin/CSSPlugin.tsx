@@ -11,6 +11,7 @@ import { PuckDataSynchronizer } from '../components/PuckDataSynchronizer.js';
 import { VersionPublishedBadge } from '../components/VersionPublishedBadge.js';
 import { AgentActivityBanner } from '../components/presence/AgentActivityBanner.js';
 import { PuckSelectionTracker } from '../components/PuckSelectionTracker.js';
+import { PuckDataCapture } from '../components/PuckDataCapture.js';
 import { useCSSPuck } from '../CSSPuckContext.js';
 import { MergeReviewPage } from '../components/merge-resolution/MergeReviewPage.js';
 
@@ -508,6 +509,34 @@ function ContextSyncBridge(): React.ReactElement | null {
 }
 
 /**
+ * Renders PuckDataCapture inside the Puck tree to capture the true current
+ * Puck data after each React render. This corrects for Puck's onChange
+ * delivering data that lags behind the actual editor state due to React
+ * batching — without this, the last keystroke in a typing burst is lost.
+ */
+function RealtimeDataCaptureBridge(): React.ReactElement | null {
+  let context: ReturnType<typeof useCSSPuck> | null = null;
+  try {
+    context = useCSSPuck();
+  } catch {
+    return null;
+  }
+
+  const { _realtimeDataCaptureRef, _onRealtimeDataCapture } = context;
+
+  if (!_realtimeDataCaptureRef || !_onRealtimeDataCapture) {
+    return null;
+  }
+
+  return (
+    <PuckDataCapture
+      dataRef={_realtimeDataCaptureRef}
+      onDataChange={_onRealtimeDataCapture}
+    />
+  );
+}
+
+/**
  * Options for creating the CSS Plugin
  */
 export interface CSSPluginOptions {
@@ -663,6 +692,8 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
         {useLegacySync && (
           <PuckDataSynchronizer data={options.syncData!} syncKey={options.dataSyncKey!} />
         )}
+        {/* Capture true Puck data for realtime correction pass */}
+        {useContextSync && <RealtimeDataCaptureBridge />}
         {/* Track selection changes for focus region reporting */}
         {options.onSelectionChange && (
           <PuckSelectionTracker onSelectionChange={options.onSelectionChange} />
