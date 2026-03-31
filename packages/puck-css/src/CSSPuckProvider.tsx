@@ -214,7 +214,6 @@ function CSSPuckProviderInner({
   // This is set before setCurrentData and cleared after a short delay to ensure
   // all related onChange events are skipped (there may be multiple: one from data
   // prop change and one from setData dispatch).
-  const isApplyingRemoteSyncRef = useRef(false);
 
   // Pending remote data ref - stores latest data during debounce period
   const pendingRemoteDataRef = useRef<PuckData | null>(null);
@@ -223,11 +222,6 @@ function CSSPuckProviderInner({
   // Delay for debouncing remote sync updates (ms)
   const REMOTE_SYNC_DEBOUNCE_DELAY = 50;
 
-  // Track the last data synced from a remote update so we can detect echo onChange events.
-  // When Puck fires onChange after we call setCurrentData with remote data, the data
-  // will match this ref. This is more reliable than a timeout-based guard because it
-  // doesn't depend on React's rendering timing.
-  const lastRemoteSyncDataRef = useRef<string | null>(null);
 
   // Ref to track viewingVersion for use in callbacks (avoids stale closure)
   const viewingVersionRef = useRef<DocumentVersion | null>(null);
@@ -322,17 +316,11 @@ function CSSPuckProviderInner({
 
         const dataToSync = pendingRemoteDataRef.current;
         if (dataToSync) {
-          // Set flag to indicate we're applying a remote sync.
-          // All onChange events during this period should be skipped to prevent
-          // the receiving client from echoing updates back to the sender.
-          // There may be multiple onChange events (from data prop change and setData dispatch).
-          isApplyingRemoteSyncRef.current = true;
-
-          // Also increment counter as backup (for returnToLatest and other paths)
+          // Increment counter to skip the onChange echo(es) that will fire
+          // when Puck processes the setCurrentData call below.
+          // The content-based guards in puckDataToYMap and RealtimeClient
+          // prevent actual echo loops at the Y.Doc/WebSocket layer.
           pendingRemoteUpdatesRef.current += 1;
-
-          // Store a fingerprint of the remote data so we can detect echo onChange events
-          lastRemoteSyncDataRef.current = JSON.stringify(dataToSync);
 
           // Update current data when remote changes arrive
           currentDataDocumentPathRef.current = currentDocumentRef.current?.path ?? null;
@@ -342,22 +330,13 @@ function CSSPuckProviderInner({
 
           pendingRemoteDataRef.current = null;
 
-          // Clear the flag after a delay to ensure all onChange echoes are captured.
-          // React 19 concurrent rendering can defer onChange well beyond 100ms.
-          // Using 1000ms to be safe — genuine local edits on this browser will
-          // be rare while remote updates are streaming in (user is editing on
-          // the other browser). The flag is also cleared early by a genuine
-          // user input event (see useEffect below).
-          //
-          // IMPORTANT: Also reset pendingRemoteUpdatesRef to 0. If the remote
-          // data is identical to the current editor state (e.g. the initial Yjs
-          // sync matches the REST API data), Puck will NOT fire onChange, so the
-          // counter will never be decremented naturally. Leaving it > 0 would
-          // cause subsequent local edits to be silently dropped.
+          // Safety net: reset counter after React has processed the state updates.
+          // If the remote data is identical to current editor state, Puck won't
+          // fire onChange and the counter would never be decremented naturally.
+          // Leaving it > 0 would cause subsequent local edits to be dropped.
           setTimeout(() => {
-            isApplyingRemoteSyncRef.current = false;
             pendingRemoteUpdatesRef.current = 0;
-          }, 2000);
+          }, 100);
         }
         remoteSyncTimerRef.current = null;
       }, REMOTE_SYNC_DEBOUNCE_DELAY);
@@ -400,16 +379,12 @@ function CSSPuckProviderInner({
   const handleRealtimeDataCapture = useCallback((data: PuckData) => {
     if (!enableRealtime) return;
 
-    // Don't capture during remote sync application
-    if (isApplyingRemoteSyncRef.current) return;
-
     // Debounce: wait 400ms after the last store update to allow onChange
     // to process normally. If onChange already sent this data, the JSON
     // comparison below will no-op.
     if (captureTimerRef.current) clearTimeout(captureTimerRef.current);
     captureTimerRef.current = setTimeout(() => {
       if (!realtimeConnectedRef.current) return;
-      if (isApplyingRemoteSyncRef.current) return;
       if (viewingVersionRef.current !== null) return;
 
       const dataJson = JSON.stringify(data);
@@ -677,14 +652,8 @@ function CSSPuckProviderInner({
       // Important: we must NOT set pendingDataRef for remote syncs, otherwise
       // getHasUnsavedChanges() will incorrectly report unsaved changes.
       if (enableRealtime && realtime.connected) {
-        if (isApplyingRemoteSyncRef.current) {
-          // We're in the middle of applying a remote sync, skip everything
-          if (pendingRemoteUpdatesRef.current > 0) {
-            pendingRemoteUpdatesRef.current -= 1;
-          }
-          return;
-        } else if (pendingRemoteUpdatesRef.current > 0) {
-          // Counter indicates this onChange is from a recent remote update
+        if (pendingRemoteUpdatesRef.current > 0) {
+          // Counter indicates this onChange is from a remote update or data load
           pendingRemoteUpdatesRef.current -= 1;
           return;
         } else if (viewingVersionRef.current !== null) {
@@ -717,23 +686,10 @@ function CSSPuckProviderInner({
             return;
           }
 
-          // Echo detection: if this onChange data matches the last remote sync we applied,
-          // this is a delayed echo from React re-rendering after setCurrentData — NOT a
-          // local user edit. The timeout-based guard (isApplyingRemoteSyncRef) can miss
-          // these if React's onChange fires >100ms after setCurrentData.
-          // Don't clear the ref on match — multiple echo onChange events can fire from
-          // a single remote sync (data prop change + setData dispatch). Only clear when
-          // we see genuinely different data (a real local edit).
-          if (lastRemoteSyncDataRef.current !== null) {
-            const dataFingerprint = JSON.stringify(data);
-            if (dataFingerprint === lastRemoteSyncDataRef.current) {
-              return;
-            }
-            // Data differs from last remote sync — this is a genuine local edit, clear the ref
-            lastRemoteSyncDataRef.current = null;
-          }
-
           // Local user edit — send via WebSocket (DO handles persistence)
+          // Echo prevention is handled at lower layers:
+          // - puckDataToYMap no-ops when Y.Doc already has identical data
+          // - RealtimeClient.lastSentSnapshot drops sends matching last sent/received
           realtime.applyLocalChange(data);
           trackSentData(data);
           lastActionRef.current = null;
