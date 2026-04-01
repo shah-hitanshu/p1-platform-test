@@ -379,15 +379,22 @@ function CSSPuckProviderInner({
   const handleRealtimeDataCapture = useCallback((data: PuckData) => {
     if (!enableRealtime) return;
 
-    // Debounce: wait 400ms after the last store update to allow onChange
-    // to process normally. If onChange already sent this data, the JSON
-    // comparison below will no-op.
+    // Store the latest data in the ref for comparison when the timer fires.
+    // The ref always holds the most recent Zustand store snapshot.
+    realtimeDataCaptureRef.current = data;
+
+    // Debounce: wait 800ms after the last store update to allow onChange
+    // to process normally. When the timer fires, compare the ref's current
+    // data (not the closure's stale copy) against what was last sent.
     if (captureTimerRef.current) clearTimeout(captureTimerRef.current);
     captureTimerRef.current = setTimeout(() => {
       if (!realtimeConnectedRef.current) return;
       if (viewingVersionRef.current !== null) return;
 
-      const dataJson = JSON.stringify(data);
+      const currentData = realtimeDataCaptureRef.current;
+      if (!currentData) return;
+
+      const dataJson = JSON.stringify(currentData);
 
       // If saveData already sent this exact data, no catch-up needed
       if (dataJson === lastSentDataRef.current) return;
@@ -398,14 +405,9 @@ function CSSPuckProviderInner({
       if (dataOriginPath !== currentPath) return;
 
       console.log('[CSSPuckProvider] PuckDataCapture catch-up: sending missed data');
-      realtimeRef.current.applyLocalChange(data);
+      realtimeRef.current.applyLocalChange(currentData);
       lastSentDataRef.current = dataJson;
-
-      // Also update pendingDataRef so save status reflects the sent data
-      pendingDataRef.current = data;
-      setSaveStatus('saved');
-      setLastSaved(new Date());
-    }, 400);
+    }, 800);
   }, [enableRealtime]);
 
   // Cleanup capture timer on unmount
