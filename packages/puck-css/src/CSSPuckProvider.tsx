@@ -693,12 +693,14 @@ function CSSPuckProviderInner({
           realtime.applyLocalChange(data);
           trackSentData(data);
           lastActionRef.current = null;
-          // Still trigger debounced save as fallback, but performSave will
-          // skip the REST call when realtimeConnectedRef is true.
+          // Data sent via WebSocket — DO handles persistence.
+          // Don't trigger debouncedSave: the resulting setSaveStatus('saved')
+          // re-render disrupts AI plugin streaming.
+          return;
         }
       }
 
-      // Mark data as pending and trigger debounced save
+      // Non-realtime path: mark data as pending and trigger debounced REST save
       pendingDataRef.current = data;
 
       if (debouncedSave.isPaused()) {
