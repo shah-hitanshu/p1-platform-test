@@ -23,6 +23,14 @@ export const PRESENCE_STORAGE_KEY = 'presenceState';
 export const EDIT_SESSIONS_STORAGE_KEY = 'editSessions';
 
 /**
+ * Storage key for persisted branch version timestamp.
+ * Persisted so that after DO hibernation wake, checkBranchInvalidation()
+ * does not spuriously reload from Postgres when the KV timestamp
+ * hasn't actually changed.
+ */
+export const BRANCH_VERSION_STORAGE_KEY = 'lastSeenBranchVersion';
+
+/**
  * Valid edit operation types
  */
 export const VALID_OPERATION_TYPES = ['set', 'delete', 'insert', 'move', 'replace'] as const;

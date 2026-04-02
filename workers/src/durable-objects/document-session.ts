@@ -21,7 +21,7 @@ import {
 } from '../constants/security-limits';
 import { AgentEditPermissionService } from '../services/agent-edit-permission-service';
 import type { AgentEditSession, SessionInfo, DocumentSessionEnv } from './document-session-types';
-import { YDOC_STORAGE_KEY, EDIT_SESSIONS_STORAGE_KEY } from './document-session-types';
+import { YDOC_STORAGE_KEY, EDIT_SESSIONS_STORAGE_KEY, BRANCH_VERSION_STORAGE_KEY } from './document-session-types';
 import { PostgresSyncManager } from './postgres-sync-manager';
 import {
   parseSessionId,
@@ -112,6 +112,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   private sessionInfo: SessionInfo;
   private ydoc: Y.Doc;
   private initialized: boolean;
+  private initializingPromise: Promise<void> | null = null;
   private metadataInitialized = false;
   private cleanupAlarmScheduled = false;
   private lastSeenBranchVersion = 0;
@@ -343,19 +344,55 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   private async initializeCrdtIfNeeded(): Promise<void> {
     await this.initializeMetadataIfNeeded();
     if (this.initialized) return;
+    // Prevent concurrent initialization: if another call is already in-flight,
+    // wait for it instead of running a second initialization that would
+    // overwrite DO storage state with stale Postgres data.
+    if (this.initializingPromise) {
+      await this.initializingPromise;
+      return;
+    }
+    this.initializingPromise = this.doInitializeCrdt();
+    try {
+      await this.initializingPromise;
+    } finally {
+      this.initializingPromise = null;
+    }
+  }
+
+  private async doInitializeCrdt(): Promise<void> {
 
     const stored = await this.state.storage.get(YDOC_STORAGE_KEY);
-    if (stored instanceof Uint8Array && stored.length > 0) {
+    if (stored != null) {
+      console.log(`CRDT restore: stored type=${typeof stored}, constructor=${stored?.constructor?.name}, instanceof Uint8Array=${stored instanceof Uint8Array}, instanceof ArrayBuffer=${stored instanceof ArrayBuffer}, isView=${ArrayBuffer.isView(stored)}`);
+    } else {
+      console.log('CRDT restore: no data in DO storage');
+    }
+    // Use robust type check: after DO hibernation, the JS context is recreated
+    // and instanceof Uint8Array may return false for stored binary data.
+    // Accept Uint8Array, ArrayBuffer, or any ArrayBufferView.
+    const storedBytes = stored instanceof Uint8Array
+      ? stored
+      : stored instanceof ArrayBuffer
+        ? new Uint8Array(stored)
+        : (ArrayBuffer.isView(stored) ? new Uint8Array((stored as ArrayBufferView).buffer, (stored as ArrayBufferView).byteOffset, (stored as ArrayBufferView).byteLength) : null);
+    if (storedBytes && storedBytes.length > 0) {
       try {
-        Y.applyUpdate(this.ydoc, stored);
+        console.log(`CRDT restore: applying ${storedBytes.length} bytes to Y.Doc`);
+        Y.applyUpdate(this.ydoc, storedBytes);
         this.initialized = true;
         this.syncManager.lastSyncedStateVectorHash = this.syncManager.computeStateVectorHash();
+        const root = this.ydoc.getMap('root');
+        const contentArr = root.get('content');
+        console.log(`CRDT restore: SUCCESS from DO storage, content items=${contentArr ? (contentArr as Y.Array<unknown>).length : 'no-content-key'}`);
       } catch (error) {
-        console.warn('Failed to restore CRDT state from storage:', error);
+        console.warn('CRDT restore: FAILED to apply stored update:', error);
       }
+    } else {
+      console.log(`CRDT restore: storedBytes is ${storedBytes === null ? 'null' : 'empty (length=0)'}`);
     }
 
     if (!this.initialized) {
+      console.log('CRDT restore: falling through to Postgres initialization');
       const hasHttpApi = this.env.INTERNAL_API_URL !== undefined && this.env.INTERNAL_SECRET !== undefined;
       const hasHyperdrive = this.env.HYPERDRIVE !== undefined;
       if (hasHttpApi || hasHyperdrive) {
@@ -372,6 +409,15 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     const pendingFlag = await this.state.storage.get(DocumentSession.PERSIST_PENDING_KEY);
     if (pendingFlag === true) {
       this.persistPending = true;
+    }
+
+    // Restore lastSeenBranchVersion from DO storage so that
+    // checkBranchInvalidation() does not spuriously reload from Postgres
+    // after hibernation wake (in-memory default is 0, which is always
+    // less than any real KV timestamp).
+    const storedBranchVersion = await this.state.storage.get<number>(BRANCH_VERSION_STORAGE_KEY);
+    if (storedBranchVersion !== undefined) {
+      this.lastSeenBranchVersion = storedBranchVersion;
     }
   }
 
@@ -604,7 +650,10 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       broadcastUpdate: (update, sender) => broadcastUpdateFn(() => this.state.getWebSockets(), update, sender),
       scheduleCleanupAlarm: () => scheduleCleanupAlarm(this.getAlarmCleanupDeps()),
       getLastSeenBranchVersion: () => this.lastSeenBranchVersion,
-      setLastSeenBranchVersion: (v: number) => { this.lastSeenBranchVersion = v; },
+      setLastSeenBranchVersion: (v: number) => {
+        this.lastSeenBranchVersion = v;
+        void this.state.storage.put(BRANCH_VERSION_STORAGE_KEY, v);
+      },
     };
   }
 
