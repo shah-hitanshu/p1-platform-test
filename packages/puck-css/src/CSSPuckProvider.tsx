@@ -1660,10 +1660,10 @@ function CSSPuckProviderInner({
       // Puck action metadata capture - pass as onAction to <Puck>
       handleAction,
       // Phase 9: Presence & Agent values
-      // Use getter to avoid context recreation on every presence update.
-      // Presence changes frequently (focus region broadcasts) but shouldn't
-      // trigger re-renders of data-sync components like PuckDataSynchronizer.
+      // Use getter to avoid context recreation on every focus-region update.
+      // But expose hasActiveAgents directly so agent start/stop triggers re-renders.
       get presence() { return presenceStateRef.current; },
+      hasActiveAgents: presenceState?.hasActiveAgents ?? false,
       agentEdit: agentEditCapabilities,
       triggerAgent: triggerAgentFn,
       stopAgent: stableStopAgent,
@@ -1719,7 +1719,9 @@ function CSSPuckProviderInner({
       realtime.sendFocusRegions,
       handleAction,
       handleRealtimeDataCapture,
-      // Phase 9 dependencies (presenceState excluded — accessed via getter/ref)
+      // Phase 9 dependencies (full presenceState excluded — accessed via getter/ref,
+      // but hasActiveAgents is a direct value so agent start/stop triggers re-renders)
+      presenceState?.hasActiveAgents,
       agentEditCapabilities,
       triggerAgentFn,
       stableStopAgent,

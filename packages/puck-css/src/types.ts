@@ -414,6 +414,12 @@ export interface CSSPuckContextValue {
    */
   presence: PresenceState | null;
 
+  /**
+   * Whether any agent is actively editing (direct value so changes
+   * trigger context re-renders and clear the agent banner).
+   */
+  hasActiveAgents: boolean;
+
   // =========================================================================
   // Agent Values (Phase 9)
   // =========================================================================
