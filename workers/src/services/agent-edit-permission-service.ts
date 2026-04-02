@@ -86,12 +86,26 @@ export class AgentEditPermissionService {
       }
     }
 
-    // Human-requested work is always allowed if agent is active
+    // Check for region conflicts (applies to all triggers, including human-requested).
+    // A human focused on /content/4 should block agent edits to /content/4/props/...
+    // even when the human explicitly requested the edit.
+    const conflictingRegions = this.activityDetector.getConflictingRegions(
+      context.targetRegions,
+    );
+    if (conflictingRegions.length > 0) {
+      return {
+        allowed: false,
+        reason: 'region_conflict',
+        conflictingRegions,
+      };
+    }
+
+    // Human-requested work is allowed if no region conflicts
     if (context.trigger === 'human_requested') {
       return { allowed: true };
     }
 
-    // For autonomous work, use activity detector
+    // For autonomous work, also check idle timeout
     const activityResult = this.activityDetector.canAgentProceed({
       trigger: context.trigger,
       targetRegions: context.targetRegions,
