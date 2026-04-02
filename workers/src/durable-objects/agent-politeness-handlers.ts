@@ -56,6 +56,7 @@ export interface AgentPolitenessDeps {
   cachedOrganization: Organization | null | undefined;
   getConnectionCount: () => number;
   persistEditSessions: () => Promise<void>;
+  persistPresence: () => Promise<void>;
   broadcastPresenceUpdate: () => void;
   refreshOrganizationSettings: () => Promise<void>;
   scheduleCleanupAlarm: () => Promise<void>;
@@ -306,8 +307,10 @@ export async function handleAgentEditComplete(
     );
   }
 
-  // Clear agent's presence
+  // Clear agent's presence and persist to storage immediately
+  // (prevents stale presence from being restored on DO hibernation wake)
   deps.presenceManager.unregisterByActorId(session.agentId);
+  await deps.persistPresence();
 
   // Remove the edit session
   deps.editSessions.delete(parsed.editSessionId);
@@ -364,8 +367,10 @@ export async function handleAgentEditAbort(
     );
   }
 
-  // Clear agent's presence
+  // Clear agent's presence and persist to storage immediately
+  // (prevents stale presence from being restored on DO hibernation wake)
   deps.presenceManager.unregisterByActorId(session.agentId);
+  await deps.persistPresence();
 
   // Remove the edit session
   deps.editSessions.delete(parsed.editSessionId);
@@ -440,8 +445,10 @@ export async function handleAgentStop(
     );
   }
 
-  // Clear agent's presence
+  // Clear agent's presence and persist to storage immediately
+  // (prevents stale presence from being restored on DO hibernation wake)
   deps.presenceManager.unregisterByActorId(session.agentId);
+  await deps.persistPresence();
 
   // Remove the edit session
   deps.editSessions.delete(sessionId);

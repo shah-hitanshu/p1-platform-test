@@ -583,6 +583,20 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     };
   }
 
+  // Document presence: /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/presence
+  // Must come before branch presence to avoid the shorter pattern matching first
+  const docPresenceMatch = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/(.+)\/presence$/.exec(normalizedPath);
+  if (docPresenceMatch) {
+    return {
+      handler: 'presence',
+      params: {
+        siteId: docPresenceMatch[1],
+        branchId: docPresenceMatch[2],
+        documentPath: docPresenceMatch[3],
+      },
+    };
+  }
+
   // Branch presence: /api/sites/{siteId}/branches/{branchId}/presence
   const branchPresenceMatch = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/presence$/.exec(normalizedPath);
   if (branchPresenceMatch) {

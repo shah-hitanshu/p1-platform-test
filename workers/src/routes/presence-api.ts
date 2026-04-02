@@ -19,6 +19,7 @@ import {
   getBranchPresence,
   getSitePresence,
   getAgentPresence,
+  queryDocumentPresence,
   BranchNotFoundError,
   SiteNotFoundError,
   AgentNotFoundError,
@@ -61,6 +62,7 @@ export interface PresencePrincipal {
 export interface PresenceRouteContext {
   siteId?: string;
   branchId?: string;
+  documentPath?: string;
   organizationId?: string;
   agentId?: string;
   principal: PresencePrincipal;
@@ -252,6 +254,31 @@ async function handleGetAgentPresence(
   return jsonResponse(presence);
 }
 
+/**
+ * Handle GET /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/presence
+ */
+async function handleGetDocumentPresence(
+  context: PresenceRouteContext,
+  env: unknown,
+): Promise<Response> {
+  if (context.siteId === undefined || context.branchId === undefined || context.documentPath === undefined) {
+    return errorResponse('Site ID, Branch ID, and Document Path are required', 400);
+  }
+
+  // Authorization check (same as branch-level — if you can view the branch, you can see document presence)
+  const hasAccess = await canViewBranch(context, context.siteId, context.branchId);
+  if (!hasAccess) {
+    throw new PresenceAuthorizationError(
+      'Access denied: You do not have permission to view presence on this document',
+    );
+  }
+
+  const decodedPath = decodeURIComponent(context.documentPath);
+  const presences = await queryDocumentPresence(env, context.siteId, decodedPath, context.branchId);
+
+  return jsonResponse({ presences });
+}
+
 // =============================================================================
 // Main Route Handler
 // =============================================================================
@@ -276,6 +303,11 @@ export async function handlePresenceRoutes(
     if (context.organizationId !== undefined && context.agentId !== undefined) {
       // Agent presence endpoint
       return await handleGetAgentPresence(context, env);
+    }
+
+    if (context.siteId !== undefined && context.branchId !== undefined && context.documentPath !== undefined) {
+      // Document presence endpoint
+      return await handleGetDocumentPresence(context, env);
     }
 
     if (context.siteId !== undefined && context.branchId !== undefined) {

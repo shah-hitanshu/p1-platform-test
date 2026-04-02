@@ -767,6 +767,63 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       }
     });
 
+    it('should persist presence to storage after unregistering agent (regression: stale presence on DO wake)', async () => {
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      // Start an edit session (registers agent presence)
+      const startResponse = await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'agent-persist-test',
+            trigger: 'human_requested',
+            intent: 'Test persistence',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+
+      const startBody = (await startResponse.json());
+
+      // Complete the edit session
+      const response = await session.fetch(
+        new Request('http://localhost/agent-edit-complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            editSessionId: startBody.editSessionId,
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(200);
+
+      // Verify that presence state was persisted to DO storage
+      // The key 'presenceState' should have been written with the agent removed
+      const putCalls = state.storage.put.mock.calls;
+      const presencePutCalls = putCalls.filter(
+        (call) => call[0] === 'presenceState',
+      );
+
+      // There should be at least one presenceState put after unregister
+      expect(presencePutCalls.length).toBeGreaterThan(0);
+
+      // The last persisted presence should NOT contain the agent
+      const lastPresenceState = presencePutCalls[presencePutCalls.length - 1][1];
+      const presences = (lastPresenceState as { presences: Array<{ actorId: string }> }).presences;
+      const agentStillPresent = presences.some(
+        (p) => p.actorId === 'agent-persist-test',
+      );
+      expect(agentStillPresent).toBe(false);
+    });
+
     it('should reject invalid edit session ID', async () => {
       const { DocumentSession } = await import(
         '../../src/durable-objects/document-session'

@@ -17,6 +17,7 @@ vi.mock('../../src/services/presence-rollup-service', () => ({
   getBranchPresence: vi.fn(),
   getSitePresence: vi.fn(),
   getAgentPresence: vi.fn(),
+  queryDocumentPresence: vi.fn(),
   BranchNotFoundError: class BranchNotFoundError extends Error {
     name = 'BranchNotFoundError';
     constructor(public branchId: string) {
@@ -429,6 +430,150 @@ describe('Phase 8: Presence API Routes', () => {
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.locations).toHaveLength(0);
+    });
+  });
+
+  // ===========================================================================
+  // GET /api/sites/{siteId}/branches/{branchId}/documents/{path}/presence
+  // ===========================================================================
+
+  describe('GET /api/sites/{siteId}/branches/{branchId}/documents/{path}/presence', () => {
+    it('should return document presence with presences array', async () => {
+      const { handlePresenceRoutes } = await import('../../src/routes/presence-api');
+      const presenceService = await import('../../src/services/presence-rollup-service');
+
+      const mockPresences = [
+        {
+          id: 'presence-1',
+          actorId: 'user-1',
+          actorType: 'user',
+          role: 'human',
+          name: 'Test User',
+          state: 'editing',
+          lastActivityAt: new Date().toISOString(),
+          joinedAt: new Date().toISOString(),
+        },
+      ];
+      vi.mocked(presenceService.queryDocumentPresence).mockResolvedValueOnce(mockPresences);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/documents/home/presence',
+        { method: 'GET' },
+      );
+
+      const response = await handlePresenceRoutes(
+        request,
+        {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentPath: 'home',
+          principal: {
+            id: 'user-1',
+            type: 'user',
+            pantheonSiteRoles: { 'site-1': 'developer' },
+          },
+        },
+        {} as unknown,
+      );
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.presences).toHaveLength(1);
+      expect(body.presences[0].actorId).toBe('user-1');
+    });
+
+    it('should return empty presences when no one is on the document', async () => {
+      const { handlePresenceRoutes } = await import('../../src/routes/presence-api');
+      const presenceService = await import('../../src/services/presence-rollup-service');
+
+      vi.mocked(presenceService.queryDocumentPresence).mockResolvedValueOnce([]);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/documents/home/presence',
+        { method: 'GET' },
+      );
+
+      const response = await handlePresenceRoutes(
+        request,
+        {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentPath: 'home',
+          principal: {
+            id: 'user-1',
+            type: 'user',
+            pantheonSiteRoles: { 'site-1': 'developer' },
+          },
+        },
+        {} as unknown,
+      );
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.presences).toHaveLength(0);
+    });
+
+    it('should decode URL-encoded document paths', async () => {
+      const { handlePresenceRoutes } = await import('../../src/routes/presence-api');
+      const presenceService = await import('../../src/services/presence-rollup-service');
+
+      vi.mocked(presenceService.queryDocumentPresence).mockResolvedValueOnce([]);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/documents/products%2Fwidgets/presence',
+        { method: 'GET' },
+      );
+
+      const response = await handlePresenceRoutes(
+        request,
+        {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentPath: 'products%2Fwidgets',
+          principal: {
+            id: 'user-1',
+            type: 'user',
+            pantheonSiteRoles: { 'site-1': 'developer' },
+          },
+        },
+        {} as unknown,
+      );
+
+      expect(response.status).toBe(200);
+      // Verify queryDocumentPresence was called with decoded path
+      expect(presenceService.queryDocumentPresence).toHaveBeenCalledWith(
+        expect.anything(),
+        'site-1',
+        'products/widgets',
+        'branch-1',
+      );
+    });
+
+    it('should return 403 for document presence without permission', async () => {
+      const { handlePresenceRoutes } = await import('../../src/routes/presence-api');
+      const authModule = await import('../../src/auth/authorization');
+
+      vi.mocked(authModule.hasPermission).mockResolvedValueOnce(false);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/documents/home/presence',
+        { method: 'GET' },
+      );
+
+      const response = await handlePresenceRoutes(
+        request,
+        {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentPath: 'home',
+          principal: { id: 'user-1', type: 'user' },
+        },
+        {} as unknown,
+      );
+
+      expect(response.status).toBe(403);
+      const body = await response.json();
+      expect(body.error).toContain('Access denied');
     });
   });
 

@@ -202,6 +202,7 @@ export async function dispatchRoute(
       return await handlePresenceRoutes(request, {
         siteId: route.params.siteId,
         branchId: route.params.branchId,
+        documentPath: route.params.documentPath,
         organizationId: route.params.organizationId,
         agentId: route.params.agentId,
         principal,

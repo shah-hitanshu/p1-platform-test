@@ -715,6 +715,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       get cachedOrganization() { return self.cachedOrganization; },
       getConnectionCount: () => this.getConnectionCount(),
       persistEditSessions: () => this.persistEditSessions(),
+      persistPresence: () => this.persistPresence(),
       broadcastPresenceUpdate: () => broadcastPresenceUpdate(this.getPresenceProtocolDeps()),
       refreshOrganizationSettings: () => this.refreshOrganizationSettings(),
       scheduleCleanupAlarm: () => scheduleCleanupAlarm(this.getAlarmCleanupDeps()),
