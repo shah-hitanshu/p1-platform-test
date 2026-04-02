@@ -238,7 +238,7 @@ function CSSPuckProviderInner({
 
   // WebSocket presence state - used when realtime is connected for instant presence updates
   const [wsPresenceActors, setWsPresenceActors] = useState<ActorPresence[]>([]);
-  const wsPresenceActiveRef = useRef(false);
+  const [wsPresenceActive, setWsPresenceActive] = useState(false);
 
   // Helper to enrich actors with display names from the resolver
   const enrichActorsWithNames = useCallback((actors: ActorPresence[]): ActorPresence[] => {
@@ -262,12 +262,20 @@ function CSSPuckProviderInner({
     initialData: currentData,
     // WebSocket presence callbacks - receive instant presence updates
     onPresenceUpdate: (actors) => {
-      // Mark WebSocket presence as active
-      wsPresenceActiveRef.current = true;
+      // Mark WebSocket presence as active (first update received)
+      setWsPresenceActive(true);
       // Filter out self, enrich with names, and update state
       const filtered = actors.filter((a) => a.actorId !== userId);
       const enriched = enrichActorsWithNames(filtered);
       setWsPresenceActors(enriched);
+
+      // When no agents remain active, reset wsPresenceActiveRef so HTTP
+      // polling resumes as a safety net. This prevents the banner from
+      // staying stuck if WS presence updates become unreliable.
+      const hasAgents = enriched.some((a) => a.role === 'agent');
+      if (!hasAgents) {
+        setWsPresenceActive(false);
+      }
     },
     onFocusRegionBroadcast: (actorId, focusRegions) => {
       // Update focus regions for the specific actor
@@ -276,9 +284,19 @@ function CSSPuckProviderInner({
       );
     },
     onRemoteUpdate: (data) => {
+      const componentCount = data.content?.length ?? 0;
+      const zoneCount = data.zones ? Object.keys(data.zones).length : 0;
+      console.log(
+        '[CSSPuckProvider] onRemoteUpdate received:',
+        `components=${componentCount}, zones=${zoneCount},`,
+        `pendingRemoteUpdates=${pendingRemoteUpdatesRef.current},`,
+        `viewingVersion=${viewingVersionRef.current !== null}`
+      );
+
       // Don't apply remote updates while viewing a historical version
       // The user is viewing read-only historical data and shouldn't see live changes
       if (viewingVersionRef.current !== null) {
+        console.log('[CSSPuckProvider] onRemoteUpdate SKIPPED: viewing historical version');
         return;
       }
 
@@ -292,6 +310,7 @@ function CSSPuckProviderInner({
         (!rootProps || Object.keys(rootProps).length === 0) &&
         !data.zones
       ) {
+        console.log('[CSSPuckProvider] onRemoteUpdate SKIPPED: empty data rejected');
         return;
       }
 
@@ -316,6 +335,13 @@ function CSSPuckProviderInner({
 
         const dataToSync = pendingRemoteDataRef.current;
         if (dataToSync) {
+          const syncComponentCount = dataToSync.content?.length ?? 0;
+          console.log(
+            '[CSSPuckProvider] onRemoteUpdate APPLYING:',
+            `components=${syncComponentCount},`,
+            `pendingRemoteUpdates will be=${pendingRemoteUpdatesRef.current + 1}`
+          );
+
           // Increment counter to skip the onChange echo(es) that will fire
           // when Puck processes the setCurrentData call below.
           // The content-based guards in puckDataToYMap and RealtimeClient
@@ -404,7 +430,7 @@ function CSSPuckProviderInner({
       const dataOriginPath = currentDataDocumentPathRef.current;
       if (dataOriginPath !== currentPath) return;
 
-      console.log('[CSSPuckProvider] PuckDataCapture catch-up: sending missed data');
+      console.log('[CSSPuckProvider] PuckDataCapture catch-up: sending missed data,', `components=${currentData.content?.length ?? 0}`);
       realtimeRef.current.applyLocalChange(currentData);
       lastSentDataRef.current = dataJson;
     }, 800);
@@ -642,8 +668,11 @@ function CSSPuckProviderInner({
   // Sends changes via WebSocket when realtime is enabled (but not for remote updates)
   const saveData = useCallback(
     (data: PuckData) => {
+      const componentCount = data.content?.length ?? 0;
+
       // Suppress the onChange echo from PuckDataSynchronizer after loadDocument.
       if (suppressNextSaveRef.current) {
+        console.log(`[CSSPuckProvider] saveData SKIPPED: suppressNextSave (components=${componentCount})`);
         suppressNextSaveRef.current = false;
         return;
       }
@@ -656,10 +685,12 @@ function CSSPuckProviderInner({
       if (enableRealtime && realtime.connected) {
         if (pendingRemoteUpdatesRef.current > 0) {
           // Counter indicates this onChange is from a remote update or data load
+          console.log(`[CSSPuckProvider] saveData SKIPPED: pendingRemoteUpdates=${pendingRemoteUpdatesRef.current} (components=${componentCount})`);
           pendingRemoteUpdatesRef.current -= 1;
           return;
         } else if (viewingVersionRef.current !== null) {
           // User is viewing historical version - don't broadcast or save
+          console.log(`[CSSPuckProvider] saveData SKIPPED: viewing historical version (components=${componentCount})`);
           return;
         } else {
           const currentPath = currentDocumentRef.current?.path ?? null;
@@ -671,8 +702,9 @@ function CSSPuckProviderInner({
           const dataOriginPath = currentDataDocumentPathRef.current;
           if (dataOriginPath !== currentPath) {
             console.warn(
-              '[CSSPuckProvider] Data origin mismatch — skipping realtime send.',
+              '[CSSPuckProvider] saveData SKIPPED: data origin mismatch.',
               'dataOrigin:', dataOriginPath, 'currentDoc:', currentPath,
+              `components=${componentCount}`,
             );
             return;
           }
@@ -682,8 +714,9 @@ function CSSPuckProviderInner({
           const connectedPath = realtime.connectedDocumentPath;
           if (currentPath !== connectedPath) {
             console.warn(
-              '[CSSPuckProvider] Connection identity mismatch — skipping realtime send.',
+              '[CSSPuckProvider] saveData SKIPPED: connection identity mismatch.',
               'currentDoc:', currentPath, 'connectedDoc:', connectedPath,
+              `components=${componentCount}`,
             );
             return;
           }
@@ -692,17 +725,20 @@ function CSSPuckProviderInner({
           // Echo prevention is handled at lower layers:
           // - puckDataToYMap no-ops when Y.Doc already has identical data
           // - RealtimeClient.lastSentSnapshot drops sends matching last sent/received
+          console.log(`[CSSPuckProvider] saveData SENDING via realtime: components=${componentCount}, path=${currentPath}`);
           realtime.applyLocalChange(data);
           trackSentData(data);
           lastActionRef.current = null;
           // Data sent via WebSocket — DO handles persistence.
-          // Don't trigger debouncedSave: the resulting setSaveStatus('saved')
-          // re-render disrupts AI plugin streaming.
+          // Update save status directly (skip debouncedSave/performSave chain).
+          setSaveStatus('saved');
+          setLastSaved(new Date());
           return;
         }
       }
 
       // Non-realtime path: mark data as pending and trigger debounced REST save
+      console.log(`[CSSPuckProvider] saveData via REST (debounced): components=${componentCount}, realtimeEnabled=${enableRealtime}, connected=${realtime.connected}`);
       pendingDataRef.current = data;
 
       if (debouncedSave.isPaused()) {
@@ -979,7 +1015,7 @@ function CSSPuckProviderInner({
     if (!presenceEnabled) return;
 
     // Skip HTTP polling if WebSocket presence is handling updates
-    const shouldSkipPolling = wsPresenceActiveRef.current && realtime.connected;
+    const shouldSkipPolling = wsPresenceActive && realtime.connected;
 
     // Initial fetch (only if WS isn't active yet)
     if (!presenceInitializedRef.current && !shouldSkipPolling) {
@@ -991,7 +1027,7 @@ function CSSPuckProviderInner({
     // Skip polling when WebSocket is handling presence
     const intervalId = setInterval(() => {
       // Check again at each interval - WS state may have changed
-      if (!wsPresenceActiveRef.current || !realtime.connected) {
+      if (!wsPresenceActive || !realtime.connected) {
         void fetchPresenceRef.current();
       }
     }, presencePollingInterval);
@@ -1009,6 +1045,17 @@ function CSSPuckProviderInner({
     }
   }, [presenceEnabled]);
 
+  // Reset WebSocket presence state when disconnected so the UI falls back
+  // to HTTP-polled presence data. Without this, wsPresenceActive stays
+  // true after disconnect and the UI shows stale WebSocket presence
+  // (e.g. an agent that already completed its edit session still appears).
+  useEffect(() => {
+    if (!realtime.connected) {
+      setWsPresenceActive(false);
+      setWsPresenceActors([]);
+    }
+  }, [realtime.connected]);
+
   // Compute derived presence values
   // Prefer WebSocket presence when connected for instant updates
   const presenceState: PresenceState | null = useMemo(() => {
@@ -1016,7 +1063,7 @@ function CSSPuckProviderInner({
 
     // Use WebSocket presence when active and connected, otherwise fall back to HTTP polling data
     const effectiveActors =
-      wsPresenceActiveRef.current && realtime.connected ? wsPresenceActors : presenceActors;
+      wsPresenceActive && realtime.connected ? wsPresenceActors : presenceActors;
 
     const humans = effectiveActors.filter((actor) => actor.role === 'human');
     const agents = effectiveActors.filter((actor) => actor.role === 'agent');
@@ -1035,7 +1082,7 @@ function CSSPuckProviderInner({
       hasActiveAgents,
       refresh: fetchPresence,
     };
-  }, [presenceEnabled, presenceActors, wsPresenceActors, realtime.connected, fetchPresence]);
+  }, [presenceEnabled, presenceActors, wsPresenceActors, wsPresenceActive, realtime.connected, fetchPresence]);
 
   // Keep presence in a ref so it can be read via getter without triggering
   // context recreation. Presence changes frequently (focus region broadcasts)
