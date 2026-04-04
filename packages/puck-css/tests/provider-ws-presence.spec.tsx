@@ -312,6 +312,64 @@ describe('CSSPuckProvider WebSocket Presence Integration', () => {
       expect(presenceValue).not.toBeNull();
     });
 
+    it('should keep WS presence active in human-only sessions (no agents)', async () => {
+      const { CSSPuckProvider } = await import('../src/CSSPuckProvider.js');
+      const { PresenceContext } = await import('../src/PresenceContext.js');
+      const { CSSPuckContext } = await import('../src/CSSPuckContext.js');
+
+      let loadDocumentFn: ((path: string) => Promise<void>) | null = null;
+      let presenceValue: { actors: ActorPresence[] } | null = null;
+
+      const TestConsumer = () => {
+        const cssContext = useContext(CSSPuckContext);
+        loadDocumentFn = cssContext?.loadDocument ?? null;
+        presenceValue = useContext(PresenceContext);
+        return <div>Test</div>;
+      };
+
+      render(
+        <CSSPuckProvider
+          client={mockClient}
+          siteId="site-1"
+          branchId="branch-1"
+          userId="user-1"
+          enableRealtime={true}
+          wsBaseUrl="ws://localhost:8787"
+          presenceEnabled={true}
+          presencePollingInterval={5000}
+        >
+          <TestConsumer />
+        </CSSPuckProvider>
+      );
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+      await act(async () => { await loadDocumentFn?.('pages/home'); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+
+      const realtimeClient = getLatestClient();
+      expect(realtimeClient?.isConnected()).toBe(true);
+
+      // Simulate a presence update with only human actors (no agents)
+      const humanActors: ActorPresence[] = [
+        {
+          id: 'ws-human-1',
+          actorId: 'user-2',
+          actorType: 'user',
+          role: 'human',
+          name: 'Alice',
+          state: 'active',
+          lastActivityAt: new Date().toISOString(),
+          joinedAt: new Date().toISOString(),
+        },
+      ];
+
+      await act(async () => { realtimeClient?.simulatePresenceUpdate(humanActors); });
+
+      // WS presence must remain active — human-only sessions should show WS actors, not fall back
+      expect(presenceValue).not.toBeNull();
+      expect(presenceValue!.actors.some((a: ActorPresence) => a.actorId === 'user-2')).toBe(true);
+    });
+
     it('should fall back to HTTP polling when WebSocket disconnects', async () => {
       const { CSSPuckProvider } = await import('../src/CSSPuckProvider.js');
       const { CSSPuckContext } = await import('../src/CSSPuckContext.js');

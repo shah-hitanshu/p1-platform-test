@@ -268,14 +268,6 @@ function CSSPuckProviderInner({
       const filtered = actors.filter((a) => a.actorId !== userId);
       const enriched = enrichActorsWithNames(filtered);
       setWsPresenceActors(enriched);
-
-      // When no agents remain active, reset wsPresenceActiveRef so HTTP
-      // polling resumes as a safety net. This prevents the banner from
-      // staying stuck if WS presence updates become unreliable.
-      const hasAgents = enriched.some((a) => a.role === 'agent');
-      if (!hasAgents) {
-        setWsPresenceActive(false);
-      }
     },
     onFocusRegionBroadcast: (actorId, focusRegions) => {
       // Update focus regions for the specific actor
