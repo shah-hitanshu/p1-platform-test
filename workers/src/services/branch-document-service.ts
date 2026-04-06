@@ -83,7 +83,7 @@ export async function listDocumentsOnBranch(
     if (pathPrefix !== undefined && pathPrefix !== '') {
       const escapedPrefix = escapeLikePattern(pathPrefix) + '%';
       params.push(escapedPrefix);
-      sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\\\'`;
+      sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\'`;
     }
 
     sql += `
@@ -126,7 +126,7 @@ export async function listDocumentsOnBranch(
         )`;
 
     if (pathPrefix !== undefined && pathPrefix !== '') {
-      sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\\\'`;
+      sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\'`;
     }
 
     sql += ' ORDER BY path ASC';
@@ -170,7 +170,7 @@ export async function listDocumentsOnBranch(
 
   if (pathPrefix !== undefined && pathPrefix !== '') {
     params.push(escapeLikePattern(pathPrefix) + '%');
-    sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\\\'`;
+    sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\'`;
   }
 
   sql += ' ORDER BY d.path ASC';

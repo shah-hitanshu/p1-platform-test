@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 
 describe('Reference Comparison', () => {
   // Test 27: Remote tool names match reference
-  it('should have the same 11 tool names as the reference', async () => {
+  it('should have the same 13 tool names as the reference', async () => {
     const remote = await import('../../src/shared/tools.js');
     const remoteDefs = remote.getToolDefinitions();
     const remoteNames = remoteDefs.map((d) => d.name).sort();
@@ -18,10 +18,12 @@ describe('Reference Comparison', () => {
       'apply_document_edits',
       'check_edit_permission',
       'complete_edit_session',
+      'create_page',
       'get_branch_presence',
       'get_document',
       'get_document_presence',
       'list_branches',
+      'list_components',
       'list_documents',
       'list_sites',
       'start_edit_session',
@@ -29,7 +31,7 @@ describe('Reference Comparison', () => {
   });
 
   // Test 28: Remote schemas have same shape
-  it('should export schemas for all 11 tools', async () => {
+  it('should export schemas for all 13 tools', async () => {
     const remote = await import('../../src/shared/tools.js');
     const schemaNames = Object.keys(remote.schemas).sort();
 
@@ -38,10 +40,12 @@ describe('Reference Comparison', () => {
       'apply_document_edits',
       'check_edit_permission',
       'complete_edit_session',
+      'create_page',
       'get_branch_presence',
       'get_document',
       'get_document_presence',
       'list_branches',
+      'list_components',
       'list_documents',
       'list_sites',
       'start_edit_session',

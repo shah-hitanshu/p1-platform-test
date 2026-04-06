@@ -345,4 +345,82 @@ describe('McpApiClient', () => {
       expect(url).toBe('http://localhost:8787/api/sites');
     });
   });
+
+  // Tests for listDocuments with pathPrefix
+  describe('listDocuments with pathPrefix', () => {
+    it('appends pathPrefix as a query parameter when provided', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient({ baseUrl: 'http://localhost:8787', agentId: 'a1', agentApiKey: 'aak_test' });
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, { documents: [] }));
+
+      await client.listDocuments('site-1', 'branch-1', { pathPrefix: '/_registry/components/' });
+
+      const [url] = mockFetch.mock.calls[0] as [string, ...unknown[]];
+      expect(url).toContain('pathPrefix=%2F_registry%2Fcomponents%2F');
+    });
+
+    it('does not append query params when pathPrefix is not provided', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient({ baseUrl: 'http://localhost:8787', agentId: 'a1', agentApiKey: 'aak_test' });
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, { documents: [] }));
+
+      await client.listDocuments('site-1', 'branch-1');
+
+      const [url] = mockFetch.mock.calls[0] as [string, ...unknown[]];
+      expect(url).not.toContain('pathPrefix');
+    });
+  });
+
+  // Tests for getDocumentLatestVersion
+  describe('getDocumentLatestVersion', () => {
+    it('fetches the latest version snapshot by document ID', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient({ baseUrl: 'http://localhost:8787', agentId: 'a1', agentApiKey: 'aak_test' });
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+        id: 'ver-1',
+        documentId: 'doc-abc123',
+        versionNumber: 1,
+        snapshot: { name: 'HeroBlock', descriptorHash: 'abc' },
+      }));
+
+      const result = await client.getDocumentLatestVersion('site-1', 'branch-1', 'doc-abc123');
+
+      const [url] = mockFetch.mock.calls[0] as [string, ...unknown[]];
+      // URL must use documentId directly — not an encoded path
+      expect(url).toContain('/documents/doc-abc123/versions/latest');
+      expect(url).not.toContain('%2F'); // no path encoding — it is a UUID segment
+      expect(result.snapshot).toEqual({ name: 'HeroBlock', descriptorHash: 'abc' });
+      expect(result.id).toBe('ver-1');
+    });
+  });
+
+  // Tests for createDocument
+  describe('createDocument', () => {
+    it('creates a document with snapshot in one atomic call', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient({ baseUrl: 'http://localhost:8787', agentId: 'a1', agentApiKey: 'aak_test' });
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+        document: { id: 'doc-1', path: '/about', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+        version: { id: 'ver-1', versionNumber: 1, snapshot: {}, documentId: 'doc-1', branchId: 'branch-1', source: 'edit', createdById: '', createdByType: 'agent', createdAt: '' },
+      }, 201));
+
+      const result = await client.createDocument(
+        'site-1', 'branch-1', '/about', { content: [], root: { props: {} } },
+      );
+
+      expect(mockFetch).toHaveBeenCalledTimes(1); // single atomic call
+      const [url, init] = mockFetch.mock.calls[0] as [string, { body: string }];
+      expect(url).toBe('http://localhost:8787/api/sites/site-1/branches/branch-1/documents');
+      const body = JSON.parse(init.body) as { path: string; snapshot: unknown };
+      expect(body.path).toBe('/about');
+      expect(body.snapshot).toBeDefined();
+      expect(result.documentId).toBe('doc-1');
+      expect(result.versionId).toBe('ver-1');
+      expect(result.documentPath).toBe('/about');
+    });
+  });
 });

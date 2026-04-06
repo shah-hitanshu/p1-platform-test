@@ -49,6 +49,19 @@ export interface ListDocumentsResponse {
   documents: DocumentInfo[];
 }
 
+export interface DocumentVersionLatest {
+  id: string;
+  documentId: string;
+  versionNumber: number;
+  snapshot: Record<string, unknown>;
+}
+
+export interface CreateDocumentResult {
+  documentId: string;
+  documentPath: string;
+  versionId: string;
+}
+
 export interface DocumentSnapshot {
   snapshot: Record<string, unknown>;
   version?: number;
@@ -315,13 +328,76 @@ export class McpApiClient {
     return this.handleResponse<ListBranchesResponse>(response);
   }
 
-  async listDocuments(siteId: string, branchId: string): Promise<ListDocumentsResponse> {
-    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents`;
+  async listDocuments(
+    siteId: string,
+    branchId: string,
+    options?: { pathPrefix?: string },
+  ): Promise<ListDocumentsResponse> {
+    const params =
+      options?.pathPrefix !== undefined && options.pathPrefix !== ''
+        ? `?pathPrefix=${encodeURIComponent(options.pathPrefix)}`
+        : '';
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents${params}`;
     const response = await this.doFetch(url, {
       method: 'GET',
       headers: this.getHeaders(),
     });
     return this.handleResponse<ListDocumentsResponse>(response);
+  }
+
+  /**
+   * Get the latest version snapshot for a document by its UUID.
+   *
+   * IMPORTANT: documentId must be a UUID (from listDocuments response doc.id),
+   * NOT an encoded document path. The backend route uses [^/]+ to capture this
+   * segment and performs a UUID-based DB lookup — passing an encoded path
+   * would produce a 404 or wrong result.
+   */
+  async getDocumentLatestVersion(
+    siteId: string,
+    branchId: string,
+    documentId: string,
+  ): Promise<DocumentVersionLatest> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/versions/latest`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<DocumentVersionLatest>(response);
+  }
+
+  /**
+   * Create a new document and its first version atomically.
+   *
+   * The CSS backend accepts an optional `snapshot` in the POST body alongside
+   * `path` and creates both document and version in a single transaction.
+   * This is preferred over separate create-then-version calls.
+   *
+   * Used by create_page — bypasses agent edit workflow since the doc is new
+   * (no checkpoint is needed before writing a first version).
+   */
+  async createDocument(
+    siteId: string,
+    branchId: string,
+    path: string,
+    snapshot: unknown,
+  ): Promise<CreateDocumentResult> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents`;
+    const response = await this.doFetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ path, snapshot }),
+    });
+    const result = await this.handleResponse<{
+      document: { id: string; path: string };
+      version: { id: string };
+    }>(response);
+
+    return {
+      documentId: result.document.id,
+      documentPath: result.document.path,
+      versionId: result.version.id,
+    };
   }
 
   async getDocument(

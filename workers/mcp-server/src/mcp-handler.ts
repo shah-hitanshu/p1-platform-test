@@ -1,8 +1,8 @@
 /**
- * MCP Handler - Creates and configures the MCP server with all 11 tools.
+ * MCP Handler - Creates and configures the MCP server with all 13 tools.
  *
  * This module creates an McpServer instance from @modelcontextprotocol/sdk,
- * wires up the McpApiClient, and registers all 11 tools with their schemas
+ * wires up the McpApiClient, and registers all 13 tools with their schemas
  * and handlers.
  */
 
@@ -38,7 +38,7 @@ export function createMcpServer(config: McpHandlerConfig): McpServer {
 
   const toolDefinitions = getToolDefinitions();
 
-  // Register all 11 tools
+  // Register all 13 tools
   server.registerTool(
     'list_sites',
     {
@@ -136,6 +136,24 @@ export function createMcpServer(config: McpHandlerConfig): McpServer {
       inputSchema: schemas.get_document_presence,
     },
     async (params) => handlers.get_document_presence(params),
+  );
+
+  server.registerTool(
+    'list_components',
+    {
+      description: toolDefinitions.find((t) => t.name === 'list_components')?.description ?? '',
+      inputSchema: schemas.list_components,
+    },
+    async (params) => handlers.list_components(params),
+  );
+
+  server.registerTool(
+    'create_page',
+    {
+      description: toolDefinitions.find((t) => t.name === 'create_page')?.description ?? '',
+      inputSchema: schemas.create_page,
+    },
+    async (params) => handlers.create_page(params),
   );
 
   return server;

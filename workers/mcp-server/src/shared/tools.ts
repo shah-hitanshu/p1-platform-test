@@ -11,6 +11,33 @@ import { z } from 'zod';
 import type { McpApiClient, EditOperation } from './api-client.js';
 
 // =============================================================================
+// ULID generator (inline — no external dependency required in Workers)
+// =============================================================================
+
+const ULID_ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+function generateULID(): string {
+  const now = Date.now();
+  let id = '';
+  let t = now;
+  for (let i = 9; i >= 0; i--) {
+    id = ULID_ENCODING[t % 32] + id;
+    t = Math.floor(t / 32);
+  }
+  const rand = new Uint8Array(10);
+  crypto.getRandomValues(rand);
+  let rnd = BigInt(0);
+  for (const byte of rand) {
+    rnd = (rnd << BigInt(8)) | BigInt(byte);
+  }
+  for (let i = 0; i < 16; i++) {
+    id += ULID_ENCODING[Number(rnd % BigInt(32))];
+    rnd >>= BigInt(5);
+  }
+  return id;
+}
+
+// =============================================================================
 // Tool Definition Types
 // =============================================================================
 
@@ -112,6 +139,24 @@ const GetDocumentPresenceInputSchema = z.object({
   document_path: z.string().describe('The document path'),
 });
 
+const ListComponentsInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+});
+
+const CreatePageInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  document_path: z.string().describe('Path for the new page (e.g. "about" or "products/widget"). Must not start with _registry/.'),
+  components: z.array(z.object({
+    type: z.string().describe('Component type name (from list_components)'),
+    props: z.record(z.unknown()).describe('Component props matching the registered fields'),
+    zone: z.string().optional().describe('Slot field name when placing in a nested slot (requires parentId)'),
+    parentId: z.string().optional().describe('ID of the parent component for slot placement (must match a component\'s generated id)'),
+  })).describe('Components to place on the page, in order'),
+  root_props: z.record(z.unknown()).optional().describe('Page-level root props'),
+});
+
 // =============================================================================
 // Tool Definitions
 // =============================================================================
@@ -184,6 +229,18 @@ export function getToolDefinitions(): ToolDefinition[] {
         'Get detailed presence information for a specific document. Shows all actors (humans and agents) currently viewing or editing, their focus regions, state, and intent. Check this before editing to understand if anyone else is actively working on the document.',
       inputSchema: GetDocumentPresenceInputSchema,
     },
+    {
+      name: 'list_components',
+      description:
+        'List all Puck components registered in the site\'s component registry. Returns component names, provenance (site/upstream/overridden), field count, and any AI instructions. The special component __root__ describes the page-level root props accepted by root_props in create_page. Use this to discover what components and root fields are available before calling create_page.',
+      inputSchema: ListComponentsInputSchema,
+    },
+    {
+      name: 'create_page',
+      description:
+        'Create a new page with a structured set of Puck components. Use list_components first to discover available component types and their field schemas. Each component is given a unique ID automatically. Returns the new document path and ID.',
+      inputSchema: CreatePageInputSchema,
+    },
   ];
 }
 
@@ -246,6 +303,8 @@ type CompleteEditSessionInput = z.infer<typeof CompleteEditSessionInputSchema>;
 type AbortEditSessionInput = z.infer<typeof AbortEditSessionInputSchema>;
 type GetBranchPresenceInput = z.infer<typeof GetBranchPresenceInputSchema>;
 type GetDocumentPresenceInput = z.infer<typeof GetDocumentPresenceInputSchema>;
+type ListComponentsInput = z.infer<typeof ListComponentsInputSchema>;
+type CreatePageInput = z.infer<typeof CreatePageInputSchema>;
 
 export interface ToolHandlers {
   list_sites: () => Promise<ToolResult>;
@@ -259,6 +318,8 @@ export interface ToolHandlers {
   abort_edit_session: (input: AbortEditSessionInput) => Promise<ToolResult>;
   get_branch_presence: (input: GetBranchPresenceInput) => Promise<ToolResult>;
   get_document_presence: (input: GetDocumentPresenceInput) => Promise<ToolResult>;
+  list_components: (input: ListComponentsInput) => Promise<ToolResult>;
+  create_page: (input: CreatePageInput) => Promise<ToolResult>;
 }
 
 // =============================================================================
@@ -510,6 +571,118 @@ export function createToolHandlers(apiClient: McpApiClient): ToolHandlers {
         return formatError(error);
       }
     },
+
+    async list_components(input: ListComponentsInput): Promise<ToolResult> {
+      try {
+        const docs = await apiClient.listDocuments(input.site_id, input.branch_id, {
+          pathPrefix: '_registry/components/',
+        });
+
+        if (docs.documents.length === 0) {
+          return formatResult('No components registered in this site. The site editor must be opened at least once to populate the registry.');
+        }
+
+        // Fetch each component's snapshot (N+1 is acceptable — called rarely, not in hot path)
+        const componentLines: string[] = [];
+        const counts = { site: 0, upstream: 0, overridden: 0 };
+
+        await Promise.all(
+          docs.documents.map(async (doc) => {
+            const name = doc.path.slice('_registry/components/'.length);
+            try {
+              // Use doc.id (UUID) — NOT doc.path. The backend versions/latest route
+              // performs a UUID-based lookup; passing a path would return 404.
+              const version = await apiClient.getDocumentLatestVersion(
+                input.site_id,
+                input.branch_id,
+                doc.id,
+              );
+              const descriptor = version.snapshot;
+              const provenance = typeof descriptor.provenance === 'string' ? descriptor.provenance : 'site';
+              const fields = Array.isArray(descriptor.fields) ? descriptor.fields : [];
+              const ai = descriptor.ai as { instructions?: string } | undefined;
+              const label = typeof descriptor.label === 'string' ? descriptor.label : name;
+
+              if (provenance in counts) counts[provenance as keyof typeof counts]++;
+
+              const aiNote =
+                ai?.instructions !== undefined && ai.instructions !== ''
+                  ? ` — AI: "${ai.instructions.slice(0, 60)}${ai.instructions.length > 60 ? '...' : ''}"`
+                  : '';
+              const fieldNote = fields.length === 1 ? '1 field' : `${String(fields.length)} fields`;
+
+              componentLines.push(`- ${name} (${label}) [${provenance}] — ${fieldNote}${aiNote}`);
+            } catch {
+              componentLines.push(`- ${name} [error fetching descriptor]`);
+            }
+          }),
+        );
+
+        componentLines.sort(); // Alphabetical order for readability
+
+        const summary = `Components registered in this site (${String(docs.documents.length)} total — ${String(counts.site)} site, ${String(counts.upstream)} upstream, ${String(counts.overridden)} overridden):\n${componentLines.join('\n')}`;
+        return formatResult(summary);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async create_page(input: CreatePageInput): Promise<ToolResult> {
+      try {
+        if (input.document_path.startsWith('_registry/')) {
+          return formatError(
+            new Error(
+              'Cannot create pages at the _registry/ path prefix — this is reserved for system use.',
+            ),
+          );
+        }
+
+        // Build valid Puck Data
+        interface PuckComponent { type: string; props: Record<string, unknown> & { id: string } }
+        const content: PuckComponent[] = [];
+        const zones: Record<string, PuckComponent[]> = {};
+
+        for (const component of input.components) {
+          const id = generateULID();
+          const instance: PuckComponent = {
+            type: component.type,
+            props: { ...component.props, id },
+          };
+
+          if (component.parentId !== undefined && component.zone !== undefined) {
+            const zoneKey = `${component.parentId}:${component.zone}`;
+            zones[zoneKey] ??= [];
+            zones[zoneKey].push(instance);
+          } else {
+            content.push(instance);
+          }
+        }
+
+        const puckData = {
+          content,
+          root: { props: input.root_props ?? {} },
+          ...(Object.keys(zones).length > 0 && { zones }),
+        };
+
+        const { documentId, documentPath } = await apiClient.createDocument(
+          input.site_id,
+          input.branch_id,
+          input.document_path,
+          puckData,
+        );
+
+        return formatResult({
+          message: `Page created at "${documentPath}".`,
+          documentPath,
+          documentId,
+          componentCount:
+            content.length +
+            Object.values(zones).reduce((n, arr) => n + arr.length, 0),
+        });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
   };
 }
 
@@ -529,4 +702,6 @@ export const schemas = {
   abort_edit_session: AbortEditSessionInputSchema,
   get_branch_presence: GetBranchPresenceInputSchema,
   get_document_presence: GetDocumentPresenceInputSchema,
+  list_components: ListComponentsInputSchema,
+  create_page: CreatePageInputSchema,
 };

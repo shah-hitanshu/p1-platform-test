@@ -15,11 +15,11 @@ describe('Tool Definitions', () => {
   beforeEach(() => { vi.resetAllMocks(); });
   afterEach(() => { vi.restoreAllMocks(); });
 
-  // Test 18: 11 tool definitions
-  it('should return exactly 11 tool definitions', async () => {
+  // Test 18: 13 tool definitions
+  it('should return exactly 13 tool definitions', async () => {
     const { getToolDefinitions } = await import('../../src/shared/tools.js');
     const defs = getToolDefinitions();
-    expect(defs).toHaveLength(11);
+    expect(defs).toHaveLength(13);
     const names = defs.map((d) => d.name);
     expect(names).toContain('list_sites');
     expect(names).toContain('list_branches');
@@ -32,6 +32,8 @@ describe('Tool Definitions', () => {
     expect(names).toContain('abort_edit_session');
     expect(names).toContain('get_branch_presence');
     expect(names).toContain('get_document_presence');
+    expect(names).toContain('list_components');
+    expect(names).toContain('create_page');
   });
 
   // Test 19: Each tool has required fields
