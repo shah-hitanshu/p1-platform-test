@@ -335,6 +335,21 @@ export type {
   PresenceState,
 } from './types.js';
 
+// Component Registry
+export { useComponentRegistry } from './hooks/useComponentRegistry.js';
+export type {
+  UseComponentRegistryOptions,
+  UseComponentRegistryReturn,
+  RegistrationResult,
+} from './hooks/useComponentRegistry.js';
+export type {
+  ComponentDescriptor,
+  ComponentProvenance,
+  SerializedField,
+  FieldAiMeta,
+  RegistryIndex,
+} from './utils/componentRegistry.js';
+
 // Re-export commonly used types from css-client
 export type {
   PuckData,

@@ -12,6 +12,7 @@ import { useCSSPuck } from '../CSSPuckContext.js';
 import { useCSSPlugin } from './useCSSPlugin.js';
 import { useCSSOverrides } from './useCSSOverrides.js';
 import { useVersions } from './useVersions.js';
+import { useComponentRegistry } from './useComponentRegistry.js';
 import type { UseCSSPluginOptions } from './useCSSPlugin.js';
 import type { UseCSSOverridesOptions } from './useCSSOverrides.js';
 import type { PuckPlugin, PuckOverrides } from '../plugin/index.js';
@@ -266,6 +267,12 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
     },
     [css.sendFocusRegions],
   );
+
+  // =========================================================================
+  // Component Registry (runs at editor startup, writes descriptors to CSS backend)
+  // =========================================================================
+
+  useComponentRegistry({ puckConfig });
 
   // =========================================================================
   // Plugin & Overrides (composed hooks)

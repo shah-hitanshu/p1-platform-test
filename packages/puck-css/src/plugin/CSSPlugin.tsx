@@ -120,7 +120,9 @@ function CSSPluginPanel({
   // Suppress unused variable warnings - these are passed through for future use
   void _showFocusRegions;
   void _agentEditingRegions;
-  const documents = rawDocuments.filter((doc) => !doc.archived);
+  const documents = rawDocuments.filter(
+    (doc) => !doc.archived && !doc.path.startsWith('_registry/'),
+  );
   const [isCreating, setIsCreating] = useState(false);
   const [newDocPath, setNewDocPath] = useState('');
   const [showMergeReview, setShowMergeReview] = useState(false);
