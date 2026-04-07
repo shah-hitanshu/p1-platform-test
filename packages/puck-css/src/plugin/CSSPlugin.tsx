@@ -407,7 +407,21 @@ function CSSPluginIcon(): React.ReactElement {
       xmlns="http://www.w3.org/2000/svg"
     >
       <path
-        d="M2 4h12M2 8h12M2 12h8"
+        d="M9 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6L9 2Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9 2v4h4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M6 9h4M6 11.5h2.5"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
@@ -678,7 +692,7 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
 
   return {
     name: 'css',
-    label: 'CSS',
+    label: 'Pages',
     icon: <CSSPluginIcon />,
     render: () => (
       <>
