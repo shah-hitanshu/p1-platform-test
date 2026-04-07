@@ -6,7 +6,14 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import type { Branch, Document, DocumentVersion, PuckData, RegisteredAgent, ActorPresence } from '@pantheon/css-client';
+import type {
+  Branch,
+  Document,
+  DocumentVersion,
+  PuckData,
+  RegisteredAgent,
+  ActorPresence,
+} from '@pantheon/css-client';
 import { PuckDataSynchronizer } from '../components/PuckDataSynchronizer.js';
 import { VersionPublishedBadge } from '../components/VersionPublishedBadge.js';
 import { AgentActivityBanner } from '../components/presence/AgentActivityBanner.js';
@@ -121,7 +128,7 @@ function CSSPluginPanel({
   void _showFocusRegions;
   void _agentEditingRegions;
   const documents = rawDocuments.filter(
-    (doc) => !doc.archived && !doc.path.startsWith('_registry/'),
+    (doc) => !doc.archived && !doc.path.startsWith('_registry/')
   );
   const [isCreating, setIsCreating] = useState(false);
   const [newDocPath, setNewDocPath] = useState('');
@@ -132,264 +139,271 @@ function CSSPluginPanel({
     const newBranchId = e.target.value;
     // Call the getter function to check current unsaved state (avoids stale closures)
     if (getHasUnsavedChanges?.()) {
-      const confirmed = window.confirm(
-        'You have unsaved changes. Switch Draft anyway?'
-      );
+      const confirmed = window.confirm('You have unsaved changes. Switch Draft anyway?');
       if (!confirmed) return;
     }
     onBranchSwitch(newBranchId);
   };
 
-  const handleCreateDocument = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newDocPath.trim() || !onDocumentCreate) return;
+  const handleCreateDocument = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newDocPath.trim() || !onDocumentCreate) return;
 
-    const path = newDocPath.startsWith('/') ? newDocPath.slice(1) : newDocPath;
-    setCreateError(null);
+      const path = newDocPath.startsWith('/') ? newDocPath.slice(1) : newDocPath;
+      setCreateError(null);
 
-    try {
-      await onDocumentCreate(path);
-      setNewDocPath('');
-      setIsCreating(false);
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'Failed to create document');
-    }
-  }, [newDocPath, onDocumentCreate]);
+      try {
+        await onDocumentCreate(path);
+        setNewDocPath('');
+        setIsCreating(false);
+      } catch (err) {
+        setCreateError(err instanceof Error ? err.message : 'Failed to create document');
+      }
+    },
+    [newDocPath, onDocumentCreate]
+  );
 
-  const handleDeleteDocument = useCallback(async (e: React.MouseEvent, docId: string, path: string) => {
-    e.stopPropagation();
-    if (!onDocumentDelete) return;
-    if (!window.confirm(`Delete "${path}"?`)) return;
+  const handleDeleteDocument = useCallback(
+    async (e: React.MouseEvent, docId: string, path: string) => {
+      e.stopPropagation();
+      if (!onDocumentDelete) return;
+      if (!window.confirm(`Delete "${path}"?`)) return;
 
-    try {
-      await onDocumentDelete(docId, path);
-    } catch (err) {
-      console.error('Failed to delete document:', err);
-    }
-  }, [onDocumentDelete]);
+      try {
+        await onDocumentDelete(docId, path);
+      } catch (err) {
+        console.error('Failed to delete document:', err);
+      }
+    },
+    [onDocumentDelete]
+  );
 
   return (
     <>
-    {/* Merge Review Overlay */}
-    {showMergeReview && puckConfig != null && (
-      <div
-        className="css-plugin-merge-overlay"
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100vw',
-          height: '100vh',
-          background: '#fff',
-          zIndex: 10000,
-          overflow: 'auto',
-        }}
-      >
-        <MergeReviewPage
-          config={puckConfig}
-          onClose={() => setShowMergeReview(false)}
-          onMergeComplete={() => setShowMergeReview(false)}
-        />
-      </div>
-    )}
-
-    <div className="css-plugin-panel">
-      {/* Branch Selection */}
-      <div className="css-plugin-section">
-        <label className="css-plugin-label" htmlFor="css-branch-select">
-          Drafts
-        </label>
-        <select
-          id="css-branch-select"
-          className="css-plugin-select"
-          value={currentBranch?.id ?? ''}
-          onChange={handleBranchChange}
+      {/* Merge Review Overlay */}
+      {showMergeReview && puckConfig != null && (
+        <div
+          className="css-plugin-merge-overlay"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            background: '#fff',
+            zIndex: 10000,
+            overflow: 'auto',
+          }}
         >
-          {branches.map((branch) => (
-            <option key={branch.id} value={branch.id}>
-              {branch.isMain ? 'Live' : branch.name}
-            </option>
-          ))}
-        </select>
-        {puckConfig != null && currentBranch && !currentBranch.isMain && (
-          <button
-            type="button"
-            className="pds-button pds-button--secondary pds-button--sm"
-            onClick={() => setShowMergeReview(true)}
-            style={{ marginTop: 8 }}
-          >
-            Compare with Live
-          </button>
-        )}
-      </div>
-
-      {/* Document Management */}
-      {onDocumentSelect && (
-        <div className="css-plugin-section">
-          <div className="css-plugin-section-header">
-            <label className="css-plugin-label">Documents</label>
-            {onDocumentCreate && (
-              <button
-                type="button"
-                className="pds-button pds-button--subtle pds-button--sm"
-                onClick={() => setIsCreating(!isCreating)}
-              >
-                {isCreating ? '×' : '+'}
-              </button>
-            )}
-          </div>
-
-          {isCreating && onDocumentCreate && (
-            <form className="css-plugin-create-form" onSubmit={handleCreateDocument}>
-              <input
-                type="text"
-                className="css-plugin-input"
-                placeholder="/page-path"
-                value={newDocPath}
-                onChange={(e) => setNewDocPath(e.target.value)}
-                autoFocus
-              />
-              <button type="submit" className="pds-button pds-button--primary pds-button--sm">
-                Create
-              </button>
-              {createError && (
-                <div className="css-plugin-error">{createError}</div>
-              )}
-            </form>
-          )}
-
-          {documentsLoading ? (
-            <div className="css-plugin-loading">Loading...</div>
-          ) : documents.length === 0 ? (
-            <div className="css-plugin-empty">No documents yet</div>
-          ) : (
-            <ul className="css-plugin-doc-list">
-              {documents.map((doc) => {
-                const isInherited = !currentBranch?.isMain && doc.inherited === true;
-                return (
-                  <li
-                    key={doc.id}
-                    className={`css-plugin-doc-item ${selectedDocumentPath === doc.path ? 'css-plugin-doc-item--active' : ''} ${isInherited ? 'css-plugin-doc-item--main-only' : ''}`}
-                    onClick={() => onDocumentSelect(doc.path)}
-                  >
-                    <span className="css-plugin-doc-path">{doc.path}</span>
-                    {isInherited && (
-                      <span className="pds-status-indicator pds-status-indicator--neutral pds-status-indicator--sm">
-                        <span aria-hidden="true" className="pds-status-indicator__icon" role="img"></span>
-                        <span className="pds-status-indicator__label">Live only</span>
-                      </span>
-                    )}
-                    {onDocumentDelete && (
-                      <button
-                        type="button"
-                        className="css-plugin-doc-delete"
-                        onClick={(e) => handleDeleteDocument(e, doc.id, doc.path)}
-                        aria-label={`Delete ${doc.path}`}
-                      >
-                        ×
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          <MergeReviewPage
+            config={puckConfig}
+            onClose={() => setShowMergeReview(false)}
+            onMergeComplete={() => setShowMergeReview(false)}
+          />
         </div>
       )}
 
-      {/* Version History */}
-      {(versions.length > 0 || versionsLoading || onVersionSelect) && (
+      <div className="css-plugin-panel">
+        {/* Branch Selection */}
         <div className="css-plugin-section">
-          <div className="css-plugin-section-header">
-            <label className="css-plugin-label">Version History</label>
-          </div>
+          <label className="css-plugin-label" htmlFor="css-branch-select">
+            Drafts
+          </label>
+          <select
+            id="css-branch-select"
+            className="css-plugin-select"
+            value={currentBranch?.id ?? ''}
+            onChange={handleBranchChange}
+          >
+            {branches.map((branch) => (
+              <option key={branch.id} value={branch.id}>
+                {branch.isMain ? 'Live' : branch.name}
+              </option>
+            ))}
+          </select>
+          {puckConfig != null && currentBranch && !currentBranch.isMain && (
+            <button
+              type="button"
+              className="pds-button pds-button--secondary pds-button--sm"
+              onClick={() => setShowMergeReview(true)}
+              style={{ marginTop: 8 }}
+            >
+              Compare with Live
+            </button>
+          )}
+        </div>
 
-          {versionsLoading ? (
-            <div className="css-plugin-loading">Loading versions...</div>
-          ) : versions.length === 0 ? (
-            <div className="css-plugin-empty">No versions yet</div>
-          ) : (
-            <>
-              <ul className="css-plugin-version-list">
-                {versions.map((version, index) => {
-                  const isLatest = index === 0;
-                  const isSelected = version.id === selectedVersionId;
+        {/* Document Management */}
+        {onDocumentSelect && (
+          <div className="css-plugin-section">
+            <div className="css-plugin-section-header">
+              <label className="css-plugin-label">Pages</label>
+              {onDocumentCreate && (
+                <button
+                  type="button"
+                  className="pds-button pds-button--subtle pds-button--sm"
+                  onClick={() => setIsCreating(!isCreating)}
+                >
+                  {isCreating ? '×' : '+'}
+                </button>
+              )}
+            </div>
 
+            {isCreating && onDocumentCreate && (
+              <form className="css-plugin-create-form" onSubmit={handleCreateDocument}>
+                <input
+                  type="text"
+                  className="css-plugin-input"
+                  placeholder="/page-path"
+                  value={newDocPath}
+                  onChange={(e) => setNewDocPath(e.target.value)}
+                  autoFocus
+                />
+                <button type="submit" className="pds-button pds-button--primary pds-button--sm">
+                  Create
+                </button>
+                {createError && <div className="css-plugin-error">{createError}</div>}
+              </form>
+            )}
+
+            {documentsLoading ? (
+              <div className="css-plugin-loading">Loading...</div>
+            ) : documents.length === 0 ? (
+              <div className="css-plugin-empty">No documents yet</div>
+            ) : (
+              <ul className="css-plugin-doc-list">
+                {documents.map((doc) => {
+                  const isInherited = !currentBranch?.isMain && doc.inherited === true;
                   return (
                     <li
-                      key={version.id}
-                      className={`css-plugin-version-item ${isSelected ? 'css-plugin-version-item--selected' : ''}`}
-                      onClick={() => onVersionSelect?.(version)}
+                      key={doc.id}
+                      className={`css-plugin-doc-item ${selectedDocumentPath === doc.path ? 'css-plugin-doc-item--active' : ''} ${isInherited ? 'css-plugin-doc-item--main-only' : ''}`}
+                      onClick={() => onDocumentSelect(doc.path)}
                     >
-                      <span className="css-plugin-version-number">
-                        v{version.versionNumber}
-                      </span>
-                      <span className="css-plugin-version-date">
-                        {formatVersionDate(version.createdAt)}
-                      </span>
-                      {isLatest && (
-                        <span className="css-plugin-version-badge">current</span>
+                      <span className="css-plugin-doc-path">{doc.path}</span>
+                      {isInherited && (
+                        <span className="pds-status-indicator pds-status-indicator--neutral pds-status-indicator--sm">
+                          <span
+                            aria-hidden="true"
+                            className="pds-status-indicator__icon"
+                            role="img"
+                          ></span>
+                          <span className="pds-status-indicator__label">Live only</span>
+                        </span>
                       )}
-                      {version.isPublished && (
-                        <VersionPublishedBadge />
+                      {onDocumentDelete && (
+                        <button
+                          type="button"
+                          className="css-plugin-doc-delete"
+                          onClick={(e) => handleDeleteDocument(e, doc.id, doc.path)}
+                          aria-label={`Delete ${doc.path}`}
+                        >
+                          ×
+                        </button>
                       )}
                     </li>
                   );
                 })}
               </ul>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Presence Section */}
-      {showPresenceIndicator && (
-        <div className="css-plugin-section">
-          <div className="css-plugin-section-header">
-            <label className="css-plugin-label">Collaborators</label>
+            )}
           </div>
-          {presence.length === 0 ? (
-            <div className="css-plugin-empty">No collaborators</div>
-          ) : (
-            <ul className="css-plugin-presence-list">
-              {presence.map((actor) => (
-                <li key={actor.id} className="css-plugin-presence-item">
-                  <span className="css-plugin-presence-name">{actor.name}</span>
-                  <span className={`css-plugin-presence-state css-plugin-presence-state--${actor.state}`}>
-                    {actor.state}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+        )}
 
-      {/* Agent Activity Section */}
-      {showAgentActivity && activeAgents.length > 0 && (
-        <div className="css-plugin-section">
-          <div className="css-plugin-section-header">
-            <label className="css-plugin-label">Agent Activity</label>
+        {/* Version History */}
+        {(versions.length > 0 || versionsLoading || onVersionSelect) && (
+          <div className="css-plugin-section">
+            <div className="css-plugin-section-header">
+              <label className="css-plugin-label">Version History</label>
+            </div>
+
+            {versionsLoading ? (
+              <div className="css-plugin-loading">Loading versions...</div>
+            ) : versions.length === 0 ? (
+              <div className="css-plugin-empty">No versions yet</div>
+            ) : (
+              <>
+                <ul className="css-plugin-version-list">
+                  {versions.map((version, index) => {
+                    const isLatest = index === 0;
+                    const isSelected = version.id === selectedVersionId;
+
+                    return (
+                      <li
+                        key={version.id}
+                        className={`css-plugin-version-item ${isSelected ? 'css-plugin-version-item--selected' : ''}`}
+                        onClick={() => onVersionSelect?.(version)}
+                      >
+                        <span className="css-plugin-version-number">v{version.versionNumber}</span>
+                        <span className="css-plugin-version-date">
+                          {formatVersionDate(version.createdAt)}
+                        </span>
+                        {isLatest && <span className="css-plugin-version-badge">current</span>}
+                        {version.isPublished && <VersionPublishedBadge />}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
           </div>
-          {activeAgents.map((agent) => (
-            <AgentActivityBanner key={agent.id} agent={agent} showIdle onStopAgent={onStopAgent} />
-          ))}
-        </div>
-      )}
+        )}
 
-      {/* Agent Actions Section */}
-      {showAgentActions && availableAgents.length > 0 && availableAgents[0] && (
-        <div className="css-plugin-section">
-          <button
-            type="button"
-            className="pds-button pds-button--primary pds-button--sm"
-            onClick={() => onAgentAction?.(availableAgents[0]!.id, '', [])}
-          >
-            Ask Agent
-          </button>
-        </div>
-      )}
-    </div>
+        {/* Presence Section */}
+        {showPresenceIndicator && (
+          <div className="css-plugin-section">
+            <div className="css-plugin-section-header">
+              <label className="css-plugin-label">Collaborators</label>
+            </div>
+            {presence.length === 0 ? (
+              <div className="css-plugin-empty">No collaborators</div>
+            ) : (
+              <ul className="css-plugin-presence-list">
+                {presence.map((actor) => (
+                  <li key={actor.id} className="css-plugin-presence-item">
+                    <span className="css-plugin-presence-name">{actor.name}</span>
+                    <span
+                      className={`css-plugin-presence-state css-plugin-presence-state--${actor.state}`}
+                    >
+                      {actor.state}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* Agent Activity Section */}
+        {showAgentActivity && activeAgents.length > 0 && (
+          <div className="css-plugin-section">
+            <div className="css-plugin-section-header">
+              <label className="css-plugin-label">Agent Activity</label>
+            </div>
+            {activeAgents.map((agent) => (
+              <AgentActivityBanner
+                key={agent.id}
+                agent={agent}
+                showIdle
+                onStopAgent={onStopAgent}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Agent Actions Section */}
+        {showAgentActions && availableAgents.length > 0 && availableAgents[0] && (
+          <div className="css-plugin-section">
+            <button
+              type="button"
+              className="pds-button pds-button--primary pds-button--sm"
+              onClick={() => onAgentAction?.(availableAgents[0]!.id, '', [])}
+            >
+              Ask Agent
+            </button>
+          </div>
+        )}
+      </div>
     </>
   );
 }
@@ -399,36 +413,96 @@ function CSSPluginPanel({
  */
 function CSSPluginIcon(): React.ReactElement {
   return (
-    <svg
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       {/* Browser window frame */}
-      <rect x="1.5" y="1.5" width="21" height="21" rx="2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <rect
+        x="1.5"
+        y="1.5"
+        width="21"
+        height="21"
+        rx="2.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
       {/* Title bar separator */}
-      <line x1="1.5" y1="7" x2="22.5" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <line
+        x1="1.5"
+        y1="7"
+        x2="22.5"
+        y2="7"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
       {/* Address bar stub */}
-      <line x1="3" y1="4.25" x2="9" y2="4.25" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round"/>
+      <line
+        x1="3"
+        y1="4.25"
+        x2="9"
+        y2="4.25"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+      />
       {/* Nav dots */}
-      <circle cx="12.5" cy="4.25" r="0.7" fill="currentColor"/>
-      <circle cx="14.5" cy="4.25" r="0.7" fill="currentColor"/>
-      <circle cx="16.5" cy="4.25" r="0.7" fill="currentColor"/>
+      <circle cx="12.5" cy="4.25" r="0.7" fill="currentColor" />
+      <circle cx="14.5" cy="4.25" r="0.7" fill="currentColor" />
+      <circle cx="16.5" cy="4.25" r="0.7" fill="currentColor" />
       {/* Image placeholder box */}
-      <rect x="3" y="8.5" width="8" height="6.5" rx="0.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
+      <rect
+        x="3"
+        y="8.5"
+        width="8"
+        height="6.5"
+        rx="0.5"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
       {/* Mountain icon inside image box */}
-      <path d="M3.75 14.5 L7 10.5 L10.25 14.5 M7.5 12.5 L9.5 10.5 L10.75 14.5" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round"/>
+      <path
+        d="M3.75 14.5 L7 10.5 L10.25 14.5 M7.5 12.5 L9.5 10.5 L10.75 14.5"
+        stroke="currentColor"
+        strokeWidth="0.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
       {/* Text content lines */}
-      <line x1="13" y1="10" x2="21.5" y2="10" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
-      <line x1="13" y1="12" x2="21.5" y2="12" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
-      <line x1="13" y1="14" x2="19" y2="14" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+      <line
+        x1="13"
+        y1="10"
+        x2="21.5"
+        y2="10"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+      />
+      <line
+        x1="13"
+        y1="12"
+        x2="21.5"
+        y2="12"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+      />
+      <line
+        x1="13"
+        y1="14"
+        x2="19"
+        y2="14"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+      />
       {/* Bottom card circles */}
-      <circle cx="4.5" cy="19.5" r="1.2" stroke="currentColor" strokeWidth="1"/>
-      <circle cx="9.5" cy="19.5" r="1.2" stroke="currentColor" strokeWidth="1"/>
-      <circle cx="14.5" cy="19.5" r="1.2" stroke="currentColor" strokeWidth="1"/>
-      <circle cx="19.5" cy="19.5" r="1.2" stroke="currentColor" strokeWidth="1"/>
+      <circle cx="4.5" cy="19.5" r="1.2" stroke="currentColor" strokeWidth="1" />
+      <circle cx="9.5" cy="19.5" r="1.2" stroke="currentColor" strokeWidth="1" />
+      <circle cx="14.5" cy="19.5" r="1.2" stroke="currentColor" strokeWidth="1" />
+      <circle cx="19.5" cy="19.5" r="1.2" stroke="currentColor" strokeWidth="1" />
     </svg>
   );
 }
@@ -548,10 +622,7 @@ function RealtimeDataCaptureBridge(): React.ReactElement | null {
   }
 
   return (
-    <PuckDataCapture
-      dataRef={_realtimeDataCaptureRef}
-      onDataChange={_onRealtimeDataCapture}
-    />
+    <PuckDataCapture dataRef={_realtimeDataCaptureRef} onDataChange={_onRealtimeDataCapture} />
   );
 }
 
@@ -690,8 +761,13 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
   // 2. Getter functions: Uses SyncDataPoller which polls for changes
   // 3. Direct values (legacy): Uses PuckDataSynchronizer directly (causes plugin recreation)
   const useContextSync = options.useContextSync !== false; // Default to true
-  const useGetterSync = !useContextSync && options.getSyncData !== undefined && options.getDataSyncKey !== undefined;
-  const useLegacySync = !useContextSync && !useGetterSync && options.syncData !== undefined && options.dataSyncKey !== undefined;
+  const useGetterSync =
+    !useContextSync && options.getSyncData !== undefined && options.getDataSyncKey !== undefined;
+  const useLegacySync =
+    !useContextSync &&
+    !useGetterSync &&
+    options.syncData !== undefined &&
+    options.dataSyncKey !== undefined;
 
   return {
     name: 'css',
