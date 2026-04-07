@@ -406,26 +406,29 @@ function CSSPluginIcon(): React.ReactElement {
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <path
-        d="M9 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6L9 2Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9 2v4h4"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M6 9h4M6 11.5h2.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
+      {/* Browser window frame */}
+      <rect x="1" y="1" width="14" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      {/* Title bar separator */}
+      <line x1="1" y1="4.5" x2="15" y2="4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      {/* Address bar stub */}
+      <line x1="2.25" y1="2.75" x2="5.75" y2="2.75" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      {/* Nav dots */}
+      <circle cx="8.75" cy="2.75" r="0.45" fill="currentColor"/>
+      <circle cx="10.25" cy="2.75" r="0.45" fill="currentColor"/>
+      <circle cx="11.75" cy="2.75" r="0.45" fill="currentColor"/>
+      {/* Image placeholder box */}
+      <rect x="2" y="5.5" width="5" height="4" rx="0.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      {/* Mountain / landscape icon inside image box */}
+      <path d="M2.75 9.25 L4.25 7.25 L5.75 9.25 M4.5 8.25 L5.5 7.25 L6.75 9.25" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+      {/* Text content lines */}
+      <line x1="8.25" y1="6.5" x2="13.75" y2="6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="8.25" y1="8" x2="13.75" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="8.25" y1="9.5" x2="12.25" y2="9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      {/* Bottom card/item circles */}
+      <circle cx="2.5" cy="12.5" r="0.65" stroke="currentColor" strokeWidth="1.5"/>
+      <circle cx="5.75" cy="12.5" r="0.65" stroke="currentColor" strokeWidth="1.5"/>
+      <circle cx="9" cy="12.5" r="0.65" stroke="currentColor" strokeWidth="1.5"/>
+      <circle cx="12.25" cy="12.5" r="0.65" stroke="currentColor" strokeWidth="1.5"/>
     </svg>
   );
 }
