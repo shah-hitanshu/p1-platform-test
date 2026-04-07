@@ -13,6 +13,8 @@ import { useCSSPlugin } from './useCSSPlugin.js';
 import { useCSSOverrides } from './useCSSOverrides.js';
 import { useVersions } from './useVersions.js';
 import { useComponentRegistry } from './useComponentRegistry.js';
+import { buildThumbnailOverride } from '../utils/buildThumbnailOverride.js';
+import type { ThumbnailMap } from '../utils/buildThumbnailOverride.js';
 import type { UseCSSPluginOptions } from './useCSSPlugin.js';
 import type { UseCSSOverridesOptions } from './useCSSOverrides.js';
 import type { PuckPlugin, PuckOverrides } from '../plugin/index.js';
@@ -36,6 +38,20 @@ export interface UseCSSEditorOptions {
    * Nested objects (e.g. fieldTypes) are shallow-merged.
    */
   additionalOverrides?: PuckOverrides;
+  /**
+   * Map from Puck component name to a zero-argument React FC that renders a
+   * schematic SVG wireframe thumbnail. When provided, each drawer item shows
+   * a 48×32 thumbnail alongside the name and a drag-handle affordance.
+   * Unknown names fall back to a generic placeholder automatically.
+   *
+   * @example
+   * ```tsx
+   * import { THUMBNAIL_MAP } from '@/lib/thumbnails';
+   *
+   * useCSSEditor({ thumbnails: THUMBNAIL_MAP, ... });
+   * ```
+   */
+  thumbnails?: ThumbnailMap;
   /** Customization options for overrides */
   overrideOptions?: UseCSSOverridesOptions;
   /** Customization options for the CSS plugin (versions are managed internally) */
@@ -113,6 +129,7 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
     puckConfig,
     additionalPlugins,
     additionalOverrides,
+    thumbnails,
     overrideOptions,
     pluginOptions,
     onSelectionChange,
@@ -358,19 +375,31 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   const additionalOverridesRef = useRef(additionalOverrides);
   additionalOverridesRef.current = additionalOverrides;
 
-  const mergedOverrides = useMemo(() => {
-    const extra = additionalOverridesRef.current;
-    if (!extra) return cssOverrides;
+  // Thumbnail override — built from the thumbnails map and merged between
+  // cssOverrides and additionalOverrides so the site can still fully override
+  // componentItem if needed.
+  const thumbnailsRef = useRef(thumbnails);
+  thumbnailsRef.current = thumbnails;
 
-    // Shallow merge top-level, then shallow merge nested objects like fieldTypes
-    const merged = { ...cssOverrides } as Record<string, unknown>;
-    for (const [key, value] of Object.entries(extra)) {
-      const existing = merged[key];
-      if (existing && typeof existing === 'object' && !Array.isArray(existing) &&
-          value && typeof value === 'object' && !Array.isArray(value)) {
-        merged[key] = { ...existing as Record<string, unknown>, ...value as Record<string, unknown> };
-      } else {
-        merged[key] = value;
+  const mergedOverrides = useMemo(() => {
+    // Layer order (last wins): cssOverrides → thumbnailOverride → additionalOverrides
+    const layers: (Partial<PuckOverrides> | null)[] = [
+      cssOverrides,
+      thumbnailsRef.current ? buildThumbnailOverride(thumbnailsRef.current) : null,
+      additionalOverridesRef.current ?? null,
+    ];
+
+    const merged = {} as Record<string, unknown>;
+    for (const layer of layers) {
+      if (!layer) continue;
+      for (const [key, value] of Object.entries(layer)) {
+        const existing = merged[key];
+        if (existing && typeof existing === 'object' && !Array.isArray(existing) &&
+            value && typeof value === 'object' && !Array.isArray(value)) {
+          merged[key] = { ...existing as Record<string, unknown>, ...value as Record<string, unknown> };
+        } else {
+          merged[key] = value;
+        }
       }
     }
     return merged as PuckOverrides;

@@ -113,6 +113,8 @@ export interface CSSOverridesOptions {
  */
 export interface PuckOverrides {
   headerActions?: (props: { children: React.ReactNode }) => React.ReactElement;
+  drawerItem?: (props: { name: string; children: React.ReactNode }) => React.ReactElement;
+  [key: string]: unknown;
 }
 
 /**

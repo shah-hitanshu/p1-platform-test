@@ -24,3 +24,4 @@ export type {
   BranchMergeComparison,
   DocumentDiffSummary,
 } from './branchDiff.js';
+export type { ThumbnailMap, ThumbnailFC } from './buildThumbnailOverride.js';

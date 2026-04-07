@@ -225,6 +225,72 @@ The overlay activates automatically when `puckConfig` is provided to the plugin.
 
 The UI uses **Live/Draft terminology**: the main branch is labeled "Live" and working branches are labeled "Draft" throughout the editor interface, including the branch selector, merge review, and status indicators.
 
+## Component Drawer Thumbnails
+
+Pass a `thumbnails` map to `useCSSEditor` to show schematic SVG wireframe thumbnails alongside each component name in the Puck drawer. Thumbnails make components immediately distinguishable at small sizes without any screenshot capture, CORS dependencies, or build-time assets.
+
+### 1. Generate the thumbnail file
+
+Run the bundled generator script once, and again whenever you add or rename components:
+
+```bash
+pnpm generate-thumbnails
+# or: npx tsx scripts/generate-thumbnails.ts
+```
+
+The script reads your `puck.config.tsx`, infers a layout for each component from its name, and writes `lib/component-thumbnails.tsx`. Refine any auto-generated stubs by editing the SVG geometry in that file.
+
+> **Note:** Components registered via object spread (e.g. `...pccConfigs`) are not captured by the regex parser and will fall back to the generic placeholder. Add their names manually to the output file if needed.
+
+### 2. Wire into `useCSSEditor`
+
+```tsx
+import { THUMBNAIL_MAP } from '@/lib/component-thumbnails';
+
+const { puckKey, puckProps } = useCSSEditor({
+  documentPath,
+  puckConfig,
+  thumbnails: THUMBNAIL_MAP,  // ← one line, everything else is handled
+});
+```
+
+That's it. The package handles the drawer layout (thumbnail + name + drag-handle grip), the fallback placeholder for unmapped names, and stable memoisation to prevent unnecessary Puck re-renders.
+
+### 3. CI/CD automation (GitHub Actions)
+
+Add a step that regenerates thumbnails when your Puck config changes:
+
+```yaml
+- name: Regenerate component thumbnails
+  if: |
+    contains(github.event.head_commit.modified, 'puck.config.tsx') ||
+    contains(github.event.head_commit.modified, 'components/puck/')
+  run: npx tsx scripts/generate-thumbnails.ts
+
+- name: Commit updated thumbnails
+  run: |
+    git config user.name  "github-actions[bot]"
+    git config user.email "github-actions[bot]@users.noreply.github.com"
+    git add lib/component-thumbnails.tsx
+    git diff --cached --quiet || git commit -m "chore: regenerate component thumbnails"
+    git push
+```
+
+### How it works
+
+Thumbnails are pure SVG rendered inline — no canvas capture, no external images, no async loading. Each component gets a 60×40 viewBox wireframe that encodes its layout semantics (image areas, text columns, navigation bars, etc.) using a small set of SVG primitives. The SVG scales cleanly to any display size and DPR.
+
+The `thumbnails` option slots into the override merge chain between the CSS overrides and any `additionalOverrides`, so a site can still fully replace `drawerItem` if needed.
+
+### Type
+
+```ts
+import type { ThumbnailMap } from '@pantheon/puck-css';
+
+// ThumbnailMap = Record<string, React.FC>
+// Each value is a zero-argument React component that renders an SVG.
+```
+
 ## Advanced: Low-Level API
 
 For apps that need full control over the CSS integration, you can use the provider and hook directly instead of `CSSApp`:
