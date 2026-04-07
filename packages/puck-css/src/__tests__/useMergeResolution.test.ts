@@ -250,6 +250,53 @@ describe('useMergeResolution', () => {
       expect(result.current.previewError).toBe('API failure');
       expect(result.current.documents).toHaveLength(0);
     });
+
+    it('excludes _registry/* documents from the document list', async () => {
+      const mockClient = createMockClient();
+      const previewWithRegistry = createMergePreview({
+        sourceChanges: [
+          { documentId: 'doc-1', documentPath: '/home' },
+          { documentId: 'doc-2', documentPath: '/about' },
+          { documentId: 'reg-root', documentPath: '_registry/components/__root__' },
+          { documentId: 'reg-hero', documentPath: '_registry/components/Hero' },
+          { documentId: 'reg-idx', documentPath: '_registry/index' },
+        ],
+        documentDiffs: [
+          {
+            documentId: 'doc-1',
+            documentPath: '/home',
+            sourceSnapshot: { content: [{ type: 'Heading', props: { id: 'h1', text: 'Source' } }], root: {} },
+            targetSnapshot: { content: [{ type: 'Heading', props: { id: 'h1', text: 'Target' } }], root: {} },
+            diffOperations: [],
+          },
+          {
+            documentId: 'doc-2',
+            documentPath: '/about',
+            sourceSnapshot: { content: [], root: {} },
+            targetSnapshot: null,
+            diffOperations: [],
+          },
+        ],
+      });
+      mockClient.merge.preview.mockResolvedValue(previewWithRegistry);
+      const options = createOptions(mockClient);
+
+      const { result } = renderHook(() => useMergeResolution(options));
+
+      await act(async () => {
+        await result.current.loadPreview();
+      });
+
+      // Registry documents must not appear in the merge resolution list
+      const docPaths = result.current.documents.map((d) => d.documentPath);
+      expect(docPaths).not.toContain('_registry/components/__root__');
+      expect(docPaths).not.toContain('_registry/components/Hero');
+      expect(docPaths).not.toContain('_registry/index');
+
+      // Normal documents still appear
+      expect(docPaths).toContain('/home');
+      expect(docPaths).toContain('/about');
+    });
   });
 
   describe('setStrategy', () => {

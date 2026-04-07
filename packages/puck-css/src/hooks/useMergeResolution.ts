@@ -328,6 +328,13 @@ export function useMergeResolution(
           continue;
         }
 
+        // Skip internal component registry documents — these are managed
+        // automatically by useComponentRegistry and must not appear in
+        // the merge resolution UI.
+        if (docPath.startsWith('_registry/')) {
+          continue;
+        }
+
         docs.push({
           documentId: docId,
           documentPath: docPath,
