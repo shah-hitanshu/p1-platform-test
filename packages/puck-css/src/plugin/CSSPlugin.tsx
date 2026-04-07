@@ -400,35 +400,35 @@ function CSSPluginPanel({
 function CSSPluginIcon(): React.ReactElement {
   return (
     <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
       {/* Browser window frame */}
-      <rect x="1" y="1" width="14" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <rect x="1.5" y="1.5" width="21" height="21" rx="2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
       {/* Title bar separator */}
-      <line x1="1" y1="4.5" x2="15" y2="4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="1.5" y1="7" x2="22.5" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
       {/* Address bar stub */}
-      <line x1="2.25" y1="2.75" x2="5.75" y2="2.75" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="3" y1="4.25" x2="9" y2="4.25" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round"/>
       {/* Nav dots */}
-      <circle cx="8.75" cy="2.75" r="0.45" fill="currentColor"/>
-      <circle cx="10.25" cy="2.75" r="0.45" fill="currentColor"/>
-      <circle cx="11.75" cy="2.75" r="0.45" fill="currentColor"/>
+      <circle cx="12.5" cy="4.25" r="0.7" fill="currentColor"/>
+      <circle cx="14.5" cy="4.25" r="0.7" fill="currentColor"/>
+      <circle cx="16.5" cy="4.25" r="0.7" fill="currentColor"/>
       {/* Image placeholder box */}
-      <rect x="2" y="5.5" width="5" height="4" rx="0.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-      {/* Mountain / landscape icon inside image box */}
-      <path d="M2.75 9.25 L4.25 7.25 L5.75 9.25 M4.5 8.25 L5.5 7.25 L6.75 9.25" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+      <rect x="3" y="8.5" width="8" height="6.5" rx="0.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
+      {/* Mountain icon inside image box */}
+      <path d="M3.75 14.5 L7 10.5 L10.25 14.5 M7.5 12.5 L9.5 10.5 L10.75 14.5" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round"/>
       {/* Text content lines */}
-      <line x1="8.25" y1="6.5" x2="13.75" y2="6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      <line x1="8.25" y1="8" x2="13.75" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      <line x1="8.25" y1="9.5" x2="12.25" y2="9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      {/* Bottom card/item circles */}
-      <circle cx="2.5" cy="12.5" r="0.65" stroke="currentColor" strokeWidth="1.5"/>
-      <circle cx="5.75" cy="12.5" r="0.65" stroke="currentColor" strokeWidth="1.5"/>
-      <circle cx="9" cy="12.5" r="0.65" stroke="currentColor" strokeWidth="1.5"/>
-      <circle cx="12.25" cy="12.5" r="0.65" stroke="currentColor" strokeWidth="1.5"/>
+      <line x1="13" y1="10" x2="21.5" y2="10" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+      <line x1="13" y1="12" x2="21.5" y2="12" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+      <line x1="13" y1="14" x2="19" y2="14" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+      {/* Bottom card circles */}
+      <circle cx="4.5" cy="19.5" r="1.2" stroke="currentColor" strokeWidth="1"/>
+      <circle cx="9.5" cy="19.5" r="1.2" stroke="currentColor" strokeWidth="1"/>
+      <circle cx="14.5" cy="19.5" r="1.2" stroke="currentColor" strokeWidth="1"/>
+      <circle cx="19.5" cy="19.5" r="1.2" stroke="currentColor" strokeWidth="1"/>
     </svg>
   );
 }
