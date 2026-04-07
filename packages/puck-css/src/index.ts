@@ -364,3 +364,6 @@ export type {
   PageListEntry,
   PageListResult,
 } from '@pantheon/css-client';
+
+// Thumbnails
+export type { ThumbnailMap, ThumbnailFC } from './utils/buildThumbnailOverride.js';
