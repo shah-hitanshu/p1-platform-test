@@ -24,8 +24,8 @@ help: ## Display this help
 
 .PHONY: version
 version: ## Show version information for all tools
-	@echo "$(BLUE)Collaborative State System - Tool Versions$(NC)"
-	@echo "─────────────────────────────────────────────"
+	@printf "$(BLUE)Collaborative State System - Tool Versions$(NC)\n"
+	@printf "─────────────────────────────────────────────\n"
 	@echo "Node:      $$(node --version 2>/dev/null || echo 'not installed')"
 	@echo "pnpm:      $$(pnpm --version 2>/dev/null || echo 'not installed')"
 	@echo "Terraform: $$(terraform version -json 2>/dev/null | jq -r '.terraform_version' || echo 'not installed')"
@@ -36,28 +36,28 @@ version: ## Show version information for all tools
 
 .PHONY: dev
 dev: ## Start all local services (Docker + Miniflare)
-	@echo "$(GREEN)Starting local development environment...$(NC)"
+	@printf "$(GREEN)Starting local development environment...$(NC)\n"
 	@$(MAKE) docker-up
 	@echo ""
-	@echo "$(GREEN)Services ready. Starting Miniflare...$(NC)"
-	@echo "$(YELLOW)Press Ctrl+C to stop the worker. Run 'make docker-down' to stop containers.$(NC)"
+	@printf "$(GREEN)Services ready. Starting Miniflare...$(NC)\n"
+	@printf "$(YELLOW)Press Ctrl+C to stop the worker. Run 'make docker-down' to stop containers.$(NC)\n"
 	@echo ""
 	@$(MAKE) worker-dev
 
 .PHONY: dev-docker-only
 dev-docker-only: docker-up ## Start Docker services only (no Miniflare)
 	@echo ""
-	@echo "$(GREEN)Docker services running. Start worker separately with: make worker-dev$(NC)"
+	@printf "$(GREEN)Docker services running. Start worker separately with: make worker-dev$(NC)\n"
 
 .PHONY: dev-stop
 dev-stop: docker-down ## Stop all local services
 
 .PHONY: dev-status
 dev-status: ## Show status of local services
-	@echo "$(BLUE)Docker Containers:$(NC)"
+	@printf "$(BLUE)Docker Containers:$(NC)\n"
 	@docker-compose -f docker/docker-compose.local.yaml ps 2>/dev/null || echo "  No containers running"
-	@echo ""
-	@echo "$(BLUE)Service Endpoints:$(NC)"
+	@printf "\n"
+	@printf "$(BLUE)Service Endpoints:$(NC)\n"
 	@echo "  PostgreSQL:  localhost:5432"
 	@echo "  Worker:      localhost:8787 (when running)"
 
@@ -65,14 +65,14 @@ dev-status: ## Show status of local services
 
 .PHONY: docker-up
 docker-up: ## Start Docker containers (PostgreSQL)
-	@echo "$(GREEN)Starting Docker containers...$(NC)"
+	@printf "$(GREEN)Starting Docker containers...$(NC)\n"
 	@docker-compose -f docker/docker-compose.local.yaml up -d
-	@echo "$(GREEN)Waiting for services to be healthy...$(NC)"
+	@printf "$(GREEN)Waiting for services to be healthy...$(NC)\n"
 	@./scripts/wait-for-services.sh
 
 .PHONY: docker-down
 docker-down: ## Stop Docker containers
-	@echo "$(YELLOW)Stopping Docker containers...$(NC)"
+	@printf "$(YELLOW)Stopping Docker containers...$(NC)\n"
 	@docker-compose -f docker/docker-compose.local.yaml down
 
 .PHONY: docker-restart
@@ -80,7 +80,7 @@ docker-restart: docker-down docker-up ## Restart Docker containers
 
 .PHONY: docker-clean
 docker-clean: ## Remove Docker containers and volumes (WARNING: destroys data)
-	@echo "$(RED)WARNING: This will destroy all local data!$(NC)"
+	@printf "$(RED)WARNING: This will destroy all local data!$(NC)\n"
 	@read -p "Are you sure? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	@docker-compose -f docker/docker-compose.local.yaml down -v --remove-orphans
 
@@ -96,41 +96,41 @@ docker-logs-postgres: ## Show PostgreSQL logs
 
 .PHONY: worker-install
 worker-install: ## Install worker dependencies
-	@echo "$(GREEN)Installing worker dependencies...$(NC)"
+	@printf "$(GREEN)Installing worker dependencies...$(NC)\n"
 	@cd workers && pnpm install
 
 .PHONY: worker-dev
 worker-dev: ## Start Cloudflare Worker in local mode (Miniflare)
 	@if [ ! -f workers/.dev.vars ]; then \
-		echo "$(YELLOW)No .dev.vars found. Generating...$(NC)"; \
+		printf "$(YELLOW)No .dev.vars found. Generating...$(NC)\n"; \
 		$(MAKE) worker-generate-secrets; \
 	fi
-	@echo "$(GREEN)Starting Miniflare local development server...$(NC)"
-	@echo "$(BLUE)Hotkeys: L=toggle local/edge, X=exit$(NC)"
+	@printf "$(GREEN)Starting Miniflare local development server...$(NC)\n"
+	@printf "$(BLUE)Hotkeys: L=toggle local/edge, X=exit$(NC)\n"
 	@cd workers && pnpm dev
 
 .PHONY: worker-generate-secrets
 worker-generate-secrets: ## Generate mock secrets for .dev.vars
-	@echo "$(GREEN)Generating local development secrets...$(NC)"
+	@printf "$(GREEN)Generating local development secrets...$(NC)\n"
 	@./scripts/generate-dev-vars.sh
 
 .PHONY: worker-login
 worker-login: ## Login to Cloudflare (for integration testing)
-	@echo "$(YELLOW)Logging into Cloudflare...$(NC)"
-	@echo "$(YELLOW)Note: Sessions expire after ~1 hour$(NC)"
+	@printf "$(YELLOW)Logging into Cloudflare...$(NC)\n"
+	@printf "$(YELLOW)Note: Sessions expire after ~1 hour$(NC)\n"
 	@cd workers && pnpm exec wrangler login
 
 .PHONY: metrics-receiver
 metrics-receiver: ## Start local metrics receiver with macOS notifications
-	@echo "$(GREEN)Starting local metrics receiver...$(NC)"
-	@echo "$(BLUE)This will send macOS notifications for issues$(NC)"
+	@printf "$(GREEN)Starting local metrics receiver...$(NC)\n"
+	@printf "$(BLUE)This will send macOS notifications for issues$(NC)\n"
 	@node scripts/local-metrics-receiver.js
 
 ##@ Terraform - Infrastructure Management
 
 .PHONY: tf-init
 tf-init: ## Initialize Terraform (ENV=local|sbx1|production)
-	@echo "$(GREEN)Initializing Terraform for $(ENV)...$(NC)"
+	@printf "$(GREEN)Initializing Terraform for $(ENV)...$(NC)\n"
 ifeq ($(ENV),local)
 	@cd $(TF_DIR) && terraform init -backend=false
 else
@@ -139,22 +139,22 @@ endif
 
 .PHONY: tf-plan
 tf-plan: tf-init ## Plan Terraform changes
-	@echo "$(GREEN)Planning Terraform for $(ENV)...$(NC)"
+	@printf "$(GREEN)Planning Terraform for $(ENV)...$(NC)\n"
 	@cd $(TF_DIR) && terraform plan -out=tfplan
 
 .PHONY: tf-apply
 tf-apply: ## Apply Terraform changes (requires tf-plan first)
 	@if [ ! -f $(TF_DIR)/tfplan ]; then \
-		echo "$(RED)Error: No tfplan found. Run 'make tf-plan' first.$(NC)"; \
+		printf "$(RED)Error: No tfplan found. Run 'make tf-plan' first.$(NC)\n"; \
 		exit 1; \
 	fi
-	@echo "$(YELLOW)Applying Terraform for $(ENV)...$(NC)"
+	@printf "$(YELLOW)Applying Terraform for $(ENV)...$(NC)\n"
 	@cd $(TF_DIR) && terraform apply tfplan
 	@rm -f $(TF_DIR)/tfplan
 
 .PHONY: tf-destroy
 tf-destroy: ## Destroy Terraform resources (use with caution)
-	@echo "$(RED)WARNING: This will destroy infrastructure for $(ENV)!$(NC)"
+	@printf "$(RED)WARNING: This will destroy infrastructure for $(ENV)!$(NC)\n"
 	@read -p "Are you sure? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	@cd $(TF_DIR) && terraform destroy
 
@@ -172,7 +172,7 @@ tf-output: ## Show Terraform outputs
 
 .PHONY: tf-sync
 tf-sync: ## Sync Terraform outputs to wrangler.jsonc (ENV=sbx1|production)
-	@echo "$(GREEN)Syncing Terraform outputs to wrangler.jsonc...$(NC)"
+	@printf "$(GREEN)Syncing Terraform outputs to wrangler.jsonc...$(NC)\n"
 	@./scripts/sync-terraform-to-wrangler.sh $(ENV)
 
 ##@ Database Utilities
@@ -183,106 +183,106 @@ db-shell: ## Open PostgreSQL interactive shell
 
 .PHONY: db-reset
 db-reset: ## Reset database (drop and recreate all tables)
-	@echo "$(RED)WARNING: This will destroy all database data!$(NC)"
+	@printf "$(RED)WARNING: This will destroy all database data!$(NC)\n"
 	@read -p "Are you sure? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	@docker-compose -f docker/docker-compose.local.yaml exec postgres psql -U cssuser cssdb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-	@echo "$(GREEN)Database reset complete.$(NC)"
+	@printf "$(GREEN)Database reset complete.$(NC)\n"
 
 ##@ Cleanup
 
 .PHONY: clean
 clean: ## Clean generated files (keeps Docker volumes)
-	@echo "$(YELLOW)Cleaning generated files...$(NC)"
+	@printf "$(YELLOW)Cleaning generated files...$(NC)\n"
 	@rm -rf workers/node_modules
 	@rm -rf workers/dist
 	@rm -rf terraform/environments/*/.terraform
 	@rm -f terraform/environments/*/tfplan
 	@rm -f terraform/environments/*/.terraform.lock.hcl
-	@echo "$(GREEN)Clean complete.$(NC)"
+	@printf "$(GREEN)Clean complete.$(NC)\n"
 
 .PHONY: clean-all
 clean-all: docker-clean clean ## Clean everything including Docker volumes
 	@rm -f workers/.dev.vars
-	@echo "$(GREEN)Full clean complete.$(NC)"
+	@printf "$(GREEN)Full clean complete.$(NC)\n"
 
 ##@ CI/CD Targets
 
 .PHONY: ci-lint
 ci-lint: tf-fmt ## Run infrastructure linting
-	@echo "$(GREEN)Checking Terraform formatting...$(NC)"
-	@terraform fmt -check -recursive terraform/ || (echo "$(RED)Terraform files need formatting. Run 'make tf-fmt'$(NC)" && exit 1)
-	@echo "$(GREEN)Lint passed.$(NC)"
+	@printf "$(GREEN)Checking Terraform formatting...$(NC)\n"
+	@terraform fmt -check -recursive terraform/ || (printf "$(RED)Terraform files need formatting. Run 'make tf-fmt'$(NC)\n" && exit 1)
+	@printf "$(GREEN)Lint passed.$(NC)\n"
 
 .PHONY: ci-validate
 ci-validate: ## Validate all Terraform configurations
-	@echo "$(GREEN)Validating Terraform configurations...$(NC)"
+	@printf "$(GREEN)Validating Terraform configurations...$(NC)\n"
 	@for env in local sbx1 production; do \
 		echo "  Validating $$env..."; \
 		cd terraform/environments/$$env && terraform init -backend=false > /dev/null && terraform validate || exit 1; \
 		cd ../../..; \
 	done
-	@echo "$(GREEN)All configurations valid.$(NC)"
+	@printf "$(GREEN)All configurations valid.$(NC)\n"
 
 ##@ Frontend Development
 
 .PHONY: frontend-install
 frontend-install: ## Install frontend dependencies
-	@echo "$(GREEN)Installing frontend dependencies...$(NC)"
+	@printf "$(GREEN)Installing frontend dependencies...$(NC)\n"
 	@cd frontend && pnpm install
 
 .PHONY: frontend-dev
 frontend-dev: ## Start frontend development server
-	@echo "$(GREEN)Starting frontend development server...$(NC)"
-	@echo "$(BLUE)Frontend will be available at http://localhost:5173$(NC)"
+	@printf "$(GREEN)Starting frontend development server...$(NC)\n"
+	@printf "$(BLUE)Frontend will be available at http://localhost:5173$(NC)\n"
 	@cd frontend && pnpm dev
 
 .PHONY: frontend-build
 frontend-build: ## Build frontend for production
-	@echo "$(GREEN)Building frontend...$(NC)"
+	@printf "$(GREEN)Building frontend...$(NC)\n"
 	@cd frontend && pnpm build
 
 .PHONY: frontend-lint
 frontend-lint: ## Lint frontend code
-	@echo "$(GREEN)Linting frontend code...$(NC)"
+	@printf "$(GREEN)Linting frontend code...$(NC)\n"
 	@cd frontend && pnpm lint
 
 .PHONY: frontend-test
 frontend-test: ## Run frontend E2E tests
-	@echo "$(GREEN)Running frontend E2E tests...$(NC)"
+	@printf "$(GREEN)Running frontend E2E tests...$(NC)\n"
 	@cd frontend && pnpm test:e2e
 
 ##@ Frontend Deployment
 
 .PHONY: frontend-deploy-sbx1
 frontend-deploy-sbx1: ## Build and deploy frontend to sbx1
-	@echo "$(GREEN)Building and deploying frontend to sbx1...$(NC)"
+	@printf "$(GREEN)Building and deploying frontend to sbx1...$(NC)\n"
 	@cd frontend && pnpm deploy:sbx1
 
 .PHONY: frontend-deploy-prod
 frontend-deploy-prod: ## Build and deploy frontend to production (with confirmation)
-	@echo "$(RED)WARNING: This will deploy the frontend to PRODUCTION!$(NC)"
+	@printf "$(RED)WARNING: This will deploy the frontend to PRODUCTION!$(NC)\n"
 	@read -p "Are you sure? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
-	@echo "$(GREEN)Building and deploying frontend to production...$(NC)"
+	@printf "$(GREEN)Building and deploying frontend to production...$(NC)\n"
 	@cd frontend && pnpm deploy:production
 
 ##@ Full Stack Development
 
 .PHONY: dev-full
 dev-full: ## Start full stack (Docker + Worker + Frontend)
-	@echo "$(GREEN)Starting full stack development environment...$(NC)"
+	@printf "$(GREEN)Starting full stack development environment...$(NC)\n"
 	@$(MAKE) docker-up
 	@echo ""
-	@echo "$(GREEN)Starting backend worker and frontend...$(NC)"
-	@echo "$(YELLOW)Press Ctrl+C to stop all services.$(NC)"
+	@printf "$(GREEN)Starting backend worker and frontend...$(NC)\n"
+	@printf "$(YELLOW)Press Ctrl+C to stop all services.$(NC)\n"
 	@cd workers && pnpm dev & WORKER_PID=$$!; \
 	trap "kill $$WORKER_PID 2>/dev/null; cd workers && pnpm cleanup:dev; exit 0" INT TERM EXIT; \
 	sleep 3; \
-	echo ""; \
-	echo "$(GREEN)Starting frontend...$(NC)"; \
+	printf "\n"; \
+	printf "$(GREEN)Starting frontend...$(NC)\n"; \
 	cd frontend && pnpm dev; \
 	kill $$WORKER_PID 2>/dev/null; \
 	cd workers && pnpm cleanup:dev
 
 .PHONY: install-all
 install-all: worker-install frontend-install ## Install all dependencies
-	@echo "$(GREEN)All dependencies installed.$(NC)"
+	@printf "$(GREEN)All dependencies installed.$(NC)\n"
