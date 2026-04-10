@@ -24,7 +24,7 @@ import {
 } from '@pantheon/css-client';
 import type { OAuthSession, OAuthUserInfo } from '@pantheon/css-client';
 
-export type AuthMode = 'mock' | 'google' | 'auth0';
+export type AuthMode = 'mock' | 'google' | 'auth0' | 'css-authserver';
 
 export interface AuthUser {
   id: string;

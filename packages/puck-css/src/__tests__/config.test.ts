@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createNextConfig, createNextContentClient } from '../config.js';
+import { createCSSConfig, createNextConfig, createNextContentClient } from '../config.js';
 
 vi.mock('@pantheon/css-client', () => {
   const MockCSSContentClient = vi.fn();
@@ -82,6 +82,63 @@ describe('createNextConfig', () => {
     const config2 = createNextConfig();
     expect(config2.enableRealtime).toBe(true);
     expect(config2.enablePresence).toBe(true);
+  });
+});
+
+describe('createCSSConfig with css-authserver mode', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('accepts css-authserver as a valid auth mode', () => {
+    const config = createCSSConfig(
+      {},
+      {
+        overrides: {
+          baseUrl: 'https://css.example.com',
+          siteId: 'site-123',
+          authMode: 'css-authserver',
+          cssAuthServerUrl: 'https://auth.css.example.com',
+        },
+      },
+    );
+
+    expect(config.authMode).toBe('css-authserver');
+    expect(config.cssAuthServerUrl).toBe('https://auth.css.example.com');
+  });
+
+  it('parses CSS_AUTH_SERVER_URL and CSS_AUTH_REDIRECT_URI from env', () => {
+    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+    process.env.NEXT_PUBLIC_CSS_AUTH_MODE = 'css-authserver';
+    process.env.NEXT_PUBLIC_CSS_AUTH_SERVER_URL = 'https://auth.css.example.com';
+    process.env.NEXT_PUBLIC_CSS_AUTH_REDIRECT_URI = 'https://mysite.com/auth/callback';
+
+    const config = createNextConfig();
+
+    expect(config.authMode).toBe('css-authserver');
+    expect(config.cssAuthServerUrl).toBe('https://auth.css.example.com');
+    expect(config.cssAuthRedirectUri).toBe('https://mysite.com/auth/callback');
+  });
+
+  it('reads CSS_AUTH_SERVER_URL from prefixed env source', () => {
+    const config = createCSSConfig(
+      {
+        VITE_CSS_AUTH_SERVER_URL: 'https://auth.css.example.com',
+        VITE_CSS_BASE_URL: 'https://css.example.com',
+        VITE_CSS_SITE_ID: 'site-123',
+        VITE_CSS_AUTH_MODE: 'css-authserver',
+      },
+      { prefix: 'VITE_' },
+    );
+
+    expect(config.cssAuthServerUrl).toBe('https://auth.css.example.com');
   });
 });
 
