@@ -250,9 +250,12 @@ async function handleRequest(
     );
   }
 
-  // Mock auth endpoints (only when no real OAuth providers are configured)
+  // Mock auth endpoints (local development only)
+  // Guard on ENVIRONMENT === 'local' rather than !hasOAuthProviders so the
+  // endpoint is unreachable on sbx1/production even when OAuth secrets are
+  // absent — consistent with how getIdentityProvider gates the MockIdentityProvider.
   if (path.startsWith('/api/auth')) {
-    if (!hasOAuthProviders(env)) {
+    if (env.ENVIRONMENT === 'local') {
       const response = await handleAuthRoutes(request, path, env);
       if (response) {
         return addCorsHeaders(response, origin, env);
@@ -278,7 +281,7 @@ async function handleRequest(
           message: `No handler for ${request.method} ${path}`,
           availableEndpoints: [
             '/health', '/api/sites', '/api/admin/users', '/api/auth/me',
-            ...(!hasOAuthProviders(env) ? ['/api/auth/users', '/api/auth/token'] : []),
+            ...(env.ENVIRONMENT === 'local' ? ['/api/auth/users', '/api/auth/token'] : []),
           ],
         },
         404,
