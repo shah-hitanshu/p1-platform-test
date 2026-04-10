@@ -17,6 +17,20 @@ export interface GoogleOAuthConfig {
   onCredential?: (userInfo: OAuthUserInfo, token: string) => void;
 }
 
+/** Configuration for CSS Auth Server OAuth */
+export interface CSSAuthServerOAuthConfig {
+  /** Base URL of the CSS Auth Server (e.g., "https://auth.css.example.com") */
+  authServerUrl: string;
+  /** Site ID used as the OAuth client_id */
+  siteId: string;
+  /** Redirect URI for the OAuth callback. Default: window.location.origin + '/auth/callback' */
+  redirectUri?: string;
+  /** CSS backend base URL for token validation via /api/auth/me */
+  cssBaseUrl: string;
+  /** Storage key prefix for token persistence. Default: 'css_authserver' */
+  storageKey?: string;
+}
+
 /** Configuration for Auth0 OAuth */
 export interface Auth0OAuthConfig {
   domain: string;
@@ -38,7 +52,7 @@ export interface OAuthUserInfo {
 /** OAuth session interface for managing login state */
 export interface OAuthSession {
   /** The OAuth provider type */
-  provider: 'google' | 'auth0';
+  provider: 'google' | 'auth0' | 'css-authserver';
   /** Login/authenticate the user */
   login(): Promise<void>;
   /** Logout the user */
@@ -60,6 +74,13 @@ export interface OAuthSession {
    * Not all providers support this — returns null if unsupported.
    */
   renderButton?(container: HTMLElement): (() => void) | null;
+  /**
+   * Handle the OAuth callback after redirect.
+   * Extracts the authorization code from the URL, validates the state parameter,
+   * and exchanges the code for tokens.
+   * Only used by redirect-based flows (css-authserver). No-op for others.
+   */
+  handleCallback?(): Promise<void>;
 }
 
 /** Buffer before expiry at which we attempt a token refresh (5 minutes). */
@@ -477,6 +498,186 @@ export function createAuth0OAuth(config: Auth0OAuthConfig): OAuthSession {
 }
 
 /**
+ * Create a CSS Auth Server OAuth session using Authorization Code + PKCE.
+ *
+ * The CSS Auth Server is an OAuth 2.0 Authorization Server that proxies
+ * Google/Auth0 authentication. Consuming sites never register with Google
+ * directly — they authenticate against the CSS Auth Server using the site ID
+ * as the client_id.
+ *
+ * @param config - CSS Auth Server OAuth configuration
+ * @returns OAuthSession for managing CSS Auth Server sign-in
+ */
+export function createCSSAuthServerOAuth(config: CSSAuthServerOAuthConfig): OAuthSession {
+  const keyPrefix = config.storageKey ?? 'css_authserver';
+  const tokenKey = `${keyPrefix}_token`;
+  const refreshKey = `${keyPrefix}_refresh_token`;
+  const stateKey = `${keyPrefix}_state`;
+  const verifierKey = `${keyPrefix}_verifier`;
+  const redirectUri = config.redirectUri ?? `${globalThis.location?.origin ?? ''}/auth/callback`;
+  let userInfo: OAuthUserInfo | null = null;
+
+  function hasToken(): boolean {
+    if (typeof localStorage === 'undefined') return false;
+    return localStorage.getItem(tokenKey) !== null;
+  }
+
+  async function refreshAccessToken(): Promise<string | null> {
+    if (typeof localStorage === 'undefined') return null;
+    const refreshToken = localStorage.getItem(refreshKey);
+    if (!refreshToken) return null;
+
+    try {
+      const body = new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: config.siteId,
+      });
+
+      const response = await fetch(`${config.authServerUrl}/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      });
+
+      if (!response.ok) {
+        localStorage.removeItem(refreshKey);
+        return null;
+      }
+
+      const data = (await response.json()) as {
+        access_token: string;
+        refresh_token?: string;
+        token_type: string;
+      };
+
+      localStorage.setItem(tokenKey, data.access_token);
+      if (data.refresh_token) {
+        localStorage.setItem(refreshKey, data.refresh_token);
+      }
+      return data.access_token;
+    } catch {
+      localStorage.removeItem(refreshKey);
+      return null;
+    }
+  }
+
+  const session: OAuthSession = {
+    provider: 'css-authserver',
+
+    async login(): Promise<void> {
+      const verifier = generateCodeVerifier();
+      const challenge = await computeS256Challenge(verifier);
+      const state = generateState();
+
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(stateKey, state);
+        sessionStorage.setItem(verifierKey, verifier);
+      }
+
+      const params = new URLSearchParams({
+        client_id: config.siteId,
+        redirect_uri: redirectUri,
+        response_type: 'code',
+        code_challenge: challenge,
+        code_challenge_method: 'S256',
+        state,
+      });
+
+      globalThis.location.href = `${config.authServerUrl}/authorize?${params.toString()}`;
+    },
+
+    async handleCallback(): Promise<void> {
+      const urlParams = new URLSearchParams(globalThis.location.search);
+      const code = urlParams.get('code');
+      const returnedState = urlParams.get('state');
+
+      if (!code) {
+        throw new Error('OAuth callback missing authorization code');
+      }
+
+      const storedState =
+        typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(stateKey) : null;
+      if (!storedState || storedState !== returnedState) {
+        throw new Error('OAuth callback state mismatch — possible CSRF attack');
+      }
+
+      const storedVerifier =
+        typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(verifierKey) : null;
+      if (!storedVerifier) {
+        throw new Error('OAuth callback missing PKCE code verifier');
+      }
+
+      const body = new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+        client_id: config.siteId,
+        code_verifier: storedVerifier,
+      });
+
+      const response = await fetch(`${config.authServerUrl}/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(`Token exchange failed: ${errorData.error ?? response.status}`);
+      }
+
+      const data = (await response.json()) as {
+        access_token: string;
+        refresh_token?: string;
+        token_type: string;
+      };
+
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(tokenKey, data.access_token);
+        if (data.refresh_token) {
+          localStorage.setItem(refreshKey, data.refresh_token);
+        }
+      }
+
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem(stateKey);
+        sessionStorage.removeItem(verifierKey);
+      }
+    },
+
+    renderButton(_container: HTMLElement): (() => void) | null {
+      return null;
+    },
+
+    async logout(): Promise<void> {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(tokenKey);
+        localStorage.removeItem(refreshKey);
+      }
+      userInfo = null;
+    },
+
+    isAuthenticated(): boolean {
+      return hasToken();
+    },
+
+    getUserInfo(): OAuthUserInfo | null {
+      return userInfo;
+    },
+
+    async getToken(): Promise<string | null> {
+      if (typeof localStorage === 'undefined') return null;
+      const token = localStorage.getItem(tokenKey);
+      if (token) return token;
+      return refreshAccessToken();
+    },
+  };
+
+  return session;
+}
+
+/**
  * Create an AuthProvider from an OAuthSession.
  * The returned AuthProvider is compatible with CSSClient's authProvider config option.
  *
@@ -557,4 +758,43 @@ export async function loginMockUser(
     token: string;
     user: { id: string; name: string; email: string };
   }>;
+}
+
+/**
+ * Base64url-encode a Uint8Array without padding (RFC 4648 Section 5).
+ */
+function base64UrlEncode(bytes: Uint8Array): string {
+  const binary = Array.from(bytes, (b) => String.fromCharCode(b)).join('');
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
+ * Generate a PKCE code verifier (RFC 7636 Section 4.1).
+ * Produces a 64-character URL-safe random string.
+ */
+export function generateCodeVerifier(): string {
+  const array = new Uint8Array(48);
+  crypto.getRandomValues(array);
+  return base64UrlEncode(array);
+}
+
+/**
+ * Compute the S256 code challenge from a code verifier (RFC 7636 Section 4.2).
+ * Returns the SHA-256 hash of the verifier, base64url-encoded without padding.
+ */
+export async function computeS256Challenge(verifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return base64UrlEncode(new Uint8Array(digest));
+}
+
+/**
+ * Generate a random state parameter for CSRF protection.
+ * Returns a 64-character hex string (32 random bytes).
+ */
+export function generateState(): string {
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('');
 }

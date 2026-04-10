@@ -96,13 +96,18 @@ export type { AuthProvider, TokenStorage } from './auth.js';
 export {
   createGoogleOAuth,
   createAuth0OAuth,
+  createCSSAuthServerOAuth,
   createOAuthAuthProvider,
   validateToken,
   loginMockUser,
+  generateCodeVerifier,
+  computeS256Challenge,
+  generateState,
 } from './oauth.js';
 export type {
   GoogleOAuthConfig,
   Auth0OAuthConfig,
+  CSSAuthServerOAuthConfig,
   OAuthUserInfo,
   OAuthSession,
   AuthMeResponse,
