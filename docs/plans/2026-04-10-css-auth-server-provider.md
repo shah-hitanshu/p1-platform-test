@@ -240,7 +240,11 @@ Add to `packages/css-client/tests/oauth.spec.ts`:
 import { createCSSAuthServerOAuth } from '../src/oauth.js';
 import type { CSSAuthServerOAuthConfig } from '../src/oauth.js';
 
-// Mock sessionStorage
+// --- CSS Auth Server tests ---
+// IMPORTANT: The mocks below (sessionStorage, location, history) must be scoped
+// to avoid polluting the existing Google/Auth0 tests above. We save and restore
+// the originals in beforeAll/afterAll for this describe block.
+
 const sessionStorageMock = (() => {
   let store: Record<string, string> = {};
   return {
@@ -261,23 +265,13 @@ const sessionStorageMock = (() => {
   };
 })();
 
-Object.defineProperty(global, 'sessionStorage', { value: sessionStorageMock, writable: true });
-
-// Spy on window.location to capture redirects
 const locationMock = {
   origin: 'https://mysite.com',
   href: 'https://mysite.com/editor',
   search: '',
 };
 
-Object.defineProperty(global, 'location', { value: locationMock, writable: true });
-
-// Mock window.history.replaceState
 const replaceStateMock = vi.fn();
-Object.defineProperty(global, 'history', {
-  value: { replaceState: replaceStateMock },
-  writable: true,
-});
 
 const defaultConfig: CSSAuthServerOAuthConfig = {
   authServerUrl: 'https://auth.css.example.com',
@@ -287,6 +281,25 @@ const defaultConfig: CSSAuthServerOAuthConfig = {
 };
 
 describe('createCSSAuthServerOAuth', () => {
+  // Save originals so we don't pollute other test blocks
+  const savedSessionStorage = global.sessionStorage;
+  const savedLocation = global.location;
+  const savedHistory = global.history;
+  const savedFetch = global.fetch;
+
+  beforeAll(() => {
+    Object.defineProperty(global, 'sessionStorage', { value: sessionStorageMock, writable: true, configurable: true });
+    Object.defineProperty(global, 'location', { value: locationMock, writable: true, configurable: true });
+    Object.defineProperty(global, 'history', { value: { replaceState: replaceStateMock }, writable: true, configurable: true });
+  });
+
+  afterAll(() => {
+    Object.defineProperty(global, 'sessionStorage', { value: savedSessionStorage, writable: true, configurable: true });
+    Object.defineProperty(global, 'location', { value: savedLocation, writable: true, configurable: true });
+    Object.defineProperty(global, 'history', { value: savedHistory, writable: true, configurable: true });
+    global.fetch = savedFetch;
+  });
+
   beforeEach(() => {
     localStorageMock.clear();
     sessionStorageMock.clear();
@@ -504,7 +517,8 @@ describe('createCSSAuthServerOAuth', () => {
   it('renderButton returns null (css-authserver uses redirect, not provider widget)', () => {
     const session = createCSSAuthServerOAuth(defaultConfig);
     expect(session.renderButton).toBeDefined();
-    const cleanup = session.renderButton!(document.createElement('div'));
+    // css-client tests run in Node environment (no DOM), so pass a mock element
+    const cleanup = session.renderButton!({} as HTMLElement);
     expect(cleanup).toBeNull();
   });
 
@@ -581,7 +595,8 @@ export function createCSSAuthServerOAuth(config: CSSAuthServerOAuthConfig): OAut
   const refreshKey = `${keyPrefix}_refresh_token`;
   const stateKey = `${keyPrefix}_state`;
   const verifierKey = `${keyPrefix}_verifier`;
-  const redirectUri = config.redirectUri ?? `${window.location.origin}/auth/callback`;
+  // Use globalThis instead of window so this works in both browser and Node test environments
+  const redirectUri = config.redirectUri ?? `${globalThis.location?.origin ?? ''}/auth/callback`;
   let userInfo: OAuthUserInfo | null = null;
 
   function hasToken(): boolean {
@@ -654,11 +669,11 @@ export function createCSSAuthServerOAuth(config: CSSAuthServerOAuthConfig): OAut
       });
 
       // Redirect to the auth server's authorization endpoint
-      window.location.href = `${config.authServerUrl}/authorize?${params.toString()}`;
+      globalThis.location.href = `${config.authServerUrl}/authorize?${params.toString()}`;
     },
 
     async handleCallback(): Promise<void> {
-      const urlParams = new URLSearchParams(window.location.search);
+      const urlParams = new URLSearchParams(globalThis.location.search);
       const code = urlParams.get('code');
       const returnedState = urlParams.get('state');
 
@@ -1277,12 +1292,7 @@ In `apps/demo/src/App.tsx:35`, update the type assertion:
 authMode: (import.meta.env.VITE_AUTH_MODE || 'mock') as 'mock' | 'google' | 'auth0' | 'css-authserver',
 ```
 
-And add the CSS Auth Server config to the overrides object (around line 39):
-
-```typescript
-cssAuthServerUrl: import.meta.env.VITE_CSS_AUTH_SERVER_URL,
-cssAuthRedirectUri: import.meta.env.VITE_CSS_AUTH_REDIRECT_URI,
-```
+Note: `cssAuthServerUrl` and `cssAuthRedirectUri` do NOT need explicit overrides in the demo app. The demo app uses `createCSSConfig(import.meta.env, { prefix: 'VITE_' })`, so env vars like `VITE_CSS_AUTH_SERVER_URL` are automatically resolved via `env('CSS_AUTH_SERVER_URL')` after prefix stripping. Overrides are only needed for env vars that don't follow the `VITE_CSS_*` naming convention (like `VITE_AUTH_MODE` instead of `VITE_CSS_AUTH_MODE`).
 
 **Step 4: Commit**
 
