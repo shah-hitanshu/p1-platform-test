@@ -1125,7 +1125,7 @@ const mockAuthState = {
   user: null,
   token: null,
   error: null as string | null,
-  authMode: 'css-authserver' as const,
+  authMode: 'css-authserver' as string,
   login: mockLogin,
   logout: vi.fn(),
 };
@@ -1143,7 +1143,7 @@ describe('CSSLoginPage with css-authserver mode', () => {
   beforeEach(() => {
     mockAuthState.isLoading = false;
     mockAuthState.error = null;
-    mockAuthState.authMode = 'css-authserver' as 'mock';
+    mockAuthState.authMode = 'css-authserver';
     mockLogin.mockClear();
   });
 
