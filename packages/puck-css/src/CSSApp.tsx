@@ -173,10 +173,13 @@ export function CSSApp({
     <CSSAuthProvider
       authMode={config.authMode}
       cssBaseUrl={config.baseUrl}
+      siteId={config.siteId}
       googleClientId={config.googleClientId}
       auth0Domain={config.auth0Domain}
       auth0ClientId={config.auth0ClientId}
       auth0Audience={config.auth0Audience}
+      cssAuthServerUrl={config.cssAuthServerUrl}
+      cssAuthRedirectUri={config.cssAuthRedirectUri}
     >
       <AuthGate
         config={config}

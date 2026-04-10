@@ -19,6 +19,7 @@ import React, {
 import {
   createGoogleOAuth,
   createAuth0OAuth,
+  createCSSAuthServerOAuth,
   validateToken,
   loginMockUser,
 } from '@pantheon/css-client';
@@ -76,6 +77,12 @@ export interface CSSAuthProviderProps {
   auth0ClientId?: string;
   /** Auth0 audience (optional). */
   auth0Audience?: string;
+  /** CSS site ID (used as OAuth client_id for css-authserver mode). */
+  siteId?: string;
+  /** CSS Auth Server URL (required when authMode is 'css-authserver'). */
+  cssAuthServerUrl?: string;
+  /** Redirect URI for CSS Auth Server callback (optional). */
+  cssAuthRedirectUri?: string;
   /** localStorage key for token persistence. Default: 'css_auth_token'. */
   tokenStorageKey?: string;
   children: React.ReactNode;
@@ -103,6 +110,23 @@ function createOAuthSession(
       domain: props.auth0Domain,
       clientId: props.auth0ClientId,
       audience: props.auth0Audience,
+    });
+  }
+
+  if (authMode === 'css-authserver') {
+    if (!props.cssAuthServerUrl) {
+      console.warn('CSSAuthProvider: cssAuthServerUrl is required for css-authserver auth mode');
+      return null;
+    }
+    if (!props.siteId) {
+      console.warn('CSSAuthProvider: siteId is required for css-authserver auth mode (used as OAuth client_id)');
+      return null;
+    }
+    return createCSSAuthServerOAuth({
+      authServerUrl: props.cssAuthServerUrl,
+      siteId: props.siteId,
+      redirectUri: props.cssAuthRedirectUri,
+      cssBaseUrl: props.cssBaseUrl,
     });
   }
 
@@ -147,6 +171,37 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
 
     async function checkExistingAuth() {
       setIsLoading(true);
+
+      // Handle OAuth callback if returning from a CSS Auth Server redirect
+      if (authMode === 'css-authserver' && oauthSession?.handleCallback) {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('code') && urlParams.has('state')) {
+          try {
+            await oauthSession.handleCallback();
+            const callbackToken = await oauthSession.getToken();
+            if (!cancelled && callbackToken) {
+              setToken(callbackToken);
+              const validated = await validateToken(cssBaseUrl, callbackToken);
+              if (!cancelled && validated) {
+                setUser({
+                  id: validated.id,
+                  name: validated.email ?? validated.id,
+                  email: validated.email,
+                });
+              }
+            }
+            window.history.replaceState({}, document.title, window.location.pathname);
+            if (!cancelled) setIsLoading(false);
+            return;
+          } catch (err) {
+            if (!cancelled) {
+              setError(err instanceof Error ? err.message : 'OAuth callback failed');
+              setIsLoading(false);
+            }
+            return;
+          }
+        }
+      }
 
       if (authMode === 'mock') {
         const storedToken = localStorage.getItem(storageKey);
