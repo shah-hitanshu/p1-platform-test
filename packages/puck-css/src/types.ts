@@ -75,6 +75,12 @@ export interface CSSPuckConfig {
    * API key for real-time WebSocket authentication.
    * Required when enableRealtime is true.
    * WebSockets can't send custom headers, so the API key is passed as a query param.
+   *
+   * Security note: the key is visible in server access logs and browser DevTools.
+   * This path is only used for direct API key auth (machine-to-machine / local dev).
+   * Human user sessions authenticate via Google/Auth0 — the browser's session cookie
+   * is validated at the WebSocket upgrade request, so no API key is needed or sent.
+   * Keys used here should be short-lived or scoped/rotatable service credentials.
    */
   realtimeApiKey?: string;
 

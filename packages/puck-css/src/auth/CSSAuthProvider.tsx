@@ -48,7 +48,13 @@ export interface CSSAuthContextValue {
 
 const CSSAuthContext = createContext<CSSAuthContextValue | null>(null);
 
-/** Default demo users for mock auth mode. */
+/**
+ * Default demo users for mock auth mode.
+ *
+ * @internal Local-development only. These fixed UUIDs are only recognised by
+ * the backend when `ENVIRONMENT === 'local'`. Do not rely on these identities
+ * in production deployments.
+ */
 export const DEMO_USERS = [
   { id: '11111111-1111-1111-1111-111111111111', name: 'Alice Developer' },
   { id: '22222222-2222-2222-2222-222222222222', name: 'Bob Teammate' },

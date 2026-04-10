@@ -530,6 +530,10 @@ export async function validateToken(
  * Login as a mock/demo user via POST /api/auth/token.
  * Framework-agnostic — works in any JS environment with fetch().
  *
+ * @internal This is a local-development helper. The backend only enables
+ * `/api/auth/token` when `ENVIRONMENT === 'local'`; mock tokens are rejected
+ * by all other environments. Do not use in production deployments.
+ *
  * @param baseUrl - CSS backend base URL
  * @param userId - The mock user ID to log in as
  * @returns Token and user info
