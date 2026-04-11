@@ -23,7 +23,7 @@ export interface CSSAuthServerOAuthConfig {
   authServerUrl: string;
   /** Site ID used as the OAuth client_id */
   siteId: string;
-  /** Redirect URI for the OAuth callback. Default: globalThis.location.origin + '/auth/callback' */
+  /** Redirect URI for the OAuth callback. Default: current page URL (origin + pathname), so the user returns to the page they were on after login. */
   redirectUri?: string;
   /** CSS backend base URL for token validation via /api/auth/me */
   cssBaseUrl: string;
@@ -514,7 +514,10 @@ export function createCSSAuthServerOAuth(config: CSSAuthServerOAuthConfig): OAut
   const refreshKey = `${keyPrefix}_refresh_token`;
   const stateKey = `${keyPrefix}_state`;
   const verifierKey = `${keyPrefix}_verifier`;
-  const redirectUri = config.redirectUri ?? `${globalThis.location?.origin ?? ''}/auth/callback`;
+  const redirectUri = config.redirectUri ?? (() => {
+    if (typeof globalThis.location === 'undefined') return '';
+    return globalThis.location.origin + globalThis.location.pathname;
+  })();
   let userInfo: OAuthUserInfo | null = null;
 
   function hasToken(): boolean {
