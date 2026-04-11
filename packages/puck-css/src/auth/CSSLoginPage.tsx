@@ -127,6 +127,20 @@ function Auth0Login() {
   );
 }
 
+function CSSAuthServerLogin() {
+  const { login, isLoading } = useCSSAuth();
+
+  return (
+    <button
+      className="pds-button pds-button--primary pds-button--full-width"
+      onClick={() => void login()}
+      disabled={isLoading}
+    >
+      {isLoading ? 'Signing in...' : 'Sign in'}
+    </button>
+  );
+}
+
 function getAuthModeLabel(mode: AuthMode): string {
   switch (mode) {
     case 'mock':
@@ -135,6 +149,8 @@ function getAuthModeLabel(mode: AuthMode): string {
       return 'Google';
     case 'auth0':
       return 'Auth0';
+    case 'css-authserver':
+      return 'CSS Auth Server';
   }
 }
 
@@ -169,6 +185,7 @@ export function CSSLoginPage({
         {authMode === 'mock' && <MockLogin />}
         {authMode === 'google' && <GoogleLogin />}
         {authMode === 'auth0' && <Auth0Login />}
+        {authMode === 'css-authserver' && <CSSAuthServerLogin />}
 
         {error && <div style={errorStyle}>{error}</div>}
       </div>
