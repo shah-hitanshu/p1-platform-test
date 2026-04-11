@@ -2,7 +2,7 @@
  * CSSAuthProvider
  *
  * Reusable auth context for any React app integrating with CSS.
- * Supports three auth modes: 'mock', 'google', and 'auth0'.
+ * Supports four auth modes: 'mock', 'google', 'auth0', and 'css-authserver'.
  * Handles token lifecycle, validation, and expiry across all modes.
  *
  * Framework-agnostic within React — works with Next.js, Remix, Vite, CRA, etc.
@@ -19,12 +19,13 @@ import React, {
 import {
   createGoogleOAuth,
   createAuth0OAuth,
+  createCSSAuthServerOAuth,
   validateToken,
   loginMockUser,
 } from '@pantheon/css-client';
 import type { OAuthSession, OAuthUserInfo } from '@pantheon/css-client';
 
-export type AuthMode = 'mock' | 'google' | 'auth0';
+export type AuthMode = 'mock' | 'google' | 'auth0' | 'css-authserver';
 
 export interface AuthUser {
   id: string;
@@ -63,6 +64,12 @@ export const DEMO_USERS = [
 
 const DEFAULT_TOKEN_KEY = 'css_auth_token';
 
+// Module-level: persists across React StrictMode's double-mount in development.
+// OAuth authorization codes are single-use — only one concurrent handleCallback()
+// must exchange the code. The second effect awaits the same shared promise rather
+// than making a duplicate /token request (which would fail with invalid_grant).
+let cssAuthCallbackPromise: Promise<void> | null = null;
+
 export interface CSSAuthProviderProps {
   /** Auth mode: 'mock' for demo users, 'google' or 'auth0' for OAuth. */
   authMode: AuthMode;
@@ -76,6 +83,12 @@ export interface CSSAuthProviderProps {
   auth0ClientId?: string;
   /** Auth0 audience (optional). */
   auth0Audience?: string;
+  /** CSS site ID (used as OAuth client_id for css-authserver mode). */
+  siteId?: string;
+  /** CSS Auth Server URL (required when authMode is 'css-authserver'). */
+  cssAuthServerUrl?: string;
+  /** Redirect URI for CSS Auth Server callback (optional). */
+  cssAuthRedirectUri?: string;
   /** localStorage key for token persistence. Default: 'css_auth_token'. */
   tokenStorageKey?: string;
   children: React.ReactNode;
@@ -103,6 +116,23 @@ function createOAuthSession(
       domain: props.auth0Domain,
       clientId: props.auth0ClientId,
       audience: props.auth0Audience,
+    });
+  }
+
+  if (authMode === 'css-authserver') {
+    if (!props.cssAuthServerUrl) {
+      console.warn('CSSAuthProvider: cssAuthServerUrl is required for css-authserver auth mode');
+      return null;
+    }
+    if (!props.siteId) {
+      console.warn('CSSAuthProvider: siteId is required for css-authserver auth mode (used as OAuth client_id)');
+      return null;
+    }
+    return createCSSAuthServerOAuth({
+      authServerUrl: props.cssAuthServerUrl,
+      siteId: props.siteId,
+      redirectUri: props.cssAuthRedirectUri,
+      cssBaseUrl: props.cssBaseUrl,
     });
   }
 
@@ -147,6 +177,50 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
 
     async function checkExistingAuth() {
       setIsLoading(true);
+
+      // Handle OAuth callback if returning from a CSS Auth Server redirect.
+      // Uses a shared module-level Promise to deduplicate concurrent handleCallback()
+      // calls that arise from React StrictMode's double useEffect invocation in dev.
+      // Authorization codes are single-use — only one /token fetch must occur.
+      if (authMode === 'css-authserver' && oauthSession?.handleCallback) {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('code') && urlParams.has('state')) {
+          if (!cssAuthCallbackPromise) {
+            // First effect to reach this point initiates the exchange.
+            // .finally() clears the URL and resets the shared promise so that
+            // future navigations (with a fresh ?code=) are handled correctly.
+            cssAuthCallbackPromise = oauthSession.handleCallback().finally(() => {
+              window.history.replaceState({}, document.title, window.location.pathname);
+              cssAuthCallbackPromise = null;
+            });
+          }
+          // Both effects await the same promise — only one /token request is made.
+          try {
+            await cssAuthCallbackPromise;
+            // getToken() reads from localStorage, which handleCallback() populated.
+            const callbackToken = await oauthSession.getToken();
+            if (!cancelled && callbackToken) {
+              setToken(callbackToken);
+              const validated = await validateToken(cssBaseUrl, callbackToken);
+              if (!cancelled && validated) {
+                setUser({
+                  id: validated.id,
+                  name: validated.email ?? validated.id,
+                  email: validated.email,
+                });
+              }
+            }
+            if (!cancelled) setIsLoading(false);
+            return;
+          } catch (err) {
+            if (!cancelled) {
+              setError(err instanceof Error ? err.message : 'OAuth callback failed');
+              setIsLoading(false);
+            }
+            return;
+          }
+        }
+      }
 
       if (authMode === 'mock') {
         const storedToken = localStorage.getItem(storageKey);

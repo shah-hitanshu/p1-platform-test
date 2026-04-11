@@ -11,6 +11,8 @@ export interface CSSConfig {
   auth0Domain?: string;
   auth0ClientId?: string;
   auth0Audience?: string;
+  cssAuthServerUrl?: string;
+  cssAuthRedirectUri?: string;
   enableRealtime?: boolean;
   wsBaseUrl?: string;
   enablePresence?: boolean;
@@ -18,7 +20,7 @@ export interface CSSConfig {
   maxRetries?: number;
 }
 
-const VALID_AUTH_MODES: AuthMode[] = ['mock', 'google', 'auth0'];
+const VALID_AUTH_MODES: AuthMode[] = ['mock', 'google', 'auth0', 'css-authserver'];
 
 export function createCSSConfig(
   envSource: Record<string, string | undefined>,
@@ -74,6 +76,8 @@ export function createCSSConfig(
     auth0Domain: overrides.auth0Domain ?? env('CSS_AUTH0_DOMAIN'),
     auth0ClientId: overrides.auth0ClientId ?? env('CSS_AUTH0_CLIENT_ID'),
     auth0Audience: overrides.auth0Audience ?? env('CSS_AUTH0_AUDIENCE'),
+    cssAuthServerUrl: overrides.cssAuthServerUrl ?? env('CSS_AUTH_SERVER_URL'),
+    cssAuthRedirectUri: overrides.cssAuthRedirectUri ?? env('CSS_AUTH_REDIRECT_URI'),
     enableRealtime: overrides.enableRealtime ?? envBool('CSS_ENABLE_REALTIME'),
     wsBaseUrl: overrides.wsBaseUrl ?? env('CSS_WS_BASE_URL'),
     enablePresence: overrides.enablePresence ?? envBool('CSS_ENABLE_PRESENCE'),
@@ -90,6 +94,8 @@ export function createNextConfig(overrides?: Partial<CSSConfig>): CSSConfig {
       authMode: process.env.NEXT_PUBLIC_CSS_AUTH_MODE as AuthMode | undefined,
       googleClientId: process.env.NEXT_PUBLIC_CSS_GOOGLE_CLIENT_ID,
       branchId: process.env.NEXT_PUBLIC_CSS_BRANCH_ID,
+      cssAuthServerUrl: process.env.NEXT_PUBLIC_CSS_AUTH_SERVER_URL,
+      cssAuthRedirectUri: process.env.NEXT_PUBLIC_CSS_AUTH_REDIRECT_URI,
       enableRealtime: process.env.NEXT_PUBLIC_CSS_ENABLE_REALTIME === 'true',
       wsBaseUrl: process.env.NEXT_PUBLIC_CSS_WS_BASE_URL,
       enablePresence: process.env.NEXT_PUBLIC_CSS_ENABLE_PRESENCE === 'true',

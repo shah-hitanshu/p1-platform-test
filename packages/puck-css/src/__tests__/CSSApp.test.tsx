@@ -158,6 +158,20 @@ describe('CSSApp', () => {
     expect(screen.getByText('My App')).toBeVisible();
   });
 
+  it('shows default login page when not authenticated in css-authserver mode', () => {
+    mockAuthState.isAuthenticated = false;
+    mockAuthState.isLoading = false;
+    mockAuthState.authMode = 'css-authserver' as 'mock';
+
+    render(
+      <CSSApp config={{ ...testConfig, authMode: 'css-authserver' as 'mock' }}>
+        <div data-testid="child">Hello</div>
+      </CSSApp>
+    );
+
+    expect(screen.getByTestId('css-login-page')).toBeVisible();
+  });
+
   it('wraps children in CSSAuthProvider', () => {
     mockAuthState.isAuthenticated = true;
     mockAuthState.user = { id: 'user-1', name: 'Test User', email: 'test@example.com' };
