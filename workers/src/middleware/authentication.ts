@@ -16,6 +16,7 @@ import type { AuthenticatedPrincipal, MockIdentityConfig } from '../types';
 import { SiteApiTokenProvider } from '../auth/site-token-provider';
 import { AgentApiKeyProvider } from '../auth/agent-api-key-provider';
 import { MASClient } from '../services/mas-client';
+import { CSSAuthIdentityProvider } from '../auth/css-auth-identity-provider';
 import { jsonResponse, errorResponse } from '../utils/http-helpers';
 import type { Env } from '../index';
 
@@ -94,7 +95,8 @@ export function hasOAuthProviders(env: Env): boolean {
     env.AUTH0_ISSUER_BASE_URL !== '' &&
     env.AUTH0_AUDIENCE !== undefined &&
     env.AUTH0_AUDIENCE !== '';
-  return hasGoogle || hasAuth0;
+  const hasCSSAuthServer = env.CSS_AUTH_SERVER !== undefined;
+  return hasGoogle || hasAuth0 || hasCSSAuthServer;
 }
 
 /**
@@ -143,6 +145,40 @@ export function getIdentityProvider(env: Env): MultiProviderIdentityProvider {
 
   // Agent API key provider (always available — validates aak_ keys against DB)
   providers.push(new AgentApiKeyProvider());
+
+  // CSS Auth Server provider (activated when CSS_AUTH_SERVER service binding is configured)
+  // Validates opaque tokens issued by css-auth-server via /internal/token/validate endpoint.
+  // Added LAST since it makes a service binding call per request —
+  // let JWT providers (Google, Auth0) run first since they verify locally.
+  //
+  // When the service binding is present, CSS_AUTH_SERVER_URL is used only to construct
+  // the request path (e.g., `${authServerUrl}/internal/token/validate`). The binding
+  // routes the request regardless of the hostname in the URL — any valid URL base works.
+  // We fall back to a sentinel URL so the provider is always activated when the binding
+  // is configured, even if CSS_AUTH_SERVER_URL is not explicitly set.
+  //
+  // INTERNAL_SECRET is required for the provider to operate. If it is missing or empty,
+  // the auth server's /internal/token/validate endpoint will reject every request with
+  // a 403 (header present but wrong value), causing all CSS auth tokens to silently fail.
+  // A misconfigured empty secret would also allow anyone to craft a matching request.
+  // Skip registering the provider and warn loudly so the misconfiguration is visible.
+  if (env.CSS_AUTH_SERVER !== undefined) {
+    if (env.INTERNAL_SECRET === undefined || env.INTERNAL_SECRET === '') {
+      console.warn(
+        '[getIdentityProvider] CSS_AUTH_SERVER binding is configured but INTERNAL_SECRET is ' +
+        'empty or missing — CSSAuthIdentityProvider will not be registered. ' +
+        'Set INTERNAL_SECRET in .dev.vars (local) or Cloudflare secrets (production).',
+      );
+    } else {
+      providers.push(new CSSAuthIdentityProvider({
+        authServerUrl: (env.CSS_AUTH_SERVER_URL !== undefined && env.CSS_AUTH_SERVER_URL !== '')
+          ? env.CSS_AUTH_SERVER_URL
+          : 'http://css-auth-server',
+        internalSecret: env.INTERNAL_SECRET,
+        fetcher: env.CSS_AUTH_SERVER,
+      }));
+    }
+  }
 
   return new MultiProviderIdentityProvider(providers);
 }
@@ -199,16 +235,16 @@ export async function authenticate(
     if (queryApiKey.startsWith('sat_')) {
       return await identityProvider.validateToken(queryApiKey);
     }
-    // Try as JWT token first (for human users), then as agent API key
-    // JWTs are longer and contain dots, agent keys are shorter alphanumeric
-    if (queryApiKey.includes('.')) {
-      // Looks like a JWT token (header.payload.signature format)
-      const tokenResult = await identityProvider.validateToken(queryApiKey);
-      if (tokenResult !== null) {
-        return tokenResult;
-      }
+    // Try validateToken for all other credentials — this handles:
+    //   - JWT tokens (dot-containing, e.g. Google/Auth0 JWTs)
+    //   - CSS auth server opaque tokens (userId:grantId:secret, no dots)
+    // The MultiProviderIdentityProvider routes to the correct provider via canVerifyToken().
+    // Fall back to validateAgentKey for aak_ agent API keys, which return null from validateToken.
+    const tokenResult = await identityProvider.validateToken(queryApiKey);
+    if (tokenResult !== null) {
+      return tokenResult;
     }
-    // Try as agent API key
+    // Try as agent API key (aak_ tokens and other agent credentials)
     return await identityProvider.validateAgentKey(queryApiKey);
   }
 

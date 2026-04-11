@@ -16,6 +16,7 @@ export interface CreateSiteParams {
 
 interface UpdateSiteParams {
   name?: string;
+  allowedOrigins?: string[];
 }
 
 /**

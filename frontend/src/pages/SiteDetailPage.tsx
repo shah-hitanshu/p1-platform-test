@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
-import { getSite } from '../api/sites';
+import { getSite, updateSite } from '../api/sites';
 import { listBranches, createBranch, updateBranch, deleteBranch as deleteBranchApi } from '../api/branches';
 import {
   listCollaborators,
@@ -117,6 +117,13 @@ export function SiteDetailPage() {
   const [generatedToken, setGeneratedToken] = useState<GenerateTokenResult | null>(null);
   const [tokenToRevoke, setTokenToRevoke] = useState<SiteApiToken | null>(null);
   const [tokenCopied, setTokenCopied] = useState(false);
+
+  // Allowed Origins state
+  const { execute: updateOriginRequest, isLoading: isUpdatingOrigins, error: updateOriginsError } =
+    useApi<Site, [string, { allowedOrigins: string[] }]>(updateSite);
+  const [showOriginForm, setShowOriginForm] = useState(false);
+  const [newOriginValue, setNewOriginValue] = useState('');
+  const [originToRemove, setOriginToRemove] = useState<string | null>(null);
 
   useEffect(() => {
     if (siteId) {
@@ -250,6 +257,36 @@ export function SiteDetailPage() {
       setTimeout(() => setTokenCopied(false), 2000);
     } catch {
       // Fallback: select the text for manual copy
+    }
+  };
+
+  const handleAddOrigin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newOriginValue.trim() || !siteId) return;
+
+    const currentOrigins = site?.allowedOrigins ?? [];
+    if (currentOrigins.includes(newOriginValue.trim())) return;
+
+    const result = await updateOriginRequest(siteId, {
+      allowedOrigins: [...currentOrigins, newOriginValue.trim()],
+    });
+    if (result) {
+      setNewOriginValue('');
+      setShowOriginForm(false);
+      fetchSite(siteId);
+    }
+  };
+
+  const handleRemoveOrigin = async () => {
+    if (!originToRemove || !siteId) return;
+
+    const currentOrigins = site?.allowedOrigins ?? [];
+    const result = await updateOriginRequest(siteId, {
+      allowedOrigins: currentOrigins.filter((o) => o !== originToRemove),
+    });
+    if (result) {
+      setOriginToRemove(null);
+      fetchSite(siteId);
     }
   };
 
@@ -851,6 +888,89 @@ export function SiteDetailPage() {
         )}
       </section>
 
+      {/* Allowed Origins Section */}
+      <section className="allowed-origins-section" data-testid="allowed-origins-section">
+        <div className="section-header">
+          <h2 className="section-title" data-testid="section-title-allowed-origins">Allowed Origins</h2>
+          <Button
+            type={showOriginForm ? 'secondary' : 'primary'}
+            onClick={() => setShowOriginForm(!showOriginForm)}
+            data-testid="add-origin-btn"
+          >
+            {showOriginForm ? 'Cancel' : '+ Add origin'}
+          </Button>
+        </div>
+
+        {showOriginForm && (
+          <div className="create-form-container" data-testid="add-origin-form">
+            <form onSubmit={handleAddOrigin} className="create-form">
+              <div className="form-fields">
+                <input
+                  type="text"
+                  value={newOriginValue}
+                  onChange={(e) => setNewOriginValue(e.target.value)}
+                  placeholder="https://example.com or *-mysite.pantheonsite.io"
+                  className="pds-input"
+                  autoFocus
+                  aria-label="Allowed origin"
+                  data-testid="origin-input"
+                />
+              </div>
+              <Button
+                type="primary"
+                isSubmit
+                onClick={() => {}}
+                disabled={isUpdatingOrigins || !newOriginValue.trim() || (site?.allowedOrigins ?? []).includes(newOriginValue.trim())}
+                isLoading={isUpdatingOrigins}
+                data-testid="submit-origin-btn"
+              >
+                {isUpdatingOrigins ? 'Adding...' : 'Add'}
+              </Button>
+            </form>
+            {updateOriginsError && (
+              <Alert type="danger" className="create-error-alert" data-testid="add-origin-error">
+                {updateOriginsError}
+              </Alert>
+            )}
+          </div>
+        )}
+
+        {(site?.allowedOrigins ?? []).length > 0 ? (
+          <div className="allowed-origins-table-container">
+            <table className="allowed-origins-table" data-testid="allowed-origins-table">
+              <thead>
+                <tr>
+                  <th>Origin</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(site?.allowedOrigins ?? []).map((origin, index) => (
+                  <tr key={origin} data-testid={`origin-row-${index}`}>
+                    <td className="origin-value"><code>{origin}</code></td>
+                    <td className="origin-actions">
+                      <Button
+                        type="danger"
+                        onClick={() => setOriginToRemove(origin)}
+                        data-testid={`remove-origin-${index}`}
+                      >
+                        Remove
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty-state" data-testid="allowed-origins-empty">
+            <p data-testid="allowed-origins-empty-warning">
+              No allowed origins configured. OAuth login will be blocked until at least one origin is added.
+            </p>
+          </div>
+        )}
+      </section>
+
       {/* Settings Section */}
       <section className="settings-section" data-testid="settings-section">
         <div className="section-header">
@@ -902,6 +1022,16 @@ export function SiteDetailPage() {
         onCancel={() => setRoleToRevoke(null)}
         isDeleting={isRevoking}
         error={revokeRoleError}
+      />
+
+      <ConfirmDeleteModal
+        isOpen={originToRemove !== null}
+        resourceType="origin"
+        resourceName={originToRemove ?? ''}
+        onConfirm={handleRemoveOrigin}
+        onCancel={() => setOriginToRemove(null)}
+        isDeleting={isUpdatingOrigins}
+        error={updateOriginsError}
       />
     </div>
   );

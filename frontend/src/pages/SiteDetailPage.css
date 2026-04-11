@@ -453,6 +453,69 @@
   word-break: break-all;
 }
 
+/* Allowed Origins Section */
+.allowed-origins-section {
+  background-color: var(--dt-color-white, #fff);
+  border-radius: 8px;
+  padding: 24px;
+  margin-top: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.allowed-origins-table-container {
+  overflow-x: auto;
+  border: 1px solid var(--dt-color-gray-2, #e9ecef);
+  border-radius: 6px;
+}
+
+.allowed-origins-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.allowed-origins-table th {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--dt-color-gray-5, #6c757d);
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
+  padding: 10px 16px;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.allowed-origins-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
+  vertical-align: middle;
+  font-size: 0.9375rem;
+  color: var(--dt-color-gray-7, #333);
+}
+
+.allowed-origins-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.allowed-origins-table tbody tr:hover {
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+}
+
+.origin-value code {
+  font-size: 0.875rem;
+  padding: 2px 6px;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+.origin-actions {
+  text-align: right;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 /* Settings Section */
 .settings-section {
   background-color: var(--dt-color-white, #fff);

@@ -14,6 +14,7 @@ import {
   DocumentNotFoundError,
   SyncError,
 } from '../services/crdt-sync-service';
+import { getSiteAllowedOrigins } from '../services/site-service';
 import {
   createCheckpoint,
   revertToCheckpoint,
@@ -615,6 +616,37 @@ async function handleAgentCheckpointRollback(request: Request): Promise<Response
 }
 
 // =============================================================================
+// Site Auth Config Handler (CSS Auth Server integration)
+// =============================================================================
+
+/**
+ * Handler for GET /internal/site-auth-config/:siteId
+ *
+ * Returns the allowed origins for a site, used by the CSS Auth Server
+ * to validate redirect URIs without requiring its own database access.
+ *
+ * Authentication is handled by the caller (handleInternalRoutes) before
+ * this function is invoked.
+ */
+async function handleInternalSiteAuthConfig(
+  siteId: string,
+): Promise<Response> {
+  try {
+    const allowedOrigins = await getSiteAllowedOrigins(siteId);
+    if (allowedOrigins === null) {
+      return errorResponse('Site not found', 404);
+    }
+
+    return new Response(JSON.stringify({ siteId, allowedOrigins }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch {
+    return errorResponse('Internal server error', 500);
+  }
+}
+
+// =============================================================================
 // Main Route Handler
 // =============================================================================
 
@@ -682,6 +714,15 @@ export async function handleInternalRoutes(
       return errorResponse('Method not allowed', 405);
     }
     return handleAgentCheckpointRollback(request);
+  }
+
+  // Site auth config endpoint (called by CSS Auth Server service binding)
+  if (path.startsWith('/internal/site-auth-config/') && request.method === 'GET') {
+    const siteId = path.replace('/internal/site-auth-config/', '');
+    if (!siteId) {
+      return errorResponse('Missing site ID', 400);
+    }
+    return handleInternalSiteAuthConfig(siteId);
   }
 
   return errorResponse('Not found', 404);

@@ -33,6 +33,7 @@ export interface Site {
   id: string;
   pantheonSiteId: string;
   name: string;
+  allowedOrigins: string[];
   createdAt: string;
   updatedAt: string;
 }

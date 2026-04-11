@@ -21,6 +21,7 @@ export interface CreateSiteParams {
   pantheonSiteId: string;
   name: string;
   workflowSettings?: Partial<WorkflowSettings>;
+  allowedOrigins?: string[];
 }
 
 /**
@@ -29,6 +30,7 @@ export interface CreateSiteParams {
 export interface UpdateSiteParams {
   name?: string;
   workflowSettings?: Partial<WorkflowSettings>;
+  allowedOrigins?: string[];
 }
 
 /**
@@ -48,6 +50,7 @@ interface SiteRow {
   pantheon_site_id: string;
   name: string;
   workflow_settings: WorkflowSettings | string;
+  allowed_origins: string[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -119,6 +122,7 @@ function mapRowToSite(row: SiteRow): Site {
     pantheonSiteId: row.pantheon_site_id,
     name: row.name,
     workflowSettings: parseWorkflowSettings(row.workflow_settings),
+    allowedOrigins: row.allowed_origins ?? [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -164,10 +168,15 @@ export async function createSite(params: CreateSiteParams): Promise<Site> {
 
   try {
     const result = await query<SiteRow>(
-      `INSERT INTO app.sites (pantheon_site_id, name, workflow_settings)
-       VALUES ($1, $2, $3)
+      `INSERT INTO app.sites (pantheon_site_id, name, workflow_settings, allowed_origins)
+       VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [params.pantheonSiteId, params.name, JSON.stringify(workflowSettings)],
+      [
+        params.pantheonSiteId,
+        params.name,
+        JSON.stringify(workflowSettings),
+        params.allowedOrigins ?? [],
+      ],
     );
 
     return mapRowToSite(result.rows[0]);
@@ -246,10 +255,16 @@ export async function updateSite(
       `UPDATE app.sites
        SET name = COALESCE($1, name),
            workflow_settings = $2,
+           allowed_origins = COALESCE($3::text[], allowed_origins),
            updated_at = NOW()
-       WHERE id = $3
+       WHERE id = $4
        RETURNING *`,
-      [updates.name ?? null, JSON.stringify(mergedSettings), siteId],
+      [
+        updates.name ?? null,
+        JSON.stringify(mergedSettings),
+        updates.allowedOrigins ?? null,
+        siteId,
+      ],
     );
 
     if (result.rows.length === 0) {
@@ -263,10 +278,11 @@ export async function updateSite(
   const result = await query<SiteRow>(
     `UPDATE app.sites
      SET name = COALESCE($1, name),
+         allowed_origins = COALESCE($2::text[], allowed_origins),
          updated_at = NOW()
-     WHERE id = $2
+     WHERE id = $3
      RETURNING *`,
-    [updates.name ?? null, siteId],
+    [updates.name ?? null, updates.allowedOrigins ?? null, siteId],
   );
 
   if (result.rows.length === 0) {
@@ -431,4 +447,19 @@ export async function listSites(options: ListSitesOptions = {}): Promise<Site[]>
   const result = await query<SiteRow>(sql, params);
 
   return result.rows.map(mapRowToSite);
+}
+
+/**
+ * Retrieves allowed origins for a site (for OAuth redirect URI validation).
+ * Returns null when the site does not exist, empty array when origins not configured.
+ */
+export async function getSiteAllowedOrigins(siteId: string): Promise<string[] | null> {
+  const result = await query<{ allowed_origins: string[] | null }>(
+    'SELECT allowed_origins FROM app.sites WHERE id = $1',
+    [siteId],
+  );
+  if (result.rows.length === 0) {
+    return null; // Site not found
+  }
+  return result.rows[0].allowed_origins ?? [];
 }

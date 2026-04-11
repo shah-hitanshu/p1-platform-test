@@ -44,6 +44,7 @@ interface CreateSiteBody {
   pantheonSiteId?: string;
   name?: string;
   workflowSettings?: Partial<WorkflowSettings>;
+  allowedOrigins?: string[];
 }
 
 /**
@@ -52,6 +53,7 @@ interface CreateSiteBody {
 interface UpdateSiteBody {
   name?: string;
   workflowSettings?: Partial<WorkflowSettings>;
+  allowedOrigins?: string[];
 }
 
 /**
@@ -107,6 +109,7 @@ async function handleCreateSite(
     pantheonSiteId: body.pantheonSiteId,
     name: body.name,
     workflowSettings: body.workflowSettings,
+    allowedOrigins: body.allowedOrigins,
   });
 
   // Automatically create the main branch for the new site
@@ -175,6 +178,7 @@ async function handleUpdateSite(
   const updatedSite = await updateSite(context.siteId, {
     name: body.name,
     workflowSettings: body.workflowSettings,
+    allowedOrigins: body.allowedOrigins,
   });
 
   if (updatedSite === null) {

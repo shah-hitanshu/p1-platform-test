@@ -8,6 +8,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { getSiteAllowedOrigins } from '../../src/services/site-service';
+import type { Site } from '../../src/types/domain';
 
 // Mock CRDT sync service
 vi.mock('../../src/services/crdt-sync-service', () => ({
@@ -22,6 +24,44 @@ vi.mock('../../src/services/crdt-sync-service', () => ({
   },
   SyncError: class SyncError extends Error {
     override name = 'SyncError';
+  },
+}));
+
+// Mock site service
+vi.mock('../../src/services/site-service', () => ({
+  getSiteAllowedOrigins: vi.fn(),
+}));
+
+// Mock services barrel (used by site-api.ts) — only for T5 round-trip scenario
+vi.mock('../../src/services', () => ({
+  createSite: vi.fn(),
+  getSite: vi.fn(),
+  updateSite: vi.fn(),
+  deleteSite: vi.fn(),
+  listSites: vi.fn(),
+  listBranches: vi.fn(),
+  createMainBranch: vi.fn(),
+  getMainBranch: vi.fn(),
+  DuplicatePantheonSiteIdError: class DuplicatePantheonSiteIdError extends Error {
+    name = 'DuplicatePantheonSiteIdError';
+  },
+  InvalidSiteParamsError: class InvalidSiteParamsError extends Error {
+    override name = 'InvalidSiteParamsError';
+  },
+}));
+
+// Mock authorization (used by site-api.ts) — only for T5 round-trip scenario
+vi.mock('../../src/auth/authorization', () => ({
+  assertPermission: vi.fn(),
+  AuthorizationError: class AuthorizationError extends Error {
+    override name = 'AuthorizationError';
+    constructor(
+      message: string,
+      public requiredPermission: string,
+      public roleName: string,
+    ) {
+      super(message);
+    }
   },
 }));
 
@@ -852,5 +892,168 @@ describe('Phase 1.2: Internal API Routes', () => {
       const responseBody = await response.json();
       expect(responseBody.error).toContain('Checkpoint');
     });
+  });
+});
+
+describe('GET /internal/site-auth-config/:siteId', () => {
+  const INTERNAL_SECRET = 'correct-secret';
+
+  function makeRequest(siteId: string, secret?: string): Request {
+    return new Request(`http://localhost/internal/site-auth-config/${siteId}`, {
+      method: 'GET',
+      headers: secret !== undefined
+        ? { 'X-Internal-Secret': secret }
+        : {},
+    });
+  }
+
+  it('returns 404 when site is not found', async () => {
+    const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+    vi.mocked(getSiteAllowedOrigins).mockResolvedValueOnce(null);
+    const req = makeRequest('missing-site', INTERNAL_SECRET);
+    const res = await handleInternalRoutes(req, { internalSecret: INTERNAL_SECRET });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 200 with allowedOrigins when site exists', async () => {
+    const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+    vi.mocked(getSiteAllowedOrigins).mockResolvedValueOnce([
+      'https://mysite.com',
+      '*-mysite.pantheonsite.io',
+    ]);
+    const req = makeRequest('site-123', INTERNAL_SECRET);
+    const res = await handleInternalRoutes(req, { internalSecret: INTERNAL_SECRET });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { siteId: string; allowedOrigins: string[] };
+    expect(body.siteId).toBe('site-123');
+    expect(body.allowedOrigins).toEqual(['https://mysite.com', '*-mysite.pantheonsite.io']);
+  });
+
+  it('returns empty array when site has no allowed origins configured', async () => {
+    const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+    vi.mocked(getSiteAllowedOrigins).mockResolvedValueOnce([]);
+    const req = makeRequest('site-empty', INTERNAL_SECRET);
+    const res = await handleInternalRoutes(req, { internalSecret: INTERNAL_SECRET });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { siteId: string; allowedOrigins: string[] };
+    expect(body.allowedOrigins).toEqual([]);
+  });
+
+  it('returns 500 when site service throws', async () => {
+    const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+    vi.mocked(getSiteAllowedOrigins).mockRejectedValueOnce(new Error('DB down'));
+    const req = makeRequest('site-1', INTERNAL_SECRET);
+    const res = await handleInternalRoutes(req, { internalSecret: INTERNAL_SECRET });
+    expect(res.status).toBe(500);
+  });
+
+  // T7d: auth tests for GET /internal/site-auth-config/:siteId
+  it('returns 401 when X-Internal-Secret header is missing', async () => {
+    const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+    const req = makeRequest('site-1'); // no secret argument → no header
+    const res = await handleInternalRoutes(req, { internalSecret: INTERNAL_SECRET });
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 403 when X-Internal-Secret header is wrong', async () => {
+    const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+    const req = makeRequest('site-1', 'wrong-secret');
+    const res = await handleInternalRoutes(req, { internalSecret: INTERNAL_SECRET });
+    expect(res.status).toBe(403);
+  });
+});
+
+// =============================================================================
+// T5: allowedOrigins round-trip scenario
+// =============================================================================
+
+describe('T5: allowedOrigins round-trip — set via site API, propagates to internal auth config', () => {
+  const INTERNAL_SECRET = 'correct-secret';
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  it('PATCH site with allowedOrigins → GET site returns field → GET /internal/site-auth-config returns value', async () => {
+    const { handleSiteRoutes } = await import('../../src/routes/site-api');
+    const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+    const services = await import('../../src/services');
+
+    const updatedSite: Site = {
+      id: 'site-t5',
+      pantheonSiteId: 'pantheon-t5',
+      name: 'T5 Site',
+      allowedOrigins: ['https://mysite.com'],
+      workflowSettings: {
+        mergeApprovalMode: 'optional',
+        minApprovers: 1,
+        allowSelfApproval: true,
+        approverMode: 'both',
+        approverMinRole: 'EDITOR',
+      },
+      createdAt: '2026-04-07T00:00:00.000Z',
+      updatedAt: '2026-04-07T00:00:00.000Z',
+    };
+
+    const mainBranch = {
+      id: 'main-branch-t5',
+      siteId: 'site-t5',
+      name: 'main',
+      isMain: true,
+      status: 'active',
+      createdAt: '2026-04-07T00:00:00.000Z',
+      createdById: 'user-1',
+      createdByType: 'user',
+    };
+
+    // Step 1: PATCH /api/sites/site-t5 with allowedOrigins
+    vi.mocked(services.getMainBranch).mockResolvedValueOnce(mainBranch);
+    vi.mocked(services.updateSite).mockResolvedValueOnce(updatedSite);
+
+    const patchReq = new Request('https://api.example.com/api/sites/site-t5', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ allowedOrigins: ['https://mysite.com'] }),
+    });
+    const patchRes = await handleSiteRoutes(patchReq, {
+      siteId: 'site-t5',
+      principal: { id: 'user-1', type: 'user' },
+    });
+    expect(patchRes.status).toBe(200);
+
+    // Step 2: GET /api/sites/site-t5 returns allowedOrigins field
+    vi.mocked(services.getMainBranch).mockResolvedValueOnce(mainBranch);
+    vi.mocked(services.getSite).mockResolvedValueOnce(updatedSite);
+
+    const getReq = new Request('https://api.example.com/api/sites/site-t5', {
+      method: 'GET',
+    });
+    const getRes = await handleSiteRoutes(getReq, {
+      siteId: 'site-t5',
+      principal: { id: 'user-1', type: 'user' },
+    });
+    expect(getRes.status).toBe(200);
+    const rawSiteBody: unknown = await getRes.json();
+    const siteBody = rawSiteBody as Site;
+    expect(siteBody.allowedOrigins).toEqual(['https://mysite.com']);
+
+    // Step 3: GET /internal/site-auth-config/site-t5 returns correct allowedOrigins
+    vi.mocked(getSiteAllowedOrigins).mockResolvedValueOnce(['https://mysite.com']);
+
+    const internalReq = new Request(
+      'http://localhost/internal/site-auth-config/site-t5',
+      {
+        method: 'GET',
+        headers: { 'X-Internal-Secret': INTERNAL_SECRET },
+      },
+    );
+    const internalRes = await handleInternalRoutes(internalReq, {
+      internalSecret: INTERNAL_SECRET,
+    });
+    expect(internalRes.status).toBe(200);
+    const rawAuthConfig: unknown = await internalRes.json();
+    const authConfig = rawAuthConfig as { siteId: string; allowedOrigins: string[] };
+    expect(authConfig.allowedOrigins).toEqual(['https://mysite.com']);
   });
 });

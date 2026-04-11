@@ -35,6 +35,7 @@ describe('Phase 3.1: Site Service', () => {
     pantheon_site_id: string;
     name: string;
     workflow_settings: WorkflowSettings;
+    allowed_origins: string[] | null;
     created_at: string;
     updated_at: string;
   }
@@ -46,6 +47,7 @@ describe('Phase 3.1: Site Service', () => {
       pantheon_site_id: 'pantheon-site-abc',
       name: 'Test Site',
       workflow_settings: defaultWorkflowSettings,
+      allowed_origins: [],
       created_at: '2026-01-23T10:00:00.000Z',
       updated_at: '2026-01-23T10:00:00.000Z',
       ...overrides,
@@ -395,6 +397,25 @@ describe('Phase 3.1: Site Service', () => {
       expect(result?.name).toBe('New Site Name');
       expect(result?.workflowSettings.minApprovers).toBe(3);
     });
+
+    it('should clear allowedOrigins when passed an empty array', async () => {
+      // Verifies the COALESCE($2::text[], allowed_origins) path:
+      // passing [] should overwrite existing allowed_origins to empty (clear behaviour).
+      const { updateSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      // The DB returns a row with allowed_origins = [] after the UPDATE
+      const updatedRow = createMockSiteRow({
+        id: 'site-123',
+        allowed_origins: [],
+      });
+      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+
+      const result = await updateSite('site-123', { allowedOrigins: [] });
+
+      expect(result).not.toBeNull();
+      expect(result?.allowedOrigins).toEqual([]);
+    });
   });
 
   describe('deleteSite', () => {
@@ -548,6 +569,81 @@ describe('Phase 3.1: Site Service', () => {
         pantheonSiteId: 'pantheon-1',
         name: 'First Site',
       });
+    });
+  });
+
+  describe('getSiteAllowedOrigins', () => {
+    it('should return string[] for a known site with origins configured', async () => {
+      const { getSiteAllowedOrigins } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({
+        rows: [{ allowed_origins: ['https://mysite.com', '*-mysite.pantheonsite.io'] }],
+      });
+
+      const result = await getSiteAllowedOrigins('site-123');
+
+      expect(result).toEqual(['https://mysite.com', '*-mysite.pantheonsite.io']);
+    });
+
+    it('should return null for an unknown siteId (site not found)', async () => {
+      const { getSiteAllowedOrigins } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      const result = await getSiteAllowedOrigins('non-existent-site');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return empty array for a site with no allowed_origins configured (null in DB)', async () => {
+      const { getSiteAllowedOrigins } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({
+        rows: [{ allowed_origins: null }],
+      });
+
+      const result = await getSiteAllowedOrigins('site-empty');
+
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array for a site with an empty allowed_origins array in DB', async () => {
+      const { getSiteAllowedOrigins } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({
+        rows: [{ allowed_origins: [] }],
+      });
+
+      const result = await getSiteAllowedOrigins('site-no-origins');
+
+      expect(result).toEqual([]);
+    });
+
+    it('should propagate DB errors', async () => {
+      const { getSiteAllowedOrigins } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockRejectedValue(new Error('DB connection error'));
+
+      await expect(getSiteAllowedOrigins('site-123')).rejects.toThrow('DB connection error');
+    });
+
+    it('should query by site ID with correct column', async () => {
+      const { getSiteAllowedOrigins } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      await getSiteAllowedOrigins('site-uuid-456');
+
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringContaining('allowed_origins'),
+        expect.arrayContaining(['site-uuid-456']),
+      );
     });
   });
 

@@ -28,3 +28,8 @@ export {
 export {
   AgentApiKeyProvider,
 } from './agent-api-key-provider';
+
+export {
+  CSSAuthIdentityProvider,
+  type CSSAuthIdentityProviderOptions,
+} from './css-auth-identity-provider';

@@ -106,6 +106,8 @@ export interface Site {
   organizationId?: string;
   name: string;
   workflowSettings: WorkflowSettings;
+  /** Allowed origin patterns for OAuth redirect URI validation */
+  allowedOrigins: string[];
   createdAt: string;
   updatedAt: string;
 }

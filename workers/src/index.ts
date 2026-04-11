@@ -91,6 +91,10 @@ export interface Env {
   // Internal API secret for Durable Object to PostgreSQL sync
   INTERNAL_SECRET?: string;
 
+  // CSS Auth Server (workers/auth-server/) for puck-css browser client tokens
+  CSS_AUTH_SERVER_URL?: string;   // Base URL of auth server (for URL construction when not using service binding)
+  CSS_AUTH_SERVER?: Fetcher;      // Service binding to auth server (preferred — sub-ms latency)
+
   // Hyperdrive bindings (production/staging - handles connection pooling properly)
   // HYPERDRIVE: cached (short TTL) for document reads
   // HYPERDRIVE_NOCACHE: uncached for admin writes that need immediate consistency

@@ -102,13 +102,29 @@ collaborative-state-system/
 │
 ├── workers/                          # Cloudflare Workers application
 │   ├── package.json                  # Node dependencies
-│   ├── wrangler.jsonc                # Cloudflare Worker config
+│   ├── wrangler.jsonc                # Cloudflare Worker config (CSS API)
 │   ├── tsconfig.json                 # TypeScript configuration
 │   ├── vitest.config.ts              # Unit test configuration
 │   ├── vitest.integration.config.ts  # Integration test configuration
 │   ├── eslint.config.js              # ESLint configuration
 │   ├── .dev.vars                     # Local secrets (gitignored)
 │   ├── mock-identity.config.json     # Test users/agents config
+│   │
+│   ├── auth-server/                  # OAuth 2.0 Authorization Server (PKCE + Google OIDC proxy)
+│   │   ├── package.json
+│   │   ├── wrangler.jsonc            # Auth server Worker config
+│   │   ├── .dev.vars.example         # Required secrets template
+│   │   └── src/
+│   │       ├── index.ts              # OAuthProvider entry point
+│   │       ├── auth/
+│   │       │   ├── google-handler.ts # Google OAuth code exchange
+│   │       │   └── origin-validator.ts # redirect_uri allowlist matching
+│   │       └── services/
+│   │           └── site-lookup.ts    # Service-binding call to CSS API
+│   │
+│   ├── mcp-server/                   # Remote MCP server (OAuth 2.0 for AI agents)
+│   │   ├── package.json
+│   │   └── wrangler.jsonc            # MCP server Worker config
 │   │
 │   ├── src/
 │   │   ├── index.ts                  # Entry point
@@ -177,7 +193,9 @@ collaborative-state-system/
 │   │   └── sbx1/                     # Sandbox environment
 │   └── modules/
 │       ├── database/                 # PostgreSQL/CloudSQL module
-│       └── workers/                  # Worker configuration module
+│       ├── cloudflare/               # KV, Queue, Hyperdrive for CSS API worker
+│       ├── cloudflare-mcp/           # KV for MCP server worker
+│       └── cloudflare-auth-server/   # KV for OAuth 2.0 auth server worker
 │
 ├── docker/                           # Docker configuration
 │   ├── docker-compose.local.yaml     # Local services
@@ -437,6 +455,67 @@ For the full guide including curl-based registration, role mapping, troubleshoot
 
 ---
 
+## CSS Auth Server (OAuth 2.0 for Consuming Sites)
+
+The CSS Auth Server (`workers/auth-server/`) is a standalone Cloudflare Worker that acts as an OAuth 2.0 Authorization Server for puck-css frontend clients. It proxies Google OIDC so consuming sites never need their own Google Client ID — they authenticate only against the CSS Auth Server.
+
+### How It Works
+
+1. A puck-css client starts an Authorization Code + PKCE flow using `client_id = <site_id>`
+2. The auth server looks up the site's `allowedOrigins[]` from the CSS API via a service binding and validates the `redirect_uri`
+3. The user is redirected to Google for authentication; the auth server exchanges the code for a token
+4. The auth server issues a CSS-signed opaque token (`userId:grantId:secret`) to the client
+5. The client sends that token as a `Bearer` token to the CSS API, which validates it via the `CSS_AUTH_SERVER` service binding
+
+### Site Configuration
+
+Sites must declare which origins are allowed to receive OAuth redirects. Set `allowedOrigins` when creating or updating a site:
+
+```bash
+# Create a site with allowed origins
+curl -X POST http://localhost:8787/api/sites \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Site",
+    "allowedOrigins": [
+      "https://mysite.example.com",
+      "https://*.pantheonsite.io",
+      "http://localhost:3000"
+    ]
+  }'
+
+# Update allowed origins on an existing site
+curl -X PATCH http://localhost:8787/api/sites/<siteId> \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"allowedOrigins": ["https://mysite.example.com"]}'
+```
+
+Wildcard patterns (`*`) match a single URL label (e.g. `https://*.pantheonsite.io` matches `https://dev-mysite.pantheonsite.io` but not `https://a.b.pantheonsite.io`). Wildcards are operator-controlled — clients cannot self-register.
+
+### OAuth Discovery
+
+The auth server exposes standard OAuth 2.0 discovery at:
+```
+GET https://css-auth-server-<env>.workers.dev/.well-known/oauth-authorization-server
+```
+
+### Local Development
+
+The CSS Auth Server is not included in the standard local dev stack — puck-css clients in local development use the mock identity provider in `workers/src/index.ts`. To test the auth flow locally, run the auth server with Wrangler:
+
+```bash
+cd workers/auth-server
+cp .dev.vars.example .dev.vars
+# Fill in GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, INTERNAL_SECRET
+pnpm wrangler dev
+```
+
+The main CSS worker must have `CSS_AUTH_SERVER` pointing at the local auth server instance (set `CSS_AUTH_SERVER_URL` in `workers/.dev.vars`).
+
+---
+
 ## API Reference
 
 ### REST Endpoints
@@ -629,6 +708,7 @@ Configuration is managed through `workers/.dev.vars` (local) or Cloudflare secre
 
 - **Durable Objects**: `DocumentState`, `PresenceManager`, `SessionManager`
 - **KV Namespaces**: `CONFIG_KV`, `SESSION_KV`
+- **Service Bindings**: `CSS_AUTH_SERVER` (auth server worker, for token validation)
 - **Environment overrides**: `sbx1`, `production`
 
 ### Mock Identity Configuration
@@ -701,11 +781,40 @@ pnpm deploy:sbx1
 pnpm deploy:production
 ```
 
+### CSS Auth Server
+
+```bash
+cd workers/auth-server
+
+# Deploy to sandbox
+pnpm wrangler deploy --env sbx1
+
+# Deploy to production
+pnpm wrangler deploy --env production
+```
+
+Before first deploy, provision the OAuth KV namespace and populate its ID into `workers/auth-server/wrangler.jsonc`:
+
+```bash
+# Create KV namespace (done by Terraform; run manually only if bypassing Terraform)
+wrangler kv:namespace create "css-auth-oauth-kv-sbx1"
+# Copy the returned ID into wrangler.jsonc → env.sbx1.kv_namespaces[OAUTH_KV].id
+```
+
 ### Required Secrets (Production)
 
 Set via Cloudflare dashboard or CLI:
+
+**CSS API worker** (`css-api-<env>`)
 - `POSTGRES_CONNECTION_STRING` - CloudSQL connection string
 - `JWT_SECRET` - Production JWT signing key
+- `INTERNAL_SECRET` - Shared secret for service-to-service calls (must match auth server)
+
+**CSS Auth Server worker** (`css-auth-server-<env>`)
+- `GOOGLE_CLIENT_ID` - Google OAuth 2.0 Client ID
+- `GOOGLE_CLIENT_SECRET` - Google OAuth 2.0 Client Secret
+- `COOKIE_SECRET` - Session cookie signing key
+- `INTERNAL_SECRET` - Shared secret for service-to-service calls (must match CSS API)
 
 ---
 

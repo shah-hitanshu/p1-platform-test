@@ -3674,3 +3674,102 @@ Six files exceeded 800-1,700 lines, making them difficult to navigate and mainta
 - Extracted modules import from sibling/types modules, **never from the parent** (no circular imports)
 - Type-only imports (`import type`) used for cross-module type references to avoid runtime circular dependencies
 - All 2,654 tests pass, zero lint errors on new files
+
+---
+
+### CSS Auth Server (2026-04-07)
+
+**Status:** Complete
+**Branch:** `feat/css-auth-server`
+**Commits:** Tasks 1-11 across multiple commits
+
+#### Goal
+Build a standalone `workers/auth-server/` Cloudflare Worker that acts as the OAuth 2.0 Authorization Server for the CSS ecosystem, eliminating the need for puck-css frontend clients to register directly with Google.
+
+#### Deliverables
+
+**New Worker: `workers/auth-server/`**
+- [x] `workers/auth-server/src/index.ts` — Full OAuthProvider setup: `/authorize`, `/callback`, `/internal/token/validate`, `/health` handlers
+- [x] `workers/auth-server/src/types.ts` — Env interface with OAUTH_KV, CSS_BACKEND, GOOGLE_CLIENT_ID/SECRET, INTERNAL_SECRET, COOKIE_ENCRYPTION_KEY
+- [x] `workers/auth-server/src/health.ts` — `handleHealthCheck()` function
+- [x] `workers/auth-server/src/auth/origin-validator.ts` — Security-critical `matchesAllowedOrigin()` with wildcard Pantheon branch URL support
+- [x] `workers/auth-server/src/auth/google-handler.ts` — Google OAuth handler (ported from mcp-server)
+- [x] `workers/auth-server/src/services/site-lookup.ts` — `lookupSiteAuthConfig()` via CSS_BACKEND service binding
+- [x] `workers/auth-server/wrangler.jsonc` — sbx1 + production envs with CSS_BACKEND service bindings and KV
+- [x] `workers/auth-server/package.json`, `tsconfig.json`, `vitest.config.ts`, `vitest.integration.config.ts`, `eslint.config.js`
+
+**Auth Server Tests**
+- [x] 51 unit tests (5 files): google-handler, origin-validator, origin-validator.property, site-lookup, oauth-config
+- [x] 9 Miniflare integration tests: full authorize flow, PKCE enforcement, wildcard origin security, token validate
+
+**Main CSS Worker Changes**
+- [x] `workers/src/db/migrations/031_site_allowed_origins.sql` — `ALTER TABLE app.sites ADD COLUMN allowed_origins TEXT[] NOT NULL DEFAULT '{}'`
+- [x] `workers/src/types/domain.ts` — `allowedOrigins: string[]` on `Site` interface
+- [x] `workers/src/types/enums.ts` — `'css_auth'` added to `AuthProvider` union
+- [x] `workers/src/services/site-service.ts` — `getSiteAllowedOrigins()`, updated create/update/mapRow for `allowed_origins`
+- [x] `workers/src/routes/site-api.ts` — `allowedOrigins` in create/update body interfaces
+- [x] `workers/src/routes/internal-api.ts` — `GET /internal/site-auth-config/:siteId` endpoint
+- [x] `workers/src/auth/css-auth-identity-provider.ts` — `CSSAuthIdentityProvider` validates auth server opaque tokens via `/internal/token/validate`
+- [x] `workers/src/auth/index.ts` — exports `CSSAuthIdentityProvider`
+- [x] `workers/src/middleware/authentication.ts` — registers `CSSAuthIdentityProvider` when `CSS_AUTH_SERVER` binding is configured
+- [x] `workers/src/index.ts` — `CSS_AUTH_SERVER?: Fetcher` and `CSS_AUTH_SERVER_URL?: string` added to Env
+- [x] `workers/wrangler.jsonc` — `CSS_AUTH_SERVER` service binding + `CSS_AUTH_SERVER_URL` var for sbx1/production
+
+**Main Worker Tests**
+- [x] `workers/tests/auth/css-auth-identity-provider.spec.ts` — 14 tests for CSSAuthIdentityProvider
+- [x] `workers/tests/auth/identity-provider.spec.ts` — 4 new CSS Auth routing tests added
+- [x] `workers/tests/routes/internal-api.spec.ts` — 4 new site-auth-config endpoint tests
+
+**Database:** Migration `031_site_allowed_origins` applied to local Docker PostgreSQL (`css-postgres`)
+
+#### Key Design Decisions
+- **`client_id = site_id`**: CSS `site` record IS the OAuth client; no separate client registration surface
+- **Lazy OAUTH_KV provisioning**: Direct `OAUTH_KV.put('client:{siteId}', ...)` on first authorize (NOT `createClient()` which ignores provided clientId)
+- **`oauthHelpers.updateClient()` for URI accumulation**: Existing clients get new validated exact redirect_uri added to their stored list
+- **Service binding for site lookup**: Auth server reads `allowedOrigins` from main CSS worker via `CSS_BACKEND` service binding — no direct DB access
+- **PKCE S256 enforced**: `allowPlainPKCE: false` — browser SPAs must use S256, plain PKCE rejected
+- **Token validation via `/internal/token/validate`**: Resource servers call this endpoint which calls `oauthHelpers.unwrapToken()` — NOT RFC 7662 introspection (not exposed by library)
+- **MCP server unchanged**: Auth server and MCP server are parallel, independent OAuth flows
+- **`canVerifyToken()` routing**: Excludes JWTs (2 dots), `sat_` tokens, `aak_` tokens — claims everything else (CSS opaque format: `userId:grantId:secret`)
+- **`global_fetch_strictly_public` compatibility flag**: Required in auth server `wrangler.jsonc` to suppress Miniflare console.warn from `@cloudflare/workers-oauth-provider` global scope initialization
+- **Miniflare 4.x `bindings` not `vars`**: Integration test config uses `bindings` (not `vars`) for plain env var overrides per Miniflare 4.x API
+
+#### Known Residual Items
+- [ ] **State parameter lacks HMAC signing** — auth server state is base64 JSON without HMAC-SHA256. Harden before high-traffic production launch. Use `COOKIE_ENCRYPTION_KEY` as HMAC key. (Tracked in source TODO at `workers/auth-server/src/index.ts`)
+- [ ] **KV namespace IDs placeholder** — `workers/auth-server/wrangler.jsonc` has `REPLACE_WITH_SBX1_AUTH_OAUTH_KV_ID` and `REPLACE_WITH_PROD_AUTH_OAUTH_KV_ID`. Run `wrangler kv:namespace create OAUTH_KV --env sbx1` to provision.
+- [ ] **INTERNAL_SECRET must match** — auth server and main CSS worker must share the same `INTERNAL_SECRET` value via `wrangler secret put`. Set separately for each worker.
+- [ ] **`CSS_AUTH_SERVER_URL` production URL** — placeholder URL set in `wrangler.jsonc`; update to actual deployed URL after first deploy.
+
+#### Test Summary
+- Auth server: 51 unit tests + 9 integration tests = 60 passing
+- Main worker: 2,684 tests passing (14 new CSSAuthIdentityProvider + 4 routing + 4 site-auth-config endpoint)
+- 2 pre-existing failures unrelated to this work (schema.spec.ts, agent-edit-permission-service.spec.ts)
+
+---
+
+### Allowed Origins Admin UI (2026-04-11)
+
+**Status:** Complete
+**Branch:** `feat/css-auth-server`
+**Commits:** `6e26993` (tests), `e41144a` (implementation)
+
+#### Goal
+Give site admins a UI to manage `allowedOrigins` — the OAuth redirect URI whitelist required by the CSS auth server. Without at least one allowed origin, OAuth login is blocked for the site.
+
+#### Deliverables
+**Frontend (`frontend/`)**
+- [x] `frontend/src/types/index.ts` — Added `allowedOrigins: string[]` to `Site` interface
+- [x] `frontend/src/api/sites.ts` — Added `allowedOrigins?: string[]` to `UpdateSiteParams`
+- [x] `frontend/src/pages/SiteDetailPage.tsx` — New "Allowed Origins" section (add form, origins table, remove via ConfirmDeleteModal, duplicate-guard, empty state warning)
+- [x] `frontend/src/pages/SiteDetailPage.css` — Styles for `.allowed-origins-section` and `.allowed-origins-table`
+- [x] `frontend/src/__tests__/pages/SiteDetailPage.allowed-origins.spec.tsx` — 10 unit tests (TDD)
+- [x] Updated 5 existing `SiteDetailPage.*.spec.tsx` files to include `updateSite` mock and `allowedOrigins: []` in site mock (required by vitest strict export checking)
+
+#### Key Design Decisions
+- **Whole-array PATCH**: No dedicated sub-resource endpoint — add/remove both call `PATCH /api/sites/:siteId` with the updated `allowedOrigins` array. Backend already supported this.
+- **Duplicate guard**: Client-side `currentOrigins.includes()` check prevents silent duplicate insertion (disables submit button + early return in handler).
+- **Re-fetch on mutation**: After add or remove, `fetchSite(siteId)` refreshes the displayed list from the source of truth.
+- **Empty state warning**: Prominent warning that OAuth login is blocked when no origins are configured.
+
+#### Test Summary
+- Frontend: 262 tests passing (10 new Allowed Origins tests)

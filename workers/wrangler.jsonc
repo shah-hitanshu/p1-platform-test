@@ -73,9 +73,18 @@
     "APP_VERSION": "dev",
     // Internal API for DO-to-PostgreSQL sync (Phase 1.3)
     // INTERNAL_SECRET is set in .dev.vars (local) or secrets (production)
-    "INTERNAL_API_URL": "http://localhost:8787"
+    "INTERNAL_API_URL": "http://localhost:8787",
+    // CSS Auth Server URL for local dev token validation
+    // Matches the auth server's wrangler.jsonc dev.port setting
+    "CSS_AUTH_SERVER_URL": "http://localhost:8789"
   },
-  
+
+  // Local dev: CSS_AUTH_SERVER is auto-discovered via Wrangler's local service
+  // registry when css-auth-server is running simultaneously with `wrangler dev`
+  "services": [
+    { "binding": "CSS_AUTH_SERVER", "service": "css-auth-server" }
+  ],
+
   // ==========================================================================
   // Local Development (Miniflare)
   // ==========================================================================
@@ -112,8 +121,15 @@
         "WEBSOCKET_HEARTBEAT_INTERVAL": "30000",
         "DOCUMENT_SYNC_BATCH_SIZE": "50",
         "PRESENCE_TTL_SECONDS": "120",
-        "APP_VERSION": "sbx1"
+        "APP_VERSION": "sbx1",
+        // CSS Auth Server — puck-css browser client token validation
+        "CSS_AUTH_SERVER_URL": "https://css-auth-server-sbx1.chris-801.workers.dev"
+        // INTERNAL_SECRET set via `wrangler secret put INTERNAL_SECRET --name collaborative-state-worker-sbx1`
+        // Must match the INTERNAL_SECRET set on css-auth-server-sbx1
       },
+      "services": [
+        { "binding": "CSS_AUTH_SERVER", "service": "css-auth-server-sbx1" }
+      ],
       "durable_objects": {
         "bindings": [
           { "name": "DOCUMENT_STATE", "class_name": "DocumentState" },
@@ -172,8 +188,15 @@
         "LOG_LEVEL": "warn",
         "CORS_ORIGINS": "*",
         "METRICS_ENABLED": "true",
-        "INTERNAL_API_URL": "https://collaborative-state-worker-prod.pantheon.workers.dev"
+        "INTERNAL_API_URL": "https://collaborative-state-worker-prod.pantheon.workers.dev",
+        // CSS Auth Server — puck-css browser client token validation
+        "CSS_AUTH_SERVER_URL": "https://css-auth-server-prod.pantheon.workers.dev"
+        // INTERNAL_SECRET set via `wrangler secret put INTERNAL_SECRET --name collaborative-state-worker-prod`
+        // Must match the INTERNAL_SECRET set on css-auth-server-prod
       },
+      "services": [
+        { "binding": "CSS_AUTH_SERVER", "service": "css-auth-server-prod" }
+      ],
       "kv_namespaces": [
         { "binding": "CONFIG_KV", "id": "REPLACE_WITH_PROD_CONFIG_KV_ID" },
         { "binding": "SESSION_KV", "id": "REPLACE_WITH_PROD_SESSION_KV_ID" }
