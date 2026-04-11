@@ -9,6 +9,7 @@
  * - mock: Demo user dropdown selector
  * - google: "Sign in with Google" button
  * - auth0: "Sign in with Auth0" button
+ * - css-authserver: "Sign in" redirect button
  */
 
 import React, { useState, useRef, useEffect } from 'react';

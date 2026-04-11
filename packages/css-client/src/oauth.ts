@@ -23,7 +23,7 @@ export interface CSSAuthServerOAuthConfig {
   authServerUrl: string;
   /** Site ID used as the OAuth client_id */
   siteId: string;
-  /** Redirect URI for the OAuth callback. Default: window.location.origin + '/auth/callback' */
+  /** Redirect URI for the OAuth callback. Default: globalThis.location.origin + '/auth/callback' */
   redirectUri?: string;
   /** CSS backend base URL for token validation via /api/auth/me */
   cssBaseUrl: string;

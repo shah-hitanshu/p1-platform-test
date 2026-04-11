@@ -2,7 +2,7 @@
  * CSSAuthProvider
  *
  * Reusable auth context for any React app integrating with CSS.
- * Supports three auth modes: 'mock', 'google', and 'auth0'.
+ * Supports four auth modes: 'mock', 'google', 'auth0', and 'css-authserver'.
  * Handles token lifecycle, validation, and expiry across all modes.
  *
  * Framework-agnostic within React — works with Next.js, Remix, Vite, CRA, etc.
