@@ -64,6 +64,12 @@ export const DEMO_USERS = [
 
 const DEFAULT_TOKEN_KEY = 'css_auth_token';
 
+// Module-level: persists across React StrictMode's double-mount in development.
+// OAuth authorization codes are single-use — only one concurrent handleCallback()
+// must exchange the code. The second effect awaits the same shared promise rather
+// than making a duplicate /token request (which would fail with invalid_grant).
+let cssAuthCallbackPromise: Promise<void> | null = null;
+
 export interface CSSAuthProviderProps {
   /** Auth mode: 'mock' for demo users, 'google' or 'auth0' for OAuth. */
   authMode: AuthMode;
@@ -172,12 +178,26 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
     async function checkExistingAuth() {
       setIsLoading(true);
 
-      // Handle OAuth callback if returning from a CSS Auth Server redirect
+      // Handle OAuth callback if returning from a CSS Auth Server redirect.
+      // Uses a shared module-level Promise to deduplicate concurrent handleCallback()
+      // calls that arise from React StrictMode's double useEffect invocation in dev.
+      // Authorization codes are single-use — only one /token fetch must occur.
       if (authMode === 'css-authserver' && oauthSession?.handleCallback) {
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('code') && urlParams.has('state')) {
+          if (!cssAuthCallbackPromise) {
+            // First effect to reach this point initiates the exchange.
+            // .finally() clears the URL and resets the shared promise so that
+            // future navigations (with a fresh ?code=) are handled correctly.
+            cssAuthCallbackPromise = oauthSession.handleCallback().finally(() => {
+              window.history.replaceState({}, document.title, window.location.pathname);
+              cssAuthCallbackPromise = null;
+            });
+          }
+          // Both effects await the same promise — only one /token request is made.
           try {
-            await oauthSession.handleCallback();
+            await cssAuthCallbackPromise;
+            // getToken() reads from localStorage, which handleCallback() populated.
             const callbackToken = await oauthSession.getToken();
             if (!cancelled && callbackToken) {
               setToken(callbackToken);
@@ -190,7 +210,6 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
                 });
               }
             }
-            window.history.replaceState({}, document.title, window.location.pathname);
             if (!cancelled) setIsLoading(false);
             return;
           } catch (err) {
