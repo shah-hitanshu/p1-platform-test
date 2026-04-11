@@ -32,7 +32,7 @@ try {
   config = createCSSConfig(import.meta.env, {
     prefix: 'VITE_',
     overrides: {
-      authMode: (import.meta.env.VITE_AUTH_MODE || 'mock') as 'mock' | 'google' | 'auth0',
+      authMode: (import.meta.env.VITE_AUTH_MODE || 'mock') as 'mock' | 'google' | 'auth0' | 'css-authserver',
       googleClientId: import.meta.env.VITE_GOOGLE_CLIENT_ID,
       auth0Domain: import.meta.env.VITE_AUTH0_DOMAIN,
       auth0ClientId: import.meta.env.VITE_AUTH0_CLIENT_ID,
