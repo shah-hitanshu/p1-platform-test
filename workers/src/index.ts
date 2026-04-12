@@ -95,6 +95,10 @@ export interface Env {
   CSS_AUTH_SERVER_URL?: string;   // Base URL of auth server (for URL construction when not using service binding)
   CSS_AUTH_SERVER?: Fetcher;      // Service binding to auth server (preferred — sub-ms latency)
 
+  // Inlined CSS OAuth provider (replaces CSS_AUTH_SERVER service binding post-merge)
+  GOOGLE_CLIENT_SECRET?: string;  // Google OAuth client secret for token exchange
+  OAUTH_KV?: KVNamespace;         // Token storage for @cloudflare/workers-oauth-provider
+
   // Hyperdrive bindings (production/staging - handles connection pooling properly)
   // HYPERDRIVE: cached (short TTL) for document reads
   // HYPERDRIVE_NOCACHE: uncached for admin writes that need immediate consistency
