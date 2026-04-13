@@ -1,6 +1,6 @@
 {
   "name": "@pantheon/puck-css",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Puck editor integration with Collaborative State System",
   "repository": {
     "type": "git",
@@ -15,8 +15,12 @@
   "types": "./dist/index.d.ts",
   "typesVersions": {
     "*": {
-      "config": ["./dist/config.d.ts"],
-      "utils/path": ["./dist/utils/path.d.ts"]
+      "config": [
+        "./dist/config.d.ts"
+      ],
+      "utils/path": [
+        "./dist/utils/path.d.ts"
+      ]
     }
   },
   "exports": {

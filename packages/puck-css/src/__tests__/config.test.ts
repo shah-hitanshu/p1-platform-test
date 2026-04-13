@@ -140,6 +140,53 @@ describe('createCSSConfig with css-authserver mode', () => {
 
     expect(config.cssAuthServerUrl).toBe('https://auth.css.example.com');
   });
+
+  it('defaults cssAuthServerUrl to ${baseUrl}/auth when css-authserver mode and no URL provided', () => {
+    const config = createCSSConfig(
+      {},
+      {
+        overrides: {
+          baseUrl: 'https://css.example.com',
+          siteId: 'site-123',
+          authMode: 'css-authserver',
+          // No cssAuthServerUrl provided — should default to baseUrl + /auth
+        },
+      },
+    );
+
+    expect(config.cssAuthServerUrl).toBe('https://css.example.com/auth');
+  });
+
+  it('does not default cssAuthServerUrl for non-css-authserver modes', () => {
+    const config = createCSSConfig(
+      {},
+      {
+        overrides: {
+          baseUrl: 'https://css.example.com',
+          siteId: 'site-123',
+          authMode: 'mock',
+        },
+      },
+    );
+
+    expect(config.cssAuthServerUrl).toBeUndefined();
+  });
+
+  it('explicit cssAuthServerUrl override takes precedence over default', () => {
+    const config = createCSSConfig(
+      {},
+      {
+        overrides: {
+          baseUrl: 'https://css.example.com',
+          siteId: 'site-123',
+          authMode: 'css-authserver',
+          cssAuthServerUrl: 'https://custom-auth.example.com/auth',
+        },
+      },
+    );
+
+    expect(config.cssAuthServerUrl).toBe('https://custom-auth.example.com/auth');
+  });
 });
 
 describe('createNextContentClient', () => {
