@@ -74,6 +74,13 @@ export interface UseRealtimeParams {
    * Called with the actor ID and their new focus regions.
    */
   onFocusRegionBroadcast?: (actorId: string, focusRegions: string[]) => void;
+
+  /**
+   * Optional token refresher for WebSocket reconnection.
+   * Called when the WebSocket connection closes unexpectedly.
+   * Should return a fresh token or null if the session cannot be refreshed.
+   */
+  tokenRefresher?: () => Promise<string | null>;
 }
 
 /**
@@ -170,6 +177,7 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
   const {
     baseUrl,
     apiKey,
+    tokenRefresher,
     siteId,
     branchId,
     documentPath,
@@ -198,6 +206,10 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
   const onRemoteUpdateRef = useRef(onRemoteUpdate);
   const onPresenceUpdateRef = useRef(onPresenceUpdate);
   const onFocusRegionBroadcastRef = useRef(onFocusRegionBroadcast);
+  // Keep tokenRefresher in a ref so the RealtimeClient always calls the
+  // latest version without needing to be recreated on reference changes.
+  const tokenRefresherRef = useRef(tokenRefresher);
+  tokenRefresherRef.current = tokenRefresher;
 
   const initialDataRef = useRef(params.initialData);
   // Keep ref in sync but do NOT add to effect deps — changing data
@@ -247,6 +259,11 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
     const client = new RealtimeClient({
       baseUrl,
       apiKey,
+      // Use ref-wrapped refresher so the client always calls the latest version
+      // without needing to be recreated when the function reference changes.
+      tokenRefresher: tokenRefresherRef.current
+        ? () => tokenRefresherRef.current!()
+        : undefined,
       onConnect: () => {
         // Guard: ignore callbacks from stale clients.
         // When dependencies change, the old client is destroyed and a new one

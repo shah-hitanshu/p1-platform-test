@@ -33,6 +33,10 @@ interface CSSPuckProviderProps extends CSSPuckConfig {
    * @default true
    */
   showErrorNotifications?: boolean;
+  /**
+   * Optional token refresher for WebSocket reconnection with fresh tokens.
+   */
+  realtimeTokenRefresher?: () => Promise<string | null>;
 }
 
 /**
@@ -92,6 +96,7 @@ function CSSPuckProviderInner({
   wsBaseUrl,
   realtimeApiKey,
   realtimeSyncInterval: _realtimeSyncInterval = 250,
+  realtimeTokenRefresher,
   // Phase 9: Presence props
   presenceEnabled = false,
   presencePollingInterval = 5000,
@@ -253,6 +258,7 @@ function CSSPuckProviderInner({
   const realtime = useRealtime({
     baseUrl: wsBaseUrl ?? '',
     apiKey: realtimeApiKey,
+    tokenRefresher: realtimeTokenRefresher,
     siteId,
     branchId,
     documentPath: currentDocument?.path ?? null,

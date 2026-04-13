@@ -16,8 +16,10 @@ const mockAuthState = {
   token: null as string | null,
   error: null as Error | null,
   authMode: 'mock' as const,
+  isSessionExpired: false,
   login: vi.fn(),
   logout: vi.fn(),
+  getToken: vi.fn().mockResolvedValue(null),
 };
 
 vi.mock('../auth/index', () => ({
@@ -88,6 +90,7 @@ function setAuthenticated() {
   mockAuthState.isAuthenticated = true;
   mockAuthState.user = { id: 'user-1', name: 'Test User', email: 'test@example.com' };
   mockAuthState.token = 'test-token';
+  mockAuthState.getToken.mockResolvedValue('test-token');
 }
 
 describe('CSSApp provider composition', () => {

@@ -84,3 +84,17 @@ export class ValidationError extends CSSApiError {
     Object.setPrototypeOf(this, ValidationError.prototype);
   }
 }
+
+/**
+ * Error thrown when the session has expired and cannot be refreshed.
+ * Thrown when a 401 response is received and the token refresher
+ * either returns null or a refreshed token that also results in 401.
+ */
+export class SessionExpiredError extends Error {
+  override name = 'SessionExpiredError';
+
+  constructor(message: string = 'Session expired — please sign in again') {
+    super(message);
+    Object.setPrototypeOf(this, SessionExpiredError.prototype);
+  }
+}

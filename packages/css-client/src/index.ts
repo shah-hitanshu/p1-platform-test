@@ -121,6 +121,7 @@ export {
   NotFoundError,
   ConflictError,
   ValidationError,
+  SessionExpiredError,
 } from './errors.js';
 
 // Content delivery (read-only)

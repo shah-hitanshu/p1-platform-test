@@ -41,8 +41,11 @@ export interface CSSAuthContextValue {
   token: string | null;
   error: string | null;
   authMode: AuthMode;
+  isSessionExpired: boolean;
   login(userId?: string): Promise<void>;
   logout(): Promise<void>;
+  /** Get a valid token, refreshing if needed. Returns null if session cannot be refreshed. */
+  getToken: () => Promise<string | null>;
   /** Render a provider-hosted login button into the given container (Google only). */
   renderLoginButton?(container: HTMLElement): (() => void) | null;
 }
@@ -156,6 +159,7 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isSessionExpired, setIsSessionExpired] = useState(false);
 
   // Ref-based callback so the OAuthSession (created once) can update React state
   const stateRef = useRef({ setUser, setToken, setIsLoading });
@@ -168,6 +172,25 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
       stateRef.current.setIsLoading(false);
     }),
   );
+
+  const getToken = useCallback(async (): Promise<string | null> => {
+    if (authMode === 'mock') {
+      return typeof localStorage !== 'undefined' ? localStorage.getItem(storageKey) : null;
+    }
+    if (oauthSession) {
+      const freshToken = await oauthSession.getToken();
+      if (freshToken) {
+        return freshToken;
+      } else {
+        // Token refresh failed — session is expired
+        setToken(null);
+        setUser(null);
+        setIsSessionExpired(true);
+        return null;
+      }
+    }
+    return null;
+  }, [authMode, oauthSession, storageKey]);
 
   const isAuthenticated = user !== null && token !== null;
 
@@ -233,9 +256,10 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
               name: validated.email ?? validated.id,
               email: validated.email,
             });
-          } else if (!cancelled) {
-            localStorage.removeItem(storageKey);
           }
+          // Note: we intentionally do NOT remove from localStorage when validation fails.
+          // getToken() in mock mode reads directly from localStorage, so the raw token
+          // must remain available for retry / offline scenarios.
         }
       } else if (oauthSession) {
         if (oauthSession.isAuthenticated()) {
@@ -324,6 +348,7 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
     setToken(null);
     setUser(null);
     setError(null);
+    setIsSessionExpired(false);
   }, [authMode, oauthSession, storageKey]);
 
   const renderLoginButton = oauthSession?.renderButton
@@ -337,8 +362,10 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
     token,
     error,
     authMode,
+    isSessionExpired,
     login,
     logout,
+    getToken,
     renderLoginButton,
   };
 

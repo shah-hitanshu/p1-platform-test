@@ -58,18 +58,25 @@ function AuthenticatedShell({
   token: string;
   children: React.ReactNode;
 }): React.ReactElement {
+  const { getToken } = useCSSAuth();
+
   const cssClient = useMemo(
     () =>
       new CSSClient({
         baseUrl: config.clientBaseUrl || config.baseUrl,
-        authProvider: async () => `Bearer ${token}`,
+        authProvider: async () => {
+          const t = await getToken();
+          if (!t) throw new Error('Session expired — please sign in again');
+          return `Bearer ${t}`;
+        },
+        tokenRefresher: getToken,
       }),
-    [config.clientBaseUrl, config.baseUrl, token]
+    [config.clientBaseUrl, config.baseUrl, getToken]
   );
 
   return (
     <CSSPuckProvider
-      key={`${user.id}-${token}`}
+      key={user.id}
       client={cssClient}
       siteId={config.siteId}
       branchId={config.branchId}
@@ -81,6 +88,7 @@ function AuthenticatedShell({
       wsBaseUrl={config.wsBaseUrl}
       realtimeApiKey={token}
       presenceEnabled={config.enablePresence}
+      realtimeTokenRefresher={getToken}
     >
       {config.enablePresence ? (
         <PresenceFocusBridge userId={user.id}>{children}</PresenceFocusBridge>

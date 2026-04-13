@@ -46,6 +46,15 @@ export interface CSSClientConfig {
    * Can be overridden per-request using withPrincipal().
    */
   principal?: Principal;
+
+  /**
+   * Optional token refresher for dynamic token management.
+   * Called when a 401 Unauthorized response is received.
+   * Should return a fresh token or null if the session cannot be refreshed.
+   * If null is returned, or if the retry with the fresh token also returns 401,
+   * a SessionExpiredError is thrown.
+   */
+  tokenRefresher?: () => Promise<string | null>;
 }
 
 /**
@@ -142,6 +151,7 @@ export class CSSClient {
         baseUrl: config.baseUrl,
         authProvider,
         principal: config.principal,
+        tokenRefresher: config.tokenRefresher,
       });
     }
 

@@ -13,6 +13,7 @@ import {
   NotFoundError,
   ConflictError,
   ValidationError,
+  SessionExpiredError,
 } from '../errors.js';
 
 export interface BaseEndpointConfig {
@@ -24,6 +25,12 @@ export interface BaseEndpointConfig {
    * When set, the X-Agent-Session-Id header will be sent with all requests.
    */
   sessionId?: string;
+  /**
+   * Optional token refresher for dynamic token management.
+   * Called when a 401 Unauthorized response is received.
+   * Returns a fresh token string, or null if the session cannot be refreshed.
+   */
+  tokenRefresher?: () => Promise<string | null>;
 }
 
 export interface RequestOptions {
@@ -42,6 +49,7 @@ export class BaseEndpoint {
   private readonly authProvider?: AuthProvider;
   private readonly principal?: Principal;
   private readonly sessionId?: string;
+  private readonly tokenRefresher?: () => Promise<string | null>;
 
   constructor(config: BaseEndpointConfig) {
     // Remove trailing slash from base URL
@@ -49,6 +57,7 @@ export class BaseEndpoint {
     this.authProvider = config.authProvider;
     this.principal = config.principal;
     this.sessionId = config.sessionId;
+    this.tokenRefresher = config.tokenRefresher;
   }
 
   /**
@@ -104,6 +113,32 @@ export class BaseEndpoint {
       );
     }
 
+    // Handle 401 with token refresh
+    if (response.status === 401 && this.tokenRefresher) {
+      const freshToken = await this.tokenRefresher();
+      if (freshToken) {
+        // Retry with fresh token as Bearer Authorization header
+        headers['Authorization'] = `Bearer ${freshToken}`;
+        try {
+          response = await fetch(url, {
+            method: options.method,
+            headers,
+            body: options.body,
+          });
+        } catch (error) {
+          throw new NetworkError(
+            `Network request failed on retry: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            error instanceof Error ? error : undefined,
+          );
+        }
+        if (response.status === 401) {
+          throw new SessionExpiredError();
+        }
+      } else {
+        throw new SessionExpiredError();
+      }
+    }
+
     // Handle successful responses
     if (response.ok) {
       // 204 No Content
@@ -151,6 +186,7 @@ export class BaseEndpoint {
       authProvider: this.authProvider,
       principal,
       sessionId: this.sessionId,
+      tokenRefresher: this.tokenRefresher,
     });
   }
 
@@ -163,6 +199,7 @@ export class BaseEndpoint {
       authProvider: this.authProvider,
       principal: this.principal,
       sessionId,
+      tokenRefresher: this.tokenRefresher,
     });
   }
 }

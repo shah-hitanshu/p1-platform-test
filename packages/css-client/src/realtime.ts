@@ -120,6 +120,14 @@ export interface RealtimeClientConfig {
    * The client remains connected; this is informational.
    */
   onRateLimited?: () => void;
+
+  /**
+   * Optional token refresher for dynamic WebSocket authentication.
+   * Called when the WebSocket connection closes unexpectedly (non-intentionally).
+   * Should return a fresh token string, or null if the session cannot be refreshed.
+   * The fresh token is used in subsequent reconnection URLs.
+   */
+  tokenRefresher?: () => Promise<string | null>;
 }
 
 /**
@@ -188,6 +196,8 @@ export class RealtimeClient {
   private ws: ReconnectingWebSocket | null = null;
   private connected = false;
   private intentionalDisconnect = false;
+  private currentApiKey: string | undefined;
+  private tokenRefreshInFlight = false;
   private hasConnectedOnce = false;
   private lastReportedRetryCount = 0;
   private reconnectCheckInterval: ReturnType<typeof setInterval> | null = null;
@@ -267,6 +277,7 @@ export class RealtimeClient {
       this.disconnect();
     }
 
+    this.currentApiKey = this.config.apiKey;
     this.intentionalDisconnect = false;
     this.hasConnectedOnce = false;
     this.lastReportedRetryCount = 0;
@@ -283,10 +294,8 @@ export class RealtimeClient {
     url.searchParams.set('actorId', params.actorId);
     url.searchParams.set('actorType', params.actorType);
 
-    // Add API key as query param (WebSocket can't send custom headers)
-    if (this.config.apiKey) {
-      url.searchParams.set('apiKey', this.config.apiKey);
-    }
+    // Note: apiKey is NOT added to the base URL here — it is injected inside
+    // urlProvider so that a refreshed token is picked up on each reconnect.
 
     // Add session ID for agent authorization (obtained from startEdit())
     if (params.sessionId) {
@@ -304,22 +313,28 @@ export class RealtimeClient {
     const baseWsUrl = url.toString();
 
     // Create a URL provider function for PartySocket.
-    // Appends the client's Yjs state vector as a base64-encoded query
-    // parameter whenever the Y.Doc has meaningful content (seeded from
-    // REST or from a prior session), so the server can respond with only
-    // the delta instead of the full CRDT history.
+    // On the initial connect the state vector is omitted so the server sends
+    // the full CRDT history.  On every subsequent (re)connect the current Yjs
+    // state vector is included so the server can respond with only the delta.
+    // Also injects the current API key on every call so that a refreshed token
+    // (set by tokenRefresher after an unexpected close) is used for each
+    // reconnect attempt.
     const urlProvider = (): string => {
-      const sv = Y.encodeStateVector(this.ydoc);
-      // A fresh Y.Doc has a trivial state vector (length 1, value [0]).
-      // If the doc has been seeded with data, the state vector will be longer.
-      // Send it on both initial connect and reconnect so the server can
-      // respond with only the delta.
-      if (sv.length <= 1) {
-        return baseWsUrl;
-      }
       const connectUrl = new URL(baseWsUrl);
-      const svBase64 = btoa(String.fromCharCode(...sv));
-      connectUrl.searchParams.set('stateVector', svBase64);
+
+      // Inject current token — may have been refreshed after an unexpected disconnect
+      if (this.currentApiKey) {
+        connectUrl.searchParams.set('apiKey', this.currentApiKey);
+      }
+
+      // Include the state vector on every call after the first successful
+      // connection so the server can send a delta rather than full history.
+      if (this.hasConnectedOnce) {
+        const sv = Y.encodeStateVector(this.ydoc);
+        const svBase64 = btoa(String.fromCharCode(...sv));
+        connectUrl.searchParams.set('stateVector', svBase64);
+      }
+
       return connectUrl.toString();
     };
 
@@ -412,6 +427,22 @@ export class RealtimeClient {
         this.config.onDisconnect?.();
       }
       // PartySocket will automatically attempt to reconnect otherwise
+
+      // Fire-and-forget token refresh on unexpected close so the next
+      // urlProvider call uses a fresh token for the reconnect URL.
+      // Guard prevents concurrent refreshes when the socket flaps rapidly.
+      if (!this.intentionalDisconnect && this.config.tokenRefresher && !this.tokenRefreshInFlight) {
+        this.tokenRefreshInFlight = true;
+        this.config.tokenRefresher().then((freshToken) => {
+          if (freshToken) {
+            this.currentApiKey = freshToken;
+          }
+        }).catch(() => {
+          // Ignore errors — the reconnect will proceed with the stale token
+        }).finally(() => {
+          this.tokenRefreshInFlight = false;
+        });
+      }
     });
 
     this.ws.addEventListener('error', () => {

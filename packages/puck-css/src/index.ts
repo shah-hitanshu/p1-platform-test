@@ -365,5 +365,8 @@ export type {
   PageListResult,
 } from '@pantheon/css-client';
 
+// Re-export error classes from css-client
+export { SessionExpiredError } from '@pantheon/css-client';
+
 // Thumbnails
 export type { ThumbnailMap, ThumbnailFC } from './utils/buildThumbnailOverride.js';
