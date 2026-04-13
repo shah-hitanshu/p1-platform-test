@@ -8,8 +8,15 @@ export default defineConfig({
     environment: 'jsdom',
     globals: false,
     setupFiles: ['./src/__tests__/setup.ts'],
-    css: true,
+    css: false,
     testTimeout: 10000,
     reporters: ['default'],
+    server: {
+      deps: {
+        // Force pds-toolkit-react through Vitest's transform pipeline
+        // so that css:false can stub the package's internal CSS side-effect imports
+        inline: ['@pantheon-systems/pds-toolkit-react'],
+      },
+    },
   },
 });

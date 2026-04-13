@@ -12,12 +12,21 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MergePreviewPanel } from '../../components/MergePreviewPanel';
 
 // Mock the design toolkit
-vi.mock('@pantheon-systems/design-toolkit-react', () => ({
-  Button: ({ children, onClick, ...props }: Record<string, unknown>) => (
-    <button onClick={onClick as () => void} {...props}>{children as string}</button>
+vi.mock('@pantheon-systems/pds-toolkit-react', () => ({
+  Spinner: ({ label, ...props }: Record<string, unknown>) => (
+    <div role="status" aria-label={label as string} {...props} />
   ),
-  Alert: ({ children, ...props }: Record<string, unknown>) => (
-    <div role="alert" {...props}>{children as string}</div>
+  Button: ({ label, children, onClick, disabled, isLoading, ...props }: Record<string, unknown>) => (
+    <button
+      onClick={onClick as () => void}
+      disabled={(disabled as boolean) || (isLoading as boolean)}
+      {...props}
+    >
+      {(label as string) || (children as React.ReactNode)}
+    </button>
+  ),
+  InlineMessage: ({ title, children, ...props }: Record<string, unknown>) => (
+    <div role="alert" {...props}>{(title as string)}{(children as React.ReactNode)}</div>
   ),
 }));
 

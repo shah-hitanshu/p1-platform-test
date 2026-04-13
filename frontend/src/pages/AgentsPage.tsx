@@ -21,8 +21,12 @@ import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import type { RegisteredAgent, AgentApiKey } from '../types';
 import {
   Button,
-  Alert,
-} from '@pantheon-systems/design-toolkit-react';
+  CompactEmptyState,
+  InlineMessage,
+  MenuButton,
+  Panel,
+  TextInput,
+} from '@pantheon-systems/pds-toolkit-react';
 import './AgentsPage.css';
 
 export function AgentsPage() {
@@ -126,60 +130,52 @@ export function AgentsPage() {
 
   return (
     <div className="agents-page">
-      <header className="page-header">
+      <Panel data-testid="page-header">
         <div className="header-content">
           <h1 className="page-title" data-testid="page-title">Agents</h1>
           <p className="page-subtitle" data-testid="page-subtitle">Manage registered agents and API keys</p>
         </div>
         <Button
-          type={showRegisterForm ? 'secondary' : 'primary'}
+          variant={showRegisterForm ? 'secondary' : 'primary'}
           onClick={() => setShowRegisterForm(!showRegisterForm)}
+          label={showRegisterForm ? 'Cancel' : '+ Register agent'}
           data-testid="register-agent-btn"
-        >
-          {showRegisterForm ? 'Cancel' : '+ Register agent'}
-        </Button>
-      </header>
+        />
+      </Panel>
 
       {showRegisterForm && (
         <div className="create-form-container" data-testid="register-agent-form">
           <form onSubmit={handleRegisterAgent} className="create-form">
             <div className="form-fields">
-              <input
-                type="text"
+              <TextInput
+                id="agent-name"
+                label="Agent name"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder="Agent name..."
-                className="pds-input"
                 autoFocus
                 required
-                aria-label="Agent name"
                 data-testid="agent-name-input"
               />
-              <input
-                type="text"
+              <TextInput
+                id="agent-description"
+                label="Description"
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
-                placeholder="Description (optional)..."
-                className="pds-input"
-                aria-label="Description"
                 data-testid="agent-description-input"
               />
             </div>
             <Button
-              type="primary"
-              isSubmit
+              variant="primary"
+              buttonType="submit"
               onClick={() => {}}
               disabled={isRegistering || !newName.trim()}
               isLoading={isRegistering}
+              label={isRegistering ? 'Registering...' : 'Register'}
               data-testid="submit-agent-btn"
-            >
-              {isRegistering ? 'Registering...' : 'Register'}
-            </Button>
+            />
           </form>
           {registerError && (
-            <Alert type="danger" className="create-error-alert" data-testid="register-error">
-              {registerError}
-            </Alert>
+            <InlineMessage type="critical" title={registerError} className="create-error-alert" data-testid="register-error" />
           )}
         </div>
       )}
@@ -195,8 +191,7 @@ export function AgentsPage() {
           <ApiResponse data={null} isLoading={true} error={null} />
         </div>
       ) : agents && agents.length > 0 ? (
-        <div className="agents-table-container">
-          <table className="agents-table" data-testid="agents-table">
+          <table data-testid="agents-table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -215,35 +210,34 @@ export function AgentsPage() {
                       {agent.description || <span className="no-value">-</span>}
                     </td>
                     <td>
-                      <select
-                        value={agent.status}
-                        onChange={(e) => handleStatusChange(agent, e.target.value as 'active' | 'suspended' | 'disabled')}
-                        className="pds-select status-select"
-                        aria-label={`Status for ${agent.name}`}
-                        data-testid={`status-select-${agent.id}`}
-                      >
-                        <option value="active">Active</option>
-                        <option value="suspended">Suspended</option>
-                        <option value="disabled">Disabled</option>
-                      </select>
+                      <MenuButton
+                        id={`status-menu-${agent.id}`}
+                        label={agent.status}
+                        variant="secondary"
+                        size="sm"
+                        testId={`status-select-${agent.id}`}
+                        menuItems={[
+                          { label: 'Active', callback: () => handleStatusChange(agent, 'active') },
+                          { label: 'Suspended', callback: () => handleStatusChange(agent, 'suspended') },
+                          { label: 'Disabled', callback: () => handleStatusChange(agent, 'disabled') },
+                        ]}
+                      />
                     </td>
                     <td>
                       <Button
-                        type="secondary"
+                        variant="secondary"
                         onClick={() => handleExpandKeys(agent.id)}
+                        label={expandedAgentId === agent.id ? 'Hide keys' : 'Show keys'}
                         data-testid={`expand-keys-${agent.id}`}
-                      >
-                        {expandedAgentId === agent.id ? 'Hide keys' : 'Show keys'}
-                      </Button>
+                      />
                     </td>
                     <td className="agent-actions">
                       <Button
-                        type="danger"
+                        variant="critical"
                         onClick={() => setAgentToDelete(agent)}
+                        label="Delete"
                         data-testid={`delete-agent-${agent.id}`}
-                      >
-                        Delete
-                      </Button>
+                      />
                     </td>
                   </tr>
                   {expandedAgentId === agent.id && (
@@ -253,23 +247,21 @@ export function AgentsPage() {
                           <div className="keys-header">
                             <h4>API Keys</h4>
                             <Button
-                              type="primary"
+                              variant="primary"
                               onClick={() => handleGenerateKey(agent.id)}
+                              label="Generate key"
                               data-testid={`generate-key-btn-${agent.id}`}
-                            >
-                              Generate key
-                            </Button>
+                            />
                           </div>
 
                           {newKeyValue && (
-                            <Alert type="warning" className="new-key-alert" data-testid="new-key-alert">
-                              <strong>Copy this key now.</strong> It will not be shown again.
+                            <InlineMessage type="warning" title="Copy this key now. It will not be shown again." className="new-key-alert" data-testid="new-key-alert">
                               <div className="new-key-value">{newKeyValue}</div>
-                            </Alert>
+                            </InlineMessage>
                           )}
 
                           {agentKeys[agent.id] && agentKeys[agent.id].length > 0 ? (
-                            <table className="keys-table">
+                            <table>
                               <thead>
                                 <tr>
                                   <th>Name</th>
@@ -288,12 +280,11 @@ export function AgentsPage() {
                                     <td>{apiKey.lastUsedAt ? new Date(apiKey.lastUsedAt).toLocaleDateString() : 'Never'}</td>
                                     <td>
                                       <Button
-                                        type="danger"
+                                        variant="critical"
                                         onClick={() => handleRevokeKey(agent.id, apiKey.id)}
+                                        label="Revoke"
                                         data-testid={`revoke-key-${apiKey.id}`}
-                                      >
-                                        Revoke
-                                      </Button>
+                                      />
                                     </td>
                                   </tr>
                                 ))}
@@ -310,12 +301,13 @@ export function AgentsPage() {
               ))}
             </tbody>
           </table>
-        </div>
       ) : (
-        <div className="empty-state" data-testid="empty-state">
-          <p>No agents registered. Register an agent to enable API access for automated systems.</p>
-          <p className="empty-state-hint">Agents can be granted site-level roles for scoped access.</p>
-        </div>
+        <CompactEmptyState
+          data-testid="empty-state"
+          iconName="robot"
+          heading="No agents registered"
+          message="Agents can be granted site-level roles for scoped access."
+        />
       )}
 
       <ConfirmDeleteModal

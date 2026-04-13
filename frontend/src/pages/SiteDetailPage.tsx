@@ -36,11 +36,16 @@ import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import { ScopeSelector } from '../components/ScopeSelector';
 import type { Site, Branch, Collaborator, SystemUser, SiteApiToken, AgentSiteRole, RegisteredAgent } from '../types';
 import {
+  Breadcrumb,
   Button,
-  RouterLinkButton,
-  Alert,
-  Tag,
-} from '@pantheon-systems/design-toolkit-react';
+  ButtonLink,
+  CompactEmptyState,
+  InlineMessage,
+  Panel,
+  Select,
+  StatusBadge,
+  TextInput,
+} from '@pantheon-systems/pds-toolkit-react';
 import './SiteDetailPage.css';
 
 interface CreateBranchParams {
@@ -301,45 +306,18 @@ export function SiteDetailPage() {
     return user?.email ?? userId;
   };
 
-  const getRoleTagType = (role: string): 'success' | 'info' | 'default' => {
-    switch (role) {
-      case 'owner':
-      case 'admin':
-        return 'info';
-      case 'developer':
-        return 'success';
-      default:
-        return 'default';
-    }
-  };
-
-  const getScopeTagType = (scope: string): 'success' | 'info' | 'default' => {
-    switch (scope) {
-      case 'read:all':
-        return 'info';
-      case 'read:draft':
-        return 'success';
-      default:
-        return 'default';
-    }
-  };
-
-  const getSourceTagType = (source: string): 'info' | 'default' => {
-    return source === 'mas' ? 'info' : 'default';
-  };
-
-  const getStatusTagType = (status: Branch['status']): 'success' | 'info' | 'default' | 'danger' => {
+  const getStatusTagColor = (status: Branch['status']): 'green' | 'blue' | 'neutral' | 'red' => {
     switch (status) {
       case 'active':
-        return 'success';
+        return 'green';
       case 'merged':
-        return 'info';
+        return 'blue';
       case 'archived':
-        return 'default';
+        return 'neutral';
       case 'abandoned':
-        return 'danger';
+        return 'red';
       default:
-        return 'default';
+        return 'neutral';
     }
   };
 
@@ -359,9 +337,7 @@ export function SiteDetailPage() {
         <div className="error-container">
           <ApiResponse data={null} isLoading={false} error={siteError} />
           <div className="back-link-container">
-            <RouterLinkButton to="/sites" type="secondary">
-              Back to sites
-            </RouterLinkButton>
+            <ButtonLink variant="secondary" linkContent={<Link to="/sites">Back to sites</Link>} />
           </div>
         </div>
       </div>
@@ -371,14 +347,16 @@ export function SiteDetailPage() {
   return (
     <div className="site-detail-page">
       {/* Breadcrumb */}
-      <nav className="breadcrumb" data-testid="breadcrumb">
-        <Link to="/sites">Sites</Link>
-        <span className="breadcrumb-separator">/</span>
-        <span className="breadcrumb-current">{site?.name || 'Site'}</span>
-      </nav>
+      <Breadcrumb
+        data-testid="breadcrumb"
+        crumbs={[
+          <Link to="/sites">Sites</Link>,
+          <span>{site?.name || 'Site'}</span>,
+        ]}
+      />
 
       {/* Site Info Header */}
-      <header className="site-header">
+      <Panel>
         <div className="site-info">
           <h1 className="site-title" data-testid="site-title">{site?.name}</h1>
           <div className="site-meta">
@@ -393,58 +371,51 @@ export function SiteDetailPage() {
             </span>
           </div>
         </div>
-        <RouterLinkButton
-          to={`/sites/${siteId}/merge-requests`}
-          type="secondary"
+        <ButtonLink
+          variant="secondary"
           data-testid="merge-requests-link"
-        >
-          Merge requests
-        </RouterLinkButton>
-      </header>
+          linkContent={<Link to={`/sites/${siteId}/merge-requests`}>Merge requests</Link>}
+        />
+      </Panel>
 
       {/* Branches Section */}
-      <section className="branches-section" data-testid="branches-section">
+      <Panel data-testid="branches-section">
         <div className="section-header">
           <h2 className="section-title" data-testid="section-title-branches">Branches</h2>
           <Button
-            type={showCreateForm ? 'secondary' : 'primary'}
+            variant={showCreateForm ? 'secondary' : 'primary'}
             onClick={() => setShowCreateForm(!showCreateForm)}
             data-testid="create-branch-btn"
-          >
-            {showCreateForm ? 'Cancel' : '+ Create branch'}
-          </Button>
+            label={showCreateForm ? 'Cancel' : '+ Create branch'}
+          />
         </div>
 
         {showCreateForm && (
           <div className="create-form-container" data-testid="create-branch-form">
             <form onSubmit={handleCreateBranch} className="create-form">
               <div className="form-fields">
-                <input
-                  type="text"
+                <TextInput
+                  id="branch-name-input"
+                  label="Branch name"
                   value={newBranchName}
                   onChange={(e) => setNewBranchName(e.target.value)}
                   placeholder="Enter branch name..."
-                  className="pds-input"
-                  autoFocus
-                  aria-label="Branch name"
+                  inputProps={{ autoFocus: true }}
                   data-testid="branch-name-input"
                 />
               </div>
               <Button
-                type="primary"
-                isSubmit
+                variant="primary"
+                buttonType="submit"
                 onClick={() => {}}
                 disabled={isCreating || !newBranchName.trim()}
                 isLoading={isCreating}
                 data-testid="submit-branch-btn"
-              >
-                {isCreating ? 'Creating...' : 'Create branch from main'}
-              </Button>
+                label={isCreating ? 'Creating...' : 'Create branch from main'}
+              />
             </form>
             {createError && (
-              <Alert type="danger" className="create-error-alert" data-testid="create-error">
-                {createError}
-              </Alert>
+              <InlineMessage type="critical" className="create-error-alert" data-testid="create-error" title={createError} />
             )}
           </div>
         )}
@@ -460,8 +431,7 @@ export function SiteDetailPage() {
             <ApiResponse data={null} isLoading={true} error={null} />
           </div>
         ) : branches && branches.length > 0 ? (
-          <div className="branches-table-container">
-            <table className="branches-table" data-testid="branches-table">
+            <table data-testid="branches-table">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -476,9 +446,7 @@ export function SiteDetailPage() {
                   <tr key={branch.id} data-testid={`branch-row-${branch.id}`}>
                     <td className="branch-name">{branch.name}</td>
                     <td>
-                      <Tag type={getStatusTagType(branch.status)} data-testid={`status-${branch.id}`}>
-                        {branch.status}
-                      </Tag>
+                      <StatusBadge label={branch.status} color={getStatusTagColor(branch.status)} data-testid={`status-${branch.id}`} />
                     </td>
                     <td className="branch-source">
                       {branch.sourceBranchId ? (
@@ -491,104 +459,96 @@ export function SiteDetailPage() {
                       {new Date(branch.createdAt).toLocaleDateString()}
                     </td>
                     <td className="branch-actions">
-                      <RouterLinkButton
-                        to={`/sites/${siteId}/branches/${branch.id}`}
-                        type="secondary"
+                      <ButtonLink
+                        variant="secondary"
                         data-testid={`view-branch-${branch.id}`}
-                      >
-                        View
-                      </RouterLinkButton>
+                        linkContent={<Link to={`/sites/${siteId}/branches/${branch.id}`}>View</Link>}
+                      />
                       {!branch.isMain && branch.status !== 'archived' && (
                         <Button
-                          type="secondary"
+                          variant="secondary"
                           onClick={() => handleArchiveBranch(branch)}
                           disabled={isArchiving && archivingBranchId === branch.id}
                           isLoading={isArchiving && archivingBranchId === branch.id}
                           data-testid={`archive-branch-${branch.id}`}
-                        >
-                          {isArchiving && archivingBranchId === branch.id ? 'Archiving...' : 'Archive'}
-                        </Button>
+                          label={isArchiving && archivingBranchId === branch.id ? 'Archiving...' : 'Archive'}
+                        />
                       )}
                       {!branch.isMain && (
                         <Button
-                          type="danger"
+                          variant="critical"
                           onClick={() => setBranchToDelete(branch)}
                           data-testid={`delete-branch-${branch.id}`}
-                        >
-                          Delete
-                        </Button>
+                          label="Delete"
+                        />
                       )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
         ) : (
-          <div className="empty-state" data-testid="empty-state">
-            <p>No branches found. Create a branch to get started.</p>
-          </div>
+          <CompactEmptyState
+            data-testid="empty-state"
+            iconName="emptySet"
+            heading="No branches found"
+            message="Create a branch to get started."
+          />
         )}
-      </section>
+      </Panel>
 
       {/* Collaborators Section */}
-      <section className="collaborators-section" data-testid="collaborators-section">
+      <Panel data-testid="collaborators-section">
         <div className="section-header">
           <h2 className="section-title" data-testid="section-title-collaborators">Collaborators</h2>
           <Button
-            type={showCollaboratorForm ? 'secondary' : 'primary'}
+            variant={showCollaboratorForm ? 'secondary' : 'primary'}
             onClick={() => setShowCollaboratorForm(!showCollaboratorForm)}
             data-testid="add-collaborator-btn"
-          >
-            {showCollaboratorForm ? 'Cancel' : '+ Add collaborator'}
-          </Button>
+            label={showCollaboratorForm ? 'Cancel' : '+ Add collaborator'}
+          />
         </div>
 
         {showCollaboratorForm && (
           <div className="create-form-container" data-testid="add-collaborator-form">
             <form onSubmit={handleAddCollaborator} className="create-form">
               <div className="form-fields">
-                <select
+                <Select
+                  id="collaborator-user-select"
+                  label="Select user"
                   value={selectedUserId}
-                  onChange={(e) => setSelectedUserId(e.target.value)}
-                  className="pds-select"
-                  aria-label="Select user"
+                  options={(systemUsers ?? []).map((user) => ({
+                    label: user.email + (user.name ? ` (${user.name})` : ''),
+                    value: user.id,
+                  }))}
+                  onOptionSelect={(option) => setSelectedUserId(option.value)}
                   data-testid="collaborator-user-select"
-                >
-                  <option value="">Select a user...</option>
-                  {systemUsers?.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.email}{user.name ? ` (${user.name})` : ''}
-                    </option>
-                  ))}
-                </select>
-                <select
+                />
+                <Select
+                  id="collaborator-role-select"
+                  label="Collaborator role"
                   value={selectedCollaboratorRole}
-                  onChange={(e) => setSelectedCollaboratorRole(e.target.value)}
-                  className="pds-select"
-                  aria-label="Collaborator role"
+                  options={[
+                    { label: 'Admin', value: 'admin' },
+                    { label: 'Developer', value: 'developer' },
+                    { label: 'Team Member', value: 'team_member' },
+                  ]}
+                  onOptionSelect={(option) => setSelectedCollaboratorRole(option.value)}
                   data-testid="collaborator-role-select"
-                >
-                  <option value="admin">Admin</option>
-                  <option value="developer">Developer</option>
-                  <option value="team_member">Team Member</option>
-                </select>
+                />
               </div>
               <Button
-                type="primary"
-                isSubmit
+                variant="primary"
+                buttonType="submit"
                 onClick={() => {}}
                 disabled={isAddingCollaborator || !selectedUserId}
                 isLoading={isAddingCollaborator}
                 data-testid="submit-collaborator-btn"
-              >
-                {isAddingCollaborator ? 'Adding...' : 'Add'}
-              </Button>
+                label={isAddingCollaborator ? 'Adding...' : 'Add'}
+              />
             </form>
             {addCollaboratorError && (
-              <Alert type="danger" className="create-error-alert" data-testid="add-collaborator-error">
-                {addCollaboratorError}
-              </Alert>
+              <InlineMessage type="critical" className="create-error-alert" data-testid="add-collaborator-error" title={addCollaboratorError} />
             )}
           </div>
         )}
@@ -604,8 +564,7 @@ export function SiteDetailPage() {
             <ApiResponse data={null} isLoading={true} error={null} />
           </div>
         ) : collaborators && collaborators.length > 0 ? (
-          <div className="collaborators-table-container">
-            <table className="collaborators-table" data-testid="collaborators-table">
+            <table data-testid="collaborators-table">
               <thead>
                 <tr>
                   <th>User</th>
@@ -620,14 +579,10 @@ export function SiteDetailPage() {
                   <tr key={collab.id} data-testid={`collaborator-row-${collab.id}`}>
                     <td className="collaborator-user">{getUserEmail(collab.userId)}</td>
                     <td>
-                      <Tag type={getRoleTagType(collab.role)} data-testid={`collab-role-${collab.id}`}>
-                        {collab.role}
-                      </Tag>
+                      <StatusBadge label={collab.role} color="neutral" data-testid={`collab-role-${collab.id}`} />
                     </td>
                     <td>
-                      <Tag type={getSourceTagType(collab.source)} data-testid={`collab-source-${collab.id}`}>
-                        {collab.source}
-                      </Tag>
+                      <StatusBadge label={collab.source} color="neutral" data-testid={`collab-source-${collab.id}`} />
                     </td>
                     <td className="collaborator-date">
                       {new Date(collab.createdAt).toLocaleDateString()}
@@ -635,93 +590,84 @@ export function SiteDetailPage() {
                     <td className="collaborator-actions">
                       {collab.source === 'local' && (
                         <Button
-                          type="danger"
+                          variant="critical"
                           onClick={() => setCollaboratorToRemove(collab)}
                           data-testid={`remove-collaborator-${collab.id}`}
-                        >
-                          Remove
-                        </Button>
+                          label="Remove"
+                        />
                       )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
         ) : (
-          <div className="empty-state" data-testid="collaborators-empty-state">
-            <p>No collaborators found. Add collaborators to grant site access.</p>
-          </div>
+          <CompactEmptyState
+            data-testid="collaborators-empty-state"
+            iconName="emptySet"
+            heading="No collaborators found"
+            message="Add collaborators to grant site access."
+          />
         )}
-      </section>
+      </Panel>
 
       {/* Agent Access Section */}
-      <section className="agent-access-section" data-testid="agent-access-section">
+      <Panel data-testid="agent-access-section">
         <div className="section-header">
           <h2 className="section-title">Agent Access</h2>
           <Button
-            type={showGrantForm ? 'secondary' : 'primary'}
+            variant={showGrantForm ? 'secondary' : 'primary'}
             onClick={() => setShowGrantForm(!showGrantForm)}
             data-testid="grant-agent-btn"
-          >
-            {showGrantForm ? 'Cancel' : '+ Grant access'}
-          </Button>
+            label={showGrantForm ? 'Cancel' : '+ Grant access'}
+          />
         </div>
 
         {showGrantForm && (
           <div className="create-form-container" data-testid="grant-agent-form">
             <form onSubmit={handleGrantAgentRole} className="create-form">
               <div className="form-fields">
-                <select
+                <Select
+                  id="agent-select"
+                  label="Select agent"
                   value={selectedAgentId}
-                  onChange={(e) => setSelectedAgentId(e.target.value)}
-                  className="pds-select"
-                  aria-label="Select agent"
+                  options={(allAgents ?? [])
+                    .filter((agent) => !agentRoles?.some((r) => r.agentId === agent.id))
+                    .map((agent) => ({ label: agent.name, value: agent.id }))}
+                  onOptionSelect={(option) => setSelectedAgentId(option.value)}
                   data-testid="agent-select"
-                >
-                  <option value="">Select an agent...</option>
-                  {allAgents
-                    ?.filter((agent) => !agentRoles?.some((r) => r.agentId === agent.id))
-                    .map((agent) => (
-                      <option key={agent.id} value={agent.id}>
-                        {agent.name}
-                      </option>
-                    ))}
-                </select>
-                <select
+                />
+                <Select
+                  id="agent-role-select"
+                  label="Agent role"
                   value={selectedAgentRole}
-                  onChange={(e) => setSelectedAgentRole(e.target.value)}
-                  className="pds-select"
-                  aria-label="Agent role"
+                  options={[
+                    { label: 'Viewer', value: 'viewer' },
+                    { label: 'Editor', value: 'editor' },
+                    { label: 'Admin', value: 'admin' },
+                  ]}
+                  onOptionSelect={(option) => setSelectedAgentRole(option.value)}
                   data-testid="agent-role-select"
-                >
-                  <option value="viewer">Viewer</option>
-                  <option value="editor">Editor</option>
-                  <option value="admin">Admin</option>
-                </select>
+                />
               </div>
               <Button
-                type="primary"
-                isSubmit
+                variant="primary"
+                buttonType="submit"
                 onClick={() => {}}
                 disabled={isGranting || !selectedAgentId}
                 isLoading={isGranting}
                 data-testid="submit-grant-btn"
-              >
-                {isGranting ? 'Granting...' : 'Grant'}
-              </Button>
+                label={isGranting ? 'Granting...' : 'Grant'}
+              />
             </form>
             {grantError && (
-              <Alert type="danger" className="create-error-alert" data-testid="grant-error">
-                {grantError}
-              </Alert>
+              <InlineMessage type="critical" className="create-error-alert" data-testid="grant-error" title={grantError} />
             )}
           </div>
         )}
 
         {agentRoles && agentRoles.length > 0 ? (
-          <div className="agent-roles-table-container">
-            <table className="agent-roles-table" data-testid="agent-roles-table">
+            <table data-testid="agent-roles-table">
               <thead>
                 <tr>
                   <th>Agent</th>
@@ -735,45 +681,43 @@ export function SiteDetailPage() {
                   <tr key={role.id} data-testid={`agent-role-row-${role.id}`}>
                     <td className="agent-name">{role.agentName}</td>
                     <td>
-                      <Tag type={getRoleTagType(role.role)}>
-                        {role.role}
-                      </Tag>
+                      <StatusBadge label={role.role} color="neutral" />
                     </td>
                     <td className="agent-role-date">
                       {new Date(role.grantedAt).toLocaleDateString()}
                     </td>
                     <td className="agent-role-actions">
                       <Button
-                        type="danger"
+                        variant="critical"
                         onClick={() => setRoleToRevoke(role)}
                         data-testid={`revoke-role-${role.id}`}
-                      >
-                        Revoke
-                      </Button>
+                        label="Revoke"
+                      />
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
         ) : (
-          <div className="empty-state" data-testid="agent-roles-empty">
-            <p>No agents have access to this site. Grant access to allow agents to interact with this site.</p>
-          </div>
+          <CompactEmptyState
+            data-testid="agent-roles-empty"
+            iconName="emptySet"
+            heading="No agents have access"
+            message="Grant access to allow agents to interact with this site."
+          />
         )}
-      </section>
+      </Panel>
 
       {/* API Tokens Section */}
-      <section className="tokens-section" data-testid="tokens-section">
+      <Panel data-testid="tokens-section">
         <div className="section-header">
           <h2 className="section-title" data-testid="section-title-tokens">API Tokens</h2>
           <Button
-            type={showTokenForm ? 'secondary' : 'primary'}
+            variant={showTokenForm ? 'secondary' : 'primary'}
             onClick={() => { setShowTokenForm(!showTokenForm); setGeneratedToken(null); setSelectedScopes(['read:published']); }}
             data-testid="create-token-btn"
-          >
-            {showTokenForm ? 'Cancel' : '+ Generate token'}
-          </Button>
+            label={showTokenForm ? 'Cancel' : '+ Generate token'}
+          />
         </div>
 
         {generatedToken && (
@@ -782,12 +726,11 @@ export function SiteDetailPage() {
             <div className="raw-token-value">
               <code data-testid="raw-token-value">{generatedToken.token}</code>
               <Button
-                type="secondary"
+                variant="secondary"
                 onClick={() => handleCopyToken(generatedToken.token)}
                 data-testid="copy-token-btn"
-              >
-                {tokenCopied ? 'Copied!' : 'Copy'}
-              </Button>
+                label={tokenCopied ? 'Copied!' : 'Copy'}
+              />
             </div>
             <p>Name: <strong>{generatedToken.name}</strong> | Prefix: <code>{generatedToken.prefix}</code></p>
           </div>
@@ -797,33 +740,29 @@ export function SiteDetailPage() {
           <div className="create-form-container" data-testid="create-token-form">
             <form onSubmit={handleGenerateToken} className="create-form">
               <div className="form-fields">
-                <input
-                  type="text"
+                <TextInput
+                  id="token-name-input"
+                  label="Token name"
                   value={newTokenName}
                   onChange={(e) => setNewTokenName(e.target.value)}
                   placeholder="Enter token name..."
-                  className="pds-input"
-                  autoFocus
-                  aria-label="Token name"
+                  inputProps={{ autoFocus: true }}
                   data-testid="token-name-input"
                 />
               </div>
               <ScopeSelector selectedScopes={selectedScopes} onChange={setSelectedScopes} />
               <Button
-                type="primary"
-                isSubmit
+                variant="primary"
+                buttonType="submit"
                 onClick={() => {}}
                 disabled={isGeneratingToken || !newTokenName.trim()}
                 isLoading={isGeneratingToken}
                 data-testid="submit-token-btn"
-              >
-                {isGeneratingToken ? 'Generating...' : 'Generate'}
-              </Button>
+                label={isGeneratingToken ? 'Generating...' : 'Generate'}
+              />
             </form>
             {generateTokenError && (
-              <Alert type="danger" className="create-error-alert" data-testid="generate-token-error">
-                {generateTokenError}
-              </Alert>
+              <InlineMessage type="critical" className="create-error-alert" data-testid="generate-token-error" title={generateTokenError} />
             )}
           </div>
         )}
@@ -839,8 +778,7 @@ export function SiteDetailPage() {
             <ApiResponse data={null} isLoading={true} error={null} />
           </div>
         ) : tokens && tokens.length > 0 ? (
-          <div className="tokens-table-container">
-            <table className="tokens-table" data-testid="tokens-table">
+            <table data-testid="tokens-table">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -858,7 +796,7 @@ export function SiteDetailPage() {
                     <td className="token-prefix"><code>{token.prefix}</code></td>
                     <td>
                       {token.scopes.map((scope) => (
-                        <Tag key={scope} type={getScopeTagType(scope)} data-testid={`scope-badge-${token.id}-${scope}`}>{scope}</Tag>
+                        <StatusBadge key={scope} label={scope} color="neutral" data-testid={`scope-badge-${token.id}-${scope}`} />
                       ))}
                     </td>
                     <td className="token-date">
@@ -869,110 +807,103 @@ export function SiteDetailPage() {
                     </td>
                     <td className="token-actions">
                       <Button
-                        type="danger"
+                        variant="critical"
                         onClick={() => setTokenToRevoke(token)}
                         data-testid={`revoke-token-${token.id}`}
-                      >
-                        Revoke
-                      </Button>
+                        label="Revoke"
+                      />
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
         ) : (
-          <div className="empty-state" data-testid="tokens-empty-state">
-            <p>No API tokens found. Generate a token to allow external applications to access this site.</p>
-          </div>
+          <CompactEmptyState
+            data-testid="tokens-empty-state"
+            iconName="emptySet"
+            heading="No API tokens found"
+            message="Generate a token to allow external applications to access this site."
+          />
         )}
-      </section>
+      </Panel>
 
       {/* Allowed Origins Section */}
-      <section className="allowed-origins-section" data-testid="allowed-origins-section">
+      <Panel data-testid="allowed-origins-section">
         <div className="section-header">
           <h2 className="section-title" data-testid="section-title-allowed-origins">Allowed Origins</h2>
           <Button
-            type={showOriginForm ? 'secondary' : 'primary'}
+            variant={showOriginForm ? 'secondary' : 'primary'}
             onClick={() => setShowOriginForm(!showOriginForm)}
             data-testid="add-origin-btn"
-          >
-            {showOriginForm ? 'Cancel' : '+ Add origin'}
-          </Button>
+            label={showOriginForm ? 'Cancel' : '+ Add origin'}
+          />
         </div>
 
         {showOriginForm && (
           <div className="create-form-container" data-testid="add-origin-form">
             <form onSubmit={handleAddOrigin} className="create-form">
               <div className="form-fields">
-                <input
-                  type="text"
+                <TextInput
+                  id="origin-input"
+                  label="Allowed origin"
                   value={newOriginValue}
                   onChange={(e) => setNewOriginValue(e.target.value)}
                   placeholder="https://example.com or *-mysite.pantheonsite.io"
-                  className="pds-input"
-                  autoFocus
-                  aria-label="Allowed origin"
+                  inputProps={{ autoFocus: true }}
                   data-testid="origin-input"
                 />
               </div>
               <Button
-                type="primary"
-                isSubmit
+                variant="primary"
+                buttonType="submit"
                 onClick={() => {}}
                 disabled={isUpdatingOrigins || !newOriginValue.trim() || (site?.allowedOrigins ?? []).includes(newOriginValue.trim())}
                 isLoading={isUpdatingOrigins}
                 data-testid="submit-origin-btn"
-              >
-                {isUpdatingOrigins ? 'Adding...' : 'Add'}
-              </Button>
+                label={isUpdatingOrigins ? 'Adding...' : 'Add'}
+              />
             </form>
             {updateOriginsError && (
-              <Alert type="danger" className="create-error-alert" data-testid="add-origin-error">
-                {updateOriginsError}
-              </Alert>
+              <InlineMessage type="critical" className="create-error-alert" data-testid="add-origin-error" title={updateOriginsError} />
             )}
           </div>
         )}
 
         {(site?.allowedOrigins ?? []).length > 0 ? (
-          <div className="allowed-origins-table-container">
-            <table className="allowed-origins-table" data-testid="allowed-origins-table">
-              <thead>
-                <tr>
-                  <th>Origin</th>
-                  <th>Actions</th>
+          <table data-testid="allowed-origins-table">
+            <thead>
+              <tr>
+                <th>Origin</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(site?.allowedOrigins ?? []).map((origin, index) => (
+                <tr key={origin} data-testid={`origin-row-${index}`}>
+                  <td className="origin-value"><code>{origin}</code></td>
+                  <td className="origin-actions">
+                    <Button
+                      variant="critical"
+                      onClick={() => setOriginToRemove(origin)}
+                      data-testid={`remove-origin-${index}`}
+                      label="Remove"
+                    />
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {(site?.allowedOrigins ?? []).map((origin, index) => (
-                  <tr key={origin} data-testid={`origin-row-${index}`}>
-                    <td className="origin-value"><code>{origin}</code></td>
-                    <td className="origin-actions">
-                      <Button
-                        type="danger"
-                        onClick={() => setOriginToRemove(origin)}
-                        data-testid={`remove-origin-${index}`}
-                      >
-                        Remove
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         ) : (
-          <div className="empty-state" data-testid="allowed-origins-empty">
+          <div data-testid="allowed-origins-empty">
             <p data-testid="allowed-origins-empty-warning">
               No allowed origins configured. OAuth login will be blocked until at least one origin is added.
             </p>
           </div>
         )}
-      </section>
+      </Panel>
 
       {/* Settings Section */}
-      <section className="settings-section" data-testid="settings-section">
+      <Panel data-testid="settings-section">
         <div className="section-header">
           <h2 className="section-title" data-testid="section-title-settings">Settings</h2>
         </div>
@@ -982,7 +913,7 @@ export function SiteDetailPage() {
           onSave={handleSaveSettings}
           isSaving={isUpdatingSettings}
         />
-      </section>
+      </Panel>
 
       <ConfirmDeleteModal
         isOpen={branchToDelete !== null}

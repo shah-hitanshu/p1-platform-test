@@ -3675,6 +3675,114 @@ Six files exceeded 800-1,700 lines, making them difficult to navigate and mainta
 - Type-only imports (`import type`) used for cross-module type references to avoid runtime circular dependencies
 - All 2,654 tests pass, zero lint errors on new files
 
+<<<<<<< HEAD
+### Frontend: PDS Migration — CSS Cleanup Phases 1–6 (2026-04-11)
+
+**Status:** Complete
+**Branch:** `refactor/pds-migration`
+**Commits:** `b4725ff`, `fa602cf`, `21199b3`
+
+#### Context
+After the core package migration (see entry below), a series of progressive CSS cleanup phases removed all remaining hand-rolled styles and replaced them with PDS components.
+
+#### Phase 1 — Spinner/Loading
+- `ApiResponse.tsx`: replaced custom spinner markup with PDS `Spinner`
+- Removed dead `.loading-spinner` / `@keyframes spin` from `ApiResponse.css` and `index.css`
+- Deleted `App.css` (unused Vite template file)
+
+#### Phase 2 — Breadcrumb (all pages)
+- All 8 pages with breadcrumbs migrated from `<nav className="breadcrumb">` to PDS `<Breadcrumb crumbs={[...]} />`
+- Pages: SiteDetailPage, CreateMergeRequestPage, BranchDetailPage, MergeRequestsPage, MergeRequestDetailPage, DocumentPage
+- Removed all hand-rolled `.breadcrumb`, `.breadcrumb-separator`, `.breadcrumb-current` CSS
+
+#### Phase 3 — Tables (all pages)
+- Removed `className` from all `<table>` elements — PDS foundation auto-styles plain tables
+- Removed all `*-table-container` wrapper divs
+- Removed all hand-rolled `.*-table`, `.*-table th/td/tr` CSS blocks from 8 CSS files
+- Pages: SiteDetailPage (4 tables), BranchDetailPage (2), MergeRequestsPage, SitesPage, UsersPage, AgentsPage (+ nested keys table), DocumentPage (versions table)
+
+#### Phase 4 — Status Badges
+- `DocumentPage.tsx`: replaced 3 `<span className="status-indicator">` elements with PDS `<StatusBadge>`
+- Removed dead `.status-badge`, `.status-active`, `.status-merged` etc. CSS from 5 page CSS files
+
+#### Phase 5 — Page Sections → Panel
+- All hand-rolled card-like section containers replaced with PDS `<Panel>` across all pages
+- Containers replaced: `.page-header`, `.site-header`, `.branches-section`, `.collaborators-section`, `.agent-access-section`, `.tokens-section`, `.settings-section`, `.mr-header`, `.mr-metadata`, `.mr-description`, `.mr-actions-section`, `.mr-preview`, `.mr-conflicts`, `.dashboard-card`, `.document-header`, `.content-section`, `.branch-header`
+- `.mr-conflicts` uses `Panel hasStatusIndicator statusType="warning"` for semantic warning styling
+- Removed corresponding background/border-radius/padding/box-shadow CSS blocks
+
+#### Phase 6 — Empty States
+- All `<div className="empty-state">` patterns replaced with PDS `<CompactEmptyState>`
+- Pages: SiteDetailPage (4 empty states), BranchDetailPage (2), MergeRequestsPage, SitesPage, UsersPage, AgentsPage, DocumentPage
+- Removed `.empty-state` CSS blocks
+
+#### Test infrastructure updates
+- Mock factories in 8 test files updated to include `Panel`, `CompactEmptyState`, and `Breadcrumb`
+- All `data-testid` attributes preserved on migrated elements (Panel and CompactEmptyState spread rest props to root div)
+
+#### Phase 7 — Forms
+- **Blocked**: PDS FormField/TextInput native components not yet available
+- Hand-rolled `.pds-input`, `.pds-select` styles remain in place until PDS ships these
+
+#### Net result
+- ~1,400 lines of hand-rolled CSS removed across 14 CSS files
+- 252/252 tests passing, 0 lint errors
+
+---
+
+### Frontend: PDS Migration — pds-toolkit-react v1.13.1 (2026-04-11)
+
+**Status:** Complete
+**Branch:** `refactor/pds-migration`
+**Commit:** `573b1b9`
+
+#### Context
+The frontend was built using `@pantheon-systems/design-toolkit-react` v24 with a hand-rolled shell layout (custom sidebar, nav, header CSS). The Pantheon Design System MCP server (`mcp__pds-toolkit-react__*`) documents the newer package `@pantheon-systems/pds-toolkit-react` v1.13.1, which has a completely different API and includes proper dashboard shell components.
+
+#### Changes
+
+**Package upgrade:**
+- Replaced `@pantheon-systems/design-toolkit-react` v24 with `@pantheon-systems/pds-toolkit-react` v1.13.1
+- Removed stale `src/types/design-toolkit-react.d.ts` ambient module declaration
+- Removed obsolete `optimizeDeps` workaround from `vite.config.ts` (new package ships proper ESM)
+
+**Shell rewrite (Layout.tsx, main.tsx, App.tsx):**
+- Replaced hand-rolled `div.layout` / `nav.sidebar` with PDS `DashboardGlobal` shell
+- Layout slots: `Navbar` (header) with `UserMenu`, `DashboardNav` (sidebar) with 4 nav items, `DashboardInner` (main), `SiteFooter` (footer)
+- `BrowserRouter` moved to `main.tsx`; `GlobalWrapper` added inside it
+- `Spinner` from PDS replaces custom loading screen divs
+- Deleted `Layout.css` (91 lines removed)
+
+**API migration across all pages and components:**
+
+| Old API | New API |
+|---|---|
+| `Button type="primary">text` | `Button variant="primary" label="text"` |
+| `Button type="danger"` | `Button variant="critical"` |
+| `Button isSubmit` | `Button buttonType="submit"` |
+| `Button type="tertiary"` | `Button variant="subtle"` |
+| `RouterLinkButton to="..." type="secondary">Text` | `ButtonLink variant="secondary" linkContent={<Link to="...">Text</Link>}` |
+| `Alert type="danger">{msg}` | `InlineMessage type="critical" title={msg}` |
+| `Tag type="success">{label}` | `StatusBadge label={label} color="neutral"` |
+| `Tabs` composition (TabList/Tab/TabPanels/TabPanel) | `Tabs` data-driven `tabs={[{tabLabel, tabId, panelContent}]}` |
+| `FormGroup` | plain `<div>` |
+
+**Rebrand:**
+- App title: "CSS Explorer" → "Pantheon P1" (index.html, LoginPage)
+- Login subtitle: "Collaborative State System API Explorer" → "Sign in to continue"
+
+**Test infrastructure:**
+- All 17 test files updated: mocks retargeted from `@pantheon-systems/design-toolkit-react` to `@pantheon-systems/pds-toolkit-react`
+- Component renames reflected in mock factories (Alert→InlineMessage, Tag→StatusBadge, RouterLinkButton→ButtonLink, Tabs composition→data-driven)
+- Modal mock prop updated: `isOpen` → `modalIsOpen`; `ModalHeader`/`ModalContent` removed (no longer exist)
+- `vitest.config.ts`: `css: false` + `server.deps.inline: ['@pantheon-systems/pds-toolkit-react']` to handle package's internal CSS side-effect imports
+- `data-tag-type` assertions removed from scopes tests (semantic tag colors replaced by `color="neutral"` in new package)
+
+#### Test results
+- 34/34 test files passing
+- 252/252 tests passing
+- 0 lint errors
+
 ---
 
 ### CSS Auth Server (2026-04-07)

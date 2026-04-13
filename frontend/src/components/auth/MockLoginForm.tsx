@@ -10,10 +10,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import {
   Button,
-  Alert,
-  FormGroup,
-  Tag,
-} from '@pantheon-systems/design-toolkit-react';
+  InlineMessage,
+  Select,
+  StatusBadge,
+} from '@pantheon-systems/pds-toolkit-react';
 
 const MOCK_USERS = [
   { id: '11111111-1111-1111-1111-111111111111', name: 'Alice Developer', email: 'alice@example.com', role: 'admin' },
@@ -52,27 +52,17 @@ export function MockLoginForm() {
 
   return (
     <form onSubmit={handleLogin} className="login-form" data-testid="mock-login-form">
-      <FormGroup>
-        <label htmlFor="user-select" className="form-label">
-          Select user
-        </label>
-        <select
+      <div>
+        <Select
           id="user-select"
+          label="Select user"
           value={selectedUserId}
-          onChange={(e) => setSelectedUserId(e.target.value)}
-          className="pds-select"
+          options={MOCK_USERS.map((u) => ({ label: `${u.name} (${u.email})`, value: u.id }))}
+          onOptionSelect={(option) => setSelectedUserId(option.value)}
           disabled={isLoading}
-          aria-label="Select user"
           data-testid="user-select"
-        >
-          <option value="">Choose a user...</option>
-          {MOCK_USERS.map((user) => (
-            <option key={user.id} value={user.id}>
-              {user.name} ({user.email})
-            </option>
-          ))}
-        </select>
-      </FormGroup>
+        />
+      </div>
 
       {selectedUser && (
         <div className="user-preview" data-testid="user-preview">
@@ -86,27 +76,24 @@ export function MockLoginForm() {
           </div>
           <div className="preview-row">
             <span className="preview-label">Role:</span>
-            <Tag type="info" data-testid="preview-role">{selectedUser.role}</Tag>
+            <StatusBadge label={selectedUser.role} color="neutral" data-testid="preview-role" />
           </div>
         </div>
       )}
 
       {error && (
-        <Alert type="danger" data-testid="login-error">
-          {error}
-        </Alert>
+        <InlineMessage type="critical" title={error} data-testid="login-error" />
       )}
 
       <Button
-        type="primary"
-        isSubmit
+        variant="primary"
+        buttonType="submit"
+        label={isLoading ? 'Logging in...' : 'Log in'}
         onClick={() => {}}
         disabled={isLoading || !selectedUserId}
         isLoading={isLoading}
         data-testid="login-button"
-      >
-        {isLoading ? 'Logging in...' : 'Log in'}
-      </Button>
+      />
     </form>
   );
 }

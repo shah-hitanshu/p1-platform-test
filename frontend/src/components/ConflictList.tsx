@@ -5,24 +5,11 @@
  */
 
 import type { DocumentConflict, DocumentConflictType } from '../types';
-import { Tag } from '@pantheon-systems/design-toolkit-react';
+import { StatusBadge } from '@pantheon-systems/pds-toolkit-react';
 import './ConflictList.css';
 
 interface ConflictListProps {
   conflicts: DocumentConflict[];
-}
-
-function getConflictTypeTagType(type: DocumentConflictType): 'warning' | 'danger' | 'default' {
-  switch (type) {
-    case 'both-modified':
-      return 'warning';
-    case 'deleted-in-source':
-      return 'danger';
-    case 'deleted-in-target':
-      return 'danger';
-    default:
-      return 'default';
-  }
 }
 
 function getConflictTypeLabel(type: DocumentConflictType): string {
@@ -71,9 +58,10 @@ export function ConflictList({ conflicts }: ConflictListProps) {
                   <code>{conflict.documentPath}</code>
                 </td>
                 <td>
-                  <Tag type={getConflictTypeTagType(conflict.conflictType)}>
-                    {getConflictTypeLabel(conflict.conflictType)}
-                  </Tag>
+                  <StatusBadge
+                    label={getConflictTypeLabel(conflict.conflictType)}
+                    color="neutral"
+                  />
                 </td>
                 <td className="conflict-version">
                   {conflict.sourceVersion !== undefined ? `v${conflict.sourceVersion}` : '-'}

@@ -13,9 +13,12 @@ import { listBranches } from '../api/branches';
 import { ApiResponse } from '../components/ApiResponse';
 import type { Site, MergeRequest, MergeRequestStatus, Branch } from '../types';
 import {
-  RouterLinkButton,
-  Tag,
-} from '@pantheon-systems/design-toolkit-react';
+  Breadcrumb,
+  ButtonLink,
+  CompactEmptyState,
+  Panel,
+  StatusBadge,
+} from '@pantheon-systems/pds-toolkit-react';
 import './MergeRequestsPage.css';
 
 type StatusFilter = 'all' | MergeRequestStatus;
@@ -60,23 +63,6 @@ export function MergeRequestsPage() {
     return branch?.name || branchId.slice(0, 8) + '...';
   };
 
-  const getStatusTagType = (status: MergeRequestStatus): 'info' | 'success' | 'warning' | 'default' => {
-    switch (status) {
-      case 'open':
-        return 'info';
-      case 'approved':
-        return 'success';
-      case 'conflicted':
-        return 'warning';
-      case 'merged':
-        return 'success';
-      case 'closed':
-        return 'default';
-      default:
-        return 'default';
-    }
-  };
-
   if (siteLoading) {
     return (
       <div className="merge-requests-page">
@@ -93,9 +79,7 @@ export function MergeRequestsPage() {
         <div className="error-container">
           <ApiResponse data={null} isLoading={false} error={siteError} />
           <div className="back-link-container">
-            <RouterLinkButton to="/sites" type="secondary" data-testid="back-to-sites">
-              Back to sites
-            </RouterLinkButton>
+            <ButtonLink variant="secondary" data-testid="back-to-sites" linkContent={<Link to="/sites">Back to sites</Link>} />
           </div>
         </div>
       </div>
@@ -105,27 +89,24 @@ export function MergeRequestsPage() {
   return (
     <div className="merge-requests-page">
       {/* Breadcrumb */}
-      <nav className="breadcrumb" data-testid="breadcrumb">
-        <Link to="/sites">Sites</Link>
-        <span className="breadcrumb-separator">/</span>
-        <Link to={`/sites/${siteId}`}>{site?.name || 'Site'}</Link>
-        <span className="breadcrumb-separator">/</span>
-        <span className="breadcrumb-current">Merge Requests</span>
-      </nav>
+      <Breadcrumb
+        data-testid="breadcrumb"
+        crumbs={[
+          <Link to="/sites">Sites</Link>,
+          <Link to={`/sites/${siteId}`}>{site?.name || 'Site'}</Link>,
+          <span>Merge Requests</span>,
+        ]}
+      />
 
       {/* Page Header */}
-      <header className="page-header">
-        <div className="page-info">
-          <h1 className="page-title" data-testid="page-title">Merge Requests</h1>
-        </div>
-        <RouterLinkButton
-          to={`/sites/${siteId}/merge-requests/new`}
-          type="primary"
+      <Panel data-testid="page-header">
+        <h1 className="page-title" data-testid="page-title">Merge Requests</h1>
+        <ButtonLink
+          variant="primary"
           data-testid="create-mr-btn"
-        >
-          + Create merge request
-        </RouterLinkButton>
-      </header>
+          linkContent={<Link to={`/sites/${siteId}/merge-requests/new`}>+ Create merge request</Link>}
+        />
+      </Panel>
 
       {/* Status Filter Tabs */}
       <div className="filter-tabs" data-testid="filter-tabs">
@@ -142,7 +123,7 @@ export function MergeRequestsPage() {
       </div>
 
       {/* Merge Requests Table */}
-      <section className="merge-requests-section">
+      <Panel data-testid="merge-requests-section">
         {mrError && (
           <div className="error-banner">
             <ApiResponse data={null} isLoading={false} error={mrError} />
@@ -154,68 +135,63 @@ export function MergeRequestsPage() {
             <ApiResponse data={null} isLoading={true} error={null} />
           </div>
         ) : mergeRequests && mergeRequests.length > 0 ? (
-          <div className="merge-requests-table-container">
-            <table className="merge-requests-table" data-testid="merge-requests-table">
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Source Branch</th>
-                  <th>Target Branch</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                  <th>Actions</th>
+          <table data-testid="merge-requests-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Source Branch</th>
+                <th>Target Branch</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mergeRequests.map((mr) => (
+                <tr
+                  key={mr.id}
+                  className="clickable-row"
+                  onClick={() => navigate(`/sites/${siteId}/merge-requests/${mr.id}`)}
+                  data-testid={`mr-row-${mr.id}`}
+                >
+                  <td className="mr-title">{mr.title}</td>
+                  <td className="branch-name">
+                    <code>{getBranchName(mr.sourceBranchId)}</code>
+                  </td>
+                  <td className="branch-name">
+                    <code>{getBranchName(mr.targetBranchId)}</code>
+                  </td>
+                  <td>
+                    <StatusBadge label={mr.status} color="neutral" />
+                  </td>
+                  <td className="mr-date">
+                    {new Date(mr.createdAt).toLocaleDateString()}
+                  </td>
+                  <td className="mr-actions" onClick={(e) => e.stopPropagation()}>
+                    <ButtonLink
+                      variant="secondary"
+                      data-testid={`view-mr-${mr.id}`}
+                      linkContent={<Link to={`/sites/${siteId}/merge-requests/${mr.id}`}>View</Link>}
+                    />
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {mergeRequests.map((mr) => (
-                  <tr
-                    key={mr.id}
-                    className="clickable-row"
-                    onClick={() => navigate(`/sites/${siteId}/merge-requests/${mr.id}`)}
-                    data-testid={`mr-row-${mr.id}`}
-                  >
-                    <td className="mr-title">{mr.title}</td>
-                    <td className="branch-name">
-                      <code>{getBranchName(mr.sourceBranchId)}</code>
-                    </td>
-                    <td className="branch-name">
-                      <code>{getBranchName(mr.targetBranchId)}</code>
-                    </td>
-                    <td>
-                      <Tag type={getStatusTagType(mr.status)}>{mr.status}</Tag>
-                    </td>
-                    <td className="mr-date">
-                      {new Date(mr.createdAt).toLocaleDateString()}
-                    </td>
-                    <td className="mr-actions" onClick={(e) => e.stopPropagation()}>
-                      <RouterLinkButton
-                        to={`/sites/${siteId}/merge-requests/${mr.id}`}
-                        type="secondary"
-                        data-testid={`view-mr-${mr.id}`}
-                      >
-                        View
-                      </RouterLinkButton>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         ) : (
-          <div className="empty-state" data-testid="empty-state">
-            <p>No merge requests found{statusFilter !== 'all' ? ` with status "${statusFilter}"` : ''}.</p>
-            <div className="empty-state-action">
-              <RouterLinkButton
-                to={`/sites/${siteId}/merge-requests/new`}
-                type="secondary"
+          <CompactEmptyState
+            data-testid="empty-state"
+            title={`No merge requests found${statusFilter !== 'all' ? ` with status "${statusFilter}"` : ''}.`}
+            linkContent={
+              <ButtonLink
+                variant="secondary"
                 data-testid="create-first-mr"
-              >
-                Create your first merge request
-              </RouterLinkButton>
-            </div>
-          </div>
+                linkContent={<Link to={`/sites/${siteId}/merge-requests/new`}>Create your first merge request</Link>}
+              />
+            }
+          />
         )}
-      </section>
+      </Panel>
     </div>
   );
 }

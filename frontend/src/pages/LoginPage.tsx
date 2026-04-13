@@ -22,8 +22,8 @@ export function LoginPage() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <h1 className="login-title" data-testid="login-title">CSS Explorer</h1>
-          <p className="login-subtitle">Collaborative State System API Explorer</p>
+          <h1 className="login-title" data-testid="login-title">Pantheon P1</h1>
+          <p className="login-subtitle">Sign in to continue</p>
         </div>
 
         {/* OAuth provider buttons */}

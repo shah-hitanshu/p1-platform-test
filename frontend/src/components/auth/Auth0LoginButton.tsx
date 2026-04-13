@@ -6,7 +6,7 @@
  */
 
 import { useAuth0 } from '@auth0/auth0-react';
-import { Button } from '@pantheon-systems/design-toolkit-react';
+import { Button } from '@pantheon-systems/pds-toolkit-react';
 
 export function Auth0LoginButton() {
   const { loginWithRedirect, isLoading } = useAuth0();
@@ -17,13 +17,12 @@ export function Auth0LoginButton() {
 
   return (
     <Button
-      type="secondary"
+      variant="secondary"
+      label="Log in with Auth0"
       onClick={handleClick}
       disabled={isLoading}
       isLoading={isLoading}
       data-testid="auth0-login-button"
-    >
-      Log in with Auth0
-    </Button>
+    />
   );
 }

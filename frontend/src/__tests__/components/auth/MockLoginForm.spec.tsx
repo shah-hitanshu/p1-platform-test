@@ -23,6 +23,44 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
+vi.mock('@pantheon-systems/pds-toolkit-react', () => ({
+  Spinner: ({ label, ...props }: Record<string, unknown>) => (
+    <div role="status" aria-label={label as string} {...props} />
+  ),
+  Button: ({ label, children, onClick, disabled, isLoading, ...props }: Record<string, unknown>) => (
+    <button
+      onClick={onClick as () => void}
+      disabled={(disabled as boolean) || (isLoading as boolean)}
+      {...props}
+    >
+      {(label as string) || (children as React.ReactNode)}
+    </button>
+  ),
+  InlineMessage: ({ title, children, ...props }: Record<string, unknown>) => (
+    <div role="alert" {...props}>{(title as string)}{(children as React.ReactNode)}</div>
+  ),
+  StatusBadge: ({ label, children, ...props }: Record<string, unknown>) => (
+    <span {...props}>{(label as string) || (children as React.ReactNode)}</span>
+  ),
+  Select: ({ label, value, options, onOptionSelect, disabled, showLabel, id, ...props }: Record<string, unknown>) => (
+    <div>
+      {(showLabel !== false) && <label htmlFor={id as string}>{label as string}</label>}
+      <select
+        id={id as string}
+        value={value as string}
+        onChange={(e) => (onOptionSelect as (opt: { label: string; value: string }) => void)?.({ label: e.target.value, value: e.target.value })}
+        disabled={disabled as boolean}
+        {...props}
+      >
+        <option value="">Select an option</option>
+        {((options as Array<{ label: string; value: string }>) ?? []).map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </div>
+  ),
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
 });

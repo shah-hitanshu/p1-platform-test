@@ -6,30 +6,8 @@
 }
 
 .api-response-loading {
-  display: flex;
-  align-items: center;
-  gap: 12px;
   padding: 24px;
-  background-color: var(--dt-color-gray-1, #f3f4f6);
-  color: var(--dt-color-gray-6, #4b5563);
 }
-
-.loading-spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid var(--dt-color-gray-2, #e5e7eb);
-  border-top-color: var(--dt-color-cyan-3, #02a9e0);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Error state now uses PDS Alert component */
 
 .api-response-empty {
   padding: 24px;

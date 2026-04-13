@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { Button } from '@pantheon-systems/design-toolkit-react';
+import { Button } from '@pantheon-systems/pds-toolkit-react';
 import type { DocumentConflict, DocumentDiff } from '../types';
 import { ExpandableDiffRow } from './ExpandableDiffRow';
 import './ExpandableConflictList.css';
@@ -90,21 +90,19 @@ export function ExpandableConflictList({
         </span>
         <div className="expand-controls">
           <Button
-            type="tertiary"
+            variant="subtle"
+            label="Expand All"
             onClick={handleExpandAll}
             disabled={allExpanded || diffsLoading}
             data-testid="expand-all-diffs-btn"
-          >
-            Expand All
-          </Button>
+          />
           <Button
-            type="tertiary"
+            variant="subtle"
+            label="Collapse All"
             onClick={handleCollapseAll}
             disabled={!someExpanded}
             data-testid="collapse-all-diffs-btn"
-          >
-            Collapse All
-          </Button>
+          />
         </div>
       </div>
 

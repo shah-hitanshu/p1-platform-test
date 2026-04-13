@@ -5,7 +5,7 @@
  */
 
 import { useState, useMemo } from 'react';
-import { Button } from '@pantheon-systems/design-toolkit-react';
+import { Button, TextInput } from '@pantheon-systems/pds-toolkit-react';
 
 interface CacheSettingsProps {
   settings: { cacheTtlMain?: number; cacheTtlBranch?: number } | null;
@@ -86,31 +86,25 @@ export function CacheSettings({ settings, isLoading, onSave, isSaving = false }:
       </p>
 
       <div>
-        <label>
-          Main branch cache TTL (seconds)
-          <input
-            type="text"
-            data-testid="cache-ttl-main-input"
-            value={mainTtl}
-            onChange={(e) => { setMainTtl(e.target.value); setValidationError(null); }}
-            placeholder="60"
-            className="pds-input"
-          />
-        </label>
+        <TextInput
+          id="cache-ttl-main"
+          label="Main branch cache TTL (seconds)"
+          data-testid="cache-ttl-main-input"
+          value={mainTtl}
+          onChange={(e) => { setMainTtl(e.target.value); setValidationError(null); }}
+          placeholder="60"
+        />
       </div>
 
       <div>
-        <label>
-          Preview branch cache TTL (seconds)
-          <input
-            type="text"
-            data-testid="cache-ttl-branch-input"
-            value={branchTtl}
-            onChange={(e) => { setBranchTtl(e.target.value); setValidationError(null); }}
-            placeholder="5"
-            className="pds-input"
-          />
-        </label>
+        <TextInput
+          id="cache-ttl-branch"
+          label="Preview branch cache TTL (seconds)"
+          data-testid="cache-ttl-branch-input"
+          value={branchTtl}
+          onChange={(e) => { setBranchTtl(e.target.value); setValidationError(null); }}
+          placeholder="5"
+        />
       </div>
 
       {validationError && (
@@ -121,22 +115,20 @@ export function CacheSettings({ settings, isLoading, onSave, isSaving = false }:
 
       <div style={{ marginTop: '16px', display: 'flex', gap: '8px' }}>
         <Button
-          type="primary"
+          variant="primary"
+          label="Save"
           data-testid="cache-settings-save-btn"
           onClick={handleSave}
           disabled={isSaving}
           isLoading={isSaving}
-        >
-          Save
-        </Button>
+        />
         <Button
-          type="secondary"
+          variant="secondary"
+          label="Reset to defaults"
           data-testid="cache-settings-reset-btn"
           onClick={handleReset}
           disabled={isSaving}
-        >
-          Reset to defaults
-        </Button>
+        />
       </div>
     </div>
   );

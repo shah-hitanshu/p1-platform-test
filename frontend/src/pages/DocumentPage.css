@@ -18,43 +18,9 @@
 .document-page {
   max-width: 1200px;
   margin: 0 auto;
-}
-
-/* Breadcrumb - will be migrated in Phase 4 */
-.document-page .breadcrumb {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 20px;
-  font-size: 0.875rem;
-  color: var(--dt-color-gray-5, #6c757d);
-}
-
-.document-page .breadcrumb a {
-  color: var(--dt-color-cyan-3, #02a9e0);
-  text-decoration: none;
-}
-
-.document-page .breadcrumb a:hover {
-  text-decoration: underline;
-}
-
-.document-page .breadcrumb-separator {
-  color: var(--dt-color-gray-3, #ced4da);
-}
-
-.document-page .breadcrumb-current {
-  color: var(--dt-color-gray-7, #333);
-  font-weight: 500;
-}
-
-/* Document Header */
-.document-header {
-  background-color: var(--dt-color-white, #fff);
-  border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  flex-direction: column;
+  gap: 24px;
 }
 
 .document-title-row {
@@ -96,22 +62,6 @@
   font-size: 0.75rem;
 }
 
-/* Status Badge - will be migrated in Phase 3 */
-.document-page .status-badge {
-  display: inline-block;
-  padding: 4px 12px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  border-radius: 12px;
-}
-
-.document-page .status-archived {
-  background-color: var(--dt-color-gray-2, #e2e3e5);
-  color: var(--dt-color-gray-6, #383d41);
-}
-
 /* Notice Alert (replaces notice-banner) */
 .notice-alert {
   margin-bottom: 24px;
@@ -148,15 +98,6 @@
 .document-page .tab.active {
   color: var(--dt-color-cyan-3, #02a9e0);
   border-bottom-color: var(--dt-color-cyan-3, #02a9e0);
-}
-
-/* Content Section */
-.document-page .content-section {
-  background-color: var(--dt-color-white, #fff);
-  border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .document-page .section-header {
@@ -210,19 +151,6 @@
   word-break: break-all;
 }
 
-/* Status Indicators */
-.status-indicator {
-  font-weight: 500;
-}
-
-.status-active-text {
-  color: var(--dt-color-green-4, #28a745);
-}
-
-.status-archived-text {
-  color: var(--dt-color-gray-5, #6c757d);
-}
-
 /* Loading & Error */
 .document-page .loading-container {
   padding: 40px;
@@ -266,7 +194,7 @@
   background: transparent;
 }
 
-/* JSON Editor - extends pds-input */
+/* JSON Editor */
 .json-editor {
   width: 100%;
   min-height: 400px;
@@ -311,56 +239,6 @@
 
 .version-meta code {
   font-size: 0.75rem;
-}
-
-/* Table Styles - will be migrated in Phase 3 */
-.document-page .table-container {
-  overflow: hidden;
-  border-radius: 6px;
-  border: 1px solid var(--dt-color-gray-2, #e9ecef);
-}
-
-.document-page .data-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.document-page .data-table th,
-.document-page .data-table td {
-  padding: 14px 16px;
-  text-align: left;
-}
-
-.document-page .data-table th {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--dt-color-gray-5, #6c757d);
-  background-color: var(--dt-color-gray-1, #f8f9fa);
-  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.document-page .data-table td {
-  font-size: 0.9375rem;
-  color: var(--dt-color-gray-7, #333);
-  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
-}
-
-.document-page .data-table tr:last-child td {
-  border-bottom: none;
-}
-
-.document-page .data-table tr:hover td {
-  background-color: var(--dt-color-gray-1, #f8f9fa);
-}
-
-.document-page .data-table .current-version {
-  background-color: var(--dt-color-cyan-1, #e8f4fd);
-}
-
-.document-page .data-table .current-version:hover td {
-  background-color: var(--dt-color-cyan-1, #d8ecfc);
 }
 
 .version-number {
@@ -472,14 +350,3 @@
   color: var(--dt-color-yellow-4, #e65100);
 }
 
-/* Empty State - will be migrated in Phase 5 */
-.document-page .empty-state {
-  padding: 40px 20px;
-  text-align: center;
-  color: var(--dt-color-gray-5, #6c757d);
-}
-
-.document-page .empty-state p {
-  margin: 0;
-  font-size: 0.9375rem;
-}

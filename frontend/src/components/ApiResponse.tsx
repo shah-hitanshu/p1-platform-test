@@ -4,7 +4,7 @@
  * Displays API response with loading, error, and success states.
  */
 
-import { Alert } from '@pantheon-systems/design-toolkit-react';
+import { InlineMessage, Spinner } from '@pantheon-systems/pds-toolkit-react';
 import { JsonViewer } from './JsonViewer';
 import './ApiResponse.css';
 
@@ -19,8 +19,7 @@ export function ApiResponse({ data, isLoading, error, title }: ApiResponseProps)
   if (isLoading) {
     return (
       <div className="api-response api-response-loading">
-        <div className="loading-spinner" />
-        <span>Loading...</span>
+        <Spinner label="Loading" showLabel />
       </div>
     );
   }
@@ -28,7 +27,7 @@ export function ApiResponse({ data, isLoading, error, title }: ApiResponseProps)
   if (error) {
     return (
       <div className="api-response">
-        <Alert type="danger">{error}</Alert>
+        <InlineMessage type="critical" title={error} />
       </div>
     );
   }

@@ -1,65 +1,94 @@
 /**
  * Layout Component
  *
- * Main layout with navigation sidebar.
+ * Main application shell using PDS dashboard components.
  */
 
-import { Link, useLocation, Outlet } from 'react-router-dom';
+import { NavLink, Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { Button } from '@pantheon-systems/design-toolkit-react';
-import './Layout.css';
+import {
+  DashboardGlobal,
+  DashboardInner,
+  DashboardNav,
+  Navbar,
+  PantheonLogo,
+  SiteFooter,
+  UserMenu,
+} from '@pantheon-systems/pds-toolkit-react';
+
+const navItems = [
+  { icon: 'house', label: 'Dashboard', to: '/', end: true },
+  { icon: 'sitemap', label: 'Sites', to: '/sites', end: false },
+  { icon: 'users', label: 'Users', to: '/users', end: false },
+  { icon: 'robot', label: 'Agents', to: '/agents', end: false },
+];
 
 export function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
 
-  const navItems = [
-    { path: '/', label: 'Dashboard' },
-    { path: '/sites', label: 'Sites' },
-    { path: '/users', label: 'Users' },
-    { path: '/agents', label: 'Agents' },
-  ];
+  const userMenuItems = [{ label: 'Log out', callback: logout, iconName: 'xmark' }];
 
   return (
-    <div className="layout">
-      <nav className="sidebar" data-testid="sidebar">
-        <div className="sidebar-header">
-          <h1 className="sidebar-title" data-testid="sidebar-title">CSS Explorer</h1>
-          <p className="sidebar-subtitle">API Testing Tool</p>
-        </div>
+    <DashboardGlobal logoLinkContent={<Link to="/">P1</Link>}>
+      <Navbar
+        slot="header"
+        colorType="transparent"
+        containerWidth="full"
+        hideLogo
+        hideBorder
+      >
+        <UserMenu
+          slot="items-right"
+          userName={user?.name}
+          userEmail={user?.email}
+          menuItems={userMenuItems}
+        />
+      </Navbar>
 
-        <ul className="nav-list">
-          {navItems.map((item) => (
-            <li key={item.path}>
-              <Link
-                to={item.path}
-                className={`nav-link ${
-                  location.pathname === item.path ? 'active' : ''
-                }`}
-                data-testid={`nav-${item.label.toLowerCase()}`}
-              >
-                {item.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
+      <div slot="sidebar" className="sidebar-content">
+        <PantheonLogo
+          displayType="sub-brand"
+          subBrand="P1"
+          linkContent={<Link to="/">P1</Link>}
+        />
+        <DashboardNav
+          ariaLabel="Main navigation"
+          data-testid="sidebar"
+          menuItems={navItems.map((item) => ({
+          icon: item.icon,
+          isActive: item.end
+            ? location.pathname === item.to
+            : location.pathname.startsWith(item.to),
+          linkContent: (
+            <NavLink
+              to={item.to}
+              end={item.end}
+              data-testid={`nav-${item.label.toLowerCase()}`}
+            >
+              {item.label}
+            </NavLink>
+          ),
+        }))}
+        />
+      </div>
 
-        {user && (
-          <div className="user-panel">
-            <div className="user-info">
-              <span className="user-name" data-testid="user-name">{user.name}</span>
-              <span className="user-email" data-testid="user-email">{user.email}</span>
-            </div>
-            <Button type="secondary" onClick={logout} data-testid="logout-button">
-              Log out
-            </Button>
-          </div>
-        )}
-      </nav>
-
-      <main className="main-content">
+      <DashboardInner slot="main">
         <Outlet />
-      </main>
-    </div>
+      </DashboardInner>
+
+      <SiteFooter
+        slot="footer"
+        containerWidth="full"
+        hasTopBorder
+        legalLinks={[
+          'privacy',
+          'cookiePolicy',
+          'termsOfUse',
+          'acceptableUse',
+          'accessibilityStatement',
+        ]}
+      />
+    </DashboardGlobal>
   );
 }

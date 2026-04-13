@@ -18,24 +18,83 @@ vi.mock('react-router-dom', () => ({
   ),
 }));
 
-// Mock @pantheon-systems/design-toolkit-react
-vi.mock('@pantheon-systems/design-toolkit-react', () => ({
-  Button: ({ children, ...props }: { children: React.ReactNode; [key: string]: unknown }) => (
-    <button {...props}>{children}</button>
+// Mock @pantheon-systems/pds-toolkit-react
+vi.mock('@pantheon-systems/pds-toolkit-react', () => ({
+  Spinner: ({ label, ...props }: Record<string, unknown>) => (
+    <div role="status" aria-label={label as string} {...props} />
   ),
-  Alert: ({ children, ...props }: { children: React.ReactNode; [key: string]: unknown }) => (
-    <div {...props}>{children}</div>
+  Button: ({ label, children, onClick, disabled, isLoading, ...props }: Record<string, unknown>) => (
+    <button
+      onClick={onClick as () => void}
+      disabled={(disabled as boolean) || (isLoading as boolean)}
+      {...props}
+    >
+      {(label as string) || (children as React.ReactNode)}
+    </button>
   ),
-  Tag: ({ children, ...props }: { children: React.ReactNode; [key: string]: unknown }) => (
-    <span {...props}>{children}</span>
+  InlineMessage: ({ title, children, ...props }: Record<string, unknown>) => (
+    <div role="alert" {...props}>{(title as string)}{(children as React.ReactNode)}</div>
   ),
-  Modal: ({ children, isOpen, ...props }: { children: React.ReactNode; isOpen: boolean; [key: string]: unknown }) =>
-    isOpen ? <div {...props}>{children}</div> : null,
-  ModalHeader: ({ title, ...props }: { title: string; [key: string]: unknown }) => (
-    <div {...props}>{title}</div>
+  StatusBadge: ({ label, children, ...props }: Record<string, unknown>) => (
+    <span {...props}>{(label as string) || (children as React.ReactNode)}</span>
   ),
-  ModalContent: ({ children, ...props }: { children: React.ReactNode; [key: string]: unknown }) => (
-    <div {...props}>{children}</div>
+  Modal: ({ children, modalIsOpen, ...props }: Record<string, unknown>) =>
+    (modalIsOpen as boolean) ? <div {...props}>{children as React.ReactNode}</div> : null,
+  Panel: ({ children, className, ...props }: Record<string, unknown>) => (
+    <div className={className as string} {...props}>{children as React.ReactNode}</div>
+  ),
+  CompactEmptyState: ({ heading, message, linkContent, className, ...props }: Record<string, unknown>) => (
+    <div className={className as string} {...props}>
+      <span>{heading as string}</span>
+      {message && <p>{message as string}</p>}
+      {linkContent as React.ReactNode}
+    </div>
+  ),
+  TextInput: ({ label, value, onChange, disabled, placeholder, id, validationMessage, inputProps, ...props }: Record<string, unknown>) => (
+    <div>
+      <label htmlFor={id as string}>{label as React.ReactNode}</label>
+      <input
+        id={id as string}
+        value={value as string}
+        onChange={onChange as React.ChangeEventHandler<HTMLInputElement>}
+        disabled={disabled as boolean}
+        placeholder={placeholder as string}
+        {...(inputProps as Record<string, unknown>)}
+        {...props}
+      />
+      {validationMessage && <span>{validationMessage as string}</span>}
+    </div>
+  ),
+  Select: ({ label, value, options, onOptionSelect, disabled, showLabel, id, ...props }: Record<string, unknown>) => (
+    <div>
+      {(showLabel !== false) && <label htmlFor={id as string}>{label as string}</label>}
+      <select
+        id={id as string}
+        value={value as string}
+        onChange={(e) => (onOptionSelect as (opt: { label: string; value: string }) => void)?.({ label: e.target.value, value: e.target.value })}
+        disabled={disabled as boolean}
+        {...props}
+      >
+        {((options as Array<{ label: string; value: string }>) ?? []).map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </div>
+  ),
+  MenuButton: ({ label, menuItems, testId, disabled, ...props }: Record<string, unknown>) => (
+    <div data-testid={testId as string} {...props}>
+      <span>{label as React.ReactNode}</span>
+      {((menuItems as Array<{ label: string; callback: () => void }>) ?? []).map((item) => (
+        <button
+          key={item.label}
+          onClick={item.callback}
+          disabled={disabled as boolean}
+          data-testid={`${testId as string}-${item.label.toLowerCase()}`}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
   ),
 }));
 
@@ -288,7 +347,7 @@ describe('AgentsPage', () => {
         expect(screen.getByTestId('status-select-agent-1')).toBeInTheDocument();
       });
 
-      await user.selectOptions(screen.getByTestId('status-select-agent-1'), 'disabled');
+      await user.click(screen.getByTestId('status-select-agent-1-disabled'));
 
       await waitFor(() => {
         expect(mockUpdateAgentStatus).toHaveBeenCalledWith('agent-1', 'disabled');

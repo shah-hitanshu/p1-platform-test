@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react';
-import { Button } from '@pantheon-systems/design-toolkit-react';
+import { Button } from '@pantheon-systems/pds-toolkit-react';
 import type {
   DocumentConflict,
   DocumentConflictType,
@@ -83,7 +83,8 @@ export function ExpandableDiffRow({
           </span>
         </div>
         <Button
-          type="tertiary"
+          variant="subtle"
+          label={isLoading ? 'Loading...' : isExpanded ? 'Hide diff' : 'Show diff'}
           onClick={(e) => {
             e.stopPropagation();
             onToggle();
@@ -93,9 +94,7 @@ export function ExpandableDiffRow({
           aria-expanded={isExpanded}
           aria-label={isExpanded ? 'Hide diff view' : 'Show diff view'}
           data-testid={`expand-diff-toggle-${conflict.documentId}`}
-        >
-          {isLoading ? 'Loading...' : isExpanded ? 'Hide diff' : 'Show diff'}
-        </Button>
+        />
       </div>
 
       {isExpanded && diff != null && (

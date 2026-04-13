@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react';
-import { Button } from '@pantheon-systems/design-toolkit-react';
+import { Button } from '@pantheon-systems/pds-toolkit-react';
 import type { DocumentConflict, DocumentConflictType, ConflictResolutionStrategy, DocumentDiff } from '../types';
 import { JsonDiffViewer } from './JsonDiffViewer';
 import { ContentDiffViewer } from './content-diff/ContentDiffViewer';
@@ -111,7 +111,8 @@ export function ExpandableConflictRow({
           <span className="conflict-row-type">{getConflictTypeLabel(conflict.conflictType)}</span>
         </div>
         <Button
-          type="tertiary"
+          variant="subtle"
+          label={isExpanded ? 'Hide diff' : 'Show diff'}
           onClick={(e: React.MouseEvent) => {
             e.stopPropagation();
             onToggle();
@@ -119,9 +120,7 @@ export function ExpandableConflictRow({
           aria-expanded={isExpanded}
           aria-label={isExpanded ? 'Collapse diff view' : 'Expand diff view'}
           data-testid={`expand-toggle-${conflict.documentId}`}
-        >
-          {isExpanded ? 'Hide diff' : 'Show diff'}
-        </Button>
+        />
       </div>
 
       {isExpanded && diff != null && resolution !== 'manual' && resolution !== 'merge-crdt' && (
@@ -196,19 +195,17 @@ export function ExpandableConflictRow({
           )}
           <div className="crdt-preview-actions">
             <Button
-              type="primary"
+              variant="primary"
+              label="Accept auto-merge"
               onClick={handleAcceptCrdtPreview}
               data-testid="accept-crdt-preview"
-            >
-              Accept auto-merge
-            </Button>
+            />
             <Button
-              type="secondary"
+              variant="secondary"
+              label="Reject"
               onClick={handleRejectCrdtPreview}
               data-testid="reject-crdt-preview"
-            >
-              Reject
-            </Button>
+            />
           </div>
         </div>
       )}

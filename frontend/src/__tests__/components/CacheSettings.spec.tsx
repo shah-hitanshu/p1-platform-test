@@ -10,6 +10,36 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CacheSettings } from '../../components/CacheSettings';
 
+vi.mock('@pantheon-systems/pds-toolkit-react', () => ({
+  Spinner: ({ label, ...props }: Record<string, unknown>) => (
+    <div role="status" aria-label={label as string} {...props} />
+  ),
+  Button: ({ label, children, onClick, disabled, isLoading, ...props }: Record<string, unknown>) => (
+    <button
+      onClick={onClick as () => void}
+      disabled={(disabled as boolean) || (isLoading as boolean)}
+      {...props}
+    >
+      {(label as string) || (children as React.ReactNode)}
+    </button>
+  ),
+  TextInput: ({ label, value, onChange, disabled, placeholder, id, validationMessage, inputProps, ...props }: Record<string, unknown>) => (
+    <div>
+      <label htmlFor={id as string}>{label as React.ReactNode}</label>
+      <input
+        id={id as string}
+        value={value as string}
+        onChange={onChange as React.ChangeEventHandler<HTMLInputElement>}
+        disabled={disabled as boolean}
+        placeholder={placeholder as string}
+        {...(inputProps as Record<string, unknown>)}
+        {...props}
+      />
+      {validationMessage && <span>{validationMessage as string}</span>}
+    </div>
+  ),
+}));
+
 describe('CacheSettings', () => {
   const defaultProps = {
     settings: null,

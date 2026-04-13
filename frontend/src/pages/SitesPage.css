@@ -2,26 +2,23 @@
  * Sites Page Styles
  *
  * Uses PDS components where possible:
+ * - Panel (PDS) for page header
  * - Button (PDS) for create, submit, delete buttons
  * - RouterLinkButton (PDS) for view links
  * - Alert (PDS) for error messages
+ * - CompactEmptyState (PDS) for empty state
  *
  * Custom styles remain for:
  * - Page layout and structure
- * - Table styling (will be migrated in Phase 3)
- * - Empty state (will be migrated in Phase 5)
+ * - Table row and cell styling
  */
 
 .sites-page {
   max-width: 1200px;
   margin: 0 auto;
-}
-
-.page-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 24px;
+  flex-direction: column;
+  gap: 24px;
 }
 
 .header-content {
@@ -97,48 +94,6 @@
   text-align: center;
 }
 
-.sites-table-container {
-  background-color: var(--dt-color-white, #fff);
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
-}
-
-.sites-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.sites-table th,
-.sites-table td {
-  padding: 14px 20px;
-  text-align: left;
-}
-
-.sites-table th {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--dt-color-gray-5, #6c757d);
-  background-color: var(--dt-color-gray-1, #f8f9fa);
-  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.sites-table td {
-  font-size: 0.9375rem;
-  color: var(--dt-color-gray-7, #333);
-  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
-}
-
-.sites-table tr:last-child td {
-  border-bottom: none;
-}
-
-.sites-table tr:hover td {
-  background-color: var(--dt-color-gray-1, #f8f9fa);
-}
-
 .site-name {
   font-weight: 500;
 }
@@ -158,16 +113,11 @@
   justify-content: flex-end;
 }
 
-.empty-state {
-  padding: 60px 40px;
-  text-align: center;
-  background-color: var(--dt-color-white, #fff);
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+.back-link-container {
+  margin-top: 16px;
 }
 
-.empty-state p {
-  margin: 0;
-  font-size: 1rem;
-  color: var(--dt-color-gray-5, #6c757d);
+.error-container {
+  padding: 40px;
+  text-align: center;
 }

@@ -8,7 +8,7 @@ import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { ApiResponse } from '../components/ApiResponse';
-import { Button } from '@pantheon-systems/design-toolkit-react';
+import { Button, Panel } from '@pantheon-systems/pds-toolkit-react';
 import { API_BASE_URL } from '../api/client';
 import './DashboardPage.css';
 
@@ -35,31 +35,30 @@ export function DashboardPage() {
 
   return (
     <div className="dashboard-page">
-      <header className="page-header">
+      <Panel data-testid="page-header">
         <h1 className="page-title" data-testid="page-title">Dashboard</h1>
         <p className="page-subtitle">System overview and health status</p>
-      </header>
+      </Panel>
 
       <div className="dashboard-grid">
-        <section className="dashboard-card">
+        <Panel data-testid="health-card">
           <div className="card-header">
             <h2 className="card-title" data-testid="card-title-health">System Health</h2>
             <Button
-              type="secondary"
+              variant="secondary"
               onClick={() => execute()}
               disabled={isLoading}
               isLoading={isLoading}
+              label="Refresh"
               data-testid="refresh-health-btn"
-            >
-              Refresh
-            </Button>
+            />
           </div>
           <div className="card-content">
             <ApiResponse data={data} isLoading={isLoading} error={error} />
           </div>
-        </section>
+        </Panel>
 
-        <section className="dashboard-card">
+        <Panel data-testid="actions-card">
           <div className="card-header">
             <h2 className="card-title" data-testid="card-title-actions">Quick Actions</h2>
           </div>
@@ -75,9 +74,9 @@ export function DashboardPage() {
               </Link>
             </div>
           </div>
-        </section>
+        </Panel>
 
-        <section className="dashboard-card full-width">
+        <Panel className="full-width" data-testid="endpoints-card">
           <div className="card-header">
             <h2 className="card-title" data-testid="card-title-endpoints">API Endpoints</h2>
           </div>
@@ -110,7 +109,7 @@ export function DashboardPage() {
               </div>
             </div>
           </div>
-        </section>
+        </Panel>
       </div>
     </div>
   );

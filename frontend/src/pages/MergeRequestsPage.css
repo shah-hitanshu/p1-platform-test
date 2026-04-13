@@ -2,60 +2,23 @@
  * Merge Requests Page Styles
  *
  * Uses PDS components where possible:
+ * - Breadcrumb (PDS) for navigation
+ * - Panel (PDS) for page header and section containers
  * - RouterLinkButton (PDS) for create and view links
+ * - CompactEmptyState (PDS) for empty states
  *
  * Custom styles remain for:
  * - Page layout and structure
- * - Breadcrumb (will be migrated in Phase 4)
  * - Filter tabs (will be migrated in Phase 4)
- * - Table styling (will be migrated in Phase 3)
- * - Status badges (will be migrated in Phase 3)
- * - Empty state (will be migrated in Phase 5)
+ * - Table row and cell styling
  */
 
 .merge-requests-page {
   max-width: 1200px;
   margin: 0 auto;
-}
-
-/* Breadcrumb */
-.breadcrumb {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 20px;
-  font-size: 0.875rem;
-  color: var(--dt-color-gray-5, #6c757d);
-}
-
-.breadcrumb a {
-  color: var(--dt-color-cyan-3, #02a9e0);
-  text-decoration: none;
-}
-
-.breadcrumb a:hover {
-  text-decoration: underline;
-}
-
-.breadcrumb-separator {
-  color: var(--dt-color-gray-3, #ced4da);
-}
-
-.breadcrumb-current {
-  color: var(--dt-color-gray-7, #333);
-  font-weight: 500;
-}
-
-/* Page Header */
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background-color: var(--dt-color-white, #fff);
-  border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  flex-direction: column;
+  gap: 24px;
 }
 
 .page-title {
@@ -98,52 +61,6 @@
   color: var(--dt-color-white, #fff);
 }
 
-/* Merge Requests Section */
-.merge-requests-section {
-  background-color: var(--dt-color-white, #fff);
-  border-radius: 8px;
-  padding: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-/* Table */
-.merge-requests-table-container {
-  overflow: hidden;
-  border-radius: 6px;
-  border: 1px solid var(--dt-color-gray-2, #e9ecef);
-}
-
-.merge-requests-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.merge-requests-table th,
-.merge-requests-table td {
-  padding: 14px 16px;
-  text-align: left;
-}
-
-.merge-requests-table th {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--dt-color-gray-5, #6c757d);
-  background-color: var(--dt-color-gray-1, #f8f9fa);
-  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.merge-requests-table td {
-  font-size: 0.9375rem;
-  color: var(--dt-color-gray-7, #333);
-  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
-}
-
-.merge-requests-table tr:last-child td {
-  border-bottom: none;
-}
-
 .clickable-row {
   cursor: pointer;
   transition: background-color 0.15s;
@@ -167,57 +84,6 @@
 
 .mr-actions {
   text-align: right;
-}
-
-/* Status Badges */
-.status-badge {
-  display: inline-block;
-  padding: 4px 10px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  border-radius: 12px;
-}
-
-.status-open {
-  background-color: var(--dt-color-cyan-1, #cce5ff);
-  color: var(--dt-color-cyan-4, #004085);
-}
-
-.status-approved {
-  background-color: var(--dt-color-green-1, #d4edda);
-  color: var(--dt-color-green-4, #155724);
-}
-
-.status-conflicted {
-  background-color: var(--dt-color-yellow-1, #fff3cd);
-  color: var(--dt-color-yellow-4, #856404);
-}
-
-.status-merged {
-  background-color: var(--dt-color-purple-1, #e2d4f0);
-  color: var(--dt-color-purple-4, #563d7c);
-}
-
-.status-closed {
-  background-color: var(--dt-color-gray-2, #e2e3e5);
-  color: var(--dt-color-gray-6, #383d41);
-}
-
-/* Empty State */
-.empty-state {
-  padding: 40px;
-  text-align: center;
-  color: var(--dt-color-gray-5, #6c757d);
-}
-
-.empty-state p {
-  margin: 0 0 16px;
-}
-
-.empty-state-action {
-  display: inline-block;
 }
 
 /* Loading & Error */

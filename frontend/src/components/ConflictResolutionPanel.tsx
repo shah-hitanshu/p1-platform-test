@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { Button } from '@pantheon-systems/design-toolkit-react';
+import { Button } from '@pantheon-systems/pds-toolkit-react';
 import type { DocumentConflict, ConflictResolutionStrategy, DocumentDiff } from '../types';
 import type { ConflictResolution } from '../api/merge-requests';
 import { ExpandableConflictRow } from './ExpandableConflictRow';
@@ -166,13 +166,12 @@ export function ConflictResolutionPanel({
           {RESOLUTION_OPTIONS.map((strategy) => (
             <Button
               key={strategy}
-              type="secondary"
+              variant="secondary"
+              label={getResolutionLabel(strategy)}
               onClick={() => handleApplyToAll(strategy)}
               disabled={isResolving}
               data-testid={`apply-all-${strategy}`}
-            >
-              {getResolutionLabel(strategy)}
-            </Button>
+            />
           ))}
         </div>
       </div>
@@ -180,21 +179,19 @@ export function ConflictResolutionPanel({
       {hasDiffs && (
         <div className="expand-controls">
           <Button
-            type="tertiary"
+            variant="subtle"
+            label="Expand All"
             onClick={handleExpandAll}
             disabled={hasAllExpanded}
             data-testid="expand-all-btn"
-          >
-            Expand All
-          </Button>
+          />
           <Button
-            type="tertiary"
+            variant="subtle"
+            label="Collapse All"
             onClick={handleCollapseAll}
             disabled={!hasAnyExpanded}
             data-testid="collapse-all-btn"
-          >
-            Collapse All
-          </Button>
+          />
         </div>
       )}
 
@@ -221,14 +218,13 @@ export function ConflictResolutionPanel({
 
       <div className="resolution-actions">
         <Button
-          type="primary"
+          variant="primary"
+          label={isResolving ? 'Resolving...' : 'Apply Resolutions and Merge'}
           onClick={handleSubmit}
           disabled={!allResolved || isResolving}
           isLoading={isResolving}
           data-testid="apply-resolutions-btn"
-        >
-          {isResolving ? 'Resolving...' : 'Apply Resolutions and Merge'}
-        </Button>
+        />
       </div>
     </div>
   );

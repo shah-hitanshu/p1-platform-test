@@ -23,34 +23,69 @@ vi.mock('react-router-dom', () => ({
   ),
 }));
 
-// Mock @pantheon-systems/design-toolkit-react
-vi.mock('@pantheon-systems/design-toolkit-react', () => ({
-  Button: ({ children, onClick, ...props }: { children: React.ReactNode; onClick?: () => void; [key: string]: unknown }) => (
-    <button onClick={onClick} {...props}>{children}</button>
+// Mock @pantheon-systems/pds-toolkit-react
+vi.mock('@pantheon-systems/pds-toolkit-react', () => ({
+  Spinner: ({ label, ...props }: Record<string, unknown>) => (
+    <div role="status" aria-label={label as string} {...props} />
   ),
-  RouterLinkButton: ({ children, ...props }: { children: React.ReactNode; [key: string]: unknown }) => (
-    <div {...props}>{children}</div>
+  Button: ({ label, children, onClick, disabled, isLoading, ...props }: Record<string, unknown>) => (
+    <button
+      onClick={onClick as () => void}
+      disabled={(disabled as boolean) || (isLoading as boolean)}
+      {...props}
+    >
+      {(label as string) || (children as React.ReactNode)}
+    </button>
   ),
-  Alert: ({ children, type, ...props }: { children: React.ReactNode; type?: string; [key: string]: unknown }) => (
-    <div data-alert-type={type} {...props}>{children}</div>
+  ButtonLink: ({ linkContent, children, ...props }: Record<string, unknown>) => (
+    <div {...props}>{(linkContent as React.ReactNode) || (children as React.ReactNode)}</div>
   ),
-  Tag: ({ children, type, ...props }: { children: React.ReactNode; type?: string; [key: string]: unknown }) => (
-    <span data-tag-type={type} {...props}>{children}</span>
+  InlineMessage: ({ title, children, ...props }: Record<string, unknown>) => (
+    <div role="alert" {...props}>{(title as string)}{(children as React.ReactNode)}</div>
   ),
-  Tabs: ({ children, ...props }: { children: React.ReactNode; [key: string]: unknown }) => (
-    <div {...props}>{children}</div>
+  StatusBadge: ({ label, children, ...props }: Record<string, unknown>) => (
+    <span {...props}>{(label as string) || (children as React.ReactNode)}</span>
   ),
-  TabList: ({ children, ...props }: { children: React.ReactNode; [key: string]: unknown }) => (
-    <div {...props}>{children}</div>
+  Tabs: ({ tabs, ...props }: Record<string, unknown>) => (
+    <div {...props}>
+      {((tabs as Array<{ tabLabel: string; tabId: string; panelContent: React.ReactNode }>) || []).map(
+        (tab: { tabLabel: string; tabId: string; panelContent: React.ReactNode }) => (
+          <div key={tab.tabId}>{tab.panelContent}</div>
+        )
+      )}
+    </div>
   ),
-  Tab: ({ children, ...props }: { children: React.ReactNode; [key: string]: unknown }) => (
-    <button {...props}>{children}</button>
+  Panel: ({ children, className, ...props }: Record<string, unknown>) => (
+    <div className={className as string} {...props}>{children as React.ReactNode}</div>
   ),
-  TabPanels: ({ children, ...props }: { children: React.ReactNode; [key: string]: unknown }) => (
-    <div {...props}>{children}</div>
+  Breadcrumb: ({ crumbs, ...props }: Record<string, unknown>) => (
+    <nav {...props}>
+      {((crumbs as Array<{ label: string; href?: string }>) || []).map(
+        (crumb: { label: string; href?: string }, i: number) => (
+          <span key={i}>{crumb.label}</span>
+        )
+      )}
+    </nav>
   ),
-  TabPanel: ({ children, ...props }: { children: React.ReactNode; [key: string]: unknown }) => (
-    <div {...props}>{children}</div>
+  CompactEmptyState: ({ heading, message, linkContent, className, ...props }: Record<string, unknown>) => (
+    <div className={className as string} {...props}>
+      <span>{heading as string}</span>
+      {message && <p>{message as string}</p>}
+      {linkContent as React.ReactNode}
+    </div>
+  ),
+  Textarea: ({ label, value, onChange, disabled, rows, id, validationMessage, ...props }: Record<string, unknown>) => (
+    <div {...props}>
+      <label htmlFor={id as string}>{label as string}</label>
+      <textarea
+        id={id as string}
+        value={value as string}
+        onChange={onChange as React.ChangeEventHandler<HTMLTextAreaElement>}
+        disabled={disabled as boolean}
+        rows={rows as number}
+      />
+      {validationMessage && <span>{validationMessage as string}</span>}
+    </div>
   ),
 }));
 
