@@ -1324,11 +1324,66 @@ Redesigned version storage to capture rich action metadata from the Puck editor,
 - After sending a binary CRDT update over WebSocket, the client sends action metadata as a JSON text message: `{ type: 'action_metadata', actionType, actionMetadata }`
 - Backend stores this metadata alongside version records for rich version history descriptions
 
+### Silent Token Refresh for Long-Running Sessions (2026-04-13) ✅
+
+Implemented automatic token refresh so OAuth sessions survive the 1-hour token expiry without forcing a re-login. Previously, `CSSClient` was initialized with a fixed token string. When the token expired, presence polling and WebSocket reconnections sent the stale token, flooding the server with 401 errors.
+
+**Problem:** `oauthSession.getToken()` already has silent refresh logic (calls `refreshAccessToken()` when needed) but was never called after initialization.
+
+**4-Phase Solution:**
+
+**Phase 1: BaseEndpoint 401 Retry (css-client)**
+- Added `SessionExpiredError` class to `errors.ts` — distinguishes token-expired state from authentication errors. Uses `Object.setPrototypeOf()` for correct instanceof behavior.
+- Added `tokenRefresher?: () => Promise<string | null>` to `BaseEndpointConfig`
+- On 401: call `tokenRefresher()`, retry once with new token as Bearer. If retry also 401s or refresher returns null, throw `SessionExpiredError`. No retry when no refresher — existing `AuthenticationError` behavior unchanged.
+- `withPrincipal()` and `withSessionId()` propagate `tokenRefresher` to derived endpoints
+- `SessionExpiredError` exported from package index
+- 14 new tests: `packages/css-client/tests/token-refresh.spec.ts`
+
+**Phase 2: CSSClient Propagation (css-client)**
+- Added `tokenRefresher` to `CSSClientConfig`, passed to `BaseEndpoint` constructor
+- 3 new integration tests for CSSClient-level token refresh
+
+**Phase 3: RealtimeClient WebSocket Token Refresh (css-client)**
+- Added `tokenRefresher` to `RealtimeClientConfig`
+- Added `currentApiKey` instance variable (mutable) — `urlProvider` builds the query-param URL from `currentApiKey` per-call rather than capturing `apiKey` at connect time
+- Added `tokenRefreshInFlight` guard (security fix, auto-resolved in security review) — prevents concurrent token refresh calls when WebSocket reconnects rapidly
+- Fire-and-forget on `close` event (non-intentional): calls `tokenRefresher()`, updates `currentApiKey` when fresh token returns. Intentional disconnect skips this. Errors silently ignored — reconnect proceeds with stale token.
+- 6 new tests: `packages/css-client/tests/realtime-token-refresh.spec.ts`
+
+**Phase 4: React Layer Wiring (puck-css)**
+- `CSSAuthProvider`: Added `isSessionExpired: boolean` state (defaults false) and `getToken: () => Promise<string | null>` callback to `CSSAuthContextValue`. In mock mode, returns token from localStorage. In css-authserver mode, delegates to `oauthSession.getToken()` — sets `isSessionExpired = true` when refresh fails. `logout()` resets `isSessionExpired` to false.
+- `CSSApp`: Changed from static closure `async () => Bearer ${token}` to calling `getToken()` per-request. `CSSPuckProvider key` changed from `${user.id}-${token}` (which would remount the entire editor on every token refresh) to `user.id`. Added `realtimeTokenRefresher={getToken}` prop.
+- `CSSPuckProvider`: Added `realtimeTokenRefresher` prop, passed as `tokenRefresher` to `useRealtime`.
+- `useRealtime`: Added `tokenRefresher` to `UseRealtimeParams`. Used ref pattern (`tokenRefresherRef`) so `RealtimeClient` always calls the latest function without needing to be recreated when the function reference changes. Passed to `RealtimeClient` constructor.
+- `index.ts`: Re-exports `SessionExpiredError` from `@pantheon/css-client`
+- 6 new tests: `packages/puck-css/src/__tests__/token-refresh-auth.test.tsx`
+
+**Security Review Findings:**
+- ✅ **Auto-resolved**: Added `tokenRefreshInFlight` deduplication guard to prevent concurrent refresh calls on rapid WebSocket flapping
+- ℹ️ Token in WS URL query param (`?apiKey=...`) — pre-existing design; moving to headers requires coordinated server change
+- ℹ️ Session ID in WS URL query param — pre-existing design
+- ℹ️ Structured logging for session expiry events — medium-term improvement for SOC 2 CC7.2
+
+**Key architectural decisions:**
+- Ref pattern for `tokenRefresher` in `useRealtime` avoids WebSocket reconnection on reference changes — `getToken` is stable but the pattern future-proofs against any changes
+- `CSSPuckProvider key={user.id}` instead of `key={user.id}-${token}` prevents full editor remount on token refresh
+- Fire-and-forget token refresh on WS close works because PartySocket's minimum reconnect delay (1000ms+) gives the async refresh time to complete before the next `urlProvider` call
+
+**Test commits:** `184b97b` (red phase)
+**Implementation commit:** `b12aaaa`
+
+**Test totals (post-feature):**
+- `@pantheon/css-client`: 236/236 passing
+- `@pantheon/puck-css`: 79 passing (7 pre-existing failures unrelated to this feature)
+
 ## Remaining Work
 
 ### Future
 - Apply render/edit split pattern to airbus site
 - Update MIGRATION-GUIDE.md with render/edit split and content delivery patterns
+- Medium-term: Move WebSocket auth token from query param to custom header/subprotocol (security review Finding #2 — requires coordinated backend change)
+- Medium-term: Add structured logging for `SessionExpiredError` events (security review Finding #10 — SOC 2 CC7.2)
 
 ## How to Run
 
