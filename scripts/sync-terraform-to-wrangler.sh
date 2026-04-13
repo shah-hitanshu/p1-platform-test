@@ -21,15 +21,24 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Supported environments and their wrangler placeholder prefixes
+declare -A ENV_PREFIXES=(
+  [sbx1]="SBX1"
+  [production]="PROD"
+  [cpub-staging]="CPUB_STAGING"
+)
+
 # Validate arguments
 ENV="${1:-}"
+VALID_ENVS=$(IFS="|"; echo "${!ENV_PREFIXES[*]}")
+
 if [[ -z "$ENV" ]]; then
-  echo -e "${RED}Error: Environment required. Usage: $0 <sbx1|production>${NC}"
+  echo -e "${RED}Error: Environment required. Usage: $0 <${VALID_ENVS}>${NC}"
   exit 1
 fi
 
-if [[ "$ENV" != "sbx1" && "$ENV" != "production" ]]; then
-  echo -e "${RED}Error: Environment must be 'sbx1' or 'production'. Got: ${ENV}${NC}"
+if [[ -z "${ENV_PREFIXES[$ENV]+x}" ]]; then
+  echo -e "${RED}Error: Unknown environment '${ENV}'. Valid: ${VALID_ENVS}${NC}"
   exit 1
 fi
 
@@ -82,11 +91,7 @@ if [[ ${#MISSING[@]} -gt 0 ]]; then
 fi
 
 # Map environment to wrangler placeholder prefix
-if [[ "$ENV" == "sbx1" ]]; then
-  PLACEHOLDER_PREFIX="SBX1"
-elif [[ "$ENV" == "production" ]]; then
-  PLACEHOLDER_PREFIX="PROD"
-fi
+PLACEHOLDER_PREFIX="${ENV_PREFIXES[$ENV]}"
 
 echo -e "  CONFIG_KV_ID:  ${GREEN}${CONFIG_KV_ID}${NC}"
 echo -e "  SESSION_KV_ID: ${GREEN}${SESSION_KV_ID}${NC}"
