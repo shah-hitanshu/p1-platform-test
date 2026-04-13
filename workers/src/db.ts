@@ -7,9 +7,10 @@
  * IMPORTANT: Cloudflare Workers cannot share I/O objects (like database connections)
  * across request contexts. This module supports two connection modes:
  *
- * 1. **Hyperdrive (recommended for production)**: Uses Cloudflare Hyperdrive for
- *    connection pooling. Hyperdrive handles connection lifecycle management properly
- *    within Workers, avoiding cross-request I/O errors.
+ * 1. **Hyperdrive (recommended for production)**: Uses a module-level singleton pool
+ *    shared across all requests in the same Worker isolate. This is the pattern
+ *    Cloudflare recommends for Hyperdrive — creating a new connection per request
+ *    quickly exhausts Hyperdrive's connection capacity under concurrent load.
  *    See: https://developers.cloudflare.com/hyperdrive/
  *
  * 2. **Direct connection (local development)**: Creates a fresh connection for each
@@ -50,17 +51,98 @@ export interface DatabaseConnection {
 
 /**
  * Request-scoped database context using AsyncLocalStorage.
- * Each request gets its own isolated connection that cannot interfere with
- * concurrent requests in the same isolate.
+ * Each request gets its own isolated connection context.
  *
- * IMPORTANT: Always wrap request handlers with runWithConnection() to ensure
- * proper connection lifecycle management.
+ * For Hyperdrive: stores a non-owning reference to the shared module-level pool.
+ * For direct connections: stores an owned per-request connection.
  */
 const connectionStorage = new AsyncLocalStorage<DatabaseConnection>();
 
+// =============================================================================
+// Hyperdrive module-level pool cache
+//
+// Cloudflare recommends sharing a postgres.js pool across requests when using
+// Hyperdrive. Creating one connection per request (as we did before) causes
+// CONNECTION_CLOSED errors under concurrent load because Hyperdrive drops
+// excess connections.
+//
+// Key: connectionString (Hyperdrive generates a stable string per isolate)
+// Value: shared postgres.Sql pool
+// =============================================================================
+const hyperdrivePools = new Map<string, postgres.Sql>();
+
+/**
+ * Get or create a shared postgres.js pool for a Hyperdrive connection string.
+ * The pool is shared across all concurrent requests in this Worker isolate.
+ *
+ * Pool settings:
+ * - max: 5 — allows parallelism while keeping connection count manageable.
+ *   With 50 concurrent requests, postgres.js queues rather than opening 50 connections.
+ * - idle_timeout: 20 — closes idle connections so Hyperdrive doesn't see stale ones.
+ * - prepare: false — required for Hyperdrive (PgBouncer transaction-mode pooling).
+ */
+function getOrCreateHyperdrivePool(connectionString: string): postgres.Sql {
+  let pool = hyperdrivePools.get(connectionString);
+  if (!pool) {
+    pool = postgres(connectionString, {
+      transform: {
+        undefined: null,
+      },
+      max: 5,
+      idle_timeout: 20,
+      connect_timeout: 10,
+      prepare: false, // Required for Hyperdrive (PgBouncer transaction-mode)
+    });
+    hyperdrivePools.set(connectionString, pool);
+  }
+  return pool;
+}
+
+/**
+ * Wrap a shared postgres.Sql pool in the DatabaseConnection interface.
+ * The close() method is a no-op — we do NOT close the shared pool between requests.
+ */
+function wrapHyperdrivePool(sql: postgres.Sql): DatabaseConnection {
+  return {
+    async query<T = Record<string, unknown>>(
+      sqlQuery: string,
+      params?: unknown[],
+    ): Promise<QueryResult<T>> {
+      const result = await sql.unsafe<T[]>(
+        sqlQuery,
+        params as unknown as postgres.ParameterOrJSON<never>[],
+      );
+
+      const rows = [...result] as T[];
+      const resultWithCount = result as unknown as { count?: number };
+      const rowCount = resultWithCount.count ?? rows.length;
+
+      return { rows, rowCount };
+    },
+    async close(): Promise<void> {
+      // No-op: shared Hyperdrive pool lives for the isolate lifetime.
+      // Do not close — that would break concurrent in-flight requests.
+    },
+  };
+}
+
+/**
+ * Options for creating a database connection.
+ */
+export interface ConnectionOptions {
+  /**
+   * Whether this connection is via Hyperdrive.
+   * Hyperdrive connections use a module-level shared pool.
+   * Direct connections create a fresh connection per request.
+   */
+  isHyperdrive?: boolean;
+}
+
 /**
  * Run a function with a request-scoped database connection.
- * This ensures each concurrent request has its own isolated connection.
+ *
+ * For Hyperdrive: uses a shared module-level pool (no per-request connection overhead).
+ * For direct connections: creates a fresh connection, ensures cleanup on completion.
  *
  * @param connectionString - PostgreSQL connection string
  * @param options - Connection options
@@ -72,55 +154,43 @@ export async function runWithConnection<T>(
   options: ConnectionOptions,
   fn: () => Promise<T>,
 ): Promise<T> {
-  const connection = createDatabaseConnection(connectionString, options);
-  try {
-    return await connectionStorage.run(connection, fn);
-  } finally {
-    await connection.close();
+  if (options.isHyperdrive === true) {
+    // Shared pool path: get or create the module-level pool for this connectionString.
+    // Multiple concurrent requests share the same pool — postgres.js handles queuing.
+    const sql = getOrCreateHyperdrivePool(connectionString);
+    const connection = wrapHyperdrivePool(sql);
+    return connectionStorage.run(connection, fn);
+  } else {
+    // Per-request connection path: create a fresh connection for local dev.
+    const connection = createDatabaseConnection(connectionString, options);
+    try {
+      return await connectionStorage.run(connection, fn);
+    } finally {
+      await connection.close();
+    }
   }
 }
 
 /**
- * Options for creating a database connection.
- */
-export interface ConnectionOptions {
-  /**
-   * Whether this connection is via Hyperdrive.
-   * Hyperdrive connections have different lifecycle management.
-   */
-  isHyperdrive?: boolean;
-}
-
-/**
- * Create a new database connection.
- * This should be called at the start of each request.
+ * Create a new per-request database connection (direct/local dev only).
+ * Do not use this for Hyperdrive — use runWithConnection with isHyperdrive: true.
  *
- * @param connectionString - PostgreSQL connection string (from Hyperdrive or direct)
+ * @param connectionString - PostgreSQL connection string
  * @param options - Connection options
  * @returns Database connection
  */
 export function createDatabaseConnection(
   connectionString: string,
-  options: ConnectionOptions = {},
+  _options: ConnectionOptions = {},
 ): DatabaseConnection {
-  const { isHyperdrive = false } = options;
-
-  // Create a new postgres connection for this request
-  // Hyperdrive connections use different settings than direct connections
   const sql = postgres(connectionString, {
-    // Don't transform undefined to null - let postgres handle it
     transform: {
       undefined: null,
     },
-    // Connection pool settings
-    // Hyperdrive manages pooling, so we use minimal settings
-    // Direct connections need more aggressive cleanup
     max: 1,
-    idle_timeout: isHyperdrive ? 0 : 20, // Hyperdrive manages idle connections
+    idle_timeout: 20,
     connect_timeout: 10,
-    // Hyperdrive requires prepare: false for connection pooling compatibility
-    // See: https://developers.cloudflare.com/hyperdrive/configuration/connect-to-postgres/
-    prepare: isHyperdrive ? false : true,
+    prepare: true,
   });
 
   return {
@@ -146,15 +216,14 @@ export function createDatabaseConnection(
       };
     },
     async close(): Promise<void> {
-      // For Hyperdrive connections, closing is optional as Hyperdrive manages lifecycle
-      // For direct connections, we still close but fire-and-forget to avoid cross-request issues
-      // Use timeout to avoid hanging when the underlying connection has already been dropped
-      // (e.g. CloudSQL closed the socket mid-query) — postgres.js end() can hang indefinitely
-      // on a dead connection without a timeout.
+      // For direct connections, close and fire-and-forget.
+      // Use timeout to avoid hanging when the underlying connection has already been
+      // dropped (e.g. CloudSQL closed the socket mid-query) — postgres.js end() can
+      // hang indefinitely on a dead connection without a timeout.
       try {
         await sql.end({ timeout: 5 });
       } catch {
-        // Ignore errors - connection may already be closed or in different request context
+        // Ignore errors - connection may already be closed
       }
     },
   };
