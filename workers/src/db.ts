@@ -148,8 +148,11 @@ export function createDatabaseConnection(
     async close(): Promise<void> {
       // For Hyperdrive connections, closing is optional as Hyperdrive manages lifecycle
       // For direct connections, we still close but fire-and-forget to avoid cross-request issues
+      // Use timeout to avoid hanging when the underlying connection has already been dropped
+      // (e.g. CloudSQL closed the socket mid-query) — postgres.js end() can hang indefinitely
+      // on a dead connection without a timeout.
       try {
-        await sql.end();
+        await sql.end({ timeout: 5 });
       } catch {
         // Ignore errors - connection may already be closed or in different request context
       }

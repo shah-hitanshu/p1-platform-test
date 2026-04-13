@@ -95,7 +95,7 @@ module "database" {
   gcp_project = var.gcp_project
   gcp_region  = var.gcp_region
 
-  cloudsql_tier                = "db-f1-micro"
+  cloudsql_tier                = "db-g1-small"
   cloudsql_disk_size           = 10
   cloudsql_availability_type   = "ZONAL"
   cloudsql_backup_enabled      = false
