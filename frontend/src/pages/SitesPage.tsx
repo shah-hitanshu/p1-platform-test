@@ -167,7 +167,7 @@ export function SitesPage() {
       ) : (
         <CompactEmptyState
           data-testid="empty-state"
-          title="No sites found. Create your first site to get started."
+          heading="No sites found. Create your first site to get started."
         />
       )}
 

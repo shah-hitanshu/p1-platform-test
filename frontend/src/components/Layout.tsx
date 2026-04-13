@@ -17,17 +17,17 @@ import {
 } from '@pantheon-systems/pds-toolkit-react';
 
 const navItems = [
-  { icon: 'house', label: 'Dashboard', to: '/', end: true },
-  { icon: 'sitemap', label: 'Sites', to: '/sites', end: false },
-  { icon: 'users', label: 'Users', to: '/users', end: false },
-  { icon: 'robot', label: 'Agents', to: '/agents', end: false },
+  { icon: 'house' as const, label: 'Dashboard', to: '/', end: true },
+  { icon: 'sitemap' as const, label: 'Sites', to: '/sites', end: false },
+  { icon: 'users' as const, label: 'Users', to: '/users', end: false },
+  { icon: 'robot' as const, label: 'Agents', to: '/agents', end: false },
 ];
 
 export function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
 
-  const userMenuItems = [{ label: 'Log out', callback: logout, iconName: 'xmark' }];
+  const userMenuItems = [{ label: 'Log out', callback: logout, iconName: 'xmark' as const }];
 
   return (
     <DashboardGlobal logoLinkContent={<Link to="/">P1</Link>}>

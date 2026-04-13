@@ -71,7 +71,7 @@ export function ConfirmDeleteModal({
         <div className="confirm-field">
           <TextInput
             id="confirm-input"
-            label={<>Type <code>{resourceName}</code> to confirm:</>}
+            label={`Type "${resourceName}" to confirm:`}
             value={confirmText}
             onChange={(e) => setConfirmText(e.target.value)}
             placeholder={`Enter "${resourceName}" to confirm`}

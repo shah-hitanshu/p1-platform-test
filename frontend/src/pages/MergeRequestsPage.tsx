@@ -181,7 +181,7 @@ export function MergeRequestsPage() {
         ) : (
           <CompactEmptyState
             data-testid="empty-state"
-            title={`No merge requests found${statusFilter !== 'all' ? ` with status "${statusFilter}"` : ''}.`}
+            heading={`No merge requests found${statusFilter !== 'all' ? ` with status "${statusFilter}"` : ''}.`}
             linkContent={
               <ButtonLink
                 variant="secondary"

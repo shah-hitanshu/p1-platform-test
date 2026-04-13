@@ -306,19 +306,8 @@ export function SiteDetailPage() {
     return user?.email ?? userId;
   };
 
-  const getStatusTagColor = (status: Branch['status']): 'green' | 'blue' | 'neutral' | 'red' => {
-    switch (status) {
-      case 'active':
-        return 'green';
-      case 'merged':
-        return 'blue';
-      case 'archived':
-        return 'neutral';
-      case 'abandoned':
-        return 'red';
-      default:
-        return 'neutral';
-    }
+  const getStatusTagColor = (_status: Branch['status']): 'neutral' => {
+    return 'neutral';
   };
 
   if (siteLoading) {

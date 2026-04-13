@@ -307,8 +307,6 @@ export function DocumentPage() {
                             label="JSON content editor"
                             value={editContent}
                             onChange={(e) => handleContentChange(e.target.value)}
-                            spellCheck={false}
-                            autoFocus
                             validationStatus={jsonError ? 'error' : undefined}
                             validationMessage={jsonError || undefined}
                             data-testid="json-editor"
@@ -461,7 +459,7 @@ export function DocumentPage() {
               ) : document?.archivedAt ? (
                 <StatusBadge label={`Archived on ${formatDate(document.archivedAt)}`} color="neutral" />
               ) : (
-                <StatusBadge label="Active" color="green" />
+                <StatusBadge label="Active" color="neutral" />
               )}
             </div>
           </div>
