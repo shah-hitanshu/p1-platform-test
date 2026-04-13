@@ -16,7 +16,7 @@ NC='\033[0m'
 # Output file
 DEV_VARS_FILE="workers/.dev.vars"
 
-# Default configuration (matches docker-compose.local.yaml)
+# Default configuration (matches docker/docker-compose.local.yaml)
 POSTGRES_USER="${POSTGRES_USER:-cssuser}"
 POSTGRES_PASS="${POSTGRES_PASS:-csspass}"
 POSTGRES_HOST="${POSTGRES_HOST:-localhost}"
@@ -37,7 +37,7 @@ cat > "$DEV_VARS_FILE" << EOF
 ENVIRONMENT=local
 LOG_LEVEL=debug
 
-# PostgreSQL connection (Docker container)
+# PostgreSQL connection (Docker/Podman container)
 POSTGRES_CONNECTION_STRING=postgresql://${POSTGRES_USER}:${POSTGRES_PASS}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
 
 # CORS origins for local development

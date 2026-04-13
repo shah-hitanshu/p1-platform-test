@@ -1,7 +1,9 @@
-# Docker Compose - Local Development Environment
+# Docker/Podman Compose - Local Development Environment
 #
 # Provides backend services for local Cloudflare Worker development:
 # - PostgreSQL 16 for document/state persistence
+#
+# Compatible with Docker Compose and Podman Compose.
 #
 # Usage:
 #   make docker-up       # Start services

@@ -9,6 +9,19 @@ SHELL := /bin/bash
 ENV ?= local
 TF_DIR := terraform/environments/$(ENV)
 
+# Container runtime detection (podman or docker)
+CONTAINER_ENGINE ?= $(shell command -v podman >/dev/null 2>&1 && echo podman || echo docker)
+COMPOSE_CMD ?= $(shell \
+	if command -v podman 2>/dev/null >/dev/null && podman compose version 2>/dev/null >/dev/null; then \
+		echo "podman compose"; \
+	elif command -v podman-compose 2>/dev/null >/dev/null; then \
+		echo "podman-compose"; \
+	elif command -v docker 2>/dev/null >/dev/null && docker compose version 2>/dev/null >/dev/null; then \
+		echo "docker compose"; \
+	else \
+		echo "docker-compose"; \
+	fi)
+
 # Colors for output
 RED := \033[0;31m
 GREEN := \033[0;32m
@@ -29,13 +42,14 @@ version: ## Show version information for all tools
 	@echo "Node:      $$(node --version 2>/dev/null || echo 'not installed')"
 	@echo "pnpm:      $$(pnpm --version 2>/dev/null || echo 'not installed')"
 	@echo "Terraform: $$(terraform version -json 2>/dev/null | jq -r '.terraform_version' || echo 'not installed')"
-	@echo "Docker:    $$(docker --version 2>/dev/null | cut -d' ' -f3 | tr -d ',' || echo 'not installed')"
+	@echo "Container: $$($(CONTAINER_ENGINE) --version 2>/dev/null || echo 'not installed')"
+	@echo "Compose:   $$($(COMPOSE_CMD) version 2>/dev/null || echo 'not installed')"
 	@echo "Wrangler:  $$(cd workers && pnpm exec wrangler --version 2>/dev/null || echo 'not installed')"
 
 ##@ Local Development - Full Stack
 
 .PHONY: dev
-dev: ## Start all local services (Docker + Miniflare)
+dev: ## Start all local services (containers + Miniflare)
 	@printf "$(GREEN)Starting local development environment...$(NC)\n"
 	@$(MAKE) docker-up
 	@echo ""
@@ -45,17 +59,17 @@ dev: ## Start all local services (Docker + Miniflare)
 	@$(MAKE) worker-dev
 
 .PHONY: dev-docker-only
-dev-docker-only: docker-up ## Start Docker services only (no Miniflare)
+dev-docker-only: docker-up ## Start container services only (no Miniflare)
 	@echo ""
-	@printf "$(GREEN)Docker services running. Start worker separately with: make worker-dev$(NC)\n"
+	@printf "$(GREEN)Container services running. Start worker separately with: make worker-dev$(NC)\n"
 
 .PHONY: dev-stop
 dev-stop: docker-down ## Stop all local services
 
 .PHONY: dev-status
 dev-status: ## Show status of local services
-	@printf "$(BLUE)Docker Containers:$(NC)\n"
-	@docker-compose -f docker/docker-compose.local.yaml ps 2>/dev/null || echo "  No containers running"
+	@printf "$(BLUE)Containers:$(NC)\n"
+	@$(COMPOSE_CMD) -f docker/docker-compose.local.yaml ps 2>/dev/null || echo "  No containers running"
 	@printf "\n"
 	@printf "$(BLUE)Service Endpoints:$(NC)\n"
 	@echo "  PostgreSQL:  localhost:5432"
@@ -64,33 +78,33 @@ dev-status: ## Show status of local services
 ##@ Docker Services
 
 .PHONY: docker-up
-docker-up: ## Start Docker containers (PostgreSQL)
-	@printf "$(GREEN)Starting Docker containers...$(NC)\n"
-	@docker-compose -f docker/docker-compose.local.yaml up -d
+docker-up: ## Start containers (PostgreSQL)
+	@printf "$(GREEN)Starting containers...$(NC)\n"
+	@$(COMPOSE_CMD) -f docker/docker-compose.local.yaml up -d
 	@printf "$(GREEN)Waiting for services to be healthy...$(NC)\n"
-	@./scripts/wait-for-services.sh
+	@CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/wait-for-services.sh
 
 .PHONY: docker-down
-docker-down: ## Stop Docker containers
-	@printf "$(YELLOW)Stopping Docker containers...$(NC)\n"
-	@docker-compose -f docker/docker-compose.local.yaml down
+docker-down: ## Stop containers
+	@printf "$(YELLOW)Stopping containers...$(NC)\n"
+	@$(COMPOSE_CMD) -f docker/docker-compose.local.yaml down
 
 .PHONY: docker-restart
-docker-restart: docker-down docker-up ## Restart Docker containers
+docker-restart: docker-down docker-up ## Restart containers
 
 .PHONY: docker-clean
-docker-clean: ## Remove Docker containers and volumes (WARNING: destroys data)
+docker-clean: ## Remove containers and volumes (WARNING: destroys data)
 	@printf "$(RED)WARNING: This will destroy all local data!$(NC)\n"
 	@read -p "Are you sure? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
-	@docker-compose -f docker/docker-compose.local.yaml down -v --remove-orphans
+	@$(COMPOSE_CMD) -f docker/docker-compose.local.yaml down -v --remove-orphans
 
 .PHONY: docker-logs
-docker-logs: ## Show Docker container logs (follow mode)
-	@docker-compose -f docker/docker-compose.local.yaml logs -f
+docker-logs: ## Show container logs (follow mode)
+	@$(COMPOSE_CMD) -f docker/docker-compose.local.yaml logs -f
 
 .PHONY: docker-logs-postgres
 docker-logs-postgres: ## Show PostgreSQL logs
-	@docker-compose -f docker/docker-compose.local.yaml logs -f postgres
+	@$(COMPOSE_CMD) -f docker/docker-compose.local.yaml logs -f postgres
 
 ##@ Worker Development (Miniflare)
 
@@ -179,13 +193,13 @@ tf-sync: ## Sync Terraform outputs to wrangler.jsonc (ENV=sbx1|production)
 
 .PHONY: db-shell
 db-shell: ## Open PostgreSQL interactive shell
-	@docker-compose -f docker/docker-compose.local.yaml exec postgres psql -U cssuser cssdb
+	@$(COMPOSE_CMD) -f docker/docker-compose.local.yaml exec postgres psql -U cssuser cssdb
 
 .PHONY: db-reset
 db-reset: ## Reset database (drop and recreate all tables)
 	@printf "$(RED)WARNING: This will destroy all database data!$(NC)\n"
 	@read -p "Are you sure? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
-	@docker-compose -f docker/docker-compose.local.yaml exec postgres psql -U cssuser cssdb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+	@$(COMPOSE_CMD) -f docker/docker-compose.local.yaml exec postgres psql -U cssuser cssdb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 	@printf "$(GREEN)Database reset complete.$(NC)\n"
 
 ##@ Cleanup

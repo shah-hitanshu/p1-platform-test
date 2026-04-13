@@ -221,8 +221,15 @@ collaborative-state-system/
 |------|---------|--------------|
 | Node.js | 20+ | [nodejs.org](https://nodejs.org/) |
 | pnpm | 8+ | `npm install -g pnpm` |
-| Docker | Latest | [docker.com](https://www.docker.com/) |
+| Docker or Podman | Latest | [docker.com](https://www.docker.com/) / [podman.io](https://podman.io/) |
 | Terraform | 1.6+ | [terraform.io](https://www.terraform.io/) |
+
+Either Docker or Podman can be used as the container runtime. The Makefile auto-detects which is available (preferring Podman if both are installed). To override, set `CONTAINER_ENGINE` and `COMPOSE_CMD`:
+
+```bash
+# Force Docker even if Podman is installed
+make docker-up CONTAINER_ENGINE=docker COMPOSE_CMD="docker compose"
+```
 
 Verify installation:
 ```bash
@@ -624,7 +631,7 @@ The main CSS worker must have `CSS_AUTH_SERVER` pointing at the local auth serve
 
 ### Docker Services
 
-Local development uses Docker Compose for PostgreSQL and Firestore emulator.
+Local development uses Docker Compose (or Podman Compose) for PostgreSQL.
 
 ```bash
 # Start containers
@@ -820,11 +827,11 @@ Set via Cloudflare dashboard or CLI:
 
 ## Troubleshooting
 
-### Docker services not starting
+### Container services not starting
 
 ```bash
-# Check Docker is running
-docker info
+# Check your container runtime is running
+docker info    # or: podman info
 
 # View container logs
 make docker-logs
@@ -850,7 +857,7 @@ rm -rf workers/node_modules && make worker-install
 
 ```bash
 # Check container health
-docker-compose -f docker/docker-compose.local.yaml ps
+make dev-status
 
 # Wait for healthy status
 ./scripts/wait-for-services.sh
