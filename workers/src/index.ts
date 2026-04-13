@@ -34,6 +34,10 @@ import {
 // Route handlers (still needed for auth/internal routes handled in handleRequest)
 import { handleInternalRoutes } from './routes/internal-api';
 
+// Inlined CSS OAuth provider (serves /auth/* before authenticate() runs)
+import { authOAuthProvider } from './auth/oauth/oauth-provider-setup';
+import type { AuthOAuthEnv } from './routes/auth-routes';
+
 // Queue consumer (Phase 5.1)
 import { handleSyncQueue } from './queues/sync-consumer';
 import type { SyncQueueMessage } from './types/queue-messages';
@@ -91,9 +95,12 @@ export interface Env {
   // Internal API secret for Durable Object to PostgreSQL sync
   INTERNAL_SECRET?: string;
 
-  // CSS Auth Server (workers/auth-server/) for puck-css browser client tokens
-  CSS_AUTH_SERVER_URL?: string;   // Base URL of auth server (for URL construction when not using service binding)
-  CSS_AUTH_SERVER?: Fetcher;      // Service binding to auth server (preferred — sub-ms latency)
+  // CSS OAuth provider (inlined into main worker — no separate auth-server worker needed)
+  GOOGLE_CLIENT_SECRET?: string;  // Google OAuth client secret for token exchange
+  OAUTH_KV?: KVNamespace;         // Token storage for @cloudflare/workers-oauth-provider
+  // Backward-compat: HTTP path to standalone auth server (deprecated, removed when CSS_AUTH_SERVER dropped)
+  CSS_AUTH_SERVER_URL?: string;
+  CSS_AUTH_SERVER?: Fetcher;
 
   // Hyperdrive bindings (production/staging - handles connection pooling properly)
   // HYPERDRIVE: cached (short TTL) for document reads
@@ -116,7 +123,7 @@ export interface Env {
 }
 
 export default {
-  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
     const origin = request.headers.get('Origin');
@@ -168,7 +175,7 @@ export default {
         connectionString,
         { isHyperdrive },
         async () => {
-          const resp = await handleRequest(request, env, path, origin);
+          const resp = await handleRequest(request, env, path, origin, ctx);
 
           // Record successful request metrics
           const durationMs = Date.now() - requestStart;
@@ -221,6 +228,7 @@ async function handleRequest(
   env: Env,
   path: string,
   origin: string | null,
+  ctx: ExecutionContext,
 ): Promise<Response> {
   // Health endpoint (no auth required)
   if (path === '/health' || path === '/health/') {
@@ -273,6 +281,22 @@ async function handleRequest(
     const internalSecret = env.INTERNAL_SECRET ?? 'development-internal-secret';
     const response = await handleInternalRoutes(request, { internalSecret });
     return addCorsHeaders(response, origin, env);
+  }
+
+  // CSS OAuth routes (/auth/*) — served by the inlined OAuthProvider.
+  // Must run before authenticate() so the browser's OAuth redirect flows can
+  // reach /auth/authorize and /auth/callback without a valid access token.
+  // Runs inside runWithConnection so getSiteAllowedOrigins() has DB access.
+  if (path.startsWith('/auth/')) {
+    if (
+      env.OAUTH_KV === undefined ||
+      env.GOOGLE_CLIENT_ID === undefined ||
+      env.GOOGLE_CLIENT_SECRET === undefined ||
+      env.INTERNAL_SECRET === undefined
+    ) {
+      return errorResponse('Auth provider not configured', 503);
+    }
+    return authOAuthProvider.fetch(request, env as unknown as AuthOAuthEnv, ctx);
   }
 
   // Parse route

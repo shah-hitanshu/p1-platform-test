@@ -53,7 +53,9 @@
   // ==========================================================================
   "kv_namespaces": [
     { "binding": "CONFIG_KV", "id": "local-config-kv", "preview_id": "local-config-kv-preview" },
-    { "binding": "SESSION_KV", "id": "local-session-kv", "preview_id": "local-session-kv-preview" }
+    { "binding": "SESSION_KV", "id": "local-session-kv", "preview_id": "local-session-kv-preview" },
+    // OAUTH_KV: Token storage for @cloudflare/workers-oauth-provider (inlined CSS OAuth server)
+    { "binding": "OAUTH_KV", "id": "local-oauth-kv", "preview_id": "local-oauth-kv-preview" }
   ],
   
   // ==========================================================================
@@ -74,16 +76,9 @@
     // Internal API for DO-to-PostgreSQL sync (Phase 1.3)
     // INTERNAL_SECRET is set in .dev.vars (local) or secrets (production)
     "INTERNAL_API_URL": "http://localhost:8787",
-    // CSS Auth Server URL for local dev token validation
-    // Matches the auth server's wrangler.jsonc dev.port setting
-    "CSS_AUTH_SERVER_URL": "http://localhost:8789"
+    // GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET set in .dev.vars for local development
+    // INTERNAL_SECRET set in .dev.vars for local development
   },
-
-  // Local dev: CSS_AUTH_SERVER is auto-discovered via Wrangler's local service
-  // registry when css-auth-server is running simultaneously with `wrangler dev`
-  "services": [
-    { "binding": "CSS_AUTH_SERVER", "service": "css-auth-server" }
-  ],
 
   // ==========================================================================
   // Local Development (Miniflare)
@@ -121,15 +116,12 @@
         "WEBSOCKET_HEARTBEAT_INTERVAL": "30000",
         "DOCUMENT_SYNC_BATCH_SIZE": "50",
         "PRESENCE_TTL_SECONDS": "120",
-        "APP_VERSION": "sbx1",
-        // CSS Auth Server — puck-css browser client token validation
-        "CSS_AUTH_SERVER_URL": "https://css-auth-server-sbx1.chris-801.workers.dev"
-        // INTERNAL_SECRET set via `wrangler secret put INTERNAL_SECRET --name collaborative-state-worker-sbx1`
-        // Must match the INTERNAL_SECRET set on css-auth-server-sbx1
+        "APP_VERSION": "sbx1"
+        // Secrets set via wrangler secret put --name collaborative-state-worker-sbx1:
+        //   INTERNAL_SECRET   — HMAC key for OAuth state signing
+        //   GOOGLE_CLIENT_ID  — Google OAuth app client ID
+        //   GOOGLE_CLIENT_SECRET — Google OAuth app client secret
       },
-      "services": [
-        { "binding": "CSS_AUTH_SERVER", "service": "css-auth-server-sbx1" }
-      ],
       "durable_objects": {
         "bindings": [
           { "name": "DOCUMENT_STATE", "class_name": "DocumentState" },
@@ -145,7 +137,9 @@
       ],
       "kv_namespaces": [
         { "binding": "CONFIG_KV", "id": "d7c8df3b12f04817a210c002b577b8ba" },
-        { "binding": "SESSION_KV", "id": "47e9398983d34b6a8838fda023099a48" }
+        { "binding": "SESSION_KV", "id": "47e9398983d34b6a8838fda023099a48" },
+        // OAUTH_KV: Token storage for inlined CSS OAuth server (replaces css-auth-server-sbx1)
+        { "binding": "OAUTH_KV", "id": "dfd4e7d8ee274eb59fbc33988556a2f5" }
       ],
       "queues": {
         "producers": [{ "binding": "SYNC_QUEUE", "queue": "css-sync-queue-sbx1" }],
@@ -188,18 +182,16 @@
         "LOG_LEVEL": "warn",
         "CORS_ORIGINS": "*",
         "METRICS_ENABLED": "true",
-        "INTERNAL_API_URL": "https://collaborative-state-worker-prod.pantheon.workers.dev",
-        // CSS Auth Server — puck-css browser client token validation
-        "CSS_AUTH_SERVER_URL": "https://css-auth-server-prod.pantheon.workers.dev"
-        // INTERNAL_SECRET set via `wrangler secret put INTERNAL_SECRET --name collaborative-state-worker-prod`
-        // Must match the INTERNAL_SECRET set on css-auth-server-prod
+        "INTERNAL_API_URL": "https://collaborative-state-worker-prod.pantheon.workers.dev"
+        // Secrets set via wrangler secret put --name collaborative-state-worker-prod:
+        //   INTERNAL_SECRET      — HMAC key for OAuth state signing
+        //   GOOGLE_CLIENT_ID     — Google OAuth app client ID
+        //   GOOGLE_CLIENT_SECRET — Google OAuth app client secret
       },
-      "services": [
-        { "binding": "CSS_AUTH_SERVER", "service": "css-auth-server-prod" }
-      ],
       "kv_namespaces": [
         { "binding": "CONFIG_KV", "id": "REPLACE_WITH_PROD_CONFIG_KV_ID" },
-        { "binding": "SESSION_KV", "id": "REPLACE_WITH_PROD_SESSION_KV_ID" }
+        { "binding": "SESSION_KV", "id": "REPLACE_WITH_PROD_SESSION_KV_ID" },
+        { "binding": "OAUTH_KV", "id": "REPLACE_WITH_PROD_OAUTH_KV_ID" }
       ],
       // Hyperdrive for PostgreSQL connection pooling
       // Create with: npx wrangler hyperdrive create css-postgres-prod --connection-string="<connection-string>"

@@ -35,6 +35,7 @@
     "cf:kv:list": "wrangler kv:key list --binding CONFIG_KV"
   },
   "dependencies": {
+    "@cloudflare/workers-oauth-provider": "^0.3.0",
     "ajv": "^8.18.0",
     "fast-json-patch": "^3.1.1",
     "jose": "^5.10.0",
@@ -56,6 +57,7 @@
     "@types/object-hash": "^3.0.6",
     "@vitest/coverage-v8": "^2.1.9",
     "eslint": "^9.39.3",
+    "fast-check": "^3.22.0",
     "globals": "^15.15.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",

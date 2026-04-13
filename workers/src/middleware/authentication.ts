@@ -17,6 +17,7 @@ import { SiteApiTokenProvider } from '../auth/site-token-provider';
 import { AgentApiKeyProvider } from '../auth/agent-api-key-provider';
 import { MASClient } from '../services/mas-client';
 import { CSSAuthIdentityProvider } from '../auth/css-auth-identity-provider';
+import { authOAuthProvider } from '../auth/oauth/oauth-provider-setup';
 import { jsonResponse, errorResponse } from '../utils/http-helpers';
 import type { Env } from '../index';
 
@@ -95,8 +96,8 @@ export function hasOAuthProviders(env: Env): boolean {
     env.AUTH0_ISSUER_BASE_URL !== '' &&
     env.AUTH0_AUDIENCE !== undefined &&
     env.AUTH0_AUDIENCE !== '';
-  const hasCSSAuthServer = env.CSS_AUTH_SERVER !== undefined;
-  return hasGoogle || hasAuth0 || hasCSSAuthServer;
+  const hasCSSAuth = env.CSS_AUTH_SERVER !== undefined || env.OAUTH_KV !== undefined;
+  return hasGoogle || hasAuth0 || hasCSSAuth;
 }
 
 /**
@@ -146,23 +147,27 @@ export function getIdentityProvider(env: Env): MultiProviderIdentityProvider {
   // Agent API key provider (always available — validates aak_ keys against DB)
   providers.push(new AgentApiKeyProvider());
 
-  // CSS Auth Server provider (activated when CSS_AUTH_SERVER service binding is configured)
-  // Validates opaque tokens issued by css-auth-server via /internal/token/validate endpoint.
-  // Added LAST since it makes a service binding call per request —
-  // let JWT providers (Google, Auth0) run first since they verify locally.
+  // CSS Auth Identity Provider — validates opaque tokens issued by the CSS OAuth server.
+  // Added LAST since token validation is async; JWT providers (Google, Auth0) verify locally.
   //
-  // When the service binding is present, CSS_AUTH_SERVER_URL is used only to construct
-  // the request path (e.g., `${authServerUrl}/internal/token/validate`). The binding
-  // routes the request regardless of the hostname in the URL — any valid URL base works.
-  // We fall back to a sentinel URL so the provider is always activated when the binding
-  // is configured, even if CSS_AUTH_SERVER_URL is not explicitly set.
+  // Two activation paths (mutually exclusive — OAUTH_KV takes precedence):
   //
-  // INTERNAL_SECRET is required for the provider to operate. If it is missing or empty,
-  // the auth server's /internal/token/validate endpoint will reject every request with
-  // a 403 (header present but wrong value), causing all CSS auth tokens to silently fail.
-  // A misconfigured empty secret would also allow anyone to craft a matching request.
-  // Skip registering the provider and warn loudly so the misconfiguration is visible.
-  if (env.CSS_AUTH_SERVER !== undefined) {
+  // 1. In-process (merged worker): activated when OAUTH_KV is configured.
+  //    Calls authOAuthProvider.fetch() directly — no network hop. The sentinel URL
+  //    http://internal/auth/internal/validate distinguishes in-process calls from
+  //    external requests, allowing the handler to call oauthHelpers.unwrapToken().
+  //
+  // 2. HTTP (standalone auth server, deprecated): activated when CSS_AUTH_SERVER
+  //    service binding is configured and OAUTH_KV is absent. Calls the external
+  //    auth server's POST /internal/token/validate via service binding.
+  //    Removed in Phase 4 when CSS_AUTH_SERVER binding is dropped.
+  if (env.OAUTH_KV !== undefined) {
+    // In-process path — env is passed directly to authOAuthProvider.fetch()
+    providers.push(new CSSAuthIdentityProvider({
+      oauthProvider: authOAuthProvider,
+      oauthEnv: env,
+    }));
+  } else if (env.CSS_AUTH_SERVER !== undefined) {
     if (env.INTERNAL_SECRET === undefined || env.INTERNAL_SECRET === '') {
       console.warn(
         '[getIdentityProvider] CSS_AUTH_SERVER binding is configured but INTERNAL_SECRET is ' +

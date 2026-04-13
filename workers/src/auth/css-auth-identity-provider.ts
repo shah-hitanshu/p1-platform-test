@@ -1,16 +1,18 @@
 /**
- * CSS Auth Server Identity Provider
+ * CSS Auth Identity Provider
  *
- * Validates opaque access tokens issued by the CSS Auth Server (workers/auth-server/)
- * by calling POST /internal/token/validate on the auth server via a Cloudflare service
- * binding. That endpoint calls oauthHelpers.unwrapToken() internally.
+ * Validates opaque access tokens issued by the CSS OAuth authorization server.
  *
- * IMPORTANT: The auth server does NOT expose RFC 7662 /token/introspect.
- * The /internal/token/validate endpoint is specific to CSS and is protected by
- * X-Internal-Secret. It is not a standard OAuth endpoint.
+ * Two validation strategies are supported:
  *
- * This provider is added to MultiProviderIdentityProvider when CSS_AUTH_SERVER
- * (service binding) is configured in the main CSS worker's env.
+ * 1. **In-process** (preferred, used in merged worker): Calls authOAuthProvider.fetch()
+ *    directly — no network hop. The call is a JavaScript function invocation that
+ *    invokes the OAuthProvider's internal validate handler, which calls
+ *    oauthHelpers.unwrapToken(). Activated when the `oauthProvider` option is supplied.
+ *
+ * 2. **HTTP** (kept for backward compat with standalone auth server tests):
+ *    Calls POST /internal/token/validate via Cloudflare service binding or direct HTTP.
+ *    Activated when `authServerUrl` + `internalSecret` options are supplied.
  *
  * canVerifyToken() routing rules:
  * - Returns false for any token containing a dot — CSS auth tokens use colons (no dots).
@@ -22,8 +24,8 @@
  * Token validation caching:
  * - Results are cached in a module-level Map for CACHE_TTL_MS (10 seconds).
  * - All requests in the same Worker isolate share the cache — a burst of
- *   parallel page-load requests for the same token results in one outbound
- *   /internal/token/validate call, not N calls.
+ *   parallel page-load requests for the same token results in one validation
+ *   call, not N calls.
  * - The cache TTL is capped to the token's own expiry to avoid serving a
  *   stale principal after the token has naturally expired.
  *
@@ -34,14 +36,41 @@ import type { AuthenticatedPrincipal } from '../types';
 import type { IdentityProvider } from './identity-provider';
 import { providerSubToUuid } from './uuid-v5.js';
 
+// =============================================================================
+// Options
+// =============================================================================
+
+/** In-process OAuth provider handle (forward declaration to avoid circular import). */
+interface InProcessAuthProvider {
+  fetch(request: Request, env: object, ctx: ExecutionContext): Promise<Response>;
+}
+
 export interface CSSAuthIdentityProviderOptions {
-  /** Base URL of the CSS Auth Server (used for URL construction when no service binding) */
-  authServerUrl: string;
-  /** Shared secret for the X-Internal-Secret header */
-  internalSecret: string;
-  /** Optional Cloudflare service binding (preferred — sub-ms latency). Falls back to fetch() if not provided. */
+  /**
+   * In-process auth provider for direct token validation (preferred).
+   * Used when the CSS auth routes are inlined into the main worker.
+   * When set, `oauthEnv` must also be provided.
+   */
+  oauthProvider?: InProcessAuthProvider;
+  /**
+   * The main worker's env object, passed to oauthProvider.fetch().
+   * Must contain OAUTH_KV and other fields required by AuthOAuthEnv.
+   */
+  oauthEnv?: object;
+
+  // HTTP path options (kept for backward compat with existing tests and standalone server).
+  // When oauthProvider is set, these are ignored.
+  /** Base URL of the CSS Auth Server (used for URL construction when no service binding). */
+  authServerUrl?: string;
+  /** Shared secret for the X-Internal-Secret header. */
+  internalSecret?: string;
+  /** Optional Cloudflare service binding (preferred — sub-ms latency). Falls back to fetch(). */
   fetcher?: Fetcher;
 }
+
+// =============================================================================
+// Token validation response (shared between HTTP and in-process paths)
+// =============================================================================
 
 interface TokenValidateResponse {
   active: boolean;
@@ -65,11 +94,9 @@ interface TokenValidateResponse {
 // goes to the auth server — the rest read from this cache.
 //
 // TTL is set to the lesser of CACHE_TTL_MS and the token's own expiry, so we
-// never serve a stale principal beyond the token's natural lifetime.
+// never serve a principal beyond the token's natural lifetime.
 // =============================================================================
 
-// 10-second cache TTL — balances performance (parallel page-load requests share one
-// validation call) against revocation latency (a revoked token is honoured within 10s).
 const CACHE_TTL_MS = 10_000;
 
 interface CacheEntry {
@@ -79,7 +106,6 @@ interface CacheEntry {
 
 const tokenValidationCache = new Map<string, CacheEntry>();
 
-/** Remove stale cache entries to prevent unbounded growth. */
 function pruneCache(): void {
   const now = Date.now();
   for (const [key, entry] of tokenValidationCache) {
@@ -89,12 +115,15 @@ function pruneCache(): void {
   }
 }
 
-/**
- * Validates opaque tokens from the CSS Auth Server via /internal/token/validate.
- */
+// =============================================================================
+// Provider
+// =============================================================================
+
 export class CSSAuthIdentityProvider implements IdentityProvider {
   readonly name = 'css_auth' as const;
 
+  private readonly oauthProvider?: InProcessAuthProvider;
+  private readonly oauthEnv?: object;
   private readonly authServerUrl: string;
   private readonly internalSecret: string;
   private readonly fetcher?: Fetcher;
@@ -103,34 +132,23 @@ export class CSSAuthIdentityProvider implements IdentityProvider {
   private static readonly EXCLUDED_PREFIXES = ['sat_', 'aak_'];
 
   constructor(options: CSSAuthIdentityProviderOptions) {
-    this.authServerUrl = options.authServerUrl.replace(/\/$/, '');
-    this.internalSecret = options.internalSecret;
+    this.oauthProvider = options.oauthProvider;
+    this.oauthEnv = options.oauthEnv;
+    this.authServerUrl = (options.authServerUrl ?? 'http://css-auth-server').replace(/\/$/, '');
+    this.internalSecret = options.internalSecret ?? '';
     this.fetcher = options.fetcher;
   }
 
   /**
    * Returns true for opaque tokens that belong to the CSS auth server.
-   *
-   * Routing logic (order matters):
-   * 1. Empty token — reject
-   * 2. Any token containing a dot — reject. CSS auth opaque tokens use the
-   *    format `userId:grantId:secret` (colons only, no dots). JWTs have 2 dots,
-   *    other dot-containing formats are also not CSS auth tokens. Rejecting all
-   *    dot-containing tokens is safe and correct.
-   * 3. Known opaque prefixes (sat_, aak_) — reject (other providers handle these)
-   * 4. Everything else — accept (CSS auth server opaque tokens)
    */
   canVerifyToken(token: string): boolean {
     if (!token) {
       return false;
     }
-    // Any token containing a dot is not a CSS auth opaque token.
-    // CSS auth server issues tokens in the format userId:grantId:secret (no dots).
-    // This correctly excludes JWTs (2 dots), and any other dot-containing format.
     if (token.includes('.')) {
       return false;
     }
-    // Tokens with known prefixes belong to other providers
     for (const prefix of CSSAuthIdentityProvider.EXCLUDED_PREFIXES) {
       if (token.startsWith(prefix)) {
         return false;
@@ -140,11 +158,11 @@ export class CSSAuthIdentityProvider implements IdentityProvider {
   }
 
   /**
-   * Validate a token via /internal/token/validate. Returns null if the token is inactive or
-   * if the call fails for any reason (fail closed, not open).
+   * Validate a CSS auth opaque token. Returns null if the token is inactive or
+   * if validation fails for any reason (fail closed).
    *
-   * Results are cached for up to CACHE_TTL_MS to reduce outbound calls when many
-   * requests arrive simultaneously carrying the same token (e.g., parallel page load).
+   * Uses the in-process path (authOAuthProvider.fetch()) when configured,
+   * otherwise falls back to the HTTP path (service binding or direct fetch).
    */
   async validateToken(token: string): Promise<AuthenticatedPrincipal | null> {
     if (!token) {
@@ -159,87 +177,142 @@ export class CSSAuthIdentityProvider implements IdentityProvider {
     }
 
     try {
-      const validateUrl = `${this.authServerUrl}/internal/token/validate`;
-
-      const fetchOptions: RequestInit = {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Internal-Secret': this.internalSecret,
-        },
-        body: JSON.stringify({ token }),
-      };
-
-      let response: Response;
-      if (this.fetcher !== undefined) {
-        try {
-          response = await this.fetcher.fetch(validateUrl, fetchOptions);
-        } catch {
-          // Service binding threw (can happen in local dev when connection resets between polls).
-          // Fall back to direct HTTP fetch using the configured auth server URL.
-          response = await fetch(validateUrl, fetchOptions);
-        }
+      let data: TokenValidateResponse;
+      const { oauthProvider, oauthEnv } = this;
+      if (oauthProvider !== undefined && oauthEnv !== undefined) {
+        data = await this.validateViaInProcess(oauthProvider, oauthEnv, token);
       } else {
-        response = await fetch(validateUrl, fetchOptions);
+        data = await this.validateViaHttp(token);
       }
 
-      if (!response.ok) {
-        return null;
-      }
+      const principal = await this.buildPrincipal(data);
 
-      const data: TokenValidateResponse = await response.json();
-
-      if (!data.active) {
-        return null;
-      }
-
-      const sub = data.sub ?? data.props?.userId ?? '';
-      if (!sub) {
-        return null;
-      }
-
-      // Convert the upstream IdP's subject ID to the same deterministic UUIDv5
-      // that the direct-IdP providers (GoogleIdentityProvider, Auth0IdentityProvider)
-      // produce, so principal.id is a valid UUID and database lookups work correctly.
-      // The provider is stored in the token props by the auth server at issue time.
-      // Falls back to 'google' for tokens issued before this field was added.
-      const rawProvider = data.props?.provider;
-      // Validate the provider field. Tokens issued before this field was added will have
-      // rawProvider === undefined — default to 'google' for backward compatibility.
-      // Tokens with an unrecognised provider value are suspicious; log a warning but
-      // still proceed with the 'google' default so pre-migration tokens are not broken.
-      if (rawProvider !== undefined && rawProvider !== 'google' && rawProvider !== 'auth0') {
-        console.warn('[CSSAuthIdentityProvider] unexpected provider value in token props:', rawProvider);
-      }
-      const provider: 'google' | 'auth0' = rawProvider === 'auth0' ? 'auth0' : 'google';
-      const principalId = await providerSubToUuid(provider, sub);
-
-      const expiryMs = data.exp !== undefined ? data.exp * 1000 : Date.now() + 3600_000;
-
-      const principal: AuthenticatedPrincipal = {
-        id: principalId,
-        type: 'user',
-        email: data.props?.email,
-        name: data.props?.name,
-        authProvider: 'css_auth',
-        pantheonSiteRoles: {},
-        tokenExpiry: new Date(expiryMs).toISOString(),
-        providerSubjectId: sub,
-      };
-
-      // Cache the validated principal. Cap the TTL at the token's own expiry so
+      // Cache the validated principal. Cap TTL at the token's own expiry so
       // we never serve a principal beyond the token's natural lifetime.
+      // Only cache positive results — inactive tokens are not cached so that
+      // subsequent requests re-validate and pick up newly issued tokens.
       pruneCache();
-      const cacheTtl = Math.min(CACHE_TTL_MS, expiryMs - Date.now());
-      if (cacheTtl > 0) {
-        tokenValidationCache.set(token, { principal, expiresAt: Date.now() + cacheTtl });
+      if (principal !== null && data.exp !== undefined) {
+        const expiryMs = data.exp * 1000;
+        const cacheTtl = Math.min(CACHE_TTL_MS, expiryMs - Date.now());
+        if (cacheTtl > 0) {
+          tokenValidationCache.set(token, { principal, expiresAt: Date.now() + cacheTtl });
+        }
       }
 
       return principal;
     } catch {
-      // Fail closed: if validation fails for any reason, reject the token
       return null;
     }
+  }
+
+  /**
+   * In-process validation via authOAuthProvider.fetch().
+   * No network hop — direct JavaScript function call in the same isolate.
+   * The sentinel URL http://internal/... is used so the handler can distinguish
+   * in-process calls from external requests (which have a real hostname).
+   */
+  private async validateViaInProcess(
+    oauthProvider: InProcessAuthProvider,
+    oauthEnv: object,
+    token: string,
+  ): Promise<TokenValidateResponse> {
+    // Pass a no-op ExecutionContext. Token validation only reads KV (no waitUntil needed),
+    // so dropping background tasks scheduled by OAuthProvider is safe here.
+    const noopCtx = {
+      waitUntil: (_p: Promise<unknown>) => { /* no-op: token validation is read-only */ },
+      passThroughOnException: () => { /* no-op */ },
+    } as unknown as ExecutionContext;
+
+    const response = await oauthProvider.fetch(
+      new Request('http://internal/auth/internal/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      }),
+      oauthEnv,
+      noopCtx,
+    );
+
+    if (!response.ok) {
+      return { active: false };
+    }
+
+    const raw: unknown = await response.json();
+    return raw as TokenValidateResponse;
+  }
+
+  /**
+   * HTTP validation via POST /internal/token/validate.
+   * Kept for backward compat with standalone auth server and existing tests.
+   * Not used when oauthProvider is configured.
+   */
+  private async validateViaHttp(token: string): Promise<TokenValidateResponse> {
+    const validateUrl = `${this.authServerUrl}/internal/token/validate`;
+
+    const fetchOptions: RequestInit = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Secret': this.internalSecret,
+      },
+      body: JSON.stringify({ token }),
+    };
+
+    let response: Response;
+    if (this.fetcher !== undefined) {
+      try {
+        response = await this.fetcher.fetch(validateUrl, fetchOptions);
+      } catch {
+        // Service binding threw (can happen in local dev when connection resets between polls).
+        // Fall back to direct HTTP fetch using the configured auth server URL.
+        response = await fetch(validateUrl, fetchOptions);
+      }
+    } else {
+      response = await fetch(validateUrl, fetchOptions);
+    }
+
+    if (!response.ok) {
+      return { active: false };
+    }
+
+    const raw: unknown = await response.json();
+    return raw as TokenValidateResponse;
+  }
+
+  /**
+   * Map a validated TokenValidateResponse to an AuthenticatedPrincipal.
+   * Returns null if the response is inactive or missing a subject.
+   */
+  private async buildPrincipal(data: TokenValidateResponse): Promise<AuthenticatedPrincipal | null> {
+    if (!data.active) {
+      return null;
+    }
+
+    const sub = data.sub ?? data.props?.userId ?? '';
+    if (!sub) {
+      return null;
+    }
+
+    const rawProvider = data.props?.provider;
+    if (rawProvider !== undefined && rawProvider !== 'google' && rawProvider !== 'auth0') {
+      console.warn('[CSSAuthIdentityProvider] unexpected provider value in token props:', rawProvider);
+    }
+    const provider: 'google' | 'auth0' = rawProvider === 'auth0' ? 'auth0' : 'google';
+    const principalId = await providerSubToUuid(provider, sub);
+
+    const expiryMs = data.exp !== undefined ? data.exp * 1000 : Date.now() + 3600_000;
+
+    return {
+      id: principalId,
+      type: 'user',
+      email: data.props?.email,
+      name: data.props?.name,
+      authProvider: 'css_auth',
+      pantheonSiteRoles: {},
+      tokenExpiry: new Date(expiryMs).toISOString(),
+      providerSubjectId: sub,
+    };
   }
 
   /**

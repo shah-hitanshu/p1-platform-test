@@ -3773,3 +3773,85 @@ Give site admins a UI to manage `allowedOrigins` — the OAuth redirect URI whit
 
 #### Test Summary
 - Frontend: 262 tests passing (10 new Allowed Origins tests)
+
+---
+
+### CSS Auth Server Merge — Inline into Main Worker (2026-04-13)
+
+**Status:** Implementation Complete (Phases 0–6); Phase 7 Deployment Pending
+**Branch:** `feat/inline-css-auth-server`
+**Commits:**
+- Phase 0: `@cloudflare/workers-oauth-provider` + `fast-check` dependencies
+- Phase 1: OAuth helpers (google-handler, origin-validator, state-signing, oauth-provider-setup, auth-routes)
+- Phase 2: Main worker `/auth/*` dispatch + Vitest stub for OAuthProvider
+- Phase 3: `CSSAuthIdentityProvider` in-process validation path
+- Phase 4: Binding changes (OAUTH_KV added, CSS_AUTH_SERVER removed)
+- Phase 5: `puck-css-integration` — `cssAuthServerUrl` defaults to `${baseUrl}/auth`
+- Phase 6: OAuth helper tests migrated to `workers/tests/auth/oauth/` (43 new tests)
+
+#### Goal
+Eliminate the HTTP round-trip from `collaborative-state-worker` → `css-auth-server-sbx1` for every authenticated request. Merge the standalone CSS Auth Server worker into the main worker — one Cloudflare Worker handles both API and OAuth.
+
+#### Deliverables
+**workers/src/auth/oauth/** (new directory)
+- [x] `google-handler.ts` — Google OAuth code exchange and ID token decoding
+- [x] `origin-validator.ts` — redirect URI allowedOrigins validation (exact + wildcard)
+- [x] `state-signing.ts` — HMAC-SHA256 state signing/verification using `INTERNAL_SECRET`
+- [x] `oauth-provider-setup.ts` — `authOAuthProvider` OAuthProvider instance (prefix: `/auth/`)
+
+**workers/src/routes/auth-routes.ts** (new)
+- [x] `authDefaultHandler` — `/auth/authorize`, `/auth/callback`, `/auth/internal/validate`
+- [x] Security: `/auth/internal/validate` rejects requests where `hostname !== 'internal'`
+- [x] `authApiHandler` — stub 404 handler (OAuthProvider requirement)
+- [x] `upsertClient()` — direct OAUTH_KV write for first-time site registration
+
+**workers/src/auth/css-auth-identity-provider.ts** (updated)
+- [x] New `oauthProvider` + `oauthEnv` constructor options for in-process validation
+- [x] `validateViaInProcess()` — calls sentinel URL `http://internal/auth/internal/validate` directly
+- [x] `InProcessAuthProvider` interface uses method syntax (bivariant) so `OAuthProvider<AuthOAuthEnv>` is assignable
+- [x] No-op `ExecutionContext` stub passed for token validation (read-only KV, no `waitUntil` needed)
+- [x] Old HTTP-path options (`authServerUrl`, `internalSecret`, `fetcher`) retained for backward compat
+
+**workers/src/middleware/authentication.ts** (updated)
+- [x] `hasOAuthProviders()` returns true when `OAUTH_KV` is configured
+- [x] `getIdentityProvider()` uses in-process path (OAUTH_KV present) or HTTP path (CSS_AUTH_SERVER only)
+
+**workers/src/index.ts** (updated)
+- [x] Added `OAUTH_KV?: KVNamespace`, `GOOGLE_CLIENT_SECRET?: string` to `Env`
+- [x] `/auth/*` dispatch block routes to `authOAuthProvider.fetch()`
+
+**workers/wrangler.jsonc** (updated)
+- [x] Added `OAUTH_KV` binding (local: fake ID, sbx1: `dfd4e7d8ee274eb59fbc33988556a2f5`, prod: placeholder)
+- [x] Removed `CSS_AUTH_SERVER` service binding from all environments
+- [x] Removed `CSS_AUTH_SERVER_URL` var from all environments
+
+**workers/tests/auth/oauth/** (new directory, 43 tests)
+- [x] `origin-validator.spec.ts` — 19 tests (exact/wildcard/security/normalization)
+- [x] `origin-validator.property.spec.ts` — 5 property-based security tests (fast-check)
+- [x] `google-handler.spec.ts` — 8 tests (URL construction, code exchange, token decode)
+- [x] `auth-routes.spec.ts` — 11 tests (authorize validation, internal/validate security)
+
+**puck-css-integration** (separate repo, branch: `feat/css-auth-server-provider`)
+- [x] `packages/puck-css/src/config.ts` — `cssAuthServerUrl` defaults to `${baseUrl}/auth` for `css-authserver` mode
+- [x] 3 new tests for default behavior
+
+#### Key Design Decisions
+- **OAuthProvider as sub-router**: Configured with `/auth/` prefix on all endpoints (not prefix-stripping) — main worker dispatches `/auth/*` directly
+- **In-process sentinel URL**: `http://internal/auth/internal/validate` — hostname `internal` distinguishes JS function calls from external HTTP (security boundary)
+- **Bivariant method interface**: `InProcessAuthProvider.fetch()` uses method syntax to allow `OAuthProvider<AuthOAuthEnv>` assignment without strict function-type conflicts
+- **No-op ExecutionContext**: Token validation is KV-read-only — dropping `waitUntil()` background tasks is safe for this code path
+- **HMAC state signing**: `state` parameter is HMAC-SHA256 signed with `INTERNAL_SECRET` (fixes residual from PR #43: previously unsigned base64 JSON)
+- **Direct DB access**: `/auth/authorize` calls `getSiteAllowedOrigins()` directly — no more `CSS_BACKEND` service binding needed for site lookup
+
+#### Phase 7 Deployment (TODO)
+- [ ] Set secrets on `collaborative-state-worker-sbx1`: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `INTERNAL_SECRET`
+- [ ] Deploy: `wrangler deploy --env sbx1`
+- [ ] Update Google Cloud Console: change redirect URI to `https://collaborative-state-worker-sbx1.chris-801.workers.dev/auth/callback`
+- [ ] Remove `NEXT_PUBLIC_CSS_AUTH_SERVER_URL` from Pantheon site environment secrets
+- [ ] Smoke test: OAuth login flow on sbx1
+- [ ] Delete `css-auth-server-sbx1` worker (after smoke test passes)
+
+#### Test Summary
+- New: 43 OAuth helper + route tests in `workers/tests/auth/oauth/`
+- New: 13 CSSAuthIdentityProvider in-process tests
+- Total: 2,770 passing (2 pre-existing failures unrelated to this work)
