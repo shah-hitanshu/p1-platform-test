@@ -3951,15 +3951,39 @@ Eliminate the HTTP round-trip from `collaborative-state-worker` → `css-auth-se
 - **HMAC state signing**: `state` parameter is HMAC-SHA256 signed with `INTERNAL_SECRET` (fixes residual from PR #43: previously unsigned base64 JSON)
 - **Direct DB access**: `/auth/authorize` calls `getSiteAllowedOrigins()` directly — no more `CSS_BACKEND` service binding needed for site lookup
 
-#### Phase 7 Deployment (TODO)
-- [ ] Set secrets on `collaborative-state-worker-sbx1`: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `INTERNAL_SECRET`
-- [ ] Deploy: `wrangler deploy --env sbx1`
-- [ ] Update Google Cloud Console: change redirect URI to `https://collaborative-state-worker-sbx1.chris-801.workers.dev/auth/callback`
-- [ ] Remove `NEXT_PUBLIC_CSS_AUTH_SERVER_URL` from Pantheon site environment secrets
-- [ ] Smoke test: OAuth login flow on sbx1
-- [ ] Delete `css-auth-server-sbx1` worker (after smoke test passes)
+#### Phase 7 Deployment — Complete (2026-04-13)
+- [x] Set secrets on `collaborative-state-worker-sbx1`: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `INTERNAL_SECRET`
+- [x] Deploy: `wrangler deploy --env sbx1`
+- [x] Updated Google OAuth credential to unified "icmg" credential covering both admin Sign-In and CSS OAuth code flow
+- [x] Set `NEXT_PUBLIC_CSS_AUTH_MODE=css-authserver` in Pantheon env vars for airbus and my-app sites
+- [x] Smoke tested: OAuth login flow working on sbx1 (airbus + Audi demos)
+- [x] Deleted `css-auth-server-sbx1` worker (decommissioned)
+- [x] puck-css-integration v0.2.1 released (PR #25): `cssAuthServerUrl` defaults to `${baseUrl}/auth`
 
 #### Test Summary
 - New: 43 OAuth helper + route tests in `workers/tests/auth/oauth/`
 - New: 13 CSSAuthIdentityProvider in-process tests
 - Total: 2,770 passing (2 pre-existing failures unrelated to this work)
+
+---
+
+### Cleanup: Remove Standalone css-auth-server Worker (2026-04-13)
+
+**Status:** Complete
+**PRs:** #64 (auth-server removal), #66 (CloudSQL upgrade + db.ts fix)
+
+#### Changes
+- [x] Deleted `workers/auth-server/` — standalone worker source (code lives in `workers/src/routes/auth-routes.ts`)
+- [x] Deleted `terraform/modules/cloudflare-auth-server/` — OAUTH_KV moved to `terraform/modules/cloudflare/`
+- [x] Updated `terraform/modules/cloudflare/main.tf` — added `oauth_kv` resource + `oauth_kv_id` output
+- [x] Updated `terraform/environments/sbx1/main.tf` and `production/main.tf` — removed `cloudflare_auth_server` module, expose `oauth_kv_id`
+- [x] Upgraded sbx1 CloudSQL from `db-f1-micro` → `db-g1-small` — eliminates connection drops under concurrent load
+- [x] Fixed `workers/src/db.ts` — `sql.end({ timeout: 5 })` prevents Worker hang when DB connection drops
+- [x] Ran `terraform apply ENV=sbx1` — CloudSQL resized, new OAUTH_KV namespace created, MCP KV imported into state
+- [x] Deployed worker to sbx1 with db.ts fix
+
+#### Root Cause (500 errors)
+`db-f1-micro` runs on shared GCP infrastructure with ~25 max connections. Airbus page load fires ~20 concurrent `/versions/latest` requests, saturating the connection limit. CloudSQL drops connections mid-query; postgres.js hangs on `sql.end()` of dead connection; Workers runtime kills the hung request → bare 500 with no CORS headers.
+
+#### Future Work
+- [ ] Token refresh (v0.2.2 of puck-css-integration): make CSSClient call `getToken()` per-request rather than using fixed token string at init — prevents long-session 401 floods when access token expires
