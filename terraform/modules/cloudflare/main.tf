@@ -101,6 +101,11 @@ resource "cloudflare_workers_kv_namespace" "session_kv" {
   title      = "css-session-kv-${var.environment}"
 }
 
+resource "cloudflare_workers_kv_namespace" "oauth_kv" {
+  account_id = var.cloudflare_account_id
+  title      = "css-auth-oauth-kv-${var.environment}"
+}
+
 # -----------------------------------------------------------------------------
 # Queue (sync decoupling between DOs and PostgreSQL)
 # -----------------------------------------------------------------------------
@@ -140,6 +145,11 @@ output "config_kv_id" {
 output "session_kv_id" {
   description = "SESSION_KV namespace ID"
   value       = cloudflare_workers_kv_namespace.session_kv.id
+}
+
+output "oauth_kv_id" {
+  description = "OAUTH_KV namespace ID (CSS OAuth token storage)"
+  value       = cloudflare_workers_kv_namespace.oauth_kv.id
 }
 
 output "queue_id" {

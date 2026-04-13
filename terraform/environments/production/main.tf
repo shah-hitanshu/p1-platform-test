@@ -134,16 +134,6 @@ module "cloudflare_mcp" {
   cloudflare_account_id = var.cloudflare_account_id
 }
 
-# -----------------------------------------------------------------------------
-# Auth Server Module (OAuth KV)
-# -----------------------------------------------------------------------------
-
-module "cloudflare_auth_server" {
-  source = "../../modules/cloudflare-auth-server"
-
-  environment           = local.environment
-  cloudflare_account_id = var.cloudflare_account_id
-}
 
 # -----------------------------------------------------------------------------
 # Outputs
@@ -208,13 +198,8 @@ output "mcp_worker_name" {
   value       = module.cloudflare_mcp.mcp_worker_name
 }
 
-# Auth Server outputs
-output "auth_oauth_kv_id" {
-  description = "Auth Server OAuth KV namespace ID for workers/auth-server/wrangler.jsonc"
-  value       = module.cloudflare_auth_server.auth_oauth_kv_id
-}
-
-output "auth_server_worker_name" {
-  description = "Auth Server Worker name"
-  value       = module.cloudflare_auth_server.auth_server_worker_name
+# CSS OAuth KV output (OAUTH_KV for collaborative-state-worker — inlined auth server)
+output "oauth_kv_id" {
+  description = "OAUTH_KV namespace ID for workers/wrangler.jsonc"
+  value       = module.cloudflare.oauth_kv_id
 }
