@@ -289,6 +289,55 @@ export const authDefaultHandler = {
       return Response.redirect(redirectTo, 302);
     }
 
+    // POST /auth/internal/validate — in-process token validation for CSSAuthIdentityProvider.
+    // Calls oauthHelpers.unwrapToken() and returns the token data.
+    //
+    // SECURITY: Only reachable via direct in-process call to authOAuthProvider.fetch().
+    // External HTTP requests arrive with a real hostname; in-process calls use the
+    // sentinel URL 'http://internal/...' which has hostname 'internal'. We reject any
+    // request whose hostname is not 'internal' to prevent external token probing.
+    if (url.pathname === '/auth/internal/validate' && request.method === 'POST') {
+      if (url.hostname !== 'internal') {
+        return new Response('Not Found', { status: 404 });
+      }
+
+      const oauthHelpers = getOAuthHelpers(env);
+      if (!oauthHelpers) {
+        return new Response(JSON.stringify({ error: 'OAuth not configured' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      const rawBody: unknown = await request.json();
+      const token = (rawBody as Record<string, unknown>).token;
+      if (typeof token !== 'string' || token === '') {
+        return new Response(JSON.stringify({ error: 'Missing token' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      const tokenData = await oauthHelpers.unwrapToken<UserProps>(token);
+
+      if (!tokenData) {
+        return new Response(JSON.stringify({ active: false }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(JSON.stringify({
+        active: true,
+        sub: tokenData.userId,
+        exp: tokenData.expiresAt,
+        props: tokenData.grant.props,
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     return new Response('Not Found', { status: 404 });
   },
 };
