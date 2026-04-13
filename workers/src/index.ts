@@ -203,7 +203,11 @@ export default {
       incrementCounter('css_http_errors_total', {
         error_type: classifyError(error),
       });
-      throw error;
+      // Return a CORS-allowed error response rather than re-throwing.
+      // Re-throwing causes the Workers runtime to generate a bare 500 with no CORS
+      // headers, which the browser sees as a network failure rather than an API error.
+      const message = error instanceof Error ? error.message : 'Internal server error';
+      return addCorsHeaders(errorResponse(message, 500), origin, env);
     } finally {
       // Flush metrics (fire-and-forget)
       await flushMetrics();

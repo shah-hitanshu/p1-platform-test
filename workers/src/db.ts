@@ -128,10 +128,21 @@ export function createDatabaseConnection(
       sqlQuery: string,
       params?: unknown[],
     ): Promise<QueryResult<T>> {
-      const result = await sql.unsafe<T[]>(
+      // Race the query against a 20-second timeout. If Hyperdrive hangs (no response),
+      // we fail fast with an error rather than hanging the Worker indefinitely.
+      // Without this, a stuck Hyperdrive connection causes Cloudflare to kill the Worker
+      // with a bare 500 that has no CORS headers, making errors opaque to the client.
+      const QUERY_TIMEOUT_MS = 20_000;
+      const queryPromise = sql.unsafe<T[]>(
         sqlQuery,
         params as unknown as postgres.ParameterOrJSON<never>[],
       );
+      const timeoutPromise = new Promise<never>((_resolve, reject) => {
+        setTimeout(() => {
+          reject(new Error('Database query timed out after 20 seconds'));
+        }, QUERY_TIMEOUT_MS);
+      });
+      const result = await Promise.race([queryPromise, timeoutPromise]);
 
       // The postgres package returns a Result object that extends Array
       const rows = [...result] as T[];
