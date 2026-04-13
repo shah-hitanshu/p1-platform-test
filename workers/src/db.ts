@@ -58,56 +58,9 @@ export interface DatabaseConnection {
  */
 const connectionStorage = new AsyncLocalStorage<DatabaseConnection>();
 
-// =============================================================================
-// Hyperdrive concurrency limiter
-//
-// Cloudflare Workers cannot share I/O objects (TCP sockets) across requests,
-// so each request must open its own postgres.js connection to Hyperdrive.
-// Under concurrent load (50+ simultaneous requests), 50 connections open
-// against Hyperdrive at once, causing Hyperdrive to drop the excess and
-// return CONNECTION_CLOSED errors.
-//
-// This semaphore limits simultaneous Hyperdrive connections. Requests beyond
-// the limit queue internally and wait for a slot. DB queries complete in
-// <100ms so queue latency is negligible.
-//
-// IMPORTANT: The slot is released BEFORE connection.close() is awaited.
-// close() can block for up to 5 seconds on dead connections; holding the
-// slot during close() would starve concurrent requests (including auth routes).
-// =============================================================================
-
-const MAX_CONCURRENT_HYPERDRIVE = 5;
-let hyperdriveSlotsActive = 0;
-const hyperdriveWaitQueue: (() => void)[] = [];
-
-async function acquireHyperdriveSlot(): Promise<void> {
-  if (hyperdriveSlotsActive < MAX_CONCURRENT_HYPERDRIVE) {
-    hyperdriveSlotsActive++;
-    return;
-  }
-  return new Promise<void>(resolve => {
-    hyperdriveWaitQueue.push(() => {
-      hyperdriveSlotsActive++;
-      resolve();
-    });
-  });
-}
-
-function releaseHyperdriveSlot(): void {
-  hyperdriveSlotsActive--;
-  const next = hyperdriveWaitQueue.shift();
-  if (next !== undefined) next();
-}
-
 /**
  * Run a function with a request-scoped database connection.
- *
- * For Hyperdrive: acquires a semaphore slot, creates a per-request connection,
- * runs the function, releases the slot immediately, then closes the connection
- * in the background (so close() latency never blocks concurrent requests).
- *
- * For direct connections: creates and closes a fresh connection per request
- * with no concurrency limit (local dev traffic is always low).
+ * This ensures each concurrent request has its own isolated connection.
  *
  * @param connectionString - PostgreSQL connection string
  * @param options - Connection options
@@ -119,32 +72,11 @@ export async function runWithConnection<T>(
   options: ConnectionOptions,
   fn: () => Promise<T>,
 ): Promise<T> {
-  if (options.isHyperdrive === true) {
-    await acquireHyperdriveSlot();
-    let connection: DatabaseConnection | undefined;
-    try {
-      // createDatabaseConnection is inside the try so the slot is released
-      // in the finally even if construction throws (though that is unlikely
-      // since postgres() is lazy and doesn't open a socket here).
-      connection = createDatabaseConnection(connectionString, options);
-      return await connectionStorage.run(connection, fn);
-    } finally {
-      // Release the slot BEFORE closing the connection. close() can take up
-      // to 5 seconds on a dead connection; the slot must be free so other
-      // requests (including auth routes) are not starved during that window.
-      releaseHyperdriveSlot();
-      if (connection !== undefined) {
-        // Fire-and-forget: connection is request-scoped and won't be reused.
-        void connection.close().catch(() => { /* ignore */ });
-      }
-    }
-  } else {
-    const connection = createDatabaseConnection(connectionString, options);
-    try {
-      return await connectionStorage.run(connection, fn);
-    } finally {
-      await connection.close();
-    }
+  const connection = createDatabaseConnection(connectionString, options);
+  try {
+    return await connectionStorage.run(connection, fn);
+  } finally {
+    await connection.close();
   }
 }
 
