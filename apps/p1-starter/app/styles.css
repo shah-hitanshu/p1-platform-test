@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+}
+
+/* Prevent Tailwind's preflight from blowing up Puck's sidebar/UI icons.
+   Puck's SVG icons rely on their inline width/height attributes;
+   Tailwind's preflight sets svg { display: block } which makes them fill their container. */
+[class*="_Drawer"] svg,
+[class*="_ComponentList"] svg,
+[class*="_ActionBar"] svg,
+[class*="_DraggableComponent"] svg,
+[class*="_SidebarSection"] svg,
+[class*="_Puck"] svg {
+  display: inline-block;
+  vertical-align: middle;
+}
