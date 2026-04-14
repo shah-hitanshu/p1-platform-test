@@ -25,17 +25,6 @@ export interface Auth0IdentityProviderOptions {
 }
 
 /**
- * Normalize an issuer URL by stripping trailing slashes.
- */
-function normalizeIssuer(url: string): string {
-  let end = url.length;
-  while (end > 0 && url[end - 1] === '/') {
-    end--;
-  }
-  return end === url.length ? url : url.slice(0, end);
-}
-
-/**
  * Check if a URL string is an Auth0 issuer by parsing the hostname.
  * Returns true only if the hostname ends with '.auth0.com' or equals 'auth0.com'.
  */
@@ -60,12 +49,12 @@ export class Auth0IdentityProvider implements IdentityProvider {
   private readonly jwks: jose.JWTVerifyGetKey;
 
   constructor(options: Auth0IdentityProviderOptions) {
-    this.issuerBaseUrl = normalizeIssuer(options.issuerBaseUrl);
+    this.issuerBaseUrl = options.issuerBaseUrl;
     this.audience = options.audience;
 
     this.jwks = options.jwks ??
       jose.createRemoteJWKSet(
-        new URL(this.issuerBaseUrl + '/.well-known/jwks.json'),
+        new URL(new URL('.well-known/jwks.json', this.issuerBaseUrl).href),
       );
   }
 
@@ -81,7 +70,7 @@ export class Auth0IdentityProvider implements IdentityProvider {
     try {
       const payload = jose.decodeJwt(token);
       const iss = typeof payload.iss === 'string'
-        ? normalizeIssuer(payload.iss)
+        ? payload.iss
         : undefined;
 
       if (iss === undefined) {
@@ -109,9 +98,7 @@ export class Auth0IdentityProvider implements IdentityProvider {
   async validateToken(token: string): Promise<AuthenticatedPrincipal | null> {
     try {
       const decoded = jose.decodeJwt(token);
-      const iss = typeof decoded.iss === 'string'
-        ? normalizeIssuer(decoded.iss)
-        : undefined;
+      const iss = typeof decoded.iss === 'string' ? decoded.iss : undefined;
 
       // Select the correct JWKS based on issuer
       const selectedJwks = this.selectJwks(iss);
