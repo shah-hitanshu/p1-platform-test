@@ -52,6 +52,12 @@ export interface RegistryIndex {
   updatedAt: string;
   componentNames: string[];
   provenance: Record<string, ComponentProvenance>;
+  /**
+   * Map of componentName → descriptorHash for fast change detection on startup.
+   * When present, the registry hook reads all hashes from this single index version
+   * instead of fetching each component document individually (N requests → 1).
+   */
+  hashes?: Record<string, string>;
 }
 
 // =============================================================================
@@ -310,5 +316,6 @@ export function buildRegistryIndex(
     updatedAt: new Date().toISOString(),
     componentNames: descriptors.map((d) => d.name),
     provenance: Object.fromEntries(descriptors.map((d) => [d.name, d.provenance])),
+    hashes: Object.fromEntries(descriptors.map((d) => [d.name, d.descriptorHash])),
   };
 }

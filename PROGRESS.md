@@ -217,6 +217,18 @@ puck-css-integration/
   - `CSSPluginOptions`: Changed `hasUnsavedChanges` to `getHasUnsavedChanges` getter function
 - Verified fix with Playwright: iframe ref remains stable across multiple edits and saves
 
+### Perf: Registry Index Hash Fast Path (2026-04-13) ✅
+- **Problem**: `useComponentRegistry` fired N simultaneous `GET /versions/latest` requests on every editor open (one per component), exhausting the Hyperdrive connection pool and causing intermittent 500 errors. Root cause documented in issue #23.
+- **Fix**: Store a `componentName → descriptorHash` map inside the `_registry/index` document. On startup, one `getLatest()` on the index provides all hashes (N requests → 1 request).
+- **Changes**:
+  - `RegistryIndex` type: added `hashes?: Record<string, string>` field
+  - `buildRegistryIndex`: always populates `hashes` when writing the index
+  - `runRegistration` step 3: fast path reads all hashes from index version; falls back to per-component fetches when index has no `hashes` field (legacy format)
+  - Index is promoted to include `hashes` whenever the legacy path runs with matching hashes, so fast path activates on the first startup after deploy
+- **Backwards compatible**: existing registries without `hashes` use the legacy path on first post-deploy run, then fast path on all subsequent runs
+- **Tests**: 4 new tests — fast path skips component fetches, partial-update writes only changed components, index written with hashes, legacy index promoted even when nothing changed
+- **Reviewer finding fixed**: `indexNeedsWrite` condition extended with `|| !gotHashesFromIndex` to ensure index promotion happens even when `registered === 0`
+
 ### Phase 6c: Real-time Collaboration (Yjs CRDT Integration) ✅
 - Implemented WebSocket-based real-time collaborative editing using Yjs CRDT
 - **Frontend Components**:

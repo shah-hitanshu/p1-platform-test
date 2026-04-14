@@ -90,21 +90,51 @@ async function runRegistration(
     }
   }
 
-  // Step 3: For each doc that exists, fetch its stored hash
+  // Step 3: Resolve stored hashes — fast path (from index) or legacy (per-component).
+  //
+  // Fast path: if the index version has a `hashes` map, read all hashes from it
+  // in a single request instead of fetching each component version individually.
+  // This collapses N simultaneous getLatest calls (one per component) into 1.
+  //
+  // Legacy fallback: index exists but has no `hashes` field (written by an older
+  // version of this hook), or no index exists yet. Falls back to per-component
+  // fetches so existing registries continue to work on the first run after deploy.
   const storedHashByName = new Map<string, string>();
-  await Promise.all(
-    Array.from(docByName.entries()).map(async ([name, doc]) => {
-      try {
-        const version = await client.versions.getLatest(siteId, branchId, doc.id);
-        const snapshot = version.snapshot as Partial<ComponentDescriptor>;
-        if (typeof snapshot.descriptorHash === 'string') {
-          storedHashByName.set(name, snapshot.descriptorHash);
+  let gotHashesFromIndex = false;
+
+  if (indexDoc !== undefined) {
+    try {
+      const indexVersion = await client.versions.getLatest(siteId, branchId, indexDoc.id);
+      const indexSnapshot = indexVersion.snapshot as Partial<RegistryIndex>;
+      if (indexSnapshot.hashes !== undefined && typeof indexSnapshot.hashes === 'object') {
+        for (const [name, hash] of Object.entries(indexSnapshot.hashes)) {
+          if (typeof hash === 'string') {
+            storedHashByName.set(name, hash);
+          }
         }
-      } catch {
-        // Version fetch failure → treat as hash mismatch, will overwrite
+        gotHashesFromIndex = true;
       }
-    }),
-  );
+    } catch {
+      // Index version fetch failure → fall through to per-component fetch
+    }
+  }
+
+  if (!gotHashesFromIndex) {
+    // Legacy path: fetch each component version individually to get stored hash.
+    await Promise.all(
+      Array.from(docByName.entries()).map(async ([name, doc]) => {
+        try {
+          const version = await client.versions.getLatest(siteId, branchId, doc.id);
+          const snapshot = version.snapshot as Partial<ComponentDescriptor>;
+          if (typeof snapshot.descriptorHash === 'string') {
+            storedHashByName.set(name, snapshot.descriptorHash);
+          }
+        } catch {
+          // Version fetch failure → treat as hash mismatch, will overwrite
+        }
+      }),
+    );
+  }
 
   // Step 4: Write only changed/new descriptors
   let registered = 0;
@@ -143,9 +173,10 @@ async function runRegistration(
     }),
   );
 
-  // Step 5: Write index only when something changed OR index doesn't exist yet.
-  // Avoids creating spurious version history on every editor open when all hashes match.
-  const indexNeedsWrite = registered > 0 || indexDoc === undefined;
+  // Step 5: Write index when something changed, index doesn't exist yet, OR the existing
+  // index lacks the `hashes` field (legacy format). The third condition promotes legacy
+  // indexes to the fast-path format so that the next startup can skip per-component fetches.
+  const indexNeedsWrite = registered > 0 || indexDoc === undefined || !gotHashesFromIndex;
 
   if (indexNeedsWrite) {
     const index: RegistryIndex = buildRegistryIndex(descriptors, siteId, branchId);

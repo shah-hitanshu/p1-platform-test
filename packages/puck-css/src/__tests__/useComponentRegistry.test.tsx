@@ -374,6 +374,238 @@ describe('useComponentRegistry', () => {
     expect(/^\d{4}-\d{2}-\d{2}T/.test(snapshot.registeredAt as string)).toBe(true);
   });
 
+  // -------------------------------------------------------------------------
+  // Fast-path tests: hashes stored in registry index (new behaviour)
+  // -------------------------------------------------------------------------
+
+  it('fast path: reads hashes from index, makes no per-component getLatest calls', async () => {
+    const ctx = makeMockContext();
+    const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+
+    const { extractDescriptors } = await import('../utils/componentRegistry.js');
+    const [descriptor] = extractDescriptors(simplePuckConfig);
+    const currentHash = descriptor.descriptorHash;
+
+    // Both component doc and index doc exist (paths match what the code creates — no leading slash)
+    mockClient.documents.list.mockResolvedValue([
+      { id: 'doc-hero', path: '_registry/components/HeroBlock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+      { id: 'doc-index', path: '_registry/index', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+    ]);
+
+    // Index version contains the hashes map (fast path format)
+    mockClient.versions.getLatest.mockImplementation(
+      (_siteId: string, _branchId: string, docId: string) => {
+        if (docId === 'doc-index') {
+          return Promise.resolve({
+            id: 'ver-index', versionNumber: 1,
+            snapshot: {
+              siteId: 'site-1', branchId: 'branch-1',
+              componentNames: ['HeroBlock'],
+              provenance: { HeroBlock: 'site' },
+              updatedAt: new Date().toISOString(),
+              hashes: { HeroBlock: currentHash },
+            },
+          });
+        }
+        // Should never be called for component docs in the fast path
+        return Promise.resolve({ id: 'ver-hero', versionNumber: 1, snapshot: {} });
+      },
+    );
+
+    const { result } = renderHook(
+      () => useComponentRegistry({ puckConfig: simplePuckConfig }),
+      { wrapper: wrapper(ctx) },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe('registered'));
+
+    // getLatest called exactly once — for the index, not for individual components
+    expect(mockClient.versions.getLatest).toHaveBeenCalledTimes(1);
+    expect(mockClient.versions.getLatest).toHaveBeenCalledWith('site-1', 'branch-1', 'doc-index');
+
+    // Hash matches — nothing written
+    expect(mockClient.versions.create).not.toHaveBeenCalled();
+    expect(result.current.result?.skipped).toBe(1);
+    expect(result.current.result?.registered).toBe(0);
+  });
+
+  it('fast path: writes only the changed component when its hash differs in the index', async () => {
+    const ctx = makeMockContext();
+    const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+
+    const { extractDescriptors } = await import('../utils/componentRegistry.js');
+    const descriptors = extractDescriptors(twoComponentConfig);
+    const heroDescriptor = descriptors.find((d) => d.name === 'HeroBlock')!;
+    const cardDescriptor = descriptors.find((d) => d.name === 'CardBlock')!;
+
+    mockClient.documents.list.mockResolvedValue([
+      { id: 'doc-hero', path: '_registry/components/HeroBlock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+      { id: 'doc-card', path: '_registry/components/CardBlock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+      { id: 'doc-index', path: '_registry/index', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+    ]);
+
+    // Index has stale hash for HeroBlock, current hash for CardBlock
+    mockClient.versions.getLatest.mockImplementation(
+      (_siteId: string, _branchId: string, docId: string) => {
+        if (docId === 'doc-index') {
+          return Promise.resolve({
+            id: 'ver-index', versionNumber: 1,
+            snapshot: {
+              siteId: 'site-1', branchId: 'branch-1',
+              componentNames: ['HeroBlock', 'CardBlock'],
+              provenance: { HeroBlock: 'site', CardBlock: 'site' },
+              updatedAt: new Date().toISOString(),
+              hashes: {
+                HeroBlock: 'stale-hash-000',
+                CardBlock: cardDescriptor.descriptorHash,
+              },
+            },
+          });
+        }
+        return Promise.resolve({ id: 'ver', versionNumber: 1, snapshot: {} });
+      },
+    );
+    mockClient.versions.create.mockResolvedValue({ id: 'ver-new', versionNumber: 2, snapshot: {} });
+
+    const { result } = renderHook(
+      () => useComponentRegistry({ puckConfig: twoComponentConfig }),
+      { wrapper: wrapper(ctx) },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe('registered'));
+
+    // getLatest called exactly once (for index only)
+    expect(mockClient.versions.getLatest).toHaveBeenCalledTimes(1);
+    expect(mockClient.versions.getLatest).toHaveBeenCalledWith('site-1', 'branch-1', 'doc-index');
+
+    // Only HeroBlock is registered (stale), CardBlock is skipped (current)
+    expect(result.current.result?.registered).toBe(1);
+    expect(result.current.result?.skipped).toBe(1);
+
+    // versions.create called for HeroBlock and the updated index (not CardBlock)
+    const createCalls = mockClient.versions.create.mock.calls as unknown[][];
+    const docIds = createCalls.map((args) => (args[1] as Record<string, string>).documentId);
+    expect(docIds).toContain('doc-hero');
+    expect(docIds).not.toContain('doc-card');
+    // Index must also be updated
+    expect(docIds).toContain('doc-index');
+
+    // The index snapshot written must include updated hashes for both components
+    const indexWriteCall = createCalls.find(
+      (args) => (args[1] as Record<string, string>).documentId === 'doc-index',
+    );
+    const indexSnapshot = (indexWriteCall![1] as Record<string, unknown>).snapshot as Record<string, unknown>;
+    const writtenHashes = indexSnapshot.hashes as Record<string, string>;
+    expect(writtenHashes.HeroBlock).toBe(heroDescriptor.descriptorHash);
+    expect(writtenHashes.CardBlock).toBe(cardDescriptor.descriptorHash);
+  });
+
+  it('fast path: written index includes hashes field enabling future fast-path runs', async () => {
+    const ctx = makeMockContext();
+    const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+
+    // Fresh registry — no docs exist
+    mockClient.documents.list.mockResolvedValue([]);
+    let docCounter = 0;
+    mockClient.documents.create.mockImplementation(({ path }: { path: string }) =>
+      Promise.resolve({ id: `doc-${++docCounter}`, path }),
+    );
+
+    const capturedSnapshots: Array<{ documentId: string; snapshot: unknown }> = [];
+    mockClient.versions.create.mockImplementation(
+      (_siteId: string, params: { documentId: string; branchId: string; snapshot: unknown }) => {
+        capturedSnapshots.push({ documentId: params.documentId, snapshot: params.snapshot });
+        return Promise.resolve({ id: 'ver-1', versionNumber: 1, snapshot: params.snapshot });
+      },
+    );
+
+    const { extractDescriptors } = await import('../utils/componentRegistry.js');
+    const [descriptor] = extractDescriptors(simplePuckConfig);
+
+    const { result } = renderHook(
+      () => useComponentRegistry({ puckConfig: simplePuckConfig }),
+      { wrapper: wrapper(ctx) },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe('registered'));
+
+    // Find the index write call
+    const indexWrite = capturedSnapshots.find(
+      (c) => (c.snapshot as Record<string, unknown>)?.componentNames !== undefined,
+    );
+    expect(indexWrite).toBeDefined();
+
+    const indexSnapshot = indexWrite!.snapshot as Record<string, unknown>;
+    expect(indexSnapshot.hashes).toBeDefined();
+
+    const hashes = indexSnapshot.hashes as Record<string, string>;
+    expect(hashes.HeroBlock).toBe(descriptor.descriptorHash);
+  });
+
+  it('fast path: promotes legacy index (no hashes field) to include hashes even when nothing changed', async () => {
+    // Regression test for: legacy index exists, all hashes match via per-component fetch,
+    // registered === 0 — index MUST still be written to add the hashes field so future
+    // startups can use the fast path (1 request) instead of the legacy path (N requests).
+    const ctx = makeMockContext();
+    const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+
+    const { extractDescriptors } = await import('../utils/componentRegistry.js');
+    const [descriptor] = extractDescriptors(simplePuckConfig);
+    const currentHash = descriptor.descriptorHash;
+
+    // Index exists but has NO hashes field (legacy format)
+    mockClient.documents.list.mockResolvedValue([
+      { id: 'doc-hero', path: '_registry/components/HeroBlock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+      { id: 'doc-index', path: '_registry/index', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+    ]);
+
+    // Index version has no hashes field (legacy format) — forces legacy per-component fetch
+    mockClient.versions.getLatest.mockImplementation(
+      (_siteId: string, _branchId: string, docId: string) => {
+        if (docId === 'doc-index') {
+          return Promise.resolve({
+            id: 'ver-index', versionNumber: 1,
+            // Legacy format: no hashes field
+            snapshot: { siteId: 'site-1', branchId: 'branch-1', componentNames: ['HeroBlock'], provenance: { HeroBlock: 'site' }, updatedAt: '' },
+          });
+        }
+        // Component doc returns its descriptor with current hash
+        return Promise.resolve({
+          id: 'ver-hero', versionNumber: 1,
+          snapshot: { ...descriptor, descriptorHash: currentHash },
+        });
+      },
+    );
+
+    const capturedIndexSnapshots: unknown[] = [];
+    mockClient.versions.create.mockImplementation(
+      (_siteId: string, params: { documentId: string; branchId: string; snapshot: unknown }) => {
+        if (params.documentId === 'doc-index') {
+          capturedIndexSnapshots.push(params.snapshot);
+        }
+        return Promise.resolve({ id: 'ver-new', versionNumber: 2, snapshot: params.snapshot });
+      },
+    );
+
+    const { result } = renderHook(
+      () => useComponentRegistry({ puckConfig: simplePuckConfig }),
+      { wrapper: wrapper(ctx) },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe('registered'));
+
+    // All components matched — nothing registered
+    expect(result.current.result?.registered).toBe(0);
+    expect(result.current.result?.skipped).toBe(1);
+
+    // Index MUST be rewritten to add the hashes field
+    expect(capturedIndexSnapshots.length).toBe(1);
+    const writtenIndex = capturedIndexSnapshots[0] as Record<string, unknown>;
+    expect(writtenIndex.hashes).toBeDefined();
+    const hashes = writtenIndex.hashes as Record<string, string>;
+    expect(hashes.HeroBlock).toBe(currentHash);
+  });
+
   // Test 5: Branch switch re-registers components against new branch
   it('re-runs registration when branchId changes (branch switch)', async () => {
     const ctx = makeMockContext();
