@@ -3987,3 +3987,35 @@ Eliminate the HTTP round-trip from `collaborative-state-worker` → `css-auth-se
 
 #### Future Work
 - [ ] Token refresh (v0.2.2 of puck-css-integration): make CSSClient call `getToken()` per-request rather than using fixed token string at init — prevents long-session 401 floods when access token expires
+
+---
+
+### Fix: Codify Hyperdrive Connection Limits (2026-04-13)
+
+**Status:** Complete
+**Commit:** `447305e`
+
+#### Root Cause (corrected from PR #66)
+The actual root cause of the sbx1 500 errors was **Hyperdrive `origin_connection_limit` defaults (60+20=80) exceeding CloudSQL `max_connections` (50)**. When a page with many documents loaded (Audi: 91 docs), the burst of concurrent queries opened more origin connections than PostgreSQL allowed. Failed connections triggered a cascade where Hyperdrive held connections for up to 10 minutes (idle timeout), permanently exhausting the pool until the database was restarted.
+
+The `db-f1-micro` → `db-g1-small` resize (PR #66) increased max_connections from ~25 to 50, which was still insufficient for the default Hyperdrive limits.
+
+#### Fix Applied
+1. Emergency: reduced Hyperdrive limits via Cloudflare API PATCH (20+5=25)
+2. Permanent: codified all limits in Terraform so they can't drift
+
+#### Terraform Changes
+- `terraform/modules/cloudflare/main.tf`: added `origin_connection_limit` to both Hyperdrive resources, with new variables
+- `terraform/modules/database/main.tf`: added `cloudsql_max_connections` variable and database flag
+- `terraform/environments/sbx1/main.tf`: max_connections=100, Hyperdrive 30+10=40
+- `terraform/environments/production/main.tf`: max_connections=200, Hyperdrive 60+20=80
+
+#### Worker Changes
+- `workers/src/db.ts`: fire-and-forget `connection.close()` prevents pool starvation when `sql.end()` blocks
+- `workers/src/index.ts`: added `console.error` for unhandled errors (visible in `wrangler tail`)
+
+#### Design Rule
+Sum of Hyperdrive `origin_connection_limit` values must stay under 50% of CloudSQL `max_connections` to absorb soft-limit overruns, Cloud SQL Proxy sessions, autovacuum, and monitoring connections.
+
+#### Applied to sbx1
+- `terraform apply` run: max_connections 50→100, Hyperdrive 20→30 / 5→10
