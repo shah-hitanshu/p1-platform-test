@@ -606,6 +606,77 @@ describe('useComponentRegistry', () => {
     expect(hashes.HeroBlock).toBe(currentHash);
   });
 
+  // branchId guard: skip registration when branchId is not yet resolved
+  it('does not call any API when branchId is null (production initial state)', async () => {
+    const ctx = makeMockContext({ branchId: null as unknown as string });
+    const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+
+    const { result } = renderHook(
+      () => useComponentRegistry({ puckConfig: simplePuckConfig }),
+      { wrapper: wrapper(ctx) },
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(result.current.status).toBe('idle');
+    expect(mockClient.documents.list).not.toHaveBeenCalled();
+    expect(mockClient.versions.getLatest).not.toHaveBeenCalled();
+    expect(mockClient.documents.create).not.toHaveBeenCalled();
+    expect(mockClient.versions.create).not.toHaveBeenCalled();
+  });
+
+  it('does not call any API when branchId is empty string', async () => {
+    const ctx = makeMockContext({ branchId: '' });
+    const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+
+    const { result } = renderHook(
+      () => useComponentRegistry({ puckConfig: simplePuckConfig }),
+      { wrapper: wrapper(ctx) },
+    );
+
+    // Allow any pending microtasks to settle
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Status should remain 'idle' — registration was skipped entirely
+    expect(result.current.status).toBe('idle');
+
+    // No API calls should have been made
+    expect(mockClient.documents.list).not.toHaveBeenCalled();
+    expect(mockClient.versions.getLatest).not.toHaveBeenCalled();
+    expect(mockClient.documents.create).not.toHaveBeenCalled();
+    expect(mockClient.versions.create).not.toHaveBeenCalled();
+  });
+
+  it('runs registration once branchId resolves from empty to a real value', async () => {
+    const ctx = makeMockContext({ branchId: '' });
+    const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+    mockClient.documents.list.mockResolvedValue([]);
+    mockClient.documents.create.mockResolvedValue({ id: 'doc-new', path: '_registry/components/HeroBlock' });
+
+    let ctxValue = { ...ctx, branchId: '' };
+    const DynamicWrapper = ({ children }: { children: React.ReactNode }) => (
+      <CSSPuckContext.Provider value={ctxValue}>{children}</CSSPuckContext.Provider>
+    );
+
+    const { result, rerender } = renderHook(
+      () => useComponentRegistry({ puckConfig: simplePuckConfig }),
+      { wrapper: DynamicWrapper },
+    );
+
+    // While branchId is empty, status stays idle and no API calls happen
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(result.current.status).toBe('idle');
+    expect(mockClient.documents.list).not.toHaveBeenCalled();
+
+    // branchId resolves — trigger re-render with real branch
+    ctxValue = { ...ctx, branchId: 'branch-main' };
+    rerender();
+
+    // Now registration should run
+    await waitFor(() => expect(result.current.status).toBe('registered'));
+    expect(mockClient.documents.list).toHaveBeenCalledWith('site-1', 'branch-main', expect.anything());
+  });
+
   // Test 5: Branch switch re-registers components against new branch
   it('re-runs registration when branchId changes (branch switch)', async () => {
     const ctx = makeMockContext();

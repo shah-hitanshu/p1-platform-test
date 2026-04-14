@@ -113,14 +113,20 @@ async function runRegistration(
           }
         }
         gotHashesFromIndex = true;
+        console.debug('[useComponentRegistry] Fast path: loaded', storedHashByName.size, 'hashes from index');
+      } else {
+        console.debug('[useComponentRegistry] Index exists but has no hashes field (legacy format) — falling back to per-component fetch');
       }
-    } catch {
-      // Index version fetch failure → fall through to per-component fetch
+    } catch (err) {
+      console.debug('[useComponentRegistry] Index version fetch failed — falling back to per-component fetch:', err);
     }
+  } else {
+    console.debug('[useComponentRegistry] No index document found — will create one after registration');
   }
 
   if (!gotHashesFromIndex) {
     // Legacy path: fetch each component version individually to get stored hash.
+    console.debug('[useComponentRegistry] Legacy path: fetching', docByName.size, 'component versions individually');
     await Promise.all(
       Array.from(docByName.entries()).map(async ([name, doc]) => {
         try {
@@ -173,10 +179,30 @@ async function runRegistration(
     }),
   );
 
+  console.debug(
+    '[useComponentRegistry] Registration complete:',
+    'registered =', registered,
+    'skipped =', skipped,
+    'total =', descriptors.length,
+    '| gotHashesFromIndex =', gotHashesFromIndex,
+  );
+
+  // Detect hash instability: if we got hashes from the index but still had to register
+  // components, log which components had mismatched hashes.
+  if (gotHashesFromIndex && registered > 0) {
+    const changed = descriptors.filter(d => storedHashByName.get(d.name) !== d.descriptorHash);
+    console.warn(
+      '[useComponentRegistry] Hash mismatch detected for', changed.length, 'component(s) despite index being present.',
+      'These components will trigger a full re-registration on every load if their hashes are unstable:',
+      changed.map(d => ({ name: d.name, stored: storedHashByName.get(d.name), computed: d.descriptorHash })),
+    );
+  }
+
   // Step 5: Write index when something changed, index doesn't exist yet, OR the existing
   // index lacks the `hashes` field (legacy format). The third condition promotes legacy
   // indexes to the fast-path format so that the next startup can skip per-component fetches.
   const indexNeedsWrite = registered > 0 || indexDoc === undefined || !gotHashesFromIndex;
+  console.debug('[useComponentRegistry] indexNeedsWrite =', indexNeedsWrite, '(registered > 0:', registered > 0, ', no indexDoc:', indexDoc === undefined, ', legacy format:', !gotHashesFromIndex, ')');
 
   if (indexNeedsWrite) {
     const index: RegistryIndex = buildRegistryIndex(descriptors, siteId, branchId);
@@ -212,6 +238,10 @@ export function useComponentRegistry(
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    // branchId starts as null and resolves asynchronously. Skip registration
+    // until it is available to avoid a guaranteed 404 on every page load.
+    if (!branchId) return;
+
     let cancelled = false;
 
     setStatus('registering');
