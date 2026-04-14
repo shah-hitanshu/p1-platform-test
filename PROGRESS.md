@@ -1389,6 +1389,38 @@ Implemented automatic token refresh so OAuth sessions survive the 1-hour token e
 - `@pantheon/css-client`: 236/236 passing
 - `@pantheon/puck-css`: 79 passing (7 pre-existing failures unrelated to this feature)
 
+### Environment Variable Reduction Refactor (2026-04-14) ✅
+
+Reduced required environment variables from 6 to 2 for a typical setup with real-time collaboration (issue #24).
+
+**Changes:**
+- `authMode` now defaults to `css-authserver` (was required, threw if missing)
+- `enableRealtime` and `enablePresence` now default to `true` (were `false`)
+- `wsBaseUrl` auto-derived from `baseUrl` via http->ws protocol conversion (was required when realtime enabled)
+- Fixed `createNextConfig` boolean handling: unset env vars pass `undefined` instead of being coerced to `false`
+- Aligned defaults in `CSSPuckProvider`, `resolveFeatureConfig`, and JSDoc annotations
+
+**Before (minimum .env):**
+```
+NEXT_PUBLIC_CSS_BASE_URL=https://css.example.com
+NEXT_PUBLIC_CSS_SITE_ID=site-123
+NEXT_PUBLIC_CSS_AUTH_MODE=css-authserver
+NEXT_PUBLIC_CSS_ENABLE_REALTIME=true
+NEXT_PUBLIC_CSS_WS_BASE_URL=wss://css.example.com
+NEXT_PUBLIC_CSS_ENABLE_PRESENCE=true
+```
+
+**After (minimum .env):**
+```
+NEXT_PUBLIC_CSS_BASE_URL=https://css.example.com
+NEXT_PUBLIC_CSS_SITE_ID=site-123
+```
+
+**Decision:** Demo app keeps `mock` as its authMode default for simplicity.
+
+**Test commits:** `fe50564` (red phase)
+**Implementation commits:** `ddc7eda`, `3e640c1`
+
 ## Remaining Work
 
 ### Future
@@ -1419,18 +1451,16 @@ pnpm dev
 
 ## Configuration
 
-The demo app requires the following environment variables:
+The demo app requires only two environment variables:
 
 ```env
 VITE_CSS_BASE_URL=http://localhost:8787
-VITE_CSS_API_KEY=your-api-key-here
 VITE_CSS_SITE_ID=your-site-id
-VITE_CSS_USER_ID=demo-user-id
 
 # Optional - defaults to main branch if not set:
 # VITE_CSS_BRANCH_ID=your-branch-id
 
-# Real-time collaboration (optional):
-VITE_CSS_ENABLE_REALTIME=true
-VITE_CSS_WS_BASE_URL=ws://localhost:8787
+# Real-time and presence are enabled by default.
+# WebSocket URL is derived from VITE_CSS_BASE_URL automatically.
+# To disable: VITE_CSS_ENABLE_REALTIME=false
 ```

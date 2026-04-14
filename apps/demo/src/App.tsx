@@ -37,8 +37,6 @@ try {
       auth0Domain: import.meta.env.VITE_AUTH0_DOMAIN,
       auth0ClientId: import.meta.env.VITE_AUTH0_CLIENT_ID,
       auth0Audience: import.meta.env.VITE_AUTH0_AUDIENCE,
-      enableRealtime: import.meta.env.VITE_CSS_ENABLE_REALTIME !== 'false',
-      enablePresence: import.meta.env.VITE_CSS_ENABLE_PRESENCE !== 'false',
     },
   });
 } catch (err) {

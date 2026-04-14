@@ -59,9 +59,59 @@ describe('createNextConfig', () => {
 
     process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
     expect(() => createNextConfig()).toThrow('Missing required config: CSS_SITE_ID');
+  });
 
+  it('defaults authMode to css-authserver when not set', () => {
+    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
     process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
-    expect(() => createNextConfig()).toThrow('Missing required config: CSS_AUTH_MODE');
+
+    const config = createNextConfig();
+    expect(config.authMode).toBe('css-authserver');
+  });
+
+  it('defaults enableRealtime and enablePresence to true when env vars are not set', () => {
+    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+
+    const config = createNextConfig();
+    expect(config.enableRealtime).toBe(true);
+    expect(config.enablePresence).toBe(true);
+  });
+
+  it('respects explicit false for enableRealtime and enablePresence', () => {
+    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+    process.env.NEXT_PUBLIC_CSS_ENABLE_REALTIME = 'false';
+    process.env.NEXT_PUBLIC_CSS_ENABLE_PRESENCE = 'false';
+
+    const config = createNextConfig();
+    expect(config.enableRealtime).toBe(false);
+    expect(config.enablePresence).toBe(false);
+  });
+
+  it('derives wsBaseUrl from baseUrl when not explicitly set', () => {
+    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+
+    const config = createNextConfig();
+    expect(config.wsBaseUrl).toBe('wss://css.example.com');
+  });
+
+  it('uses explicit wsBaseUrl when provided', () => {
+    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+    process.env.NEXT_PUBLIC_CSS_WS_BASE_URL = 'wss://custom-ws.example.com';
+
+    const config = createNextConfig();
+    expect(config.wsBaseUrl).toBe('wss://custom-ws.example.com');
+  });
+
+  it('derives cssAuthServerUrl from baseUrl with default css-authserver mode', () => {
+    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+
+    const config = createNextConfig();
+    expect(config.cssAuthServerUrl).toBe('https://css.example.com/auth');
   });
 
   it('correctly parses boolean env vars', () => {
@@ -155,6 +205,60 @@ describe('createCSSConfig with css-authserver mode', () => {
     );
 
     expect(config.cssAuthServerUrl).toBe('https://css.example.com/auth');
+  });
+
+  it('derives ws:// wsBaseUrl from http:// baseUrl', () => {
+    const config = createCSSConfig(
+      {},
+      {
+        overrides: {
+          baseUrl: 'http://localhost:8787',
+          siteId: 'site-1',
+          authMode: 'mock',
+        },
+      },
+    );
+    expect(config.wsBaseUrl).toBe('ws://localhost:8787');
+  });
+
+  it('derives wss:// wsBaseUrl from https:// baseUrl', () => {
+    const config = createCSSConfig(
+      {},
+      {
+        overrides: {
+          baseUrl: 'https://css.example.com',
+          siteId: 'site-1',
+          authMode: 'mock',
+        },
+      },
+    );
+    expect(config.wsBaseUrl).toBe('wss://css.example.com');
+  });
+
+  it('defaults authMode to css-authserver when not provided via env or overrides', () => {
+    const config = createCSSConfig(
+      {
+        VITE_CSS_BASE_URL: 'https://css.example.com',
+        VITE_CSS_SITE_ID: 'site-123',
+      },
+      { prefix: 'VITE_' },
+    );
+    expect(config.authMode).toBe('css-authserver');
+  });
+
+  it('defaults enableRealtime and enablePresence to true', () => {
+    const config = createCSSConfig(
+      {},
+      {
+        overrides: {
+          baseUrl: 'https://css.example.com',
+          siteId: 'site-123',
+          authMode: 'mock',
+        },
+      },
+    );
+    expect(config.enableRealtime).toBe(true);
+    expect(config.enablePresence).toBe(true);
   });
 
   it('does not default cssAuthServerUrl for non-css-authserver modes', () => {

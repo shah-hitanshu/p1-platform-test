@@ -107,8 +107,8 @@ export const CSS_PRESETS: Record<'basic' | 'collaborative' | 'full', CSSFeatureC
  */
 export function resolveFeatureConfig(config: CSSFeatureConfig): Required<CSSFeatureConfig> {
   return {
-    enableRealtime: config.enableRealtime ?? false,
-    presenceEnabled: config.presenceEnabled ?? false,
+    enableRealtime: config.enableRealtime ?? true,
+    presenceEnabled: config.presenceEnabled ?? true,
     agentModeEnabled: config.agentModeEnabled ?? false,
     enableDocumentBrowser: config.enableDocumentBrowser ?? true,
     enableBranchSelector: config.enableBranchSelector ?? true,

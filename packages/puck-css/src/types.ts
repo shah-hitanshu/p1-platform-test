@@ -60,13 +60,13 @@ export interface CSSPuckConfig {
   /**
    * Enable real-time collaborative editing.
    * When enabled, changes are synced via WebSocket using Yjs CRDT.
-   * @default false
+   * @default true
    */
   enableRealtime?: boolean;
 
   /**
    * WebSocket base URL for real-time collaboration.
-   * Required when enableRealtime is true.
+   * Derived from baseUrl (http->ws, https->wss) when not set.
    * @example 'wss://api.example.com'
    */
   wsBaseUrl?: string;
@@ -100,7 +100,7 @@ export interface CSSPuckConfig {
   /**
    * Enable presence tracking.
    * When enabled, shows other users and agents editing the same content.
-   * @default false
+   * @default true
    */
   presenceEnabled?: boolean;
 

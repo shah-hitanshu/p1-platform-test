@@ -21,6 +21,11 @@ export interface CSSConfig {
 }
 
 const VALID_AUTH_MODES: AuthMode[] = ['mock', 'google', 'auth0', 'css-authserver'];
+const DEFAULT_AUTH_MODE: AuthMode = 'css-authserver';
+
+function httpToWs(url: string): string {
+  return url.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+}
 
 export function createCSSConfig(
   envSource: Record<string, string | undefined>,
@@ -51,16 +56,13 @@ export function createCSSConfig(
 
   const baseUrl = overrides.baseUrl ?? env('CSS_BASE_URL');
   const siteId = overrides.siteId ?? env('CSS_SITE_ID');
-  const authModeRaw = overrides.authMode ?? env('CSS_AUTH_MODE');
+  const authModeRaw = overrides.authMode ?? env('CSS_AUTH_MODE') ?? DEFAULT_AUTH_MODE;
 
   if (!baseUrl) {
     throw new Error('Missing required config: CSS_BASE_URL');
   }
   if (!siteId) {
     throw new Error('Missing required config: CSS_SITE_ID');
-  }
-  if (!authModeRaw) {
-    throw new Error('Missing required config: CSS_AUTH_MODE');
   }
   if (!VALID_AUTH_MODES.includes(authModeRaw as AuthMode)) {
     throw new Error(`Invalid CSS_AUTH_MODE: "${authModeRaw}". Must be one of: ${VALID_AUTH_MODES.join(', ')}`);
@@ -82,9 +84,9 @@ export function createCSSConfig(
     cssAuthServerUrl: overrides.cssAuthServerUrl ?? env('CSS_AUTH_SERVER_URL') ??
       (authModeRaw === 'css-authserver' ? `${baseUrl}/auth` : undefined),
     cssAuthRedirectUri: overrides.cssAuthRedirectUri ?? env('CSS_AUTH_REDIRECT_URI'),
-    enableRealtime: overrides.enableRealtime ?? envBool('CSS_ENABLE_REALTIME'),
-    wsBaseUrl: overrides.wsBaseUrl ?? env('CSS_WS_BASE_URL'),
-    enablePresence: overrides.enablePresence ?? envBool('CSS_ENABLE_PRESENCE'),
+    enableRealtime: overrides.enableRealtime ?? envBool('CSS_ENABLE_REALTIME') ?? true,
+    wsBaseUrl: overrides.wsBaseUrl ?? env('CSS_WS_BASE_URL') ?? httpToWs(baseUrl),
+    enablePresence: overrides.enablePresence ?? envBool('CSS_ENABLE_PRESENCE') ?? true,
     autoSaveDelay: overrides.autoSaveDelay ?? envNum('CSS_AUTO_SAVE_DELAY'),
     maxRetries: overrides.maxRetries ?? envNum('CSS_MAX_RETRIES'),
   };
@@ -100,9 +102,13 @@ export function createNextConfig(overrides?: Partial<CSSConfig>): CSSConfig {
       branchId: process.env.NEXT_PUBLIC_CSS_BRANCH_ID,
       cssAuthServerUrl: process.env.NEXT_PUBLIC_CSS_AUTH_SERVER_URL,
       cssAuthRedirectUri: process.env.NEXT_PUBLIC_CSS_AUTH_REDIRECT_URI,
-      enableRealtime: process.env.NEXT_PUBLIC_CSS_ENABLE_REALTIME === 'true',
+      enableRealtime: process.env.NEXT_PUBLIC_CSS_ENABLE_REALTIME !== undefined
+        ? process.env.NEXT_PUBLIC_CSS_ENABLE_REALTIME === 'true'
+        : undefined,
       wsBaseUrl: process.env.NEXT_PUBLIC_CSS_WS_BASE_URL,
-      enablePresence: process.env.NEXT_PUBLIC_CSS_ENABLE_PRESENCE === 'true',
+      enablePresence: process.env.NEXT_PUBLIC_CSS_ENABLE_PRESENCE !== undefined
+        ? process.env.NEXT_PUBLIC_CSS_ENABLE_PRESENCE === 'true'
+        : undefined,
       ...overrides,
     },
   });

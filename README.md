@@ -149,17 +149,47 @@ export default async function Page({ params }: { params: { slug?: string[] } }) 
 
 ## Environment Variables
 
-| Variable | Required | Side | Description |
-|----------|----------|------|-------------|
-| `NEXT_PUBLIC_CSS_BASE_URL` | Yes | Client+Server | CSS API base URL |
-| `NEXT_PUBLIC_CSS_SITE_ID` | Yes | Client+Server | Site identifier |
-| `NEXT_PUBLIC_CSS_AUTH_MODE` | Yes | Client | Auth mode: `mock`, `google`, or `auth0` |
-| `NEXT_PUBLIC_CSS_GOOGLE_CLIENT_ID` | If google auth | Client | Google OAuth client ID |
-| `NEXT_PUBLIC_CSS_BRANCH_ID` | No | Client+Server | Branch ID (defaults to main) |
-| `NEXT_PUBLIC_CSS_ENABLE_REALTIME` | No | Client | Enable real-time collaboration (`true`/`false`) |
-| `NEXT_PUBLIC_CSS_WS_BASE_URL` | If realtime | Client | WebSocket URL for real-time |
-| `NEXT_PUBLIC_CSS_ENABLE_PRESENCE` | No | Client | Enable presence awareness (`true`/`false`) |
-| `CSS_API_KEY` | For SSR | Server | API key for server-side content delivery |
+### Required
+
+Only two environment variables are required:
+
+| Variable | Side | Description |
+|----------|------|-------------|
+| `NEXT_PUBLIC_CSS_BASE_URL` | Client+Server | CSS API base URL (e.g. `https://css.example.com`) |
+| `NEXT_PUBLIC_CSS_SITE_ID` | Client+Server | Site identifier (UUID) |
+
+### Optional
+
+Everything else has sensible defaults and can be omitted.
+
+**Features** — enabled by default, set to `false` to disable:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NEXT_PUBLIC_CSS_ENABLE_REALTIME` | `true` | Real-time collaborative editing via WebSocket/Yjs CRDT |
+| `NEXT_PUBLIC_CSS_ENABLE_PRESENCE` | `true` | Presence awareness (collaborator avatars, focus highlighting) |
+
+**Authentication** — defaults to the built-in CSS auth server:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NEXT_PUBLIC_CSS_AUTH_MODE` | `css-authserver` | Auth provider. Options: `css-authserver`, `mock`, `google`, `auth0` |
+| `NEXT_PUBLIC_CSS_GOOGLE_CLIENT_ID` | — | Google OAuth client ID (required when `AUTH_MODE=google`) |
+| `NEXT_PUBLIC_CSS_AUTH_SERVER_URL` | `${BASE_URL}/auth` | CSS OAuth server URL (derived automatically in `css-authserver` mode) |
+| `NEXT_PUBLIC_CSS_AUTH_REDIRECT_URI` | `${origin}/auth/callback` | OAuth callback redirect URI |
+
+**Networking** — derived from `BASE_URL` when not set:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NEXT_PUBLIC_CSS_WS_BASE_URL` | Derived from `BASE_URL` | WebSocket URL (`http→ws`, `https→wss`). Override for a separate WS endpoint. |
+| `NEXT_PUBLIC_CSS_BRANCH_ID` | main branch | Target branch for document operations |
+
+**Server-side** — only needed for server-rendered public pages:
+
+| Variable | Description |
+|----------|-------------|
+| `CSS_API_KEY` | API key for `createNextContentClient()`. Returns `null` if not set. |
 
 **Note:** For Vite apps, use the `VITE_` prefix instead of `NEXT_PUBLIC_` (e.g. `VITE_CSS_BASE_URL`).
 
@@ -178,11 +208,18 @@ This reads `CSS_API_KEY`, `NEXT_PUBLIC_CSS_BASE_URL`, and `NEXT_PUBLIC_CSS_SITE_
 
 ## Real-time Collaboration
 
-Real-time collaboration is config-only. Set the environment variables and `CSSApp` handles all wiring internally:
+Real-time collaboration is enabled by default. `CSSApp` handles all wiring internally — the WebSocket URL is derived from `NEXT_PUBLIC_CSS_BASE_URL` automatically.
+
+To disable real-time collaboration:
 
 ```
-NEXT_PUBLIC_CSS_ENABLE_REALTIME=true
-NEXT_PUBLIC_CSS_WS_BASE_URL=ws://your-server:port
+NEXT_PUBLIC_CSS_ENABLE_REALTIME=false
+```
+
+To use a custom WebSocket URL (e.g. a separate WebSocket server):
+
+```
+NEXT_PUBLIC_CSS_WS_BASE_URL=wss://custom-ws-server:port
 ```
 
 Multiple users editing the same document will see each other's changes merged automatically via Yjs CRDT.
@@ -197,10 +234,10 @@ When real-time is enabled, publishing is coordinated through the WebSocket conne
 
 ## Presence
 
-Presence awareness is also config-only:
+Presence awareness is enabled by default. To disable:
 
 ```
-NEXT_PUBLIC_CSS_ENABLE_PRESENCE=true
+NEXT_PUBLIC_CSS_ENABLE_PRESENCE=false
 ```
 
 `CSSApp` includes presence UI automatically:
