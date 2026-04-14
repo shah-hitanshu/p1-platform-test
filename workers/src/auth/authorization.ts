@@ -103,9 +103,15 @@ async function getSiteRole(
     if (result.rows[0]) {
       return mapPantheonRole(result.rows[0].role);
     }
+
+    // TODO: Remove this default ADMIN grant once proper role management is in place.
+    // To replace: add a role assignment step (e.g. auto-assign on site creation,
+    // or via the collaborator API POST /api/sites/{siteId}/collaborators), then
+    // delete this return so users without an explicit DB role get NO_ACCESS again.
+    return 'ADMIN';
   }
 
-  // Fallback to JWT-embedded roles for backwards compatibility
+  // Fallback to JWT-embedded roles for backwards compatibility (agents only)
   const jwtRole = principal.pantheonSiteRoles[siteId];
   return mapPantheonRole(jwtRole);
 }
