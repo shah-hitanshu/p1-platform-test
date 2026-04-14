@@ -102,6 +102,7 @@ module "database" {
   cloudsql_backup_enabled      = true
   cloudsql_authorized_networks = var.cloudsql_authorized_networks
   deletion_protection          = true
+  cloudsql_max_connections     = 200 # 2.5x Hyperdrive total (60+20=80)
 
   tags = local.default_tags
 }
@@ -121,6 +122,9 @@ module "cloudflare" {
   postgres_user     = module.database.username
   postgres_password = module.database.password
   postgres_database = module.database.database
+
+  hyperdrive_origin_connection_limit         = 60 # Cached reads — primary traffic
+  hyperdrive_nocache_origin_connection_limit = 20 # Admin writes — less frequent
 }
 
 # -----------------------------------------------------------------------------
@@ -175,6 +179,11 @@ output "queue_id" {
 output "hyperdrive_id" {
   description = "Hyperdrive config ID for wrangler.jsonc"
   value       = module.cloudflare.hyperdrive_id
+}
+
+output "hyperdrive_nocache_id" {
+  description = "Hyperdrive no-cache config ID for wrangler.jsonc (admin routes)"
+  value       = module.cloudflare.hyperdrive_nocache_id
 }
 
 output "worker_name" {

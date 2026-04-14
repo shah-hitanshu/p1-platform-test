@@ -76,7 +76,16 @@ export async function runWithConnection<T>(
   try {
     return await connectionStorage.run(connection, fn);
   } finally {
-    await connection.close();
+    // Fire-and-forget: do not await connection close. Awaiting sql.end() can
+    // block for up to 5 seconds (its timeout) when Hyperdrive is slow to
+    // acknowledge the disconnect under concurrent load. This delays response
+    // delivery and starves Hyperdrive's pool — in-flight "shutting down"
+    // postgres.js instances hold pool slots, causing 500s for new requests.
+    //
+    // For Hyperdrive connections, the pool automatically reclaims the slot
+    // when the Worker invocation completes, so explicit close is not required
+    // for correctness. For direct connections, the OS cleans up the socket.
+    connection.close().catch(() => { /* ignore cleanup errors */ });
   }
 }
 

@@ -203,6 +203,8 @@ export default {
       incrementCounter('css_http_errors_total', {
         error_type: classifyError(error),
       });
+      // Log so the error appears in wrangler tail for diagnosis
+      console.error('[fetch] unhandled error:', error instanceof Error ? error.message : String(error));
       // Return a CORS-allowed error response rather than re-throwing.
       // Re-throwing causes the Workers runtime to generate a bare 500 with no CORS
       // headers, which the browser sees as a network failure rather than an API error.
