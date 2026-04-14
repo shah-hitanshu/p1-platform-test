@@ -83,7 +83,6 @@ export interface Env {
   // Auth providers (Phase 2/3 - future)
   GOOGLE_CLIENT_ID?: string;
   AUTH0_ISSUER_BASE_URL?: string;
-  AUTH0_NEW_ISSUER_BASE_URL?: string;
   AUTH0_AUDIENCE?: string;
 
   // MAS (Membership Authorization Service) integration
