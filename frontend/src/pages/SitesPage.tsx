@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { listSites, createSite as createSiteApi, deleteSite as deleteSiteApi } from '../api/sites';
 import type { CreateSiteParams } from '../api/sites';
@@ -13,9 +14,12 @@ import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import type { Site } from '../types';
 import {
   Button,
-  RouterLinkButton,
-  Alert,
-} from '@pantheon-systems/design-toolkit-react';
+  ButtonLink,
+  CompactEmptyState,
+  InlineMessage,
+  Panel,
+  TextInput,
+} from '@pantheon-systems/pds-toolkit-react';
 import './SitesPage.css';
 
 export function SitesPage() {
@@ -62,59 +66,53 @@ export function SitesPage() {
 
   return (
     <div className="sites-page">
-      <header className="page-header">
+      <Panel data-testid="page-header">
         <div className="header-content">
           <h1 className="page-title" data-testid="page-title">Sites</h1>
           <p className="page-subtitle" data-testid="page-subtitle">Manage your collaborative sites</p>
         </div>
         <Button
-          type={showCreateForm ? 'secondary' : 'primary'}
+          variant={showCreateForm ? 'secondary' : 'primary'}
           onClick={() => setShowCreateForm(!showCreateForm)}
+          label={showCreateForm ? 'Cancel' : '+ Create site'}
           data-testid="create-site-btn"
-        >
-          {showCreateForm ? 'Cancel' : '+ Create site'}
-        </Button>
-      </header>
+        />
+      </Panel>
 
       {showCreateForm && (
         <div className="create-form-container" data-testid="create-form">
           <form onSubmit={handleCreateSite} className="create-form">
             <div className="form-fields">
-              <input
-                type="text"
+              <TextInput
+                id="site-name"
+                label="Site name"
                 value={newSiteName}
                 onChange={(e) => setNewSiteName(e.target.value)}
                 placeholder="Enter site name..."
-                className="pds-input"
                 autoFocus
-                aria-label="Site name"
                 data-testid="site-name-input"
               />
-              <input
-                type="text"
+              <TextInput
+                id="pantheon-site-id"
+                label="Pantheon Site ID"
                 value={newPantheonSiteId}
                 onChange={(e) => setNewPantheonSiteId(e.target.value)}
                 placeholder="Enter Pantheon Site ID..."
-                className="pds-input"
-                aria-label="Pantheon Site ID"
                 data-testid="pantheon-id-input"
               />
             </div>
             <Button
-              type="primary"
-              isSubmit
+              variant="primary"
+              buttonType="submit"
               onClick={() => {}}
               disabled={isCreating || !newSiteName.trim() || !newPantheonSiteId.trim()}
               isLoading={isCreating}
+              label={isCreating ? 'Creating...' : 'Create'}
               data-testid="submit-site-btn"
-            >
-              {isCreating ? 'Creating...' : 'Create'}
-            </Button>
+            />
           </form>
           {createError && (
-            <Alert type="danger" className="create-error-alert" data-testid="create-error">
-              {createError}
-            </Alert>
+            <InlineMessage type="critical" title={createError} className="create-error-alert" data-testid="create-error" />
           )}
         </div>
       )}
@@ -130,51 +128,47 @@ export function SitesPage() {
           <ApiResponse data={null} isLoading={true} error={null} />
         </div>
       ) : sites && sites.length > 0 ? (
-        <div className="sites-table-container">
-          <table className="sites-table" data-testid="sites-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>ID</th>
-                <th>Created</th>
-                <th>Actions</th>
+        <table data-testid="sites-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>ID</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sites.map((site: Site) => (
+              <tr key={site.id} data-testid={`site-row-${site.id}`}>
+                <td className="site-name">{site.name}</td>
+                <td className="site-id">
+                  <code>{site.id}</code>
+                </td>
+                <td className="site-date">
+                  {new Date(site.createdAt).toLocaleDateString()}
+                </td>
+                <td className="site-actions">
+                  <ButtonLink
+                    variant="secondary"
+                    data-testid={`view-site-${site.id}`}
+                    linkContent={<Link to={`/sites/${site.id}`}>View</Link>}
+                  />
+                  <Button
+                    variant="critical"
+                    onClick={() => setSiteToDelete(site)}
+                    label="Delete"
+                    data-testid={`delete-site-${site.id}`}
+                  />
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {sites.map((site: Site) => (
-                <tr key={site.id} data-testid={`site-row-${site.id}`}>
-                  <td className="site-name">{site.name}</td>
-                  <td className="site-id">
-                    <code>{site.id}</code>
-                  </td>
-                  <td className="site-date">
-                    {new Date(site.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="site-actions">
-                    <RouterLinkButton
-                      to={`/sites/${site.id}`}
-                      type="secondary"
-                      data-testid={`view-site-${site.id}`}
-                    >
-                      View
-                    </RouterLinkButton>
-                    <Button
-                      type="danger"
-                      onClick={() => setSiteToDelete(site)}
-                      data-testid={`delete-site-${site.id}`}
-                    >
-                      Delete
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       ) : (
-        <div className="empty-state" data-testid="empty-state">
-          <p>No sites found. Create your first site to get started.</p>
-        </div>
+        <CompactEmptyState
+          data-testid="empty-state"
+          heading="No sites found. Create your first site to get started."
+        />
       )}
 
       <ConfirmDeleteModal

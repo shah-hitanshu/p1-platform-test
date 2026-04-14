@@ -61,6 +61,18 @@ variable "postgres_database" {
   type        = string
 }
 
+variable "hyperdrive_origin_connection_limit" {
+  description = "Soft max origin connections for the cached Hyperdrive config (document reads). Must not exceed Cloudflare plan max (100 paid, 20 free). Sum of both limits should stay under 50% of CloudSQL max_connections to absorb soft-limit overruns."
+  type        = number
+  default     = 30
+}
+
+variable "hyperdrive_nocache_origin_connection_limit" {
+  description = "Soft max origin connections for the no-cache Hyperdrive config (admin writes). Typically lower since admin operations are less frequent."
+  type        = number
+  default     = 10
+}
+
 # -----------------------------------------------------------------------------
 # Locals
 # -----------------------------------------------------------------------------
@@ -101,6 +113,11 @@ resource "cloudflare_workers_kv_namespace" "session_kv" {
   title      = "css-session-kv-${var.environment}"
 }
 
+resource "cloudflare_workers_kv_namespace" "oauth_kv" {
+  account_id = var.cloudflare_account_id
+  title      = "css-auth-oauth-kv-${var.environment}"
+}
+
 # -----------------------------------------------------------------------------
 # Queue (sync decoupling between DOs and PostgreSQL)
 # -----------------------------------------------------------------------------
@@ -126,6 +143,34 @@ resource "cloudflare_hyperdrive_config" "postgres" {
     user     = var.postgres_user
     password = var.postgres_password
   }
+
+  # Soft limit — Hyperdrive may temporarily exceed during traffic spikes.
+  # Sum of both configs' limits must stay well under CloudSQL max_connections
+  # to prevent cascade connection exhaustion (see 2026-04-13 sbx1 outage).
+  origin_connection_limit = var.hyperdrive_origin_connection_limit
+}
+
+# No-cache Hyperdrive for admin routes that need immediate read-after-write consistency.
+# Kept separate from the caching config so admin writes are never served stale data.
+# IMPORTANT: Both configs must be updated together when the origin database changes.
+resource "cloudflare_hyperdrive_config" "postgres_nocache" {
+  account_id = var.cloudflare_account_id
+  name       = "css-postgres-${var.environment}-nocache"
+
+  origin = {
+    scheme   = "postgres"
+    host     = var.postgres_host
+    port     = var.postgres_port
+    database = var.postgres_database
+    user     = var.postgres_user
+    password = var.postgres_password
+  }
+
+  caching = {
+    disabled = true
+  }
+
+  origin_connection_limit = var.hyperdrive_nocache_origin_connection_limit
 }
 
 # -----------------------------------------------------------------------------
@@ -142,6 +187,11 @@ output "session_kv_id" {
   value       = cloudflare_workers_kv_namespace.session_kv.id
 }
 
+output "oauth_kv_id" {
+  description = "OAUTH_KV namespace ID (CSS OAuth token storage)"
+  value       = cloudflare_workers_kv_namespace.oauth_kv.id
+}
+
 output "queue_id" {
   description = "Sync queue ID"
   value       = cloudflare_queue.sync_queue.id
@@ -153,8 +203,13 @@ output "queue_name" {
 }
 
 output "hyperdrive_id" {
-  description = "Hyperdrive config ID"
+  description = "Hyperdrive config ID (with caching)"
   value       = cloudflare_hyperdrive_config.postgres.id
+}
+
+output "hyperdrive_nocache_id" {
+  description = "Hyperdrive config ID (no-cache, for admin routes)"
+  value       = cloudflare_hyperdrive_config.postgres_nocache.id
 }
 
 output "worker_name" {

@@ -76,7 +76,16 @@ export async function runWithConnection<T>(
   try {
     return await connectionStorage.run(connection, fn);
   } finally {
-    await connection.close();
+    // Fire-and-forget: do not await connection close. Awaiting sql.end() can
+    // block for up to 5 seconds (its timeout) when Hyperdrive is slow to
+    // acknowledge the disconnect under concurrent load. This delays response
+    // delivery and starves Hyperdrive's pool — in-flight "shutting down"
+    // postgres.js instances hold pool slots, causing 500s for new requests.
+    //
+    // For Hyperdrive connections, the pool automatically reclaims the slot
+    // when the Worker invocation completes, so explicit close is not required
+    // for correctness. For direct connections, the OS cleans up the socket.
+    connection.close().catch(() => { /* ignore cleanup errors */ });
   }
 }
 
@@ -128,10 +137,21 @@ export function createDatabaseConnection(
       sqlQuery: string,
       params?: unknown[],
     ): Promise<QueryResult<T>> {
-      const result = await sql.unsafe<T[]>(
+      // Race the query against a 20-second timeout. If Hyperdrive hangs (no response),
+      // we fail fast with an error rather than hanging the Worker indefinitely.
+      // Without this, a stuck Hyperdrive connection causes Cloudflare to kill the Worker
+      // with a bare 500 that has no CORS headers, making errors opaque to the client.
+      const QUERY_TIMEOUT_MS = 20_000;
+      const queryPromise = sql.unsafe<T[]>(
         sqlQuery,
         params as unknown as postgres.ParameterOrJSON<never>[],
       );
+      const timeoutPromise = new Promise<never>((_resolve, reject) => {
+        setTimeout(() => {
+          reject(new Error('Database query timed out after 20 seconds'));
+        }, QUERY_TIMEOUT_MS);
+      });
+      const result = await Promise.race([queryPromise, timeoutPromise]);
 
       // The postgres package returns a Result object that extends Array
       const rows = [...result] as T[];
@@ -148,8 +168,11 @@ export function createDatabaseConnection(
     async close(): Promise<void> {
       // For Hyperdrive connections, closing is optional as Hyperdrive manages lifecycle
       // For direct connections, we still close but fire-and-forget to avoid cross-request issues
+      // Use timeout to avoid hanging when the underlying connection has already been dropped
+      // (e.g. CloudSQL closed the socket mid-query) — postgres.js end() can hang indefinitely
+      // on a dead connection without a timeout.
       try {
-        await sql.end();
+        await sql.end({ timeout: 5 });
       } catch {
         // Ignore errors - connection may already be closed or in different request context
       }

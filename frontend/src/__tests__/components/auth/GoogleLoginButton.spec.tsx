@@ -32,6 +32,15 @@ vi.mock('../../../hooks/useAuth', () => ({
   }),
 }));
 
+vi.mock('@pantheon-systems/pds-toolkit-react', () => ({
+  Spinner: ({ label, ...props }: Record<string, unknown>) => (
+    <div role="status" aria-label={label as string} {...props} />
+  ),
+  InlineMessage: ({ title, children, ...props }: Record<string, unknown>) => (
+    <div role="alert" {...props}>{(title as string)}{(children as React.ReactNode)}</div>
+  ),
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
 });

@@ -2,58 +2,25 @@
  * Merge Request Detail Page Styles
  *
  * Uses PDS components where possible:
+ * - Breadcrumb (PDS) for navigation breadcrumb
+ * - Panel (PDS) for section containers (header, metadata, description, actions, preview, conflicts)
  * - Button (PDS) for action buttons (approve, close, delete, merge, etc.)
  * - RouterLinkButton (PDS) for back navigation
  * - Alert (PDS) for error messages
  *
  * Custom styles remain for:
  * - Page layout and structure
- * - Breadcrumb (will be migrated in Phase 4)
- * - Status badges (will be migrated in Phase 3)
  * - Metadata grid
- * - Conflict section styling
+ * - Branch display
+ * - Conflict section content
  */
 
 .mr-detail-page {
   max-width: 900px;
   margin: 0 auto;
-}
-
-/* Breadcrumb */
-.breadcrumb {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 20px;
-  font-size: 0.875rem;
-  color: var(--dt-color-gray-5, #6c757d);
-}
-
-.breadcrumb a {
-  color: var(--dt-color-cyan-3, #02a9e0);
-  text-decoration: none;
-}
-
-.breadcrumb a:hover {
-  text-decoration: underline;
-}
-
-.breadcrumb-separator {
-  color: var(--dt-color-gray-3, #ced4da);
-}
-
-.breadcrumb-current {
-  color: var(--dt-color-gray-7, #333);
-  font-weight: 500;
-}
-
-/* Header */
-.mr-header {
-  background-color: var(--dt-color-white, #fff);
-  border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  flex-direction: column;
+  gap: 24px;
 }
 
 .mr-header-top {
@@ -86,52 +53,7 @@
   font-size: 1.25rem;
 }
 
-/* Status Badges */
-.status-badge {
-  display: inline-block;
-  padding: 6px 12px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  border-radius: 16px;
-  white-space: nowrap;
-}
-
-.status-open {
-  background-color: var(--dt-color-cyan-1, #cce5ff);
-  color: var(--dt-color-cyan-4, #004085);
-}
-
-.status-approved {
-  background-color: var(--dt-color-green-1, #d4edda);
-  color: var(--dt-color-green-4, #155724);
-}
-
-.status-conflicted {
-  background-color: var(--dt-color-yellow-1, #fff3cd);
-  color: var(--dt-color-yellow-4, #856404);
-}
-
-.status-merged {
-  background-color: var(--dt-color-purple-1, #e2d4f0);
-  color: var(--dt-color-purple-4, #563d7c);
-}
-
-.status-closed {
-  background-color: var(--dt-color-gray-2, #e2e3e5);
-  color: var(--dt-color-gray-6, #383d41);
-}
-
 /* Metadata Section */
-.mr-metadata {
-  background-color: var(--dt-color-white, #fff);
-  border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
 .metadata-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -158,14 +80,6 @@
 }
 
 /* Description Section */
-.mr-description {
-  background-color: var(--dt-color-white, #fff);
-  border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
 .section-title {
   margin: 0 0 16px;
   font-size: 1.125rem;
@@ -189,14 +103,6 @@
 }
 
 /* Actions Section */
-.mr-actions-section {
-  background-color: var(--dt-color-white, #fff);
-  border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
 .actions-container {
   display: flex;
   flex-wrap: wrap;
@@ -214,25 +120,7 @@
   margin-top: 12px;
 }
 
-/* Preview Section */
-.mr-preview {
-  background-color: var(--dt-color-white, #fff);
-  border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
 /* Conflicts Section */
-.mr-conflicts {
-  background-color: var(--dt-color-white, #fff);
-  border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border-left: 4px solid var(--dt-color-yellow-3, #fd7e14);
-}
-
 .conflicts-note {
   margin: 0;
   font-size: 0.9375rem;

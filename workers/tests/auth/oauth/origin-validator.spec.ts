@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { matchesAllowedOrigin } from '../../src/auth/origin-validator.js';
+import { matchesAllowedOrigin } from '../../../src/auth/oauth/origin-validator.js';
 
 describe('matchesAllowedOrigin', () => {
   // --- Exact matching ---

@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
 import type { CredentialResponse } from '@react-oauth/google';
 import { useAuth } from '../../hooks/useAuth';
-import { Alert } from '@pantheon-systems/design-toolkit-react';
+import { InlineMessage } from '@pantheon-systems/pds-toolkit-react';
 
 export function GoogleLoginButton() {
   const { loginWithGoogle } = useAuth();
@@ -41,9 +41,7 @@ export function GoogleLoginButton() {
         text="signin_with"
       />
       {error && (
-        <Alert type="danger" data-testid="google-login-error">
-          {error}
-        </Alert>
+        <InlineMessage type="critical" title={error} data-testid="google-login-error" />
       )}
     </div>
   );

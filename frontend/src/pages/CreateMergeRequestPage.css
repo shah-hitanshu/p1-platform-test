@@ -2,56 +2,23 @@
  * Create Merge Request Page Styles
  *
  * Uses PDS components where possible:
+ * - Breadcrumb (PDS) for navigation
  * - Button (PDS) for cancel and submit buttons
  * - RouterLinkButton (PDS) for back navigation
  * - Alert (PDS) for error messages
+ * - Panel (PDS) for page header and form section containers
  *
  * Custom styles remain for:
  * - Page layout and structure
- * - Breadcrumb (will be migrated in Phase 4)
- * - Form styling with pds-input/pds-select classes
+ * - Form styling with PDS TextInput/Select/Textarea components
  */
 
 .create-mr-page {
   max-width: 800px;
   margin: 0 auto;
-}
-
-/* Breadcrumb */
-.breadcrumb {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 20px;
-  font-size: 0.875rem;
-  color: var(--dt-color-gray-5, #6c757d);
-}
-
-.breadcrumb a {
-  color: var(--dt-color-cyan-3, #02a9e0);
-  text-decoration: none;
-}
-
-.breadcrumb a:hover {
-  text-decoration: underline;
-}
-
-.breadcrumb-separator {
-  color: var(--dt-color-gray-3, #ced4da);
-}
-
-.breadcrumb-current {
-  color: var(--dt-color-gray-7, #333);
-  font-weight: 500;
-}
-
-/* Page Header */
-.page-header {
-  background-color: var(--dt-color-white, #fff);
-  border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  flex-direction: column;
+  gap: 24px;
 }
 
 .page-title {
@@ -59,14 +26,6 @@
   font-size: 1.75rem;
   font-weight: 600;
   color: var(--dt-color-gray-8, #1a1a2e);
-}
-
-/* Form Section */
-.form-section {
-  background-color: var(--dt-color-white, #fff);
-  border-radius: 8px;
-  padding: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .mr-form {
@@ -89,36 +48,6 @@
 
 .required {
   color: var(--dt-color-red-3, #dc3545);
-}
-
-/* PDS-styled input and select elements */
-.pds-input,
-.pds-select {
-  padding: 12px;
-  font-size: 0.9375rem;
-  border: 1px solid var(--dt-color-gray-3, #ced4da);
-  border-radius: 6px;
-  background-color: var(--dt-color-white, #fff);
-  transition: border-color 0.2s, box-shadow 0.2s;
-  font-family: inherit;
-}
-
-.pds-input:focus,
-.pds-select:focus {
-  outline: none;
-  border-color: var(--dt-color-cyan-3, #02a9e0);
-  box-shadow: 0 0 0 3px rgba(2, 169, 224, 0.15);
-}
-
-.pds-input:disabled,
-.pds-select:disabled {
-  background-color: var(--dt-color-gray-2, #e9ecef);
-  cursor: not-allowed;
-}
-
-.pds-textarea {
-  resize: vertical;
-  min-height: 100px;
 }
 
 .form-help {

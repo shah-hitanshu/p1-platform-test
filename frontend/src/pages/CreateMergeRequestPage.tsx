@@ -14,10 +14,15 @@ import type { CreateMergeRequestParams } from '../api/merge-requests';
 import { ApiResponse } from '../components/ApiResponse';
 import type { Site, Branch, MergeRequest } from '../types';
 import {
+  Breadcrumb,
   Button,
-  RouterLinkButton,
-  Alert,
-} from '@pantheon-systems/design-toolkit-react';
+  ButtonLink,
+  InlineMessage,
+  Panel,
+  Select,
+  Textarea,
+  TextInput,
+} from '@pantheon-systems/pds-toolkit-react';
 import './CreateMergeRequestPage.css';
 
 export function CreateMergeRequestPage() {
@@ -103,9 +108,7 @@ export function CreateMergeRequestPage() {
         <div className="error-container">
           <ApiResponse data={null} isLoading={false} error={siteError} />
           <div className="back-link-container">
-            <RouterLinkButton to="/sites" type="secondary" data-testid="back-to-sites">
-              Back to sites
-            </RouterLinkButton>
+            <ButtonLink variant="secondary" data-testid="back-to-sites" linkContent={<Link to="/sites">Back to sites</Link>} />
           </div>
         </div>
       </div>
@@ -115,90 +118,68 @@ export function CreateMergeRequestPage() {
   return (
     <div className="create-mr-page">
       {/* Breadcrumb */}
-      <nav className="breadcrumb">
-        <Link to="/sites">Sites</Link>
-        <span className="breadcrumb-separator">/</span>
-        <Link to={`/sites/${siteId}`}>{site?.name || 'Site'}</Link>
-        <span className="breadcrumb-separator">/</span>
-        <Link to={`/sites/${siteId}/merge-requests`}>Merge Requests</Link>
-        <span className="breadcrumb-separator">/</span>
-        <span className="breadcrumb-current">New</span>
-      </nav>
+      <Breadcrumb
+        crumbs={[
+          <Link to="/sites">Sites</Link>,
+          <Link to={`/sites/${siteId}`}>{site?.name || 'Site'}</Link>,
+          <Link to={`/sites/${siteId}/merge-requests`}>Merge Requests</Link>,
+          <span>New</span>,
+        ]}
+      />
 
       {/* Page Header */}
-      <header className="page-header">
+      <Panel>
         <h1 className="page-title">Create Merge Request</h1>
-      </header>
+      </Panel>
 
       {/* Form */}
-      <section className="form-section">
+      <Panel>
         <form onSubmit={handleSubmit} className="mr-form" data-testid="create-mr-form">
           <div className="form-group">
-            <label htmlFor="sourceBranch" className="form-label">
-              Source Branch <span className="required">*</span>
-            </label>
-            <select
+            <Select
               id="sourceBranch"
+              label="Source Branch *"
               value={sourceBranchId}
-              onChange={(e) => setSourceBranchId(e.target.value)}
-              className="pds-select"
+              options={activeBranches
+                .filter((branch) => !branch.isMain)
+                .map((branch) => ({ label: branch.name, value: branch.id }))}
+              onOptionSelect={(option) => setSourceBranchId(option.value)}
               disabled={branchesLoading}
               data-testid="source-branch-select"
-            >
-              <option value="">Select source branch...</option>
-              {activeBranches
-                .filter((branch) => !branch.isMain)
-                .map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </option>
-                ))}
-            </select>
+            />
             <p className="form-help">The branch containing changes you want to merge</p>
           </div>
 
           <div className="form-group">
-            <label htmlFor="targetBranch" className="form-label">
-              Target Branch <span className="required">*</span>
-            </label>
-            <select
+            <Select
               id="targetBranch"
+              label="Target Branch *"
               value={targetBranchId}
-              className="pds-select"
+              options={mainBranch ? [{ label: mainBranch.name, value: mainBranch.id }] : []}
+              onOptionSelect={() => {}}
               disabled
               data-testid="target-branch-select"
-            >
-              {mainBranch && (
-                <option value={mainBranch.id}>{mainBranch.name}</option>
-              )}
-            </select>
+            />
             <p className="form-help">All merge requests target the main branch</p>
           </div>
 
           <div className="form-group">
-            <label htmlFor="title" className="form-label">
-              Title <span className="required">*</span>
-            </label>
-            <input
-              type="text"
+            <TextInput
               id="title"
+              label="Title *"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="pds-input"
               placeholder="Enter a descriptive title..."
               data-testid="title-input"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="description" className="form-label">
-              Description
-            </label>
-            <textarea
+            <Textarea
               id="description"
+              label="Description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="pds-input pds-textarea"
               placeholder="Describe the changes in this merge request..."
               rows={4}
               data-testid="description-input"
@@ -206,33 +187,29 @@ export function CreateMergeRequestPage() {
           </div>
 
           {(validationError || createError) && (
-            <Alert type="danger" data-testid="form-error">
-              {validationError || createError}
-            </Alert>
+            <InlineMessage type="critical" title={validationError || createError || ''} data-testid="form-error" />
           )}
 
           <div className="form-actions">
             <Button
-              type="secondary"
+              variant="secondary"
               onClick={handleCancel}
               disabled={isCreating}
+              label="Cancel"
               data-testid="cancel-btn"
-            >
-              Cancel
-            </Button>
+            />
             <Button
-              type="primary"
-              isSubmit
+              variant="primary"
+              buttonType="submit"
               onClick={() => {}}
               disabled={isCreating}
               isLoading={isCreating}
+              label={isCreating ? 'Creating...' : 'Create Merge Request'}
               data-testid="submit-btn"
-            >
-              {isCreating ? 'Creating...' : 'Create Merge Request'}
-            </Button>
+            />
           </div>
         </form>
-      </section>
+      </Panel>
     </div>
   );
 }

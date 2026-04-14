@@ -1,8 +1,0 @@
-# CSS Auth Server — Local Development Secrets
-# Copy this file to .dev.vars and fill in real values.
-# .dev.vars is gitignored and loaded automatically by `wrangler dev`.
-
-GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-INTERNAL_SECRET=any-random-string-shared-with-css-worker
-COOKIE_ENCRYPTION_KEY=at-least-32-characters-random-string

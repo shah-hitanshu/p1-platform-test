@@ -119,6 +119,12 @@ variable "deletion_protection" {
   default     = true
 }
 
+variable "cloudsql_max_connections" {
+  description = "PostgreSQL max_connections database flag. Must be >= 2x the sum of all Hyperdrive origin_connection_limit values to absorb soft-limit overruns."
+  type        = number
+  default     = 100
+}
+
 # -----------------------------------------------------------------------------
 # Locals
 # -----------------------------------------------------------------------------
@@ -196,6 +202,15 @@ resource "google_sql_database_instance" "main" {
     disk_size         = var.cloudsql_disk_size
     availability_type = var.cloudsql_availability_type
     disk_autoresize   = true
+
+    database_flags {
+      # Explicit max_connections prevents cascade connection exhaustion.
+      # Rule: this value must be >= 2x the sum of all Hyperdrive origin_connection_limit
+      # values, leaving headroom for soft-limit overruns, Cloud SQL Proxy sessions,
+      # monitoring, and autovacuum. See 2026-04-13 sbx1 outage for context.
+      name  = "max_connections"
+      value = tostring(var.cloudsql_max_connections)
+    }
 
     ip_configuration {
       ipv4_enabled = true

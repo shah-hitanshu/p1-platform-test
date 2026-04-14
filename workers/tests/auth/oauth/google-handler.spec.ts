@@ -8,10 +8,9 @@ describe('GoogleOAuthHandler', () => {
   beforeEach(() => { vi.resetAllMocks(); });
   afterEach(() => { vi.restoreAllMocks(); });
 
-  // Test 34: Authorization URL contains required params
   describe('getGoogleAuthorizationUrl', () => {
-    it('should construct a Google OAuth authorization URL with correct params', async () => {
-      const { getGoogleAuthorizationUrl } = await import('../../src/auth/google-handler.js');
+    it('constructs a Google OAuth authorization URL with correct params', async () => {
+      const { getGoogleAuthorizationUrl } = await import('../../../src/auth/oauth/google-handler.js');
       const url = getGoogleAuthorizationUrl({
         clientId: 'test-client-id',
         redirectUri: 'http://localhost:8788/callback',
@@ -24,9 +23,8 @@ describe('GoogleOAuthHandler', () => {
       expect(url).toContain('state=state-123');
     });
 
-    // Test 35: response_type=code
-    it('should use response_type=code', async () => {
-      const { getGoogleAuthorizationUrl } = await import('../../src/auth/google-handler.js');
+    it('uses response_type=code', async () => {
+      const { getGoogleAuthorizationUrl } = await import('../../../src/auth/oauth/google-handler.js');
       const url = getGoogleAuthorizationUrl({
         clientId: 'test-id',
         redirectUri: 'http://localhost:8788/callback',
@@ -37,10 +35,9 @@ describe('GoogleOAuthHandler', () => {
     });
   });
 
-  // Test 36: exchangeGoogleCode returns tokens and user info
   describe('exchangeGoogleCode', () => {
-    it('should exchange an auth code for Google tokens and user info', async () => {
-      const { exchangeGoogleCode } = await import('../../src/auth/google-handler.js');
+    it('exchanges an auth code for Google tokens and user info', async () => {
+      const { exchangeGoogleCode } = await import('../../../src/auth/oauth/google-handler.js');
       const mockFetch = vi.fn().mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
@@ -65,9 +62,8 @@ describe('GoogleOAuthHandler', () => {
       expect(result.user.email).toBe('user@example.com');
     });
 
-    // Test 37: Correct parameters sent to Google
-    it('should send correct parameters to Google token endpoint', async () => {
-      const { exchangeGoogleCode } = await import('../../src/auth/google-handler.js');
+    it('sends correct parameters to Google token endpoint', async () => {
+      const { exchangeGoogleCode } = await import('../../../src/auth/oauth/google-handler.js');
       const mockFetch = vi.fn().mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
@@ -96,9 +92,8 @@ describe('GoogleOAuthHandler', () => {
       expect(body).toContain('code=code-1');
     });
 
-    // Test 38: Throws on non-200 response
-    it('should throw on non-200 Google response', async () => {
-      const { exchangeGoogleCode } = await import('../../src/auth/google-handler.js');
+    it('throws on non-200 Google response', async () => {
+      const { exchangeGoogleCode } = await import('../../../src/auth/oauth/google-handler.js');
       const mockFetch = vi.fn().mockResolvedValueOnce({
         ok: false,
         status: 400,
@@ -115,10 +110,9 @@ describe('GoogleOAuthHandler', () => {
     });
   });
 
-  // Test 39: decodeIdTokenClaims
   describe('decodeIdTokenClaims', () => {
-    it('should decode user info from ID token payload', async () => {
-      const { decodeIdTokenClaims } = await import('../../src/auth/google-handler.js');
+    it('decodes user info from ID token payload', async () => {
+      const { decodeIdTokenClaims } = await import('../../../src/auth/oauth/google-handler.js');
       const payload = btoa(JSON.stringify({
         sub: '1234567890',
         email: 'user@example.com',
@@ -132,12 +126,9 @@ describe('GoogleOAuthHandler', () => {
       expect(claims.name).toBe('Test User');
     });
 
-    // Test 40: Handles base64url encoding
-    it('should handle base64url encoding', async () => {
-      const { decodeIdTokenClaims } = await import('../../src/auth/google-handler.js');
-      // Create payload with characters that differ between base64 and base64url
+    it('handles base64url encoding', async () => {
+      const { decodeIdTokenClaims } = await import('../../../src/auth/oauth/google-handler.js');
       const jsonStr = JSON.stringify({ sub: 'abc>?def', email: 'test@test.com' });
-      // Standard base64url encode
       const payload = btoa(jsonStr).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
       const token = `eyJhbGciOiJSUzI1NiJ9.${payload}.sig`;
       const claims = decodeIdTokenClaims(token);
@@ -145,9 +136,8 @@ describe('GoogleOAuthHandler', () => {
       expect(claims.email).toBe('test@test.com');
     });
 
-    // Test 41: Throws on malformed token
-    it('should throw on malformed token', async () => {
-      const { decodeIdTokenClaims } = await import('../../src/auth/google-handler.js');
+    it('throws on malformed token', async () => {
+      const { decodeIdTokenClaims } = await import('../../../src/auth/oauth/google-handler.js');
       expect(() => decodeIdTokenClaims('not-a-jwt')).toThrow();
     });
   });

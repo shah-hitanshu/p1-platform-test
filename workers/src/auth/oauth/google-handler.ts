@@ -60,11 +60,12 @@ export function getGoogleAuthorizationUrl(params: GoogleAuthUrlParams): string {
  */
 export function decodeIdTokenClaims(idToken: string): GoogleUser {
   const parts = idToken.split('.');
-  if (parts.length < 3) {
+  const rawPayload = parts[1];
+  if (parts.length < 3 || rawPayload === undefined) {
     throw new Error('Invalid ID token: expected at least 3 parts');
   }
 
-  const payload = parts[1];
+  const payload = rawPayload;
   // Handle base64url encoding (replace - with +, _ with /)
   const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
   // Add padding if needed

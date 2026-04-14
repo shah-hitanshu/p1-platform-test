@@ -127,3 +127,6 @@ Thumbs.db
 *.png
 .wrangler/
 .worktrees
+
+.dev.vars*
+!.dev.vars.example

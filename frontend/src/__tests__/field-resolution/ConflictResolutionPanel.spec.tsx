@@ -13,8 +13,12 @@ import { ConflictResolutionPanel } from '../../components/ConflictResolutionPane
 import type { DocumentConflict, DocumentDiff } from '../../types';
 
 // Mock the design toolkit Button
-vi.mock('@pantheon-systems/design-toolkit-react', () => ({
+vi.mock('@pantheon-systems/pds-toolkit-react', () => ({
+  Spinner: ({ label, ...props }: Record<string, unknown>) => (
+    <div role="status" aria-label={label as string} {...props} />
+  ),
   Button: ({
+    label,
     children,
     onClick,
     disabled,
@@ -26,7 +30,7 @@ vi.mock('@pantheon-systems/design-toolkit-react', () => ({
       disabled={(disabled as boolean) || (isLoading as boolean)}
       {...props}
     >
-      {children as string}
+      {(label as string) || (children as React.ReactNode)}
     </button>
   ),
 }));

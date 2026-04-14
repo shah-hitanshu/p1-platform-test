@@ -2,61 +2,29 @@
  * Branch Detail Page Styles
  *
  * Uses PDS components where possible:
+ * - Breadcrumb (PDS) for navigation
  * - Button (PDS) for create, submit, delete buttons
  * - RouterLinkButton (PDS) for back navigation
  * - Alert (PDS) for error messages
+ * - Panel (PDS) for section containers
+ * - CompactEmptyState (PDS) for empty states
  *
  * Custom styles remain for:
  * - Page layout and structure
- * - Breadcrumb (will be migrated in Phase 4)
- * - Tabs (will be migrated in Phase 4)
- * - Table styling (will be migrated in Phase 3)
- * - Status/type badges (will be migrated in Phase 3)
- * - Empty state (will be migrated in Phase 5)
+ * - Branch info layout within Panel
+ * - Table column-specific td classes
+ * - Section header flex layout
  */
 
 .branch-detail-page {
   max-width: 1200px;
   margin: 0 auto;
-}
-
-/* Breadcrumb - will be migrated in Phase 4 */
-.breadcrumb {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 20px;
-  font-size: 0.875rem;
-  color: var(--dt-color-gray-5, #6c757d);
+  flex-direction: column;
+  gap: 24px;
 }
 
-.breadcrumb a {
-  color: var(--dt-color-cyan-3, #02a9e0);
-  text-decoration: none;
-}
-
-.breadcrumb a:hover {
-  text-decoration: underline;
-}
-
-.breadcrumb-separator {
-  color: var(--dt-color-gray-3, #ced4da);
-}
-
-.breadcrumb-current {
-  color: var(--dt-color-gray-7, #333);
-  font-weight: 500;
-}
-
-/* Branch Header */
-.branch-header {
-  background-color: var(--dt-color-white, #fff);
-  border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
+/* Branch Info (inside Panel) */
 .branch-title-row {
   display: flex;
   align-items: center;
@@ -92,78 +60,7 @@
   font-style: italic;
 }
 
-/* Status Badge - will be migrated in Phase 3 */
-.status-badge {
-  display: inline-block;
-  padding: 4px 12px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  border-radius: 12px;
-}
-
-.status-active {
-  background-color: var(--dt-color-green-1, #d4edda);
-  color: var(--dt-color-green-4, #155724);
-}
-
-.status-merged {
-  background-color: var(--dt-color-cyan-1, #cce5ff);
-  color: var(--dt-color-cyan-4, #004085);
-}
-
-.status-archived {
-  background-color: var(--dt-color-gray-2, #e2e3e5);
-  color: var(--dt-color-gray-6, #383d41);
-}
-
-.status-abandoned {
-  background-color: var(--dt-color-red-1, #f8d7da);
-  color: var(--dt-color-red-4, #721c24);
-}
-
-/* Tabs - will be migrated in Phase 4 */
-.tabs-container {
-  margin-bottom: 24px;
-}
-
-.tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 2px solid var(--dt-color-gray-2, #e9ecef);
-}
-
-.tab {
-  padding: 12px 24px;
-  font-size: 0.9375rem;
-  font-weight: 500;
-  color: var(--dt-color-gray-5, #6c757d);
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.tab:hover {
-  color: var(--dt-color-gray-7, #333);
-}
-
-.tab.active {
-  color: var(--dt-color-cyan-3, #02a9e0);
-  border-bottom-color: var(--dt-color-cyan-3, #02a9e0);
-}
-
-/* Content Section */
-.content-section {
-  background-color: var(--dt-color-white, #fff);
-  border-radius: 8px;
-  padding: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
+/* Section header (inside Panel tab content) */
 .section-header {
   display: flex;
   align-items: center;
@@ -192,73 +89,9 @@
   align-items: flex-start;
 }
 
-/* PDS-styled input element */
-.pds-input {
-  flex: 1;
-  padding: 12px;
-  font-size: 0.9375rem;
-  border: 1px solid var(--dt-color-gray-3, #ced4da);
-  border-radius: 6px;
-  background-color: var(--dt-color-white, #fff);
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.pds-input:focus {
-  outline: none;
-  border-color: var(--dt-color-cyan-3, #02a9e0);
-  box-shadow: 0 0 0 3px rgba(2, 169, 224, 0.15);
-}
-
-.pds-input:disabled {
-  background-color: var(--dt-color-gray-2, #e9ecef);
-  cursor: not-allowed;
-}
-
 /* PDS Alert spacing for create error */
 .create-error-alert {
   margin-top: 12px;
-}
-
-/* Table - will be migrated in Phase 3 */
-.table-container {
-  overflow: hidden;
-  border-radius: 6px;
-  border: 1px solid var(--dt-color-gray-2, #e9ecef);
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.data-table th,
-.data-table td {
-  padding: 14px 16px;
-  text-align: left;
-}
-
-.data-table th {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--dt-color-gray-5, #6c757d);
-  background-color: var(--dt-color-gray-1, #f8f9fa);
-  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.data-table td {
-  font-size: 0.9375rem;
-  color: var(--dt-color-gray-7, #333);
-  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
-}
-
-.data-table tr:last-child td {
-  border-bottom: none;
-}
-
-.data-table tr:hover td {
-  background-color: var(--dt-color-gray-1, #f8f9fa);
 }
 
 /* Checkpoint specific */
@@ -270,32 +103,6 @@
   color: var(--dt-color-gray-3, #ced4da);
   font-style: italic;
   font-weight: normal;
-}
-
-/* Type Badge - will be migrated in Phase 3 */
-.type-badge {
-  display: inline-block;
-  padding: 3px 8px;
-  font-size: 0.6875rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  border-radius: 4px;
-}
-
-.type-manual {
-  background-color: var(--dt-color-gray-2, #e2e3e5);
-  color: var(--dt-color-gray-6, #383d41);
-}
-
-.type-auto {
-  background-color: var(--dt-color-yellow-1, #fff3cd);
-  color: var(--dt-color-yellow-4, #856404);
-}
-
-.type-merge {
-  background-color: var(--dt-color-green-1, #d4edda);
-  color: var(--dt-color-green-4, #155724);
 }
 
 /* Document specific */
@@ -332,17 +139,6 @@
   display: flex;
   gap: 8px;
   justify-content: flex-end;
-}
-
-/* Empty State - will be migrated in Phase 5 */
-.empty-state {
-  padding: 40px;
-  text-align: center;
-  color: var(--dt-color-gray-5, #6c757d);
-}
-
-.empty-state p {
-  margin: 0;
 }
 
 /* Loading & Error */

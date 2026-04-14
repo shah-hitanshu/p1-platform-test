@@ -3675,6 +3675,114 @@ Six files exceeded 800-1,700 lines, making them difficult to navigate and mainta
 - Type-only imports (`import type`) used for cross-module type references to avoid runtime circular dependencies
 - All 2,654 tests pass, zero lint errors on new files
 
+<<<<<<< HEAD
+### Frontend: PDS Migration — CSS Cleanup Phases 1–6 (2026-04-11)
+
+**Status:** Complete
+**Branch:** `refactor/pds-migration`
+**Commits:** `b4725ff`, `fa602cf`, `21199b3`
+
+#### Context
+After the core package migration (see entry below), a series of progressive CSS cleanup phases removed all remaining hand-rolled styles and replaced them with PDS components.
+
+#### Phase 1 — Spinner/Loading
+- `ApiResponse.tsx`: replaced custom spinner markup with PDS `Spinner`
+- Removed dead `.loading-spinner` / `@keyframes spin` from `ApiResponse.css` and `index.css`
+- Deleted `App.css` (unused Vite template file)
+
+#### Phase 2 — Breadcrumb (all pages)
+- All 8 pages with breadcrumbs migrated from `<nav className="breadcrumb">` to PDS `<Breadcrumb crumbs={[...]} />`
+- Pages: SiteDetailPage, CreateMergeRequestPage, BranchDetailPage, MergeRequestsPage, MergeRequestDetailPage, DocumentPage
+- Removed all hand-rolled `.breadcrumb`, `.breadcrumb-separator`, `.breadcrumb-current` CSS
+
+#### Phase 3 — Tables (all pages)
+- Removed `className` from all `<table>` elements — PDS foundation auto-styles plain tables
+- Removed all `*-table-container` wrapper divs
+- Removed all hand-rolled `.*-table`, `.*-table th/td/tr` CSS blocks from 8 CSS files
+- Pages: SiteDetailPage (4 tables), BranchDetailPage (2), MergeRequestsPage, SitesPage, UsersPage, AgentsPage (+ nested keys table), DocumentPage (versions table)
+
+#### Phase 4 — Status Badges
+- `DocumentPage.tsx`: replaced 3 `<span className="status-indicator">` elements with PDS `<StatusBadge>`
+- Removed dead `.status-badge`, `.status-active`, `.status-merged` etc. CSS from 5 page CSS files
+
+#### Phase 5 — Page Sections → Panel
+- All hand-rolled card-like section containers replaced with PDS `<Panel>` across all pages
+- Containers replaced: `.page-header`, `.site-header`, `.branches-section`, `.collaborators-section`, `.agent-access-section`, `.tokens-section`, `.settings-section`, `.mr-header`, `.mr-metadata`, `.mr-description`, `.mr-actions-section`, `.mr-preview`, `.mr-conflicts`, `.dashboard-card`, `.document-header`, `.content-section`, `.branch-header`
+- `.mr-conflicts` uses `Panel hasStatusIndicator statusType="warning"` for semantic warning styling
+- Removed corresponding background/border-radius/padding/box-shadow CSS blocks
+
+#### Phase 6 — Empty States
+- All `<div className="empty-state">` patterns replaced with PDS `<CompactEmptyState>`
+- Pages: SiteDetailPage (4 empty states), BranchDetailPage (2), MergeRequestsPage, SitesPage, UsersPage, AgentsPage, DocumentPage
+- Removed `.empty-state` CSS blocks
+
+#### Test infrastructure updates
+- Mock factories in 8 test files updated to include `Panel`, `CompactEmptyState`, and `Breadcrumb`
+- All `data-testid` attributes preserved on migrated elements (Panel and CompactEmptyState spread rest props to root div)
+
+#### Phase 7 — Forms
+- **Blocked**: PDS FormField/TextInput native components not yet available
+- Hand-rolled `.pds-input`, `.pds-select` styles remain in place until PDS ships these
+
+#### Net result
+- ~1,400 lines of hand-rolled CSS removed across 14 CSS files
+- 252/252 tests passing, 0 lint errors
+
+---
+
+### Frontend: PDS Migration — pds-toolkit-react v1.13.1 (2026-04-11)
+
+**Status:** Complete
+**Branch:** `refactor/pds-migration`
+**Commit:** `573b1b9`
+
+#### Context
+The frontend was built using `@pantheon-systems/design-toolkit-react` v24 with a hand-rolled shell layout (custom sidebar, nav, header CSS). The Pantheon Design System MCP server (`mcp__pds-toolkit-react__*`) documents the newer package `@pantheon-systems/pds-toolkit-react` v1.13.1, which has a completely different API and includes proper dashboard shell components.
+
+#### Changes
+
+**Package upgrade:**
+- Replaced `@pantheon-systems/design-toolkit-react` v24 with `@pantheon-systems/pds-toolkit-react` v1.13.1
+- Removed stale `src/types/design-toolkit-react.d.ts` ambient module declaration
+- Removed obsolete `optimizeDeps` workaround from `vite.config.ts` (new package ships proper ESM)
+
+**Shell rewrite (Layout.tsx, main.tsx, App.tsx):**
+- Replaced hand-rolled `div.layout` / `nav.sidebar` with PDS `DashboardGlobal` shell
+- Layout slots: `Navbar` (header) with `UserMenu`, `DashboardNav` (sidebar) with 4 nav items, `DashboardInner` (main), `SiteFooter` (footer)
+- `BrowserRouter` moved to `main.tsx`; `GlobalWrapper` added inside it
+- `Spinner` from PDS replaces custom loading screen divs
+- Deleted `Layout.css` (91 lines removed)
+
+**API migration across all pages and components:**
+
+| Old API | New API |
+|---|---|
+| `Button type="primary">text` | `Button variant="primary" label="text"` |
+| `Button type="danger"` | `Button variant="critical"` |
+| `Button isSubmit` | `Button buttonType="submit"` |
+| `Button type="tertiary"` | `Button variant="subtle"` |
+| `RouterLinkButton to="..." type="secondary">Text` | `ButtonLink variant="secondary" linkContent={<Link to="...">Text</Link>}` |
+| `Alert type="danger">{msg}` | `InlineMessage type="critical" title={msg}` |
+| `Tag type="success">{label}` | `StatusBadge label={label} color="neutral"` |
+| `Tabs` composition (TabList/Tab/TabPanels/TabPanel) | `Tabs` data-driven `tabs={[{tabLabel, tabId, panelContent}]}` |
+| `FormGroup` | plain `<div>` |
+
+**Rebrand:**
+- App title: "CSS Explorer" → "Pantheon P1" (index.html, LoginPage)
+- Login subtitle: "Collaborative State System API Explorer" → "Sign in to continue"
+
+**Test infrastructure:**
+- All 17 test files updated: mocks retargeted from `@pantheon-systems/design-toolkit-react` to `@pantheon-systems/pds-toolkit-react`
+- Component renames reflected in mock factories (Alert→InlineMessage, Tag→StatusBadge, RouterLinkButton→ButtonLink, Tabs composition→data-driven)
+- Modal mock prop updated: `isOpen` → `modalIsOpen`; `ModalHeader`/`ModalContent` removed (no longer exist)
+- `vitest.config.ts`: `css: false` + `server.deps.inline: ['@pantheon-systems/pds-toolkit-react']` to handle package's internal CSS side-effect imports
+- `data-tag-type` assertions removed from scopes tests (semantic tag colors replaced by `color="neutral"` in new package)
+
+#### Test results
+- 34/34 test files passing
+- 252/252 tests passing
+- 0 lint errors
+
 ---
 
 ### CSS Auth Server (2026-04-07)
@@ -3773,3 +3881,141 @@ Give site admins a UI to manage `allowedOrigins` — the OAuth redirect URI whit
 
 #### Test Summary
 - Frontend: 262 tests passing (10 new Allowed Origins tests)
+
+---
+
+### CSS Auth Server Merge — Inline into Main Worker (2026-04-13)
+
+**Status:** Implementation Complete (Phases 0–6); Phase 7 Deployment Pending
+**Branch:** `feat/inline-css-auth-server`
+**Commits:**
+- Phase 0: `@cloudflare/workers-oauth-provider` + `fast-check` dependencies
+- Phase 1: OAuth helpers (google-handler, origin-validator, state-signing, oauth-provider-setup, auth-routes)
+- Phase 2: Main worker `/auth/*` dispatch + Vitest stub for OAuthProvider
+- Phase 3: `CSSAuthIdentityProvider` in-process validation path
+- Phase 4: Binding changes (OAUTH_KV added, CSS_AUTH_SERVER removed)
+- Phase 5: `puck-css-integration` — `cssAuthServerUrl` defaults to `${baseUrl}/auth`
+- Phase 6: OAuth helper tests migrated to `workers/tests/auth/oauth/` (43 new tests)
+
+#### Goal
+Eliminate the HTTP round-trip from `collaborative-state-worker` → `css-auth-server-sbx1` for every authenticated request. Merge the standalone CSS Auth Server worker into the main worker — one Cloudflare Worker handles both API and OAuth.
+
+#### Deliverables
+**workers/src/auth/oauth/** (new directory)
+- [x] `google-handler.ts` — Google OAuth code exchange and ID token decoding
+- [x] `origin-validator.ts` — redirect URI allowedOrigins validation (exact + wildcard)
+- [x] `state-signing.ts` — HMAC-SHA256 state signing/verification using `INTERNAL_SECRET`
+- [x] `oauth-provider-setup.ts` — `authOAuthProvider` OAuthProvider instance (prefix: `/auth/`)
+
+**workers/src/routes/auth-routes.ts** (new)
+- [x] `authDefaultHandler` — `/auth/authorize`, `/auth/callback`, `/auth/internal/validate`
+- [x] Security: `/auth/internal/validate` rejects requests where `hostname !== 'internal'`
+- [x] `authApiHandler` — stub 404 handler (OAuthProvider requirement)
+- [x] `upsertClient()` — direct OAUTH_KV write for first-time site registration
+
+**workers/src/auth/css-auth-identity-provider.ts** (updated)
+- [x] New `oauthProvider` + `oauthEnv` constructor options for in-process validation
+- [x] `validateViaInProcess()` — calls sentinel URL `http://internal/auth/internal/validate` directly
+- [x] `InProcessAuthProvider` interface uses method syntax (bivariant) so `OAuthProvider<AuthOAuthEnv>` is assignable
+- [x] No-op `ExecutionContext` stub passed for token validation (read-only KV, no `waitUntil` needed)
+- [x] Old HTTP-path options (`authServerUrl`, `internalSecret`, `fetcher`) retained for backward compat
+
+**workers/src/middleware/authentication.ts** (updated)
+- [x] `hasOAuthProviders()` returns true when `OAUTH_KV` is configured
+- [x] `getIdentityProvider()` uses in-process path (OAUTH_KV present) or HTTP path (CSS_AUTH_SERVER only)
+
+**workers/src/index.ts** (updated)
+- [x] Added `OAUTH_KV?: KVNamespace`, `GOOGLE_CLIENT_SECRET?: string` to `Env`
+- [x] `/auth/*` dispatch block routes to `authOAuthProvider.fetch()`
+
+**workers/wrangler.jsonc** (updated)
+- [x] Added `OAUTH_KV` binding (local: fake ID, sbx1: `dfd4e7d8ee274eb59fbc33988556a2f5`, prod: placeholder)
+- [x] Removed `CSS_AUTH_SERVER` service binding from all environments
+- [x] Removed `CSS_AUTH_SERVER_URL` var from all environments
+
+**workers/tests/auth/oauth/** (new directory, 43 tests)
+- [x] `origin-validator.spec.ts` — 19 tests (exact/wildcard/security/normalization)
+- [x] `origin-validator.property.spec.ts` — 5 property-based security tests (fast-check)
+- [x] `google-handler.spec.ts` — 8 tests (URL construction, code exchange, token decode)
+- [x] `auth-routes.spec.ts` — 11 tests (authorize validation, internal/validate security)
+
+**puck-css-integration** (separate repo, branch: `feat/css-auth-server-provider`)
+- [x] `packages/puck-css/src/config.ts` — `cssAuthServerUrl` defaults to `${baseUrl}/auth` for `css-authserver` mode
+- [x] 3 new tests for default behavior
+
+#### Key Design Decisions
+- **OAuthProvider as sub-router**: Configured with `/auth/` prefix on all endpoints (not prefix-stripping) — main worker dispatches `/auth/*` directly
+- **In-process sentinel URL**: `http://internal/auth/internal/validate` — hostname `internal` distinguishes JS function calls from external HTTP (security boundary)
+- **Bivariant method interface**: `InProcessAuthProvider.fetch()` uses method syntax to allow `OAuthProvider<AuthOAuthEnv>` assignment without strict function-type conflicts
+- **No-op ExecutionContext**: Token validation is KV-read-only — dropping `waitUntil()` background tasks is safe for this code path
+- **HMAC state signing**: `state` parameter is HMAC-SHA256 signed with `INTERNAL_SECRET` (fixes residual from PR #43: previously unsigned base64 JSON)
+- **Direct DB access**: `/auth/authorize` calls `getSiteAllowedOrigins()` directly — no more `CSS_BACKEND` service binding needed for site lookup
+
+#### Phase 7 Deployment — Complete (2026-04-13)
+- [x] Set secrets on `collaborative-state-worker-sbx1`: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `INTERNAL_SECRET`
+- [x] Deploy: `wrangler deploy --env sbx1`
+- [x] Updated Google OAuth credential to unified "icmg" credential covering both admin Sign-In and CSS OAuth code flow
+- [x] Set `NEXT_PUBLIC_CSS_AUTH_MODE=css-authserver` in Pantheon env vars for airbus and my-app sites
+- [x] Smoke tested: OAuth login flow working on sbx1 (airbus + Audi demos)
+- [x] Deleted `css-auth-server-sbx1` worker (decommissioned)
+- [x] puck-css-integration v0.2.1 released (PR #25): `cssAuthServerUrl` defaults to `${baseUrl}/auth`
+
+#### Test Summary
+- New: 43 OAuth helper + route tests in `workers/tests/auth/oauth/`
+- New: 13 CSSAuthIdentityProvider in-process tests
+- Total: 2,770 passing (2 pre-existing failures unrelated to this work)
+
+---
+
+### Cleanup: Remove Standalone css-auth-server Worker (2026-04-13)
+
+**Status:** Complete
+**PRs:** #64 (auth-server removal), #66 (CloudSQL upgrade + db.ts fix)
+
+#### Changes
+- [x] Deleted `workers/auth-server/` — standalone worker source (code lives in `workers/src/routes/auth-routes.ts`)
+- [x] Deleted `terraform/modules/cloudflare-auth-server/` — OAUTH_KV moved to `terraform/modules/cloudflare/`
+- [x] Updated `terraform/modules/cloudflare/main.tf` — added `oauth_kv` resource + `oauth_kv_id` output
+- [x] Updated `terraform/environments/sbx1/main.tf` and `production/main.tf` — removed `cloudflare_auth_server` module, expose `oauth_kv_id`
+- [x] Upgraded sbx1 CloudSQL from `db-f1-micro` → `db-g1-small` — eliminates connection drops under concurrent load
+- [x] Fixed `workers/src/db.ts` — `sql.end({ timeout: 5 })` prevents Worker hang when DB connection drops
+- [x] Ran `terraform apply ENV=sbx1` — CloudSQL resized, new OAUTH_KV namespace created, MCP KV imported into state
+- [x] Deployed worker to sbx1 with db.ts fix
+
+#### Root Cause (500 errors)
+`db-f1-micro` runs on shared GCP infrastructure with ~25 max connections. Airbus page load fires ~20 concurrent `/versions/latest` requests, saturating the connection limit. CloudSQL drops connections mid-query; postgres.js hangs on `sql.end()` of dead connection; Workers runtime kills the hung request → bare 500 with no CORS headers.
+
+#### Future Work
+- [ ] Token refresh (v0.2.2 of puck-css-integration): make CSSClient call `getToken()` per-request rather than using fixed token string at init — prevents long-session 401 floods when access token expires
+
+---
+
+### Fix: Codify Hyperdrive Connection Limits (2026-04-13)
+
+**Status:** Complete
+**Commit:** `447305e`
+
+#### Root Cause (corrected from PR #66)
+The actual root cause of the sbx1 500 errors was **Hyperdrive `origin_connection_limit` defaults (60+20=80) exceeding CloudSQL `max_connections` (50)**. When a page with many documents loaded (Audi: 91 docs), the burst of concurrent queries opened more origin connections than PostgreSQL allowed. Failed connections triggered a cascade where Hyperdrive held connections for up to 10 minutes (idle timeout), permanently exhausting the pool until the database was restarted.
+
+The `db-f1-micro` → `db-g1-small` resize (PR #66) increased max_connections from ~25 to 50, which was still insufficient for the default Hyperdrive limits.
+
+#### Fix Applied
+1. Emergency: reduced Hyperdrive limits via Cloudflare API PATCH (20+5=25)
+2. Permanent: codified all limits in Terraform so they can't drift
+
+#### Terraform Changes
+- `terraform/modules/cloudflare/main.tf`: added `origin_connection_limit` to both Hyperdrive resources, with new variables
+- `terraform/modules/database/main.tf`: added `cloudsql_max_connections` variable and database flag
+- `terraform/environments/sbx1/main.tf`: max_connections=100, Hyperdrive 30+10=40
+- `terraform/environments/production/main.tf`: max_connections=200, Hyperdrive 60+20=80
+
+#### Worker Changes
+- `workers/src/db.ts`: fire-and-forget `connection.close()` prevents pool starvation when `sql.end()` blocks
+- `workers/src/index.ts`: added `console.error` for unhandled errors (visible in `wrangler tail`)
+
+#### Design Rule
+Sum of Hyperdrive `origin_connection_limit` values must stay under 50% of CloudSQL `max_connections` to absorb soft-limit overruns, Cloud SQL Proxy sessions, autovacuum, and monitoring connections.
+
+#### Applied to sbx1
+- `terraform apply` run: max_connections 50→100, Hyperdrive 20→30 / 5→10

@@ -15,9 +15,19 @@ import { ExpandableConflictRow } from '../../components/ExpandableConflictRow';
 import type { DocumentConflict, DocumentDiff } from '../../types';
 
 // Mock the design toolkit Button
-vi.mock('@pantheon-systems/design-toolkit-react', () => ({
-  Button: ({ children, onClick, ...props }: Record<string, unknown>) => (
-    <button onClick={onClick as () => void} {...props}>{children as string}</button>
+vi.mock('@pantheon-systems/pds-toolkit-react', () => ({
+  Spinner: ({ label, ...props }: Record<string, unknown>) => (
+    <div role="status" aria-label={label as string} {...props} />
+  ),
+  Button: ({ label, children, onClick, disabled, isLoading, ...props }: Record<string, unknown>) => (
+    <button
+      
+      onClick={onClick as () => void}
+      disabled={(disabled as boolean) || (isLoading as boolean)}
+      {...props}
+    >
+      {(label as string) || (children as React.ReactNode)}
+    </button>
   ),
 }));
 

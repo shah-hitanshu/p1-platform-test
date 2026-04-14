@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Button, Alert } from '@pantheon-systems/design-toolkit-react';
+import { Button, InlineMessage } from '@pantheon-systems/pds-toolkit-react';
 import { previewMerge } from '../api/merge-requests';
 import { ExpandableConflictList } from './ExpandableConflictList';
 import { DocumentChangeSummary } from './document-change-summary';
@@ -125,14 +125,13 @@ export function MergePreviewPanel({
       <div className="preview-header">
         <h3 className="preview-title">Merge Preview</h3>
         <Button
-          type="secondary"
+          variant="secondary"
+          label={isLoading ? 'Loading...' : 'Refresh'}
           onClick={handleRefresh}
           disabled={isLoading}
           isLoading={isLoading}
           data-testid="refresh-preview-btn"
-        >
-          {isLoading ? 'Loading...' : 'Refresh'}
-        </Button>
+        />
       </div>
 
       <div className="preview-info">
@@ -142,9 +141,7 @@ export function MergePreviewPanel({
       </div>
 
       {error && (
-        <Alert type="danger" data-testid="preview-error">
-          {error}
-        </Alert>
+        <InlineMessage type="critical" title={error} data-testid="preview-error" />
       )}
 
       {isLoading && (
@@ -171,9 +168,7 @@ export function MergePreviewPanel({
               )}
             </div>
             {preview.hasConflicts && (
-              <Alert type="warning" data-testid="conflicts-warning">
-                This merge has conflicts that need to be resolved
-              </Alert>
+              <InlineMessage type="warning" title="This merge has conflicts that need to be resolved" data-testid="conflicts-warning" />
             )}
           </div>
 

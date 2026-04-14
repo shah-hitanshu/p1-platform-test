@@ -9,7 +9,7 @@
  * Custom styles remain for:
  * - Page layout and card styling
  * - User preview section
- * - Select styling (using pds-select class)
+ * - Select styling using PDS Select component
  */
 
 .login-page {
@@ -60,29 +60,6 @@
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--dt-color-gray-7, #333);
-}
-
-/* PDS-styled select element */
-.pds-select {
-  width: 100%;
-  padding: 12px;
-  font-size: 0.9375rem;
-  border: 1px solid var(--dt-color-gray-3, #ced4da);
-  border-radius: 6px;
-  background-color: var(--dt-color-white, #fff);
-  cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.pds-select:focus {
-  outline: none;
-  border-color: var(--dt-color-cyan-3, #02a9e0);
-  box-shadow: 0 0 0 3px rgba(2, 169, 224, 0.15);
-}
-
-.pds-select:disabled {
-  background-color: var(--dt-color-gray-2, #e9ecef);
-  cursor: not-allowed;
 }
 
 .user-preview {

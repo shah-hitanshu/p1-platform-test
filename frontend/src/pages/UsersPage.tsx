@@ -18,9 +18,14 @@ import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import type { SystemUser } from '../types';
 import {
   Button,
-  Alert,
-  Tag,
-} from '@pantheon-systems/design-toolkit-react';
+  CompactEmptyState,
+  InlineMessage,
+  MenuButton,
+  Panel,
+  Select,
+  StatusBadge,
+  TextInput,
+} from '@pantheon-systems/pds-toolkit-react';
 import './UsersPage.css';
 
 export function UsersPage() {
@@ -81,76 +86,66 @@ export function UsersPage() {
     }
   };
 
-  const getStatusTagType = (isActive: boolean): 'success' | 'danger' => {
-    return isActive ? 'success' : 'danger';
-  };
-
   return (
     <div className="users-page">
-      <header className="page-header">
+      <Panel data-testid="page-header">
         <div className="header-content">
           <h1 className="page-title" data-testid="page-title">Users</h1>
           <p className="page-subtitle" data-testid="page-subtitle">Manage system access allowlist</p>
         </div>
         <Button
-          type={showAddForm ? 'secondary' : 'primary'}
+          variant={showAddForm ? 'secondary' : 'primary'}
           onClick={() => setShowAddForm(!showAddForm)}
+          label={showAddForm ? 'Cancel' : '+ Add user'}
           data-testid="add-user-btn"
-        >
-          {showAddForm ? 'Cancel' : '+ Add user'}
-        </Button>
-      </header>
+        />
+      </Panel>
 
       {showAddForm && (
         <div className="create-form-container" data-testid="add-user-form">
           <form onSubmit={handleAddUser} className="create-form">
             <div className="form-fields">
-              <input
+              <TextInput
+                id="user-email"
+                label="Email address"
                 type="email"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
-                placeholder="Email address..."
-                className="pds-input"
                 autoFocus
                 required
-                aria-label="Email address"
                 data-testid="user-email-input"
               />
-              <input
-                type="text"
+              <TextInput
+                id="user-name"
+                label="Name"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder="Name (optional)..."
-                className="pds-input"
-                aria-label="Name"
                 data-testid="user-name-input"
               />
-              <select
+              <Select
+                id="user-role-select"
+                label="System role"
                 value={newRole}
-                onChange={(e) => setNewRole(e.target.value as 'admin' | 'member')}
-                className="pds-select"
-                aria-label="System role"
+                options={[
+                  { label: 'Member', value: 'member' },
+                  { label: 'Admin', value: 'admin' },
+                ]}
+                onOptionSelect={(option) => setNewRole(option.value as 'admin' | 'member')}
                 data-testid="user-role-select"
-              >
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
-              </select>
+              />
             </div>
             <Button
-              type="primary"
-              isSubmit
+              variant="primary"
+              buttonType="submit"
               onClick={() => {}}
               disabled={isAdding || !newEmail.trim()}
               isLoading={isAdding}
+              label={isAdding ? 'Adding...' : 'Add'}
               data-testid="submit-user-btn"
-            >
-              {isAdding ? 'Adding...' : 'Add'}
-            </Button>
+            />
           </form>
           {addError && (
-            <Alert type="danger" className="create-error-alert" data-testid="add-error">
-              {addError}
-            </Alert>
+            <InlineMessage type="critical" title={addError} className="create-error-alert" data-testid="add-error" />
           )}
         </div>
       )}
@@ -166,8 +161,7 @@ export function UsersPage() {
           <ApiResponse data={null} isLoading={true} error={null} />
         </div>
       ) : users && users.length > 0 ? (
-        <div className="users-table-container">
-          <table className="users-table" data-testid="users-table">
+          <table data-testid="users-table">
             <thead>
               <tr>
                 <th>Email</th>
@@ -184,55 +178,53 @@ export function UsersPage() {
                   <td className="user-email">{user.email}</td>
                   <td className="user-name-cell">{user.name || <span className="no-value">-</span>}</td>
                   <td>
-                    <select
-                      value={user.systemRole}
-                      onChange={(e) => handleChangeRole(user, e.target.value as 'admin' | 'member')}
-                      className="pds-select role-select"
-                      aria-label={`Role for ${user.email}`}
-                      data-testid={`role-select-${user.id}`}
-                    >
-                      <option value="member">Member</option>
-                      <option value="admin">Admin</option>
-                    </select>
+                    <MenuButton
+                      id={`role-menu-${user.id}`}
+                      label={user.systemRole}
+                      variant="secondary"
+                      size="sm"
+                      testId={`role-select-${user.id}`}
+                      menuItems={[
+                        { label: 'Member', callback: () => handleChangeRole(user, 'member') },
+                        { label: 'Admin', callback: () => handleChangeRole(user, 'admin') },
+                      ]}
+                    />
                   </td>
                   <td>
-                    <Tag type={getStatusTagType(user.isActive)} data-testid={`status-${user.id}`}>
-                      {user.isActive ? 'active' : 'inactive'}
-                    </Tag>
+                    <StatusBadge label={user.isActive ? 'active' : 'inactive'} color="neutral" data-testid={`status-${user.id}`} />
                   </td>
                   <td className="user-login-status">
                     {user.principalId ? (
-                      <Tag type="success">Yes</Tag>
+                      <StatusBadge label="Yes" color="neutral" />
                     ) : (
-                      <Tag type="default">Pending</Tag>
+                      <StatusBadge label="Pending" color="neutral" />
                     )}
                   </td>
                   <td className="user-actions">
                     <Button
-                      type="secondary"
+                      variant="secondary"
                       onClick={() => handleToggleActive(user)}
+                      label={user.isActive ? 'Deactivate' : 'Activate'}
                       data-testid={`toggle-active-${user.id}`}
-                    >
-                      {user.isActive ? 'Deactivate' : 'Activate'}
-                    </Button>
+                    />
                     <Button
-                      type="danger"
+                      variant="critical"
                       onClick={() => setUserToRemove(user)}
+                      label="Remove"
                       data-testid={`remove-user-${user.id}`}
-                    >
-                      Remove
-                    </Button>
+                    />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
       ) : (
-        <div className="empty-state" data-testid="empty-state">
-          <p>No users in the allowlist. The system is currently open to all authenticated users.</p>
-          <p className="empty-state-hint">Add a user to activate the allowlist.</p>
-        </div>
+        <CompactEmptyState
+          data-testid="empty-state"
+          iconName="user"
+          heading="No users found"
+          message="Add a user to activate the allowlist."
+        />
       )}
 
       <ConfirmDeleteModal

@@ -25,11 +25,13 @@ import { ConflictResolutionPanel } from '../components/ConflictResolutionPanel';
 import type { ConflictResolution } from '../api/merge-requests';
 import type { Site, Branch, MergeRequest, MergeRequestStatus, MergeExecuteResult, DocumentDiff } from '../types';
 import {
+  Breadcrumb,
   Button,
-  RouterLinkButton,
-  Alert,
-  Tag,
-} from '@pantheon-systems/design-toolkit-react';
+  ButtonLink,
+  InlineMessage,
+  Panel,
+  StatusBadge,
+} from '@pantheon-systems/pds-toolkit-react';
 import './MergeRequestDetailPage.css';
 
 export function MergeRequestDetailPage() {
@@ -104,23 +106,6 @@ export function MergeRequestDetailPage() {
     return branch?.name || branchId.slice(0, 8) + '...';
   };
 
-  const getStatusTagType = (status: MergeRequestStatus): 'info' | 'success' | 'warning' | 'default' => {
-    switch (status) {
-      case 'open':
-        return 'info';
-      case 'approved':
-        return 'success';
-      case 'conflicted':
-        return 'warning';
-      case 'merged':
-        return 'success';
-      case 'closed':
-        return 'default';
-      default:
-        return 'default';
-    }
-  };
-
   const handleStatusChange = async (newStatus: MergeRequestStatus) => {
     if (!siteId || !requestId) return;
     const result = await updateMR(siteId, requestId, { status: newStatus });
@@ -170,72 +155,65 @@ export function MergeRequestDetailPage() {
         return (
           <>
             <Button
-              type="primary"
+              variant="primary"
               onClick={() => handleStatusChange('approved')}
               disabled={isUpdating}
+              label="Approve"
               data-testid="approve-btn"
-            >
-              Approve
-            </Button>
+            />
             <Button
-              type="secondary"
+              variant="secondary"
               onClick={() => handleStatusChange('closed')}
               disabled={isUpdating}
+              label="Close"
               data-testid="close-btn"
-            >
-              Close
-            </Button>
+            />
             <Button
-              type="danger"
+              variant="critical"
               onClick={() => setShowDeleteModal(true)}
               disabled={isUpdating}
+              label="Delete"
               data-testid="delete-btn"
-            >
-              Delete
-            </Button>
+            />
           </>
         );
       case 'approved':
         return (
           <>
             <Button
-              type="primary"
+              variant="primary"
               onClick={handleExecuteMerge}
               disabled={isMerging}
               isLoading={isMerging}
+              label={isMerging ? 'Merging...' : 'Execute Merge'}
               data-testid="merge-btn"
-            >
-              {isMerging ? 'Merging...' : 'Execute Merge'}
-            </Button>
+            />
             <Button
-              type="secondary"
+              variant="secondary"
               onClick={() => handleStatusChange('closed')}
               disabled={isUpdating || isMerging}
+              label="Close"
               data-testid="close-btn"
-            >
-              Close
-            </Button>
+            />
           </>
         );
       case 'conflicted':
         return (
           <>
             <Button
-              type="primary"
+              variant="primary"
               onClick={() => setShowResolutionPanel(!showResolutionPanel)}
               disabled={isUpdating}
+              label={showResolutionPanel ? 'Hide Resolution Panel' : 'Resolve Conflicts'}
               data-testid="resolve-btn"
-            >
-              {showResolutionPanel ? 'Hide Resolution Panel' : 'Resolve Conflicts'}
-            </Button>
+            />
             <Button
-              type="secondary"
+              variant="secondary"
               onClick={() => handleStatusChange('closed')}
               disabled={isUpdating}
+              label="Close"
               data-testid="close-btn"
-            >
-              Close
-            </Button>
+            />
           </>
         );
       case 'merged':
@@ -246,21 +224,19 @@ export function MergeRequestDetailPage() {
         return (
           <>
             <Button
-              type="primary"
+              variant="primary"
               onClick={() => handleStatusChange('open')}
               disabled={isUpdating}
+              label="Reopen"
               data-testid="reopen-btn"
-            >
-              Reopen
-            </Button>
+            />
             <Button
-              type="danger"
+              variant="critical"
               onClick={() => setShowDeleteModal(true)}
               disabled={isUpdating}
+              label="Delete"
               data-testid="delete-btn"
-            >
-              Delete
-            </Button>
+            />
           </>
         );
       default:
@@ -284,13 +260,11 @@ export function MergeRequestDetailPage() {
         <div className="error-container">
           <ApiResponse data={null} isLoading={false} error={siteError || mrError} />
           <div className="back-link-container">
-            <RouterLinkButton
-              to={`/sites/${siteId}/merge-requests`}
-              type="secondary"
+            <ButtonLink
+              variant="secondary"
               data-testid="back-to-merge-requests"
-            >
-              Back to merge requests
-            </RouterLinkButton>
+              linkContent={<Link to={`/sites/${siteId}/merge-requests`}>Back to merge requests</Link>}
+            />
           </div>
         </div>
       </div>
@@ -300,24 +274,22 @@ export function MergeRequestDetailPage() {
   return (
     <div className="mr-detail-page">
       {/* Breadcrumb */}
-      <nav className="breadcrumb" data-testid="breadcrumb">
-        <Link to="/sites">Sites</Link>
-        <span className="breadcrumb-separator">/</span>
-        <Link to={`/sites/${siteId}`}>{site?.name || 'Site'}</Link>
-        <span className="breadcrumb-separator">/</span>
-        <Link to={`/sites/${siteId}/merge-requests`}>Merge Requests</Link>
-        <span className="breadcrumb-separator">/</span>
-        <span className="breadcrumb-current">{mergeRequest?.title || 'Detail'}</span>
-      </nav>
+      <Breadcrumb
+        data-testid="breadcrumb"
+        crumbs={[
+          <Link to="/sites">Sites</Link>,
+          <Link to={`/sites/${siteId}`}>{site?.name || 'Site'}</Link>,
+          <Link to={`/sites/${siteId}/merge-requests`}>Merge Requests</Link>,
+          <span>{mergeRequest?.title || 'Detail'}</span>,
+        ]}
+      />
 
       {/* Header Section */}
-      <header className="mr-header">
+      <Panel>
         <div className="mr-header-top">
           <h1 className="mr-title" data-testid="mr-title">{mergeRequest?.title}</h1>
           {mergeRequest && (
-            <Tag type={getStatusTagType(mergeRequest.status)} data-testid="mr-status-badge">
-              {mergeRequest.status}
-            </Tag>
+            <StatusBadge label={mergeRequest.status} color="neutral" data-testid="mr-status-badge" />
           )}
         </div>
         <div className="mr-branches" data-testid="mr-branches">
@@ -325,10 +297,10 @@ export function MergeRequestDetailPage() {
           <span className="branch-arrow">→</span>
           <code className="branch-tag">{getBranchName(mergeRequest?.targetBranchId || '')}</code>
         </div>
-      </header>
+      </Panel>
 
       {/* Metadata Section */}
-      <section className="mr-metadata" data-testid="mr-metadata">
+      <Panel data-testid="mr-metadata">
         <div className="metadata-grid">
           <div className="metadata-item">
             <span className="metadata-label">Created by</span>
@@ -361,10 +333,10 @@ export function MergeRequestDetailPage() {
             </span>
           </div>
         </div>
-      </section>
+      </Panel>
 
       {/* Description Section */}
-      <section className="mr-description">
+      <Panel>
         <h2 className="section-title">Description</h2>
         <div className="description-content">
           {mergeRequest?.description ? (
@@ -373,24 +345,22 @@ export function MergeRequestDetailPage() {
             <p className="no-description">No description provided.</p>
           )}
         </div>
-      </section>
+      </Panel>
 
       {/* Actions Section */}
-      <section className="mr-actions-section">
+      <Panel>
         <h2 className="section-title">Actions</h2>
         <div className="actions-container" data-testid="actions-container">
           {renderActions()}
         </div>
         {(updateError || mergeError) && (
-          <Alert type="danger" className="action-error-alert" data-testid="action-error">
-            {updateError || mergeError}
-          </Alert>
+          <InlineMessage type="critical" title={updateError || mergeError || ''} className="action-error-alert" data-testid="action-error" />
         )}
-      </section>
+      </Panel>
 
       {/* Merge Preview */}
       {mergeRequest && siteId && mergeRequest.status !== 'merged' && (
-        <section className="mr-preview">
+        <Panel>
           <MergePreviewPanel
             siteId={siteId}
             sourceBranchId={mergeRequest.sourceBranchId}
@@ -398,12 +368,12 @@ export function MergeRequestDetailPage() {
             sourceBranchName={getBranchName(mergeRequest.sourceBranchId)}
             targetBranchName={getBranchName(mergeRequest.targetBranchId)}
           />
-        </section>
+        </Panel>
       )}
 
       {/* Conflict Display */}
       {mergeRequest?.hasConflicts && mergeRequest.conflictDetails && (
-        <section className="mr-conflicts">
+        <Panel hasStatusIndicator statusType="warning">
           <h2 className="section-title">Conflicts</h2>
           <p className="conflicts-note">
             This merge request has conflicts that need to be resolved before merging.
@@ -422,7 +392,7 @@ export function MergeRequestDetailPage() {
               targetBranchId={mergeRequest.targetBranchId}
             />
           )}
-        </section>
+        </Panel>
       )}
 
       <ConfirmDeleteModal

@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { matchesAllowedOrigin } from '../../src/auth/origin-validator.js';
+import { matchesAllowedOrigin } from '../../../src/auth/oauth/origin-validator.js';
 
 const SUFFIX = 'mysite.pantheonsite.io';
 const WILDCARD_PATTERN = `*-${SUFFIX}`;
@@ -66,7 +66,6 @@ describe('Property: wildcard matches valid Pantheon branch URLs', () => {
     );
   });
 
-  // NIT #4: single-character label case (e.g., "a-mysite.pantheonsite.io")
   it('*-mysite.pantheonsite.io matches single-character label', () => {
     const url = `https://a-${SUFFIX}/callback`;
     expect(matchesAllowedOrigin(url, [WILDCARD_PATTERN])).toBe(true);

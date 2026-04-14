@@ -102,6 +102,7 @@ module "database" {
   cloudsql_backup_enabled      = true
   cloudsql_authorized_networks = var.cloudsql_authorized_networks
   deletion_protection          = true
+  cloudsql_max_connections     = 200 # 2.5x Hyperdrive total (60+20=80)
 
   tags = local.default_tags
 }
@@ -121,6 +122,9 @@ module "cloudflare" {
   postgres_user     = module.database.username
   postgres_password = module.database.password
   postgres_database = module.database.database
+
+  hyperdrive_origin_connection_limit         = 60 # Cached reads — primary traffic
+  hyperdrive_nocache_origin_connection_limit = 20 # Admin writes — less frequent
 }
 
 # -----------------------------------------------------------------------------
@@ -134,16 +138,6 @@ module "cloudflare_mcp" {
   cloudflare_account_id = var.cloudflare_account_id
 }
 
-# -----------------------------------------------------------------------------
-# Auth Server Module (OAuth KV)
-# -----------------------------------------------------------------------------
-
-module "cloudflare_auth_server" {
-  source = "../../modules/cloudflare-auth-server"
-
-  environment           = local.environment
-  cloudflare_account_id = var.cloudflare_account_id
-}
 
 # -----------------------------------------------------------------------------
 # Outputs
@@ -187,6 +181,11 @@ output "hyperdrive_id" {
   value       = module.cloudflare.hyperdrive_id
 }
 
+output "hyperdrive_nocache_id" {
+  description = "Hyperdrive no-cache config ID for wrangler.jsonc (admin routes)"
+  value       = module.cloudflare.hyperdrive_nocache_id
+}
+
 output "worker_name" {
   description = "Cloudflare Worker name (API)"
   value       = module.cloudflare.worker_name
@@ -208,13 +207,8 @@ output "mcp_worker_name" {
   value       = module.cloudflare_mcp.mcp_worker_name
 }
 
-# Auth Server outputs
-output "auth_oauth_kv_id" {
-  description = "Auth Server OAuth KV namespace ID for workers/auth-server/wrangler.jsonc"
-  value       = module.cloudflare_auth_server.auth_oauth_kv_id
-}
-
-output "auth_server_worker_name" {
-  description = "Auth Server Worker name"
-  value       = module.cloudflare_auth_server.auth_server_worker_name
+# CSS OAuth KV output (OAUTH_KV for collaborative-state-worker — inlined auth server)
+output "oauth_kv_id" {
+  description = "OAUTH_KV namespace ID for workers/wrangler.jsonc"
+  value       = module.cloudflare.oauth_kv_id
 }
