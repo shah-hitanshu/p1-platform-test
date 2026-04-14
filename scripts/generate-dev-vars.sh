@@ -48,6 +48,10 @@ INTERNAL_SECRET=development-internal-secret
 
 # Mock JWT secret (local development only)
 MOCK_JWT_SECRET=local-dev-jwt-secret-do-not-use-in-production
+
+# Auth0 configuration (optional — uncomment and fill in to enable Auth0 provider)
+# AUTH0_ISSUER_BASE_URL=https://your-tenant.auth0.com
+# AUTH0_AUDIENCE=your-api-identifier
 EOF
 
 # Set permissions (readable only by owner)
