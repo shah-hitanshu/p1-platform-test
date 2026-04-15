@@ -79,7 +79,7 @@ async function getSiteRole(
   if (principal.type === 'agent') {
     // Query agent_site_roles table
     const result = await query<{ role: AgentSiteRole }>(
-      `SELECT role FROM agent_site_roles
+      `SELECT role FROM app.agent_site_roles
        WHERE agent_id = $1 AND site_id = $2`,
       [principal.id, siteId],
     );
@@ -239,7 +239,7 @@ export async function getEffectiveRole(
   // Step 2: Check for branch-level elevation
   const actorId = principal.dbUserId ?? principal.id;
   const branchGrant = await query<{ role: RoleName }>(
-    `SELECT role FROM branch_grants
+    `SELECT role FROM app.branch_grants
      WHERE branch_id = $1 AND actor_id = $2`,
     [branchId, actorId],
   );
