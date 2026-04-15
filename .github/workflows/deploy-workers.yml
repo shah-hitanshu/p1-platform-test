@@ -61,7 +61,8 @@ jobs:
           curl "$URL/cloud-sql-proxy.linux.amd64" -o cloud-sql-proxy
           chmod +x cloud-sql-proxy
           ./cloud-sql-proxy --port 5432 "${{ vars.CLOUDSQL_INSTANCE_CONNECTION_NAME }}" &
-          sleep 3
+          sleep 2
+
       - name: Run migrations
         if: inputs.run_migrations
         run: pnpm db:migrate
