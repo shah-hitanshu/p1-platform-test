@@ -114,6 +114,39 @@ describe('MergeEndpoint', () => {
       );
     });
 
+    it('sends excludePathPrefixes when provided', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          canMerge: true,
+          hasConflicts: false,
+          conflicts: { documentConflicts: [], structureConflicts: [] },
+          sourceChanges: [],
+          targetChanges: [],
+          mergeBase: null,
+        }),
+      });
+
+      await client.merge.preview(siteId, sourceBranchId, targetBranchId, {
+        includeContent: true,
+        excludePathPrefixes: ['_registry/'],
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${baseUrl}/api/sites/${siteId}/merge/preview`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            sourceBranchId,
+            targetBranchId,
+            includeContent: true,
+            excludePathPrefixes: ['_registry/'],
+          }),
+        })
+      );
+    });
+
     it('returns typed MergePreview with documentDiffs', async () => {
       const mockPreview = {
         canMerge: true,

@@ -168,7 +168,7 @@ export function useMergeResolution(
         siteId,
         sourceBranchId,
         targetBranchId,
-        { includeContent: true }
+        { includeContent: true, excludePathPrefixes: ['_registry/'] }
       );
 
       // Build conflict set for quick lookup

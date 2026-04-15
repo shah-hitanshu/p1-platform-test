@@ -166,7 +166,7 @@ describe('useMergeResolution', () => {
         'site-1',
         'branch-source',
         'branch-target',
-        { includeContent: true }
+        { includeContent: true, excludePathPrefixes: ['_registry/'] }
       );
     });
 

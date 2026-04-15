@@ -44,7 +44,7 @@ export class MergeEndpoint {
     siteId: string,
     sourceBranchId: string,
     targetBranchId: string,
-    options?: { includeContent?: boolean }
+    options?: { includeContent?: boolean; excludePathPrefixes?: string[] }
   ): Promise<MergePreview> {
     return this.base.request<MergePreview>(
       `/api/sites/${siteId}/merge/preview`,
@@ -54,6 +54,7 @@ export class MergeEndpoint {
           sourceBranchId,
           targetBranchId,
           ...(options?.includeContent !== undefined && { includeContent: options.includeContent }),
+          ...(options?.excludePathPrefixes !== undefined && { excludePathPrefixes: options.excludePathPrefixes }),
         }),
       }
     );
