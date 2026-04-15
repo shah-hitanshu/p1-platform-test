@@ -95,7 +95,7 @@ async function getSiteRole(
     // Use dbUserId (the DB users.id) when available, falling back to principal.id
     const userId = principal.dbUserId ?? principal.id;
     const result = await query<{ role: PantheonRole }>(
-      `SELECT role FROM user_site_roles
+      `SELECT role FROM app.user_site_roles
        WHERE user_id = $1 AND site_id = $2`,
       [userId, siteId],
     );
