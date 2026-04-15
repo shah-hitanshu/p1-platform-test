@@ -92,6 +92,11 @@ export interface PreviewMergeOptions {
    * for each conflicting document.
    */
   includeContent?: boolean;
+  /**
+   * When provided, excludes documents whose path starts with any of the
+   * given prefixes from the response (conflicts, changes, and diffs).
+   */
+  excludePathPrefixes?: string[];
 }
 
 /**
@@ -411,21 +416,43 @@ export async function previewMerge(
     targetBranchId,
   );
 
+  // Apply path prefix filtering if requested
+  const excludePrefixes = options?.excludePathPrefixes;
+  const shouldExclude = excludePrefixes != null && excludePrefixes.length > 0
+    ? (path: string): boolean => excludePrefixes.some((prefix) => path.startsWith(prefix))
+    : null;
+
+  let { documentConflicts } = detectionResult.conflicts;
+  let sourceChanges = detectionResult.sourceChanges;
+  let targetChanges = detectionResult.targetChanges;
+
+  if (shouldExclude != null) {
+    documentConflicts = documentConflicts.filter((c) => !shouldExclude(c.documentPath));
+    sourceChanges = sourceChanges.filter((c) => !shouldExclude(c.documentPath));
+    targetChanges = targetChanges.filter((c) => !shouldExclude(c.documentPath));
+  }
+
+  const filteredConflicts = shouldExclude != null
+    ? { ...detectionResult.conflicts, documentConflicts }
+    : detectionResult.conflicts;
+
   const preview: MergePreview = {
     canMerge: !detectionResult.hasConflicts,
     hasConflicts: detectionResult.hasConflicts,
-    conflicts: detectionResult.conflicts,
-    sourceChanges: detectionResult.sourceChanges,
-    targetChanges: detectionResult.targetChanges,
+    conflicts: filteredConflicts,
+    sourceChanges,
+    targetChanges,
     mergeBase: detectionResult.mergeBase,
   };
 
   // Include document diffs if requested
   if (options?.includeContent === true) {
     preview.documentDiffs = await computeDocumentDiffs(
-      detectionResult.conflicts.documentConflicts,
-      detectionResult.sourceChanges,
-      detectionResult.targetChanges,
+      documentConflicts,
+      sourceChanges,
+      targetChanges,
+      sourceBranchId,
+      targetBranchId,
     );
   }
 

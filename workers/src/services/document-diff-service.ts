@@ -8,7 +8,7 @@
  */
 
 import { compare, type Operation } from 'fast-json-patch';
-import { getDocumentVersion } from './document-version-service';
+import { getDocumentVersion, reconstructVersionSnapshot } from './document-version-service';
 import type { ModifiedDocument } from './merge-base-service';
 import type { DocumentConflict } from '../types';
 
@@ -123,12 +123,16 @@ export async function computeDocumentDiff(
  * @param conflicts - List of document conflicts
  * @param sourceChanges - Modified documents on source branch
  * @param targetChanges - Modified documents on target branch
+ * @param sourceBranchId - Source branch ID (for snapshot reconstruction)
+ * @param targetBranchId - Target branch ID (for snapshot reconstruction)
  * @returns Array of document diffs for each conflict
  */
 export async function computeDocumentDiffs(
   conflicts: DocumentConflict[],
   sourceChanges: ModifiedDocument[],
   targetChanges: ModifiedDocument[],
+  sourceBranchId: string,
+  targetBranchId: string,
 ): Promise<DocumentDiff[]> {
   if (conflicts.length === 0) {
     return [];
@@ -162,23 +166,43 @@ export async function computeDocumentDiffs(
       if (targetChange?.latestVersionId != null) {
         const targetVersion = await getDocumentVersion(targetChange.latestVersionId);
         targetSnapshot = targetVersion?.snapshot ?? null;
+        if (targetSnapshot == null && targetVersion != null) {
+          targetSnapshot = await reconstructVersionSnapshot(
+            conflict.documentId, targetBranchId, targetVersion.versionNumber,
+          );
+        }
       }
     } else if (conflict.conflictType === 'deleted-in-target') {
       // Target was deleted, only fetch source
       if (sourceChange?.latestVersionId != null) {
         const sourceVersion = await getDocumentVersion(sourceChange.latestVersionId);
         sourceSnapshot = sourceVersion?.snapshot ?? null;
+        if (sourceSnapshot == null && sourceVersion != null) {
+          sourceSnapshot = await reconstructVersionSnapshot(
+            conflict.documentId, sourceBranchId, sourceVersion.versionNumber,
+          );
+        }
       }
     } else {
       // Both modified - fetch both and compute diff
       if (sourceChange?.latestVersionId != null) {
         const sourceVersion = await getDocumentVersion(sourceChange.latestVersionId);
         sourceSnapshot = sourceVersion?.snapshot ?? null;
+        if (sourceSnapshot == null && sourceVersion != null) {
+          sourceSnapshot = await reconstructVersionSnapshot(
+            conflict.documentId, sourceBranchId, sourceVersion.versionNumber,
+          );
+        }
       }
 
       if (targetChange?.latestVersionId != null) {
         const targetVersion = await getDocumentVersion(targetChange.latestVersionId);
         targetSnapshot = targetVersion?.snapshot ?? null;
+        if (targetSnapshot == null && targetVersion != null) {
+          targetSnapshot = await reconstructVersionSnapshot(
+            conflict.documentId, targetBranchId, targetVersion.versionNumber,
+          );
+        }
       }
 
       // Compute diff if both snapshots available

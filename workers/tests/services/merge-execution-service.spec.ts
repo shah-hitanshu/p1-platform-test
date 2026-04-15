@@ -1061,6 +1061,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         expect.any(Array),
         expect.any(Array),
         expect.any(Array),
+        'source-branch',
+        'target-branch',
       );
     });
 
@@ -1121,6 +1123,99 @@ describe('Phase 5.3: Merge Execution Service', () => {
 
       expect(preview.documentDiffs).toBeUndefined();
       expect(documentDiffService.computeDocumentDiffs).not.toHaveBeenCalled();
+    });
+
+    it('should exclude documents matching excludePathPrefixes', async () => {
+      const { previewMerge } = await import('../../src/services/merge-execution-service');
+      const conflictDetection = await import('../../src/services/conflict-detection-service');
+      const documentDiffService = await import('../../src/services/document-diff-service');
+
+      vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
+        hasConflicts: true,
+        conflicts: {
+          documentConflicts: [
+            {
+              documentId: 'doc-1',
+              documentPath: 'pages/home',
+              conflictType: 'both-modified',
+              sourceVersion: 3,
+              targetVersion: 2,
+            },
+            {
+              documentId: 'doc-reg',
+              documentPath: '_registry/components/Hero',
+              conflictType: 'both-modified',
+              sourceVersion: 3,
+              targetVersion: 3,
+            },
+          ],
+          structureConflicts: [],
+        },
+        mergeBase: {
+          checkpointId: 'checkpoint-base',
+          branchId: 'target-branch',
+          createdAt: '2026-01-15T10:00:00.000Z',
+        },
+        sourceChanges: [
+          {
+            documentId: 'doc-1',
+            documentPath: 'pages/home',
+            latestVersionId: 'v1',
+            latestVersionNumber: 3,
+            baseVersionId: 'v0',
+            baseVersionNumber: 1,
+          },
+          {
+            documentId: 'doc-reg',
+            documentPath: '_registry/components/Hero',
+            latestVersionId: 'v-reg',
+            latestVersionNumber: 3,
+            baseVersionId: null,
+            baseVersionNumber: null,
+          },
+        ],
+        targetChanges: [
+          {
+            documentId: 'doc-1',
+            documentPath: 'pages/home',
+            latestVersionId: 'v1-target',
+            latestVersionNumber: 2,
+            baseVersionId: 'v0',
+            baseVersionNumber: 1,
+          },
+          {
+            documentId: 'doc-reg',
+            documentPath: '_registry/components/Hero',
+            latestVersionId: 'v-reg-target',
+            latestVersionNumber: 3,
+            baseVersionId: null,
+            baseVersionNumber: null,
+          },
+        ],
+      });
+
+      vi.mocked(documentDiffService.computeDocumentDiffs).mockResolvedValueOnce([]);
+
+      const preview = await previewMerge('source-branch', 'target-branch', {
+        includeContent: true,
+        excludePathPrefixes: ['_registry/'],
+      });
+
+      // hasConflicts uses unfiltered detection result
+      expect(preview.hasConflicts).toBe(true);
+      // Filtered results exclude _registry docs
+      expect(preview.conflicts.documentConflicts).toHaveLength(1);
+      expect(preview.conflicts.documentConflicts[0]?.documentPath).toBe('pages/home');
+      expect(preview.sourceChanges).toHaveLength(1);
+      expect(preview.targetChanges).toHaveLength(1);
+      // computeDocumentDiffs receives only the filtered arrays
+      expect(documentDiffService.computeDocumentDiffs).toHaveBeenCalledWith(
+        [expect.objectContaining({ documentPath: 'pages/home' })],
+        [expect.objectContaining({ documentPath: 'pages/home' })],
+        [expect.objectContaining({ documentPath: 'pages/home' })],
+        'source-branch',
+        'target-branch',
+      );
     });
   });
 

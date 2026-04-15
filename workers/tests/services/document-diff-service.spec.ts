@@ -17,6 +17,7 @@ vi.mock('../../src/db', () => ({
 // Mock document-version-service
 vi.mock('../../src/services/document-version-service', () => ({
   getDocumentVersion: vi.fn(),
+  reconstructVersionSnapshot: vi.fn(),
 }));
 
 describe('Phase 10.1: Document Diff Service', () => {
@@ -373,7 +374,7 @@ describe('Phase 10.1: Document Diff Service', () => {
           createdAt: '2026-01-20T11:00:00.000Z',
         });
 
-      const result = await computeDocumentDiffs(conflicts, sourceChanges, targetChanges);
+      const result = await computeDocumentDiffs(conflicts, sourceChanges, targetChanges, 'source-branch', 'target-branch');
 
       expect(result).toHaveLength(2);
 
@@ -394,7 +395,7 @@ describe('Phase 10.1: Document Diff Service', () => {
     it('should return empty array when no conflicts', async () => {
       const { computeDocumentDiffs } = await import('../../src/services/document-diff-service');
 
-      const result = await computeDocumentDiffs([], [], []);
+      const result = await computeDocumentDiffs([], [], [], 'source-branch', 'target-branch');
 
       expect(result).toEqual([]);
     });
@@ -447,7 +448,7 @@ describe('Phase 10.1: Document Diff Service', () => {
         createdAt: '2026-01-20T11:00:00.000Z',
       });
 
-      const result = await computeDocumentDiffs(conflicts, sourceChanges, targetChanges);
+      const result = await computeDocumentDiffs(conflicts, sourceChanges, targetChanges, 'source-branch', 'target-branch');
 
       expect(result).toHaveLength(1);
       expect(result[0].documentId).toBe('doc-1');
@@ -503,12 +504,96 @@ describe('Phase 10.1: Document Diff Service', () => {
         createdAt: '2026-01-20T10:00:00.000Z',
       });
 
-      const result = await computeDocumentDiffs(conflicts, sourceChanges, targetChanges);
+      const result = await computeDocumentDiffs(conflicts, sourceChanges, targetChanges, 'source-branch', 'target-branch');
 
       expect(result).toHaveLength(1);
       expect(result[0].documentId).toBe('doc-1');
       expect(result[0].sourceSnapshot).toEqual({ title: 'Source Content' });
       expect(result[0].targetSnapshot).toBeNull();
+    });
+
+    it('should reconstruct snapshot when version has no inline snapshot', async () => {
+      const { computeDocumentDiffs } = await import('../../src/services/document-diff-service');
+      const {
+        getDocumentVersion,
+        reconstructVersionSnapshot,
+      } = await import('../../src/services/document-version-service');
+
+      const conflicts = [
+        {
+          documentId: 'doc-1',
+          documentPath: 'pages/home',
+          conflictType: 'both-modified' as const,
+          sourceVersion: 5,
+          targetVersion: 45,
+        },
+      ];
+
+      const sourceChanges = [
+        {
+          documentId: 'doc-1',
+          documentPath: 'pages/home',
+          latestVersionId: 'v5-source',
+          latestVersionNumber: 5,
+          baseVersionId: 'v0',
+          baseVersionNumber: 1,
+        },
+      ];
+
+      const targetChanges = [
+        {
+          documentId: 'doc-1',
+          documentPath: 'pages/home',
+          latestVersionId: 'v45-target',
+          latestVersionNumber: 45,
+          baseVersionId: 'v0',
+          baseVersionNumber: 1,
+        },
+      ];
+
+      // Source version has a snapshot, target version does not (diff-only)
+      vi.mocked(getDocumentVersion)
+        .mockResolvedValueOnce({
+          id: 'v5-source',
+          documentId: 'doc-1',
+          branchId: 'source-branch',
+          versionNumber: 5,
+          snapshot: { title: 'Source Title' },
+          source: 'edit',
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-20T10:00:00.000Z',
+        })
+        .mockResolvedValueOnce({
+          id: 'v45-target',
+          documentId: 'doc-1',
+          branchId: 'target-branch',
+          versionNumber: 45,
+          snapshot: undefined, // diff-only version, no inline snapshot
+          source: 'edit',
+          createdById: 'user-2',
+          createdByType: 'user',
+          createdAt: '2026-04-08T21:00:00.000Z',
+        });
+
+      // reconstructVersionSnapshot should be called for the target
+      vi.mocked(reconstructVersionSnapshot).mockResolvedValueOnce({
+        title: 'Reconstructed Target Title',
+      });
+
+      const result = await computeDocumentDiffs(
+        conflicts, sourceChanges, targetChanges,
+        'source-branch', 'target-branch',
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toBeDefined();
+      expect(result[0]?.sourceSnapshot).toEqual({ title: 'Source Title' });
+      expect(result[0]?.targetSnapshot).toEqual({ title: 'Reconstructed Target Title' });
+      expect(result[0]?.diffOperations.length).toBeGreaterThan(0);
+      expect(reconstructVersionSnapshot).toHaveBeenCalledWith(
+        'doc-1', 'target-branch', 45,
+      );
     });
   });
 

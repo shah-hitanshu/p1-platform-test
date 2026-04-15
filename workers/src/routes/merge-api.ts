@@ -65,6 +65,8 @@ interface MergePreviewBody {
   targetBranchId?: string;
   /** When true, includes full document snapshots and diff operations */
   includeContent?: boolean;
+  /** Exclude documents whose path starts with any of these prefixes */
+  excludePathPrefixes?: string[];
 }
 
 /**
@@ -220,7 +222,10 @@ async function handlePreviewMerge(
   const result = await previewMerge(
     body.sourceBranchId,
     body.targetBranchId,
-    { includeContent: body.includeContent },
+    {
+      includeContent: body.includeContent,
+      excludePathPrefixes: body.excludePathPrefixes,
+    },
   );
 
   return jsonResponse(result);
