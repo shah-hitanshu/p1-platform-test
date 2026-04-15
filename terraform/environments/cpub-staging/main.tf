@@ -122,6 +122,18 @@ module "cloudflare" {
 }
 
 # -----------------------------------------------------------------------------
+# GitHub Actions WIF (Workload Identity Federation)
+# -----------------------------------------------------------------------------
+
+module "github_actions_wif" {
+  source = "../../modules/github-actions-wif"
+
+  environment            = local.environment
+  gcp_project            = var.gcp_project
+  terraform_state_bucket = "cpub-staging-terraform-state"
+}
+
+# -----------------------------------------------------------------------------
 # Outputs
 # -----------------------------------------------------------------------------
 
@@ -166,4 +178,15 @@ output "hyperdrive_id" {
 output "worker_name" {
   description = "Cloudflare Worker name (API)"
   value       = module.cloudflare.worker_name
+}
+
+# GitHub Actions WIF outputs
+output "wif_provider" {
+  description = "WIF provider resource name (set as vars.GCP_WORKLOAD_IDENTITY_PROVIDER)"
+  value       = module.github_actions_wif.workload_identity_provider
+}
+
+output "wif_service_account" {
+  description = "Service account email (set as vars.GCP_SERVICE_ACCOUNT)"
+  value       = module.github_actions_wif.service_account_email
 }
