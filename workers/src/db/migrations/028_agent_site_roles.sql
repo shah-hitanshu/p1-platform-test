@@ -1,37 +1,40 @@
--- Migration 028: Agent Site Roles
+-- Migration 028: Agent Site Roles (schema reconciliation)
 --
--- Adds a table for assigning site-level roles to agents.
--- This controls what an agent can do on each site (view, edit, admin).
+-- Migration 014 created agent_site_roles with a basic schema.
+-- This migration brings it up to the current design:
+--   - Adds revoked_at for soft-delete (preserves grant history)
+--   - Adds granted_by to track who granted the role
+--   - Replaces the simple unique constraint with a partial unique index
+--     that only covers active (non-revoked) roles
+--   - Adds partial indexes for efficient lookups of active roles
 --
--- When an agent authenticates via its API key (aak_), the auth provider
--- queries this table to populate pantheonSiteRoles on the principal.
--- Agent roles are mapped to PantheonRoles for authorization:
---   viewer -> team_member, editor -> developer, admin -> admin
---
--- Roles are soft-deleted via revoked_at so grant history is preserved.
--- The unique partial index ensures only one active role per agent+site.
+-- All changes are idempotent so this migration is safe to re-run.
 
-CREATE TABLE IF NOT EXISTS app.agent_site_roles (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  agent_id TEXT NOT NULL REFERENCES app.agents(id) ON DELETE CASCADE,
-  site_id UUID NOT NULL REFERENCES app.sites(id) ON DELETE CASCADE,
-  role VARCHAR(10) NOT NULL CHECK (role IN ('viewer', 'editor', 'admin')),
-  granted_by TEXT NOT NULL,
-  granted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  revoked_at TIMESTAMPTZ
-);
+-- Add revoked_at column for soft-delete
+ALTER TABLE app.agent_site_roles
+  ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
+
+-- Add granted_by column
+ALTER TABLE app.agent_site_roles
+  ADD COLUMN IF NOT EXISTS granted_by TEXT NOT NULL DEFAULT 'system';
+
+-- Drop the old unique constraint from migration 014 (agent_id, site_id)
+-- so we can replace it with a partial unique index on active roles only.
+-- The constraint name is auto-generated as agent_site_roles_agent_id_site_id_key.
+ALTER TABLE app.agent_site_roles
+  DROP CONSTRAINT IF EXISTS agent_site_roles_agent_id_site_id_key;
 
 -- Only one active (non-revoked) role per agent per site
-CREATE UNIQUE INDEX idx_agent_site_roles_active
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_site_roles_active
   ON app.agent_site_roles (agent_id, site_id)
   WHERE revoked_at IS NULL;
 
 -- List roles for an agent (used during authentication)
-CREATE INDEX idx_agent_site_roles_agent_id
+CREATE INDEX IF NOT EXISTS idx_agent_site_roles_agent_id
   ON app.agent_site_roles (agent_id)
   WHERE revoked_at IS NULL;
 
 -- List agents with roles on a site (admin UI)
-CREATE INDEX idx_agent_site_roles_site_id
+CREATE INDEX IF NOT EXISTS idx_agent_site_roles_site_id
   ON app.agent_site_roles (site_id)
   WHERE revoked_at IS NULL;

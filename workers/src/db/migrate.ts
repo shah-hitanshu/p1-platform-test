@@ -77,6 +77,7 @@ async function getMigrationFiles(): Promise<Migration[]> {
 async function ensureMigrationsTable(
   sql: ReturnType<typeof postgres>,
 ): Promise<void> {
+  await sql`CREATE SCHEMA IF NOT EXISTS app`;
   await sql`
     CREATE TABLE IF NOT EXISTS app.schema_migrations (
       id INTEGER PRIMARY KEY,
