@@ -174,19 +174,19 @@
       ]
     },
 
-    // cpub-staging environment
-    "cpub-staging": {
-      "name": "collaborative-state-worker-cpub-staging",
+    // staging environment
+    "staging": {
+      "name": "collaborative-state-worker-staging",
       "vars": {
-        "ENVIRONMENT": "cpub-staging",
+        "ENVIRONMENT": "staging",
         "LOG_LEVEL": "info",
         "CORS_ORIGINS": "*",
         "METRICS_ENABLED": "true",
-        "INTERNAL_API_URL": "https://collaborative-state-worker-cpub-staging.pantheon-content-publisher.workers.dev",
+        "INTERNAL_API_URL": "https://collaborative-state-worker-staging.pantheon-content-publisher.workers.dev",
         "WEBSOCKET_HEARTBEAT_INTERVAL": "30000",
         "DOCUMENT_SYNC_BATCH_SIZE": "50",
         "PRESENCE_TTL_SECONDS": "120",
-        "APP_VERSION": "cpub-staging"
+        "APP_VERSION": "staging"
       },
       "durable_objects": {
         "bindings": [
@@ -200,8 +200,8 @@
         { "binding": "SESSION_KV", "id": "222a92acfbca49beb6475b43d8092039" }
       ],
       "queues": {
-        "producers": [{ "binding": "SYNC_QUEUE", "queue": "css-sync-queue-cpub-staging" }],
-        "consumers": [{ "queue": "css-sync-queue-cpub-staging", "max_batch_size": 100, "max_batch_timeout": 30 }]
+        "producers": [{ "binding": "SYNC_QUEUE", "queue": "css-sync-queue-staging" }],
+        "consumers": [{ "queue": "css-sync-queue-staging", "max_batch_size": 100, "max_batch_timeout": 30 }]
       },
       "hyperdrive": [
         { "binding": "HYPERDRIVE", "id": "31d5f144f71148309aa4350e816f455f" }

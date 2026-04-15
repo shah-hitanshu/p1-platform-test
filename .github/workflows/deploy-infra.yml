@@ -8,7 +8,7 @@ on:
         required: true
         type: choice
         options:
-          - cpub-staging
+          - staging
           - sbx1
           - production
       action:

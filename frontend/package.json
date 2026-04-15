@@ -13,7 +13,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
-    "deploy:cpub-staging": "pnpm build && wrangler deploy --env cpub-staging",
+    "deploy:staging": "pnpm build && wrangler deploy --env staging",
     "deploy:sbx1": "pnpm build && wrangler deploy --env sbx1",
     "deploy:production": "pnpm build && wrangler deploy --env production"
   },

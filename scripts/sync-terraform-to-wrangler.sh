@@ -25,7 +25,7 @@ NC='\033[0m'
 declare -A ENV_PREFIXES=(
   [sbx1]="SBX1"
   [production]="PROD"
-  [cpub-staging]="CPUB_STAGING"
+  [staging]="STAGING"
 )
 
 # Validate arguments

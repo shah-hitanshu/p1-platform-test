@@ -1,4 +1,4 @@
-# Collaborative State System - cpub-staging Environment
+# Collaborative State System - staging Environment
 #
 # This configuration deploys to the Content Publisher staging Cloudflare account
 # and GCP project.
@@ -9,9 +9,9 @@
 #   - GCS bucket for Terraform state
 #
 # Usage:
-#   make tf-init ENV=cpub-staging
-#   make tf-plan ENV=cpub-staging
-#   make tf-apply ENV=cpub-staging
+#   make tf-init ENV=staging
+#   make tf-plan ENV=staging
+#   make tf-apply ENV=staging
 
 terraform {
   required_version = ">= 1.6.0"
@@ -72,7 +72,7 @@ variable "cloudsql_authorized_networks" {
 # -----------------------------------------------------------------------------
 
 locals {
-  environment = "cpub-staging"
+  environment = "staging"
   project     = "collaborative-state-system"
 
   default_tags = {

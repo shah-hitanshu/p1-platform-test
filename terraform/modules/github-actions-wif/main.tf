@@ -30,7 +30,7 @@ terraform {
 # -----------------------------------------------------------------------------
 
 variable "environment" {
-  description = "Environment name (cpub-staging, sbx1, production)"
+  description = "Environment name (staging, sbx1, production)"
   type        = string
 }
 
