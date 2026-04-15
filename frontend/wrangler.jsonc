@@ -25,6 +25,19 @@
   },
 
   "env": {
+    // cpub-staging environment
+    "cpub-staging": {
+      "name": "collaborative-state-frontend-cpub-staging",
+      "vars": {
+        "FRONTEND_API_BASE_URL": "https://collaborative-state-worker-cpub-staging.pantheon-content-publisher.workers.dev",
+        "FRONTEND_GOOGLE_CLIENT_ID": "",
+        "FRONTEND_AUTH0_DOMAIN": "",
+        "FRONTEND_AUTH0_CLIENT_ID": "",
+        "FRONTEND_AUTH0_AUDIENCE": "",
+        "FRONTEND_ENABLE_MOCK_LOGIN": "false",
+      },
+    },
+
     // Sandbox environment
     "sbx1": {
       "name": "collaborative-state-frontend-sbx1",
