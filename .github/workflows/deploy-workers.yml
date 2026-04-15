@@ -24,6 +24,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   backend:
@@ -46,12 +47,27 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: workers
 
+      - name: Authenticate to GCP
+        if: inputs.run_migrations
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Start Cloud SQL Auth Proxy
+        if: inputs.run_migrations
+        run: |
+          curl -sSL https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.17.0/cloud-sql-proxy.linux.amd64 -o cloud-sql-proxy
+          chmod +x cloud-sql-proxy
+          ./cloud-sql-proxy --port 5432 "${{ vars.CLOUDSQL_INSTANCE_CONNECTION_NAME }}" &
+          sleep 2
+
       - name: Run migrations
         if: inputs.run_migrations
         run: pnpm db:migrate
         working-directory: workers
         env:
-          POSTGRES_CONNECTION_STRING: ${{ secrets.POSTGRES_CONNECTION_STRING }}
+          POSTGRES_CONNECTION_STRING: postgresql://${{ secrets.CLOUDSQL_DB_USER }}:${{ secrets.CLOUDSQL_DB_PASSWORD }}@localhost:5432/${{ secrets.CLOUDSQL_DB_NAME }}
 
       - name: Deploy
         run: >
