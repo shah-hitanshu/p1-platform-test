@@ -60,7 +60,8 @@ jobs:
           URL="https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.21.2"
           curl "$URL/cloud-sql-proxy.linux.amd64" -o cloud-sql-proxy
           chmod +x cloud-sql-proxy
-          ./cloud-sql-proxy --port 5432 "${{ vars.CLOUDSQL_INSTANCE_CONNECTION_NAME }}"
+          ./cloud-sql-proxy --port 5432 "${{ vars.CLOUDSQL_INSTANCE_CONNECTION_NAME }}" &
+          sleep 3
       - name: Run migrations
         if: inputs.run_migrations
         run: pnpm db:migrate
