@@ -26,8 +26,8 @@ describe('Agent Site Role Service', () => {
     agent_id: string;
     site_id: string;
     role: 'viewer' | 'editor' | 'admin';
-    granted_by: string;
-    granted_at: string;
+    created_by_id: string;
+    created_at: string;
     revoked_at: string | null;
   }
 
@@ -37,8 +37,8 @@ describe('Agent Site Role Service', () => {
       agent_id: 'agent-uuid-456',
       site_id: 'site-uuid-789',
       role: 'editor',
-      granted_by: 'user-uuid-111',
-      granted_at: '2026-03-22T10:00:00.000Z',
+      created_by_id: 'user-uuid-111',
+      created_at: '2026-03-22T10:00:00.000Z',
       revoked_at: null,
       ...overrides,
     };
@@ -293,7 +293,7 @@ describe('Agent Site Role Service', () => {
       await listRoles('agent-uuid-456');
 
       expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('ORDER BY granted_at DESC'),
+        expect.stringContaining('ORDER BY created_at DESC'),
         expect.any(Array),
       );
     });

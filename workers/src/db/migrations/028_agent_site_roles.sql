@@ -3,7 +3,7 @@
 -- Migration 014 created agent_site_roles with a basic schema.
 -- This migration brings it up to the current design:
 --   - Adds revoked_at for soft-delete (preserves grant history)
---   - Adds granted_by to track who granted the role
+--   - Uses created_by_id to track who granted the role
 --   - Replaces the simple unique constraint with a partial unique index
 --     that only covers active (non-revoked) roles
 --   - Adds partial indexes for efficient lookups of active roles
@@ -14,9 +14,7 @@
 ALTER TABLE app.agent_site_roles
   ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
 
--- Add granted_by column
-ALTER TABLE app.agent_site_roles
-  ADD COLUMN IF NOT EXISTS granted_by TEXT NOT NULL DEFAULT 'system';
+-- created_by_id already exists from migration 014; no column addition needed
 
 -- Drop the old unique constraint from migration 014 (agent_id, site_id)
 -- so we can replace it with a partial unique index on active roles only.
