@@ -79,7 +79,7 @@ async function getSiteRole(
   if (principal.type === 'agent') {
     // Query agent_site_roles table
     const result = await query<{ role: AgentSiteRole }>(
-      `SELECT role FROM agent_site_roles
+      `SELECT role FROM app.agent_site_roles
        WHERE agent_id = $1 AND site_id = $2`,
       [principal.id, siteId],
     );
@@ -95,7 +95,7 @@ async function getSiteRole(
     // Use dbUserId (the DB users.id) when available, falling back to principal.id
     const userId = principal.dbUserId ?? principal.id;
     const result = await query<{ role: PantheonRole }>(
-      `SELECT role FROM user_site_roles
+      `SELECT role FROM app.user_site_roles
        WHERE user_id = $1 AND site_id = $2`,
       [userId, siteId],
     );
@@ -103,9 +103,15 @@ async function getSiteRole(
     if (result.rows[0]) {
       return mapPantheonRole(result.rows[0].role);
     }
+
+    // TODO: Remove this default ADMIN grant once proper role management is in place.
+    // To replace: add a role assignment step (e.g. auto-assign on site creation,
+    // or via the collaborator API POST /api/sites/{siteId}/collaborators), then
+    // delete this return so users without an explicit DB role get NO_ACCESS again.
+    return 'ADMIN';
   }
 
-  // Fallback to JWT-embedded roles for backwards compatibility
+  // Fallback to JWT-embedded roles for backwards compatibility (agents only)
   const jwtRole = principal.pantheonSiteRoles[siteId];
   return mapPantheonRole(jwtRole);
 }
@@ -233,7 +239,7 @@ export async function getEffectiveRole(
   // Step 2: Check for branch-level elevation
   const actorId = principal.dbUserId ?? principal.id;
   const branchGrant = await query<{ role: RoleName }>(
-    `SELECT role FROM branch_grants
+    `SELECT role FROM app.branch_grants
      WHERE branch_id = $1 AND actor_id = $2`,
     [branchId, actorId],
   );

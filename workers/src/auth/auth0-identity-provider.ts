@@ -2,7 +2,6 @@
  * Phase 3: Auth0 Identity Provider
  *
  * Verifies Auth0-issued JWTs using RS256 + JWKS.
- * Supports dual-issuer migration for Auth0 tenant changes.
  *
  * @see collaborative-state-system-architecture-v2.3.md
  */
@@ -17,27 +16,12 @@ import { providerSubToUuid } from './uuid-v5';
  * Configuration options for the Auth0IdentityProvider.
  */
 export interface Auth0IdentityProviderOptions {
-  /** Primary Auth0 issuer base URL (e.g. https://example.auth0.com) */
+  /** Auth0 issuer base URL (e.g. https://example.auth0.com) */
   issuerBaseUrl: string;
-  /** Optional new issuer URL for dual-issuer migration */
-  newIssuerBaseUrl?: string;
   /** Expected audience for token validation */
   audience: string;
   /** Optional injected JWKS for testing (defaults to remote JWKS) */
   jwks?: jose.JWTVerifyGetKey;
-  /** Optional injected JWKS for new issuer testing (defaults to remote JWKS) */
-  newJwks?: jose.JWTVerifyGetKey;
-}
-
-/**
- * Normalize an issuer URL by stripping trailing slashes.
- */
-function normalizeIssuer(url: string): string {
-  let end = url.length;
-  while (end > 0 && url[end - 1] === '/') {
-    end--;
-  }
-  return end === url.length ? url : url.slice(0, end);
 }
 
 /**
@@ -61,29 +45,17 @@ export class Auth0IdentityProvider implements IdentityProvider {
   readonly name: AuthProvider = 'auth0';
 
   private readonly issuerBaseUrl: string;
-  private readonly newIssuerBaseUrl: string | undefined;
   private readonly audience: string;
   private readonly jwks: jose.JWTVerifyGetKey;
-  private readonly newJwks: jose.JWTVerifyGetKey | undefined;
 
   constructor(options: Auth0IdentityProviderOptions) {
-    this.issuerBaseUrl = normalizeIssuer(options.issuerBaseUrl);
-    this.newIssuerBaseUrl = options.newIssuerBaseUrl !== undefined
-      ? normalizeIssuer(options.newIssuerBaseUrl)
-      : undefined;
+    this.issuerBaseUrl = options.issuerBaseUrl;
     this.audience = options.audience;
 
     this.jwks = options.jwks ??
       jose.createRemoteJWKSet(
-        new URL(this.issuerBaseUrl + '/.well-known/jwks.json'),
+        new URL(new URL('.well-known/jwks.json', this.issuerBaseUrl).href),
       );
-
-    if (this.newIssuerBaseUrl !== undefined) {
-      this.newJwks = options.newJwks ??
-        jose.createRemoteJWKSet(
-          new URL(this.newIssuerBaseUrl + '/.well-known/jwks.json'),
-        );
-    }
   }
 
   /**
@@ -98,7 +70,7 @@ export class Auth0IdentityProvider implements IdentityProvider {
     try {
       const payload = jose.decodeJwt(token);
       const iss = typeof payload.iss === 'string'
-        ? normalizeIssuer(payload.iss)
+        ? payload.iss
         : undefined;
 
       if (iss === undefined) {
@@ -106,10 +78,6 @@ export class Auth0IdentityProvider implements IdentityProvider {
       }
 
       if (iss === this.issuerBaseUrl) {
-        return true;
-      }
-
-      if (this.newIssuerBaseUrl !== undefined && iss === this.newIssuerBaseUrl) {
         return true;
       }
 
@@ -130,9 +98,7 @@ export class Auth0IdentityProvider implements IdentityProvider {
   async validateToken(token: string): Promise<AuthenticatedPrincipal | null> {
     try {
       const decoded = jose.decodeJwt(token);
-      const iss = typeof decoded.iss === 'string'
-        ? normalizeIssuer(decoded.iss)
-        : undefined;
+      const iss = typeof decoded.iss === 'string' ? decoded.iss : undefined;
 
       // Select the correct JWKS based on issuer
       const selectedJwks = this.selectJwks(iss);
@@ -192,8 +158,7 @@ export class Auth0IdentityProvider implements IdentityProvider {
 
   /**
    * Select the correct JWKS keyset based on the token's issuer.
-   * Returns the primary JWKS for the configured issuer,
-   * the new JWKS for the new issuer, or the primary JWKS as fallback
+   * Returns the JWKS for the configured issuer, or as fallback
    * for any other auth0.com issuer.
    */
   private selectJwks(iss: string | undefined): jose.JWTVerifyGetKey | undefined {
@@ -201,16 +166,7 @@ export class Auth0IdentityProvider implements IdentityProvider {
       return undefined;
     }
 
-    if (iss === this.issuerBaseUrl) {
-      return this.jwks;
-    }
-
-    if (this.newIssuerBaseUrl !== undefined && iss === this.newIssuerBaseUrl) {
-      return this.newJwks;
-    }
-
-    // Fallback for other auth0.com issuers — use primary JWKS
-    if (isAuth0Issuer(iss)) {
+    if (iss === this.issuerBaseUrl || isAuth0Issuer(iss)) {
       return this.jwks;
     }
 

@@ -136,7 +136,6 @@ export function getIdentityProvider(env: Env): MultiProviderIdentityProvider {
   ) {
     providers.push(new Auth0IdentityProvider({
       issuerBaseUrl: env.AUTH0_ISSUER_BASE_URL,
-      newIssuerBaseUrl: env.AUTH0_NEW_ISSUER_BASE_URL,
       audience: env.AUTH0_AUDIENCE,
     }));
   }

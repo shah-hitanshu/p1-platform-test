@@ -35,8 +35,8 @@ interface RoleRow {
   agent_id: string;
   site_id: string;
   role: 'viewer' | 'editor' | 'admin';
-  granted_by: string;
-  granted_at: string;
+  created_by_id: string;
+  created_at: string;
   revoked_at: string | null;
 }
 
@@ -62,8 +62,8 @@ function mapRowToRole(row: RoleRow): AgentSiteRole {
     agentId: row.agent_id,
     siteId: row.site_id,
     role: row.role,
-    grantedBy: row.granted_by,
-    grantedAt: row.granted_at,
+    grantedBy: row.created_by_id,
+    grantedAt: row.created_at,
     revokedAt: row.revoked_at,
   };
 }
@@ -97,10 +97,10 @@ export async function grantRole(
   }
 
   const result = await query<RoleRow>(
-    `INSERT INTO app.agent_site_roles (agent_id, site_id, role, granted_by)
+    `INSERT INTO app.agent_site_roles (agent_id, site_id, role, created_by_id)
      VALUES ($1, $2, $3, $4)
      ON CONFLICT (agent_id, site_id) WHERE revoked_at IS NULL
-     DO UPDATE SET role = $3, granted_by = $4, granted_at = now()
+     DO UPDATE SET role = $3, created_by_id = $4, created_at = now()
      RETURNING *`,
     [params.agentId, params.siteId, params.role, params.grantedBy],
   );
@@ -134,7 +134,7 @@ export async function listRoles(agentId: string): Promise<AgentSiteRole[]> {
   const result = await query<RoleRow>(
     `SELECT * FROM app.agent_site_roles
      WHERE agent_id = $1 AND revoked_at IS NULL
-     ORDER BY granted_at DESC`,
+     ORDER BY created_at DESC`,
     [agentId],
   );
 
@@ -151,7 +151,7 @@ export async function listRolesBySite(siteId: string): Promise<(AgentSiteRole & 
      FROM app.agent_site_roles r
      JOIN app.agents a ON a.id = r.agent_id
      WHERE r.site_id = $1 AND r.revoked_at IS NULL
-     ORDER BY r.granted_at DESC`,
+     ORDER BY r.created_at DESC`,
     [siteId],
   );
 

@@ -19,26 +19,16 @@ import { providerSubToUuid } from '../../src/auth/uuid-v5';
 let keyPair: jose.GenerateKeyPairResult;
 let localJwks: jose.JWTVerifyGetKey;
 
-/** Second key pair for dual-issuer tests */
-let newKeyPair: jose.GenerateKeyPairResult;
-let newLocalJwks: jose.JWTVerifyGetKey;
-
 /** A completely separate key pair for wrong-signature tests */
 let wrongKeyPair: jose.GenerateKeyPairResult;
 
 const TEST_ISSUER = 'https://example.auth0.com';
-const TEST_NEW_ISSUER = 'https://example.us.auth0.com';
 const TEST_AUDIENCE = 'https://api.example.com';
 
 beforeAll(async () => {
   keyPair = await jose.generateKeyPair('RS256');
   localJwks = jose.createLocalJWKSet({
     keys: [await jose.exportJWK(keyPair.publicKey)],
-  });
-
-  newKeyPair = await jose.generateKeyPair('RS256');
-  newLocalJwks = jose.createLocalJWKSet({
-    keys: [await jose.exportJWK(newKeyPair.publicKey)],
   });
 
   wrongKeyPair = await jose.generateKeyPair('RS256');
@@ -78,18 +68,14 @@ async function createAuth0Token(
 function createProvider(
   overrides: {
     issuerBaseUrl?: string;
-    newIssuerBaseUrl?: string;
     audience?: string;
     jwks?: jose.JWTVerifyGetKey;
-    newJwks?: jose.JWTVerifyGetKey;
   } = {},
 ): Auth0IdentityProvider {
   return new Auth0IdentityProvider({
     issuerBaseUrl: overrides.issuerBaseUrl ?? TEST_ISSUER,
-    newIssuerBaseUrl: overrides.newIssuerBaseUrl,
     audience: overrides.audience ?? TEST_AUDIENCE,
     jwks: overrides.jwks ?? localJwks,
-    newJwks: overrides.newJwks,
   });
 }
 
@@ -103,14 +89,6 @@ describe('Phase 3: Auth0 Identity Provider', () => {
       const provider = createProvider();
       expect(provider).toBeInstanceOf(Auth0IdentityProvider);
       expect(provider.name).toBe('auth0');
-    });
-
-    it('should create with optional newIssuerBaseUrl', () => {
-      const provider = createProvider({
-        newIssuerBaseUrl: TEST_NEW_ISSUER,
-        newJwks: newLocalJwks,
-      });
-      expect(provider).toBeInstanceOf(Auth0IdentityProvider);
     });
 
     it('should normalize issuer URLs by stripping trailing slashes', () => {
@@ -131,18 +109,6 @@ describe('Phase 3: Auth0 Identity Provider', () => {
     it('should return true for configured issuer', async () => {
       const provider = createProvider();
       const token = await createAuth0Token({ sub: 'auth0|user1' });
-      expect(provider.canVerifyToken(token)).toBe(true);
-    });
-
-    it('should return true for new issuer when configured', async () => {
-      const provider = createProvider({
-        newIssuerBaseUrl: TEST_NEW_ISSUER,
-        newJwks: newLocalJwks,
-      });
-      const token = await createAuth0Token(
-        { sub: 'auth0|user1' },
-        { issuer: TEST_NEW_ISSUER },
-      );
       expect(provider.canVerifyToken(token)).toBe(true);
     });
 
@@ -333,63 +299,6 @@ describe('Phase 3: Auth0 Identity Provider', () => {
       // tokenExpiry should be a valid ISO string in the future
       const expiry = new Date(principal?.tokenExpiry ?? '');
       expect(expiry.getTime()).toBeGreaterThan(Date.now());
-    });
-
-    // Dual-issuer migration tests
-    describe('dual-issuer migration', () => {
-      it('should validate tokens from old issuer using old JWKS', async () => {
-        const provider = createProvider({
-          newIssuerBaseUrl: TEST_NEW_ISSUER,
-          newJwks: newLocalJwks,
-        });
-
-        const token = await createAuth0Token(
-          { sub: 'auth0|user1', email: 'old@example.com' },
-          { issuer: TEST_ISSUER, privateKey: keyPair.privateKey },
-        );
-
-        const principal = await provider.validateToken(token);
-        const expectedId = await providerSubToUuid('auth0', 'auth0|user1');
-        expect(principal).not.toBeNull();
-        expect(principal?.id).toBe(expectedId);
-        expect(principal?.providerSubjectId).toBe('auth0|user1');
-        expect(principal?.email).toBe('old@example.com');
-      });
-
-      it('should validate tokens from new issuer using new JWKS', async () => {
-        const provider = createProvider({
-          newIssuerBaseUrl: TEST_NEW_ISSUER,
-          newJwks: newLocalJwks,
-        });
-
-        const token = await createAuth0Token(
-          { sub: 'auth0|user1', email: 'new@example.com' },
-          { issuer: TEST_NEW_ISSUER, privateKey: newKeyPair.privateKey },
-        );
-
-        const principal = await provider.validateToken(token);
-        const expectedId = await providerSubToUuid('auth0', 'auth0|user1');
-        expect(principal).not.toBeNull();
-        expect(principal?.id).toBe(expectedId);
-        expect(principal?.providerSubjectId).toBe('auth0|user1');
-        expect(principal?.email).toBe('new@example.com');
-      });
-
-      it('should reject token from new issuer signed with old JWKS', async () => {
-        const provider = createProvider({
-          newIssuerBaseUrl: TEST_NEW_ISSUER,
-          newJwks: newLocalJwks,
-        });
-
-        // Token says it's from new issuer but signed with old key
-        const token = await createAuth0Token(
-          { sub: 'auth0|user1' },
-          { issuer: TEST_NEW_ISSUER, privateKey: keyPair.privateKey },
-        );
-
-        const principal = await provider.validateToken(token);
-        expect(principal).toBeNull();
-      });
     });
 
     // Edge case: token from unknown auth0 tenant
