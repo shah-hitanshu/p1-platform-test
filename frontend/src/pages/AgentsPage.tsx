@@ -255,9 +255,7 @@ export function AgentsPage() {
                           </div>
 
                           {newKeyValue && (
-                            <InlineMessage type="warning" title="Copy this key now. It will not be shown again." className="new-key-alert" data-testid="new-key-alert">
-                              <div className="new-key-value">{newKeyValue}</div>
-                            </InlineMessage>
+                            <InlineMessage type="warning" title="Copy this key now. It will not be shown again." message={<div className="new-key-value">{newKeyValue}</div>} className="new-key-alert" data-testid="new-key-alert" />
                           )}
 
                           {agentKeys[agent.id] && agentKeys[agent.id].length > 0 ? (

@@ -32,8 +32,8 @@ vi.mock('@pantheon-systems/pds-toolkit-react', () => ({
       {(label as string) || (children as React.ReactNode)}
     </button>
   ),
-  InlineMessage: ({ title, children, ...props }: Record<string, unknown>) => (
-    <div role="alert" {...props}>{(title as string)}{(children as React.ReactNode)}</div>
+  InlineMessage: ({ title, message, children, ...props }: Record<string, unknown>) => (
+    <div role="alert" {...props}>{(title as string)}{(message as React.ReactNode)}{(children as React.ReactNode)}</div>
   ),
   StatusBadge: ({ label, children, ...props }: Record<string, unknown>) => (
     <span {...props}>{(label as string) || (children as React.ReactNode)}</span>
