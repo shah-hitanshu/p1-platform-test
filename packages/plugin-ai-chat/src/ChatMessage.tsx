@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
+import { Badge, Icon, UtilityButton } from '@pantheon-systems/pds-toolkit-react';
 import type { ChatMessage as ChatMessageType } from './types.js';
 
 interface Props {
@@ -17,57 +18,75 @@ export function ChatMessage({ message }: Props): React.ReactElement {
       gap: 4,
       marginBottom: 12,
     }}>
+      {/* AI badge for assistant messages */}
+      {!isUser && (message.content || message.isStreaming) && (
+        <Badge
+          color="discovery"
+          label={
+            <>
+              <Icon iconName="sparkles" iconSize="xs" verticalAlign="-0.1em" />
+              {' '}AI
+            </>
+          }
+          size="xs"
+        />
+      )}
+
       {/* Tool call badges */}
       {message.toolCalls && message.toolCalls.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
           {message.toolCalls.map((tc, i) => (
-            <div
+            <Badge
               key={i}
-              style={{
-                fontSize: 11,
-                padding: '2px 6px',
-                borderRadius: 3,
-                backgroundColor: tc.status === 'running' ? '#e8f4fd' : '#f0fdf4',
-                color: tc.status === 'running' ? '#1d6fa4' : '#166534',
-                border: `1px solid ${tc.status === 'running' ? '#bfdbfe' : '#bbf7d0'}`,
-                fontFamily: 'monospace',
-              }}
-            >
-              {tc.status === 'running' ? '⟳' : '✓'} {tc.name}
-            </div>
+              color={tc.status === 'running' ? 'sky' : 'gaia'}
+              label={
+                <>
+                  <Icon
+                    iconName={tc.status === 'running' ? 'circleNotch' : 'circleCheck'}
+                    iconSize="xs"
+                    verticalAlign="-0.1em"
+                  />
+                  {' '}{tc.name}
+                </>
+              }
+              size="xs"
+            />
           ))}
         </div>
       )}
 
+      {/* Thinking indicator — shown while waiting for first streamed token */}
+      {!isUser && message.isStreaming && !message.content && (
+        <UtilityButton
+          label="Thinking…"
+          iconName="sparkles"
+          isWorking
+        />
+      )}
+
       {/* Message bubble */}
-      {(message.content || message.isStreaming) && (
+      {message.content && (
         <div style={{
           maxWidth: '90%',
           padding: '8px 12px',
           borderRadius: isUser ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
-          backgroundColor: isUser ? '#2563eb' : '#f3f4f6',
-          color: isUser ? '#ffffff' : '#111827',
+          backgroundColor: isUser ? 'var(--pds-color-bg-reverse)' : 'var(--pds-color-bg-default-secondary)',
+          color: isUser ? 'var(--pds-color-fg-reverse)' : 'var(--pds-color-fg-default)',
           fontSize: 13,
           lineHeight: 1.5,
           wordBreak: 'break-word',
         }}>
           {isUser ? (
-            <>
-              {message.content}
-              {message.isStreaming && (
-                <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: 'currentColor', marginLeft: 3, opacity: 0.6, animation: 'pulse 1s infinite' }} />
-              )}
-            </>
+            message.content
           ) : (
-            <>
-              <div style={{ marginBottom: -8 }}>
+            <div style={{ marginBottom: -8 }}>
               <ReactMarkdown
                 components={{
                   p: ({ children }) => <p style={{ margin: '0 0 8px 0', lineHeight: 1.6 }}>{children}</p>,
-                  pre: ({ children }) => <pre style={{ background: '#e5e7eb', padding: '8px', borderRadius: 4, overflow: 'auto', fontSize: 12, margin: '0 0 8px 0' }}>{children}</pre>,
+                  pre: ({ children }) => <pre style={{ background: 'var(--pds-color-bg-default-secondary)', padding: '8px', borderRadius: 4, overflow: 'auto', fontSize: 12, margin: '0 0 8px 0' }}>{children}</pre>,
                   code: ({ children, className }) => className
                     ? <code className={className}>{children}</code>
-                    : <code style={{ background: '#e5e7eb', padding: '1px 4px', borderRadius: 3, fontSize: 12, fontFamily: 'monospace' }}>{children}</code>,
+                    : <code style={{ background: 'var(--pds-color-bg-default-secondary)', padding: '1px 4px', borderRadius: 3, fontSize: 12, fontFamily: 'monospace' }}>{children}</code>,
                   ul: ({ children }) => <ul style={{ margin: '0 0 8px 0', paddingLeft: 20 }}>{children}</ul>,
                   ol: ({ children }) => <ol style={{ margin: '0 0 8px 0', paddingLeft: 20 }}>{children}</ol>,
                   li: ({ children }) => <li style={{ marginBottom: 2 }}>{children}</li>,
@@ -75,32 +94,23 @@ export function ChatMessage({ message }: Props): React.ReactElement {
                   h2: ({ children }) => <h2 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 8px 0' }}>{children}</h2>,
                   h3: ({ children }) => <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 8px 0' }}>{children}</h3>,
                   strong: ({ children }) => <strong style={{ fontWeight: 600 }}>{children}</strong>,
-                  blockquote: ({ children }) => <blockquote style={{ borderLeft: '3px solid #d1d5db', paddingLeft: 8, margin: '0 0 8px 0', color: '#6b7280' }}>{children}</blockquote>,
+                  blockquote: ({ children }) => <blockquote style={{ borderLeft: '3px solid var(--pds-color-border-separator)', paddingLeft: 8, margin: '0 0 8px 0', color: 'var(--pds-color-fg-default-secondary)' }}>{children}</blockquote>,
                 }}
               >
                 {message.content}
               </ReactMarkdown>
-              </div>
-              {message.isStreaming && (
-                <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: 'currentColor', marginLeft: 3, opacity: 0.6, animation: 'pulse 1s infinite' }} />
-              )}
-            </>
+            </div>
           )}
         </div>
       )}
 
       {/* Error state */}
       {message.error && (
-        <div style={{
-          fontSize: 12,
-          color: '#dc2626',
-          padding: '4px 8px',
-          borderRadius: 4,
-          backgroundColor: '#fef2f2',
-          border: '1px solid #fecaca',
-        }}>
-          Error: {message.error}
-        </div>
+        <Badge
+          color="critical"
+          label={`Error: ${message.error}`}
+          size="s"
+        />
       )}
     </div>
   );
