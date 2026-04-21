@@ -1,0 +1,11 @@
+{
+  "name": "p1-chatbot",
+  "private": true,
+  "workspaces": [
+    "workers/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "ws": "^8.20.0"
+  }
+}

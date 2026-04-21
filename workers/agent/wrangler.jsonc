@@ -1,0 +1,38 @@
+{
+  "name": "p1-chatbot-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      { "name": "CHAT_AGENT", "class_name": "ChatAgent" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ChatAgent"] }
+  ],
+  "vars": {
+    "ENVIRONMENT": "local",
+    "CSS_BACKEND_URL": "http://localhost:8787",
+    "AI_GATEWAY_ACCOUNT_ID": "80174c9d7c006c2f1841b8d99c8803fa",
+    "AI_GATEWAY_NAME": "p1-chatbot"
+  },
+  "env": {
+    "sbx1": {
+      "vars": {
+        "ENVIRONMENT": "sbx1",
+        "CSS_BACKEND_URL": "https://collaborative-state-worker-sbx1.chris-801.workers.dev",
+        "AI_GATEWAY_ACCOUNT_ID": "80174c9d7c006c2f1841b8d99c8803fa",
+        "AI_GATEWAY_NAME": "p1-chatbot"
+      },
+      "durable_objects": {
+        "bindings": [
+          { "name": "CHAT_AGENT", "class_name": "ChatAgent" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["ChatAgent"] }
+      ]
+    }
+  }
+}
