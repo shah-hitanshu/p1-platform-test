@@ -9,18 +9,10 @@ SHELL := /bin/bash
 ENV ?= local
 TF_DIR := terraform/environments/$(ENV)
 
-# Container runtime detection (podman or docker)
-CONTAINER_ENGINE ?= $(shell command -v podman >/dev/null 2>&1 && echo podman || echo docker)
-COMPOSE_CMD ?= $(shell \
-	if command -v podman 2>/dev/null >/dev/null && podman compose version 2>/dev/null >/dev/null; then \
-		echo "podman compose"; \
-	elif command -v podman-compose 2>/dev/null >/dev/null; then \
-		echo "podman-compose"; \
-	elif command -v docker 2>/dev/null >/dev/null && docker compose version 2>/dev/null >/dev/null; then \
-		echo "docker compose"; \
-	else \
-		echo "docker-compose"; \
-	fi)
+# Container runtime detection: prefer whichever engine is actually running.
+# Override with: make dev CONTAINER_ENGINE=docker
+CONTAINER_ENGINE ?= $(shell docker info >/dev/null 2>&1 && echo docker || (podman info >/dev/null 2>&1 && echo podman) || echo docker)
+COMPOSE_CMD ?= $(shell $(CONTAINER_ENGINE) compose version >/dev/null 2>&1 && echo "$(CONTAINER_ENGINE) compose" || echo "$(CONTAINER_ENGINE)-compose")
 
 # Colors for output
 RED := \033[0;31m
