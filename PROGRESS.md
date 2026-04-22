@@ -3990,6 +3990,41 @@ Eliminate the HTTP round-trip from `collaborative-state-worker` → `css-auth-se
 
 ---
 
+### Bug Fix: DO State Initialization CoW Baseline (2026-04-22)
+
+**Status:** Complete
+**PR:** #82 (retroactive — commits already on `main`)
+**Commits:** `905ee4b` (tests), `4caa366` (implementation)
+**Bug doc:** `BUG-DO-STATE-INIT.md`
+
+#### Root Cause
+When a Durable Object initialized for a `document+branch` combination with no prior versions on that branch, it started with an empty Yjs document instead of loading the Copy-on-Write baseline from the source branch. The connecting browser client's Yjs state — which could be stale/foreign content from a previous document session — was accepted as the authoritative first version.
+
+Confirmed in production (sbx1): content from document `foo` on `main` was committed as v1 of `another/ai/test` on the `new model launch` branch. Identical Puck component ULIDs across both records confirmed the contamination.
+
+#### Fix Applied (Failure Mode A — primary fix)
+
+Both DO initialization paths now fall back to the latest checkpointed version from the source branch when no versions exist on the target branch:
+
+- **`workers/src/services/crdt-sync-service.ts`** — `loadLatestCrdtState()`: calls `getBranch()` to get `sourceBranchId`, then `getLatestPublishedDocumentVersion(documentId, sourceBranchId)` as the CoW baseline. Covers the HTTP API initialization path (local dev / Hyperdrive unavailable).
+- **`workers/src/durable-objects/postgres-sync-manager.ts`** — `initializeFromHyperdrive()`: when the branch-specific query returns 0 rows, runs two additional SQL queries within the same connection — branch lookup for `source_branch_id`, then checkpoint join to get the latest published snapshot. Covers the Hyperdrive path (production).
+
+#### What Remains (not in this fix)
+- **Failure Mode B**: stale client Yjs state still merges with the CoW baseline via CRDT union. Fix 1 (server-side snapshot anomaly detection with ULID timestamp guard) and Fix 3 (client-side Yjs reset on navigation, separate team) address this.
+- **Data remediation**: the contaminated record (`another/ai/test` NML v1) should be deleted from `document_versions` on sbx1 per the remediation steps in `BUG-DO-STATE-INIT.md`.
+
+#### Key Design Decisions
+- CoW fallback uses `getLatestPublishedDocumentVersion()` (checkpoint-aware) to match the existing `listDocumentsOnBranch()` CoW pattern — only checkpointed (published) versions are inherited
+- All three Hyperdrive queries run within a single `runWithConnection` call for connection efficiency
+- `persist()` in the CoW path writes to DO storage only — no PostgreSQL version is created until the user makes an actual edit (hash check in `scheduleSync()` prevents spurious writes)
+- `mapRowToBranch()` normalizes DB `NULL` → TypeScript `undefined` for `sourceBranchId`, making the `=== undefined` guard in the service layer safe
+
+#### Tests Added
+- `workers/tests/services/crdt-sync-service.spec.ts` — 5 new cases covering CoW fallback, main branch skip, missing source version, and regression guard
+- `workers/tests/durable-objects/postgres-sync-manager.cow.spec.ts` — 4 new cases covering Hyperdrive CoW path, existing-version path, main branch, and empty source branch
+
+---
+
 ### Fix: Codify Hyperdrive Connection Limits (2026-04-13)
 
 **Status:** Complete
