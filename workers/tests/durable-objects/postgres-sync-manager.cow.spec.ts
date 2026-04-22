@@ -148,7 +148,7 @@ describe('PostgresSyncManager: CoW fallback in initializeFromHyperdrive()', () =
   async function buildManager(
     env: MockEnv,
     sessionId = 'site-1:doc-abc:branch-xyz',
-  ) {
+  ): Promise<InstanceType<typeof import('../../src/durable-objects/postgres-sync-manager').PostgresSyncManager>> {
     const { PostgresSyncManager } = await import(
       '../../src/durable-objects/postgres-sync-manager'
     );
@@ -183,27 +183,27 @@ describe('PostgresSyncManager: CoW fallback in initializeFromHyperdrive()', () =
     //   Call 2: branch lookup query  → { source_branch_id: 'branch-source', is_main: false }
     //   Call 3: CoW version query    → { snapshot: sourceBranchSnapshot }
     let callCount = 0;
-    (db.query as Mock).mockImplementation(async () => {
+    (db.query as Mock).mockImplementation(() => {
       callCount++;
       if (callCount === 1) {
         // Branch-specific document_versions query — no rows
-        return { rows: [], rowCount: 0 };
+        return Promise.resolve({ rows: [], rowCount: 0 });
       }
       if (callCount === 2) {
         // Branch metadata lookup
-        return {
+        return Promise.resolve({
           rows: [{ source_branch_id: 'branch-source', is_main: false }],
           rowCount: 1,
-        };
+        });
       }
       if (callCount === 3) {
         // CoW fallback query against source branch
-        return {
+        return Promise.resolve({
           rows: [{ snapshot: sourceBranchSnapshot }],
           rowCount: 1,
-        };
+        });
       }
-      return { rows: [], rowCount: 0 };
+      return Promise.resolve({ rows: [], rowCount: 0 });
     });
 
     const manager = await buildManager(createEnvWithHyperdrive());
@@ -232,14 +232,14 @@ describe('PostgresSyncManager: CoW fallback in initializeFromHyperdrive()', () =
     const branchSnapshot = { title: 'Direct branch snapshot' };
 
     let callCount = 0;
-    (db.query as Mock).mockImplementation(async () => {
+    (db.query as Mock).mockImplementation(() => {
       callCount++;
       if (callCount === 1) {
         // Branch-specific version exists — 1 row returned
-        return { rows: [{ snapshot: branchSnapshot }], rowCount: 1 };
+        return Promise.resolve({ rows: [{ snapshot: branchSnapshot }], rowCount: 1 });
       }
       // Any subsequent call would be unexpected
-      return { rows: [], rowCount: 0 };
+      return Promise.resolve({ rows: [], rowCount: 0 });
     });
 
     const manager = await buildManager(createEnvWithHyperdrive());
@@ -264,20 +264,18 @@ describe('PostgresSyncManager: CoW fallback in initializeFromHyperdrive()', () =
     );
 
     let callCount = 0;
-    (db.query as Mock).mockImplementation(async () => {
+    (db.query as Mock).mockImplementation(() => {
       callCount++;
       if (callCount === 1) {
         // No version on this branch
-        return { rows: [], rowCount: 0 };
+        return Promise.resolve({ rows: [], rowCount: 0 });
       }
       if (callCount === 2) {
-        // Branch is main — no source branch
-        return {
-          rows: [{ source_branch_id: null, is_main: true }],
-          rowCount: 1,
-        };
+        // Branch lookup — SQL filters is_main=false AND source_branch_id IS NOT NULL,
+        // so a main branch returns 0 rows (not a row with nulls).
+        return Promise.resolve({ rows: [], rowCount: 0 });
       }
-      return { rows: [], rowCount: 0 };
+      return Promise.resolve({ rows: [], rowCount: 0 });
     });
 
     const manager = await buildManager(createEnvWithHyperdrive());
@@ -301,24 +299,24 @@ describe('PostgresSyncManager: CoW fallback in initializeFromHyperdrive()', () =
     );
 
     let callCount = 0;
-    (db.query as Mock).mockImplementation(async () => {
+    (db.query as Mock).mockImplementation(() => {
       callCount++;
       if (callCount === 1) {
         // No version on this branch
-        return { rows: [], rowCount: 0 };
+        return Promise.resolve({ rows: [], rowCount: 0 });
       }
       if (callCount === 2) {
         // Branch has a source branch
-        return {
+        return Promise.resolve({
           rows: [{ source_branch_id: 'branch-source', is_main: false }],
           rowCount: 1,
-        };
+        });
       }
       if (callCount === 3) {
         // No checkpointed version found on source branch
-        return { rows: [], rowCount: 0 };
+        return Promise.resolve({ rows: [], rowCount: 0 });
       }
-      return { rows: [], rowCount: 0 };
+      return Promise.resolve({ rows: [], rowCount: 0 });
     });
 
     const manager = await buildManager(createEnvWithHyperdrive());

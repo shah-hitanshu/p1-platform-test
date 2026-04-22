@@ -16,7 +16,9 @@ import { getDocument } from './document-service';
 import {
   createDocumentVersion,
   getLatestDocumentVersion,
+  getLatestPublishedDocumentVersion,
 } from './document-version-service';
+import { getBranch } from './branch-service';
 
 // =============================================================================
 // Types
@@ -172,7 +174,16 @@ export async function loadLatestCrdtState(
   const version = await getLatestDocumentVersion(document.id, branchId);
 
   if (version === null) {
-    return null;
+    const branch = await getBranch(branchId);
+    const sourceBranchId = branch?.sourceBranchId;
+    if (sourceBranchId === undefined) {
+      return null;
+    }
+    const cowVersion = await getLatestPublishedDocumentVersion(document.id, sourceBranchId);
+    if (cowVersion === null) {
+      return null;
+    }
+    return { snapshot: cowVersion.snapshot ?? {} };
   }
 
   return {

@@ -94,33 +94,77 @@ export class PostgresSyncManager {
       snapshot: Record<string, unknown>;
     }
 
-    const result = await runWithConnection(
-      this.env.HYPERDRIVE.connectionString,
-      { isHyperdrive: true },
-      async () => dbQuery<VersionRow>(
-        `SELECT dv.snapshot
-         FROM app.document_versions dv
-         WHERE dv.document_id = $1 AND dv.branch_id = $2
-         ORDER BY dv.version_number DESC LIMIT 1`,
-        [documentId, branchId],
-      ),
-    );
-
-    if (result.rows.length === 0) return false;
-    const row = result.rows[0];
-
-    if (typeof row.snapshot === 'object') {
-      const root = this.getYdoc().getMap('root');
-      applySnapshotToYMap(root, row.snapshot);
-      console.log(
-        `Initialized doc ${documentId} from Hyperdrive snapshot`,
-      );
-      await this.persist();
-      this.lastSyncedStateVectorHash = this.computeStateVectorHash();
-      return true;
+    interface BranchSourceRow {
+      source_branch_id: string;
     }
 
-    return false;
+    return runWithConnection(
+      this.env.HYPERDRIVE.connectionString,
+      { isHyperdrive: true },
+      async () => {
+        const result = await dbQuery<VersionRow>(
+          `SELECT dv.snapshot
+           FROM app.document_versions dv
+           WHERE dv.document_id = $1 AND dv.branch_id = $2
+           ORDER BY dv.version_number DESC LIMIT 1`,
+          [documentId, branchId],
+        );
+
+        if (result.rows.length > 0) {
+          const row = result.rows[0];
+          if (typeof row.snapshot === 'object') {
+            const root = this.getYdoc().getMap('root');
+            applySnapshotToYMap(root, row.snapshot);
+            console.log(
+              `Initialized doc ${documentId} from Hyperdrive snapshot`,
+            );
+            await this.persist();
+            this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+            return true;
+          }
+          return false;
+        }
+
+        const branchResult = await dbQuery<BranchSourceRow>(
+          `SELECT source_branch_id
+           FROM app.branches
+           WHERE id = $1
+             AND is_main = false
+             AND source_branch_id IS NOT NULL`,
+          [branchId],
+        );
+
+        if (branchResult.rows.length === 0) return false;
+
+        const sourceBranchId = branchResult.rows[0].source_branch_id;
+        if (!sourceBranchId) return false;
+
+        const cowResult = await dbQuery<VersionRow>(
+          `SELECT dv.snapshot
+           FROM app.document_versions dv
+           INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
+           INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+           WHERE dv.document_id = $1
+             AND dv.branch_id = $2
+             AND cp.branch_id = $2
+           ORDER BY dv.version_number DESC
+           LIMIT 1`,
+          [documentId, sourceBranchId],
+        );
+
+        if (cowResult.rows.length === 0) return false;
+
+        const row = cowResult.rows[0];
+        const root = this.getYdoc().getMap('root');
+        applySnapshotToYMap(root, row.snapshot);
+        console.log(
+          `Initialized doc ${documentId} from CoW baseline (source branch ${sourceBranchId})`,
+        );
+        await this.persist();
+        this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+        return true;
+      },
+    );
   }
 
   /**
@@ -237,7 +281,9 @@ export class PostgresSyncManager {
     }
 
     // Set the lock before starting the sync
-    this.syncInProgress = this.performSync(internalApiUrl, internalSecret, syncActorId, syncActorType, syncActionType, syncActionMetadata);
+    this.syncInProgress = this.performSync(
+      internalApiUrl, internalSecret, syncActorId, syncActorType, syncActionType, syncActionMetadata,
+    );
 
     try {
       await this.syncInProgress;
