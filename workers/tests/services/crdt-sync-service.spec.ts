@@ -24,6 +24,12 @@ vi.mock('../../src/services/document-service', () => ({
 vi.mock('../../src/services/document-version-service', () => ({
   createDocumentVersion: vi.fn(),
   getLatestDocumentVersion: vi.fn(),
+  getLatestPublishedDocumentVersion: vi.fn(),
+}));
+
+// Mock branch service
+vi.mock('../../src/services/branch-service', () => ({
+  getBranch: vi.fn(),
 }));
 
 describe('Phase 1.1: CRDT Sync Service', () => {
@@ -498,6 +504,217 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         'doc-uuid-123', // document ID from mock
         'my-branch-id',
       );
+    });
+  });
+
+  // =============================================================================
+  // loadLatestCrdtState — CoW fallback tests
+  // =============================================================================
+
+  describe('loadLatestCrdtState — CoW fallback', () => {
+    it('should return baseline snapshot when branch has no versions and has sourceBranchId', async () => {
+      const { loadLatestCrdtState } = await import('../../src/services/crdt-sync-service');
+      const documentService = await import('../../src/services/document-service');
+      const documentVersionService = await import('../../src/services/document-version-service');
+      const branchService = await import('../../src/services/branch-service');
+
+      const mockDoc = createMockDocument();
+      vi.mocked(documentService.getDocument).mockResolvedValue({
+        id: mockDoc.id,
+        siteId: mockDoc.site_id,
+        path: mockDoc.path,
+        createdAt: mockDoc.created_at,
+      });
+
+      // No version on the requested branch
+      vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
+
+      // Branch has a sourceBranchId (it was created from main)
+      vi.mocked(branchService.getBranch).mockResolvedValue({
+        id: 'branch-uuid-456',
+        siteId: mockDoc.site_id,
+        name: 'feature-branch',
+        status: 'active',
+        isMain: false,
+        sourceBranchId: 'main-branch-id',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+        createdAt: '2026-01-25T10:00:00.000Z',
+        updatedAt: '2026-01-25T10:00:00.000Z',
+      });
+
+      // Published version exists on the source branch
+      const sourceSnapshot = { root: { title: 'CoW Baseline' } };
+      const mockVersion = createMockVersion({ snapshot: sourceSnapshot, branch_id: 'main-branch-id' });
+      vi.mocked(documentVersionService.getLatestPublishedDocumentVersion).mockResolvedValue({
+        id: mockVersion.id,
+        documentId: mockVersion.document_id,
+        branchId: 'main-branch-id',
+        versionNumber: mockVersion.version_number,
+        snapshot: sourceSnapshot,
+        source: mockVersion.source,
+        createdById: mockVersion.created_by_id,
+        createdByType: mockVersion.created_by_type,
+        createdAt: mockVersion.created_at,
+      });
+
+      const result = await loadLatestCrdtState('site-uuid-456', 'doc-uuid-123', 'branch-uuid-456');
+
+      expect(result).not.toBeNull();
+      expect(result?.snapshot).toEqual(sourceSnapshot);
+      expect(documentVersionService.getLatestPublishedDocumentVersion).toHaveBeenCalledWith(
+        mockDoc.id,
+        'main-branch-id',
+      );
+    });
+
+    it('should return null when branch is main (no sourceBranchId)', async () => {
+      const { loadLatestCrdtState } = await import('../../src/services/crdt-sync-service');
+      const documentService = await import('../../src/services/document-service');
+      const documentVersionService = await import('../../src/services/document-version-service');
+      const branchService = await import('../../src/services/branch-service');
+
+      const mockDoc = createMockDocument();
+      vi.mocked(documentService.getDocument).mockResolvedValue({
+        id: mockDoc.id,
+        siteId: mockDoc.site_id,
+        path: mockDoc.path,
+        createdAt: mockDoc.created_at,
+      });
+
+      // No version on main
+      vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
+
+      // Branch is main — no sourceBranchId
+      vi.mocked(branchService.getBranch).mockResolvedValue({
+        id: 'main-branch-id',
+        siteId: mockDoc.site_id,
+        name: 'main',
+        status: 'active',
+        isMain: true,
+        sourceBranchId: undefined,
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+        createdAt: '2026-01-25T10:00:00.000Z',
+        updatedAt: '2026-01-25T10:00:00.000Z',
+      });
+
+      const result = await loadLatestCrdtState('site-uuid-456', 'doc-uuid-123', 'main-branch-id');
+
+      expect(result).toBeNull();
+      // CoW lookup should not be attempted for main
+      expect(documentVersionService.getLatestPublishedDocumentVersion).not.toHaveBeenCalled();
+    });
+
+    it('should return null when branch has no versions and no sourceBranchId (new feature branch with no source)', async () => {
+      const { loadLatestCrdtState } = await import('../../src/services/crdt-sync-service');
+      const documentService = await import('../../src/services/document-service');
+      const documentVersionService = await import('../../src/services/document-version-service');
+      const branchService = await import('../../src/services/branch-service');
+
+      const mockDoc = createMockDocument();
+      vi.mocked(documentService.getDocument).mockResolvedValue({
+        id: mockDoc.id,
+        siteId: mockDoc.site_id,
+        path: mockDoc.path,
+        createdAt: mockDoc.created_at,
+      });
+
+      vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
+
+      // Non-main branch but sourceBranchId is absent
+      vi.mocked(branchService.getBranch).mockResolvedValue({
+        id: 'orphan-branch-id',
+        siteId: mockDoc.site_id,
+        name: 'orphan-branch',
+        status: 'active',
+        isMain: false,
+        sourceBranchId: undefined,
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+        createdAt: '2026-01-25T10:00:00.000Z',
+        updatedAt: '2026-01-25T10:00:00.000Z',
+      });
+
+      const result = await loadLatestCrdtState('site-uuid-456', 'doc-uuid-123', 'orphan-branch-id');
+
+      expect(result).toBeNull();
+      expect(documentVersionService.getLatestPublishedDocumentVersion).not.toHaveBeenCalled();
+    });
+
+    it('should return null when branch has no versions and published version is also absent on source branch', async () => {
+      const { loadLatestCrdtState } = await import('../../src/services/crdt-sync-service');
+      const documentService = await import('../../src/services/document-service');
+      const documentVersionService = await import('../../src/services/document-version-service');
+      const branchService = await import('../../src/services/branch-service');
+
+      const mockDoc = createMockDocument();
+      vi.mocked(documentService.getDocument).mockResolvedValue({
+        id: mockDoc.id,
+        siteId: mockDoc.site_id,
+        path: mockDoc.path,
+        createdAt: mockDoc.created_at,
+      });
+
+      vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
+
+      vi.mocked(branchService.getBranch).mockResolvedValue({
+        id: 'branch-uuid-456',
+        siteId: mockDoc.site_id,
+        name: 'feature-branch',
+        status: 'active',
+        isMain: false,
+        sourceBranchId: 'main-branch-id',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+        createdAt: '2026-01-25T10:00:00.000Z',
+        updatedAt: '2026-01-25T10:00:00.000Z',
+      });
+
+      // No published version on source branch either
+      vi.mocked(documentVersionService.getLatestPublishedDocumentVersion).mockResolvedValue(null);
+
+      const result = await loadLatestCrdtState('site-uuid-456', 'doc-uuid-123', 'branch-uuid-456');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return branch version directly and NOT call getBranch when a version exists on the branch', async () => {
+      const { loadLatestCrdtState } = await import('../../src/services/crdt-sync-service');
+      const documentService = await import('../../src/services/document-service');
+      const documentVersionService = await import('../../src/services/document-version-service');
+      const branchService = await import('../../src/services/branch-service');
+
+      const mockDoc = createMockDocument();
+      vi.mocked(documentService.getDocument).mockResolvedValue({
+        id: mockDoc.id,
+        siteId: mockDoc.site_id,
+        path: mockDoc.path,
+        createdAt: mockDoc.created_at,
+      });
+
+      // A version already exists on the branch — no CoW needed
+      const branchSnapshot = { root: { title: 'Branch Content' } };
+      const mockVersion = createMockVersion({ snapshot: branchSnapshot });
+      vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue({
+        id: mockVersion.id,
+        documentId: mockVersion.document_id,
+        branchId: mockVersion.branch_id,
+        versionNumber: mockVersion.version_number,
+        snapshot: branchSnapshot,
+        source: mockVersion.source,
+        createdById: mockVersion.created_by_id,
+        createdByType: mockVersion.created_by_type,
+        createdAt: mockVersion.created_at,
+      });
+
+      const result = await loadLatestCrdtState('site-uuid-456', 'doc-uuid-123', 'branch-uuid-456');
+
+      expect(result).not.toBeNull();
+      expect(result?.snapshot).toEqual(branchSnapshot);
+      // CoW path must not be triggered when a version exists
+      expect(branchService.getBranch).not.toHaveBeenCalled();
+      expect(documentVersionService.getLatestPublishedDocumentVersion).not.toHaveBeenCalled();
     });
   });
 
