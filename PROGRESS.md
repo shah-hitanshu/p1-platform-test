@@ -4010,7 +4010,6 @@ Both DO initialization paths now fall back to the latest checkpointed version fr
 - **`workers/src/durable-objects/postgres-sync-manager.ts`** — `initializeFromHyperdrive()`: when the branch-specific query returns 0 rows, runs two additional SQL queries within the same connection — branch lookup for `source_branch_id`, then checkpoint join to get the latest published snapshot. Covers the Hyperdrive path (production).
 
 #### What Remains (not in this fix)
-- **Failure Mode B**: stale client Yjs state still merges with the CoW baseline via CRDT union. Fix 1 (server-side snapshot anomaly detection with ULID timestamp guard) and Fix 3 (client-side Yjs reset on navigation, separate team) address this.
 - **Data remediation**: the contaminated record (`another/ai/test` NML v1) should be deleted from `document_versions` on sbx1 per the remediation steps in `BUG-DO-STATE-INIT.md`.
 
 #### Key Design Decisions
@@ -4022,6 +4021,50 @@ Both DO initialization paths now fall back to the latest checkpointed version fr
 #### Tests Added
 - `workers/tests/services/crdt-sync-service.spec.ts` — 5 new cases covering CoW fallback, main branch skip, missing source version, and regression guard
 - `workers/tests/durable-objects/postgres-sync-manager.cow.spec.ts` — 4 new cases covering Hyperdrive CoW path, existing-version path, main branch, and empty source branch
+
+### Bug Fix: DO State Init — Failure Mode B Detection (2026-04-22)
+
+**Status:** Complete
+**Branch:** `fix/do-state-init-failure-mode-b`
+**Commits:** `3ee7e9d` (tests), `738883b` (implementation)
+**Bug doc:** `BUG-DO-STATE-INIT.md`
+
+#### Problem (Failure Mode B)
+Even with Fix 2 in place (CoW baseline loaded on DO init), a stale browser Yjs document can still override the correct baseline via CRDT merge semantics: Yjs merges by union, and the browser client's higher logical clock causes its content to win. The first sync then commits foreign content as the new branch's first version.
+
+Fix 3 (client-side Yjs reset on navigation) was handled by a separate team and is already landed. This fix provides server-side defense-in-depth detection.
+
+#### Fix Applied (Fix 1 — detection-only)
+
+New detection mechanism in `postgres-sync-manager.ts`:
+
+- **`extractComponentIds(snapshot)`** — extracts Puck component IDs from `snapshot.content[].props.id` and all `snapshot.zones[key][].props.id`
+- **`detectCoWBaselineMismatch(snapshot, actorId)`** — reads `COW_BASELINE_IDS_KEY` from DO storage; deletes it unconditionally (first-write-only); if the current snapshot's component IDs have zero overlap with the stored baseline IDs, logs `console.warn('cow_baseline_mismatch detected', { documentId, branchId, actorId, baselineCount, currentCount, sampleCurrentIds })`. Wrapped in try/catch so detection failures never abort the sync write.
+- **`initializeFromHyperdrive()`** — after the CoW fallback path succeeds, stores the baseline snapshot's component IDs as `COW_BASELINE_IDS_KEY` in DO storage (survives hibernation).
+- **`performSync()`** — calls `detectCoWBaselineMismatch` before the queue send (covers production primary path).
+- **`executeDirectSync()`** — calls `detectCoWBaselineMismatch` before the Hyperdrive INSERT (covers direct flush path).
+
+Detection covers all three write paths: queue, HTTP, and direct Hyperdrive.
+
+#### Design Decisions
+- Detection-only: never rejects writes, no client impact, no infinite retry risk
+- Stored in DO storage (not in-memory): survives hibernation
+- First-write-only: `COW_BASELINE_IDS_KEY` deleted on first read regardless of detection result
+- No ULID timestamp parsing: component ID set comparison is simpler and more reliable
+- Self-contained try/catch in detection: transient storage errors are logged but do not abort sync
+- Warnings are structured JSON, queryable in Cloudflare Workers observability via `'cow_baseline_mismatch detected'`
+
+#### Limitation
+The HTTP fallback initialization path (`initializeFromHttpApi`) does not store baseline IDs because the HTTP API response does not distinguish CoW baseline from direct branch match. Production uses Hyperdrive exclusively, so this gap does not affect the real-world detection coverage.
+
+#### Tests Added
+- `workers/tests/durable-objects/postgres-sync-manager.cow-detection.spec.ts` — 6 cases:
+  - Warning logged on queue path with zero overlap
+  - No warning when overlap exists
+  - No warning when no baseline stored
+  - Key deleted after first sync (detection fires only once)
+  - Warning logged on direct Hyperdrive path
+  - Zone components extracted and checked
 
 ---
 

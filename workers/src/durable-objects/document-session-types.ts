@@ -31,6 +31,15 @@ export const EDIT_SESSIONS_STORAGE_KEY = 'editSessions';
 export const BRANCH_VERSION_STORAGE_KEY = 'lastSeenBranchVersion';
 
 /**
+ * Storage key for CoW baseline component IDs.
+ * Written during initializeFromHyperdrive() when the CoW fallback path is used
+ * (branch has no versions; source branch snapshot is loaded instead).
+ * Read and deleted on the first sync write to detect if a stale browser Yjs
+ * state has overridden the authoritative CoW baseline (Failure Mode B).
+ */
+export const COW_BASELINE_IDS_KEY = 'cowBaselineComponentIds';
+
+/**
  * Valid edit operation types
  */
 export const VALID_OPERATION_TYPES = ['set', 'delete', 'insert', 'move', 'replace'] as const;

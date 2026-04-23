@@ -9,7 +9,11 @@
 import * as Y from 'yjs';
 import { runWithConnection, query as dbQuery } from '../db';
 import type { DocumentSessionEnv, SessionInfo } from './document-session-types';
-import { YDOC_STORAGE_KEY, SYNC_IDLE_TIMEOUT_MS } from './document-session-types';
+import {
+  YDOC_STORAGE_KEY,
+  SYNC_IDLE_TIMEOUT_MS,
+  COW_BASELINE_IDS_KEY,
+} from './document-session-types';
 import { applySnapshotToYMap } from './crdt-operations';
 
 /** Storage key for sync schedule (survives hibernation) */
@@ -160,6 +164,14 @@ export class PostgresSyncManager {
         console.log(
           `Initialized doc ${documentId} from CoW baseline (source branch ${sourceBranchId})`,
         );
+
+        // Store CoW baseline component IDs so detectCoWBaselineMismatch()
+        // can compare them against the first sync write (Failure Mode B guard).
+        const baselineIds = this.extractComponentIds(row.snapshot);
+        if (baselineIds.length > 0) {
+          await this.storage.put(COW_BASELINE_IDS_KEY, baselineIds);
+        }
+
         await this.persist();
         this.lastSyncedStateVectorHash = this.computeStateVectorHash();
         return true;
@@ -314,6 +326,8 @@ export class PostgresSyncManager {
       const root = this.getYdoc().getMap('root');
       const snapshot = root.toJSON() as Record<string, unknown>;
 
+      await this.detectCoWBaselineMismatch(snapshot, actorId);
+
       // Phase 5.1: Prefer queue-based sync when available
       if (this.env.SYNC_QUEUE !== undefined) {
         await this.env.SYNC_QUEUE.send({
@@ -407,6 +421,8 @@ export class PostgresSyncManager {
   ): Promise<void> {
     const root = this.getYdoc().getMap('root');
     const snapshot = root.toJSON() as Record<string, unknown>;
+
+    await this.detectCoWBaselineMismatch(snapshot, actorId);
 
     // Phase 5.3: Try direct Hyperdrive path first (synchronous, no queue)
     if (this.env.HYPERDRIVE !== undefined) {
@@ -544,6 +560,88 @@ export class PostgresSyncManager {
   computeStateVectorHash(): string {
     const stateVector = Y.encodeStateVector(this.getYdoc());
     return this.uint8ArrayToBase64(stateVector);
+  }
+
+  // =============================================================================
+  // CoW Baseline Mismatch Detection
+  // =============================================================================
+
+  /**
+   * Extract Puck component IDs from both the content array and all zone arrays.
+   * Returns an empty array for documents with no components.
+   */
+  private extractComponentIds(snapshot: Record<string, unknown>): string[] {
+    const ids: string[] = [];
+
+    const content = snapshot.content;
+    if (Array.isArray(content)) {
+      for (const item of content) {
+        if (typeof item === 'object' && item !== null) {
+          const props = (item as { props?: { id?: string } }).props;
+          if (typeof props?.id === 'string') ids.push(props.id);
+        }
+      }
+    }
+
+    const zones = snapshot.zones;
+    if (typeof zones === 'object' && zones !== null && !Array.isArray(zones)) {
+      for (const zone of Object.values(zones as Record<string, unknown>)) {
+        if (Array.isArray(zone)) {
+          for (const item of zone) {
+            if (typeof item === 'object' && item !== null) {
+              const props = (item as { props?: { id?: string } }).props;
+              if (typeof props?.id === 'string') ids.push(props.id);
+            }
+          }
+        }
+      }
+    }
+
+    return ids;
+  }
+
+  /**
+   * Compare the outgoing sync snapshot against the stored CoW baseline IDs.
+   * Fires on the first sync after a CoW-initialized DO. If the snapshot contains
+   * no component IDs from the baseline, logs a structured warning so the anomaly
+   * can be detected in Cloudflare Workers observability.
+   *
+   * Detection-only: never rejects the write. The COW_BASELINE_IDS_KEY is deleted
+   * after the first read so this check runs at most once per initialization.
+   */
+  private async detectCoWBaselineMismatch(
+    snapshot: Record<string, unknown>,
+    actorId: string,
+  ): Promise<void> {
+    // Self-contained try/catch: detection failures must never abort the sync write.
+    try {
+      const baselineIds = await this.storage.get<string[]>(COW_BASELINE_IDS_KEY);
+      if (baselineIds === undefined) return;
+
+      // Delete unconditionally when the key is present — fires once per init.
+      await this.storage.delete(COW_BASELINE_IDS_KEY);
+      if (baselineIds.length === 0) return;
+
+      const currentIds = this.extractComponentIds(snapshot);
+      if (currentIds.length === 0) return; // empty doc — no inference possible
+
+      const baselineSet = new Set(baselineIds);
+      const hasOverlap = currentIds.some((id) => baselineSet.has(id));
+
+      if (!hasOverlap) {
+        const { documentId, branchId } = this.sessionInfo;
+        console.warn('cow_baseline_mismatch detected', {
+          documentId,
+          branchId,
+          actorId,
+          baselineCount: baselineIds.length,
+          currentCount: currentIds.length,
+          sampleCurrentIds: currentIds.slice(0, 5),
+        });
+      }
+    } catch (error) {
+      console.error('CoW baseline mismatch detection failed (non-fatal):', error);
+    }
   }
 
   // =============================================================================
