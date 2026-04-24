@@ -25,18 +25,8 @@ export interface ToolCallStatus {
 export interface AIChatPluginOptions {
   /** Base URL of the ChatAgent Cloudflare Worker, e.g. "https://p1-chatbot-agent.workers.dev" */
   agentUrl: string;
-  /** Returns the Durable Object key — must be scoped to at least userId to prevent history leakage */
-  getAgentId: () => string;
-  /** Returns the current CSS auth token */
-  getAuthToken: () => string;
-  /** Returns the current site ID */
-  getSiteId: () => string;
-  /** Returns the current branch ID */
-  getBranchId: () => string;
-  /** Returns the current document path */
-  getDocumentPath: () => string;
-  /** Returns the current document ID */
-  getDocumentId: () => string;
+  /** Returns the Durable Object key. Defaults to `${userId}-${siteId}`. Override to change history scoping. */
+  getAgentId?: () => string;
 }
 
 // Server → client message types

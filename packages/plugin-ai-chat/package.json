@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
-  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
     "dist"
@@ -11,6 +10,7 @@
   "exports": {
     ".": {
       "import": "./dist/index.js",
+      "default": "./dist/index.js",
       "types": "./dist/index.d.ts"
     }
   },
@@ -24,11 +24,13 @@
   },
   "peerDependencies": {
     "@pantheon-systems/pds-toolkit-react": ">=2.0.0",
+    "@pantheon/puck-css": ">=0.3.0",
     "@puckeditor/core": "^0.21.0",
     "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
     "@pantheon-systems/pds-toolkit-react": "^2.0.0-alpha.12",
+    "@pantheon/puck-css": "^0.3.1",
     "@puckeditor/core": "^0.21.1",
     "@types/react": "^18.0.0",
     "react": "^18.0.0",

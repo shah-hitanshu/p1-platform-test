@@ -1,5 +1,6 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { Button, Icon, Textarea, UtilityButton } from '@pantheon-systems/pds-toolkit-react';
+import { useCSSPuck, useCSSAuth } from '@pantheon/puck-css';
 import { useAgentChat } from './useAgentChat.js';
 import { ChatMessage } from './ChatMessage.js';
 import type { AIChatPluginOptions } from './types.js';
@@ -12,16 +13,33 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const css = useCSSPuck();
+  const { token } = useCSSAuth();
+
+  // Stable refs so getAgentId/getContext don't change on every render
+  const cssRef = useRef(css);
+  cssRef.current = css;
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
+
+  const defaultGetAgentId = useCallback(() => {
+    const { userId, siteId, branchId, currentDocument } = cssRef.current;
+    const docSlug = (currentDocument?.path ?? '').replace(/^\//, '').replace(/\//g, '-') || 'root';
+    return `${userId}-${siteId}-${branchId}-${docSlug}`;
+  }, []);
+
+  const getContext = useCallback(() => ({
+    siteId: cssRef.current.siteId,
+    branchId: cssRef.current.branchId,
+    documentPath: cssRef.current.currentDocument?.path ?? '',
+    documentId: cssRef.current.currentDocument?.id ?? '',
+    token: tokenRef.current ?? '',
+  }), []);
+
   const { messages, input, setInput, submit, isLoading, clearMessages } = useAgentChat({
     agentUrl: options.agentUrl,
-    getAgentId: options.getAgentId,
-    getContext: () => ({
-      siteId: options.getSiteId(),
-      branchId: options.getBranchId(),
-      documentPath: options.getDocumentPath(),
-      documentId: options.getDocumentId(),
-      token: options.getAuthToken(),
-    }),
+    getAgentId: options.getAgentId ?? defaultGetAgentId,
+    getContext,
   });
 
   // Auto-scroll to bottom on new messages
