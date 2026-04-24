@@ -11,6 +11,9 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["ChatAgent"] }
   ],
+  "observability": {
+    "enabled": true
+  },
   "vars": {
     "ENVIRONMENT": "local",
     "CSS_BACKEND_URL": "http://localhost:8787",

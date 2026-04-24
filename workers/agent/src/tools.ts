@@ -253,9 +253,6 @@ export async function executeTool(
       const siteId = toolInput.site_id as string;
       const branchId = toolInput.branch_id as string;
       const documentPath = toolInput.document_path as string;
-      if (hints?.documentId) {
-        return cssApi.getDocumentLatestVersion(siteId, branchId, hints.documentId);
-      }
       const docs = await cssApi.listDocuments(siteId, branchId, { pathPrefix: documentPath });
       const doc = docs.documents.find(d => d.path === documentPath);
       if (!doc) throw new Error(`Document not found: ${documentPath}`);
@@ -267,6 +264,7 @@ export async function executeTool(
         siteId: toolInput.site_id as string,
         branchId: toolInput.branch_id as string,
         documentPath: toolInput.document_path as string,
+        documentId: hints?.documentId,
         intent: toolInput.intent as string,
         targetRegions: toolInput.target_regions as string[],
         trigger: 'human_requested',
@@ -278,6 +276,7 @@ export async function executeTool(
         siteId: toolInput.site_id as string,
         branchId: toolInput.branch_id as string,
         documentPath: toolInput.document_path as string,
+        documentId: hints?.documentId,
         intent: toolInput.intent as string,
         targetRegions: toolInput.target_regions as string[],
         trigger: 'human_requested',
@@ -304,6 +303,7 @@ export async function executeTool(
         siteId: toolInput.site_id as string,
         branchId: toolInput.branch_id as string,
         documentPath: toolInput.document_path as string,
+        documentId: hints?.documentId,
         editSessionId: toolInput.edit_session_id as string,
         operations,
       });
@@ -314,6 +314,7 @@ export async function executeTool(
         siteId: toolInput.site_id as string,
         branchId: toolInput.branch_id as string,
         documentPath: toolInput.document_path as string,
+        documentId: hints?.documentId,
         editSessionId: toolInput.edit_session_id as string,
       });
 
@@ -322,6 +323,7 @@ export async function executeTool(
         siteId: toolInput.site_id as string,
         branchId: toolInput.branch_id as string,
         documentPath: toolInput.document_path as string,
+        documentId: hints?.documentId,
         editSessionId: toolInput.edit_session_id as string,
         reason: toolInput.reason as string | undefined,
       });

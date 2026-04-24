@@ -142,15 +142,18 @@ export class ChatAgent extends Agent<Env, AgentState> {
     // exchanges (notably the large get_document snapshot) on subsequent calls.
     let turnCacheBreakpointIdx = -1;
 
+    const userMsgIdx = stableHistoryLastIdx + 1;
     try {
-      let firstApiCall = true;
       while (true) {
-        // Inject current page context only into the first call — subsequent calls
-        // in the same turn already have context via the tool exchange chain.
-        const baseMessages: Anthropic.MessageParam[] = firstApiCall && contextNote
-          ? [...history.slice(0, -1), { role: 'user' as const, content: userContent }]
+        // Always inject the current page context into the user message position so
+        // the agent retains its document anchor even after tool failures in the loop.
+        const baseMessages: Anthropic.MessageParam[] = contextNote
+          ? [
+              ...history.slice(0, userMsgIdx),
+              { role: 'user' as const, content: userContent },
+              ...history.slice(userMsgIdx + 1),
+            ]
           : history;
-        firstApiCall = false;
         // Slot 3: cache everything up to the last pre-turn message.
         // Slot 4: cache everything up to the last completed within-turn exchange
         //         (covers the get_document snapshot on calls 3–N of the loop).
