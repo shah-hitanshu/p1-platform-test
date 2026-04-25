@@ -83,7 +83,7 @@ export interface DocumentDiffSummary {
 // =============================================================================
 
 /** Empty PuckData used as a stand-in for null snapshots. */
-const EMPTY_PUCK_DATA: PuckData = { content: [], root: { props: {} } };
+export const EMPTY_PUCK_DATA: PuckData = { content: [], root: { props: {} } };
 
 /**
  * Detects whether the given value is a PuckData structure.

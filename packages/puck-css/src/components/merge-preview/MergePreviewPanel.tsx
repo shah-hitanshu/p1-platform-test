@@ -8,7 +8,7 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import type { DocumentDiffSummary } from '../../utils/branchDiff.js';
-import { createBranchDocumentComparison } from '../../utils/branchDiff.js';
+import { createBranchDocumentComparison, isPuckData, EMPTY_PUCK_DATA } from '../../utils/branchDiff.js';
 import type { PuckData } from '@pantheon/css-client';
 import { ViewModeSelector } from './ViewModeSelector.js';
 import type { ViewMode } from './ViewModeSelector.js';
@@ -125,8 +125,8 @@ export function MergePreviewPanel({
                       onViewModeChange={setViewMode}
                     />
                     <MergePreviewRenderer
-                      sourceData={selectedDocument!.sourceSnapshot as PuckData}
-                      targetData={selectedDocument!.targetSnapshot as PuckData}
+                      sourceData={isPuckData(selectedDocument!.sourceSnapshot) ? selectedDocument!.sourceSnapshot as PuckData : EMPTY_PUCK_DATA}
+                      targetData={isPuckData(selectedDocument!.targetSnapshot) ? selectedDocument!.targetSnapshot as PuckData : EMPTY_PUCK_DATA}
                       diffs={comparison.diffs}
                       config={config}
                       viewMode={viewMode}
