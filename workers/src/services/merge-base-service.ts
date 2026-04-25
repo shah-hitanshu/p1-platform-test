@@ -230,6 +230,18 @@ export async function getModifiedDocumentsSince(
   checkpointId: string,
   options?: GetModifiedDocumentsOptions,
 ): Promise<ModifiedDocument[]> {
+  // When the caller asks for the published view (target side of merge conflict
+  // detection), the CTEs must be scoped to publish-type checkpoints only.
+  // Without this filter, prior post_merge / auto / pre_merge / agent_pre_edit
+  // references would be treated as "the published version" — causing phantom
+  // target changes for every doc previously touched by any prior merge, which
+  // cascades into false-positive conflicts. Production observation: a single-
+  // doc translation merge into main produced 32 phantom conflicts because
+  // every prior post_merge had captured 32 docs.
+  const publishTypeFilter = options?.publishedOnly === true
+    ? "AND cp.checkpoint_type = 'publish'"
+    : '';
+
   const currentVersionsCte = options?.publishedOnly === true
     ? `
     current_versions AS (
@@ -243,7 +255,7 @@ export async function getModifiedDocumentsSince(
       FROM app.checkpoint_documents cd
       INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
       INNER JOIN app.document_versions dv ON dv.id = cd.document_version_id
-      WHERE cp.branch_id = $1
+      WHERE cp.branch_id = $1 ${publishTypeFilter}
       ORDER BY cd.document_id, cp.created_at DESC
     )`
     : `
@@ -261,6 +273,9 @@ export async function getModifiedDocumentsSince(
     -- Resolves the full published state by looking at ALL checkpoints
     -- on the branch at or before the merge base time, not just the
     -- single checkpoint (which may be empty/incremental). (issue #34)
+    -- When publishedOnly is true (target side), restrict to publish-type
+    -- checkpoints only, mirroring the current_versions CTE above — see the
+    -- comment at the top of this function for context.
     checkpoint_docs AS (
       SELECT DISTINCT ON (cd.document_id)
         cd.document_id, cd.document_version_id, dv.version_number
@@ -269,6 +284,7 @@ export async function getModifiedDocumentsSince(
       INNER JOIN app.document_versions dv ON dv.id = cd.document_version_id
       WHERE cp.branch_id = (SELECT branch_id FROM app.checkpoints WHERE id = $2)
         AND cp.created_at <= (SELECT created_at FROM app.checkpoints WHERE id = $2)
+        ${publishTypeFilter}
       ORDER BY cd.document_id, cp.created_at DESC
     ),
     -- Current latest versions on the branch

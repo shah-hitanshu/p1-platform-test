@@ -140,6 +140,7 @@ export async function dispatchRoute(
         mergeRequestId: route.params.mergeRequestId,
         principal,
         configKV: env.CONFIG_KV,
+        documentStateBinding: env.DOCUMENT_STATE,
       });
 
     case 'grants':

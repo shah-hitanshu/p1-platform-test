@@ -862,4 +862,84 @@ describe('Phase 5.1b: Merge Base Service', () => {
       }
     });
   });
+
+  describe('getModifiedDocumentsSince — publishedOnly publish-type filter', () => {
+    // Production observation (Airbus CSS site, translation merge): every prior
+    // post_merge checkpoint references docs it touched. With publishedOnly:true
+    // misnamed (it joined ANY checkpoint type, not just publish), getModified-
+    // DocumentsSince saw post_merge entries as "the published version" and
+    // detected phantom target changes for every previously-merged doc. The
+    // fix scopes both CTEs to checkpoint_type = 'publish' when publishedOnly
+    // is true.
+    async function captureLastSql(): Promise<() => string> {
+      const db = await import('../../src/db');
+      vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
+      return (): string => {
+        const calls = vi.mocked(db.query).mock.calls;
+        const last = calls[calls.length - 1];
+        return typeof last?.[0] === 'string' ? last[0] : '';
+      };
+    }
+
+    it('adds checkpoint_type = \'publish\' filter to current_versions CTE when publishedOnly is true', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const getLastSql = await captureLastSql();
+
+      await getModifiedDocumentsSince('main-branch', 'merge-base-cp', { publishedOnly: true });
+
+      // The current_versions CTE in publishedOnly mode joins checkpoint_documents
+      // and MUST filter to publish-type checkpoints.
+      expect(getLastSql()).toMatch(/cp\.checkpoint_type\s*=\s*'publish'/);
+    });
+
+    it('adds checkpoint_type = \'publish\' filter to checkpoint_docs (merge-base) CTE when publishedOnly is true', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const getLastSql = await captureLastSql();
+
+      await getModifiedDocumentsSince('main-branch', 'merge-base-cp', { publishedOnly: true });
+
+      // The checkpoint_docs CTE (merge-base resolution) must ALSO filter to
+      // publish-type when comparing target side, otherwise the BASE state
+      // includes spurious post_merge / auto / pre_merge references.
+      // Count occurrences — must appear at least twice (one for current, one for base).
+      const matches = getLastSql().match(/cp\.checkpoint_type\s*=\s*'publish'/g) ?? [];
+      expect(matches.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('does NOT add the publish-type filter when publishedOnly is false (source-side semantics)', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const getLastSql = await captureLastSql();
+
+      await getModifiedDocumentsSince('source-branch', 'merge-base-cp', { publishedOnly: false });
+
+      // Source-side mode uses document_versions directly (no checkpoint join in
+      // current_versions) and the existing checkpoint_docs CTE was unfiltered.
+      // Preserve the existing behavior — no checkpoint_type filter added.
+      expect(getLastSql()).not.toMatch(/cp\.checkpoint_type\s*=\s*'publish'/);
+    });
+
+    it('does NOT add the publish-type filter when publishedOnly is omitted (default)', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const getLastSql = await captureLastSql();
+
+      await getModifiedDocumentsSince('source-branch', 'merge-base-cp');
+
+      expect(getLastSql()).not.toMatch(/cp\.checkpoint_type\s*=\s*'publish'/);
+    });
+
+    it('does not break the existing source-side query shape', async () => {
+      // Sanity check: source-side query still uses document_versions for
+      // current_versions and joins checkpoint_documents only for the
+      // merge-base resolution.
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const getLastSql = await captureLastSql();
+
+      await getModifiedDocumentsSince('source-branch', 'merge-base-cp');
+
+      const sql = getLastSql();
+      expect(sql).toContain('FROM app.document_versions dv');
+      expect(sql).toContain('checkpoint_docs');
+      expect(sql).toContain('current_versions');
+    });
+  });
 });

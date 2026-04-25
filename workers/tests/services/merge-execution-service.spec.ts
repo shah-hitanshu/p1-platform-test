@@ -38,6 +38,7 @@ vi.mock('../../src/services/merge-request-service', async (importOriginal) => {
 vi.mock('../../src/services/document-version-service', () => ({
   createDocumentVersion: vi.fn(),
   getDocumentVersion: vi.fn(),
+  getLatestDocumentVersion: vi.fn(),
 }));
 
 vi.mock('../../src/services/checkpoint-service', () => ({
@@ -50,12 +51,23 @@ vi.mock('../../src/services/document-diff-service', () => ({
 
 vi.mock('../../src/services/branch-service', () => ({
   getBranch: vi.fn(),
+  getMainBranch: vi.fn(),
   updateBranchStatus: vi.fn(),
 }));
 
+// merge-publish is exercised by its own spec file; mock here so tests for
+// executeMerge don't try to publish through the real helper.
+vi.mock('../../src/services/merge-publish', () => ({
+  publishMergedVersions: vi.fn(),
+}));
+
 describe('Phase 5.3: Merge Execution Service', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    // Default: no main branch resolved → auto-publish is skipped for all
+    // existing tests (their targets are non-main feature branches).
+    const branchService = await import('../../src/services/branch-service');
+    vi.mocked(branchService.getMainBranch).mockResolvedValue(null);
   });
 
   describe('executeMerge', () => {

@@ -3675,7 +3675,6 @@ Six files exceeded 800-1,700 lines, making them difficult to navigate and mainta
 - Type-only imports (`import type`) used for cross-module type references to avoid runtime circular dependencies
 - All 2,654 tests pass, zero lint errors on new files
 
-<<<<<<< HEAD
 ### Frontend: PDS Migration — CSS Cleanup Phases 1–6 (2026-04-11)
 
 **Status:** Complete
@@ -4097,6 +4096,73 @@ Sum of Hyperdrive `origin_connection_limit` values must stay under 50% of CloudS
 
 #### Applied to sbx1
 - `terraform apply` run: max_connections 50→100, Hyperdrive 20→30 / 5→10
+
+---
+
+### Auto-Publish on Merge into Main (2026-04-25)
+
+**Status:** Complete (branch `feat/auto-publish-merged-versions`)
+
+#### Problem
+A merge into main created `post_merge` checkpoints but did NOT mark the merged versions as published. `DocumentVersion.isPublished` is computed from publish-type checkpoints only, so merging from a branch left users having to take a separate publish action to ship.
+
+#### Solution
+After a successful merge whose target branch is main, auto-create a `publish` checkpoint referencing only the merge-touched documents and set publish provenance fields on the merge-created versions.
+
+#### Safety Constraint Honored
+The publish checkpoint uses the `documentVersionIds` allowlist on `createCheckpoint` (existing behavior in `checkpoint-service.ts:180-185`), so only the documents the source branch actually changed are published. Documents on main that weren't part of the merge — including any with unpublished direct-on-main edits — are never affected. Verified by a dedicated safety test (`merge-execution-service.publish.spec.ts`).
+
+The take-target conflict resolution case is also safe: `conflict-detection-service.ts:131` filters target changes with `publishedOnly: true`, so take-target can only ever pick a previously-published main version. There's no scenario where take-target accidentally publishes an unpublished main edit.
+
+#### Files Added
+- `workers/src/services/merge-publish.ts` — `publishMergedVersions()` helper
+- `workers/tests/services/merge-publish.spec.ts` — 6 helper unit tests
+- `workers/tests/services/merge-execution-service.publish.spec.ts` — 8 integration tests
+- `workers/tests/routes/merge-api-auto-publish-reload.spec.ts` — 4 DO `/reload` route tests
+
+#### Files Modified
+- `workers/src/services/merge-execution-service.ts` — extended `MergedDocumentVersion` to carry `sourceVersionId`; added `autoPublishIfTargetIsMain` step after `post_merge` checkpoint in both `executeMerge` and `executeMergeWithResolution`; added `publishCheckpointId`, `publishError`, `publishedDocumentIds` to result type
+- `workers/src/routes/merge-api.ts` — added `notifyDocumentStateAfterMerge` helper that fires DO `/reload` per published doc (mirrors `route-dispatch.ts:97-119`); wired into the merge-request execute handler
+- `workers/src/routes/route-dispatch.ts` — pass `env.DOCUMENT_STATE` into `MergeRouteContext`
+- `workers/tests/services/merge-execution-service.spec.ts` — added `getMainBranch` and `merge-publish` to mocks (default returns null so existing tests skip the auto-publish branch)
+
+#### Provenance Mapping
+- Non-conflicting merge: `source_version_id` = source-branch's `latestVersionId`
+- Conflict resolution `take-source`: `source_version_id` = source-branch's `latestVersionId`
+- Conflict resolution `take-target` / `manual`: `source_version_id` = `null` (no clean source); doc is still in publish checkpoint
+- Source-branch version's `published_to_version_id` back-link is set when `source_version_id` is set
+
+#### Failure Isolation
+If `publishMergedVersions` throws after the merge has been committed, the merge stays merged (post_merge checkpoint + status='merged' transition both already committed). The publish error is surfaced via `result.publishError`. The merge response still has `success: true` but exposes the publish failure for the caller to handle.
+
+#### Transaction Ordering
+`publishMergedVersions` calls `createCheckpoint` first (which has its own BEGIN/COMMIT), then runs provenance UPDATEs after. This avoids PostgreSQL nested-transaction issues. If the checkpoint fails, no provenance is written. If a provenance UPDATE fails after the checkpoint commits, `isPublished` remains true but the "published from branch X" badge data is missing — graceful degradation matching the take-target case.
+
+#### Test Coverage
+- 18 new tests across 3 files, all passing
+- Existing 18 merge-execution tests still pass after mock updates
+- 143 merge-related tests total green; lint clean on all touched files
+
+#### Out of Scope (Follow-ups)
+- No backfill: existing `post_merge` checkpoints stay as-is; only future merges into main get auto-publish
+- Pre-existing dead code: `handleExecuteMerge` (`merge-api.ts:167`) uses a broken signature for `executeMerge` and was left alone
+- Pre-existing minor: `documentsUpdated` count in `executeMergeWithResolution` excludes conflict-resolved docs
+
+#### Follow-up Fixes Added to Same PR (after production DB inspection)
+
+**System-managed `_registry/` exclusion.** Added `SYSTEM_MANAGED_PATH_PREFIXES = ['_registry/']` constant in `merge-execution-service.ts` and helper `applySystemManagedExclusions()` that strips system-managed paths from the conflict-detection result before any merge logic runs. Applied at the entry of `executeMerge`, `executeMergeWithResolution`, and `previewMerge`. Caller-provided `excludePathPrefixes` in previewMerge layers on top, never replaces. The `_registry/` prefix is excluded because its contents are owned by Pantheon core code, not the user's site. Other underscore prefixes (`_translations/`, `_structure/`) remain mergeable as user content.
+
+**post_merge / auto-publish inflation fix.** `copySourceChangesToTarget` now captures the pre-existing latest version on the target branch before calling `createDocumentVersion`, then compares ids after. If the returned version's id matches the pre-existing latest (typically because `createDocumentVersion`'s unique-violation fallback at `document-version-service.ts:344-353` returned an existing row), the entry is NOT pushed into `mergedVersions`. The same skip is applied in `executeMergeWithResolution` for take-source, take-target, and manual resolutions. Without this filter, a merge with 1 real change leaked 32 docs into the post_merge checkpoint (and therefore into the new auto-publish checkpoint), including 3 unpublished `realtime` direct-on-main edits — observed in the Airbus CSS site's translation merge.
+
+#### Tests added (cumulative for this PR)
+- 6 `_registry` exclusion tests (`merge-execution-system-prefixes.spec.ts`) — including a regression guard that the conflicted-status branch is NOT entered when only `_registry` conflicts exist
+- 6 inflation-fix tests (`merge-execution-no-op-skip.spec.ts`) — covering executeMerge non-conflict path plus take-source, take-target, and manual resolution paths in executeMergeWithResolution
+- 8 auto-publish service integration tests (`merge-execution-service.publish.spec.ts`)
+- 6 helper unit tests (`merge-publish.spec.ts`)
+- 4 DO `/reload` route tests (`merge-api-auto-publish-reload.spec.ts`)
+Total: 30 new tests; 135 merge-related tests pass; lint clean on all touched files.
+
+---
 
 ### Bug Fix: isPublished incorrectly true after agent edits (2026-04-25)
 

@@ -26,8 +26,68 @@ import type { MergeRequest } from '../types';
 import {
   createDocumentVersion,
   getDocumentVersion,
+  getLatestDocumentVersion,
 } from './document-version-service';
 import { createCheckpoint } from './checkpoint-service';
+import { getMainBranch } from './branch-service';
+import { publishMergedVersions } from './merge-publish';
+
+// =============================================================================
+// System-managed path exclusion
+// =============================================================================
+
+/**
+ * Path prefixes whose contents are owned by Pantheon core code, not the user's
+ * site. Documents under these prefixes are unconditionally excluded from
+ * preview, merge writes, and merge checkpoints — regardless of any caller-
+ * provided excludePathPrefixes. The result of merging or auto-publishing
+ * such documents would be meaningless because the source of truth lives in
+ * code, not in any branch.
+ *
+ * NOTE: This intentionally does NOT include other underscore-prefixed paths
+ * such as `_translations/` or `_structure/` — those are user content and
+ * must continue to merge normally.
+ */
+const SYSTEM_MANAGED_PATH_PREFIXES: readonly string[] = ['_registry/'];
+
+/**
+ * True when `path` is owned by Pantheon core code and must be excluded
+ * from any merge-related operation.
+ */
+function isSystemManagedPath(path: string): boolean {
+  return SYSTEM_MANAGED_PATH_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+/**
+ * Strip system-managed paths from a `ConflictDetectionResult`. Returns a new
+ * result; never mutates the input. Applied at the entry of every merge code
+ * path so downstream logic can ignore the exclusion entirely.
+ */
+function applySystemManagedExclusions(
+  detectionResult: ConflictDetectionResult,
+): ConflictDetectionResult {
+  return {
+    ...detectionResult,
+    conflicts: {
+      ...detectionResult.conflicts,
+      documentConflicts: detectionResult.conflicts.documentConflicts.filter(
+        (c) => !isSystemManagedPath(c.documentPath),
+      ),
+    },
+    sourceChanges: detectionResult.sourceChanges.filter(
+      (c) => !isSystemManagedPath(c.documentPath),
+    ),
+    targetChanges: detectionResult.targetChanges.filter(
+      (c) => !isSystemManagedPath(c.documentPath),
+    ),
+    // hasConflicts is intentionally recomputed against the filtered list so
+    // a merge with only _registry conflicts proceeds normally.
+    hasConflicts:
+      detectionResult.conflicts.documentConflicts.filter(
+        (c) => !isSystemManagedPath(c.documentPath),
+      ).length > 0 || detectionResult.conflicts.structureConflicts.length > 0,
+  };
+}
 
 // =============================================================================
 // Types
@@ -51,6 +111,16 @@ export interface ExecuteMergeResult {
   checkpointId?: string;
   documentsUpdated: number;
   error?: string;
+  /** Id of the auto-publish checkpoint, when target was main and publish succeeded. */
+  publishCheckpointId?: string;
+  /** Auto-publish error message, when target was main and publish failed (merge itself stays committed). */
+  publishError?: string;
+  /**
+   * Document IDs that were auto-published as part of this merge. Set only
+   * when the target was main and publish was attempted (regardless of
+   * success). The route layer uses this to fire DO /reload notifications.
+   */
+  publishedDocumentIds?: string[];
 }
 
 /**
@@ -78,6 +148,8 @@ export interface ExecuteMergeWithResolutionParams {
 
 /**
  * Result of executing a merge with resolution.
+ *
+ * Inherits `publishCheckpointId` / `publishError` from ExecuteMergeResult.
  */
 export interface ExecuteMergeWithResolutionResult extends ExecuteMergeResult {
   conflictsResolved: number;
@@ -204,10 +276,12 @@ export async function executeMerge(
   }
 
   // 3. Detect conflicts
-  const detectionResult = await detectConflicts(
+  const rawDetectionResult = await detectConflicts(
     mergeRequest.sourceBranchId,
     mergeRequest.targetBranchId,
   );
+  // Strip system-managed paths (e.g. _registry/) before any merge logic runs.
+  const detectionResult = applySystemManagedExclusions(rawDetectionResult);
 
   // 4. If conflicts exist, update merge request status and throw error
   if (detectionResult.hasConflicts) {
@@ -237,7 +311,10 @@ export async function executeMerge(
     checkpointType: 'post_merge',
     createdById: mergedById,
     createdByType: mergedByType,
-    documentVersionIds: copiedVersions,
+    documentVersionIds: copiedVersions.map((v) => ({
+      documentId: v.documentId,
+      documentVersionId: v.documentVersionId,
+    })),
   });
 
   // 7. Update merge request status to merged
@@ -247,11 +324,28 @@ export async function executeMerge(
     mergedByType,
   });
 
+  // 8. Auto-publish: when merging into main, mark merged versions as published.
+  const publishOutcome = await autoPublishIfTargetIsMain(
+    mergeRequest,
+    copiedVersions,
+    mergedById,
+    mergedByType,
+  );
+
   return {
     success: true,
     mergeRequestId,
     checkpointId: checkpointResult.checkpoint.id,
     documentsUpdated: copiedVersions.length,
+    ...(publishOutcome.checkpointId !== undefined
+      ? { publishCheckpointId: publishOutcome.checkpointId }
+      : {}),
+    ...(publishOutcome.error !== undefined
+      ? { publishError: publishOutcome.error }
+      : {}),
+    ...(publishOutcome.documentIds !== undefined
+      ? { publishedDocumentIds: publishOutcome.documentIds }
+      : {}),
   };
 }
 
@@ -283,10 +377,12 @@ export async function executeMergeWithResolution(
   }
 
   // 3. Detect conflicts
-  const detectionResult = await detectConflicts(
+  const rawDetectionResult = await detectConflicts(
     mergeRequest.sourceBranchId,
     mergeRequest.targetBranchId,
   );
+  // Strip system-managed paths (e.g. _registry/) before any merge logic runs.
+  const detectionResult = applySystemManagedExclusions(rawDetectionResult);
 
   let conflictsResolved = 0;
 
@@ -315,6 +411,26 @@ export async function executeMergeWithResolution(
         (c) => c.documentId === conflict.documentId,
       );
 
+      // Capture pre-existing latest target version BEFORE resolving — used
+      // below to suppress no-op resolutions that produce no new version
+      // (e.g. take-target, or take-source/manual where the snapshot equals
+      // what's already on main). Without this, the post_merge / auto-publish
+      // checkpoints inflate with pre-existing target versions.
+      const preExistingLatest = await getLatestDocumentVersion(
+        conflict.documentId,
+        mergeRequest.targetBranchId,
+      );
+
+      // The conflict-detection target side runs with publishedOnly:true,
+      // which returns the most-recently-CHECKPOINTED version (not always the
+      // highest version_number). For take-target, the resolver returns this
+      // exact id — which can be older than the current latest. We treat any
+      // match against EITHER "latest by version_number" OR "latest target
+      // change id" as a no-op.
+      const isPreExistingTargetVersionId = (versionId: string): boolean =>
+        preExistingLatest?.id === versionId ||
+        targetChange?.latestVersionId === versionId;
+
       if (strategy === 'manual') {
         // Manual resolution: use client-provided snapshot
         if (docResolution?.resolvedSnapshot === undefined) {
@@ -332,10 +448,17 @@ export async function executeMergeWithResolution(
           createdByType: mergedByType,
           skipDuplicateCheck: true,
         });
-        mergedDocVersions.push({
-          documentId: conflict.documentId,
-          documentVersionId: manualVersion.id,
-        });
+        // No-op skip: the manual snapshot resolved to an existing target
+        // version (typically via the unique-violation fallback in
+        // createDocumentVersion). Don't pollute the checkpoint.
+        if (!isPreExistingTargetVersionId(manualVersion.id)) {
+          mergedDocVersions.push({
+            documentId: conflict.documentId,
+            documentVersionId: manualVersion.id,
+            // No clean source-branch version: snapshot is client-provided.
+            sourceVersionId: null,
+          });
+        }
         conflictsResolved++;
       } else {
         // take-source or take-target: resolve individually
@@ -355,9 +478,24 @@ export async function executeMergeWithResolution(
         });
         for (const res of resolutionResult.resolutions) {
           if (res.resolved && res.resultVersionId !== undefined) {
+            // No-op skip: resolver returned a pre-existing target version
+            // (always true for take-target; possible for take-source when
+            // snapshots match). The check covers both "latest by version
+            // number" and "latest by checkpoint" (publishedOnly view).
+            if (isPreExistingTargetVersionId(res.resultVersionId)) {
+              continue;
+            }
             mergedDocVersions.push({
               documentId: res.documentId,
               documentVersionId: res.resultVersionId,
+              // Provenance only when the resolution unambiguously points at
+              // a source-branch version (take-source). For take-target the
+              // result is the existing main-side version and no source
+              // mapping applies.
+              sourceVersionId:
+                strategy === 'take-source'
+                  ? sourceChange?.latestVersionId ?? null
+                  : null,
             });
           }
         }
@@ -382,7 +520,10 @@ export async function executeMergeWithResolution(
     checkpointType: 'post_merge',
     createdById: mergedById,
     createdByType: mergedByType,
-    documentVersionIds: mergedDocVersions,
+    documentVersionIds: mergedDocVersions.map((v) => ({
+      documentId: v.documentId,
+      documentVersionId: v.documentVersionId,
+    })),
   });
 
   // 7. Update merge request status
@@ -392,12 +533,29 @@ export async function executeMergeWithResolution(
     mergedByType,
   });
 
+  // 8. Auto-publish: when merging into main, mark merged versions as published.
+  const publishOutcome = await autoPublishIfTargetIsMain(
+    mergeRequest,
+    mergedDocVersions,
+    mergedById,
+    mergedByType,
+  );
+
   return {
     success: true,
     mergeRequestId,
     checkpointId: checkpointResult.checkpoint.id,
     documentsUpdated: copiedVersions.length,
     conflictsResolved,
+    ...(publishOutcome.checkpointId !== undefined
+      ? { publishCheckpointId: publishOutcome.checkpointId }
+      : {}),
+    ...(publishOutcome.error !== undefined
+      ? { publishError: publishOutcome.error }
+      : {}),
+    ...(publishOutcome.documentIds !== undefined
+      ? { publishedDocumentIds: publishOutcome.documentIds }
+      : {}),
   };
 }
 
@@ -411,12 +569,15 @@ export async function previewMerge(
   targetBranchId: string,
   options?: PreviewMergeOptions,
 ): Promise<MergePreview> {
-  const detectionResult = await detectConflicts(
+  const rawDetectionResult = await detectConflicts(
     sourceBranchId,
     targetBranchId,
   );
+  // Always strip system-managed paths (e.g. _registry/) — caller's
+  // excludePathPrefixes is layered on top, never instead of this.
+  const detectionResult = applySystemManagedExclusions(rawDetectionResult);
 
-  // Apply path prefix filtering if requested
+  // Apply caller-provided path prefix filtering on top of system exclusions.
   const excludePrefixes = options?.excludePathPrefixes;
   const shouldExclude = excludePrefixes != null && excludePrefixes.length > 0
     ? (path: string): boolean => excludePrefixes.some((prefix) => path.startsWith(prefix))
@@ -463,10 +624,18 @@ export async function previewMerge(
 // Helper Functions
 // =============================================================================
 
-/** A document version created or referenced during a merge. */
+/**
+ * A document version created or referenced during a merge.
+ *
+ * `sourceVersionId` is the source-branch version this main-side version came
+ * from, when one is unambiguously identifiable. It's `null` for resolutions
+ * where there is no clean source (take-target, manual). Used by the
+ * auto-publish helper to set publish provenance.
+ */
 interface MergedDocumentVersion {
   documentId: string;
   documentVersionId: string;
+  sourceVersionId: string | null;
 }
 
 /**
@@ -499,6 +668,19 @@ async function copySourceChangesToTarget(
       continue;
     }
 
+    // Capture the pre-existing latest version on the target BEFORE creating
+    // the new merge version. If createDocumentVersion's unique-violation
+    // fallback ends up returning this same id, no real new version was
+    // created and we must not push it into mergedVersions — otherwise the
+    // post_merge / auto-publish checkpoints would contain references to
+    // pre-existing target-branch versions that weren't actually changed by
+    // this merge (observed in production: a merge with 1 real new doc
+    // showed 32 docs in its post_merge checkpoint).
+    const preExistingLatest = await getLatestDocumentVersion(
+      change.documentId,
+      mergeRequest.targetBranchId,
+    );
+
     // Create version on target branch
     // Always create for merge operations — the source='merge' marker matters for history.
     const newVersion = await createDocumentVersion({
@@ -512,12 +694,90 @@ async function copySourceChangesToTarget(
       isTombstone: sourceVersion.isTombstone,
     });
 
+    // No-op skip: createDocumentVersion returned the pre-existing target
+    // version (typically via the unique-violation fallback). Nothing was
+    // actually merged for this document — exclude from downstream
+    // checkpoints.
+    if (preExistingLatest?.id === newVersion.id) {
+      continue;
+    }
+
     mergedVersions.push({
       documentId: change.documentId,
       documentVersionId: newVersion.id,
+      sourceVersionId: change.latestVersionId,
     });
   }
 
   return mergedVersions;
+}
+
+/**
+ * Outcome of the auto-publish step.
+ *
+ * `checkpointId` is set when the publish step ran AND succeeded.
+ * `error` is set when the publish step ran AND failed (the merge itself
+ *   stays committed; the failure is surfaced on the merge response).
+ * `documentIds` is set whenever publish was attempted (target was main),
+ *   regardless of success — the route layer uses it for DO /reload.
+ * All three undefined means the target was not main and no publish was attempted.
+ */
+interface AutoPublishOutcome {
+  checkpointId?: string;
+  error?: string;
+  documentIds?: string[];
+}
+
+/**
+ * If the merge target is the main branch, mark the merge-created versions
+ * as published via publishMergedVersions(). Otherwise this is a no-op.
+ *
+ * Failures are caught and surfaced via the returned outcome — they do NOT
+ * roll back the merge itself, since the merge has already been committed
+ * (post_merge checkpoint + status transition). This matches the user-facing
+ * contract: a successful merge with a failed publish is reported as a
+ * successful merge with a publish error attached.
+ */
+async function autoPublishIfTargetIsMain(
+  mergeRequest: MergeRequest,
+  mergedVersions: MergedDocumentVersion[],
+  mergedById: string,
+  mergedByType: 'user' | 'agent',
+): Promise<AutoPublishOutcome> {
+  const mainBranch = await getMainBranch(mergeRequest.siteId);
+  if (mergeRequest.targetBranchId !== mainBranch?.id) {
+    return {};
+  }
+
+  if (mergedVersions.length === 0) {
+    return {};
+  }
+
+  const documentIds = mergedVersions.map((v) => v.documentId);
+
+  try {
+    const result = await publishMergedVersions({
+      siteId: mergeRequest.siteId,
+      mainBranchId: mainBranch.id,
+      sourceBranchId: mergeRequest.sourceBranchId,
+      mergedVersions,
+      mergedById,
+      mergedByType,
+      mergeTitle: mergeRequest.title,
+    });
+    return {
+      documentIds,
+      ...(result.checkpointId !== undefined
+        ? { checkpointId: result.checkpointId }
+        : {}),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `Auto-publish-on-merge failed for merge request ${mergeRequest.id}:`,
+      error,
+    );
+    return { documentIds, error: `Auto-publish failed: ${message}` };
+  }
 }
 

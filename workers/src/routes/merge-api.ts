@@ -39,6 +39,13 @@ export interface MergeRouteContext {
   principal: AuthenticatedPrincipal;
   /** KV namespace for writing branch invalidation signals after merge */
   configKV?: KVNamespace;
+  /**
+   * Document state Durable Object binding. When provided, a successful merge
+   * into main triggers a /reload notification per auto-published document so
+   * live DO sessions on main pick up the new versions. Mirrors the
+   * post-publish reload in document-api dispatch.
+   */
+  documentStateBinding?: DurableObjectNamespace;
 }
 
 /**
@@ -47,6 +54,45 @@ export interface MergeRouteContext {
 async function parseJsonBody<T>(request: Request): Promise<T> {
   const json: unknown = await request.json();
   return json as T;
+}
+
+/**
+ * After a merge auto-publishes documents on main, notify the DO sessions
+ * for each affected document so live editors pick up the new version.
+ * Mirrors the post-publish reload in document-api dispatch
+ * (see route-dispatch.ts:97-119). Fire-and-forget per document — errors
+ * are logged and swallowed so a failed reload never breaks the merge response.
+ */
+async function notifyDocumentStateAfterMerge(
+  context: MergeRouteContext,
+  publishedDocumentIds: string[] | undefined,
+  mainBranchId: string,
+): Promise<void> {
+  if (
+    publishedDocumentIds === undefined ||
+    publishedDocumentIds.length === 0 ||
+    context.documentStateBinding === undefined
+  ) {
+    return;
+  }
+  const binding = context.documentStateBinding;
+  for (const documentId of publishedDocumentIds) {
+    try {
+      const sessionId = `${context.siteId}:${documentId}:${mainBranchId}`;
+      const stub = binding.get(binding.idFromName(sessionId));
+      await stub.fetch(
+        new Request('http://internal/reload', {
+          method: 'POST',
+          headers: { 'X-Session-Id': sessionId },
+        }),
+      );
+    } catch (error) {
+      console.error(
+        `Failed to reload DO after merge auto-publish (doc ${documentId}):`,
+        error,
+      );
+    }
+  }
 }
 
 /**
@@ -455,6 +501,13 @@ async function handleExecuteMergeRequest(
       console.warn('Failed to write branch invalidation after merge request execute:', error);
     }
   }
+
+  // Notify DO sessions for any auto-published documents.
+  await notifyDocumentStateAfterMerge(
+    context,
+    result.publishedDocumentIds,
+    mergeRequest.targetBranchId,
+  );
 
   return jsonResponse(result);
 }
