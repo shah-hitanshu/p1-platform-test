@@ -149,7 +149,7 @@ describe('useCSSPlugin', () => {
 
     expect(result.current).toBeDefined();
     expect(result.current.name).toBe('css');
-    expect(result.current.label).toBe('CSS');
+    expect(result.current.label).toBe('');
     expect(result.current.icon).toBeDefined();
     expect(typeof result.current.render).toBe('function');
   });

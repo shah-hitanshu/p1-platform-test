@@ -37,7 +37,7 @@ export function AgentActionModal({
   targetRegions = [],
   onSuccess,
   onError,
-}: AgentActionModalProps): JSX.Element | null {
+}: AgentActionModalProps): React.JSX.Element | null {
   const context = usePresenceContext();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(
     agents[0]?.id ?? null

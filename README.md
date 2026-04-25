@@ -372,6 +372,25 @@ function Editor() {
 
 See the full `useCSSPuck` and `CSSPuckProvider` API in the package source for all available props and context values.
 
+## Upgrading PDSv2
+
+`pds-core.css` is embedded at build time as a TypeScript string (`src/pds/theme/pds-core-content.ts`) and injected via `document.adoptedStyleSheets` in `CSSApp.tsx`. This keeps PDS global styles out of Puck's canvas iframe without requiring a host-app CSS import.
+
+Because of this, bumping `@pantheon-systems/pds-toolkit-react` requires a rebuild of `puck-css` to pick up the new CSS:
+
+```bash
+# 1. Update the version in packages/puck-css/package.json, then:
+cd packages/puck-css
+pnpm install
+pnpm build   # copies pds-core.css and regenerates pds-core-content.ts
+
+# 2. Commit the regenerated file alongside the version bump
+git add src/pds/theme/pds-core-content.ts src/pds/theme/pds-core.css package.json
+git commit -m "chore(pds): upgrade pds-toolkit-react to <version>"
+```
+
+If you skip the rebuild, the embedded CSS stays at the old version even though the package.json reference is updated.
+
 ## Development
 
 ### Prerequisites

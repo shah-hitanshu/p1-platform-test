@@ -104,7 +104,7 @@ describe('useComponentRegistry', () => {
 
     // Should create the component doc
     expect(mockClient.documents.create).toHaveBeenCalledWith(
-      expect.objectContaining({ path: '/_registry/components/HeroBlock' }),
+      expect.objectContaining({ path: '_registry/components/HeroBlock' }),
     );
     // Should create a version
     expect(mockClient.versions.create).toHaveBeenCalled();
@@ -121,13 +121,32 @@ describe('useComponentRegistry', () => {
 
     // Return existing doc with matching hash
     mockClient.documents.list.mockResolvedValue([
-      { id: 'doc-hero', path: '/_registry/components/HeroBlock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
-      { id: 'doc-index', path: '/_registry/index', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+      { id: 'doc-hero', path: '_registry/components/HeroBlock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+      { id: 'doc-index', path: '_registry/index', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
     ]);
-    mockClient.versions.getLatest.mockResolvedValue({
-      id: 'ver-1', versionNumber: 1,
-      snapshot: { ...descriptor, descriptorHash: storedHash },
-    });
+    // Return the index version with a hashes map so the fast path is used.
+    // This avoids the legacy-format promotion write (which would call versions.create
+    // even when all hashes match).
+    mockClient.versions.getLatest.mockImplementation(
+      (_siteId: string, _branchId: string, docId: string) => {
+        if (docId === 'doc-index') {
+          return Promise.resolve({
+            id: 'ver-index', versionNumber: 1,
+            snapshot: {
+              siteId: 'site-1', branchId: 'branch-1',
+              componentNames: ['HeroBlock'],
+              provenance: { HeroBlock: 'site' },
+              updatedAt: '',
+              hashes: { HeroBlock: storedHash },
+            },
+          });
+        }
+        return Promise.resolve({
+          id: 'ver-1', versionNumber: 1,
+          snapshot: { ...descriptor, descriptorHash: storedHash },
+        });
+      },
+    );
 
     const { result } = renderHook(
       () => useComponentRegistry({ puckConfig: simplePuckConfig }),
@@ -148,7 +167,7 @@ describe('useComponentRegistry', () => {
     const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 
     mockClient.documents.list.mockResolvedValue([
-      { id: 'doc-hero', path: '/_registry/components/HeroBlock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+      { id: 'doc-hero', path: '_registry/components/HeroBlock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
     ]);
     // Stored snapshot has a different hash
     mockClient.versions.getLatest.mockResolvedValue({
@@ -236,9 +255,9 @@ describe('useComponentRegistry', () => {
     // Should create docs for both components and the index
     const createCalls = mockClient.documents.create.mock.calls as { path: string }[][];
     const createdPaths = createCalls.map((args) => args[0].path);
-    expect(createdPaths).toContain('/_registry/components/HeroBlock');
-    expect(createdPaths).toContain('/_registry/components/CardBlock');
-    expect(createdPaths).toContain('/_registry/index');
+    expect(createdPaths).toContain('_registry/components/HeroBlock');
+    expect(createdPaths).toContain('_registry/components/CardBlock');
+    expect(createdPaths).toContain('_registry/index');
 
     // versions.create called at least 3 times (2 components + 1 index)
     expect(mockClient.versions.create.mock.calls.length).toBeGreaterThanOrEqual(3);
@@ -250,7 +269,7 @@ describe('useComponentRegistry', () => {
     const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 
     mockClient.documents.list.mockResolvedValue([
-      { id: 'doc-hero', path: '/_registry/components/HeroBlock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+      { id: 'doc-hero', path: '_registry/components/HeroBlock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
     ]);
     // Stale hash — triggers write
     mockClient.versions.getLatest.mockResolvedValue({
@@ -258,7 +277,7 @@ describe('useComponentRegistry', () => {
       snapshot: { name: 'HeroBlock', descriptorHash: 'stale-hash-000' },
     });
     // Index doc does not exist yet, so documents.create should only be called for the index
-    mockClient.documents.create.mockResolvedValue({ id: 'doc-index', path: '/_registry/index' });
+    mockClient.documents.create.mockResolvedValue({ id: 'doc-index', path: '_registry/index' });
 
     const { result } = renderHook(
       () => useComponentRegistry({ puckConfig: simplePuckConfig }),
@@ -269,11 +288,11 @@ describe('useComponentRegistry', () => {
 
     // documents.create must NOT be called for the component (doc already exists)
     const createCalls = mockClient.documents.create.mock.calls as { path: string }[][];
-    const componentCreateCalls = createCalls.filter((args) => args[0].path.startsWith('/_registry/components/'));
+    const componentCreateCalls = createCalls.filter((args) => args[0].path.startsWith('_registry/components/'));
     expect(componentCreateCalls).toHaveLength(0);
 
     // documents.create IS called for the index (it doesn't exist yet)
-    const indexCreateCalls = createCalls.filter((args) => args[0].path === '/_registry/index');
+    const indexCreateCalls = createCalls.filter((args) => args[0].path === '_registry/index');
     expect(indexCreateCalls).toHaveLength(1);
 
     // versions.create called with the existing doc's UUID for the component

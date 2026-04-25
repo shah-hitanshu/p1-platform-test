@@ -5,6 +5,7 @@
  * Supports agent checkpoint attribution and rollback indicators.
  */
 
+import React from 'react';
 import type { DocumentVersion, Checkpoint } from '@pantheon/css-client';
 import { AgentCheckpointBadge } from './AgentCheckpointBadge.js';
 
@@ -53,7 +54,7 @@ export function VersionItem({
   compact = false,
   onClick,
   className,
-}: VersionItemProps): JSX.Element {
+}: VersionItemProps): React.JSX.Element {
   const containerClasses = [
     baseClass,
     isSelected && `${baseClass}--selected`,

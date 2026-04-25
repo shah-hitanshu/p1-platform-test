@@ -1,4 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+/* Google Fonts — must precede all rules per CSS spec.
+   Consolidates font imports from pds-core.css and PuckEditorTheme.css here
+   so consuming bundlers (e.g. Turbopack) never see @import url() after rules. */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&family=Inter+Tight:ital,wght@0,100..900;1,100..900&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&display=swap");
+
+@import './pds/theme/PuckEditorTheme.css';
 
 /**
  * Puck CSS Integration Styles
@@ -30,287 +35,6 @@
   --puck-css-text-secondary: #6b7280;
   --puck-css-primary: #3b82f6;
   --puck-css-primary-hover: #2563eb;
-
-  /* PDS Button Design Tokens */
-  --pds-color-button-primary-background-default: #4f32ce;
-  --pds-color-button-primary-background-hover: #3017a1;
-  --pds-color-button-primary-background-active: #12026f;
-  --pds-color-button-primary-border-default: #4f32ce;
-  --pds-color-button-primary-border-hover: #3017a1;
-  --pds-color-button-primary-border-active: #12026f;
-  --pds-color-button-primary-foreground-default: #ffffff;
-  --pds-color-button-primary-foreground-hover: #ffffff;
-  --pds-color-button-primary-foreground-active: #ffffff;
-
-  --pds-color-button-secondary-background-default: rgba(0, 0, 0, 0);
-  --pds-color-button-secondary-background-hover: #f4f3fc;
-  --pds-color-button-secondary-background-active: #f4f3fc;
-  --pds-color-button-secondary-border-default: #4f32ce;
-  --pds-color-button-secondary-border-hover: #4f32ce;
-  --pds-color-button-secondary-border-active: #3017a1;
-  --pds-color-button-secondary-foreground-default: #4f32ce;
-  --pds-color-button-secondary-foreground-hover: #4f32ce;
-  --pds-color-button-secondary-foreground-active: #3017a1;
-
-  --pds-color-button-subtle-background-default: rgba(0, 0, 0, 0);
-  --pds-color-button-subtle-border-default: rgba(0, 0, 0, 0);
-  --pds-color-button-subtle-foreground-default: #4f32ce;
-  --pds-color-button-subtle-foreground-hover: #3017a1;
-  --pds-color-button-subtle-foreground-active: #12026f;
-
-  --pds-color-button-critical-background-default: #bc1c11;
-  --pds-color-button-critical-background-hover: #9e140b;
-  --pds-color-button-critical-background-active: #790b03;
-  --pds-color-button-critical-border-default: #bc1c11;
-  --pds-color-button-critical-border-hover: #9e140b;
-  --pds-color-button-critical-border-active: #790b03;
-  --pds-color-button-critical-foreground-default: #ffffff;
-  --pds-color-button-critical-foreground-hover: #ffffff;
-  --pds-color-button-critical-foreground-active: #ffffff;
-
-  --pds-color-button-critical-secondary-background-default: rgba(0, 0, 0, 0);
-  --pds-color-button-critical-secondary-background-hover: #ffefee;
-  --pds-color-button-critical-secondary-background-active: #ffdcd8;
-  --pds-color-button-critical-secondary-border-default: #bc1c11;
-  --pds-color-button-critical-secondary-border-hover: #9e140b;
-  --pds-color-button-critical-secondary-border-active: #790b03;
-  --pds-color-button-critical-secondary-foreground-default: #bc1c11;
-  --pds-color-button-critical-secondary-foreground-hover: #bc1c11;
-  --pds-color-button-critical-secondary-foreground-active: #bc1c11;
-
-  --pds-color-button-brand-background-default: #ffdc28;
-  --pds-color-button-brand-background-hover: #ddbd16;
-  --pds-color-button-brand-background-active: #a88f10;
-  --pds-color-button-brand-border-default: #ffdc28;
-  --pds-color-button-brand-border-hover: #ddbd16;
-  --pds-color-button-brand-border-active: #a88f10;
-  --pds-color-button-brand-foreground-default: #23232d;
-  --pds-color-button-brand-foreground-hover: #23232d;
-  --pds-color-button-brand-foreground-active: #23232d;
-
-  --pds-color-interactive-focus: #0f62fe;
-
-  /* PDS Status Design Tokens */
-  --pds-color-status-success-foreground: #217a37;
-  --pds-color-status-success-background: #ebfff0;
-  --pds-color-status-warning-foreground: #b06300;
-  --pds-color-status-warning-background: #ffeed9;
-  --pds-color-status-critical-foreground: #bc1c11;
-  --pds-color-status-critical-background: #ffefee;
-  --pds-color-status-info-foreground: #0875e1;
-  --pds-color-status-info-background: #d7edff;
-  --pds-color-status-neutral-foreground: #23232d;
-  --pds-color-status-neutral-background: #c3c5c9;
-  --pds-color-status-discovery-foreground: #8e74ff;
-  --pds-color-status-discovery-utility: #cfc5ff;
-  --pds-color-fg-default: #23232d;
-  --pds-color-fg-default-secondary: #6a6e7a;
-  --pds-color-border-default: #e3e4e5;
-  --pds-color-bg-default: #ffffff;
-  --pds-color-bg-reverse: #23232d;
-  --pds-color-fg-reverse: #ffffff;
-
-  /* PDS Badge Design Tokens */
-  --pds-color-badge-indicator-default-background: #23232d;
-  --pds-color-badge-indicator-default-foreground: #ffffff;
-  --pds-color-badge-indicator-neutral-background: #6a6e7a;
-  --pds-color-badge-indicator-neutral-foreground: #ffffff;
-  --pds-color-badge-indicator-success-background: #217a37;
-  --pds-color-badge-indicator-success-foreground: #ffffff;
-  --pds-color-badge-indicator-warning-background: #b06300;
-  --pds-color-badge-indicator-warning-foreground: #ffffff;
-  --pds-color-badge-indicator-critical-background: #bc1c11;
-  --pds-color-badge-indicator-critical-foreground: #ffffff;
-  --pds-color-badge-indicator-info-background: #0875e1;
-  --pds-color-badge-indicator-info-foreground: #ffffff;
-  --pds-color-badge-status-dot-default: var(--pds-color-status-neutral-background);
-}
-
-/* ============================================
-   PDS Button Styles
-   ============================================ */
-
-button.pds-button {
-  --button-color-background: var(--pds-color-button-primary-background-default);
-  --button-color-foreground: var(--pds-color-button-primary-foreground-default);
-  --button-color-border: var(--pds-color-button-primary-border-default);
-  align-items: center;
-  background-color: var(--button-color-background);
-  border: 1px solid var(--button-color-border);
-  border-radius: 0.1875rem;
-  box-sizing: border-box;
-  color: var(--button-color-foreground);
-  cursor: pointer;
-  display: inline-flex;
-  font-family: 'Poppins', sans-serif;
-  font-size: 1rem;
-  font-weight: 600;
-  gap: 0.64rem;
-  height: 2.25rem;
-  justify-content: center;
-  letter-spacing: 0.025em;
-  line-height: 1;
-  max-height: 2.25rem;
-  padding: 0.625rem 0.8125rem;
-  text-decoration: none;
-  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1) 0s;
-  white-space: nowrap;
-}
-
-button.pds-button:disabled {
-  cursor: not-allowed;
-  opacity: 63%;
-}
-
-button.pds-button:hover:enabled {
-  --button-color-background: var(--pds-color-button-primary-background-hover);
-  --button-color-border: var(--pds-color-button-primary-border-hover);
-  --button-color-foreground: var(--pds-color-button-primary-foreground-hover);
-}
-
-button.pds-button:active:enabled {
-  --button-color-background: var(--pds-color-button-primary-background-active);
-  --button-color-border: var(--pds-color-button-primary-border-active);
-  --button-color-foreground: var(--pds-color-button-primary-foreground-active);
-}
-
-button.pds-button:focus-visible {
-  outline: 1px solid var(--pds-color-interactive-focus);
-  outline-offset: 0.0625rem;
-}
-
-/* Size: Small */
-button.pds-button.pds-button--sm {
-  font-size: 0.833rem;
-  gap: 0.41rem;
-  height: 2rem;
-  max-height: 2rem;
-  padding: 0.5rem 0.625rem;
-}
-
-/* Size: Large */
-button.pds-button.pds-button--lg {
-  font-size: 1.2rem;
-  height: 3rem;
-  max-height: 3rem;
-  padding: 0.9375rem 1.25rem;
-}
-
-/* Full width */
-button.pds-button.pds-button--full-width {
-  width: 100%;
-}
-
-/* Variant: Secondary */
-button.pds-button.pds-button--secondary {
-  --button-color-background: var(--pds-color-button-secondary-background-default);
-  --button-color-border: var(--pds-color-button-secondary-border-default);
-  --button-color-foreground: var(--pds-color-button-secondary-foreground-default);
-}
-
-button.pds-button.pds-button--secondary:hover:enabled {
-  --button-color-background: var(--pds-color-button-secondary-background-hover);
-  --button-color-border: var(--pds-color-button-secondary-border-hover);
-  --button-color-foreground: var(--pds-color-button-secondary-foreground-hover);
-}
-
-button.pds-button.pds-button--secondary:active:enabled {
-  --button-color-background: var(--pds-color-button-secondary-background-active);
-  --button-color-border: var(--pds-color-button-secondary-border-active);
-  --button-color-foreground: var(--pds-color-button-secondary-foreground-active);
-}
-
-/* Variant: Subtle */
-button.pds-button.pds-button--subtle {
-  --button-color-background: var(--pds-color-button-subtle-background-default);
-  --button-color-border: var(--pds-color-button-subtle-border-default);
-  --button-color-foreground: var(--pds-color-button-subtle-foreground-default);
-  font-weight: 400;
-  letter-spacing: 0;
-  padding: 0.64rem 0.25rem;
-}
-
-button.pds-button.pds-button--subtle:hover:enabled {
-  --button-color-background: var(--pds-color-button-subtle-background-default);
-  --button-color-border: var(--pds-color-button-subtle-border-default);
-  --button-color-foreground: var(--pds-color-button-subtle-foreground-hover);
-}
-
-button.pds-button.pds-button--subtle:active:enabled {
-  --button-color-background: var(--pds-color-button-subtle-background-default);
-  --button-color-border: var(--pds-color-button-subtle-border-default);
-  --button-color-foreground: var(--pds-color-button-subtle-foreground-active);
-}
-
-/* Variant: Critical */
-button.pds-button.pds-button--critical {
-  --button-color-background: var(--pds-color-button-critical-background-default);
-  --button-color-border: var(--pds-color-button-critical-border-default);
-  --button-color-foreground: var(--pds-color-button-critical-foreground-default);
-}
-
-button.pds-button.pds-button--critical:hover:enabled {
-  --button-color-background: var(--pds-color-button-critical-background-hover);
-  --button-color-border: var(--pds-color-button-critical-border-hover);
-  --button-color-foreground: var(--pds-color-button-critical-foreground-hover);
-}
-
-button.pds-button.pds-button--critical:active:enabled {
-  --button-color-background: var(--pds-color-button-critical-background-active);
-  --button-color-border: var(--pds-color-button-critical-border-active);
-  --button-color-foreground: var(--pds-color-button-critical-foreground-active);
-}
-
-/* Variant: Critical Secondary */
-button.pds-button.pds-button--critical-secondary {
-  --button-color-background: var(--pds-color-button-critical-secondary-background-default);
-  --button-color-border: var(--pds-color-button-critical-secondary-border-default);
-  --button-color-foreground: var(--pds-color-button-critical-secondary-foreground-default);
-}
-
-button.pds-button.pds-button--critical-secondary:hover:enabled {
-  --button-color-background: var(--pds-color-button-critical-secondary-background-hover);
-  --button-color-border: var(--pds-color-button-critical-secondary-border-hover);
-  --button-color-foreground: var(--pds-color-button-critical-secondary-foreground-hover);
-}
-
-button.pds-button.pds-button--critical-secondary:active:enabled {
-  --button-color-background: var(--pds-color-button-critical-secondary-background-active);
-  --button-color-border: var(--pds-color-button-critical-secondary-border-active);
-  --button-color-foreground: var(--pds-color-button-critical-secondary-foreground-active);
-}
-
-/* Variant: Brand */
-button.pds-button.pds-button--brand {
-  --button-color-background: var(--pds-color-button-brand-background-default);
-  --button-color-border: var(--pds-color-button-brand-border-default);
-  --button-color-foreground: var(--pds-color-button-brand-foreground-default);
-}
-
-button.pds-button.pds-button--brand:hover:enabled {
-  --button-color-background: var(--pds-color-button-brand-background-hover);
-  --button-color-border: var(--pds-color-button-brand-border-hover);
-  --button-color-foreground: var(--pds-color-button-brand-foreground-hover);
-}
-
-button.pds-button.pds-button--brand:active:enabled {
-  --button-color-background: var(--pds-color-button-brand-background-active);
-  --button-color-border: var(--pds-color-button-brand-border-active);
-  --button-color-foreground: var(--pds-color-button-brand-foreground-active);
-}
-
-/* Button Group */
-.pds-button-group {
-  display: flex;
-  flex-direction: row;
-  column-gap: 1.25rem;
-}
-
-/* Active state for toggle-style buttons */
-button.pds-button.pds-button--active {
-  --button-color-background: var(--pds-color-button-secondary-background-active);
-  --button-color-border: var(--pds-color-button-secondary-border-active);
-  --button-color-foreground: var(--pds-color-button-secondary-foreground-active);
 }
 
 /* ============================================
@@ -327,207 +51,6 @@ button.pds-button.pds-button--active {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
-}
-
-/* ============================================
-   PDS Status Indicator
-   ============================================ */
-
-.pds-status-indicator {
-  --status-indicator-color: var(--pds-color-status-neutral-background);
-  align-items: center;
-  display: inline-flex;
-  font-family: Poppins, sans-serif;
-}
-
-.pds-status-indicator--critical {
-  --status-indicator-color: var(--pds-color-status-critical-foreground);
-}
-
-.pds-status-indicator--info {
-  --status-indicator-color: var(--pds-color-status-info-foreground);
-}
-
-.pds-status-indicator--neutral {
-  --status-indicator-color: var(--pds-color-status-neutral-background);
-}
-
-.pds-status-indicator--new {
-  --status-indicator-color: var(--pds-color-status-discovery-foreground);
-}
-
-.pds-status-indicator--success {
-  --status-indicator-color: var(--pds-color-status-success-foreground);
-}
-
-.pds-status-indicator--warning {
-  --status-indicator-color: var(--pds-color-status-warning-foreground);
-}
-
-.pds-status-indicator__icon {
-  background-color: var(--status-indicator-color);
-  border-radius: 50%;
-  display: block;
-  margin-right: 0.512rem;
-}
-
-.pds-status-indicator__label {
-  color: var(--pds-color-fg-default);
-  text-transform: capitalize;
-}
-
-.pds-status-indicator--sm .pds-status-indicator__icon {
-  height: 0.8rem;
-  width: 0.8rem;
-}
-
-.pds-status-indicator--sm .pds-status-indicator__label {
-  font-size: 0.833rem;
-}
-
-.pds-status-indicator--md .pds-status-indicator__icon {
-  height: 1rem;
-  width: 1rem;
-}
-
-.pds-status-indicator--md .pds-status-indicator__label {
-  font-size: 1rem;
-}
-
-/* ============================================
-   PDS Status Badge
-   ============================================ */
-
-.pds-status-badge {
-  --status-badge-background: transparent;
-  --status-badge-border: var(--pds-color-border-default);
-  --status-badge-label: var(--pds-color-fg-default-secondary);
-  --status-badge-status-dot: var(--pds-color-badge-status-dot-default);
-  align-items: center;
-  background-color: var(--status-badge-background);
-  border: 1px solid var(--status-badge-border);
-  border-radius: 100px;
-  color: var(--status-badge-label);
-  display: inline-flex;
-  font-family: Poppins, sans-serif;
-  font-size: 0.694rem;
-  font-weight: 600;
-  padding: 0.328rem 0.64rem;
-}
-
-.pds-status-badge__status {
-  background-color: var(--status-badge-status-dot);
-  border-radius: 50%;
-  display: inline-block;
-  height: 0.512rem;
-  margin-inline-end: 0.512rem;
-  width: 0.512rem;
-}
-
-.pds-status-badge__label {
-  display: inline-block;
-  line-height: 0.694rem;
-  padding-block-start: 0.0625rem;
-}
-
-.pds-status-badge--transparent {
-  --status-badge-background: transparent;
-  --status-badge-border: var(--pds-color-border-default);
-  --status-badge-label: var(--pds-color-fg-default-secondary);
-}
-
-.pds-status-badge--neutral {
-  --status-badge-background: var(--pds-color-bg-default);
-  --status-badge-border: var(--pds-color-border-default);
-  --status-badge-label: var(--pds-color-fg-default-secondary);
-}
-
-.pds-status-badge__status--success {
-  --status-badge-status-dot: var(--pds-color-status-success-foreground);
-}
-
-.pds-status-badge__status--info {
-  --status-badge-status-dot: var(--pds-color-status-info-foreground);
-}
-
-.pds-status-badge__status--critical {
-  --status-badge-status-dot: var(--pds-color-status-critical-foreground);
-}
-
-.pds-status-badge__status--warning {
-  --status-badge-status-dot: var(--pds-color-status-warning-foreground);
-}
-
-.pds-status-badge__status--discovery {
-  --status-badge-status-dot: var(--pds-color-status-discovery-foreground);
-}
-
-.pds-status-badge__status--disabled {
-  --status-badge-status-dot: var(--pds-color-status-neutral-background);
-}
-
-/* ============================================
-   PDS Indicator Badge
-   ============================================ */
-
-.pds-indicator-badge {
-  --indicator-badge-background: var(--pds-color-badge-indicator-default-background);
-  --indicator-badge-text: var(--pds-color-badge-indicator-default-foreground);
-  align-items: center;
-  background-color: var(--indicator-badge-background);
-  border: 1px solid var(--indicator-badge-background);
-  border-radius: 0.1875rem;
-  color: var(--indicator-badge-text);
-  display: inline-block;
-  font-family: Poppins, sans-serif;
-  font-weight: 600;
-  letter-spacing: 0.01rem;
-  line-height: 140%;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.pds-indicator-badge__label {
-  display: inline-block;
-}
-
-.pds-indicator-badge--md {
-  font-size: 0.694rem;
-  padding: 0.125rem 0.41rem;
-}
-
-.pds-indicator-badge--md .pds-indicator-badge__label {
-  padding-block-start: 0.0625rem;
-}
-
-.pds-indicator-badge--sm {
-  font-size: 0.625rem;
-  padding: 0.125rem 0.41rem;
-}
-
-.pds-indicator-badge--neutral {
-  --indicator-badge-background: var(--pds-color-badge-indicator-neutral-background);
-  --indicator-badge-text: var(--pds-color-badge-indicator-neutral-foreground);
-}
-
-.pds-indicator-badge--success {
-  --indicator-badge-background: var(--pds-color-badge-indicator-success-background);
-  --indicator-badge-text: var(--pds-color-badge-indicator-success-foreground);
-}
-
-.pds-indicator-badge--warning {
-  --indicator-badge-background: var(--pds-color-badge-indicator-warning-background);
-  --indicator-badge-text: var(--pds-color-badge-indicator-warning-foreground);
-}
-
-.pds-indicator-badge--critical {
-  --indicator-badge-background: var(--pds-color-badge-indicator-critical-background);
-  --indicator-badge-text: var(--pds-color-badge-indicator-critical-foreground);
-}
-
-.pds-indicator-badge--info {
-  --indicator-badge-background: var(--pds-color-badge-indicator-info-background);
-  --indicator-badge-text: var(--pds-color-badge-indicator-info-foreground);
 }
 
 /* ============================================
@@ -1442,11 +965,31 @@ button.pds-button.pds-button--active {
 }
 
 .css-plugin-version-item {
-  gap: 8px;
+  gap: 4px;
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .css-plugin-version-item--selected {
   background: rgba(59, 130, 246, 0.1);
+}
+
+.css-plugin-version-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.css-plugin-version-author {
+  font-size: 0.75rem;
+  color: var(--pds-color-fg-default-secondary, #666);
+  margin-top: 2px;
+}
+
+.css-plugin-version-restore {
+  margin-top: 4px;
+  align-self: flex-start;
 }
 
 .css-plugin-version-number {
@@ -2155,6 +1698,121 @@ button.pds-button.pds-button--active {
 }
 
 /* ============================================
+   Merge Preview Panel
+   ============================================ */
+
+.merge-preview-panel {
+  background: var(--puck-css-bg);
+  height: 100%;
+  padding: 1rem;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.merge-preview-panel__title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+  color: var(--puck-css-text);
+}
+
+.merge-preview-panel__branch-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--puck-css-text-secondary);
+  margin-bottom: 1rem;
+}
+
+.merge-preview-panel__branch {
+  font-weight: 500;
+}
+
+.merge-preview-panel__document-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.merge-preview-panel__empty,
+.merge-preview-panel__loading,
+.merge-preview-panel__error {
+  font-size: 0.875rem;
+  padding: 1rem 0;
+}
+
+.merge-preview-panel__empty,
+.merge-preview-panel__loading {
+  color: var(--puck-css-text-secondary);
+}
+
+.merge-preview-panel__error {
+  color: var(--pds-color-status-critical-foreground, #b91c1c);
+}
+
+.merge-preview-document__row {
+  width: 100%;
+  text-align: left;
+  background: var(--puck-css-bg-secondary);
+  border: 1px solid var(--puck-css-border);
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  color: var(--puck-css-text);
+}
+
+.merge-preview-document__row--expanded {
+  border-radius: 0.375rem 0.375rem 0 0;
+  border-bottom-color: transparent;
+}
+
+.merge-preview-document__detail {
+  border: 1px solid var(--puck-css-border);
+  border-top: none;
+  border-radius: 0 0 0.375rem 0.375rem;
+  overflow: hidden;
+}
+
+.merge-preview-document__detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+  background: var(--puck-css-bg-secondary);
+  border-bottom: 1px solid var(--puck-css-border);
+}
+
+.merge-preview-document__detail-path {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--puck-css-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merge-preview-document__detail-body {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* ============================================
+   View Mode Selector
+   ============================================ */
+
+.view-mode-selector {
+  display: flex;
+  gap: 0.25rem;
+}
+
+/* ============================================
    Merge Preview Renderer
    ============================================ */
 
@@ -2281,4 +1939,443 @@ button.pds-button.pds-button--active {
   top: 0;
   left: 0;
   z-index: 2;
+}
+
+/* ============================================
+   Merge Review Page (Compare with Live overlay)
+   ============================================ */
+
+.merge-review-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--puck-css-bg);
+  overflow: hidden;
+}
+
+.merge-review-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--puck-css-border);
+  background: var(--puck-css-bg);
+  flex-shrink: 0;
+}
+
+.merge-review-page__header-leading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.merge-review-page__title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--puck-css-text);
+}
+
+.merge-review-page__body {
+  flex: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+.merge-review-page__message {
+  font-size: 0.875rem;
+  color: var(--puck-css-text-secondary);
+  margin: 0;
+}
+
+.merge-review-page__branch-selectors {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.merge-review-page__branch-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.merge-review-page__label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--puck-css-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.merge-review-page__branch-display {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--puck-css-border);
+  font-size: 0.875rem;
+  min-width: 12rem;
+  color: var(--puck-css-text);
+  background: var(--puck-css-bg);
+}
+
+.merge-review-page__branch-display--target {
+  background: var(--puck-css-bg-secondary);
+  color: var(--puck-css-text-secondary);
+}
+
+.merge-review-page__arrow {
+  font-size: 1.25rem;
+  color: var(--puck-css-text-secondary);
+  padding-bottom: 0.375rem;
+}
+
+/* ============================================
+   Merge Resolution Page (full-screen conflict resolution)
+   ============================================ */
+
+.merge-resolution-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--puck-css-bg);
+  overflow: hidden;
+}
+
+.merge-resolution-page__loading {
+  padding: 1.5rem;
+  font-size: 0.875rem;
+  color: var(--puck-css-text-secondary);
+  text-align: center;
+  margin: 0;
+}
+
+.merge-resolution-page__error,
+.merge-resolution-page__merge-error {
+  margin: 0.75rem 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  background: var(--pds-color-status-critical-background, #fde8e8);
+  color: var(--pds-color-status-critical-foreground, #b91c1c);
+}
+
+.merge-resolution-page__merge-success {
+  margin: 0.75rem 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  background: var(--pds-color-status-success-background, #d4edda);
+  color: var(--pds-color-status-success-foreground, #155724);
+}
+
+.merge-resolution-page__content {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  overflow: hidden;
+}
+
+.merge-resolution-page__list {
+  width: 20rem;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--puck-css-border);
+}
+
+.merge-resolution-page__detail {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.5rem;
+}
+
+/* ============================================
+   Merge Resolution Toolbar
+   ============================================ */
+
+.merge-resolution-toolbar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  background: var(--puck-css-bg-secondary);
+  border-bottom: 1px solid var(--puck-css-border);
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.merge-resolution-toolbar__left {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.merge-resolution-toolbar__branch-label {
+  font-size: 0.875rem;
+  color: var(--puck-css-text-secondary);
+}
+
+.merge-resolution-toolbar__center {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  justify-content: center;
+  min-width: 12rem;
+}
+
+.merge-resolution-toolbar__progress {
+  font-size: 0.8125rem;
+  color: var(--puck-css-text-secondary);
+  white-space: nowrap;
+}
+
+.merge-resolution-toolbar__progress-auto {
+  color: var(--puck-css-text-secondary);
+  opacity: 0.7;
+}
+
+.merge-resolution-toolbar__progress-bar {
+  width: 7.5rem;
+  height: 0.375rem;
+  background: var(--pds-color-status-neutral-background, #e5e7eb);
+  border-radius: 3.5rem;
+  overflow: hidden;
+}
+
+.merge-resolution-toolbar__progress-bar-fill {
+  height: 100%;
+  background: var(--pds-color-status-success-foreground, #28a745);
+  border-radius: 3.5rem;
+  transition: width 0.3s ease;
+}
+
+.merge-resolution-toolbar__right {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+}
+
+.merge-resolution-toolbar__mr-error {
+  color: var(--pds-color-status-critical-foreground, #b91c1c);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.merge-resolution-toolbar__confirm {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.merge-resolution-toolbar__confirm-text {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--pds-color-status-critical-foreground, #b91c1c);
+}
+
+.merge-resolution-toolbar__confirm-button {
+  background: var(--pds-color-status-critical-foreground, #c53030) !important;
+}
+
+.merge-resolution-toolbar__shortcuts {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--puck-css-bg);
+  border-radius: 0.375rem;
+  border: 1px solid var(--puck-css-border);
+  margin-top: 0.25rem;
+}
+
+.merge-resolution-toolbar__shortcuts-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.merge-resolution-toolbar__shortcuts-list dt {
+  font-weight: 600;
+  font-family: monospace;
+  color: var(--puck-css-text);
+}
+
+.merge-resolution-toolbar__shortcuts-list dd {
+  margin: 0;
+  color: var(--puck-css-text-secondary);
+}
+
+/* ============================================
+   Document Resolution List
+   ============================================ */
+
+.document-resolution-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  outline: none;
+}
+
+.document-resolution-list__item {
+  display: flex;
+  flex-direction: column;
+  padding: 0.625rem 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--puck-css-border);
+  transition: background-color 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.document-resolution-list__item--selected {
+  background: var(--puck-css-bg-secondary);
+  border-left-color: var(--pds-color-status-info-foreground, #0066cc);
+}
+
+.document-resolution-list__item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.document-resolution-list__path {
+  font-size: 0.875rem;
+  color: var(--puck-css-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.document-resolution-list__diff-counts {
+  display: flex;
+  gap: 0.375rem;
+  margin-top: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.document-resolution-list__diff-badge {
+  font-size: 0.625rem;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.document-resolution-list__diff-badge--added {
+  background: var(--pds-color-status-success-background, #dcfce7);
+  color: var(--pds-color-status-success-foreground, #166534);
+}
+
+.document-resolution-list__diff-badge--removed {
+  background: var(--pds-color-status-critical-background, #fee2e2);
+  color: var(--pds-color-status-critical-foreground, #991b1b);
+}
+
+.document-resolution-list__diff-badge--modified {
+  background: var(--pds-color-status-warning-background, #fef9c3);
+  color: var(--pds-color-status-warning-foreground, #854d0e);
+}
+
+/* css-plugin-merge-overlay: full-screen container */
+.css-plugin-merge-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 10000;
+  overflow: hidden;
+}
+
+/* =============================================================================
+   Puck nav: PDS icon-only tabs
+   Replaces the default Puck icon+label nav tabs with PDS-style icon-only tabs.
+
+   Nav order (Puck internals: built-ins first, then user plugins in array order):
+     nth-child(1) blocksPlugin  → Grid icon        (targeted by .lucide-hammer)
+     nth-child(2) outlinePlugin → rectangleList     (targeted by .lucide-layers)
+     nth-child(3) CSS plugin    → rotateClock       (React NavIcon in CSSPlugin)
+     nth-child(4) AI plugin     → sparkles          (targeted by nth-child)
+     nth-child(5) PCC plugin    → fileLines         (targeted by nth-child)
+   ============================================================================= */
+
+/* 1. Hide all text labels.
+      Puck renders the label as <span class=""> (empty class, not a named CSS module
+      class), so we target the second/last span child of the NavItem-link div. */
+[class*='NavItem-link'] > span[class=''],
+[class*='NavItem-link'] > span:not([class]) {
+  display: none !important;
+}
+
+/* 2. Shared pseudo-element for injected SVG icons */
+[class*='NavItem-linkIcon']:has(svg.lucide-hammer)::after,
+[class*='NavItem-linkIcon']:has(svg.lucide-layers)::after,
+[class*='Nav-list'] > li:nth-child(4) [class*='NavItem-linkIcon']::after,
+[class*='Nav-list'] > li:nth-child(5) [class*='NavItem-linkIcon']::after {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 20px;
+  background-repeat: no-repeat;
+  background-size: contain;
+  background-position: center;
+}
+
+/* 3. Hide original icons for replaced tabs */
+svg.lucide-hammer,
+svg.lucide-layers {
+  display: none;
+}
+
+[class*='Nav-list'] > li:nth-child(4) [class*='NavItem-linkIcon'] > *,
+[class*='Nav-list'] > li:nth-child(5) [class*='NavItem-linkIcon'] > * {
+  display: none;
+}
+
+/* 4. Inject replacement icons (Font Awesome 6 Pro paths) */
+
+/* blocksPlugin → fa-grid */
+[class*='NavItem-linkIcon']:has(svg.lucide-hammer)::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 448 512'%3E%3Cpath fill='%23374151' d='M0 64C0 46.3 14.3 32 32 32l48 0c17.7 0 32 14.3 32 32l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32L0 64zM0 232c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48zM112 400l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32zM168 64c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48zM280 232l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32zM168 400c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48zM448 64l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32zM336 232c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48zM448 400l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32z'/%3E%3C/svg%3E");
+}
+
+/* outlinePlugin → fa-rectangle-list */
+[class*='NavItem-linkIcon']:has(svg.lucide-layers)::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath fill='%23374151' d='M64 64C28.7 64 0 92.7 0 128L0 384c0 35.3 28.7 64 64 64l384 0c35.3 0 64-28.7 64-64l0-256c0-35.3-28.7-64-64-64L64 64zm96 256a32 32 0 1 1 -64 0 32 32 0 1 1 64 0zm-32-96a32 32 0 1 1 0-64 32 32 0 1 1 0 64zm120-56l144 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-144 0c-13.3 0-24-10.7-24-24s10.7-24 24-24zm0 128l144 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-144 0c-13.3 0-24-10.7-24-24s10.7-24 24-24z'/%3E%3C/svg%3E");
+}
+
+/* AI plugin (4th) → fa-sparkles */
+[class*='Nav-list'] > li:nth-child(4) [class*='NavItem-linkIcon']::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 576 512'%3E%3Cpath fill='%23374151' d='M391.5 53.2c-4.5 1.7-7.5 6-7.5 10.8s3 9.1 7.5 10.8L448 96 469.2 152.5c1.7 4.5 6 7.5 10.8 7.5s9.1-3 10.8-7.5L512 96 568.5 74.8c4.5-1.7 7.5-6 7.5-10.8s-3-9.1-7.5-10.8L512 32 490.8-24.5c-1.7-4.5-6-7.5-10.8-7.5s-9.1 3-10.8 7.5L448 32 391.5 53.2zm-185 20.1c-2.6-5.7-8.3-9.3-14.5-9.3s-11.9 3.6-14.5 9.3l-53.1 115-115 53.1C3.6 244.1 0 249.8 0 256s3.6 11.9 9.3 14.5l115 53.1 53.1 115c2.6 5.7 8.3 9.3 14.5 9.3s11.9-3.6 14.5-9.3l53.1-115 115-53.1c5.7-2.6 9.3-8.3 9.3-14.5s-3.6-11.9-9.3-14.5l-115-53.1-53.1-115zM416 416l-56.5 21.2c-4.5 1.7-7.5 6-7.5 10.8s3 9.1 7.5 10.8L416 480 437.2 536.5c1.7 4.5 6 7.5 10.8 7.5s9.1-3 10.8-7.5L480 480 536.5 458.8c4.5-1.7 7.5-6 7.5-10.8s-3-9.1-7.5-10.8L480 416 458.8 359.5c-1.7-4.5-6-7.5-10.8-7.5s-9.1 3-10.8 7.5L416 416z'/%3E%3C/svg%3E");
+}
+
+/* PCC plugin (5th) → fa-file-lines */
+[class*='Nav-list'] > li:nth-child(5) [class*='NavItem-linkIcon']::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 384 512'%3E%3Cpath fill='%23374151' d='M0 64C0 28.7 28.7 0 64 0L213.5 0c17 0 33.3 6.7 45.3 18.7L365.3 125.3c12 12 18.7 28.3 18.7 45.3L384 448c0 35.3-28.7 64-64 64L64 512c-35.3 0-64-28.7-64-64L0 64zm208-5.5l0 93.5c0 13.3 10.7 24 24 24L325.5 176 208 58.5zM120 256c-13.3 0-24 10.7-24 24s10.7 24 24 24l144 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-144 0zm0 96c-13.3 0-24 10.7-24 24s10.7 24 24 24l144 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-144 0z'/%3E%3C/svg%3E");
+}
+
+/* 5. Tooltips for non-React tabs are handled by NavTooltipBridge in CSSPlugin.tsx,
+      which renders portal tooltips into document.body to avoid overflow clipping. */
+
+.css-nav-tooltip {
+  position: fixed;
+  padding: 4px 8px;
+  background: #1f2937;
+  color: #fff;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translateY(-50%);
 }

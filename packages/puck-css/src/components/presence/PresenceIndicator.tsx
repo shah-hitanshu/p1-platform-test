@@ -4,7 +4,7 @@
  * Compact indicator showing presence count with expandable details panel.
  */
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import type { ActorPresence } from '@pantheon/css-client';
 
 export interface PresenceIndicatorProps {
@@ -29,7 +29,7 @@ export function PresenceIndicator({
   expandable = true,
   panelPosition = 'bottom',
   className,
-}: PresenceIndicatorProps): JSX.Element {
+}: PresenceIndicatorProps): React.JSX.Element {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const count = actors.length;

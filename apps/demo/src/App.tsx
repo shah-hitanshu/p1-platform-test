@@ -20,6 +20,7 @@ import {
 import type { Checkpoint } from '@pantheon/puck-css';
 
 import '@pantheon/puck-css/styles.css';
+import '@pantheon/puck-css/pds/styles.css';
 
 import { puckConfig } from './puck.config';
 
@@ -194,7 +195,7 @@ function AppContent() {
   }
 
   return (
-    <div className="app app--fullscreen">
+    <div className="app app--fullscreen puck-editor-theme">
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       <Puck key={puckKey} {...puckProps as any} />
       {authMode === 'mock' && <UserSwitcher />}

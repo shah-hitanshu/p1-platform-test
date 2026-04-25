@@ -186,6 +186,12 @@ export interface CSSPuckContextValue {
   siteId: string;
 
   /**
+   * Display name of the current site, fetched from the CSS API on mount.
+   * Null until the fetch resolves, or if the fetch fails.
+   */
+  siteName: string | null;
+
+  /**
    * Current branch ID.
    */
   branchId: string;
@@ -250,6 +256,11 @@ export interface CSSPuckContextValue {
    * Switch to a different branch.
    */
   switchBranch: (branchId: string) => Promise<void>;
+
+  /**
+   * Create a new branch branching from main. Refreshes the branch list on success.
+   */
+  createBranch: (name: string) => Promise<Branch>;
 
   /**
    * Available branches.
@@ -419,6 +430,18 @@ export interface CSSPuckContextValue {
    * Null when presence is disabled.
    */
   presence: PresenceState | null;
+
+  /**
+   * Whether any human (other than self) is actively present (direct value so
+   * changes trigger context re-renders and refresh the presence getter).
+   */
+  hasActiveHumans: boolean;
+
+  /**
+   * Count of human actors currently present. Changes on every join/leave so
+   * consumers re-render even when multiple humans are present and one departs.
+   */
+  humanPresenceCount: number;
 
   /**
    * Whether any agent is actively editing (direct value so changes

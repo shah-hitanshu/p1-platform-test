@@ -137,6 +137,14 @@ function CSSPuckProviderInner({
     }
   }, [branchStorageKey]);
 
+  // Site name — fetched once on mount from the CSS API
+  const [siteName, setSiteName] = useState<string | null>(null);
+  useEffect(() => {
+    client.sites?.get(siteId)
+      ?.then((site) => setSiteName(site.name))
+      .catch(() => {});
+  }, [client, siteId]);
+
   // Branch state - start with initialBranchId, persisted branch, or empty (will be set to main)
   const [branchId, setBranchId] = useState(() => {
     if (initialBranchId) return initialBranchId;
@@ -542,6 +550,15 @@ function CSSPuckProviderInner({
     }
   }, [userClient, siteId, getPersistedBranchId, persistBranchId]);
 
+  const createBranch = useCallback(
+    async (name: string) => {
+      const branch = await userClient.branches.create({ siteId, name });
+      await refreshBranches();
+      return branch;
+    },
+    [userClient, siteId, refreshBranches],
+  );
+
   // Initial branch load - only once
   useEffect(() => {
     if (!initializedRef.current) {
@@ -785,6 +802,12 @@ function CSSPuckProviderInner({
       loadRequestIdRef.current += 1;
       const thisRequestId = loadRequestIdRef.current;
 
+      // Pre-clear the current document immediately so the preview shows the
+      // empty state right away rather than stale content during the fetch.
+      currentDataDocumentPathRef.current = null;
+      setCurrentData(null);
+      setCurrentDocument(null);
+
       try {
         // Normalize path: strip leading slash if present
         const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
@@ -798,6 +821,14 @@ function CSSPuckProviderInner({
           return;
         }
 
+        // Clear stale data BEFORE updating the document identity so that
+        // useRealtime's new useEffect sees initialData=null when it creates
+        // the fresh Y.Doc. Without this, currentData still holds the previous
+        // document's content when setCurrentDocument triggers the re-render,
+        // causing the new Y.Doc to be seeded with the wrong document's Yjs
+        // state — which the DO then commits as the first realtime version.
+        currentDataDocumentPathRef.current = null;
+        setCurrentData(null);
         setCurrentDocument(doc);
 
         // Get latest version
@@ -832,6 +863,18 @@ function CSSPuckProviderInner({
         // Setting to null allows remote updates after document loads
         viewingVersionRef.current = null;
 
+        // Cancel any pending PuckDataCapture catch-up timer and reset its
+        // ref before arming the data-origin guard below. Without this, the
+        // timer can fire in the window between currentDataDocumentPathRef
+        // being set to doc.path and the new document's first remote update
+        // arriving — passing the origin check while still carrying the
+        // previous document's Puck state.
+        if (captureTimerRef.current) {
+          clearTimeout(captureTimerRef.current);
+          captureTimerRef.current = null;
+        }
+        realtimeDataCaptureRef.current = null;
+
         currentDataDocumentPathRef.current = doc.path;
         suppressNextSaveRef.current = true;
         setCurrentData(puckData);
@@ -843,7 +886,14 @@ function CSSPuckProviderInner({
         setSaveStatus('idle');
         setSaveError(null);
       } catch (error) {
-        console.error('Failed to load document:', error);
+        // Use warn, not error: callers handle this and console.error triggers
+        // the Next.js dev overlay unnecessarily.
+        console.warn('[CSSPuckProvider] loadDocument failed:', error);
+        // Unload the current document so VersionBannerOverride shows the empty
+        // state instead of the previous document's content.
+        currentDataDocumentPathRef.current = null;
+        setCurrentData(null);
+        setCurrentDocument(null);
         throw error;
       }
     },
@@ -1611,6 +1661,7 @@ function CSSPuckProviderInner({
       client: userClient,
       notifications: notificationContext,
       siteId,
+      siteName,
       branchId,
       userId,
       currentDocument,
@@ -1641,6 +1692,7 @@ function CSSPuckProviderInner({
       branches,
       currentBranch,
       refreshBranches,
+      createBranch,
       branchesLoading,
       autoSavePaused,
       pauseAutoSave: stablePauseAutoSave,
@@ -1659,8 +1711,11 @@ function CSSPuckProviderInner({
       handleAction,
       // Phase 9: Presence & Agent values
       // Use getter to avoid context recreation on every focus-region update.
-      // But expose hasActiveAgents directly so agent start/stop triggers re-renders.
+      // Expose humanPresenceCount/hasActiveHumans/hasActiveAgents directly so every
+      // join/leave triggers context re-renders and causes consumers to re-invoke the getter.
       get presence() { return presenceStateRef.current; },
+      hasActiveHumans: presenceState?.hasActiveHumans ?? false,
+      humanPresenceCount: presenceState?.humans.length ?? 0,
       hasActiveAgents: presenceState?.hasActiveAgents ?? false,
       agentEdit: agentEditCapabilities,
       triggerAgent: triggerAgentFn,
@@ -1718,7 +1773,10 @@ function CSSPuckProviderInner({
       handleAction,
       handleRealtimeDataCapture,
       // Phase 9 dependencies (full presenceState excluded — accessed via getter/ref,
-      // but hasActiveAgents is a direct value so agent start/stop triggers re-renders)
+      // but humanPresenceCount/hasActiveHumans/hasActiveAgents are direct values so every
+      // join/leave triggers re-renders regardless of how many actors are present)
+      presenceState?.humans.length,
+      presenceState?.hasActiveHumans,
       presenceState?.hasActiveAgents,
       agentEditCapabilities,
       triggerAgentFn,

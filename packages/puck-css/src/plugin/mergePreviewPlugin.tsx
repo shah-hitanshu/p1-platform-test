@@ -1,28 +1,9 @@
-/**
- * Merge Preview Plugin
- *
- * Puck plugin that renders a merge preview panel with visual diff
- * highlighting across multiple documents between two branches.
- */
-
 import React from 'react';
 import type { PuckPlugin } from './CSSPlugin.js';
-import type { DocumentDiffSummary } from '../utils/branchDiff.js';
 import { MergePreviewPanel } from '../components/merge-preview/MergePreviewPanel.js';
+import { useMergePreview } from '../hooks/useMergePreview.js';
 
-/**
- * Options for creating the merge preview plugin.
- */
 export interface MergePreviewPluginOptions {
-  /** Array of document diff summaries to display. */
-  documents: DocumentDiffSummary[];
-
-  /** Name of the source branch. */
-  sourceBranchName: string;
-
-  /** Name of the target branch. */
-  targetBranchName: string;
-
   /** Puck configuration for rendering components. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   config: any;
@@ -31,9 +12,6 @@ export interface MergePreviewPluginOptions {
   onDocumentSelect?: (documentId: string) => void;
 }
 
-/**
- * Icon for the merge preview plugin.
- */
 function MergePreviewIcon(): React.ReactElement {
   return (
     <svg
@@ -54,31 +32,61 @@ function MergePreviewIcon(): React.ReactElement {
   );
 }
 
-/**
- * Creates a merge preview plugin for the Puck editor.
- *
- * The plugin renders a panel that lists documents with diff summaries.
- * Selecting a document shows a visual comparison using side-by-side,
- * overlay, or slider view modes.
- *
- * @param options - {@link MergePreviewPluginOptions} configuring documents, branches, and callbacks.
- * @returns A {@link PuckPlugin} that can be passed to the Puck editor's `plugins` array.
- *
- * @example
- * ```tsx
- * import { createMergePreviewPlugin } from '@pantheon/puck-css';
- *
- * const mergePlugin = createMergePreviewPlugin({
- *   documents,
- *   sourceBranchName: 'feature',
- *   targetBranchName: 'main',
- *   config: puckConfig,
- *   onDocumentSelect: (id) => console.log('Selected:', id),
- * });
- *
- * <Puck plugins={[mergePlugin]} {...otherProps} />
- * ```
- */
+interface ConnectedMergePreviewPanelProps {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  config: any;
+  onDocumentSelect?: (documentId: string) => void;
+}
+
+function ConnectedMergePreviewPanel({
+  config,
+  onDocumentSelect,
+}: ConnectedMergePreviewPanelProps): React.ReactElement {
+  const { documents, loading, error, sourceBranchName, targetBranchName, isMainBranch } =
+    useMergePreview();
+
+  if (isMainBranch) {
+    return (
+      <div className="merge-preview-panel">
+        <h3 className="merge-preview-panel__title">Merge preview</h3>
+        <p className="merge-preview-panel__empty">
+          Switch to a workstream to preview changes before merging.
+        </p>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="merge-preview-panel">
+        <h3 className="merge-preview-panel__title">Merge preview</h3>
+        <p className="merge-preview-panel__loading">Loading comparison…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="merge-preview-panel">
+        <h3 className="merge-preview-panel__title">Merge preview</h3>
+        <p className="merge-preview-panel__error">
+          Failed to load comparison: {error.message}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <MergePreviewPanel
+      documents={documents}
+      sourceBranchName={sourceBranchName}
+      targetBranchName={targetBranchName}
+      config={config}
+      onDocumentSelect={onDocumentSelect}
+    />
+  );
+}
+
 export function createMergePreviewPlugin(
   options: MergePreviewPluginOptions,
 ): PuckPlugin {
@@ -87,10 +95,7 @@ export function createMergePreviewPlugin(
     label: 'Merge Preview',
     icon: <MergePreviewIcon />,
     render: () => (
-      <MergePreviewPanel
-        documents={options.documents}
-        sourceBranchName={options.sourceBranchName}
-        targetBranchName={options.targetBranchName}
+      <ConnectedMergePreviewPanel
         config={options.config}
         onDocumentSelect={options.onDocumentSelect}
       />

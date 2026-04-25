@@ -1,17 +1,7 @@
-/**
- * Merge Preview Plugin Tests (TDD - Phase 5)
- *
- * Tests for the Puck plugin that renders merged state preview
- * with visual diff highlighting.
- *
- * Written BEFORE implementation following TDD methodology.
- */
-
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { PuckData } from '@pantheon/css-client';
 import { createMergePreviewPlugin } from '../src/plugin/mergePreviewPlugin.js';
-import type { MergePreviewPluginOptions } from '../src/plugin/mergePreviewPlugin.js';
 
 // Mock Puck's Render component
 vi.mock('@puckeditor/core', () => ({
@@ -24,6 +14,12 @@ vi.mock('@puckeditor/core', () => ({
       ))}
     </div>
   ),
+}));
+
+// Mock useMergePreview so plugin tests don't need a CSSPuckProvider
+const mockUseMergePreview = vi.fn();
+vi.mock('../src/hooks/useMergePreview.js', () => ({
+  useMergePreview: () => mockUseMergePreview(),
 }));
 
 const sourceData: PuckData = {
@@ -71,14 +67,22 @@ const documents = [
   },
 ];
 
+const defaultMockReturn = {
+  documents,
+  loading: false,
+  error: null,
+  sourceBranchName: 'feature',
+  targetBranchName: 'main',
+  isMainBranch: false,
+};
+
+beforeEach(() => {
+  mockUseMergePreview.mockReturnValue(defaultMockReturn);
+});
+
 describe('createMergePreviewPlugin', () => {
   it('should create a valid plugin object', () => {
-    const plugin = createMergePreviewPlugin({
-      documents,
-      sourceBranchName: 'feature',
-      targetBranchName: 'main',
-      config: mockConfig,
-    });
+    const plugin = createMergePreviewPlugin({ config: mockConfig });
 
     expect(plugin.name).toBe('merge-preview');
     expect(plugin.label).toBeDefined();
@@ -87,26 +91,15 @@ describe('createMergePreviewPlugin', () => {
   });
 
   it('should render the plugin panel', () => {
-    const plugin = createMergePreviewPlugin({
-      documents,
-      sourceBranchName: 'feature',
-      targetBranchName: 'main',
-      config: mockConfig,
-    });
+    const plugin = createMergePreviewPlugin({ config: mockConfig });
 
     render(plugin.render());
 
-    // Should show branch names or merge context
     expect(screen.getByText(/merge preview/i)).toBeInTheDocument();
   });
 
   it('should show document list in the panel', () => {
-    const plugin = createMergePreviewPlugin({
-      documents,
-      sourceBranchName: 'feature',
-      targetBranchName: 'main',
-      config: mockConfig,
-    });
+    const plugin = createMergePreviewPlugin({ config: mockConfig });
 
     render(plugin.render());
 
@@ -115,73 +108,80 @@ describe('createMergePreviewPlugin', () => {
   });
 
   it('should show diff stats for documents with changes', () => {
-    const plugin = createMergePreviewPlugin({
-      documents,
-      sourceBranchName: 'feature',
-      targetBranchName: 'main',
-      config: mockConfig,
-    });
+    const plugin = createMergePreviewPlugin({ config: mockConfig });
 
     render(plugin.render());
 
-    // doc-1 has changes (modified heading, removed text, added image)
-    // Should show some change indicator
     const homeRow = screen.getByText('/pages/home').closest('.merge-preview-document');
     expect(homeRow).toBeInTheDocument();
+  });
+
+  it('shows loading state while fetching', () => {
+    mockUseMergePreview.mockReturnValue({ ...defaultMockReturn, loading: true, documents: [] });
+
+    const plugin = createMergePreviewPlugin({ config: mockConfig });
+    render(plugin.render());
+
+    expect(screen.getByText(/loading comparison/i)).toBeInTheDocument();
+  });
+
+  it('shows error state on failure', () => {
+    mockUseMergePreview.mockReturnValue({
+      ...defaultMockReturn,
+      loading: false,
+      error: new Error('Network error'),
+      documents: [],
+    });
+
+    const plugin = createMergePreviewPlugin({ config: mockConfig });
+    render(plugin.render());
+
+    expect(screen.getByText(/network error/i)).toBeInTheDocument();
+  });
+
+  it('shows main-branch message when on main', () => {
+    mockUseMergePreview.mockReturnValue({
+      ...defaultMockReturn,
+      isMainBranch: true,
+      documents: [],
+    });
+
+    const plugin = createMergePreviewPlugin({ config: mockConfig });
+    render(plugin.render());
+
+    expect(screen.getByText(/switch to a workstream/i)).toBeInTheDocument();
   });
 });
 
 describe('MergePreviewPlugin - Panel interactions', () => {
   it('should show view mode selector', () => {
-    const plugin = createMergePreviewPlugin({
-      documents,
-      sourceBranchName: 'feature',
-      targetBranchName: 'main',
-      config: mockConfig,
-    });
+    const plugin = createMergePreviewPlugin({ config: mockConfig });
 
     render(plugin.render());
 
-    // Click on a document to expand it
     fireEvent.click(screen.getByText('/pages/home'));
 
-    // Should show view mode options
     expect(screen.getByText(/side by side/i)).toBeInTheDocument();
   });
 
   it('should switch view modes', () => {
-    const plugin = createMergePreviewPlugin({
-      documents,
-      sourceBranchName: 'feature',
-      targetBranchName: 'main',
-      config: mockConfig,
-    });
+    const plugin = createMergePreviewPlugin({ config: mockConfig });
 
     render(plugin.render());
 
-    // Click on a document
     fireEvent.click(screen.getByText('/pages/home'));
 
-    // Check overlay mode button exists
     const overlayBtn = screen.getByText(/overlay/i);
     expect(overlayBtn).toBeInTheDocument();
 
-    // Switch to overlay
     fireEvent.click(overlayBtn);
 
-    // Overlay mode should be active
-    expect(overlayBtn.closest('button')).toHaveClass('view-mode-selector__btn--active');
+    expect(overlayBtn.closest('button')).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('should call onDocumentSelect when a document is clicked', () => {
     const onDocumentSelect = vi.fn();
-    const plugin = createMergePreviewPlugin({
-      documents,
-      sourceBranchName: 'feature',
-      targetBranchName: 'main',
-      config: mockConfig,
-      onDocumentSelect,
-    });
+    const plugin = createMergePreviewPlugin({ config: mockConfig, onDocumentSelect });
 
     render(plugin.render());
 
@@ -190,15 +190,47 @@ describe('MergePreviewPlugin - Panel interactions', () => {
   });
 
   it('should show empty state when no documents', () => {
-    const plugin = createMergePreviewPlugin({
-      documents: [],
-      sourceBranchName: 'feature',
-      targetBranchName: 'main',
-      config: mockConfig,
-    });
+    mockUseMergePreview.mockReturnValue({ ...defaultMockReturn, documents: [] });
+
+    const plugin = createMergePreviewPlugin({ config: mockConfig });
 
     render(plugin.render());
 
     expect(screen.getByText(/no documents/i)).toBeInTheDocument();
+  });
+
+  it('should show a close button when a document is expanded', () => {
+    const plugin = createMergePreviewPlugin({ config: mockConfig });
+
+    render(plugin.render());
+    fireEvent.click(screen.getByText('/pages/home'));
+
+    expect(screen.getByRole('button', { name: /close preview/i })).toBeInTheDocument();
+  });
+
+  it('should collapse expanded document when close button is clicked', () => {
+    const plugin = createMergePreviewPlugin({ config: mockConfig });
+
+    render(plugin.render());
+    fireEvent.click(screen.getByText('/pages/home'));
+
+    expect(screen.getByRole('button', { name: /close preview/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /close preview/i }));
+
+    expect(screen.queryByText(/side by side/i)).not.toBeInTheDocument();
+  });
+
+  it('should collapse expanded document when clicking its row again', () => {
+    const plugin = createMergePreviewPlugin({ config: mockConfig });
+
+    render(plugin.render());
+
+    const homeRow = screen.getByRole('button', { name: '/pages/home' });
+    fireEvent.click(homeRow);
+    expect(screen.getByText(/side by side/i)).toBeInTheDocument();
+
+    fireEvent.click(homeRow);
+    expect(screen.queryByText(/side by side/i)).not.toBeInTheDocument();
   });
 });

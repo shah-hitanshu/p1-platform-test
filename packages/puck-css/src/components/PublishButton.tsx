@@ -98,7 +98,7 @@ export function PublishButton({
           color: '#b45309',
           fontWeight: 500,
         }}>
-          Publish to live site?
+          Publish directly to live site?
         </span>
         <button
           type="button"

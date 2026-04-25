@@ -5,7 +5,7 @@
  * Shows agent name, trigger type, and status indicators.
  */
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import type { Checkpoint } from '@pantheon/css-client';
 
 export interface AgentCheckpointBadgeProps {
@@ -41,7 +41,7 @@ export function AgentCheckpointBadge({
   checkpoint,
   showTooltip = false,
   className,
-}: AgentCheckpointBadgeProps): JSX.Element | null {
+}: AgentCheckpointBadgeProps): React.JSX.Element | null {
   const [isHovered, setIsHovered] = useState(false);
 
   // Don't render for user checkpoints

@@ -186,6 +186,10 @@ export type {
   CherryPickVisualPanelProps,
 } from './components/merge-resolution/index.js';
 
+// Merge Preview Hook
+export { useMergePreview } from './hooks/useMergePreview.js';
+export type { UseMergePreviewReturn } from './hooks/useMergePreview.js';
+
 // Merge Resolution Hook
 export { useMergeResolution } from './hooks/useMergeResolution.js';
 export type {

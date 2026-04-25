@@ -13,6 +13,7 @@ import { useCSSPlugin } from './useCSSPlugin.js';
 import { useCSSOverrides } from './useCSSOverrides.js';
 import { useVersions } from './useVersions.js';
 import { useComponentRegistry } from './useComponentRegistry.js';
+import { useCSSAuth } from '../auth/index.js';
 import { buildThumbnailOverride } from '../utils/buildThumbnailOverride.js';
 import type { ThumbnailMap } from '../utils/buildThumbnailOverride.js';
 import type { UseCSSPluginOptions } from './useCSSPlugin.js';
@@ -20,6 +21,7 @@ import type { UseCSSOverridesOptions } from './useCSSOverrides.js';
 import type { PuckPlugin, PuckOverrides } from '../plugin/index.js';
 import type { CSSPuckContextValue } from '../types.js';
 import type { PuckData, DocumentVersion } from '@pantheon/css-client';
+import type { UiState } from '@puckeditor/core';
 
 /**
  * Options for useCSSEditor.
@@ -78,6 +80,8 @@ export interface PuckProps {
   overrides: PuckOverrides;
   /** Permissions (locked down for historical versions) */
   permissions?: Record<string, boolean>;
+  /** Initial UI state (sidebar visibility etc.) — read from localStorage on each key-based remount */
+  ui?: Partial<UiState>;
 }
 
 /**
@@ -94,6 +98,12 @@ export interface UseCSSEditorReturn {
   puckProps: PuckProps;
   /** Full CSS context for advanced/escape-hatch use */
   css: CSSPuckContextValue;
+  /**
+   * @deprecated Always null. Branch-switch redirects have been removed; the
+   * editor now unloads the page context and shows an empty state in the
+   * preview area when the current document does not exist on the selected branch.
+   */
+  redirectPath: string | null;
 }
 
 /**
@@ -137,6 +147,7 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   } = options;
 
   const css = useCSSPuck();
+  const { user, logout } = useCSSAuth();
 
   // =========================================================================
   // Document Loading
@@ -144,6 +155,7 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [needsRedirect, setNeedsRedirect] = useState(false);
   const loadedPathRef = useRef<string | null>(null);
 
   // Reset loaded path when branch changes so document reloads on the new branch
@@ -171,6 +183,7 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
       .then(() => {
         if (!cancelled) {
           loadedPathRef.current = documentPath;
+          setNeedsRedirect(false);
           setLoading(false);
         }
       })
@@ -187,18 +200,19 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
               await css.loadDocument(documentPath);
               if (!cancelled) {
                 loadedPathRef.current = documentPath;
+                setNeedsRedirect(false);
                 setLoading(false);
               }
               return;
             }
           } catch {
-            // callback itself failed — fall through to set error
+            // callback itself failed — fall through to unload
           }
         }
 
+        // Unload the editor; recovery effect will set an error if no docs exist
         if (!cancelled) {
-          setError(loadErr);
-          setLoading(false);
+          setNeedsRedirect(true);
         }
       });
 
@@ -206,6 +220,18 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
       cancelled = true;
     };
   }, [documentPath, css.branchId, css.loadDocument]);
+
+  // Recovery: document not found on this branch — unload the editor and let
+  // the preview empty state guide the user to pick a page.
+  useEffect(() => {
+    if (!needsRedirect) return;
+    if (css.documentsLoading) return;
+    setNeedsRedirect(false);
+    if (css.documents.length === 0) {
+      setError(new Error('No documents found on this branch'));
+    }
+    setLoading(false);
+  }, [needsRedirect, css.documentsLoading, css.documents.length]);
 
   // =========================================================================
   // Version Management
@@ -295,21 +321,33 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   // Plugin & Overrides (composed hooks)
   // =========================================================================
 
+  // Wrap publish to refresh version list and call consumer callback after success.
+  const consumerOnPublishSuccessRef = useRef(overrideOptions?.onPublishSuccess);
+  consumerOnPublishSuccessRef.current = overrideOptions?.onPublishSuccess;
+
+  const handlePublish = useCallback(
+    async () => {
+      const checkpoint = await css.publishDocument();
+      void refreshVersions();
+      consumerOnPublishSuccessRef.current?.(checkpoint);
+    },
+    [css, refreshVersions],
+  );
+
   const cssPlugin = useCSSPlugin({
     onSelectionChange: handleSelectionChange,
+    currentUser: user ? { id: user.id, name: user.name, email: user.email, avatar: user.picture } : undefined,
+    onLogout: logout,
     ...pluginOptions,
+    onPublish: handlePublish,
     versions,
     versionsLoading,
     selectedVersionId: css.viewingVersion?.id ?? undefined,
     onVersionSelect: handleVersionSelect,
   });
 
-  // Wrap onPublishSuccess to refresh published status after publishing
-  const consumerOnPublishSuccessRef = useRef(overrideOptions?.onPublishSuccess);
-  consumerOnPublishSuccessRef.current = overrideOptions?.onPublishSuccess;
-
-  const handlePublishSuccess = useCallback(
-    (checkpoint: import('@pantheon/css-client').Checkpoint) => {
+  const wrappedOnPublishSuccess = useCallback(
+    (checkpoint: Parameters<NonNullable<UseCSSOverridesOptions['onPublishSuccess']>>[0]) => {
       void refreshVersions();
       consumerOnPublishSuccessRef.current?.(checkpoint);
     },
@@ -319,7 +357,7 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   const cssOverrides = useCSSOverrides({
     ...overrideOptions,
     publishedStatus,
-    onPublishSuccess: handlePublishSuccess,
+    ...(overrideOptions?.onPublishSuccess ? { onPublishSuccess: wrappedOnPublishSuccess } : {}),
   });
 
   // =========================================================================
@@ -413,6 +451,23 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   // undo history, sidebar state, and no false onChange echo from setData.
   const puckKey = `css-${css.currentDocument?.id ?? documentPath}`;
 
+  // Read persisted sidebar visibility from localStorage each time the Puck instance
+  // changes (puckKey changes on document/branch switch). The value is passed as the
+  // initial `ui` prop so Puck never initializes with wrong defaults.
+  const initialSidebarUi = useMemo<Partial<UiState>>(() => {
+    try {
+      const stored = localStorage.getItem(`css-sidebar-${css.siteId}`);
+      if (!stored) return {};
+      const parsed = JSON.parse(stored) as { left?: boolean; right?: boolean };
+      const ui: Partial<UiState> = {};
+      if (parsed.left !== undefined) ui.leftSideBarVisible = parsed.left;
+      if (parsed.right !== undefined) ui.rightSideBarVisible = parsed.right;
+      return ui;
+    } catch {
+      return {};
+    }
+  }, [puckKey, css.siteId]);
+
   // Focus highlighting is handled via direct DOM manipulation in
   // PresenceFocusBridge (CSSApp.tsx) — no config wrapping needed.
 
@@ -423,9 +478,10 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
       onChange,
       plugins,
       overrides: mergedOverrides,
+      ...(Object.keys(initialSidebarUi).length > 0 ? { ui: initialSidebarUi } : {}),
       ...(permissions ? { permissions } : {}),
     }),
-    [puckConfig, css.safeData, onChange, plugins, mergedOverrides, permissions]
+    [puckConfig, css.safeData, onChange, plugins, mergedOverrides, initialSidebarUi, permissions]
   );
 
   return {
@@ -434,5 +490,7 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
     puckKey,
     puckProps,
     css,
+    /** @deprecated No longer emitted — editor now shows an empty state when a document is not found on the current branch. */
+    redirectPath: null as string | null,
   };
 }

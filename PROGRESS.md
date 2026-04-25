@@ -1421,6 +1421,72 @@ NEXT_PUBLIC_CSS_SITE_ID=site-123
 **Test commits:** `fe50564` (red phase)
 **Implementation commits:** `ddc7eda`, `3e640c1`
 
+### P1EditorHeader / P1EditorSubheader Wiring (2026-04-18) ✅
+
+Wired the new PDS header chrome into `createCSSPlugin` as the default editor UI. Consumers no longer need to render header components manually — they are rendered automatically when the plugin is installed.
+
+**New `CSSPluginOptions` props:**
+- `siteName` — site display name shown in the header
+- `siteMenuItems` — dropdown items under the site selector
+- `currentUser` — logged-in user for avatar and menu
+- `onLogout` — called when user clicks Log out
+- `onCompareWithLive?` — override for Compare with Live; defaults to built-in overlay
+- `onPublish?` — override for publish action; defaults to `css.publishDocument` from context
+- `onReviewAndPublish?`, `onCreateWorkstream?` — optional publish flow extensions
+
+**Architecture:**
+- `overrides.header` renders `<P1EditorHeader>` + a `<div id="p1-subheader-slot" />` portal anchor
+- Built-in Compare with Live overlay portals to `document.body` with `position: fixed; top: var(--p1-header-height, 56px)` so P1EditorHeader stays visible above it
+- `P1SubheaderBridge` renders inside plugin `render()` (inside Puck context) and portals `<P1EditorSubheader>` into the slot — this is how `usePuck().history` (undo/redo) is accessible
+- `docState` derived via `deriveDocState(currentDocument, currentBranch?.isMain)` on every render
+- `hasDrift` hardcoded `false` pending backend drift detection support
+- Presence agents/humans mapped to `SubheaderActor[]` for chip and presence stack display
+
+**Test commits:** `4a15d4c` (28 red-state tests), **Implementation commit:** `512be18`
+
+**Key decisions:**
+- Subheader uses portal (Option A) from plugin render tree — cleanest way to access Puck context for history while rendering in the correct visual position
+- `puckActions` hardcoded `<></>` — our undo/redo buttons replace Puck's native ones
+- App-level props (`siteName`, `currentUser`, etc.) passed directly into `createCSSPlugin`
+- P1 headers are always-on defaults; no opt-in flag
+
+### useCSSPlugin: P1 Header Props Forwarding (2026-04-18) ✅
+
+Extended `useCSSPlugin` to accept and forward the 8 P1 editor header props through the stable Proxy to `createCSSPlugin`. Consuming apps that use the hook-level API now have the same ergonomics as direct `createCSSPlugin` callers.
+
+**New `UseCSSPluginOptions` props:**
+- `siteName?` — site display name for the P1EditorHeader
+- `siteMenuItems?` — dropdown items in the site selector
+- `currentUser?` — logged-in user (avatar + menu)
+- `onLogout?` — called when user logs out
+- `onCompareWithLive?` — override for Compare with Live action
+- `onPublish?` — override for publish; defaults to `css.publishDocument`
+- `onReviewAndPublish?` — optional Review & Publish flow
+- `onCreateWorkstream?` — optional Create Workstream action
+
+**Implementation:** `SiteMenuItem` and `CurrentUser` types imported from `P1EditorHeader.tsx`; each prop forwarded directly in `pluginOptions` so the Proxy reads the latest value on every render.
+
+**Test commits:** `257f0f5` (9 red-state tests) | **Implementation commit:** `ce39de8`
+
+### PDS Canvas Isolation (2026-04-20) ✅
+
+Fixed pds-core.css (1,371 element-level CSS rules) bleeding into Puck's canvas iframe, which caused component previews to break (e.g. purple links from PDS overriding component-defined colors).
+
+**Root cause:** Puck's `collectStyles()` uses `querySelectorAll('style, link[rel="stylesheet"]')` to copy all parent page stylesheets into its canvas iframe. There is no exclusion mechanism in Puck's IframeConfig API.
+
+**Solution:** `document.adoptedStyleSheets` uses the CSS Object Model directly — not DOM elements — so Puck's scanner cannot find adopted stylesheets.
+
+**Changes:**
+- `src/pds/theme/pds-core-content.ts` — NEW: committed JS string export of pds-core.css, generated at build time by `scripts/generate-pds-content.cjs`
+- `src/CSSApp.tsx` — adoptedStyleSheets useEffect injects pds-core.css on mount, cleans up on unmount; wraps output in `<div className="puck-editor-theme">` automatically (consuming apps no longer need to apply this class manually)
+- `src/pds/theme/PuckEditorTheme.css` — removed `@import './pds-core.css'` and Google Fonts import (moved to styles.css); re-scoped sidebar/nav selectors with `.puck-editor-theme` prefix
+- `src/styles.css` — added Google Fonts `@import url()` before the PuckEditorTheme.css import
+- `package.json` + `scripts/generate-pds-content.cjs` — build step to regenerate pds-core-content.ts after pds-toolkit-react upgrades
+
+**Architecture decision:** Adopted pds-core-content.ts as a committed file (not generated at consumer build time) so tarball deployments (my-app via vendor/) work without requiring a CSS pipeline in the consuming app.
+
+**Commit:** (see git log)
+
 ## Remaining Work
 
 ### Future

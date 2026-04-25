@@ -1,0 +1,81 @@
+/* ── Outer shell ─────────────────────────────────────────────────────── */
+
+.subheader {
+  height: 48px;
+  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+  border-bottom: 1px solid var(--pds-color-border-separator, oklch(0.85 0 0));
+  display: flex;
+  align-items: center;
+  padding: 0 var(--pds-spacing-m, 1rem);
+  gap: var(--pds-spacing-m, 1rem);
+  flex-shrink: 0;
+}
+
+/* ── Panel toggles group ─────────────────────────────────────────────── */
+
+.panelToggles {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* ── History (undo/redo) group ───────────────────────────────────────── */
+
+.historyGroup {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Undo/redo size ──────────────────────────────────────────────────── */
+
+.historyGroup :global(.pds-icon-button) {
+  --icon-button-size: 1.5rem;
+  --icon-button-padding: 0.25rem;
+}
+
+/* ── Spacer ──────────────────────────────────────────────────────────── */
+
+.spacer {
+  flex: 1;
+}
+
+/* ── Divider ─────────────────────────────────────────────────────────── */
+
+.divider {
+  width: 1px;
+  height: 1.25rem;
+  background: var(--pds-color-border-default, oklch(0.9 0 0));
+  flex-shrink: 0;
+}
+
+/* ── Actors area (agents + presence) — scrollable on overflow ────────── */
+/* flex-shrink allows the spacer to collapse first, then this area scrolls
+   horizontally, keeping the divider and PublishControl always visible. */
+
+.actorsArea {
+  display: flex;
+  align-items: center;
+  gap: var(--pds-spacing-xs, 0.5rem);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 1;
+}
+
+.actorsArea::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Compact mobile layout (< 768px) ────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .subheader {
+    padding: 0 var(--pds-spacing-xs, 0.5rem);
+    gap: var(--pds-spacing-xs, 0.5rem);
+  }
+
+  .panelToggles {
+    display: none;
+  }
+}

@@ -1,0 +1,141 @@
+/* ============================================================================
+ * AgentChip — CSS Module
+ *
+ * Maps to the AgentChip component in the PDS v2 prototype.
+ * Discovery-tone background (light purple), pill shape, avatar with
+ * sparkle badge, agent name + intent text, optional workstream badge,
+ * stop button.
+ * ============================================================================ */
+
+/* ------------------------------------------------------------------
+ * Chip container — pill shape, discovery-toned background
+ * Height 2rem matches the subheader row.
+ * ------------------------------------------------------------------ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.512rem;
+  height: 2rem;
+  padding: 0.25rem 0.25rem 0.25rem 0.512rem;
+  background: var(
+    --pds-color-status-discovery-background,
+    oklch(0.9635 0.022 312.19)
+  );
+  border: 1px solid oklch(0.96 0 0); /* borderSubtle */
+  border-radius: 9999px;
+  max-width: 320px;
+}
+
+/* ------------------------------------------------------------------
+ * Avatar wrapper — contains PDS Avatar (size s)
+ * ------------------------------------------------------------------ */
+.avatarWrapper {
+  flex-shrink: 0;
+  position: relative;
+  display: inline-flex;
+}
+
+/* Robot icon overlaid on the Avatar gradient background */
+.robotOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pds-color-bg-default, oklch(1 0 0));
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------
+ * Info column — name + intent
+ * ------------------------------------------------------------------ */
+.info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.2;
+  gap: 1px;
+}
+
+.name {
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-2xs, 0.625rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  color: var(
+    --pds-color-status-discovery-foreground,
+    oklch(0.4401 0.1973 306.55)
+  );
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.intent {
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-2xs, 0.625rem);
+  font-weight: var(--pds-typography-fw-regular, 400);
+  color: var(--pds-color-fg-default-secondary, oklch(0.5103 0 0));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ------------------------------------------------------------------
+ * Workstream badge — shown when agent is running on a different workstream
+ * ------------------------------------------------------------------ */
+.workstreamBadge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.375rem;
+  background: var(
+    --pds-color-status-warning-background,
+    oklch(0.9834 0.0199 97.52)
+  );
+  color: var(
+    --pds-color-status-warning-foreground,
+    oklch(0.5635 0.1308 61.09)
+  );
+  border-radius: 9999px;
+  font-family: var(--pds-typography-ff-code, 'Source Code Pro', monospace);
+  font-size: var(--pds-typography-size-2xs, 0.625rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100px;
+}
+
+/* ------------------------------------------------------------------
+ * Stop button — circular, critical colour
+ * Size matches prototype: 1.563rem (sm avatar size)
+ * ------------------------------------------------------------------ */
+.stopButton {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.563rem;
+  height: 1.563rem;
+  padding: 0;
+  background: var(--pds-color-bg-default, oklch(1 0 0));
+  color: var(--pds-color-status-critical-foreground, oklch(0.5103 0.1942 29.6));
+  border: 1px solid var(--pds-color-border-default, oklch(0.9401 0 0));
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 0.625rem;
+  line-height: 1;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.stopButton:hover {
+  background: var(
+    --pds-color-status-critical-background,
+    oklch(0.9645 0.0174 21.81)
+  );
+  border-color: var(
+    --pds-color-status-critical-foreground,
+    oklch(0.5103 0.1942 29.6)
+  );
+}

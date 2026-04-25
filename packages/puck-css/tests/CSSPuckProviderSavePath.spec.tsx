@@ -273,8 +273,7 @@ describe('CSSPuckProvider Save Path - Realtime vs REST', () => {
     expect(client.versions.create).not.toHaveBeenCalled();
 
     // CRDT path should have been used — applyLocalChange called in saveData
-    // Second arg is action metadata (undefined when no Puck action captured)
-    expect(mockApplyLocalChange).toHaveBeenCalledWith(mockPuckData, undefined);
+    expect(mockApplyLocalChange).toHaveBeenCalledWith(mockPuckData);
 
     // Save status should be 'saved' (realtime path marks it saved)
     expect(result.current.saveStatus).toBe('saved');
@@ -391,8 +390,7 @@ describe('CSSPuckProvider Save Path - Realtime vs REST', () => {
     expect(client.versions.create).not.toHaveBeenCalled();
 
     // applyLocalChange should have been called (via throttle leading edge + saveNow flush)
-    // The throttle callback calls applyLocalChange with (data, actionMeta)
-    expect(mockApplyLocalChange).toHaveBeenCalledWith(mockPuckData, undefined);
+    expect(mockApplyLocalChange).toHaveBeenCalledWith(mockPuckData);
 
     // Status should be saved
     expect(result.current.saveStatus).toBe('saved');
@@ -458,8 +456,8 @@ describe('CSSPuckProvider Realtime Sync Throttle', () => {
     return result;
   }
 
-  // 1. Leading edge -- first saveData sends immediately
-  it('should send applyLocalChange immediately on first saveData (leading edge)', async () => {
+  // 1. Each saveData sends immediately (no throttle)
+  it('should send applyLocalChange immediately on first saveData', async () => {
     const result = await renderAndLoadDocument({
       enableRealtime: true,
       wsBaseUrl: 'ws://localhost:8787',
@@ -470,13 +468,13 @@ describe('CSSPuckProvider Realtime Sync Throttle', () => {
       result.current.saveData(mockPuckData);
     });
 
-    // Should fire immediately -- no timer advance needed
+    // Fires immediately on every saveData — no throttle in the realtime path
     expect(mockApplyLocalChange).toHaveBeenCalledTimes(1);
-    expect(mockApplyLocalChange).toHaveBeenCalledWith(mockPuckData, undefined);
+    expect(mockApplyLocalChange).toHaveBeenCalledWith(mockPuckData);
   });
 
-  // 2. Rapid calls coalesce -- trailing fires after interval
-  it('should coalesce rapid saveData calls and send trailing after interval', async () => {
+  // 2. Each saveData sends immediately — no coalescing in the realtime path
+  it('should send applyLocalChange on every saveData call when realtime is connected', async () => {
     const result = await renderAndLoadDocument({
       enableRealtime: true,
       wsBaseUrl: 'ws://localhost:8787',
@@ -487,22 +485,20 @@ describe('CSSPuckProvider Realtime Sync Throttle', () => {
     const data2: PuckData = { content: [{ type: 'B', props: { id: '2' } }], root: { props: {} } };
     const data3: PuckData = { content: [{ type: 'C', props: { id: '3' } }], root: { props: {} } };
 
-    // First call -- leading edge fires immediately
     act(() => { result.current.saveData(data1); });
     expect(mockApplyLocalChange).toHaveBeenCalledTimes(1);
-    expect(mockApplyLocalChange).toHaveBeenLastCalledWith(data1, undefined);
+    expect(mockApplyLocalChange).toHaveBeenLastCalledWith(data1);
 
-    // Rapid subsequent calls -- suppressed
     act(() => { result.current.saveData(data2); });
     act(() => { result.current.saveData(data3); });
-    expect(mockApplyLocalChange).toHaveBeenCalledTimes(1);
+    expect(mockApplyLocalChange).toHaveBeenCalledTimes(3);
+    expect(mockApplyLocalChange).toHaveBeenLastCalledWith(data3);
 
-    // Advance past throttle interval -- trailing fires with latest data
+    // Timer advance has no effect — no trailing throttle
     await act(async () => {
       await vi.advanceTimersByTimeAsync(250);
     });
-    expect(mockApplyLocalChange).toHaveBeenCalledTimes(2);
-    expect(mockApplyLocalChange).toHaveBeenLastCalledWith(data3, undefined);
+    expect(mockApplyLocalChange).toHaveBeenCalledTimes(3);
   });
 
   // 3. No trailing call if no intermediate calls
@@ -565,8 +561,8 @@ describe('CSSPuckProvider Realtime Sync Throttle', () => {
     expect(result.current.saveStatus).toBe('saved');
   });
 
-  // 6. Custom realtimeSyncInterval is respected
-  it('should respect custom realtimeSyncInterval', async () => {
+  // 6. saveData fires immediately regardless of realtimeSyncInterval
+  it('should send applyLocalChange immediately regardless of realtimeSyncInterval', async () => {
     const result = await renderAndLoadDocument({
       enableRealtime: true,
       wsBaseUrl: 'ws://localhost:8787',
@@ -579,18 +575,15 @@ describe('CSSPuckProvider Realtime Sync Throttle', () => {
     act(() => { result.current.saveData(data1); });
     act(() => { result.current.saveData(data2); });
 
-    // At 250ms -- trailing should NOT have fired (interval is 500)
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
-    });
-    expect(mockApplyLocalChange).toHaveBeenCalledTimes(1);
+    // Both fire immediately — no throttle window
+    expect(mockApplyLocalChange).toHaveBeenCalledTimes(2);
+    expect(mockApplyLocalChange).toHaveBeenLastCalledWith(data2);
 
-    // At 500ms -- trailing fires
+    // Timer advance has no further effect
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
+      await vi.advanceTimersByTimeAsync(500);
     });
     expect(mockApplyLocalChange).toHaveBeenCalledTimes(2);
-    expect(mockApplyLocalChange).toHaveBeenLastCalledWith(data2, undefined);
   });
 
   // 7. Throttle is a no-op when realtime not connected
@@ -615,8 +608,8 @@ describe('CSSPuckProvider Realtime Sync Throttle', () => {
     expect(client.versions.create).toHaveBeenCalled();
   });
 
-  // 8. saveNow flushes throttled send
-  it('should flush throttled send on saveNow', async () => {
+  // 8. saveNow — realtime path sends immediately so saveNow is a no-op for applyLocalChange
+  it('should not call additional applyLocalChange via saveNow when realtime is connected', async () => {
     const result = await renderAndLoadDocument({
       enableRealtime: true,
       wsBaseUrl: 'ws://localhost:8787',
@@ -626,20 +619,19 @@ describe('CSSPuckProvider Realtime Sync Throttle', () => {
     const data1: PuckData = { content: [{ type: 'A', props: { id: '1' } }], root: { props: {} } };
     const data2: PuckData = { content: [{ type: 'B', props: { id: '2' } }], root: { props: {} } };
 
-    // Leading edge
+    // Both calls fire immediately — realtime path, no pendingDataRef set
     act(() => { result.current.saveData(data1); });
-    // Pending trailing
     act(() => { result.current.saveData(data2); });
 
-    expect(mockApplyLocalChange).toHaveBeenCalledTimes(1);
+    expect(mockApplyLocalChange).toHaveBeenCalledTimes(2);
+    expect(mockApplyLocalChange).toHaveBeenLastCalledWith(data2);
 
-    // saveNow should flush the pending trailing
+    // saveNow: pendingDataRef is null (realtime path doesn't set it), so no extra call
     await act(async () => {
       await result.current.saveNow();
     });
 
     expect(mockApplyLocalChange).toHaveBeenCalledTimes(2);
-    expect(mockApplyLocalChange).toHaveBeenLastCalledWith(data2, undefined);
   });
 
   // 9. REST debounce no longer sets save status when realtime connected

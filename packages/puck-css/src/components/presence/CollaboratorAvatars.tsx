@@ -4,7 +4,9 @@
  * Displays stacked avatars of collaborators with tooltips showing names/intents.
  */
 
+import React from 'react';
 import type { ActorPresence } from '@pantheon/css-client';
+import { getAvatarColor } from '../../utils/avatarColor.js';
 
 export interface CollaboratorAvatarsProps {
   /** List of actors to display */
@@ -20,31 +22,6 @@ export interface CollaboratorAvatarsProps {
 }
 
 const baseClass = 'css-puck-collaborator-avatars';
-
-/**
- * Generate a consistent hash from a string.
- * Uses a simple but effective hash algorithm (djb2).
- */
-function hashString(str: string): number {
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash * 33) ^ str.charCodeAt(i);
-  }
-  return hash >>> 0; // Convert to unsigned 32-bit integer
-}
-
-/**
- * Generate a consistent HSL color from an actor's ID.
- * Uses the ID to generate a hue, with fixed saturation and lightness
- * for good contrast with white text.
- */
-function getAvatarColor(actorId: string): string {
-  const hash = hashString(actorId);
-  // Use the hash to get a hue value (0-360)
-  const hue = hash % 360;
-  // Fixed saturation (65%) and lightness (45%) for vibrant colors with good white text contrast
-  return `hsl(${hue}, 65%, 45%)`;
-}
 
 /**
  * Get initials from a name (first letter of first two words).
@@ -136,7 +113,7 @@ export function CollaboratorAvatars({
   separateAgents = false,
   onAvatarClick,
   className,
-}: CollaboratorAvatarsProps): JSX.Element {
+}: CollaboratorAvatarsProps): React.JSX.Element {
   if (actors.length === 0) {
     return <div className={[baseClass, className].filter(Boolean).join(' ')} />;
   }

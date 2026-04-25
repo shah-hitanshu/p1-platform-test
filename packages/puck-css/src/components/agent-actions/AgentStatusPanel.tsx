@@ -5,6 +5,7 @@
  * Includes progress indicator, intent, and cancel button.
  */
 
+import React from 'react';
 import type { RegisteredAgent } from '@pantheon/css-client';
 import type { AgentAction, AgentTriggerStatus } from '../../hooks/useAgentTrigger.js';
 
@@ -65,7 +66,7 @@ export function AgentStatusPanel({
   activeAction,
   compact = false,
   onCancel,
-}: AgentStatusPanelProps): JSX.Element {
+}: AgentStatusPanelProps): React.JSX.Element {
   const isActive = status !== 'idle';
 
   const containerClasses = [

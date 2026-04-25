@@ -120,7 +120,7 @@ describe('Phase 3.3-3.4: CSSPuckProvider Realtime Integration', () => {
   });
 
   describe('realtimeEnabled prop', () => {
-    it('should expose realtimeEnabled as false by default in context', async () => {
+    it('should expose realtimeEnabled as true by default in context', async () => {
       render(
         <CSSPuckProvider
           client={mockCSSClient}
@@ -133,7 +133,7 @@ describe('Phase 3.3-3.4: CSSPuckProvider Realtime Integration', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('realtime-enabled').textContent).toBe('false');
+        expect(screen.getByTestId('realtime-enabled').textContent).toBe('true');
       });
     });
 

@@ -178,7 +178,7 @@ describe('MergeResolutionPage', () => {
   it('calls onClose when back button clicked', () => {
     render(<MergeResolutionPage {...defaultProps} />);
 
-    const backBtn = screen.getByText('Back');
+    const backBtn = screen.getByRole('button', { name: 'Close' });
     fireEvent.click(backBtn);
 
     expect(mockOnClose).toHaveBeenCalledTimes(1);

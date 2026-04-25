@@ -206,12 +206,19 @@ export function useMergeResolution(
       const snapshotFetches = new Map<string, Promise<{ source: PuckData | null; target: PuckData | null }>>();
 
       for (const docId of allDocIds) {
-        // Conflicting documents have snapshots from documentDiffs
+        // Skip fetching only when the conflict diff already has both snapshots.
+        // When a snapshot is missing from the diff (backend may return null for
+        // targetSnapshot even for both-modified conflicts), fall through so we
+        // can fetch it via getLatest as a fallback.
         if (conflictDocIds.has(docId) && diffMap.has(docId)) {
-          continue;
+          const d = diffMap.get(docId)!;
+          if (d.sourceSnapshot && d.targetSnapshot) {
+            continue;
+          }
         }
 
-        // For non-conflicting docs, fetch snapshots via versions API.
+        // For non-conflicting docs (and conflicting docs with incomplete diff
+        // snapshots), fetch snapshots via versions API.
         // Always try both branches — a doc may exist on the other branch
         // via COW inheritance even if it wasn't changed there.
         snapshotFetches.set(docId, (async () => {
@@ -308,6 +315,14 @@ export function useMergeResolution(
           // Use snapshots from documentDiffs for conflicting docs
           sourceSnapshot = (diff.sourceSnapshot as unknown as PuckData) ?? null;
           targetSnapshot = (diff.targetSnapshot as unknown as PuckData) ?? null;
+          // Fall back to separately-fetched snapshots when the conflict diff is
+          // missing one (backend may return null targetSnapshot even for
+          // both-modified conflicts when the version isn't directly accessible).
+          const fetched = fetchedSnapshots.get(docId);
+          if (fetched) {
+            if (!sourceSnapshot) sourceSnapshot = fetched.source;
+            if (!targetSnapshot) targetSnapshot = fetched.target;
+          }
         } else {
           // Use fetched snapshots for non-conflicting docs
           const snapshots = fetchedSnapshots.get(docId);

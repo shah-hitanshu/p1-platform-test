@@ -54,6 +54,22 @@ vi.mock('../hooks/useVersions', () => ({
 }));
 const mockUseVersions = vi.mocked(useVersions);
 
+vi.mock('../auth/index.js', () => ({
+  useCSSAuth: () => ({
+    isAuthenticated: false,
+    isLoading: false,
+    user: null,
+    token: null,
+    error: null,
+    authMode: 'mock' as const,
+    isSessionExpired: false,
+    login: vi.fn().mockResolvedValue(undefined),
+    logout: vi.fn().mockResolvedValue(undefined),
+    getToken: vi.fn().mockResolvedValue(null),
+    renderLoginButton: undefined,
+  }),
+}));
+
 // Default versions return value (no published versions — draft state)
 const defaultVersionsReturn = {
   versions: [

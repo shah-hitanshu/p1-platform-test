@@ -10,6 +10,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import type { DocumentConflictType } from '@pantheon/css-client';
+import { InlineMessage } from '@pantheon-systems/pds-toolkit-react';
 import { Render } from '@puckeditor/core';
 import type { DocumentResolution, DocumentResolutionStrategy } from '../../hooks/useMergeResolution.js';
 import type { ComponentDiffWithPosition } from '../../types.js';
@@ -54,36 +55,6 @@ const detailHeaderStyle: React.CSSProperties = {
   gap: '12px',
   marginBottom: '16px',
   flexWrap: 'wrap',
-};
-
-const bannerStyles: Record<string, React.CSSProperties> = {
-  'accept-draft': {
-    padding: '8px 12px',
-    background: '#d4edda',
-    color: '#155724',
-    borderRadius: '6px',
-    fontSize: '14px',
-    fontWeight: 500,
-    marginBottom: '12px',
-  },
-  'accept-live': {
-    padding: '8px 12px',
-    background: '#cce5ff',
-    color: '#004085',
-    borderRadius: '6px',
-    fontSize: '14px',
-    fontWeight: 500,
-    marginBottom: '12px',
-  },
-  unresolved: {
-    padding: '8px 12px',
-    background: '#f8f9fa',
-    color: '#6c757d',
-    borderRadius: '6px',
-    fontSize: '14px',
-    fontStyle: 'italic',
-    marginBottom: '12px',
-  },
 };
 
 const singlePanelContainerStyle: React.CSSProperties = {
@@ -316,32 +287,18 @@ export function DocumentResolutionDetail({
           />
 
           {deleteMessage && (
-            <p className={`${baseClass}__delete-message`} style={{
-              padding: '12px',
-              background: '#fff3cd',
-              borderRadius: '6px',
-              color: '#856404',
-              fontSize: '14px',
-            }}>
-              {deleteMessage}
-            </p>
+            <InlineMessage type="warning" title={deleteMessage} />
           )}
 
           {/* Strategy banners */}
           {doc.strategy === 'accept-draft' && hasBothSnapshots && (
-            <div className={`${baseClass}__banner`} style={bannerStyles['accept-draft']}>
-              Draft version will be kept.
-            </div>
+            <InlineMessage type="success" title="Draft version will be kept." />
           )}
           {doc.strategy === 'accept-live' && hasBothSnapshots && (
-            <div className={`${baseClass}__banner`} style={bannerStyles['accept-live']}>
-              Live version will be kept.
-            </div>
+            <InlineMessage type="info" title="Live version will be kept." />
           )}
           {doc.strategy === 'unresolved' && hasBothSnapshots && (
-            <div className={`${baseClass}__banner`} style={bannerStyles.unresolved}>
-              Select a resolution strategy above.
-            </div>
+            <InlineMessage type="warning" title="Select a resolution strategy above." />
           )}
 
           {/* accept-draft / accept-live with emphasis */}
@@ -447,17 +404,7 @@ export function DocumentResolutionDetail({
       {/* ================================================================= */}
       {isDraftChanged && (
         <>
-          <div className={`${baseClass}__banner`} style={{
-            padding: '8px 12px',
-            background: '#e8f4fd',
-            color: '#004085',
-            borderRadius: '6px',
-            fontSize: '14px',
-            fontWeight: 500,
-            marginBottom: '12px',
-          }}>
-            Changed on Draft. No conflict to resolve.
-          </div>
+          <InlineMessage type="info" title="Changed on Draft. No conflict to resolve." />
 
           {hasBothSnapshots && hasConfig && (
             <MergePreviewRenderer
@@ -516,17 +463,7 @@ export function DocumentResolutionDetail({
       {/* ================================================================= */}
       {isNewOnDraft && (
         <>
-          <div className={`${baseClass}__banner`} style={{
-            padding: '8px 12px',
-            background: '#d4edda',
-            color: '#155724',
-            borderRadius: '6px',
-            fontSize: '14px',
-            fontWeight: 500,
-            marginBottom: '12px',
-          }}>
-            New document created on Draft.
-          </div>
+          <InlineMessage type="success" title="New document created on Draft." />
 
           {doc.sourceSnapshot && hasConfig && (
             <div className={`${baseClass}__single-panel`} style={singlePanelContainerStyle}>
@@ -557,17 +494,7 @@ export function DocumentResolutionDetail({
       {/* ================================================================= */}
       {isDeletedOnDraft && (
         <>
-          <div className={`${baseClass}__banner`} style={{
-            padding: '8px 12px',
-            background: '#f5f5f5',
-            color: '#666',
-            borderRadius: '6px',
-            fontSize: '14px',
-            fontWeight: 500,
-            marginBottom: '12px',
-          }}>
-            Deleted on Draft. This document will be removed from Live.
-          </div>
+          <InlineMessage type="warning" title="Deleted on Draft. This document will be removed from Live." />
 
           {doc.targetSnapshot && hasConfig && (
             <div className={`${baseClass}__single-panel`} style={singlePanelContainerStyle}>

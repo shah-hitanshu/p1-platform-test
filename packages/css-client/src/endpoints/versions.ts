@@ -71,4 +71,24 @@ export class VersionsEndpoint {
       }
     );
   }
+
+  /**
+   * Restore a previous version, promoting it to the current state of the document.
+   *
+   * The server creates a new CoW version entry referencing the same immutable
+   * snapshot data as the source version — no data round-trip required.
+   *
+   * @see https://github.com/pantheon-systems/collaborative-state-system/issues/80
+   */
+  async restore(
+    siteId: string,
+    branchId: string,
+    documentId: string,
+    versionId: string,
+  ): Promise<DocumentVersion> {
+    return this.base.request<DocumentVersion>(
+      `/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/versions/${versionId}/restore`,
+      { method: 'POST' }
+    );
+  }
 }

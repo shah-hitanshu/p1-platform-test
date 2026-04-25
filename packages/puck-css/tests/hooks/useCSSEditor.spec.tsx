@@ -26,6 +26,22 @@ vi.mock('../../src/hooks/useRealtime.js', () => ({
   }),
 }));
 
+vi.mock('../../src/auth/index.js', () => ({
+  useCSSAuth: () => ({
+    isAuthenticated: false,
+    isLoading: false,
+    user: null,
+    token: null,
+    error: null,
+    authMode: 'mock' as const,
+    isSessionExpired: false,
+    login: vi.fn().mockResolvedValue(undefined),
+    logout: vi.fn().mockResolvedValue(undefined),
+    getToken: vi.fn().mockResolvedValue(null),
+    renderLoginButton: undefined,
+  }),
+}));
+
 // =============================================================================
 // Import AFTER the mock
 // =============================================================================
@@ -419,7 +435,7 @@ describe('useCSSEditor', () => {
     });
 
     expect(result.current.error).toBeInstanceOf(Error);
-    expect(result.current.error?.message).toBe('Document not found');
+    expect(result.current.error?.message).toBe('No documents found on this branch');
   });
 
   // =========================================================================
@@ -496,7 +512,7 @@ describe('useCSSEditor', () => {
     });
 
     expect(result.current.error).toBeInstanceOf(Error);
-    expect(result.current.error?.message).toBe('Not found');
+    expect(result.current.error?.message).toBe('No documents found on this branch');
   });
 
   it('should set error when onDocumentNotFound itself throws', async () => {
@@ -519,9 +535,9 @@ describe('useCSSEditor', () => {
       await vi.advanceTimersByTimeAsync(100);
     });
 
-    // Should fall through to the original error
+    // Redirect fires; no docs in mock → 'No documents found on this branch'
     expect(result.current.error).toBeInstanceOf(Error);
-    expect(result.current.error?.message).toBe('Not found');
+    expect(result.current.error?.message).toBe('No documents found on this branch');
   });
 
   // =========================================================================

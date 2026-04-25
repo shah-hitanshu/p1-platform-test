@@ -20,29 +20,44 @@
       ],
       "utils/path": [
         "./dist/utils/path.d.ts"
+      ],
+      "pds": [
+        "./dist/pds/index.d.ts"
       ]
     }
   },
   "exports": {
     ".": {
       "import": "./dist/index.js",
+      "default": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
     "./config": {
       "import": "./dist/config.js",
+      "default": "./dist/config.js",
       "types": "./dist/config.d.ts"
     },
     "./utils/path": {
       "import": "./dist/utils/path.js",
+      "default": "./dist/utils/path.js",
       "types": "./dist/utils/path.d.ts"
     },
-    "./styles.css": "./dist/styles.css"
+    "./styles.css": "./src/styles.css",
+    "./pds": {
+      "import": "./dist/pds/index.js",
+      "default": "./dist/pds/index.js",
+      "types": "./dist/pds/index.d.ts"
+    },
+    "./pds/styles.css": "./src/pds/theme/PuckEditorTheme.css"
   },
   "files": [
-    "dist"
+    "dist",
+    "src/styles.css",
+    "src/pds/theme"
   ],
   "scripts": {
-    "build": "tsc && cp src/styles.css dist/styles.css",
+    "dev": "vite --config vite.config.preview.ts",
+    "build": "tsc && find src -name '*.module.css' | while read f; do dest=\"dist/${f#src/}\"; mkdir -p \"$(dirname \"$dest\")\"; cp \"$f\" \"$dest\"; done && (cp node_modules/@pantheon-systems/pds-toolkit-react/dist/css/pds-core.css src/pds/theme/pds-core.css && node scripts/generate-pds-content.cjs) || true",
     "clean": "rm -rf dist *.tsbuildinfo",
     "lint": "eslint src --ext .ts,.tsx",
     "test": "vitest run",
@@ -54,15 +69,21 @@
     "yjs": "^13.6.0"
   },
   "devDependencies": {
+    "@floating-ui/react": "^0.27.19",
+    "@pantheon-systems/pds-toolkit-react": "2.0.0-alpha.12",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.2.0",
     "jsdom": "^24.0.0",
+    "react-toastify": "^11.0.5",
     "typescript": "^5.3.0",
+    "vite": "^6.4.2",
     "vitest": "^1.0.0"
   },
   "peerDependencies": {
+    "@pantheon-systems/pds-toolkit-react": ">=2.0.0-alpha.0",
     "@puckeditor/core": ">=0.21.0",
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0"

@@ -219,7 +219,7 @@ describe('ViewModeSelector', () => {
     );
 
     const activeBtn = screen.getByText(/side by side/i).closest('button');
-    expect(activeBtn).toHaveClass('view-mode-selector__btn--active');
+    expect(activeBtn).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('should call onViewModeChange when a mode is selected', () => {
@@ -252,9 +252,9 @@ describe('ViewModeSelector', () => {
     );
 
     const overlayBtn = screen.getByText(/overlay/i).closest('button');
-    expect(overlayBtn).toHaveClass('view-mode-selector__btn--active');
+    expect(overlayBtn).toHaveAttribute('aria-pressed', 'true');
 
     const sideBySideBtn = screen.getByText(/side by side/i).closest('button');
-    expect(sideBySideBtn).not.toHaveClass('view-mode-selector__btn--active');
+    expect(sideBySideBtn).not.toHaveAttribute('aria-pressed', 'true');
   });
 });

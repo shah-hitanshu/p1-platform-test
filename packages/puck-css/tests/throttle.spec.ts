@@ -1,5 +1,9 @@
 /**
  * Throttle Utility Tests
+ *
+ * Tests reflect trailing-only semantics: the first call stores args and starts
+ * a timer; the function fires once per interval with the latest stored args.
+ * There is no leading-edge fire.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -14,11 +18,14 @@ describe('throttle', () => {
     vi.useRealTimers();
   });
 
-  it('should execute immediately on first call (leading edge)', () => {
+  it('should execute after first call\'s interval elapses (trailing only)', () => {
     const fn = vi.fn();
     const throttled = throttle(fn, 100);
 
     throttled();
+    expect(fn).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(100);
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
@@ -27,11 +34,14 @@ describe('throttle', () => {
     const throttled = throttle(fn, 100);
 
     throttled();
-    expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn).not.toHaveBeenCalled();
 
     throttled();
     throttled();
     throttled();
+    expect(fn).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(100);
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
@@ -40,58 +50,65 @@ describe('throttle', () => {
     const throttled = throttle(fn, 100);
 
     throttled('first');
-    expect(fn).toHaveBeenCalledWith('first');
-
     throttled('second');
     throttled('third');
 
+    expect(fn).not.toHaveBeenCalled();
+
     vi.advanceTimersByTime(100);
-    expect(fn).toHaveBeenCalledTimes(2);
+    expect(fn).toHaveBeenCalledTimes(1);
     expect(fn).toHaveBeenLastCalledWith('third');
   });
 
-  it('should not fire trailing call if no intermediate calls occurred', () => {
+  it('should fire exactly once and stop when no subsequent calls occur', () => {
     const fn = vi.fn();
     const throttled = throttle(fn, 100);
 
     throttled();
+    expect(fn).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(100);
     expect(fn).toHaveBeenCalledTimes(1);
 
+    // No second fire after another interval with no calls
     vi.advanceTimersByTime(100);
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
-  it('should fire next leading call after interval expires', () => {
+  it('should start a new trailing cycle after the interval expires', () => {
     const fn = vi.fn();
     const throttled = throttle(fn, 100);
 
     throttled('a');
-    expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(100);
     expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn).toHaveBeenCalledWith('a');
 
     throttled('b');
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(100);
     expect(fn).toHaveBeenCalledTimes(2);
     expect(fn).toHaveBeenLastCalledWith('b');
   });
 
-  it('should coalesce rapid burst to 2 calls (leading + trailing)', () => {
+  it('should coalesce rapid burst to 1 call (trailing only)', () => {
     const fn = vi.fn();
     const throttled = throttle(fn, 100);
 
-    // Rapid burst
+    // Rapid burst — all coalesced into one trailing call
     throttled('a');
     throttled('b');
     throttled('c');
     throttled('d');
     throttled('e');
 
-    expect(fn).toHaveBeenCalledTimes(1);
-    expect(fn).toHaveBeenCalledWith('a');
+    expect(fn).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(100);
-    expect(fn).toHaveBeenCalledTimes(2);
+    expect(fn).toHaveBeenCalledTimes(1);
     expect(fn).toHaveBeenLastCalledWith('e');
   });
 
@@ -105,8 +122,7 @@ describe('throttle', () => {
     throttled.cancel();
     vi.advanceTimersByTime(100);
 
-    expect(fn).toHaveBeenCalledTimes(1);
-    expect(fn).toHaveBeenCalledWith('first');
+    expect(fn).not.toHaveBeenCalled();
   });
 
   it('should be a no-op when cancel() is called with nothing pending', () => {
@@ -132,23 +148,25 @@ describe('throttle', () => {
     throttled('second');
 
     throttled.flush();
-    expect(fn).toHaveBeenCalledTimes(2);
+    expect(fn).toHaveBeenCalledTimes(1);
     expect(fn).toHaveBeenLastCalledWith('second');
 
     // Should not fire again when timer expires
     vi.advanceTimersByTime(100);
-    expect(fn).toHaveBeenCalledTimes(2);
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 
   it('should be a no-op when flush() is called with nothing pending', () => {
     const fn = vi.fn();
     const throttled = throttle(fn, 100);
 
+    // no-op when nothing queued
     expect(() => throttled.flush()).not.toThrow();
     expect(fn).not.toHaveBeenCalled();
 
-    // Also no-op after leading call with no trailing args
+    // After flush drains the pending call, a second flush is a no-op
     throttled('a');
+    throttled.flush();
     expect(fn).toHaveBeenCalledTimes(1);
 
     throttled.flush();
@@ -162,8 +180,8 @@ describe('throttle', () => {
     expect(throttled.isPending()).toBe(false);
 
     throttled('a');
-    // After leading call with no trailing args queued, timer is running but no args stored
-    // isPending reflects whether there are stored args waiting
+    expect(throttled.isPending()).toBe(true);
+
     throttled('b');
     expect(throttled.isPending()).toBe(true);
 
@@ -176,6 +194,7 @@ describe('throttle', () => {
     const throttled = throttle(fn, 100);
 
     throttled('arg1', 42, { key: 'value' });
+    vi.advanceTimersByTime(100);
     expect(fn).toHaveBeenCalledWith('arg1', 42, { key: 'value' });
 
     throttled('arg2', 99, { key: 'other' });

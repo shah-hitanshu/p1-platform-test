@@ -11,6 +11,7 @@
 export {
   CSSAuthProvider,
   useCSSAuth,
+  useOptionalCSSAuth,
   DEMO_USERS,
 } from './CSSAuthProvider.js';
 export type {

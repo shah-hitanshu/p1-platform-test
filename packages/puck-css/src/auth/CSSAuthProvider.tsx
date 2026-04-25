@@ -226,10 +226,12 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
               setToken(callbackToken);
               const validated = await validateToken(cssBaseUrl, callbackToken);
               if (!cancelled && validated) {
+                const info = oauthSession.getUserInfo();
                 setUser({
                   id: validated.id,
-                  name: validated.email ?? validated.id,
+                  name: validated.name ?? validated.email ?? validated.id,
                   email: validated.email,
+                  picture: validated.avatarUrl ?? info?.picture,
                 });
               }
             }
@@ -253,8 +255,9 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
             setToken(storedToken);
             setUser({
               id: validated.id,
-              name: validated.email ?? validated.id,
+              name: validated.name ?? validated.email ?? validated.id,
               email: validated.email,
+              picture: validated.avatarUrl,
             });
           }
           // Note: we intentionally do NOT remove from localStorage when validation fails.
@@ -267,11 +270,13 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
           if (!cancelled && oauthToken) {
             const validated = await validateToken(cssBaseUrl, oauthToken);
             if (!cancelled && validated) {
+              const info = oauthSession.getUserInfo();
               setToken(oauthToken);
               setUser({
                 id: validated.id,
-                name: validated.email ?? validated.id,
+                name: validated.name ?? validated.email ?? validated.id,
                 email: validated.email,
+                picture: validated.avatarUrl ?? info?.picture,
               });
             } else if (!cancelled) {
               // Use OAuth user info as fallback if /api/auth/me isn't reachable
@@ -311,11 +316,13 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
           const id = userId ?? DEMO_USERS[0]?.id ?? '11111111-1111-1111-1111-111111111111';
           const result = await loginMockUser(cssBaseUrl, id);
           localStorage.setItem(storageKey, result.token);
+          const validated = await validateToken(cssBaseUrl, result.token);
           setToken(result.token);
           setUser({
             id: result.user.id,
             name: result.user.name,
             email: result.user.email,
+            picture: validated?.avatarUrl,
           });
         } else if (oauthSession) {
           await oauthSession.login();
@@ -384,4 +391,13 @@ export function useCSSAuth(): CSSAuthContextValue {
     throw new Error('useCSSAuth must be used within a CSSAuthProvider');
   }
   return ctx;
+}
+
+/**
+ * Like useCSSAuth but returns null when used outside a CSSAuthProvider.
+ * Use this in internal components that need to subscribe to auth state
+ * but may be rendered in contexts where the provider is absent.
+ */
+export function useOptionalCSSAuth(): CSSAuthContextValue | null {
+  return useContext(CSSAuthContext);
 }

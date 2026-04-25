@@ -50,7 +50,7 @@ export function AgentActionButton({
   disabled = false,
   onSuccess,
   onError,
-}: AgentActionButtonProps): JSX.Element {
+}: AgentActionButtonProps): React.JSX.Element {
   const context = usePresenceContext();
   const [isLoading, setIsLoading] = useState(false);
 

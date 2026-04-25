@@ -7,6 +7,7 @@ import { useOptionalPresenceContext } from './PresenceContext.js';
 import { createFocusRegionMap } from './utils/focusRegionMap.js';
 import type { FocusHighlight } from './utils/focusRegionMap.js';
 import type { CSSConfig } from './config.js';
+import { pdsCoreCSS } from './pds/theme/pds-core-content.js';
 
 export interface CSSAppProps {
   config: CSSConfig;
@@ -177,26 +178,63 @@ export function CSSApp({
   loginFallback,
   loginPageProps,
 }: CSSAppProps): React.ReactElement {
+  // PDS CANVAS ISOLATION — READ THIS BEFORE MODIFYING
+  //
+  // pds-core.css contains 1,371 element-level CSS rules (full CSS reset, typography,
+  // link colors, etc.) that must NOT reach Puck's canvas iframe. If they do, component
+  // previews break — e.g. links render with PDS purple instead of component-defined colors.
+  //
+  // Puck copies ALL parent page stylesheets into its canvas iframe via:
+  //   doc.querySelectorAll('style, link[rel="stylesheet"]')
+  // (puckeditor/core dist/index.js collectStyles function)
+  //
+  // There is no exclusion mechanism in Puck's IframeConfig API.
+  //
+  // SOLUTION: document.adoptedStyleSheets uses the CSS Object Model directly and does
+  // NOT create DOM elements. Puck's querySelectorAll cannot find adopted stylesheets,
+  // so they are never copied into the canvas iframe. PDS tokens remain available to
+  // all editor chrome components (header, subheader, sidebars) via var(--pds-*).
+  //
+  // pds-core-content.ts is a committed JS string export generated from
+  // pds-core.css at build time. Regenerate it by running the build script after
+  // updating @pantheon-systems/pds-toolkit-react.
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.adoptedStyleSheets) return;
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(pdsCoreCSS);
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    return () => {
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter(s => s !== sheet);
+    };
+  }, []);
+
+  // .puck-editor-theme is applied here — NOT by consuming apps — so the PDS
+  // variable remapping in PuckEditorTheme.css is always active without any
+  // configuration required from downstream. The canvas iframe is a sibling in
+  // the CSS cascade sense (separate document), so rules inside .puck-editor-theme
+  // do not affect canvas content.
   return (
-    <CSSAuthProvider
-      authMode={config.authMode}
-      cssBaseUrl={config.baseUrl}
-      siteId={config.siteId}
-      googleClientId={config.googleClientId}
-      auth0Domain={config.auth0Domain}
-      auth0ClientId={config.auth0ClientId}
-      auth0Audience={config.auth0Audience}
-      cssAuthServerUrl={config.cssAuthServerUrl}
-      cssAuthRedirectUri={config.cssAuthRedirectUri}
-    >
-      <AuthGate
-        config={config}
-        loadingFallback={loadingFallback}
-        loginFallback={loginFallback}
-        loginPageProps={loginPageProps}
+    <div className="puck-editor-theme">
+      <CSSAuthProvider
+        authMode={config.authMode}
+        cssBaseUrl={config.baseUrl}
+        siteId={config.siteId}
+        googleClientId={config.googleClientId}
+        auth0Domain={config.auth0Domain}
+        auth0ClientId={config.auth0ClientId}
+        auth0Audience={config.auth0Audience}
+        cssAuthServerUrl={config.cssAuthServerUrl}
+        cssAuthRedirectUri={config.cssAuthRedirectUri}
       >
-        {children}
-      </AuthGate>
-    </CSSAuthProvider>
+        <AuthGate
+          config={config}
+          loadingFallback={loadingFallback}
+          loginFallback={loginFallback}
+          loginPageProps={loginPageProps}
+        >
+          {children}
+        </AuthGate>
+      </CSSAuthProvider>
+    </div>
   );
 }

@@ -599,4 +599,79 @@ describe('createCSSAuthServerOAuth', () => {
     });
     expect(session.isAuthenticated()).toBe(true);
   });
+
+  it('restores userInfo (including picture) from a JWT access token on creation', () => {
+    const jwt = createTestJwt({
+      sub: 'user-123',
+      email: 'user@example.com',
+      name: 'Test User',
+      picture: 'https://lh3.googleusercontent.com/avatar.jpg',
+    });
+    localStorageMock.setItem('css_authserver_token', jwt);
+
+    const session = createCSSAuthServerOAuth(defaultConfig);
+
+    const info = session.getUserInfo();
+    expect(info).not.toBeNull();
+    expect(info!.id).toBe('user-123');
+    expect(info!.email).toBe('user@example.com');
+    expect(info!.name).toBe('Test User');
+    expect(info!.picture).toBe('https://lh3.googleusercontent.com/avatar.jpg');
+  });
+
+  it('getUserInfo returns null on creation when stored token is opaque (not a JWT)', () => {
+    localStorageMock.setItem('css_authserver_token', 'opaque:token:value');
+    const session = createCSSAuthServerOAuth(defaultConfig);
+    expect(session.getUserInfo()).toBeNull();
+  });
+
+  it('handleCallback() populates userInfo (including picture) from JWT access token', async () => {
+    const state = 'test-state-xyz';
+    sessionStorageMock.setItem('css_authserver_state', state);
+    sessionStorageMock.setItem('css_authserver_verifier', 'test-verifier');
+    locationMock.search = `?code=auth-code-abc&state=${state}`;
+
+    const jwt = createTestJwt({
+      sub: 'user-456',
+      email: 'callback@example.com',
+      name: 'Callback User',
+      picture: 'https://lh3.googleusercontent.com/callback-avatar.jpg',
+    });
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ access_token: jwt, token_type: 'bearer' }),
+    });
+
+    const session = createCSSAuthServerOAuth(defaultConfig);
+    await session.handleCallback!();
+
+    const info = session.getUserInfo();
+    expect(info).not.toBeNull();
+    expect(info!.id).toBe('user-456');
+    expect(info!.picture).toBe('https://lh3.googleusercontent.com/callback-avatar.jpg');
+  });
+
+  it('getToken() populates userInfo from JWT when access token is refreshed', async () => {
+    localStorageMock.setItem('css_authserver_refresh_token', 'refresh-token-xyz');
+
+    const jwt = createTestJwt({
+      sub: 'user-789',
+      email: 'refreshed@example.com',
+      name: 'Refreshed User',
+      picture: 'https://lh3.googleusercontent.com/refreshed-avatar.jpg',
+    });
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ access_token: jwt, token_type: 'bearer' }),
+    });
+
+    const session = createCSSAuthServerOAuth(defaultConfig);
+    await session.getToken();
+
+    const info = session.getUserInfo();
+    expect(info).not.toBeNull();
+    expect(info!.picture).toBe('https://lh3.googleusercontent.com/refreshed-avatar.jpg');
+  });
 });

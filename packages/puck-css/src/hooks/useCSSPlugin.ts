@@ -11,6 +11,7 @@ import { useCSSPuck } from '../CSSPuckContext.js';
 import { createCSSPlugin } from '../plugin/CSSPlugin.js';
 import type { CSSPluginOptions, PuckPlugin } from '../plugin/CSSPlugin.js';
 import type { DocumentVersion, ActorPresence, RegisteredAgent } from '@pantheon/css-client';
+import type { SiteMenuItem, CurrentUser } from '../pds/components/P1EditorHeader.js';
 
 /**
  * Options that consumers can pass to customize the plugin behavior.
@@ -56,6 +57,25 @@ export interface UseCSSPluginOptions {
   showFocusRegions?: boolean;
   /** Regions being edited by agents */
   agentEditingRegions?: string[];
+  // P1 Editor Header / Subheader
+  /** Site name displayed in the editor header */
+  siteName?: string;
+  /** Menu items shown in the site dropdown */
+  siteMenuItems?: SiteMenuItem[];
+  /** Currently authenticated user */
+  currentUser?: CurrentUser;
+  /** Callback when user logs out */
+  onLogout?: () => void;
+  /** Callback for Compare with Live action */
+  onCompareWithLive?: () => void;
+  /** Callback for the publish action. When omitted, context's publishDocument is used. */
+  onPublish?: () => Promise<void> | void;
+  /** Callback for the Review & Publish action */
+  onReviewAndPublish?: () => void;
+  /** Callback for the Create Workstream action */
+  onCreateWorkstream?: () => void;
+  /** Called when the user creates a new workstream. Receives the branch name. */
+  onCreateBranch?: (name: string) => Promise<void>;
 }
 
 /**
@@ -114,6 +134,16 @@ export function useCSSPlugin(options: UseCSSPluginOptions = {}): PuckPlugin {
     onStopAgent: css.stopAgent,
     showFocusRegions: options.showFocusRegions,
     agentEditingRegions: options.agentEditingRegions,
+    // P1 Editor Header / Subheader
+    siteName: options.siteName,
+    siteMenuItems: options.siteMenuItems,
+    currentUser: options.currentUser,
+    onLogout: options.onLogout,
+    onCompareWithLive: options.onCompareWithLive,
+    onPublish: options.onPublish,
+    onReviewAndPublish: options.onReviewAndPublish,
+    onCreateWorkstream: options.onCreateWorkstream,
+    onCreateBranch: options.onCreateBranch,
   };
 
   // Store options in a ref updated each render

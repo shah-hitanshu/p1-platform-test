@@ -297,6 +297,67 @@ describe('useMergeResolution', () => {
       expect(docPaths).toContain('/home');
       expect(docPaths).toContain('/about');
     });
+
+    it('falls back to getLatest when conflict diff has null targetSnapshot', async () => {
+      const targetSnapshotFromApi = { content: [{ type: 'Heading', props: { id: 'h1', text: 'Live' } }], root: {} };
+      const mockClient = createMockClient();
+      // Conflict diff returns null for targetSnapshot (backend limitation)
+      mockClient.merge.preview.mockResolvedValue(createMergePreview({
+        documentDiffs: [
+          {
+            documentId: 'doc-1',
+            documentPath: '/home',
+            sourceSnapshot: { content: [{ type: 'Heading', props: { id: 'h1', text: 'Source' } }], root: {} },
+            targetSnapshot: null,
+            diffOperations: [],
+          },
+        ],
+      }));
+      // getLatest on the target branch returns the actual v45 snapshot
+      (mockClient.versions.getLatest as ReturnType<typeof vi.fn>).mockImplementation(
+        (_siteId: string, branchId: string, _docId: string) => {
+          if (branchId === 'branch-target') {
+            return Promise.resolve({
+              id: 'ver-45',
+              documentId: 'doc-1',
+              branchId: 'branch-target',
+              versionNumber: 45,
+              snapshot: targetSnapshotFromApi,
+              crdtState: null,
+              source: 'edit',
+              createdById: 'user-1',
+              createdByType: 'user',
+              createdAt: new Date().toISOString(),
+            });
+          }
+          return Promise.resolve({
+            id: 'ver-5',
+            documentId: 'doc-1',
+            branchId: 'branch-source',
+            versionNumber: 5,
+            snapshot: { content: [], root: {} },
+            crdtState: null,
+            source: 'edit',
+            createdById: 'user-1',
+            createdByType: 'user',
+            createdAt: new Date().toISOString(),
+          });
+        }
+      );
+      const options = createOptions(mockClient);
+
+      const { result } = renderHook(() => useMergeResolution(options));
+
+      await act(async () => {
+        await result.current.loadPreview();
+      });
+
+      const doc1 = result.current.documents.find((d) => d.documentId === 'doc-1');
+      expect(doc1).toBeDefined();
+      expect(doc1?.changeType).toBe('conflicting');
+      // targetSnapshot must be populated from getLatest fallback, not null
+      expect(doc1?.targetSnapshot).toEqual(targetSnapshotFromApi);
+    });
   });
 
   describe('setStrategy', () => {

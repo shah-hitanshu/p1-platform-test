@@ -37,7 +37,7 @@ function generateColorFromId(id: string): string {
 export function FocusRegionHighlight({
   actor,
   color,
-}: FocusRegionHighlightProps): JSX.Element | null {
+}: FocusRegionHighlightProps): React.JSX.Element | null {
   const { focusRegions, state, name } = actor;
 
   // Don't render if no focus regions

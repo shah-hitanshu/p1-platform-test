@@ -26,8 +26,28 @@ vi.mock('../CSSPuckContext', () => ({
     remoteSyncKey: null,
     currentDocument: null,
     viewingVersion: null,
+    currentBranch: null,
+    presence: null,
+    publishDocument: vi.fn(),
+    hasActiveHumans: false,
+    humanPresenceCount: 0,
+    siteId: 'site-1',
+    siteName: 'Test Site',
+    branchId: 'branch-1',
+    createBranch: vi.fn(),
+    _realtimeDataCaptureRef: null,
+    _onRealtimeDataCapture: null,
   }),
 }));
+// Mock @puckeditor/core so createUsePuck returns a hook that safely returns undefined
+// instead of crashing when Puck's internal store context is not present in tests.
+vi.mock('@puckeditor/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@puckeditor/core')>();
+  return {
+    ...actual,
+    createUsePuck: () => () => undefined,
+  };
+});
 
 afterEach(() => {
   cleanup();
@@ -166,10 +186,10 @@ describe('Version list VersionPublishedBadge wiring', () => {
     const badges = screen.getAllByText('Published');
     expect(badges.length).toBe(1);
 
-    // The badge should be an indicator badge
-    const badge = badges[0].closest('.pds-indicator-badge');
+    // The badge should use the PDS badge classes
+    const badge = badges[0].closest('.pds-badge');
     expect(badge).toBeTruthy();
-    expect(badge!.className).toContain('pds-indicator-badge--success');
+    expect(badge!.className).toContain('pds-badge--info');
   });
 
   it('does not show Published badge when no version is published', () => {
@@ -204,70 +224,75 @@ describe('Version list VersionPublishedBadge wiring', () => {
 // Document List Branch Indicator Tests
 // ============================================================
 
+import { PageNavigator } from '../pds/components/PageNavigator.js';
+
 describe('Document list branch indicators', () => {
-  it('renders inherited documents with dimmed styling on feature branch', () => {
-    const plugin = createCSSPlugin({
-      branches: [],
-      currentBranch: { id: 'b1', name: 'feature', isMain: false, siteId: 's1', createdAt: '' },
-      onBranchSwitch: vi.fn(),
-      onDocumentSelect: vi.fn(),
-      documents: [
-        { id: 'doc1', path: '/local-page', siteId: 's1', archived: false, createdAt: '', updatedAt: '', inherited: false },
-        { id: 'doc2', path: '/inherited-page', siteId: 's1', archived: false, createdAt: '', updatedAt: '', inherited: true },
-      ],
-    });
+  const localDoc = { id: 'doc1', path: '/local-page', archived: false, inherited: false };
+  const inheritedDoc = { id: 'doc2', path: '/inherited-page', archived: false, inherited: true };
 
-    render(plugin.render());
+  it('marks all inherited documents with data-inherited="true" on a feature branch', () => {
+    const multiInherited = [
+      localDoc,
+      inheritedDoc,
+      { id: 'doc3', path: '/also-inherited', archived: false, inherited: true },
+    ];
 
-    // Both documents should render
+    render(
+      <PageNavigator
+        open={true}
+        documents={multiInherited}
+        currentDocument={null}
+        isMainBranch={false}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const items = screen.getAllByTestId('page-navigator-item');
+    const inheritedItems = items.filter(
+      (el) => el.getAttribute('data-inherited') === 'true',
+    );
+    // Both inherited docs should carry the attribute; local doc should not
+    expect(inheritedItems.length).toBe(2);
+    const localItem = items.find((el) => el.textContent?.includes('/local-page'));
+    expect(localItem!.getAttribute('data-inherited')).toBeNull();
+  });
+
+  it('renders inherited and local documents together when isMainBranch is false', () => {
+    render(
+      <PageNavigator
+        open={true}
+        documents={[localDoc, inheritedDoc]}
+        currentDocument={null}
+        isMainBranch={false}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // Both paths are visible in the navigator
     expect(screen.getByText('/local-page')).toBeTruthy();
     expect(screen.getByText('/inherited-page')).toBeTruthy();
 
-    // The inherited document should have the dimmed class
-    const inheritedItem = screen.getByText('/inherited-page').closest('.css-plugin-doc-item');
-    expect(inheritedItem).toBeTruthy();
-    expect(inheritedItem!.className).toContain('css-plugin-doc-item--main-only');
-
-    // The local document should not
-    const localItem = screen.getByText('/local-page').closest('.css-plugin-doc-item');
-    expect(localItem!.className).not.toContain('css-plugin-doc-item--main-only');
+    const items = screen.getAllByTestId('page-navigator-item');
+    expect(items.length).toBe(2);
   });
 
-  it('shows status indicator label for inherited documents', () => {
-    const plugin = createCSSPlugin({
-      branches: [],
-      currentBranch: { id: 'b1', name: 'feature', isMain: false, siteId: 's1', createdAt: '' },
-      onBranchSwitch: vi.fn(),
-      onDocumentSelect: vi.fn(),
-      documents: [
-        { id: 'doc2', path: '/inherited-page', siteId: 's1', archived: false, createdAt: '', updatedAt: '', inherited: true },
-      ],
+  it('treats all documents as local (no data-inherited) when isMainBranch prop is omitted', () => {
+    render(
+      <PageNavigator
+        open={true}
+        documents={[localDoc, inheritedDoc]}
+        currentDocument={null}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const items = screen.getAllByTestId('page-navigator-item');
+    // Without isMainBranch=false, no item should be flagged as inherited
+    items.forEach((el) => {
+      expect(el.getAttribute('data-inherited')).toBeNull();
     });
-
-    render(plugin.render());
-
-    // Should show a "Live only" label
-    expect(screen.getByText('Live only')).toBeTruthy();
-    const indicator = screen.getByText('Live only').closest('.pds-status-indicator');
-    expect(indicator).toBeTruthy();
-    expect(indicator!.className).toContain('pds-status-indicator--neutral');
-  });
-
-  it('does not apply inherited styling when on the main branch', () => {
-    const plugin = createCSSPlugin({
-      branches: [],
-      currentBranch: { id: 'b1', name: 'main', isMain: true, siteId: 's1', createdAt: '' },
-      onBranchSwitch: vi.fn(),
-      onDocumentSelect: vi.fn(),
-      documents: [
-        { id: 'doc1', path: '/page', siteId: 's1', archived: false, createdAt: '', updatedAt: '', inherited: true },
-      ],
-    });
-
-    render(plugin.render());
-
-    // On main branch, inherited flag should be ignored
-    const item = screen.getByText('/page').closest('.css-plugin-doc-item');
-    expect(item!.className).not.toContain('css-plugin-doc-item--main-only');
   });
 });

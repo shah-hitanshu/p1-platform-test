@@ -9,7 +9,6 @@ import React from 'react';
 import type { Checkpoint, DocumentVersion, PuckData, ActorPresence } from '@pantheon/css-client';
 import type { SaveStatus } from '../types.js';
 import { SaveIndicator } from '../components/SaveIndicator.js';
-import { PublishButton } from '../components/PublishButton.js';
 import { HistoricalVersionBanner } from '../components/HistoricalVersionBanner.js';
 import { CollaboratorAvatars } from '../components/presence/CollaboratorAvatars.js';
 import { AgentActivityBanner } from '../components/presence/AgentActivityBanner.js';
@@ -57,11 +56,20 @@ export interface CSSOverridesOptions {
 
   /** Callback to retry save */
   onRetrySave: () => void;
-  /** Callback to publish the current document */
-  onPublish: () => Promise<Checkpoint>;
-  /** Callback when publish succeeds */
+  /**
+   * @deprecated Publish is now handled by P1EditorSubheader's PublishControl.
+   * This prop is ignored and will be removed in a future release.
+   */
+  onPublish?: () => Promise<Checkpoint>;
+  /**
+   * @deprecated Publish is now handled by P1EditorSubheader's PublishControl.
+   * This prop is ignored and will be removed in a future release.
+   */
   onPublishSuccess?: (checkpoint: Checkpoint) => void;
-  /** Callback when publish fails */
+  /**
+   * @deprecated Publish is now handled by P1EditorSubheader's PublishControl.
+   * This prop is ignored and will be removed in a future release.
+   */
   onPublishError?: (error: Error) => void;
   /** Whether to show the default Puck publish button */
   showDefaultPublish?: boolean;
@@ -144,8 +152,6 @@ export interface PuckOverrides {
  *     getLastSaved: () => lastSavedRef.current,
  *     getSaveError: () => saveErrorRef.current,
  *     onRetrySave: saveNow,
- *     onPublish: publishDocument,
- *     onPublishSuccess: (cp) => console.log('Published:', cp.name),
  *   });
  *
  *   // Legacy: direct values (causes overrides to be recreated on changes)
@@ -154,7 +160,6 @@ export interface PuckOverrides {
  *     lastSaved,
  *     saveError,
  *     onRetrySave: saveNow,
- *     onPublish: publishDocument,
  *   });
  *
  *   return <Puck overrides={overrides} {...otherProps} />;
@@ -173,9 +178,6 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
     saveError: directSaveError,
     // Common options
     onRetrySave,
-    onPublish,
-    onPublishSuccess,
-    onPublishError,
     showDefaultPublish = false,
     // Deprecated props - kept for type signature compatibility but ignored
     syncData: _syncData,
@@ -250,14 +252,6 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
               {_publishedStatus && (
                 <PublishedStatusBadge status={_publishedStatus} />
               )}
-              <PublishButton
-                onPublish={onPublish}
-                onSuccess={onPublishSuccess}
-                onError={onPublishError}
-                className="css-puck-header-publish"
-              >
-                Publish
-              </PublishButton>
             </>
           )}
           {showDefaultPublish && children}

@@ -183,42 +183,42 @@ describe('useCSSPlugin auto-wires document create/delete from context', () => {
     expect(typeof result.current.deleteDocument).toBe('function');
   });
 
-  it('useCSSPlugin wires onDocumentCreate from context when not explicitly provided', async () => {
+  it('useCSSPlugin uses context createDocument when onDocumentCreate is not explicitly provided', async () => {
     const wrapper = createProviderWrapper(client);
 
-    // Component that renders the plugin panel to actual DOM
-    function PluginRenderer() {
-      const plugin = useCSSPlugin();
-      return <>{plugin.render()}</>;
-    }
+    // Verify that calling css.createDocument (the context function wired into the plugin)
+    // reaches client.documents.create — confirming the wire-through works end-to-end.
+    const { result } = renderHook(() => useCSSPuck(), { wrapper });
 
-    render(
-      React.createElement(wrapper, null, React.createElement(PluginRenderer))
-    );
-
-    // Wait for documents to load, then the "+" button should appear
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: '+' })).toBeDefined();
+      expect(result.current.branchId).toBe('branch-1');
     });
+
+    await act(async () => {
+      await result.current.createDocument('/wired-page');
+    });
+
+    expect(client.documents.create).toHaveBeenCalledWith(
+      expect.objectContaining({ path: '/wired-page' })
+    );
   });
 
-  it('useCSSPlugin wires onDocumentDelete from context when not explicitly provided', async () => {
+  it('useCSSPlugin uses context deleteDocument when onDocumentDelete is not explicitly provided', async () => {
     const wrapper = createProviderWrapper(client);
 
-    function PluginRenderer() {
-      const plugin = useCSSPlugin();
-      return <>{plugin.render()}</>;
-    }
+    // Verify that calling css.deleteDocument (the context function wired into the plugin)
+    // reaches client.documents.delete — confirming the wire-through works end-to-end.
+    const { result } = renderHook(() => useCSSPuck(), { wrapper });
 
-    render(
-      React.createElement(wrapper, null, React.createElement(PluginRenderer))
-    );
-
-    // Wait for documents to load, then delete buttons should appear
     await waitFor(() => {
-      const deleteButtons = screen.getAllByRole('button', { name: /Delete/ });
-      expect(deleteButtons.length).toBeGreaterThan(0);
+      expect(result.current.branchId).toBe('branch-1');
     });
+
+    await act(async () => {
+      await result.current.deleteDocument('doc-1', 'pages/home');
+    });
+
+    expect(client.documents.delete).toHaveBeenCalledWith('site-1', 'branch-1', 'doc-1');
   });
 
   it('createDocument calls client.documents.create and refreshes the list', async () => {

@@ -520,6 +520,25 @@ export function createCSSAuthServerOAuth(config: CSSAuthServerOAuthConfig): OAut
   })();
   let userInfo: OAuthUserInfo | null = null;
 
+  function populateUserInfoFromToken(token: string): void {
+    const payload = parseJwtPayload(token);
+    if (payload) {
+      userInfo = {
+        id: (payload.sub as string) ?? '',
+        email: payload.email as string | undefined,
+        name: payload.name as string | undefined,
+        picture: payload.picture as string | undefined,
+      };
+    }
+  }
+
+  // Restore user info from stored token on creation
+  const existingToken =
+    typeof localStorage !== 'undefined' ? localStorage.getItem(tokenKey) : null;
+  if (existingToken) {
+    populateUserInfoFromToken(existingToken);
+  }
+
   function hasToken(): boolean {
     if (typeof localStorage === 'undefined') return false;
     return localStorage.getItem(tokenKey) !== null;
@@ -558,6 +577,7 @@ export function createCSSAuthServerOAuth(config: CSSAuthServerOAuthConfig): OAut
       if (data.refresh_token) {
         localStorage.setItem(refreshKey, data.refresh_token);
       }
+      populateUserInfoFromToken(data.access_token);
       return data.access_token;
     } catch {
       localStorage.removeItem(refreshKey);
@@ -643,6 +663,8 @@ export function createCSSAuthServerOAuth(config: CSSAuthServerOAuthConfig): OAut
         }
       }
 
+      populateUserInfoFromToken(data.access_token);
+
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.removeItem(stateKey);
         sessionStorage.removeItem(verifierKey);
@@ -702,6 +724,8 @@ export interface AuthMeResponse {
   id: string;
   type: string;
   email?: string;
+  name?: string;
+  avatarUrl?: string;
   authProvider?: string;
   tokenExpiry?: string;
   providerSubjectId?: string;

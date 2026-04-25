@@ -42,6 +42,10 @@ export type { UseCSSOverridesOptions } from './useCSSOverrides.js';
 export { useCSSEditor } from './useCSSEditor.js';
 export type { UseCSSEditorOptions, UseCSSEditorReturn, PuckProps } from './useCSSEditor.js';
 
+// Merge Preview
+export { useMergePreview } from './useMergePreview.js';
+export type { UseMergePreviewReturn } from './useMergePreview.js';
+
 // Focus Region Reporting (Phase 3)
 export { useFocusRegionReporting } from './useFocusRegionReporting.js';
 export type {

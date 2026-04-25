@@ -1,0 +1,36 @@
+/* ============================================================================
+ * PublishControl — CSS Module
+ *
+ * Compound component: DocStateBadge + PDS SplitButton.
+ * Publish confirmation appears via the PDS Toaster (position: fixed).
+ * ============================================================================ */
+
+.container {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.512rem;
+}
+
+.container :global(.pds-split-button) {
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+}
+
+/* ── Responsive: hide state badge on mobile ──────────────────────────── */
+
+.stateBadge {
+  display: contents;
+}
+
+@media (max-width: 767px) {
+  .stateBadge {
+    display: none;
+  }
+}
+
+/* Layout for Confirm/Cancel buttons inside the warning toast */
+.confirmContent {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}

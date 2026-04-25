@@ -5,8 +5,9 @@
  * Displays agent name, intent, and affected regions.
  */
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import type { ActorPresence } from '@pantheon/css-client';
+import { getAvatarColor } from '../../utils/avatarColor.js';
 
 export interface AgentActivityBannerProps {
   /** The agent actor to display */
@@ -22,30 +23,6 @@ export interface AgentActivityBannerProps {
 }
 
 const baseClass = 'css-puck-agent-banner';
-
-/**
- * Generate a consistent hash from a string.
- * Uses a simple but effective hash algorithm (djb2).
- * Must match the algorithm in CollaboratorAvatars.tsx for consistent colors.
- */
-function hashString(str: string): number {
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash * 33) ^ str.charCodeAt(i);
-  }
-  return hash >>> 0; // Convert to unsigned 32-bit integer
-}
-
-/**
- * Generate a consistent HSL color from an actor's ID.
- * Uses the ID to generate a hue, with fixed saturation and lightness
- * for good contrast with white text.
- */
-function getAvatarColor(actorId: string): string {
-  const hash = hashString(actorId);
-  const hue = hash % 360;
-  return `hsl(${hue}, 65%, 45%)`;
-}
 
 /**
  * Get initials from a name.
@@ -68,7 +45,7 @@ export function AgentActivityBanner({
   dismissible = false,
   onStopAgent,
   className,
-}: AgentActivityBannerProps): JSX.Element | null {
+}: AgentActivityBannerProps): React.JSX.Element | null {
   const [isDismissed, setIsDismissed] = useState(false);
 
   // Don't show if agent is idle and showIdle is false

@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, act } from '@testing-library/react';
 import React, { useContext } from 'react';
-import type { PuckData, Document } from '@pantheon/css-client';
+import type { PuckData } from '@pantheon/css-client';
 
 // ---------------------------------------------------------------------------
 // Mutable mock state — allows tests to simulate connection state changes
@@ -199,7 +199,7 @@ describe('connectedDocumentPath ref regression', () => {
     // causing "Connection identity mismatch" warning and skipped send.
     // The fix: using a ref ensures the current value is read.
     const mismatchWarnings = warnSpy.mock.calls.filter(
-      (call) => typeof call[0] === 'string' && call[0].includes('Connection identity mismatch')
+      (call) => typeof call[0] === 'string' && call[0].toLowerCase().includes('connection identity mismatch')
     );
 
     expect(mismatchWarnings).toHaveLength(0);
@@ -277,7 +277,7 @@ describe('connectedDocumentPath ref regression', () => {
 
     // Should still reject when paths genuinely don't match
     const mismatchWarnings = warnSpy.mock.calls.filter(
-      (call) => typeof call[0] === 'string' && call[0].includes('Connection identity mismatch')
+      (call) => typeof call[0] === 'string' && call[0].toLowerCase().includes('connection identity mismatch')
     );
 
     expect(mismatchWarnings.length).toBeGreaterThanOrEqual(1);
