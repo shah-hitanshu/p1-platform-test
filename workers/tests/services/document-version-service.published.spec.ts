@@ -33,6 +33,7 @@ describe('Document Version isPublished flag', () => {
       const result = await getLatestDocumentVersion('doc-1', 'branch-1');
 
       expect(result).not.toBeNull();
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       expect(result!.isPublished).toBe(true);
     });
 
@@ -59,6 +60,7 @@ describe('Document Version isPublished flag', () => {
       const result = await getLatestDocumentVersion('doc-1', 'branch-1');
 
       expect(result).not.toBeNull();
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       expect(result!.isPublished).toBe(false);
     });
   });
@@ -76,7 +78,7 @@ describe('Document Version isPublished flag', () => {
             branch_id: 'branch-1',
             version_number: 3,
             snapshot: { title: 'v3' },
-  
+
             source: 'edit',
             created_by_id: 'user-1',
             created_by_type: 'user',
@@ -89,7 +91,7 @@ describe('Document Version isPublished flag', () => {
             branch_id: 'branch-1',
             version_number: 2,
             snapshot: { title: 'v2' },
-  
+
             source: 'edit',
             created_by_id: 'user-1',
             created_by_type: 'user',
@@ -102,7 +104,7 @@ describe('Document Version isPublished flag', () => {
             branch_id: 'branch-1',
             version_number: 1,
             snapshot: { title: 'v1' },
-  
+
             source: 'edit',
             created_by_id: 'user-1',
             created_by_type: 'user',
@@ -145,6 +147,7 @@ describe('Document Version isPublished flag', () => {
       const result = await getDocumentVersion('ver-1');
 
       expect(result).not.toBeNull();
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       expect(result!.isPublished).toBe(true);
     });
   });
@@ -158,7 +161,7 @@ describe('Document Version isPublished flag', () => {
 
       await getLatestDocumentVersion('doc-1', 'branch-1');
 
-      const sql = vi.mocked(db.query).mock.calls[0][0] as string;
+      const sql = vi.mocked(db.query).mock.calls[0][0];
       expect(sql).toContain('checkpoint_documents');
       expect(sql).toContain('is_published');
     });
@@ -171,9 +174,63 @@ describe('Document Version isPublished flag', () => {
 
       await listDocumentVersions('doc-1', 'branch-1');
 
-      const sql = vi.mocked(db.query).mock.calls[0][0] as string;
+      const sql = vi.mocked(db.query).mock.calls[0][0];
       expect(sql).toContain('checkpoint_documents');
       expect(sql).toContain('is_published');
+    });
+  });
+
+  describe('isPublished only reflects publish checkpoints, not agent checkpoints', () => {
+    it('getDocumentVersion SQL should filter isPublished by checkpoint_type = publish', async () => {
+      const { getDocumentVersion } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await getDocumentVersion('ver-1');
+
+      const sql = vi.mocked(db.query).mock.calls[0][0];
+      expect(sql).toContain('checkpoint_type');
+      expect(sql).toContain("'publish'");
+    });
+
+    it('getLatestDocumentVersion SQL should filter isPublished by checkpoint_type = publish', async () => {
+      const { getLatestDocumentVersion } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await getLatestDocumentVersion('doc-1', 'branch-1');
+
+      const sql = vi.mocked(db.query).mock.calls[0][0];
+      expect(sql).toContain('checkpoint_type');
+      expect(sql).toContain("'publish'");
+    });
+
+    it('listDocumentVersions SQL should filter isPublished by checkpoint_type = publish', async () => {
+      const { listDocumentVersions } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await listDocumentVersions('doc-1', 'branch-1');
+
+      const sql = vi.mocked(db.query).mock.calls[0][0];
+      expect(sql).toContain('checkpoint_type');
+      expect(sql).toContain("'publish'");
+    });
+
+    it('getLatestPublishedDocumentVersion SQL should filter by checkpoint_type = publish', async () => {
+      const { getLatestPublishedDocumentVersion } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await getLatestPublishedDocumentVersion('doc-1', 'branch-1');
+
+      const sql = vi.mocked(db.query).mock.calls[0][0];
+      expect(sql).toContain('checkpoint_type');
+      expect(sql).toContain("'publish'");
     });
   });
 });

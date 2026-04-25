@@ -368,7 +368,9 @@ export async function getDocumentVersion(versionId: string): Promise<DocumentVer
        b.name AS source_branch_name,
        EXISTS(
          SELECT 1 FROM app.checkpoint_documents cd
+         JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
          WHERE cd.document_version_id = dv.id
+           AND cp.checkpoint_type = 'publish'
        ) AS is_published
      FROM app.document_versions dv
      LEFT JOIN app.branches b ON b.id = dv.source_branch_id
@@ -400,7 +402,9 @@ export async function getLatestDocumentVersion(
        b.name AS source_branch_name,
        EXISTS(
          SELECT 1 FROM app.checkpoint_documents cd
+         JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
          WHERE cd.document_version_id = dv.id
+           AND cp.checkpoint_type = 'publish'
        ) AS is_published
      FROM app.document_versions dv
      LEFT JOIN app.branches b ON b.id = dv.source_branch_id
@@ -442,6 +446,7 @@ export async function getLatestPublishedDocumentVersion(
      WHERE dv.document_id = $1
        AND dv.branch_id = $2
        AND cp.branch_id = $2
+       AND cp.checkpoint_type = 'publish'
      ORDER BY dv.version_number DESC
      LIMIT 1`,
     [documentId, branchId],
@@ -493,7 +498,9 @@ export async function listDocumentVersions(
        b.name AS source_branch_name,
        EXISTS(
          SELECT 1 FROM app.checkpoint_documents cd
+         JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
          WHERE cd.document_version_id = dv.id
+           AND cp.checkpoint_type = 'publish'
        ) AS is_published
      FROM app.document_versions dv
      LEFT JOIN app.branches b ON b.id = dv.source_branch_id

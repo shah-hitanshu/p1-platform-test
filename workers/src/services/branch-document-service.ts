@@ -61,6 +61,7 @@ export async function listDocumentsOnBranch(
         FROM app.checkpoint_documents cd
         INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
         WHERE cd.document_id = d.id AND cp.branch_id = $2
+          AND cp.checkpoint_type = 'publish'
         ORDER BY cp.created_at DESC
         LIMIT 1
       ) pub ON true
@@ -102,11 +103,13 @@ export async function listDocumentsOnBranch(
         FROM app.checkpoint_documents cd2
         INNER JOIN app.checkpoints cp2 ON cp2.id = cd2.checkpoint_id
         WHERE cd2.document_id = d.id AND cp2.branch_id = $2
+          AND cp2.checkpoint_type = 'publish'
         ORDER BY cp2.created_at DESC
         LIMIT 1
       ) pub ON true
       WHERE dv.branch_id = $2
         AND cp.branch_id = $2
+        AND cp.checkpoint_type = 'publish'
         AND d.archived_at IS NULL
         AND NOT EXISTS (
           SELECT 1 FROM app.document_versions dv_branch
@@ -149,6 +152,7 @@ export async function listDocumentsOnBranch(
       FROM app.checkpoint_documents cd
       INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
       WHERE cd.document_id = d.id AND cp.branch_id = $1
+        AND cp.checkpoint_type = 'publish'
       ORDER BY cp.created_at DESC
       LIMIT 1
     ) pub ON true

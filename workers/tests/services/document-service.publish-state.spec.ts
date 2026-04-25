@@ -89,7 +89,7 @@ describe('Document Publish State in Branch Listings', () => {
         mainBranchId: 'branch-main',
       });
 
-      const sql = vi.mocked(db.query).mock.calls[0][0] as string;
+      const sql = vi.mocked(db.query).mock.calls[0][0];
       // Should join checkpoint_documents for publish state
       expect(sql).toContain('checkpoint_documents');
       expect(sql).toContain('published_version_id');
@@ -132,9 +132,41 @@ describe('Document Publish State in Branch Listings', () => {
 
       await listDocumentsOnBranch('branch-main');
 
-      const sql = vi.mocked(db.query).mock.calls[0][0] as string;
+      const sql = vi.mocked(db.query).mock.calls[0][0];
       expect(sql).toContain('checkpoint_documents');
       expect(sql).toContain('published_version_id');
+    });
+  });
+
+  describe('isPublished and inherited visibility filter by checkpoint_type = publish', () => {
+    it('COW mode query filters both LATERAL publish state and inherited visibility by checkpoint_type', async () => {
+      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await listDocumentsOnBranch('branch-feature', { mainBranchId: 'branch-main' });
+
+      const sql = vi.mocked(db.query).mock.calls[0][0];
+      // CoW query has 3 checkpoint_type = 'publish' filters:
+      // 1. LATERAL for branch-side published_version_id
+      // 2. outer WHERE for inherited document visibility
+      // 3. LATERAL for inherited-side published_version_id
+      const occurrences = sql.split("checkpoint_type = 'publish'").length - 1;
+      expect(occurrences).toBeGreaterThanOrEqual(3);
+    });
+
+    it('main branch query should filter publish state by checkpoint_type = publish', async () => {
+      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      await listDocumentsOnBranch('branch-main');
+
+      const sql = vi.mocked(db.query).mock.calls[0][0];
+      expect(sql).toContain('checkpoint_type');
+      expect(sql).toContain("'publish'");
     });
   });
 
