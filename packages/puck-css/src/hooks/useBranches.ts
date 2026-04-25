@@ -91,7 +91,7 @@ export function useBranches({
 
     try {
       const branchList = await client.branches.list(siteId);
-      setBranches(branchList);
+      setBranches(branchList.filter((b) => b.isMain || b.status === 'active'));
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
