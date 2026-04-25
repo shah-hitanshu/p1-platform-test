@@ -4097,3 +4097,22 @@ Sum of Hyperdrive `origin_connection_limit` values must stay under 50% of CloudS
 
 #### Applied to sbx1
 - `terraform apply` run: max_connections 50→100, Hyperdrive 20→30 / 5→10
+
+### Bug Fix: isPublished incorrectly true after agent edits (2026-04-25)
+
+**PR #86** — merged to main, deployed to sbx1.
+
+#### Root Cause
+Agent post-edit checkpoints (`checkpoint_type = 'agent_post_edit'`) insert document versions into `checkpoint_documents`. Eight SQL query sites in `document-version-service.ts` and `branch-document-service.ts` read that table to compute `isPublished`/`publishedVersionId`/`publishedAt` without filtering by `checkpoint_type = 'publish'`, causing any agent-edited version to appear published.
+
+Confirmed via Cloudflare Workers Observability: no `/internal/publish` calls occurred during the affected agent session — only agent edit cycle calls.
+
+#### Fix
+Added `AND cp.checkpoint_type = 'publish'` to all query sites:
+
+- `document-version-service.ts`: 3 EXISTS subqueries (`getDocumentVersion`, `getLatestDocumentVersion`, `listDocumentVersions`) now join `checkpoints` and filter by type; `getLatestPublishedDocumentVersion` WHERE clause also filtered
+- `branch-document-service.ts`: 3 LATERAL subqueries computing `published_version_id`/`published_at` filtered; plus the outer INNER JOIN in the CoW inherited-documents UNION arm that controls whether a document is visible as inherited at all
+
+#### Regression Tests Added
+- `tests/services/document-version-service.published.spec.ts`: 4 new tests asserting SQL contains `checkpoint_type = 'publish'` for all 4 query functions
+- `tests/services/document-service.publish-state.spec.ts`: 2 new tests; CoW test verifies ≥3 occurrences of `checkpoint_type = 'publish'` (covering both LATERALs and outer JOIN)
