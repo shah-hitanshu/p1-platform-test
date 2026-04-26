@@ -149,13 +149,25 @@ async function runRegistration(
   await Promise.all(
     descriptors.map(async (descriptor) => {
       const storedHash = storedHashByName.get(descriptor.name);
-      if (storedHash === descriptor.descriptorHash) {
+      const existingDoc = docByName.get(descriptor.name);
+
+      // Skip only when the hash is unchanged AND the component document still
+      // exists on this branch. A hash-only check is unsafe: the index can drift
+      // out of sync with on-disk component docs (e.g. a partial historical
+      // write, an out-of-band deletion, or branch CoW interactions where the
+      // index was inherited but its referenced component docs were not). In
+      // that case the index reports a matching hash for a name whose document
+      // is missing, and the registry stays permanently stuck at fewer
+      // components than the running config defines. Requiring `existingDoc`
+      // forces the missing component through the create path on the next run,
+      // which self-heals the desync and rewrites the index from the full
+      // descriptor set.
+      if (existingDoc !== undefined && storedHash === descriptor.descriptorHash) {
         skipped++;
         return;
       }
 
       let docId: string;
-      const existingDoc = docByName.get(descriptor.name);
 
       if (existingDoc === undefined) {
         // Create the document first

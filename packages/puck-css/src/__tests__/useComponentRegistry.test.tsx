@@ -561,6 +561,84 @@ describe('useComponentRegistry', () => {
     expect(hashes.HeroBlock).toBe(descriptor.descriptorHash);
   });
 
+  // Regression: index hashes can become out of sync with on-disk component docs
+  // (partial historical writes, out-of-band deletes, CoW interactions where the
+  // index was inherited but referenced component docs were not). The fast path
+  // must NOT skip a descriptor whose hash matches the index when the named
+  // component document is missing — otherwise the registry stays permanently
+  // stuck below the descriptor count.
+  it('fast path: re-creates a component when index has its hash but the doc is missing (desynced index)', async () => {
+    const ctx = makeMockContext();
+    const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+
+    const { extractDescriptors } = await import('../utils/componentRegistry.js');
+    const descriptors = extractDescriptors(twoComponentConfig);
+    const heroDescriptor = descriptors.find((d) => d.name === 'HeroBlock')!;
+    const cardDescriptor = descriptors.find((d) => d.name === 'CardBlock')!;
+
+    // CardBlock document exists; HeroBlock document is MISSING from the listing
+    // (the desync we want to repair). Index doc exists.
+    mockClient.documents.list.mockResolvedValue([
+      { id: 'doc-card', path: '_registry/components/CardBlock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+      { id: 'doc-index', path: '_registry/index', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+    ]);
+
+    // Index claims hashes for BOTH components, including the missing HeroBlock.
+    // Both hashes match the current descriptors — the broken old behaviour
+    // would skip HeroBlock based on hash alone and never re-create the doc.
+    mockClient.versions.getLatest.mockImplementation(
+      (_siteId: string, _branchId: string, docId: string) => {
+        if (docId === 'doc-index') {
+          return Promise.resolve({
+            id: 'ver-index', versionNumber: 1,
+            snapshot: {
+              siteId: 'site-1', branchId: 'branch-1',
+              componentNames: ['HeroBlock', 'CardBlock'],
+              provenance: { HeroBlock: 'site', CardBlock: 'site' },
+              updatedAt: new Date().toISOString(),
+              hashes: {
+                HeroBlock: heroDescriptor.descriptorHash,
+                CardBlock: cardDescriptor.descriptorHash,
+              },
+            },
+          });
+        }
+        return Promise.resolve({ id: 'ver', versionNumber: 1, snapshot: {} });
+      },
+    );
+
+    let docCounter = 0;
+    mockClient.documents.create.mockImplementation(({ path }: { path: string }) =>
+      Promise.resolve({ id: `doc-new-${++docCounter}`, path }),
+    );
+    mockClient.versions.create.mockResolvedValue({ id: 'ver-new', versionNumber: 2, snapshot: {} });
+
+    const { result } = renderHook(
+      () => useComponentRegistry({ puckConfig: twoComponentConfig }),
+      { wrapper: wrapper(ctx) },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe('registered'));
+
+    // HeroBlock must be created (doc was missing) even though its hash matched the index.
+    // CardBlock should be skipped (doc exists, hash matches).
+    expect(result.current.result?.registered).toBe(1);
+    expect(result.current.result?.skipped).toBe(1);
+
+    const createCalls = mockClient.documents.create.mock.calls as { path: string }[][];
+    const createdPaths = createCalls.map((args) => args[0].path);
+    expect(createdPaths).toContain('_registry/components/HeroBlock');
+    expect(createdPaths).not.toContain('_registry/components/CardBlock');
+
+    // A version write goes to the freshly created HeroBlock doc, not to doc-card.
+    const versionCalls = mockClient.versions.create.mock.calls as unknown[][];
+    const versionDocIds = versionCalls.map((args) => (args[1] as Record<string, string>).documentId);
+    expect(versionDocIds).not.toContain('doc-card');
+
+    // Index gets rewritten because registered > 0 — restoring consistency.
+    expect(versionDocIds).toContain('doc-index');
+  });
+
   it('fast path: promotes legacy index (no hashes field) to include hashes even when nothing changed', async () => {
     // Regression test for: legacy index exists, all hashes match via per-component fetch,
     // registered === 0 — index MUST still be written to add the hashes field so future
