@@ -91,6 +91,12 @@ export class ChatAgent extends Agent<Env, AgentState> {
       return;
     }
 
+    if (parsed.type === 'clear') {
+      await this.setState({ conversationHistory: [] });
+      this.send(connection, { type: 'cleared' });
+      return;
+    }
+
     if (parsed.type !== 'chat') return;
 
     const { message, context } = parsed;

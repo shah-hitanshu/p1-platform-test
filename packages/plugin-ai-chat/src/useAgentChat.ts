@@ -26,6 +26,7 @@ export function useAgentChat({ agentUrl, getAgentId, getContext }: UseAgentChatO
   const [isLoading, setIsLoading] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const currentAssistantIdRef = useRef<string | null>(null);
+  const initialClearSentRef = useRef(false);
 
   const getOrCreateWs = useCallback((): Promise<WebSocket> => {
     return new Promise((resolve, reject) => {
@@ -39,7 +40,15 @@ export function useAgentChat({ agentUrl, getAgentId, getContext }: UseAgentChatO
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
-      ws.onopen = () => resolve(ws);
+      ws.onopen = () => {
+        // Clear the DO's persisted history on the first connection after mount
+        // so each page load starts with a clean slate.
+        if (!initialClearSentRef.current) {
+          initialClearSentRef.current = true;
+          ws.send(JSON.stringify({ type: 'clear' }));
+        }
+        resolve(ws);
+      };
       ws.onerror = () => reject(new Error('WebSocket connection failed'));
       ws.onclose = () => {
         wsRef.current = null;
@@ -172,7 +181,12 @@ export function useAgentChat({ agentUrl, getAgentId, getContext }: UseAgentChatO
     };
   }, []);
 
-  const clearMessages = useCallback(() => setMessages([]), []);
+  const clearMessages = useCallback(() => {
+    setMessages([]);
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'clear' }));
+    }
+  }, []);
 
   return { messages, input, setInput, submit, isLoading, clearMessages };
 }

@@ -27,14 +27,12 @@ export interface ChatContext {
   userEmail?: string;
 }
 
-export interface IncomingMessage {
-  type: 'chat';
-  message: string;
-  context: ChatContext;
-}
+export type IncomingMessage =
+  | { type: 'chat'; message: string; context: ChatContext }
+  | { type: 'clear' };
 
 export interface OutgoingMessage {
-  type: 'token' | 'done' | 'error' | 'tool_start' | 'tool_end';
+  type: 'token' | 'done' | 'error' | 'tool_start' | 'tool_end' | 'cleared';
   content?: string;
   toolName?: string;
   toolInput?: unknown;
