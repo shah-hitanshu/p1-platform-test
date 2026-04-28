@@ -333,6 +333,14 @@ describe('executeTool apply_document_edits key-validation', () => {
         versionNumber: 1,
         snapshot: existingSnapshot,
       }),
+      // Registry validation now catches hallucinated keys on Puck-component
+      // ops, so the mock needs the schema available.
+      listComponents: vi.fn().mockResolvedValue({
+        components: [
+          { name: 'Hero', defaultProps: { text: '', visible: true } },
+          { name: 'Footer', defaultProps: { copyright: '', links: [] } },
+        ],
+      }),
       applyEdits: vi.fn().mockResolvedValue({ success: true }),
       ...overrides,
     } as unknown as McpApiClient;
@@ -431,6 +439,162 @@ describe('executeTool apply_document_edits key-validation', () => {
       ],
     }, cssApi, 'user-1');
     expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+  });
+
+  // Regression: heterogeneous content arrays previously failed snapshot
+  // validation because assertNoNewKeys used existing[0] as a single reference.
+  it('replace on a heterogeneous content array (Hero + Footer reorder) succeeds', async () => {
+    const heteroSnapshot = {
+      content: [
+        { type: 'Hero', props: { id: 'h1', text: 'Hi', visible: true } },
+        { type: 'Footer', props: { id: 'f1', copyright: '©', links: [] } },
+      ],
+    };
+    const cssApi = makeCssApi({
+      getDocumentLatestVersion: vi.fn().mockResolvedValue({
+        id: 'ver-1', documentId: 'doc-1', versionNumber: 1, snapshot: heteroSnapshot,
+      }),
+    });
+    await executeTool('apply_document_edits', {
+      ...baseInput,
+      operations: [
+        {
+          type: 'replace',
+          path: 'content',
+          // Same components, reordered — Footer first, Hero second
+          content: [
+            { type: 'Footer', props: { id: 'f1', copyright: '©', links: [] } },
+            { type: 'Hero', props: { id: 'h1', text: 'Hi', visible: true } },
+          ],
+        },
+      ],
+    }, cssApi, 'user-1');
+    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// apply_document_edits — agent → backend op translation
+// ---------------------------------------------------------------------------
+
+describe('executeTool apply_document_edits op translation', () => {
+  const baseInput = {
+    site_id: 'site-1', branch_id: 'branch-1',
+    document_path: '/index', edit_session_id: 'session-1',
+  };
+
+  function makeCssApi(): McpApiClient {
+    return {
+      listDocuments: vi.fn().mockResolvedValue({ documents: [] }),
+      listComponents: vi.fn().mockResolvedValue({
+        components: [{ name: 'Hero', defaultProps: { text: '', visible: true } }],
+      }),
+      applyEdits: vi.fn().mockResolvedValue({ success: true }),
+    } as unknown as McpApiClient;
+  }
+
+  it('translates "add" with numeric path tail to backend "insert" with index + value', async () => {
+    const cssApi = makeCssApi();
+    await executeTool('apply_document_edits', {
+      ...baseInput,
+      operations: [
+        { type: 'add', path: 'content.2', content: { type: 'Hero', props: { id: 'x', text: 'hi' } } },
+      ],
+    }, cssApi, 'user-1');
+    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Array<Record<string, unknown>> };
+    expect(call.operations).toHaveLength(1);
+    expect(call.operations[0].type).toBe('insert');
+    expect(call.operations[0].path).toBe('content');
+    expect(call.operations[0].index).toBe(2);
+    expect(call.operations[0].value).toMatchObject({ type: 'Hero' });
+  });
+
+  it('throws when "add" path does not end with a numeric index', async () => {
+    const cssApi = makeCssApi();
+    await expect(
+      executeTool('apply_document_edits', {
+        ...baseInput,
+        operations: [
+          { type: 'add', path: 'content.0.props.title', content: 'oops' },
+        ],
+      }, cssApi, 'user-1'),
+    ).rejects.toThrow(/numeric index at the end/);
+  });
+
+  it('translates "remove" to backend "delete" preserving path', async () => {
+    const cssApi = makeCssApi();
+    await executeTool('apply_document_edits', {
+      ...baseInput,
+      operations: [{ type: 'remove', path: 'content.1' }],
+    }, cssApi, 'user-1');
+    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Array<Record<string, unknown>> };
+    expect(call.operations[0].type).toBe('delete');
+    expect(call.operations[0].path).toBe('content.1');
+  });
+
+  it('passes "replace" through unchanged with content field', async () => {
+    const cssApi = makeCssApi();
+    await executeTool('apply_document_edits', {
+      ...baseInput,
+      operations: [{ type: 'replace', path: 'content.0.props.text', content: 'New' }],
+    }, cssApi, 'user-1');
+    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Array<Record<string, unknown>> };
+    expect(call.operations[0].type).toBe('replace');
+    expect(call.operations[0].path).toBe('content.0.props.text');
+    expect(call.operations[0].content).toBe('New');
+  });
+
+  it('passes "move" through with fromIndex and toIndex', async () => {
+    const cssApi = makeCssApi();
+    await executeTool('apply_document_edits', {
+      ...baseInput,
+      operations: [{ type: 'move', path: 'content', fromIndex: 0, toIndex: 3 }],
+    }, cssApi, 'user-1');
+    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Array<Record<string, unknown>> };
+    expect(call.operations[0]).toEqual({ type: 'move', path: 'content', fromIndex: 0, toIndex: 3 });
+  });
+
+  it('throws when "move" is missing fromIndex or toIndex', async () => {
+    const cssApi = makeCssApi();
+    await expect(
+      executeTool('apply_document_edits', {
+        ...baseInput,
+        operations: [{ type: 'move', path: 'content', fromIndex: 0 }],
+      }, cssApi, 'user-1'),
+    ).rejects.toThrow(/fromIndex and toIndex/);
+  });
+
+  it('translates a mixed batch of ops in order', async () => {
+    const cssApi = makeCssApi();
+    await executeTool('apply_document_edits', {
+      ...baseInput,
+      operations: [
+        { type: 'add', path: 'content.0', content: { type: 'Hero', props: { id: 'h', text: 'Hi' } } },
+        { type: 'replace', path: 'content.1.props.text', content: 'Updated' },
+        { type: 'move', path: 'content', fromIndex: 0, toIndex: 2 },
+        { type: 'remove', path: 'content.3' },
+      ],
+    }, cssApi, 'user-1');
+    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Array<Record<string, unknown>> };
+    expect(call.operations).toHaveLength(4);
+    expect(call.operations[0].type).toBe('insert');
+    expect(call.operations[1].type).toBe('replace');
+    expect(call.operations[2].type).toBe('move');
+    expect(call.operations[3].type).toBe('delete');
+  });
+
+  it('injects a fresh ULID into an ID-less Puck component routed through "add"', async () => {
+    const cssApi = makeCssApi();
+    await executeTool('apply_document_edits', {
+      ...baseInput,
+      operations: [
+        { type: 'add', path: 'content.0', content: { type: 'Hero', props: { text: 'No id provided' } } },
+      ],
+    }, cssApi, 'user-1');
+    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+      operations: Array<{ type: string; value: { props: { id: string } } }>;
+    };
+    expect(call.operations[0].value.props.id).toMatch(/^[0-9A-Z]{26}$/);
   });
 });
 

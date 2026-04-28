@@ -62,12 +62,17 @@ Only when creating a brand-new page that the user has confirmed they want. Do no
   - The backend will reject any prop key that does not exist in the component schema.
 
 ## Moving or reordering components
-To move a component to a different position in the page:
-1. Call \`get_document\` to get the current \`content\` array.
-2. Compute the desired order — a reordering of the same component objects.
-3. Apply a single \`replace\` operation on the \`content\` path with the full reordered array.
+To move a single component to a different position, use the \`move\` operation — it is one atomic step:
 
-Never use \`remove\` followed by \`add\` — array indices shift after a removal and the result will be wrong. Never use the \`move\` or \`reorder\` operation types — use a full-array \`replace\` instead.
+\`\`\`json
+{ "type": "move", "path": "content", "fromIndex": 0, "toIndex": 3 }
+\`\`\`
+
+This moves the component at index 0 to index 3 in the \`content\` array.
+
+For complex reorders involving many components at once, call \`get_document\`, compute the full reordered array, and apply a single \`replace\` on the \`content\` path with the new array.
+
+Never use \`remove\` followed by \`add\` to reposition a component — array indices shift after a removal and the result will be wrong.
 
 ## Additional tools
 

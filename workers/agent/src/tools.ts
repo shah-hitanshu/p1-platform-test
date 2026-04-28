@@ -97,8 +97,19 @@ function validateComponentsAgainstRegistry(
   }
 }
 
+function isPuckComponentShape(v: unknown): boolean {
+  return v !== null && typeof v === 'object' && !Array.isArray(v) &&
+    typeof (v as Record<string, unknown>).type === 'string' &&
+    typeof (v as Record<string, unknown>).props === 'object' &&
+    (v as Record<string, unknown>).props !== null;
+}
+
 function assertNoNewKeys(existing: unknown, replacement: unknown, path: string): void {
+  // Puck-component arrays are heterogeneous — a positional comparison against
+  // existing[0] would reject any item whose type differs from the first.
+  // Per-component validation against the registry runs separately.
   if (Array.isArray(existing) && Array.isArray(replacement)) {
+    if (replacement.some(isPuckComponentShape)) return;
     const ref = existing[0];
     if (ref === undefined) return;
     for (let i = 0; i < replacement.length; i++) {
@@ -106,6 +117,9 @@ function assertNoNewKeys(existing: unknown, replacement: unknown, path: string):
     }
     return;
   }
+  // Replacing a Puck component with one of a different type is legal — registry
+  // validation handles per-type prop checking. Skip positional key comparison.
+  if (isPuckComponentShape(existing) && isPuckComponentShape(replacement)) return;
   if (
     existing !== null && typeof existing === 'object' && !Array.isArray(existing) &&
     replacement !== null && typeof replacement === 'object' && !Array.isArray(replacement)
@@ -196,11 +210,12 @@ export const CSS_TOOLS: Anthropic.Tool[] = [
       'Never rename or add keys — only change values. Field names must match the component schema exactly.',
       '',
       'Operation types:',
-      '  replace — overwrite a value at path with content. To reorder components, replace the entire "content" array with the fully reordered array.',
-      '  add     — insert content into an array at path (e.g. "content.2" to insert at index 2).',
+      '  replace — overwrite a value at path with content (e.g. change a prop value: path "content.0.props.title", content "New title").',
+      '  add     — insert content into an array. Path ends with the target index (e.g. "content.2" inserts at index 2).',
       '  remove  — delete the element at path (e.g. "content.1" removes the second component).',
+      '  move    — reorder a single element within an array. Path is the array (e.g. "content"), with fromIndex and toIndex.',
       '',
-      'DO NOT use "move" or "reorder" operation types — they are not supported. Use "replace" on the full "content" array to reorder components.',
+      'To reorder one component, prefer "move" — it is a single atomic operation. Only use a full-array "replace" on "content" when reordering many components at once.',
     ].join('\n'),
     input_schema: {
       type: 'object' as const,
@@ -214,9 +229,11 @@ export const CSS_TOOLS: Anthropic.Tool[] = [
           items: {
             type: 'object',
             properties: {
-              type: { type: 'string', enum: ['add', 'remove', 'replace'] },
+              type: { type: 'string', enum: ['add', 'remove', 'replace', 'move'] },
               path: { type: 'string' },
               content: {},
+              fromIndex: { type: 'number', description: 'For move: source index in the array.' },
+              toIndex: { type: 'number', description: 'For move: destination index in the array.' },
             },
             required: ['type', 'path'],
           },
@@ -438,13 +455,17 @@ export async function executeTool(
       });
 
     case 'apply_document_edits': {
-      type RawOp = {
-        type: 'add' | 'remove' | 'replace';
+      type AgentOp = {
+        type: 'add' | 'remove' | 'replace' | 'move';
         path: string;
         content?: unknown;
+        fromIndex?: number;
+        toIndex?: number;
       };
-      const operations = (toolInput.operations as RawOp[]).map(op => {
-        const normalized: RawOp = { ...op, path: normalizePath(op.path) };
+      // Normalize agent ops (path + ID injection) but keep agent vocabulary
+      // for validation. Translation to backend ops happens after validation.
+      const operations = (toolInput.operations as AgentOp[]).map(op => {
+        const normalized: AgentOp = { ...op, path: normalizePath(op.path) };
         if ((op.type === 'add' || op.type === 'replace') && op.content !== undefined) {
           normalized.content = injectPuckIds(op.content);
         }
@@ -512,12 +533,39 @@ export async function executeTool(
         }
       }
 
+      // Translate agent vocabulary to the CSS backend's operation set.
+      // Backend accepts: set | delete | insert | move | replace.
+      const backendOps = operations.map(op => {
+        switch (op.type) {
+          case 'add': {
+            const segments = op.path.split('.');
+            const tail = segments.pop();
+            if (!tail || !/^\d+$/.test(tail)) {
+              throw new Error(
+                `add operation requires a numeric index at the end of the path. Got: "${op.path}". ` +
+                `Example: path "content.2" inserts at index 2.`
+              );
+            }
+            return { type: 'insert' as const, path: segments.join('.'), index: parseInt(tail, 10), value: op.content };
+          }
+          case 'remove':
+            return { type: 'delete' as const, path: op.path };
+          case 'replace':
+            return { type: 'replace' as const, path: op.path, content: op.content };
+          case 'move':
+            if (typeof op.fromIndex !== 'number' || typeof op.toIndex !== 'number') {
+              throw new Error('move operation requires both fromIndex and toIndex.');
+            }
+            return { type: 'move' as const, path: op.path, fromIndex: op.fromIndex, toIndex: op.toIndex };
+        }
+      });
+
       return cssApi.applyEdits({
         siteId: toolInput.site_id as string,
         branchId: toolInput.branch_id as string,
         documentPath: toolInput.document_path as string,
         editSessionId: toolInput.edit_session_id as string,
-        operations,
+        operations: backendOps,
       });
     }
 

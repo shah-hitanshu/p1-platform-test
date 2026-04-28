@@ -94,10 +94,17 @@ export interface StartAgentEditResponse {
   reservedRegions: string[];
 }
 
+// Operation shape accepted by the CSS backend's /edits endpoint. The agent
+// speaks a friendlier vocabulary (add/remove/replace/move); see translateOp
+// in tools.ts for the mapping.
 export interface EditOperation {
-  type: 'add' | 'remove' | 'replace';
+  type: 'set' | 'delete' | 'insert' | 'move' | 'replace';
   path: string;
+  value?: unknown;
   content?: unknown;
+  index?: number;
+  fromIndex?: number;
+  toIndex?: number;
 }
 
 export interface ApplyEditsRequest {
