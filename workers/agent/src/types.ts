@@ -5,6 +5,7 @@ export interface Env {
   // Environment vars
   ENVIRONMENT: string;
   CSS_BACKEND_URL: string;
+  MEDIA_WORKER_URL: string;
   AI_GATEWAY_ACCOUNT_ID: string;
   AI_GATEWAY_NAME: string;
 

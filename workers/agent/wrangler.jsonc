@@ -18,7 +18,8 @@
     "ENVIRONMENT": "local",
     "CSS_BACKEND_URL": "http://localhost:8787",
     "AI_GATEWAY_ACCOUNT_ID": "80174c9d7c006c2f1841b8d99c8803fa",
-    "AI_GATEWAY_NAME": "p1-chatbot"
+    "AI_GATEWAY_NAME": "p1-chatbot",
+    "MEDIA_WORKER_URL": "https://p1-media.chris-801.workers.dev"
   },
   "env": {
     "sbx1": {
@@ -26,7 +27,8 @@
         "ENVIRONMENT": "sbx1",
         "CSS_BACKEND_URL": "https://collaborative-state-worker-sbx1.chris-801.workers.dev",
         "AI_GATEWAY_ACCOUNT_ID": "80174c9d7c006c2f1841b8d99c8803fa",
-        "AI_GATEWAY_NAME": "p1-chatbot"
+        "AI_GATEWAY_NAME": "p1-chatbot",
+        "MEDIA_WORKER_URL": "https://p1-media.chris-801.workers.dev"
       },
       "durable_objects": {
         "bindings": [

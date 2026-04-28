@@ -51,6 +51,46 @@ export function injectPuckIds(content: unknown): unknown {
   return content;
 }
 
+function getAtPath(obj: unknown, path: string): unknown {
+  return path.split('.').reduce<unknown>((cur, key) => {
+    if (cur === null || cur === undefined) return undefined;
+    if (Array.isArray(cur)) return cur[parseInt(key, 10)];
+    return (cur as Record<string, unknown>)[key];
+  }, obj);
+}
+
+function assertNoNewKeys(existing: unknown, replacement: unknown, path: string): void {
+  if (Array.isArray(existing) && Array.isArray(replacement)) {
+    const ref = existing[0];
+    if (ref === undefined) return;
+    for (let i = 0; i < replacement.length; i++) {
+      assertNoNewKeys(ref, replacement[i], `${path}.${i}`);
+    }
+    return;
+  }
+  if (
+    existing !== null && typeof existing === 'object' && !Array.isArray(existing) &&
+    replacement !== null && typeof replacement === 'object' && !Array.isArray(replacement)
+  ) {
+    const existingKeys = Object.keys(existing as object);
+    const invalidKeys = Object.keys(replacement as object).filter(k => !existingKeys.includes(k));
+    if (invalidKeys.length > 0) {
+      throw new Error(
+        `Invalid key(s) at "${path}": ${invalidKeys.map(k => `"${k}"`).join(', ')} ` +
+        `do not exist in the component schema. Valid keys are: ${existingKeys.join(', ')}. ` +
+        `Do not rename or add keys — only change values.`
+      );
+    }
+    for (const key of Object.keys(replacement as object)) {
+      assertNoNewKeys(
+        (existing as Record<string, unknown>)[key],
+        (replacement as Record<string, unknown>)[key],
+        `${path}.${key}`,
+      );
+    }
+  }
+}
+
 // Anthropic tool definitions for CSS capabilities.
 // list_sites / list_branches / list_documents are intentionally excluded — the
 // site, branch, and document are always provided in the editor context.
@@ -112,7 +152,7 @@ export const CSS_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'apply_document_edits',
-    description: 'Apply edit operations to the document. Path uses dot-notation: "content.0.props.title" NOT "content[0]".',
+    description: 'Apply edit operations to the document. Path uses dot-notation: "content.0.props.title" NOT "content[0]". Never rename or add keys — only change values. Field names must match the component schema exactly.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -223,16 +263,77 @@ export const CSS_TOOLS: Anthropic.Tool[] = [
   },
 ];
 
-// Tool name union for type safety
-type ToolName = (typeof CSS_TOOLS)[number]['name'];
+// Tool definitions for web/media capabilities
+export const WEB_TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'list_media',
+    description: 'List media files available in the site media library. Optionally filter by filename substring.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        site_id: { type: 'string' },
+        search: { type: 'string', description: 'Optional filename substring filter' },
+      },
+      required: ['site_id'],
+    },
+  },
+  {
+    name: 'fetch_page',
+    description: 'Fetch a public web page and extract its title, meta description, headings, paragraphs, and images as structured text. Only works with public http/https URLs — not localhost or private IP ranges.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        url: { type: 'string', description: 'The http or https URL to fetch' },
+      },
+      required: ['url'],
+    },
+  },
+];
 
-// Execute a tool call from Claude against the CSS backend
+// Tool name union for type safety
+type ToolName = (typeof CSS_TOOLS)[number]['name'] | (typeof WEB_TOOLS)[number]['name'];
+
+// Validate that a URL is safe to fetch (public http/https only)
+export function validatePublicUrl(raw: string): URL {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`Invalid URL: ${raw}`);
+  }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`URL must use http or https protocol`);
+  }
+
+  const host = url.hostname.toLowerCase();
+
+  // Reject localhost variants
+  if (host === 'localhost' || host === '::1' || host === '[::1]') {
+    throw new Error(`Fetching localhost URLs is not allowed`);
+  }
+
+  // Reject private IPv4 ranges: 127.x, 10.x, 192.168.x, 172.16-31.x
+  const privatePatterns = [
+    /^127\./,
+    /^10\./,
+    /^192\.168\./,
+    /^172\.(1[6-9]|2\d|3[01])\./,
+  ];
+  if (privatePatterns.some(p => p.test(host))) {
+    throw new Error(`Fetching private IP addresses is not allowed`);
+  }
+
+  return url;
+}
+
+// Execute a tool call from Claude against the CSS backend or web tools
 export async function executeTool(
   toolName: string,
   toolInput: Record<string, unknown>,
   cssApi: McpApiClient,
   userId: string,
-  hints?: { documentId?: string },
+  webConfig?: { token: string; mediaWorkerUrl: string },
 ): Promise<unknown> {
   const name = toolName as ToolName;
 
@@ -246,13 +347,22 @@ export async function executeTool(
     case 'list_documents':
       return cssApi.listDocuments(toolInput.site_id as string, toolInput.branch_id as string);
 
-    case 'list_components':
-      return cssApi.listComponents(toolInput.site_id as string, toolInput.branch_id as string);
+    case 'list_components': {
+      const result = await cssApi.listComponents(toolInput.site_id as string, toolInput.branch_id as string);
+      return (result.components as Array<Record<string, unknown>>).map(c => ({
+        name: c.name,
+        defaultProps: c.defaultProps,
+        ...(c.ai && (c.ai as Record<string, unknown>).instructions
+          ? { instructions: (c.ai as Record<string, unknown>).instructions }
+          : {}),
+      }));
+    }
 
     case 'get_document': {
       const siteId = toolInput.site_id as string;
       const branchId = toolInput.branch_id as string;
-      const documentPath = toolInput.document_path as string;
+      const rawPath = toolInput.document_path as string;
+      const documentPath = rawPath.startsWith('/') ? rawPath.slice(1) : rawPath;
       const docs = await cssApi.listDocuments(siteId, branchId, { pathPrefix: documentPath });
       const doc = docs.documents.find(d => d.path === documentPath);
       if (!doc) throw new Error(`Document not found: ${documentPath}`);
@@ -264,7 +374,6 @@ export async function executeTool(
         siteId: toolInput.site_id as string,
         branchId: toolInput.branch_id as string,
         documentPath: toolInput.document_path as string,
-        documentId: hints?.documentId,
         intent: toolInput.intent as string,
         targetRegions: toolInput.target_regions as string[],
         trigger: 'human_requested',
@@ -276,7 +385,6 @@ export async function executeTool(
         siteId: toolInput.site_id as string,
         branchId: toolInput.branch_id as string,
         documentPath: toolInput.document_path as string,
-        documentId: hints?.documentId,
         intent: toolInput.intent as string,
         targetRegions: toolInput.target_regions as string[],
         trigger: 'human_requested',
@@ -299,11 +407,40 @@ export async function executeTool(
         }
         return normalized;
       });
+
+      try {
+        const siteId = toolInput.site_id as string;
+        const branchId = toolInput.branch_id as string;
+        const rawDocPath = toolInput.document_path as string;
+        const documentPath = rawDocPath.startsWith('/') ? rawDocPath.slice(1) : rawDocPath;
+        const docs = await cssApi.listDocuments(siteId, branchId, { pathPrefix: documentPath });
+        const doc = docs.documents.find(d => d.path === documentPath);
+        if (doc) {
+          const version = await cssApi.getDocumentLatestVersion(siteId, branchId, doc.id);
+          const snapshot = version.snapshot;
+          for (const op of operations) {
+            if (op.type === 'replace' && op.content !== undefined) {
+              assertNoNewKeys(getAtPath(snapshot, op.path), op.content, op.path);
+            } else if (op.type === 'add' && op.content !== undefined) {
+              const segments = op.path.split('.');
+              const parentPath = segments.slice(0, -1).join('.');
+              const parentVal = parentPath ? getAtPath(snapshot, parentPath) : snapshot;
+              if (Array.isArray(parentVal) && parentVal.length > 0) {
+                assertNoNewKeys(parentVal[0], op.content, op.path);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith('Invalid key(s)')) {
+          throw err;
+        }
+      }
+
       return cssApi.applyEdits({
         siteId: toolInput.site_id as string,
         branchId: toolInput.branch_id as string,
         documentPath: toolInput.document_path as string,
-        documentId: hints?.documentId,
         editSessionId: toolInput.edit_session_id as string,
         operations,
       });
@@ -314,7 +451,6 @@ export async function executeTool(
         siteId: toolInput.site_id as string,
         branchId: toolInput.branch_id as string,
         documentPath: toolInput.document_path as string,
-        documentId: hints?.documentId,
         editSessionId: toolInput.edit_session_id as string,
       });
 
@@ -323,7 +459,6 @@ export async function executeTool(
         siteId: toolInput.site_id as string,
         branchId: toolInput.branch_id as string,
         documentPath: toolInput.document_path as string,
-        documentId: hints?.documentId,
         editSessionId: toolInput.edit_session_id as string,
         reason: toolInput.reason as string | undefined,
       });
@@ -353,8 +488,14 @@ export async function executeTool(
       }>;
 
       // Validate all component types against the registry — never allow invented names
-      const registryNames = await cssApi.listComponentNames(toolInput.site_id as string, toolInput.branch_id as string);
-      const validNames = new Set(registryNames);
+      const registryComponents = await cssApi.listComponents(toolInput.site_id as string, toolInput.branch_id as string);
+      const schemaMap = new Map<string, Record<string, unknown>>();
+      for (const comp of registryComponents.components as Array<Record<string, unknown>>) {
+        if (typeof comp.name === 'string') {
+          schemaMap.set(comp.name, comp);
+        }
+      }
+      const validNames = new Set(schemaMap.keys());
       const invalid = components.map(c => c.type).filter(t => !validNames.has(t));
       if (invalid.length > 0) {
         throw new Error(
@@ -362,34 +503,198 @@ export async function executeTool(
         );
       }
 
-      // Build valid Puck data, routing slotted components into zones
+      // Validate props and build component instances with fresh ULIDs
       interface PuckComponent { type: string; props: Record<string, unknown> & { id: string } }
-      const content: PuckComponent[] = [];
-      const zones: Record<string, PuckComponent[]> = {};
+      const contentComponents: PuckComponent[] = [];
 
       for (const component of components) {
-        const id = generateULID();
-        const instance: PuckComponent = { type: component.type, props: { ...component.props, id } };
-        if (component.parentId !== undefined && component.zone !== undefined) {
-          const zoneKey = `${component.parentId}:${component.zone}`;
-          zones[zoneKey] ??= [];
-          zones[zoneKey].push(instance);
-        } else {
-          content.push(instance);
+        const schema = schemaMap.get(component.type);
+        const defaultProps = schema?.defaultProps as Record<string, unknown> | undefined;
+        if (defaultProps) {
+          // Exclude id from validation — it's never in defaultProps but we always inject it
+          const { id: _ignore, ...propsForValidation } = component.props;
+          assertNoNewKeys(defaultProps, propsForValidation, `${component.type}.props`);
         }
+        // Overwrite any agent-provided id with a fresh ULID
+        const id = generateULID();
+        contentComponents.push({ type: component.type, props: { ...component.props, id } });
       }
 
-      const snapshot = {
-        content,
-        root: { props: toolInput.root_props ?? {} },
-        ...(Object.keys(zones).length > 0 && { zones }),
+      const siteId = toolInput.site_id as string;
+      const branchId = toolInput.branch_id as string;
+
+      // Step 1: Create the document (CRDT layer starts empty regardless of initial snapshot)
+      const createResult = await cssApi.createDocument(siteId, branchId, documentPath, {
+        content: [], root: { props: toolInput.root_props ?? {} }, zones: {},
+      });
+
+      if (contentComponents.length === 0) {
+        return createResult;
+      }
+
+      // Step 2: Apply components via edit session so the CRDT layer picks them up
+      const editCheck = await cssApi.canAgentEdit({
+        siteId, branchId, documentPath,
+        intent: 'Populating new page with initial components',
+        targetRegions: ['content'],
+        trigger: 'human_requested',
+        requestedById: userId,
+      });
+      if (!editCheck.canEdit) {
+        return { ...createResult, warning: `Page created but could not populate components: ${editCheck.reason ?? 'edit not allowed'}` };
+      }
+
+      const editSession = await cssApi.startAgentEdit({
+        siteId, branchId, documentPath,
+        intent: 'Populating new page with initial components',
+        targetRegions: ['content'],
+        trigger: 'human_requested',
+        requestedById: userId,
+      });
+
+      let editsApplied = false;
+      try {
+        // Add all components via a single replace on content — injectPuckIds handles IDs
+        await cssApi.applyEdits({
+          siteId, branchId, documentPath,
+          editSessionId: editSession.editSessionId,
+          operations: [{
+            type: 'replace',
+            path: 'content',
+            content: contentComponents,
+          }],
+        });
+
+        // Set root props if provided
+        if (toolInput.root_props && Object.keys(toolInput.root_props as object).length > 0) {
+          await cssApi.applyEdits({
+            siteId, branchId, documentPath,
+            editSessionId: editSession.editSessionId,
+            operations: [{
+              type: 'replace',
+              path: 'root.props',
+              content: toolInput.root_props,
+            }],
+          });
+        }
+
+        editsApplied = true;
+        await cssApi.completeAgentEdit({ siteId, branchId, documentPath, editSessionId: editSession.editSessionId });
+      } catch (err) {
+        // Only abort if edits haven't been applied yet — aborting after a successful
+        // applyEdits could roll back components already written to the CRDT.
+        if (!editsApplied) {
+          await cssApi.abortAgentEdit({ siteId, branchId, documentPath, editSessionId: editSession.editSessionId, reason: String(err) }).catch(() => undefined);
+        }
+        throw err;
+      }
+
+      return {
+        ...createResult,
+        components: contentComponents.map(c => ({ type: c.type, id: c.props.id })),
       };
-      return cssApi.createDocument(
-        toolInput.site_id as string,
-        toolInput.branch_id as string,
-        documentPath,
-        snapshot,
-      );
+    }
+
+    case 'list_media': {
+      if (!webConfig) throw new Error('list_media is not available in this context');
+      const { mediaWorkerUrl, token } = webConfig;
+      const siteId = toolInput.site_id as string;
+      const search = toolInput.search as string | undefined;
+      const url = new URL(`${mediaWorkerUrl}/media`);
+      url.searchParams.set('siteId', siteId);
+      if (search) url.searchParams.set('search', search);
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        throw new Error(`Media worker returned ${res.status}: ${await res.text()}`);
+      }
+      return res.json() as Promise<Array<{ key: string; url: string; filename: string; size: number; lastModified: string }>>;
+    }
+
+    case 'fetch_page': {
+      const rawUrl = toolInput.url as string;
+      const safeUrl = validatePublicUrl(rawUrl);
+
+      const response = await fetch(safeUrl.toString());
+      if (!response.ok) {
+        throw new Error(`fetch_page: ${safeUrl} returned HTTP ${response.status}`);
+      }
+
+      const MAX_CHARS = 5000;
+      const chunks: string[] = [];
+      let charCount = 0;
+
+      function addChunk(label: string, value: string): void {
+        if (charCount >= MAX_CHARS) return;
+        const piece = `${label}: ${value}\n`;
+        const remaining = MAX_CHARS - charCount;
+        chunks.push(piece.slice(0, remaining));
+        charCount += piece.length;
+      }
+
+      // Accumulators for text nodes that span multiple chunks
+      let titleBuf = '';
+      let headingBuf = '';
+      let paragraphBuf = '';
+      let headingTag = '';
+
+      const rewriter = new HTMLRewriter()
+        .on('title', {
+          text(chunk) {
+            titleBuf += chunk.text;
+            if (chunk.lastInTextNode) {
+              if (titleBuf.trim()) addChunk('Title', titleBuf.trim());
+              titleBuf = '';
+            }
+          },
+        })
+        .on('meta[name="description"]', {
+          element(el) {
+            const content = el.getAttribute('content');
+            if (content && content.trim()) addChunk('Description', content.trim());
+          },
+        })
+        .on('h1,h2,h3,h4,h5,h6', {
+          element(el) {
+            headingTag = el.tagName.toUpperCase();
+            headingBuf = '';
+          },
+          text(chunk) {
+            headingBuf += chunk.text;
+            if (chunk.lastInTextNode) {
+              if (headingBuf.trim()) addChunk(headingTag, headingBuf.trim());
+              headingBuf = '';
+            }
+          },
+        })
+        .on('p', {
+          element() {
+            paragraphBuf = '';
+          },
+          text(chunk) {
+            paragraphBuf += chunk.text;
+            if (chunk.lastInTextNode) {
+              if (paragraphBuf.trim()) addChunk('P', paragraphBuf.trim());
+              paragraphBuf = '';
+            }
+          },
+        })
+        .on('img', {
+          element(el) {
+            const src = el.getAttribute('src');
+            const alt = el.getAttribute('alt');
+            if (src) {
+              const desc = alt ? `${src} (alt: ${alt})` : src;
+              addChunk('IMG', desc);
+            }
+          },
+        });
+
+      const transformed = rewriter.transform(response);
+      await transformed.text(); // consume the full stream
+
+      return chunks.join('');
     }
 
     default:

@@ -3,7 +3,7 @@ import type { Connection, WSMessage } from 'agents';
 import Anthropic from '@anthropic-ai/sdk';
 import type { Env, IncomingMessage, OutgoingMessage, ChatContext } from './types.js';
 import { McpApiClient } from './css-api.js';
-import { CSS_TOOLS, executeTool } from './tools.js';
+import { CSS_TOOLS, WEB_TOOLS, executeTool } from './tools.js';
 import { validateCSSToken } from './auth.js';
 import { trimHistory, sanitizeHistory, trimForHistory } from './history.js';
 
@@ -16,6 +16,8 @@ You help users build and edit web pages using the Collaborative State System (CS
 
 ## Context you always have
 Every user message includes an editor context block with the current site ID, branch ID, and document path. Use these values directly — never call any tool to discover, list, or search for sites, branches, or documents. That information is already provided.
+
+Document paths do not have a leading slash (e.g. "new-from-sageview", not "/new-from-sageview"). Use the path exactly as provided in the editor context.
 
 ## Default scope
 All requests apply to the current document in the editor context unless the user explicitly names a different page, site, or branch.
@@ -52,7 +54,21 @@ Only when creating a brand-new page that the user has confirmed they want. Do no
 
 ## General guidance
 - Use dot-notation paths for edits: "content.0.props.title" not "content[0].props.title"
-- Always complete or abort edit sessions — never leave them open`;
+- Always complete or abort edit sessions — never leave them open
+- When editing component props, use **exactly** the field names from the document snapshot — never rename keys or invent new ones. If unsure of a component's valid field names, call \`list_components\` first — it returns the full component schema including all prop field names.
+
+## Additional tools
+
+### fetch_page
+- Use when the user asks to reference, analyze, or recreate an existing public web page
+- Do not use unless the user provides or asks about a specific URL
+- After fetching, summarize what you found before proposing any edits
+
+### list_media
+- Use when the user asks about available images or wants to add an image to the page
+- Always use the \`site_id\` from the editor context
+- When selecting an image for a page component, show the user the filename and URL and confirm before using it — unless the filename makes the content unambiguous (e.g., \`logo.png\`, \`hero-banner.jpg\`)
+- If \`search\` is provided, it filters by filename substring (case-insensitive)`;
 
 export class ChatAgent extends Agent<Env, AgentState> {
   initialState: AgentState = { conversationHistory: [] };
@@ -167,8 +183,9 @@ export class ChatAgent extends Agent<Env, AgentState> {
           system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
           messages: apiMessages,
           tools: [
-            ...CSS_TOOLS.slice(0, -1),
-            { ...CSS_TOOLS[CSS_TOOLS.length - 1], cache_control: { type: 'ephemeral' } },
+            ...CSS_TOOLS,
+            ...WEB_TOOLS.slice(0, -1),
+            { ...WEB_TOOLS[WEB_TOOLS.length - 1], cache_control: { type: 'ephemeral' } },
           ],
         });
 
@@ -194,7 +211,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
           let result: unknown;
           let isError = false;
           try {
-            result = await executeTool(block.name, block.input as Record<string, unknown>, cssApi, user.id, { documentId: context.documentId });
+            result = await executeTool(block.name, block.input as Record<string, unknown>, cssApi, user.id, { token: context.token, mediaWorkerUrl: this.env.MEDIA_WORKER_URL });
 
             // Track edit session lifecycle for cleanup on failure
             const input = block.input as Record<string, unknown>;
