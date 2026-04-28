@@ -435,6 +435,26 @@ async function checkUserAllowlist(principal: AuthenticatedPrincipal): Promise<Re
         'UPDATE app.users SET principal_id = $1, auth_provider = $2, name = COALESCE($3, name), avatar_url = COALESCE($4, avatar_url), updated_at = NOW() WHERE id = $5',
         [principal.id, principal.authProvider ?? 'unknown', principal.name ?? null, principal.avatarUrl ?? null, userRow.id],
       );
+
+      // Self-heal orphan user_site_roles rows from before dbUserId was used.
+      // Historical writes stored principal.id where users.id was expected.
+      // Now that this user has been linked, rewrite
+      // those rows so authorization and listing queries find them.
+      // Drop orphans that would collide with an existing canonical row first
+      // to satisfy the (user_id, site_id, source) unique constraint.
+      await query(
+        `DELETE FROM app.user_site_roles orphan
+         USING app.user_site_roles canonical
+         WHERE orphan.user_id = $1
+           AND canonical.user_id = $2
+           AND canonical.site_id = orphan.site_id
+           AND canonical.source = orphan.source`,
+        [principal.id, userRow.id],
+      );
+      await query(
+        'UPDATE app.user_site_roles SET user_id = $1 WHERE user_id = $2',
+        [userRow.id, principal.id],
+      );
     }
 
     // Refresh DB name/avatar when returning user's JWT has newer values
