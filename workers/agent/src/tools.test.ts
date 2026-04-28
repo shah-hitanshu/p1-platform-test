@@ -540,7 +540,7 @@ describe('executeTool apply_document_edits registry-based validation', () => {
     expect(cssApi.listComponents).not.toHaveBeenCalled();
   });
 
-  it('does not call listComponents for remove/move/reorder ops', async () => {
+  it('does not call listComponents for remove ops', async () => {
     const cssApi = makeCssApiWithRegistry(heroRegistry);
     await executeTool('apply_document_edits', {
       ...baseInput,
