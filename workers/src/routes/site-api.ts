@@ -13,7 +13,6 @@ import {
   deleteSite,
   listSites,
   listBranches,
-  createMainBranch,
   getMainBranch,
   DuplicatePantheonSiteIdError,
   InvalidSiteParamsError,
@@ -110,13 +109,7 @@ async function handleCreateSite(
     name: body.name,
     workflowSettings: body.workflowSettings,
     allowedOrigins: body.allowedOrigins,
-  });
-
-  // Automatically create the main branch for the new site
-  // The main branch represents the production state
-  await createMainBranch({
-    siteId: site.id,
-    createdById: context.principal.id,
+    creatorId: context.principal.dbUserId ?? context.principal.id,
     createdByType: context.principal.type as 'user' | 'agent',
   });
 
@@ -126,7 +119,10 @@ async function handleCreateSite(
 /**
  * Handle GET /api/sites - List Sites
  */
-async function handleListSites(request: Request): Promise<Response> {
+async function handleListSites(
+  request: Request,
+  context: SiteRouteContext,
+): Promise<Response> {
   const url = new URL(request.url);
   const limitParam = url.searchParams.get('limit');
   const offsetParam = url.searchParams.get('offset');
@@ -140,6 +136,8 @@ async function handleListSites(request: Request): Promise<Response> {
   const sites = await listSites({
     limit: pagination.limit,
     offset: pagination.offset,
+    principalId: context.principal.dbUserId ?? context.principal.id,
+    principalType: context.principal.type as 'user' | 'agent',
   });
 
   return jsonResponse({ sites });
@@ -260,7 +258,7 @@ export async function handleSiteRoutes(
     // Routes without siteId (collection operations)
     switch (method) {
       case 'GET':
-        return await handleListSites(request);
+        return await handleListSites(request, context);
       case 'POST':
         return await handleCreateSite(request, context);
       default:

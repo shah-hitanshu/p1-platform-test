@@ -32,15 +32,16 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
     });
 
     describe('Pantheon baseline role only (no branch grant)', () => {
-      it('should return ADMIN for site owner with DB role', async () => {
+      it('should return ADMIN for site owner', async () => {
         const { getEffectiveRole } = await import('../../src/auth/authorization');
         const db = await import('../../src/db');
 
-        const principal = createPrincipal();
+        const principal = createPrincipal({
+          pantheonSiteRoles: { 'site-1': 'owner' },
+        });
 
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [{ role: 'owner' }] }) // user_site_roles
-          .mockResolvedValueOnce({ rows: [] }); // branch_grants
+        // No branch grant exists
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
         const result = await getEffectiveRole(principal, 'site-1', 'branch-1');
 
@@ -49,30 +50,30 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
         expect(result.role.canManageGrants).toBe(true);
       });
 
-      it('should return ADMIN for site admin with DB role', async () => {
+      it('should return ADMIN for site admin', async () => {
         const { getEffectiveRole } = await import('../../src/auth/authorization');
         const db = await import('../../src/db');
 
-        const principal = createPrincipal();
+        const principal = createPrincipal({
+          pantheonSiteRoles: { 'site-1': 'admin' },
+        });
 
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [{ role: 'admin' }] }) // user_site_roles
-          .mockResolvedValueOnce({ rows: [] }); // branch_grants
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
         const result = await getEffectiveRole(principal, 'site-1', 'branch-1');
 
         expect(result.roleName).toBe('ADMIN');
       });
 
-      it('should return EDITOR for developer with DB role', async () => {
+      it('should return EDITOR for developer', async () => {
         const { getEffectiveRole } = await import('../../src/auth/authorization');
         const db = await import('../../src/db');
 
-        const principal = createPrincipal();
+        const principal = createPrincipal({
+          pantheonSiteRoles: { 'site-1': 'developer' },
+        });
 
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [{ role: 'developer' }] }) // user_site_roles
-          .mockResolvedValueOnce({ rows: [] }); // branch_grants
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
         const result = await getEffectiveRole(principal, 'site-1', 'branch-1');
 
@@ -81,22 +82,22 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
         expect(result.role.canMergeToMain).toBe(false);
       });
 
-      it('should return EDITOR for team_member with DB role', async () => {
+      it('should return EDITOR for team_member', async () => {
         const { getEffectiveRole } = await import('../../src/auth/authorization');
         const db = await import('../../src/db');
 
-        const principal = createPrincipal();
+        const principal = createPrincipal({
+          pantheonSiteRoles: { 'site-1': 'team_member' },
+        });
 
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [{ role: 'team_member' }] }) // user_site_roles
-          .mockResolvedValueOnce({ rows: [] }); // branch_grants
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
         const result = await getEffectiveRole(principal, 'site-1', 'branch-1');
 
         expect(result.roleName).toBe('EDITOR');
       });
 
-      it('should default to ADMIN for user with no explicit site role', async () => {
+      it('should return NO_ACCESS for user with no site role', async () => {
         const { getEffectiveRole } = await import('../../src/auth/authorization');
         const db = await import('../../src/db');
 
@@ -108,45 +109,47 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
 
         const result = await getEffectiveRole(principal, 'site-1', 'branch-1');
 
-        expect(result.roleName).toBe('ADMIN');
-        expect(result.role.canView).toBe(true);
-        expect(result.role.canManageGrants).toBe(true);
+        expect(result.roleName).toBe('NO_ACCESS');
+        expect(result.role.canView).toBe(false);
       });
     });
 
     describe('Branch grant elevation', () => {
-      it('should keep ADMIN default when branch grant is VIEWER', async () => {
+      it('should elevate NO_ACCESS to VIEWER via branch grant', async () => {
         const { getEffectiveRole } = await import('../../src/auth/authorization');
         const db = await import('../../src/db');
 
         const principal = createPrincipal({
-          pantheonSiteRoles: {}, // No Pantheon role → defaults to ADMIN
+          pantheonSiteRoles: {}, // No Pantheon role
         });
 
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [] }) // user_site_roles → defaults to ADMIN
-          .mockResolvedValueOnce({ rows: [{ role: 'VIEWER' }] }); // branch_grants
+        // Branch grant gives VIEWER
+        vi.mocked(db.query).mockResolvedValue({
+          rows: [{ role: 'VIEWER' }],
+        });
 
         const result = await getEffectiveRole(principal, 'site-1', 'branch-1');
 
-        expect(result.roleName).toBe('ADMIN');
+        expect(result.roleName).toBe('VIEWER');
+        expect(result.role.canView).toBe(true);
       });
 
-      it('should keep ADMIN default when branch grant is EDITOR', async () => {
+      it('should elevate VIEWER to EDITOR via branch grant', async () => {
         const { getEffectiveRole } = await import('../../src/auth/authorization');
         const db = await import('../../src/db');
 
         const principal = createPrincipal({
-          pantheonSiteRoles: {}, // No Pantheon role → defaults to ADMIN
+          pantheonSiteRoles: {}, // Would be NO_ACCESS
         });
 
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [] }) // user_site_roles → defaults to ADMIN
-          .mockResolvedValueOnce({ rows: [{ role: 'EDITOR' }] }); // branch_grants
+        vi.mocked(db.query).mockResolvedValue({
+          rows: [{ role: 'EDITOR' }],
+        });
 
         const result = await getEffectiveRole(principal, 'site-1', 'branch-1');
 
-        expect(result.roleName).toBe('ADMIN');
+        expect(result.roleName).toBe('EDITOR');
+        expect(result.role.canEditDocuments).toBe(true);
       });
 
       it('should elevate EDITOR to ADMIN via branch grant', async () => {
@@ -187,15 +190,15 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
         expect(result.roleName).toBe('ADMIN');
       });
 
-      it('should use DB role when branch grant is undefined', async () => {
+      it('should use Pantheon role when branch grant is undefined', async () => {
         const { getEffectiveRole } = await import('../../src/auth/authorization');
         const db = await import('../../src/db');
 
-        const principal = createPrincipal();
+        const principal = createPrincipal({
+          pantheonSiteRoles: { 'site-1': 'developer' },
+        });
 
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [{ role: 'developer' }] }) // user_site_roles
-          .mockResolvedValueOnce({ rows: [] }); // branch_grants
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
         const result = await getEffectiveRole(principal, 'site-1', 'branch-1');
 
@@ -263,35 +266,28 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
     });
 
     describe('Multiple sites', () => {
-      it('should use correct DB role per site', async () => {
+      it('should use correct site role from pantheonSiteRoles map', async () => {
         const { getEffectiveRole } = await import('../../src/auth/authorization');
         const db = await import('../../src/db');
 
-        const principal = createPrincipal();
+        const principal = createPrincipal({
+          pantheonSiteRoles: {
+            'site-1': 'owner',     // ADMIN
+            'site-2': 'developer', // EDITOR
+            'site-3': 'team_member', // EDITOR
+          },
+        });
 
-        // site-1: owner in DB
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [{ role: 'owner' }] }) // user_site_roles
-          .mockResolvedValueOnce({ rows: [] }); // branch_grants
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
         const result1 = await getEffectiveRole(principal, 'site-1', 'branch-1');
         expect(result1.roleName).toBe('ADMIN');
 
-        // site-2: developer in DB
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [{ role: 'developer' }] }) // user_site_roles
-          .mockResolvedValueOnce({ rows: [] }); // branch_grants
-
         const result2 = await getEffectiveRole(principal, 'site-2', 'branch-1');
         expect(result2.roleName).toBe('EDITOR');
 
-        // site-unknown: no DB role → defaults to ADMIN
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [] }) // user_site_roles
-          .mockResolvedValueOnce({ rows: [] }); // branch_grants
-
         const result3 = await getEffectiveRole(principal, 'site-unknown', 'branch-1');
-        expect(result3.roleName).toBe('ADMIN');
+        expect(result3.roleName).toBe('NO_ACCESS');
       });
     });
   });
@@ -301,51 +297,41 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
       vi.resetAllMocks();
     });
 
-    it('should return true when DB role has the permission', async () => {
+    it('should return true when role has the permission', async () => {
       const { hasPermission } = await import('../../src/auth/authorization');
       const db = await import('../../src/db');
 
-      const principal = createPrincipal();
+      const principal = createPrincipal({
+        pantheonSiteRoles: { 'site-1': 'owner' },
+      });
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ role: 'owner' }] }) // user_site_roles
-        .mockResolvedValueOnce({ rows: [] }); // branch_grants
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       const canView = await hasPermission(principal, 'site-1', 'branch-1', 'canView');
       expect(canView).toBe(true);
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ role: 'owner' }] }) // user_site_roles
-        .mockResolvedValueOnce({ rows: [] }); // branch_grants
 
       const canMergeToMain = await hasPermission(principal, 'site-1', 'branch-1', 'canMergeToMain');
       expect(canMergeToMain).toBe(true);
     });
 
-    it('should return false when DB role lacks the permission', async () => {
+    it('should return false when role lacks the permission', async () => {
       const { hasPermission } = await import('../../src/auth/authorization');
       const db = await import('../../src/db');
 
-      const principal = createPrincipal();
+      const principal = createPrincipal({
+        pantheonSiteRoles: { 'site-1': 'developer' }, // EDITOR
+      });
 
-      // First call: canMergeToMain
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ role: 'developer' }] }) // user_site_roles → EDITOR
-        .mockResolvedValueOnce({ rows: [] }); // branch_grants
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       const canMergeToMain = await hasPermission(principal, 'site-1', 'branch-1', 'canMergeToMain');
       expect(canMergeToMain).toBe(false);
-
-      // Second call: canManageGrants
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ role: 'developer' }] }) // user_site_roles → EDITOR
-        .mockResolvedValueOnce({ rows: [] }); // branch_grants
 
       const canManageGrants = await hasPermission(principal, 'site-1', 'branch-1', 'canManageGrants');
       expect(canManageGrants).toBe(false);
     });
 
-    it('should return true for user with no explicit role (defaults to ADMIN)', async () => {
+    it('should return false for NO_ACCESS users', async () => {
       const { hasPermission } = await import('../../src/auth/authorization');
       const db = await import('../../src/db');
 
@@ -356,7 +342,7 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
       vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       const canView = await hasPermission(principal, 'site-1', 'branch-1', 'canView');
-      expect(canView).toBe(true);
+      expect(canView).toBe(false);
     });
   });
 
@@ -369,11 +355,11 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
       const { assertPermission } = await import('../../src/auth/authorization');
       const db = await import('../../src/db');
 
-      const principal = createPrincipal();
+      const principal = createPrincipal({
+        pantheonSiteRoles: { 'site-1': 'owner' },
+      });
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ role: 'owner' }] }) // user_site_roles
-        .mockResolvedValueOnce({ rows: [] }); // branch_grants
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await expect(
         assertPermission(principal, 'site-1', 'branch-1', 'canView'),
@@ -384,11 +370,11 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
       const { assertPermission, AuthorizationError } = await import('../../src/auth/authorization');
       const db = await import('../../src/db');
 
-      const principal = createPrincipal();
+      const principal = createPrincipal({
+        pantheonSiteRoles: { 'site-1': 'developer' },
+      });
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ role: 'developer' }] }) // user_site_roles → EDITOR
-        .mockResolvedValueOnce({ rows: [] }); // branch_grants
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await expect(
         assertPermission(principal, 'site-1', 'branch-1', 'canMergeToMain'),
@@ -399,11 +385,11 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
       const { assertPermission, AuthorizationError } = await import('../../src/auth/authorization');
       const db = await import('../../src/db');
 
-      const principal = createPrincipal();
+      const principal = createPrincipal({
+        pantheonSiteRoles: { 'site-1': 'developer' },
+      });
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ role: 'developer' }] }) // user_site_roles → EDITOR
-        .mockResolvedValueOnce({ rows: [] }); // branch_grants
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       try {
         await assertPermission(principal, 'site-1', 'branch-1', 'canManageGrants');

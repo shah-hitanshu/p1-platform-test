@@ -176,6 +176,153 @@ describe('Phase 7.1.1b: Site API Routes', () => {
 
       expect(response.status).toBe(409);
     });
+
+    it('should pass creatorId to createSite for owner role assignment', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.createSite).mockResolvedValueOnce({
+        id: 'site-new',
+        pantheonSiteId: 'site-abc-123',
+        name: 'My Site',
+        allowedOrigins: [],
+        workflowSettings: {
+          mergeApprovalMode: 'optional',
+          minApprovers: 1,
+          allowSelfApproval: true,
+          approverMode: 'both',
+          approverMinRole: 'EDITOR',
+        },
+        createdAt: '2026-01-24T10:00:00.000Z',
+        updatedAt: '2026-01-24T10:00:00.000Z',
+      });
+
+      vi.mocked(services.createMainBranch).mockResolvedValueOnce({
+        id: 'branch-main-uuid',
+        siteId: 'site-new',
+        name: 'main',
+        description: 'Main branch',
+        status: 'active',
+        isMain: true,
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        updatedAt: '2026-01-24T10:00:00.000Z',
+      });
+
+      const request = new Request('https://api.example.com/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pantheonSiteId: 'site-abc-123',
+          name: 'My Site',
+        }),
+      });
+
+      await handleSiteRoutes(request, {
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(services.createSite).toHaveBeenCalledWith(
+        expect.objectContaining({ creatorId: 'user-1' }),
+      );
+    });
+
+    it('should use dbUserId as creatorId when available', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.createSite).mockResolvedValueOnce({
+        id: 'site-new',
+        pantheonSiteId: 'site-abc-456',
+        name: 'Another Site',
+        allowedOrigins: [],
+        workflowSettings: {
+          mergeApprovalMode: 'optional',
+          minApprovers: 1,
+          allowSelfApproval: true,
+          approverMode: 'both',
+          approverMinRole: 'EDITOR',
+        },
+        createdAt: '2026-01-24T10:00:00.000Z',
+        updatedAt: '2026-01-24T10:00:00.000Z',
+      });
+
+      vi.mocked(services.createMainBranch).mockResolvedValueOnce({
+        id: 'branch-main-uuid',
+        siteId: 'site-new',
+        name: 'main',
+        description: 'Main branch',
+        status: 'active',
+        isMain: true,
+        createdById: 'db-user-123',
+        createdByType: 'user',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        updatedAt: '2026-01-24T10:00:00.000Z',
+      });
+
+      const request = new Request('https://api.example.com/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pantheonSiteId: 'site-abc-456',
+          name: 'Another Site',
+        }),
+      });
+
+      await handleSiteRoutes(request, {
+        principal: {
+          id: 'provider-uuid',
+          type: 'user',
+          dbUserId: 'db-user-123',
+        },
+      });
+
+      expect(services.createSite).toHaveBeenCalledWith(
+        expect.objectContaining({ creatorId: 'db-user-123' }),
+      );
+    });
+
+    it('should pass creatorId and createdByType agent when principal is an agent', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.createSite).mockResolvedValueOnce({
+        id: 'site-new',
+        pantheonSiteId: 'site-abc-789',
+        name: 'Agent Site',
+        allowedOrigins: [],
+        workflowSettings: {
+          mergeApprovalMode: 'optional',
+          minApprovers: 1,
+          allowSelfApproval: true,
+          approverMode: 'both',
+          approverMinRole: 'EDITOR',
+        },
+        createdAt: '2026-01-24T10:00:00.000Z',
+        updatedAt: '2026-01-24T10:00:00.000Z',
+      });
+
+      const request = new Request('https://api.example.com/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pantheonSiteId: 'site-abc-789',
+          name: 'Agent Site',
+        }),
+      });
+
+      await handleSiteRoutes(request, {
+        principal: { id: 'agent-uuid', type: 'agent' },
+      });
+
+      expect(services.createSite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          creatorId: 'agent-uuid',
+          createdByType: 'agent',
+        }),
+      );
+    });
   });
 
   // ===========================================================================
@@ -250,10 +397,77 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      expect(services.listSites).toHaveBeenCalledWith({
-        limit: 20,
-        offset: 10,
+      expect(services.listSites).toHaveBeenCalledWith(
+        expect.objectContaining({ limit: 20, offset: 10 }),
+      );
+    });
+
+    it('should pass principalId from dbUserId for user-scoped filtering', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.listSites).mockResolvedValueOnce([]);
+
+      const request = new Request('https://api.example.com/api/sites', {
+        method: 'GET',
       });
+
+      await handleSiteRoutes(request, {
+        principal: {
+          id: 'provider-id',
+          type: 'user',
+          dbUserId: 'db-user-1',
+          pantheonSiteRoles: {},
+          tokenExpiry: '2026-01-24T10:00:00.000Z',
+        },
+      });
+
+      expect(services.listSites).toHaveBeenCalledWith(
+        expect.objectContaining({ principalId: 'db-user-1', principalType: 'user' }),
+      );
+    });
+
+    it('should fall back to principal.id when dbUserId is not set', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.listSites).mockResolvedValueOnce([]);
+
+      const request = new Request('https://api.example.com/api/sites', {
+        method: 'GET',
+      });
+
+      await handleSiteRoutes(request, {
+        principal: {
+          id: 'provider-id',
+          type: 'user',
+          pantheonSiteRoles: {},
+          tokenExpiry: '2026-01-24T10:00:00.000Z',
+        },
+      });
+
+      expect(services.listSites).toHaveBeenCalledWith(
+        expect.objectContaining({ principalId: 'provider-id' }),
+      );
+    });
+
+    it('should pass principalType agent when principal is an agent', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.listSites).mockResolvedValueOnce([]);
+
+      const request = new Request('https://api.example.com/api/sites', {
+        method: 'GET',
+      });
+
+      await handleSiteRoutes(request, {
+        principal: { id: 'agent-uuid', type: 'agent' },
+      });
+
+      expect(services.listSites).toHaveBeenCalledWith(
+        expect.objectContaining({ principalId: 'agent-uuid', principalType: 'agent' }),
+      );
     });
   });
 

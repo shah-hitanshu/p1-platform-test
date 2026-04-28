@@ -128,7 +128,10 @@ describe('Phase 3.1: Site Service', () => {
       // Simulate unique constraint violation
       const error = new Error('duplicate key value violates unique constraint');
       (error as NodeJS.ErrnoException).code = '23505';
-      vi.mocked(db.query).mockRejectedValue(error);
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockRejectedValueOnce(error)        // INSERT site fails
+        .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
 
       await expect(
         createSite({
@@ -176,6 +179,103 @@ describe('Phase 3.1: Site Service', () => {
         expect.stringContaining('INSERT INTO'),
         expect.arrayContaining(['pantheon-site-abc', 'Test Site']),
       );
+    });
+
+    it('should insert owner role in user_site_roles when creatorId is provided', async () => {
+      const { createSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockSiteRow({ id: 'site-new-123' });
+      // BEGIN, INSERT site, INSERT user_site_roles, INSERT main branch, COMMIT
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] })        // BEGIN
+        .mockResolvedValueOnce({ rows: [mockRow] })  // INSERT site
+        .mockResolvedValueOnce({ rows: [] })          // INSERT user_site_roles
+        .mockResolvedValueOnce({ rows: [{ id: 'branch-1', site_id: 'site-new-123', name: 'main', description: 'Main branch', status: 'active', is_main: true, source_branch_id: null, source_checkpoint_id: null, created_by_id: 'creator-user-id', created_by_type: 'user', created_at: '2026-01-23T10:00:00.000Z', updated_at: '2026-01-23T10:00:00.000Z' }] }) // INSERT main branch
+        .mockResolvedValueOnce({ rows: [] });         // COMMIT
+
+      await createSite({
+        pantheonSiteId: 'pantheon-site-abc',
+        name: 'Test Site',
+        creatorId: 'creator-user-id',
+      });
+
+      expect(db.query).toHaveBeenCalledTimes(5);
+      const calls = vi.mocked(db.query).mock.calls;
+      expect(calls[2][0]).toEqual(expect.stringContaining('INSERT INTO app.user_site_roles'));
+      expect(calls[2][1]).toEqual(['creator-user-id', 'site-new-123', 'owner', 'local', 'creator-user-id']);
+    });
+
+    it('should not insert any role when creatorId is omitted', async () => {
+      const { createSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockSiteRow();
+      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+
+      await createSite({
+        pantheonSiteId: 'pantheon-site-abc',
+        name: 'Test Site',
+      });
+
+      // BEGIN, INSERT site, INSERT main branch, COMMIT — no role INSERT
+      expect(db.query).toHaveBeenCalledTimes(4);
+      const calls = vi.mocked(db.query).mock.calls;
+      const hasRoleInsert = calls.some(
+        (call) => typeof call[0] === 'string' && (call[0].includes('user_site_roles') || call[0].includes('agent_site_roles')),
+      );
+      expect(hasRoleInsert).toBe(false);
+    });
+
+    it('should insert admin role in agent_site_roles when createdByType is agent', async () => {
+      const { createSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockSiteRow({ id: 'site-agent-123' });
+      // BEGIN, INSERT site, INSERT agent_site_roles (grantRole), INSERT main branch, COMMIT
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] })        // BEGIN
+        .mockResolvedValueOnce({ rows: [mockRow] })  // INSERT site
+        .mockResolvedValueOnce({ rows: [{ id: 'role-1', agent_id: 'agent-1', site_id: 'site-agent-123', role: 'admin', created_by_id: 'agent-1', created_at: '2026-01-23T10:00:00.000Z', revoked_at: null }] }) // INSERT agent_site_roles
+        .mockResolvedValueOnce({ rows: [{ id: 'branch-1', site_id: 'site-agent-123', name: 'main', description: 'Main branch', status: 'active', is_main: true, source_branch_id: null, source_checkpoint_id: null, created_by_id: 'agent-1', created_by_type: 'agent', created_at: '2026-01-23T10:00:00.000Z', updated_at: '2026-01-23T10:00:00.000Z' }] }) // INSERT main branch
+        .mockResolvedValueOnce({ rows: [] });         // COMMIT
+
+      await createSite({
+        pantheonSiteId: 'pantheon-site-abc',
+        name: 'Agent Site',
+        creatorId: 'agent-1',
+        createdByType: 'agent',
+      });
+
+      expect(db.query).toHaveBeenCalledTimes(5);
+      const calls = vi.mocked(db.query).mock.calls;
+      expect(calls[2][0]).toEqual(expect.stringContaining('INSERT INTO app.agent_site_roles'));
+    });
+
+    it('should not insert into user_site_roles when createdByType is agent', async () => {
+      const { createSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockSiteRow({ id: 'site-agent-456' });
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] })        // BEGIN
+        .mockResolvedValueOnce({ rows: [mockRow] })  // INSERT site
+        .mockResolvedValueOnce({ rows: [{ id: 'role-1', agent_id: 'agent-1', site_id: 'site-agent-456', role: 'admin', created_by_id: 'agent-1', created_at: '2026-01-23T10:00:00.000Z', revoked_at: null }] }) // INSERT agent_site_roles
+        .mockResolvedValueOnce({ rows: [{ id: 'branch-1', site_id: 'site-agent-456', name: 'main', description: 'Main branch', status: 'active', is_main: true, source_branch_id: null, source_checkpoint_id: null, created_by_id: 'agent-1', created_by_type: 'agent', created_at: '2026-01-23T10:00:00.000Z', updated_at: '2026-01-23T10:00:00.000Z' }] }) // INSERT main branch
+        .mockResolvedValueOnce({ rows: [] });         // COMMIT
+
+      await createSite({
+        pantheonSiteId: 'pantheon-site-abc',
+        name: 'Agent Site',
+        creatorId: 'agent-1',
+        createdByType: 'agent',
+      });
+
+      const calls = vi.mocked(db.query).mock.calls;
+      const hasUserRoleInsert = calls.some(
+        (call) => typeof call[0] === 'string' && call[0].includes('user_site_roles'),
+      );
+      expect(hasUserRoleInsert).toBe(false);
     });
   });
 
@@ -473,7 +573,7 @@ describe('Phase 3.1: Site Service', () => {
   });
 
   describe('listSites', () => {
-    it('should return all sites when no options provided', async () => {
+    it('should return sites for the given user', async () => {
       const { listSites } = await import('../../src/services/site-service');
       const db = await import('../../src/db');
 
@@ -484,7 +584,7 @@ describe('Phase 3.1: Site Service', () => {
       ];
       vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
 
-      const result = await listSites();
+      const result = await listSites({ principalId: 'user-1' });
 
       expect(result).toHaveLength(3);
       expect(result[0].id).toBe('site-1');
@@ -502,7 +602,7 @@ describe('Phase 3.1: Site Service', () => {
       ];
       vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
 
-      await listSites({ limit: 2 });
+      await listSites({ principalId: 'user-1', limit: 2 });
 
       expect(db.query).toHaveBeenCalledWith(
         expect.stringContaining('LIMIT'),
@@ -516,7 +616,7 @@ describe('Phase 3.1: Site Service', () => {
 
       vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
-      await listSites({ offset: 10 });
+      await listSites({ principalId: 'user-1', offset: 10 });
 
       expect(db.query).toHaveBeenCalledWith(
         expect.stringContaining('OFFSET'),
@@ -530,7 +630,7 @@ describe('Phase 3.1: Site Service', () => {
 
       vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
-      await listSites({ limit: 25, offset: 50 });
+      await listSites({ principalId: 'user-1', limit: 25, offset: 50 });
 
       expect(db.query).toHaveBeenCalledWith(
         expect.stringMatching(/LIMIT.*OFFSET|OFFSET.*LIMIT/),
@@ -538,13 +638,13 @@ describe('Phase 3.1: Site Service', () => {
       );
     });
 
-    it('should return empty array when no sites exist', async () => {
+    it('should return empty array when user has no sites', async () => {
       const { listSites } = await import('../../src/services/site-service');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
-      const result = await listSites();
+      const result = await listSites({ principalId: 'user-1' });
 
       expect(result).toEqual([]);
     });
@@ -562,13 +662,99 @@ describe('Phase 3.1: Site Service', () => {
       ];
       vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
 
-      const result = await listSites();
+      const result = await listSites({ principalId: 'user-1' });
 
       expect(result[0]).toMatchObject({
         id: 'site-1',
         pantheonSiteId: 'pantheon-1',
         name: 'First Site',
       });
+    });
+
+    it('should filter by principalId when provided', async () => {
+      const { listSites } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const mockRows = [
+        createMockSiteRow({ id: 'site-1', name: 'My Site' }),
+      ];
+      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+
+      const result = await listSites({ principalId: 'user-abc' });
+
+      expect(result).toHaveLength(1);
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringContaining('INNER JOIN app.user_site_roles'),
+        expect.arrayContaining(['user-abc']),
+      );
+    });
+
+    it('should support pagination with principalId filtering', async () => {
+      const { listSites } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      await listSites({ principalId: 'user-abc', limit: 10, offset: 20 });
+
+      const sql = vi.mocked(db.query).mock.calls[0][0];
+      expect(sql).toContain('INNER JOIN app.user_site_roles');
+      expect(sql).toContain('LIMIT');
+      expect(sql).toContain('OFFSET');
+    });
+
+    it('should return empty array when user has no site roles', async () => {
+      const { listSites } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      const result = await listSites({ principalId: 'user-no-sites' });
+
+      expect(result).toEqual([]);
+    });
+
+    it('should use DISTINCT to deduplicate multi-source roles', async () => {
+      const { listSites } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      await listSites({ principalId: 'user-abc' });
+
+      const sql = vi.mocked(db.query).mock.calls[0][0];
+      expect(sql).toContain('DISTINCT');
+    });
+
+    it('should query agent_site_roles when principalType is agent', async () => {
+      const { listSites } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      await listSites({ principalId: 'agent-abc', principalType: 'agent' });
+
+      const sql = vi.mocked(db.query).mock.calls[0][0] as string;
+      expect(sql).toContain('INNER JOIN app.agent_site_roles');
+      expect(sql).toContain('revoked_at IS NULL');
+      expect(db.query).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.arrayContaining(['agent-abc']),
+      );
+    });
+
+    it('should support pagination with agent principalType', async () => {
+      const { listSites } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      await listSites({ principalId: 'agent-abc', principalType: 'agent', limit: 10, offset: 20 });
+
+      const sql = vi.mocked(db.query).mock.calls[0][0] as string;
+      expect(sql).toContain('INNER JOIN app.agent_site_roles');
+      expect(sql).toContain('LIMIT');
+      expect(sql).toContain('OFFSET');
     });
   });
 

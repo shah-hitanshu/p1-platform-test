@@ -12,6 +12,9 @@ import type { AuthenticatedPrincipal, AuthProvider } from '../types';
 import type { IdentityProvider } from './identity-provider';
 import { providerSubToUuid } from './uuid-v5';
 
+// Auth0 action namespace for custom Pantheon claims
+const AUTH0_CLAIMS_NAMESPACE = 'http://oidc.panth.io/pantheon';
+
 /**
  * Configuration options for the Auth0IdentityProvider.
  */
@@ -117,9 +120,13 @@ export class Auth0IdentityProvider implements IdentityProvider {
         return null;
       }
 
+      // Email may be at the top level or nested in custom Auth0 claims
+      const pantheonClaims = payload[AUTH0_CLAIMS_NAMESPACE] as
+        | { user_email?: string }
+        | undefined;
       const email = typeof payload.email === 'string'
         ? payload.email
-        : undefined;
+        : (pantheonClaims?.user_email ?? undefined);
       const scopeStr = typeof payload.scope === 'string'
         ? payload.scope
         : undefined;

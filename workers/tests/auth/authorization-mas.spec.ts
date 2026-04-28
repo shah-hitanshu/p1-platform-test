@@ -215,13 +215,14 @@ describe('Dual-Source Authorization (MAS Integration)', () => {
 
       const principal = createPrincipal({
         authProvider: 'google',
+        pantheonSiteRoles: { 'site-1': 'developer' },
       });
 
       const masClient = createMockMASClient();
 
-      // Legacy single-source query — DB has developer role
+      // Legacy single-source query
       vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ role: 'developer' }] }) // user_site_roles
+        .mockResolvedValueOnce({ rows: [] }) // user_site_roles (single source)
         .mockResolvedValueOnce({ rows: [] }); // branch_grants
 
       const result = await getEffectiveRole(principal, 'site-1', 'branch-1', masClient);
@@ -229,7 +230,7 @@ describe('Dual-Source Authorization (MAS Integration)', () => {
       // Should NOT call MAS
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(masClient.getUserSiteRole).not.toHaveBeenCalled();
-      // Should use DB role
+      // Should fall back to JWT
       expect(result.roleName).toBe('EDITOR');
     });
 

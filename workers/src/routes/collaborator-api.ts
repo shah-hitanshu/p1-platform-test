@@ -79,7 +79,12 @@ async function handleGrantAccess(
     return errorResponse('role is required', 400);
   }
 
-  const validRoles: PantheonRole[] = ['owner', 'admin', 'developer', 'team_member'];
+  const validRoles: PantheonRole[] = [
+    'owner',
+    'admin',
+    'developer',
+    'team_member',
+  ];
   if (!validRoles.includes(body.role)) {
     return errorResponse(
       `Invalid role. Must be one of: ${validRoles.join(', ')}`,
@@ -138,11 +143,16 @@ async function handleListCollaborators(
     source: string;
     created_at: string;
     updated_at: string;
+    email: string | null;
+    name: string | null;
   }>(
-    `SELECT id, user_id, site_id, role, source, created_at, updated_at
-     FROM app.user_site_roles
-     WHERE site_id = $1
-     ORDER BY created_at ASC`,
+    `SELECT usr.id, usr.user_id, usr.site_id, usr.role, usr.source,
+            usr.created_at, usr.updated_at,
+            u.email, u.name
+     FROM app.user_site_roles usr
+     LEFT JOIN app.users u ON u.id::text = usr.user_id
+     WHERE usr.site_id = $1
+     ORDER BY usr.created_at ASC`,
     [context.siteId],
   );
 
@@ -152,6 +162,8 @@ async function handleListCollaborators(
     siteId: row.site_id,
     role: row.role,
     source: row.source,
+    email: row.email,
+    name: row.name,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }));
@@ -167,6 +179,25 @@ async function handleRemoveCollaborator(
 ): Promise<Response> {
   if (context.userId === undefined || context.userId === '') {
     return errorResponse('userId is required', 400);
+  }
+
+  // Prevent removing the last owner — the site would become unmanageable
+  const ownerCount = await query<{ count: string }>(
+    `SELECT COUNT(*) AS count FROM app.user_site_roles
+     WHERE site_id = $1 AND role = 'owner'`,
+    [context.siteId],
+  );
+  const count = Number(ownerCount.rows[0]?.count ?? '0');
+  if (count <= 1) {
+    // Check if the user being removed is an owner
+    const targetRole = await query<{ role: string }>(
+      `SELECT role FROM app.user_site_roles
+       WHERE user_id = $1 AND site_id = $2`,
+      [context.userId, context.siteId],
+    );
+    if (targetRole.rows[0]?.role === 'owner') {
+      return errorResponse('Cannot remove the last owner of a site', 409);
+    }
   }
 
   const result = await query(
@@ -199,7 +230,11 @@ export async function handleCollaboratorRoutes(
     }
 
     await assertPermission(
-      context.principal, context.siteId, mainBranch.id, 'canManageGrants', context.masClient,
+      context.principal,
+      context.siteId,
+      mainBranch.id,
+      'canManageGrants',
+      context.masClient,
     );
 
     // Single collaborator operations (with userId)

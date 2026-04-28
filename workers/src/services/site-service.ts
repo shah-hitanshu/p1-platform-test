@@ -9,6 +9,10 @@
 
 import type { Site, WorkflowSettings } from '../types';
 import { query } from '../db';
+import { createMainBranch } from './branch-service';
+import { grantRole as grantAgentRole } from './agent-site-role-service';
+import { grantRole as grantUserRole } from './user-site-role-service';
+import { getFirstRow } from '../db/helpers';
 
 // =============================================================================
 // Types
@@ -22,6 +26,10 @@ export interface CreateSiteParams {
   name: string;
   workflowSettings?: Partial<WorkflowSettings>;
   allowedOrigins?: string[];
+  /** When provided, the creator is granted the appropriate site role based on createdByType. */
+  creatorId?: string;
+  /** Actor type. Controls which role table receives the creator grant. Defaults to 'user'. */
+  createdByType?: 'user' | 'agent';
 }
 
 /**
@@ -39,6 +47,10 @@ export interface UpdateSiteParams {
 export interface ListSitesOptions {
   limit?: number;
   offset?: number;
+  /** The principal whose accessible sites to return. */
+  principalId: string;
+  /** Controls which role table to query. Defaults to 'user'. */
+  principalType?: 'user' | 'agent';
 }
 
 /**
@@ -106,7 +118,9 @@ const DEFAULT_WORKFLOW_SETTINGS: WorkflowSettings = {
  * Parses workflow settings from database.
  * Handles both string and object formats for JSONB columns.
  */
-function parseWorkflowSettings(value: WorkflowSettings | string): WorkflowSettings {
+function parseWorkflowSettings(
+  value: WorkflowSettings | string,
+): WorkflowSettings {
   if (typeof value === 'string') {
     return JSON.parse(value) as WorkflowSettings;
   }
@@ -166,6 +180,7 @@ export async function createSite(params: CreateSiteParams): Promise<Site> {
     ...params.workflowSettings,
   };
 
+  await query('BEGIN');
   try {
     const result = await query<SiteRow>(
       `INSERT INTO app.sites (pantheon_site_id, name, workflow_settings, allowed_origins)
@@ -179,8 +194,37 @@ export async function createSite(params: CreateSiteParams): Promise<Site> {
       ],
     );
 
-    return mapRowToSite(result.rows[0]);
+    const site = mapRowToSite(getFirstRow(result.rows));
+
+    if (params.creatorId !== undefined) {
+      if (params.createdByType === 'agent') {
+        await grantAgentRole({
+          agentId: params.creatorId,
+          siteId: site.id,
+          role: 'admin',
+          grantedBy: params.creatorId,
+        });
+      } else {
+        await grantUserRole({
+          userId: params.creatorId,
+          siteId: site.id,
+          role: 'owner',
+          grantedBy: params.creatorId,
+        });
+      }
+    }
+
+    // Create the main branch for the site
+    await createMainBranch({
+      siteId: site.id,
+      createdById: params.creatorId ?? 'system',
+      createdByType: params.createdByType ?? 'user',
+    });
+
+    await query('COMMIT');
+    return site;
   } catch (error) {
+    await query('ROLLBACK');
     if (isUniqueConstraintViolation(error)) {
       throw new DuplicatePantheonSiteIdError(params.pantheonSiteId);
     }
@@ -195,10 +239,9 @@ export async function createSite(params: CreateSiteParams): Promise<Site> {
  * @returns The site or null if not found
  */
 export async function getSite(siteId: string): Promise<Site | null> {
-  const result = await query<SiteRow>(
-    'SELECT * FROM app.sites WHERE id = $1',
-    [siteId],
-  );
+  const result = await query<SiteRow>('SELECT * FROM app.sites WHERE id = $1', [
+    siteId,
+  ]);
 
   if (result.rows.length === 0) {
     return null;
@@ -380,10 +423,7 @@ export async function deleteSite(siteId: string): Promise<boolean> {
     );
 
     // Delete branches (branch_grants and guest_links have ON DELETE CASCADE)
-    await query(
-      'DELETE FROM app.branches WHERE site_id = $1',
-      [siteId],
-    );
+    await query('DELETE FROM app.branches WHERE site_id = $1', [siteId]);
   }
 
   // Get all structure IDs for this site
@@ -402,37 +442,38 @@ export async function deleteSite(siteId: string): Promise<boolean> {
   }
 
   // Delete site structures
-  await query(
-    'DELETE FROM app.site_structures WHERE site_id = $1',
-    [siteId],
-  );
+  await query('DELETE FROM app.site_structures WHERE site_id = $1', [siteId]);
 
   // Delete documents
-  await query(
-    'DELETE FROM app.documents WHERE site_id = $1',
-    [siteId],
-  );
+  await query('DELETE FROM app.documents WHERE site_id = $1', [siteId]);
 
   // Finally delete the site
-  const result = await query(
-    'DELETE FROM app.sites WHERE id = $1',
-    [siteId],
-  );
+  const result = await query('DELETE FROM app.sites WHERE id = $1', [siteId]);
 
   return (result.rowCount ?? 0) > 0;
 }
 
 /**
- * Lists all sites with optional pagination.
- *
- * @param options - Pagination options
- * @returns Array of sites
+ * Lists sites the given principal has access to, with optional pagination.
  */
-export async function listSites(options: ListSitesOptions = {}): Promise<Site[]> {
-  const { limit, offset } = options;
+export async function listSites(options: ListSitesOptions): Promise<Site[]> {
+  const { limit, offset, principalId, principalType } = options;
+  const params: unknown[] = [principalId];
 
-  let sql = 'SELECT * FROM app.sites ORDER BY created_at DESC';
-  const params: unknown[] = [];
+  let sql: string;
+  if (principalType === 'agent') {
+    sql =
+      'SELECT DISTINCT s.* FROM app.sites s' +
+      ' INNER JOIN app.agent_site_roles asr ON asr.site_id = s.id' +
+      ' WHERE asr.agent_id = $1 AND asr.revoked_at IS NULL' +
+      ' ORDER BY s.created_at DESC';
+  } else {
+    sql =
+      'SELECT DISTINCT s.* FROM app.sites s' +
+      ' INNER JOIN app.user_site_roles usr ON usr.site_id = s.id' +
+      ' WHERE usr.user_id = $1' +
+      ' ORDER BY s.created_at DESC';
+  }
 
   if (limit !== undefined) {
     params.push(limit);
@@ -453,7 +494,9 @@ export async function listSites(options: ListSitesOptions = {}): Promise<Site[]>
  * Retrieves allowed origins for a site (for OAuth redirect URI validation).
  * Returns null when the site does not exist, empty array when origins not configured.
  */
-export async function getSiteAllowedOrigins(siteId: string): Promise<string[] | null> {
+export async function getSiteAllowedOrigins(
+  siteId: string,
+): Promise<string[] | null> {
   const result = await query<{ allowed_origins: string[] | null }>(
     'SELECT allowed_origins FROM app.sites WHERE id = $1',
     [siteId],

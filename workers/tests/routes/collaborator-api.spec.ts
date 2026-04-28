@@ -250,6 +250,9 @@ describe('Collaborator API Routes', () => {
         updatedAt: '2026-01-01T00:00:00Z',
       });
 
+      // Owner count: 2 owners exist, safe to remove
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '2' }] });
+      // Delete succeeds
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
       const request = new Request(
@@ -283,6 +286,9 @@ describe('Collaborator API Routes', () => {
         updatedAt: '2026-01-01T00:00:00Z',
       });
 
+      // Owner count: 2 owners, safe to proceed
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '2' }] });
+      // Delete finds nothing
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const request = new Request(
@@ -297,6 +303,86 @@ describe('Collaborator API Routes', () => {
       });
 
       expect(response.status).toBe(404);
+    });
+
+    it('should prevent removing the last owner', async () => {
+      const { handleCollaboratorRoutes } = await import('../../src/routes/collaborator-api');
+      const db = await import('../../src/db');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValue({
+        id: 'branch-main',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      });
+
+      // Count query returns 1 owner
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ count: '1' }],
+      });
+      // Target role check — this user is the owner
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ role: 'owner' }],
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/collaborators/user-1',
+        { method: 'DELETE' },
+      );
+
+      const response = await handleCollaboratorRoutes(request, {
+        siteId: 'site-1',
+        userId: 'user-1',
+        principal: adminPrincipal,
+      });
+
+      expect(response.status).toBe(409);
+      const body = await response.json();
+      expect(body.error).toContain('last owner');
+    });
+
+    it('should allow removing an owner when another owner exists', async () => {
+      const { handleCollaboratorRoutes } = await import('../../src/routes/collaborator-api');
+      const db = await import('../../src/db');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValue({
+        id: 'branch-main',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      });
+
+      // Count query returns 2 owners
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ count: '2' }],
+      });
+      // Delete succeeds
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/collaborators/user-1',
+        { method: 'DELETE' },
+      );
+
+      const response = await handleCollaboratorRoutes(request, {
+        siteId: 'site-1',
+        userId: 'user-1',
+        principal: adminPrincipal,
+      });
+
+      expect(response.status).toBe(204);
     });
   });
 
