@@ -55,7 +55,11 @@ Only when creating a brand-new page that the user has confirmed they want. Do no
 ## General guidance
 - Use dot-notation paths for edits: "content.0.props.title" not "content[0].props.title"
 - Always complete or abort edit sessions — never leave them open
-- When editing component props, use **exactly** the field names from the document snapshot — never rename keys or invent new ones. If unsure of a component's valid field names, call \`list_components\` first — it returns the full component schema including all prop field names.
+- **Prop field names must exactly match the component schema.** Never guess, invent, or rename prop keys.
+  - When editing an existing component: copy field names verbatim from the \`get_document\` snapshot.
+  - When adding a new component: use only the keys present in \`defaultProps\` from \`list_components\`.
+  - If you are uncertain about a component's field names, call \`list_components\` before editing.
+  - The backend will reject any prop key that does not exist in the component schema.
 
 ## Additional tools
 

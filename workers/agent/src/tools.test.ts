@@ -435,6 +435,141 @@ describe('executeTool apply_document_edits key-validation', () => {
 });
 
 // ---------------------------------------------------------------------------
+// apply_document_edits — registry-based validation (catches empty-array bypass)
+// ---------------------------------------------------------------------------
+
+describe('executeTool apply_document_edits registry-based validation', () => {
+  const baseInput = {
+    site_id: 'site-1',
+    branch_id: 'branch-1',
+    document_path: '/index',
+    edit_session_id: 'session-1',
+  };
+
+  const heroRegistry = [
+    { name: 'Hero', defaultProps: { text: '', visible: true } },
+  ];
+
+  function makeCssApiWithRegistry(registry: unknown[]): McpApiClient {
+    return {
+      listDocuments: vi.fn().mockResolvedValue({
+        documents: [{ id: 'doc-1', path: 'index', createdAt: '' }],
+      }),
+      getDocumentLatestVersion: vi.fn().mockResolvedValue({
+        id: 'ver-1', documentId: 'doc-1', versionNumber: 1,
+        snapshot: { content: [] }, // empty content — snapshot validation would silently pass
+      }),
+      listComponents: vi.fn().mockResolvedValue({ components: registry }),
+      applyEdits: vi.fn().mockResolvedValue({ success: true }),
+    } as unknown as McpApiClient;
+  }
+
+  it('throws when replacing empty content array with a component that has a hallucinated prop', async () => {
+    const cssApi = makeCssApiWithRegistry(heroRegistry);
+    await expect(
+      executeTool('apply_document_edits', {
+        ...baseInput,
+        operations: [
+          {
+            type: 'replace',
+            path: 'content',
+            content: [{ type: 'Hero', props: { id: 'abc', label: 'Bad', visible: true } }],
+          },
+        ],
+      }, cssApi, 'user-1'),
+    ).rejects.toThrow(/Invalid key\(s\) at "content\.0\.props": "label"/);
+    expect(cssApi.applyEdits).not.toHaveBeenCalled();
+  });
+
+  it('throws when adding a component with a hallucinated prop to an empty content array', async () => {
+    const cssApi = makeCssApiWithRegistry(heroRegistry);
+    await expect(
+      executeTool('apply_document_edits', {
+        ...baseInput,
+        operations: [
+          {
+            type: 'add',
+            path: 'content.0',
+            content: { type: 'Hero', props: { id: 'abc', label: 'Bad', visible: true } },
+          },
+        ],
+      }, cssApi, 'user-1'),
+    ).rejects.toThrow(/Invalid key\(s\) at "content\.0\.props": "label"/);
+    expect(cssApi.applyEdits).not.toHaveBeenCalled();
+  });
+
+  it('passes and forwards when component props match the registry schema', async () => {
+    const cssApi = makeCssApiWithRegistry(heroRegistry);
+    await executeTool('apply_document_edits', {
+      ...baseInput,
+      operations: [
+        {
+          type: 'replace',
+          path: 'content',
+          content: [{ type: 'Hero', props: { id: 'abc', text: 'Hello', visible: true } }],
+        },
+      ],
+    }, cssApi, 'user-1');
+    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+  });
+
+  it('proceeds without registry validation when listComponents fails', async () => {
+    const cssApi = makeCssApiWithRegistry(heroRegistry);
+    (cssApi.listComponents as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Registry unavailable'));
+    await executeTool('apply_document_edits', {
+      ...baseInput,
+      operations: [
+        {
+          type: 'replace',
+          path: 'content',
+          content: [{ type: 'Hero', props: { id: 'abc', label: 'Bad' } }],
+        },
+      ],
+    }, cssApi, 'user-1');
+    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+  });
+
+  it('does not call listComponents when no add/replace ops contain Puck components', async () => {
+    const cssApi = makeCssApiWithRegistry(heroRegistry);
+    await executeTool('apply_document_edits', {
+      ...baseInput,
+      operations: [
+        { type: 'replace', path: 'content.0.props.text', content: 'Updated text' },
+      ],
+    }, cssApi, 'user-1');
+    expect(cssApi.listComponents).not.toHaveBeenCalled();
+  });
+
+  it('does not call listComponents for remove/move/reorder ops', async () => {
+    const cssApi = makeCssApiWithRegistry(heroRegistry);
+    await executeTool('apply_document_edits', {
+      ...baseInput,
+      operations: [
+        { type: 'remove', path: 'content.0' },
+      ],
+    }, cssApi, 'user-1');
+    expect(cssApi.listComponents).not.toHaveBeenCalled();
+  });
+
+  it('throws when a component type is not in the registry', async () => {
+    const cssApi = makeCssApiWithRegistry(heroRegistry);
+    await expect(
+      executeTool('apply_document_edits', {
+        ...baseInput,
+        operations: [
+          {
+            type: 'replace',
+            path: 'content',
+            content: [{ type: 'Hallucinated', props: { id: 'abc', text: 'hi' } }],
+          },
+        ],
+      }, cssApi, 'user-1'),
+    ).rejects.toThrow(/Unknown component type "Hallucinated"/);
+    expect(cssApi.applyEdits).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // executeTool — list_components formatting
 // ---------------------------------------------------------------------------
 

@@ -59,6 +59,44 @@ function getAtPath(obj: unknown, path: string): unknown {
   }, obj);
 }
 
+function containsPuckComponent(content: unknown): boolean {
+  if (Array.isArray(content)) return content.some(containsPuckComponent);
+  if (content !== null && typeof content === 'object') {
+    const obj = content as Record<string, unknown>;
+    return typeof obj.type === 'string' && typeof obj.props === 'object' && obj.props !== null;
+  }
+  return false;
+}
+
+function validateComponentsAgainstRegistry(
+  content: unknown,
+  schemaMap: Map<string, Record<string, unknown>>,
+  path: string,
+): void {
+  if (Array.isArray(content)) {
+    content.forEach((item, i) => validateComponentsAgainstRegistry(item, schemaMap, `${path}.${i}`));
+    return;
+  }
+  if (content !== null && typeof content === 'object') {
+    const obj = content as Record<string, unknown>;
+    if (typeof obj.type === 'string' && typeof obj.props === 'object' && obj.props !== null) {
+      const schema = schemaMap.get(obj.type);
+      if (!schema) {
+        throw new Error(
+          `Unknown component type "${obj.type}" at "${path}". ` +
+          `Available types: ${[...schemaMap.keys()].join(', ')}. ` +
+          `Do not invent component names — only use types returned by list_components.`
+        );
+      }
+      const defaultProps = schema.defaultProps as Record<string, unknown> | undefined;
+      if (defaultProps) {
+        const { id: _id, ...propsToValidate } = obj.props as Record<string, unknown>;
+        assertNoNewKeys(defaultProps, propsToValidate, `${path}.props`);
+      }
+    }
+  }
+}
+
 function assertNoNewKeys(existing: unknown, replacement: unknown, path: string): void {
   if (Array.isArray(existing) && Array.isArray(replacement)) {
     const ref = existing[0];
@@ -434,6 +472,38 @@ export async function executeTool(
       } catch (err) {
         if (err instanceof Error && err.message.startsWith('Invalid key(s)')) {
           throw err;
+        }
+      }
+
+      // Registry-based validation for any add/replace ops containing Puck components.
+      // Snapshot-based validation above silently skips empty arrays (no reference item),
+      // so this pass catches hallucinated props when inserting into empty or new content.
+      const componentOps = operations.filter(
+        op => (op.type === 'add' || op.type === 'replace') &&
+          op.content !== undefined &&
+          containsPuckComponent(op.content),
+      );
+      if (componentOps.length > 0) {
+        try {
+          const registryResult = await cssApi.listComponents(
+            toolInput.site_id as string,
+            toolInput.branch_id as string,
+          );
+          const schemaMap = new Map<string, Record<string, unknown>>();
+          for (const comp of registryResult.components as Array<Record<string, unknown>>) {
+            if (typeof comp.name === 'string') schemaMap.set(comp.name, comp);
+          }
+          for (const op of componentOps) {
+            validateComponentsAgainstRegistry(op.content, schemaMap, op.path);
+          }
+        } catch (err) {
+          if (err instanceof Error && (
+            err.message.startsWith('Invalid key(s)') ||
+            err.message.startsWith('Unknown component type')
+          )) {
+            throw err;
+          }
+          // Registry fetch failed — proceed without registry validation
         }
       }
 
