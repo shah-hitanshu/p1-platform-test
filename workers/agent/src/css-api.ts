@@ -95,12 +95,9 @@ export interface StartAgentEditResponse {
 }
 
 export interface EditOperation {
-  type: 'add' | 'remove' | 'replace' | 'move' | 'reorder';
+  type: 'add' | 'remove' | 'replace';
   path: string;
   content?: unknown;
-  index?: number;
-  fromIndex?: number;
-  toIndex?: number;
 }
 
 export interface ApplyEditsRequest {
