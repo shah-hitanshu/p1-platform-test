@@ -135,7 +135,7 @@ function assertNoNewKeys(existing: unknown, replacement: unknown, path: string):
 export const CSS_TOOLS: Anthropic.Tool[] = [
   {
     name: 'list_components',
-    description: 'List Puck components available for building a new page. Only needed when creating a new page — do not call when editing an existing page.',
+    description: 'List P1 components available for building a new page. Only needed when creating a new page — do not call when editing an existing page.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -147,7 +147,7 @@ export const CSS_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'get_document',
-    description: 'Get the full Puck document snapshot. Only call when you need the page structure and do not already have it from earlier in this conversation.',
+    description: 'Get the full P1 document snapshot. Only call when you need the page structure and do not already have it from earlier in this conversation.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -190,7 +190,18 @@ export const CSS_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'apply_document_edits',
-    description: 'Apply edit operations to the document. Path uses dot-notation: "content.0.props.title" NOT "content[0]". Never rename or add keys — only change values. Field names must match the component schema exactly.',
+    description: [
+      'Apply edit operations to the document.',
+      'Path uses dot-notation: "content.0.props.title" NOT "content[0]".',
+      'Never rename or add keys — only change values. Field names must match the component schema exactly.',
+      '',
+      'Operation types:',
+      '  replace — overwrite a value at path with content. To reorder components, replace the entire "content" array with the fully reordered array.',
+      '  add     — insert content into an array at path (e.g. "content.2" to insert at index 2).',
+      '  remove  — delete the element at path (e.g. "content.1" removes the second component).',
+      '',
+      'DO NOT use "move" or "reorder" operation types — they are not supported. Use "replace" on the full "content" array to reorder components.',
+    ].join('\n'),
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -203,12 +214,9 @@ export const CSS_TOOLS: Anthropic.Tool[] = [
           items: {
             type: 'object',
             properties: {
-              type: { type: 'string', enum: ['add', 'remove', 'replace', 'move', 'reorder'] },
+              type: { type: 'string', enum: ['add', 'remove', 'replace'] },
               path: { type: 'string' },
               content: {},
-              index: { type: 'number' },
-              fromIndex: { type: 'number' },
-              toIndex: { type: 'number' },
             },
             required: ['type', 'path'],
           },
@@ -273,7 +281,7 @@ export const CSS_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'create_page',
-    description: 'Create a brand-new page document with Puck components. ONLY call after the user has explicitly confirmed they want a new page — never call for editing requests. No edit session needed. IMPORTANT: component types must be names returned by list_components — never invent or guess component names.',
+    description: 'Create a brand-new page document with P1 components. ONLY call after the user has explicitly confirmed they want a new page — never call for editing requests. No edit session needed. IMPORTANT: component types must be names returned by list_components — never invent or guess component names.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -282,7 +290,7 @@ export const CSS_TOOLS: Anthropic.Tool[] = [
         document_path: { type: 'string', description: 'Path for the new page, e.g. /about' },
         components: {
           type: 'array',
-          description: 'Ordered list of Puck components for the page',
+          description: 'Ordered list of P1 components for the page',
           items: {
             type: 'object',
             properties: {
@@ -431,12 +439,9 @@ export async function executeTool(
 
     case 'apply_document_edits': {
       type RawOp = {
-        type: 'add' | 'remove' | 'replace' | 'move' | 'reorder';
+        type: 'add' | 'remove' | 'replace';
         path: string;
         content?: unknown;
-        index?: number;
-        fromIndex?: number;
-        toIndex?: number;
       };
       const operations = (toolInput.operations as RawOp[]).map(op => {
         const normalized: RawOp = { ...op, path: normalizePath(op.path) };
