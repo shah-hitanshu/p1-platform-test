@@ -1,49 +1,52 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Playwright configuration for end-to-end tests
+ * Playwright configuration for end-to-end tests.
+ *
  * @see https://playwright.dev/docs/test-configuration
  */
 export default defineConfig({
   testDir: './e2e',
-  /* Run tests in files in parallel */
   fullyParallel: true,
-  /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
-  /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
   workers: process.env.CI ? 1 : undefined,
-  /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
-  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
-    /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://localhost:3000',
-
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
   },
 
-  /* Configure projects for major browsers */
   projects: [
     {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      name: 'p1-starter',
+      testMatch: /p1-starter\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:3001',
+      },
     },
   ],
 
-  /* Run your local dev server before starting the tests */
-  webServer: {
-    command: 'pnpm --filter @pantheon/puck-css-demo dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-    env: {
-      VITE_AUTH_MODE: 'mock',
-      VITE_CSS_BASE_URL: 'http://localhost:8787',
-      VITE_CSS_WS_BASE_URL: 'ws://localhost:8787',
-      VITE_CSS_SITE_ID: 'b56bdbfd-512c-4c1f-82e9-e774c2a8ec22',
+  webServer: [
+    {
+      command: 'npx tsx e2e/mock-css-server.ts',
+      url: 'http://localhost:4444/api/sites/test-site/branches',
+      reuseExistingServer: !process.env.CI,
+      timeout: 10_000,
+      env: {
+        MOCK_CSS_PORT: '4444',
+      },
     },
-  },
+    {
+      command: 'cd apps/p1-starter && pnpm next dev --port 3001',
+      url: 'http://localhost:3001',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+      env: {
+        P1_CSS_BASE_URL: 'http://localhost:4444',
+        P1_CSS_API_KEY: 'test-api-key',
+        P1_CSS_SITE_ID: 'test-site',
+      },
+    },
+  ],
 });

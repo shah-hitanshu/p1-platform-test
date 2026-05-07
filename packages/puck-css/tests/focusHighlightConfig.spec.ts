@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import React from 'react';
 import { render } from '@testing-library/react';
-import type { FocusHighlight } from '../src/utils/focusRegionMap.js';
+import type { FocusHighlight } from '../src/collaboration/utils/focusRegionMap.js';
 
 // =============================================================================
 // Mock Config
@@ -43,7 +43,7 @@ const mockConfig = {
 // =============================================================================
 
 describe('createFocusHighlightConfig', () => {
-  const getModule = async () => import('../src/utils/focusHighlightConfig.js');
+  const getModule = async () => import('../src/collaboration/utils/focusHighlightConfig.js');
 
   describe('wrapper behavior', () => {
     it('should wrap component render functions', async () => {

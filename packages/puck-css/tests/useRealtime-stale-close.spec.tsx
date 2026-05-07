@@ -93,7 +93,7 @@ describe('useRealtime: stale close event guard', () => {
     vi.useFakeTimers();
     vi.resetAllMocks();
     mockWebSocketInstances = [];
-    globalThis.WebSocket = vi.fn((url: string) => {
+    globalThis.WebSocket = vi.fn().mockImplementation(function (url: string) {
       const ws = new MockWebSocket(url);
       mockWebSocketInstances.push(ws);
       return ws;
@@ -112,7 +112,7 @@ describe('useRealtime: stale close event guard', () => {
   });
 
   it('should remain connected after documentPath change when old close event fires late', async () => {
-    const { useRealtime } = await import('../src/hooks/useRealtime.js');
+    const { useRealtime } = await import('../src/editor/useRealtime.js');
 
     // Render with document A
     const { result, rerender } = renderHook(
@@ -167,7 +167,7 @@ describe('useRealtime: stale close event guard', () => {
   });
 
   it('should correctly disconnect when setting documentPath to null', async () => {
-    const { useRealtime } = await import('../src/hooks/useRealtime.js');
+    const { useRealtime } = await import('../src/editor/useRealtime.js');
 
     // Render with document A
     const { result, rerender } = renderHook(
@@ -204,7 +204,7 @@ describe('useRealtime: stale close event guard', () => {
   });
 
   it('should handle rapid A → B → C navigation without state corruption', async () => {
-    const { useRealtime } = await import('../src/hooks/useRealtime.js');
+    const { useRealtime } = await import('../src/editor/useRealtime.js');
 
     // Render with document A
     const { result, rerender } = renderHook(

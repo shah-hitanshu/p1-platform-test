@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { PublishResult } from '@pantheon/css-client';
+import type { PublishResult } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mocks
@@ -16,8 +16,8 @@ import type { PublishResult } from '@pantheon/css-client';
 const mockRequestPublish = vi.fn<() => Promise<PublishResult>>();
 const mockWaitForDelivery = vi.fn<() => Promise<void>>();
 
-vi.mock('@pantheon/css-client', () => ({
-  RealtimeClient: vi.fn().mockImplementation(() => ({
+vi.mock('@pantheon-systems/css-client', () => ({
+  RealtimeClient: vi.fn().mockImplementation(function () { return ({
     connect: vi.fn(),
     disconnect: vi.fn(),
     getYDoc: vi.fn().mockReturnValue({
@@ -33,11 +33,11 @@ vi.mock('@pantheon/css-client', () => ({
     waitForDelivery: mockWaitForDelivery,
     requestPublish: mockRequestPublish,
     presenceViaWebSocket: false,
-  })),
+  }); }),
 }));
 
 // Mock puckYjsBinding
-vi.mock('../utils/puckYjsBinding', () => ({
+vi.mock('../editor/utils/puckYjsBinding', () => ({
   createPuckYjsBinding: vi.fn().mockReturnValue({
     applyLocalChange: vi.fn(),
     destroy: vi.fn(),
@@ -52,7 +52,7 @@ describe('WebSocket Publish Integration', () => {
   it('useRealtime return type should include requestPublish', async () => {
     // The useRealtime hook wraps RealtimeClient.requestPublish
     // Verify the hook module exports the right interface
-    const { useRealtime } = await import('../hooks/useRealtime');
+    const { useRealtime } = await import('../editor/useRealtime');
 
     // We can't call the hook outside React, but we can verify
     // the module exports correctly. The real test is that TypeScript
@@ -62,7 +62,7 @@ describe('WebSocket Publish Integration', () => {
   });
 
   it('RealtimeClient mock should have requestPublish method', async () => {
-    const { RealtimeClient } = await import('@pantheon/css-client');
+    const { RealtimeClient } = await import('@pantheon-systems/css-client');
     const client = new RealtimeClient({ baseUrl: 'ws://localhost' });
 
     expect(client.requestPublish).toBeDefined();
@@ -70,7 +70,7 @@ describe('WebSocket Publish Integration', () => {
   });
 
   it('requestPublish should return PublishResult shape', async () => {
-    const { RealtimeClient } = await import('@pantheon/css-client');
+    const { RealtimeClient } = await import('@pantheon-systems/css-client');
     const client = new RealtimeClient({ baseUrl: 'ws://localhost' });
 
     const mockResult: PublishResult = {
@@ -95,7 +95,7 @@ describe('WebSocket Publish Integration', () => {
   });
 
   it('requestPublish error result should include error message', async () => {
-    const { RealtimeClient } = await import('@pantheon/css-client');
+    const { RealtimeClient } = await import('@pantheon-systems/css-client');
     const client = new RealtimeClient({ baseUrl: 'ws://localhost' });
 
     mockRequestPublish.mockResolvedValue({

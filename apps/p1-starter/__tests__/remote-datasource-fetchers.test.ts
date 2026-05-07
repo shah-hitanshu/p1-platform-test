@@ -8,13 +8,13 @@ vi.mock("@pantheon-systems/cpub-react-sdk/server", () => ({
 }));
 
 // We need to mock the user-remote-datasource-store since loadRemoteDatasourceContext uses it
-vi.mock("@pantheon-systems/p1-client-sdk/server", async (importOriginal) => {
+vi.mock("@pantheon-systems/puck-css/server", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return actual;
 });
 
 import { REMOTE_DATASOURCE_FETCHERS } from "../lib/remote-datasource-fetchers";
-import type { RemoteDatasourceFetcherParams } from "@pantheon-systems/p1-client-sdk";
+import type { RemoteDatasourceFetcherParams } from "@pantheon-systems/puck-css/server";
 
 const { PCCConvenienceFunctions } = await import(
   "@pantheon-systems/cpub-react-sdk/server"
@@ -61,7 +61,7 @@ describe("swapi fetcher", () => {
       fetchImpl,
     }));
     expect(result).toEqual({});
-    expect(fetchImpl).toHaveBeenCalledWith("https://swapi.dev/api/people/1/");
+    expect(fetchImpl).toHaveBeenCalledWith("https://swapi.info/api/people/1");
   });
 
   it("returns parsed JSON on success", async () => {
@@ -87,7 +87,7 @@ describe("swapi fetcher", () => {
       fetchImpl,
     }));
     expect(result).toEqual({ name: "FromPath" });
-    expect(fetchImpl).toHaveBeenCalledWith("https://swapi.dev/api/people/5/");
+    expect(fetchImpl).toHaveBeenCalledWith("https://swapi.info/api/people/5");
   });
 
   it("prefers query id over path id", async () => {
@@ -100,7 +100,7 @@ describe("swapi fetcher", () => {
       urlParams: { id: "9" },
       fetchImpl,
     }));
-    expect(fetchImpl).toHaveBeenCalledWith("https://swapi.dev/api/people/2/");
+    expect(fetchImpl).toHaveBeenCalledWith("https://swapi.info/api/people/2");
   });
 });
 
@@ -110,15 +110,15 @@ describe("swapi_list fetcher", () => {
   it("maps results to { items: [...] }", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({
-        results: [{ name: "Luke", url: "https://swapi.dev/api/people/1/" }],
-      }),
+      json: async () => [
+        { name: "Luke", url: "https://swapi.info/api/people/1" },
+      ],
     });
     const result = await fetcher.fetch(makeFetcherParams({ fetchImpl }));
     expect(result).toEqual({
-      items: [{ id: "1", name: "Luke", url: "https://swapi.dev/api/people/1/" }],
+      items: [{ id: "1", name: "Luke", url: "https://swapi.info/api/people/1" }],
     });
-    expect(fetchImpl).toHaveBeenCalledWith("https://swapi.dev/api/people/");
+    expect(fetchImpl).toHaveBeenCalledWith("https://swapi.info/api/people");
   });
 });
 

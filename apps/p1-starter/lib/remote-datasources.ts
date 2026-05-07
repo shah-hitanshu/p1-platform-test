@@ -1,4 +1,4 @@
-import type { RemoteDatasourceDefinition } from "@pantheon-systems/p1-client-sdk";
+import type { RemoteDatasourceDefinition } from "@pantheon-systems/puck-css/server";
 
 export const REMOTE_DATASOURCE_REGISTRY: RemoteDatasourceDefinition[] = [
   {

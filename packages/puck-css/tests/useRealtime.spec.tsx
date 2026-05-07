@@ -79,7 +79,7 @@ describe('Phase 3.2: useRealtime Hook', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mockWebSocketInstances = [];
-    global.WebSocket = vi.fn((url: string) => {
+    global.WebSocket = vi.fn().mockImplementation(function (url: string) {
       const ws = new MockWebSocket(url);
       mockWebSocketInstances.push(ws);
       return ws;
@@ -98,7 +98,7 @@ describe('Phase 3.2: useRealtime Hook', () => {
 
   describe('initialization', () => {
     it('should return connected state and applyLocalChange function', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result } = renderHook(() =>
         useRealtime({
@@ -119,7 +119,7 @@ describe('Phase 3.2: useRealtime Hook', () => {
     });
 
     it('should not connect when enabled is false', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result } = renderHook(() =>
         useRealtime({
@@ -138,7 +138,7 @@ describe('Phase 3.2: useRealtime Hook', () => {
     });
 
     it('should not connect when documentPath is null', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result } = renderHook(() =>
         useRealtime({
@@ -159,7 +159,7 @@ describe('Phase 3.2: useRealtime Hook', () => {
 
   describe('connection lifecycle', () => {
     it('should connect when enabled and documentPath is provided', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result } = renderHook(() =>
         useRealtime({
@@ -184,7 +184,7 @@ describe('Phase 3.2: useRealtime Hook', () => {
     });
 
     it('should disconnect when unmounted', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result, unmount } = renderHook(() =>
         useRealtime({
@@ -208,7 +208,7 @@ describe('Phase 3.2: useRealtime Hook', () => {
     });
 
     it('should reconnect when documentPath changes', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result, rerender } = renderHook(
         ({ documentPath }) =>
@@ -240,7 +240,7 @@ describe('Phase 3.2: useRealtime Hook', () => {
 
   describe('onRemoteUpdate callback', () => {
     it('should call onRemoteUpdate when remote changes arrive', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
       const Y = await import('yjs');
 
       const onRemoteUpdate = vi.fn();
@@ -281,7 +281,7 @@ describe('Phase 3.2: useRealtime Hook', () => {
 
   describe('getSnapshot', () => {
     it('should return current Yjs document state when connected', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result } = renderHook(() =>
         useRealtime({
@@ -317,7 +317,7 @@ describe('Phase 3.2: useRealtime Hook', () => {
     });
 
     it('should return null when not connected (no documentPath)', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result } = renderHook(() =>
         useRealtime({
@@ -340,7 +340,7 @@ describe('Phase 3.2: useRealtime Hook', () => {
     });
 
     it('should return null when disabled', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result } = renderHook(() =>
         useRealtime({
@@ -363,7 +363,7 @@ describe('Phase 3.2: useRealtime Hook', () => {
     });
 
     it('should return data with valid PuckData structure', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result } = renderHook(() =>
         useRealtime({

@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { useMergePreview } from '../src/hooks/useMergePreview.js';
+import { useMergePreview } from '../src/editor/useMergePreview.js';
 
 // Mock useCSSPuck
 const mockUseCSSPuck = vi.fn();
-vi.mock('../src/CSSPuckContext.js', () => ({
+vi.mock('../src/core/CSSPuckContext.js', () => ({
   useCSSPuck: () => mockUseCSSPuck(),
 }));
 

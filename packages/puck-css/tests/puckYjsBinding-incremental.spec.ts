@@ -13,7 +13,7 @@ import {
   patchYArray,
   yMapToPuckData,
   createPuckYjsBinding,
-} from '../src/utils/puckYjsBinding.js';
+} from '../src/editor/utils/puckYjsBinding.js';
 
 const sampleData = {
   content: [

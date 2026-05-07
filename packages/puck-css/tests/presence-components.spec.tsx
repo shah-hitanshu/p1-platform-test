@@ -12,9 +12,9 @@ import {
   PresenceIndicator,
   AgentActivityBanner,
   FocusRegionHighlight,
-} from '../src/components/presence/index.js';
-import { PresenceContext } from '../src/PresenceContext.js';
-import type { ActorPresence, CSSClient } from '@pantheon/css-client';
+} from '../src/collaboration/index.js';
+import { PresenceContext } from '../src/core/PresenceContext.js';
+import type { ActorPresence, CSSClient } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock Data

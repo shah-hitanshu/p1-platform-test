@@ -4,7 +4,7 @@
  * Validates URL path normalization for CSS document paths.
  */
 import { describe, it, expect } from 'vitest';
-import { toCSSPath } from '../utils/path';
+import { toCSSPath } from '../editor/utils/path';
 
 describe('toCSSPath', () => {
   it('converts "/" to "home"', () => {

@@ -4,8 +4,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { Toast } from '../src/components/Toast.js';
-import type { Notification } from '../src/types.js';
+import { Toast } from '../src/editor/components/Toast.js';
+import type { Notification } from '../src/core/types.js';
 
 describe('Toast', () => {
   beforeEach(() => {

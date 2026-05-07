@@ -13,7 +13,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import type { Branch } from '@pantheon/css-client';
+import type { Branch } from '@pantheon-systems/css-client';
 import { Icon, Button, StatusIndicator } from '@pantheon-systems/pds-toolkit-react';
 import styles from './WorkstreamSwitcher.module.css';
 

@@ -9,8 +9,8 @@ import {
   diffPuckDataWithPositions,
   diffProps,
   getReorderedComponents,
-} from '../src/utils/diff.js';
-import type { PuckData } from '@pantheon/css-client';
+} from '../src/versioning/utils/diff.js';
+import type { PuckData } from '@pantheon-systems/css-client';
 
 describe('diffPuckDataWithPositions', () => {
   const createPuckData = (

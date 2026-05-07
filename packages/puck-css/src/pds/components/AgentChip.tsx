@@ -8,7 +8,7 @@
 
 import React from 'react';
 import { Avatar, Icon } from '@pantheon-systems/pds-toolkit-react';
-import { getAvatarStyleOverride } from '../../utils/avatarColor.js';
+import { getAvatarStyleOverride } from '../../collaboration/utils/avatarColor.js';
 import styles from './AgentChip.module.css';
 
 // =============================================================================

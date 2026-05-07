@@ -14,7 +14,7 @@ describe('Phase 3.1: Puck-Yjs Binding', () => {
 
   describe('puckDataToYMap', () => {
     it('should convert PuckData to Yjs Y.Map structure', async () => {
-      const { puckDataToYMap } = await import('../src/utils/puckYjsBinding.js');
+      const { puckDataToYMap } = await import('../src/editor/utils/puckYjsBinding.js');
 
       const ydoc = new Y.Doc();
       const root = ydoc.getMap('root');
@@ -39,7 +39,7 @@ describe('Phase 3.1: Puck-Yjs Binding', () => {
     });
 
     it('should handle nested component structures', async () => {
-      const { puckDataToYMap } = await import('../src/utils/puckYjsBinding.js');
+      const { puckDataToYMap } = await import('../src/editor/utils/puckYjsBinding.js');
 
       const ydoc = new Y.Doc();
       const root = ydoc.getMap('root');
@@ -68,7 +68,7 @@ describe('Phase 3.1: Puck-Yjs Binding', () => {
     });
 
     it('should handle empty content array', async () => {
-      const { puckDataToYMap } = await import('../src/utils/puckYjsBinding.js');
+      const { puckDataToYMap } = await import('../src/editor/utils/puckYjsBinding.js');
 
       const ydoc = new Y.Doc();
       const root = ydoc.getMap('root');
@@ -87,7 +87,7 @@ describe('Phase 3.1: Puck-Yjs Binding', () => {
 
   describe('yMapToPuckData', () => {
     it('should convert Yjs Y.Map to PuckData', async () => {
-      const { yMapToPuckData, puckDataToYMap } = await import('../src/utils/puckYjsBinding.js');
+      const { yMapToPuckData, puckDataToYMap } = await import('../src/editor/utils/puckYjsBinding.js');
 
       const ydoc = new Y.Doc();
       const root = ydoc.getMap('root');
@@ -108,7 +108,7 @@ describe('Phase 3.1: Puck-Yjs Binding', () => {
     });
 
     it('should preserve component types and props', async () => {
-      const { yMapToPuckData, puckDataToYMap } = await import('../src/utils/puckYjsBinding.js');
+      const { yMapToPuckData, puckDataToYMap } = await import('../src/editor/utils/puckYjsBinding.js');
 
       const ydoc = new Y.Doc();
       const root = ydoc.getMap('root');
@@ -133,7 +133,7 @@ describe('Phase 3.1: Puck-Yjs Binding', () => {
 
   describe('createPuckYjsBinding', () => {
     it('should create a bidirectional binding', async () => {
-      const { createPuckYjsBinding } = await import('../src/utils/puckYjsBinding.js');
+      const { createPuckYjsBinding } = await import('../src/editor/utils/puckYjsBinding.js');
 
       const ydoc = new Y.Doc();
       const onRemoteUpdate = vi.fn();
@@ -147,7 +147,7 @@ describe('Phase 3.1: Puck-Yjs Binding', () => {
     });
 
     it('should apply local changes to Y.Doc', async () => {
-      const { createPuckYjsBinding, yMapToPuckData } = await import('../src/utils/puckYjsBinding.js');
+      const { createPuckYjsBinding, yMapToPuckData } = await import('../src/editor/utils/puckYjsBinding.js');
 
       const ydoc = new Y.Doc();
       const onRemoteUpdate = vi.fn();
@@ -170,7 +170,7 @@ describe('Phase 3.1: Puck-Yjs Binding', () => {
     });
 
     it('should call onRemoteUpdate when remote changes arrive', async () => {
-      const { createPuckYjsBinding } = await import('../src/utils/puckYjsBinding.js');
+      const { createPuckYjsBinding } = await import('../src/editor/utils/puckYjsBinding.js');
 
       const ydoc = new Y.Doc();
       const onRemoteUpdate = vi.fn();
@@ -197,7 +197,7 @@ describe('Phase 3.1: Puck-Yjs Binding', () => {
     });
 
     it('should NOT trigger onRemoteUpdate for local changes', async () => {
-      const { createPuckYjsBinding } = await import('../src/utils/puckYjsBinding.js');
+      const { createPuckYjsBinding } = await import('../src/editor/utils/puckYjsBinding.js');
 
       const ydoc = new Y.Doc();
       const onRemoteUpdate = vi.fn();
@@ -217,7 +217,7 @@ describe('Phase 3.1: Puck-Yjs Binding', () => {
     });
 
     it('should cleanup observers on destroy', async () => {
-      const { createPuckYjsBinding } = await import('../src/utils/puckYjsBinding.js');
+      const { createPuckYjsBinding } = await import('../src/editor/utils/puckYjsBinding.js');
 
       const ydoc = new Y.Doc();
       const onRemoteUpdate = vi.fn();

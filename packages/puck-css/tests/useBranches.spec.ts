@@ -7,8 +7,8 @@
 
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { useBranches } from '../src/hooks/useBranches.js';
-import type { CSSClient, Branch } from '@pantheon/css-client';
+import { useBranches } from '../src/editor/useBranches.js';
+import type { CSSClient, Branch } from '@pantheon-systems/css-client';
 
 /** Helper to build a Branch object with sensible defaults. */
 function makeBranch(overrides: Partial<Branch> & { id: string }): Branch {

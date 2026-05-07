@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import * as Y from 'yjs';
-import { puckDataToYMap, createPuckYjsBinding } from '../src/utils/puckYjsBinding.js';
+import { puckDataToYMap, createPuckYjsBinding } from '../src/editor/utils/puckYjsBinding.js';
 
 const sampleData = {
   content: [

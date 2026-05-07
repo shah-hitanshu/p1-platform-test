@@ -106,7 +106,8 @@ describe('PublishControl — delete page', () => {
       fireEvent.click(screen.getByRole('menuitem', { name: 'Delete page' }));
 
       expect(__toastCalls).toHaveLength(1);
-      const toastContent = __toastCalls[0]!.content as React.ReactElement;
+      expect(__toastCalls[0]).toBeDefined();
+      const toastContent = (__toastCalls[0] as (typeof __toastCalls)[number]).content as React.ReactElement;
       const { getByRole } = render(toastContent);
       expect(getByRole('button', { name: 'Delete' })).toBeDefined();
     });
@@ -124,7 +125,8 @@ describe('PublishControl — delete page', () => {
       openMoreActionsMenu();
       fireEvent.click(screen.getByRole('menuitem', { name: 'Delete page' }));
 
-      const toastContent = __toastCalls[0]!.content as React.ReactElement;
+      expect(__toastCalls[0]).toBeDefined();
+      const toastContent = (__toastCalls[0] as (typeof __toastCalls)[number]).content as React.ReactElement;
       const { getByRole } = render(toastContent);
       fireEvent.click(getByRole('button', { name: 'Delete' }));
 

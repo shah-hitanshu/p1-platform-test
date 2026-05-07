@@ -7,13 +7,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import React from 'react';
-import type { CSSClient, Branch, PuckData } from '@pantheon/css-client';
+import type { CSSClient, Branch, PuckData } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock useRealtime hook
 // =============================================================================
 
-vi.mock('../../src/hooks/useRealtime.js', () => ({
+vi.mock('../../src/editor/useRealtime.js', () => ({
   useRealtime: () => ({
     connected: false,
     applyLocalChange: vi.fn(),
@@ -46,8 +46,8 @@ vi.mock('../../src/auth/index.js', () => ({
 // Import AFTER the mock
 // =============================================================================
 
-const { CSSPuckProvider } = await import('../../src/CSSPuckProvider.js');
-const { useCSSEditor } = await import('../../src/hooks/useCSSEditor.js');
+const { CSSPuckProvider } = await import('../../src/editor/CSSPuckProvider.js');
+const { useCSSEditor } = await import('../../src/editor/useCSSEditor.js');
 
 // =============================================================================
 // Mock Data
@@ -547,8 +547,8 @@ describe('useCSSEditor', () => {
   it('should provide a default onMergeCompare when no override given', async () => {
     // Spy on createCSSPlugin to capture the options passed to it
     const createCSSPluginSpy = vi.fn();
-    const originalCreateCSSPlugin = (await import('../../src/plugin/CSSPlugin.js')).createCSSPlugin;
-    const { createCSSPlugin } = await import('../../src/plugin/CSSPlugin.js');
+    const originalCreateCSSPlugin = (await import('../../src/editor/plugin/CSSPlugin.js')).createCSSPlugin;
+    const { createCSSPlugin } = await import('../../src/editor/plugin/CSSPlugin.js');
 
     // We can't easily spy on the module import, but we can verify the behavior
     // by checking that the default onMergeCompare navigates correctly.

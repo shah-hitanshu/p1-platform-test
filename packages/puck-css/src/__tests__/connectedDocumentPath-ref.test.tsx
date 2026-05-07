@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, act } from '@testing-library/react';
 import React, { useContext } from 'react';
-import type { PuckData } from '@pantheon/css-client';
+import type { PuckData } from '@pantheon-systems/css-client';
 
 // ---------------------------------------------------------------------------
 // Mutable mock state — allows tests to simulate connection state changes
@@ -38,7 +38,7 @@ const mockRealtimeState = {
 // Track useRealtime callbacks for triggering onRemoteUpdate etc.
 let capturedRealtimeCallbacks: Record<string, (...args: unknown[]) => void> = {};
 
-vi.mock('../hooks/useRealtime', () => ({
+vi.mock('../editor/useRealtime', () => ({
   useRealtime: (opts: Record<string, unknown>) => {
     // Capture callbacks for test control
     if (opts.onRemoteUpdate) capturedRealtimeCallbacks.onRemoteUpdate = opts.onRemoteUpdate as (...args: unknown[]) => void;
@@ -47,7 +47,7 @@ vi.mock('../hooks/useRealtime', () => ({
 }));
 
 // Mock useDocuments
-vi.mock('../hooks/useDocuments', () => ({
+vi.mock('../editor/useDocuments', () => ({
   useDocuments: () => ({
     documents: [],
     loading: false,
@@ -89,12 +89,12 @@ const mockClientMethods = {
 // withPrincipal returns the same mock (methods available on the derived client)
 mockClientMethods.withPrincipal.mockReturnValue(mockClientMethods);
 
-vi.mock('@pantheon/css-client', () => ({
-  CSSClient: vi.fn().mockImplementation(() => ({ ...mockClientMethods })),
+vi.mock('@pantheon-systems/css-client', () => ({
+  CSSClient: vi.fn().mockImplementation(function () { return { ...mockClientMethods }; }),
 }));
 
 // Mock NotificationContext
-vi.mock('../NotificationContext', () => ({
+vi.mock('../core/NotificationContext', () => ({
   NotificationProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useNotifications: () => ({
     addNotification: vi.fn(),
@@ -104,8 +104,8 @@ vi.mock('../NotificationContext', () => ({
 }));
 
 // Import after mocks
-import { CSSPuckContext } from '../CSSPuckContext';
-import { CSSPuckProvider } from '../CSSPuckProvider';
+import { CSSPuckContext } from '../core/CSSPuckContext';
+import { CSSPuckProvider } from '../editor/CSSPuckProvider';
 
 // Helper to capture context value
 let capturedCtx: ReturnType<typeof useContext<typeof CSSPuckContext>> = null;
@@ -132,7 +132,7 @@ describe('connectedDocumentPath ref regression', () => {
 
   it('saveData sends via WebSocket when connectedDocumentPath matches (not stale null)', async () => {
     // Start disconnected (connectedDocumentPath = null)
-    const client = new (await import('@pantheon/css-client')).CSSClient({
+    const client = new (await import('@pantheon-systems/css-client')).CSSClient({
       baseUrl: 'http://localhost:8787',
       apiKey: 'test',
     });
@@ -208,7 +208,7 @@ describe('connectedDocumentPath ref regression', () => {
   });
 
   it('saveData still rejects when connectedDocumentPath genuinely mismatches', async () => {
-    const client = new (await import('@pantheon/css-client')).CSSClient({
+    const client = new (await import('@pantheon-systems/css-client')).CSSClient({
       baseUrl: 'http://localhost:8787',
       apiKey: 'test',
     });

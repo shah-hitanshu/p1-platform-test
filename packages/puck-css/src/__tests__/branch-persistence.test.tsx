@@ -42,7 +42,7 @@ const testBranches = [mainBranch, featureBranch];
 // ---------------------------------------------------------------------------
 
 // Mock useRealtime to avoid WebSocket setup
-vi.mock('../hooks/useRealtime', () => ({
+vi.mock('../editor/useRealtime', () => ({
   useRealtime: () => ({
     connected: false,
     provider: null,
@@ -55,7 +55,7 @@ vi.mock('../hooks/useRealtime', () => ({
 }));
 
 // Mock useDocuments to avoid document fetching
-vi.mock('../hooks/useDocuments', () => ({
+vi.mock('../editor/useDocuments', () => ({
   useDocuments: () => ({
     documents: [],
     loading: false,
@@ -63,7 +63,7 @@ vi.mock('../hooks/useDocuments', () => ({
 }));
 
 // Mock debounce to pass through
-vi.mock('../utils/debounce', () => ({
+vi.mock('../core/utils/debounce', () => ({
   debounce: (fn: (...args: unknown[]) => unknown) => {
     const debounced = fn as ((...args: unknown[]) => unknown) & {
       cancel: () => void;
@@ -76,7 +76,7 @@ vi.mock('../utils/debounce', () => ({
 }));
 
 // Mock retry utility
-vi.mock('../utils/retry', () => ({
+vi.mock('../core/utils/retry', () => ({
   withRetry: (fn: () => unknown) => fn(),
 }));
 
@@ -111,8 +111,8 @@ function createMockClient(branchList = testBranches) {
 // Imports (must come after mocks)
 // ---------------------------------------------------------------------------
 
-import { CSSPuckProvider } from '../CSSPuckProvider.js';
-import { useCSSPuck } from '../CSSPuckContext.js';
+import { CSSPuckProvider } from '../editor/CSSPuckProvider.js';
+import { useCSSPuck } from '../core/CSSPuckContext.js';
 
 // ---------------------------------------------------------------------------
 // Helper: consumer component that exposes context values

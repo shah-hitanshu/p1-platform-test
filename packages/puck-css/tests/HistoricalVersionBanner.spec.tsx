@@ -4,8 +4,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { HistoricalVersionBanner } from '../src/components/HistoricalVersionBanner.js';
-import type { DocumentVersion } from '@pantheon/css-client';
+import { HistoricalVersionBanner } from '../src/versioning/components/HistoricalVersionBanner.js';
+import type { DocumentVersion } from '@pantheon-systems/css-client';
 
 describe('HistoricalVersionBanner', () => {
   const mockVersion: DocumentVersion = {

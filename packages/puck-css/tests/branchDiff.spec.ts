@@ -8,12 +8,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { PuckData } from '@pantheon/css-client';
+import type { PuckData } from '@pantheon-systems/css-client';
 import {
   isPuckData,
   createBranchDocumentComparison,
   createBranchMergeComparison,
-} from '../src/utils/branchDiff.js';
+} from '../src/versioning/utils/branchDiff.js';
 
 describe('isPuckData (branchDiff)', () => {
   it('should return true for valid Puck data', () => {

@@ -120,7 +120,7 @@ describe('PageNavigator', () => {
     const aboutItem = items.find((el) => el.textContent?.includes('/about'));
     expect(aboutItem).toBeDefined();
 
-    fireEvent.click(aboutItem!);
+    fireEvent.click(aboutItem as HTMLElement);
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith(docAbout);
   });
@@ -131,7 +131,7 @@ describe('PageNavigator', () => {
     const items = screen.getAllByTestId('page-navigator-item');
     const activeItem = items.find((el) => el.textContent?.includes('/home'));
     expect(activeItem).toBeDefined();
-    expect(activeItem!.getAttribute('aria-current')).toBe('page');
+    expect((activeItem as HTMLElement).getAttribute('aria-current')).toBe('page');
   });
 
   it('does not mark non-active documents with aria-current', () => {
@@ -140,7 +140,7 @@ describe('PageNavigator', () => {
     const items = screen.getAllByTestId('page-navigator-item');
     const nonActiveItem = items.find((el) => el.textContent?.includes('/about'));
     expect(nonActiveItem).toBeDefined();
-    expect(nonActiveItem!.getAttribute('aria-current')).not.toBe('page');
+    expect((nonActiveItem as HTMLElement).getAttribute('aria-current')).not.toBe('page');
   });
 
   it('renders the "New page" button', () => {
@@ -164,7 +164,7 @@ describe('PageNavigator', () => {
       const items = screen.getAllByTestId('page-navigator-item');
       const contactItem = items.find((el) => el.textContent?.includes('/contact'));
       expect(contactItem).toBeDefined();
-      expect(contactItem!.getAttribute('data-inherited')).toBe('true');
+      expect((contactItem as HTMLElement).getAttribute('data-inherited')).toBe('true');
     });
 
     it('does not mark non-inherited docs with data-inherited on a non-main branch', () => {
@@ -173,7 +173,7 @@ describe('PageNavigator', () => {
       const items = screen.getAllByTestId('page-navigator-item');
       const homeItem = items.find((el) => el.textContent?.includes('/home'));
       expect(homeItem).toBeDefined();
-      expect(homeItem!.getAttribute('data-inherited')).toBeNull();
+      expect((homeItem as HTMLElement).getAttribute('data-inherited')).toBeNull();
     });
 
     it('does not mark inherited docs with data-inherited when on the main branch', () => {
@@ -182,7 +182,7 @@ describe('PageNavigator', () => {
       const items = screen.getAllByTestId('page-navigator-item');
       const contactItem = items.find((el) => el.textContent?.includes('/contact'));
       expect(contactItem).toBeDefined();
-      expect(contactItem!.getAttribute('data-inherited')).toBeNull();
+      expect((contactItem as HTMLElement).getAttribute('data-inherited')).toBeNull();
     });
 
     it('does not mark inherited docs with data-inherited when isMainBranch is omitted', () => {
@@ -191,7 +191,7 @@ describe('PageNavigator', () => {
       const items = screen.getAllByTestId('page-navigator-item');
       const contactItem = items.find((el) => el.textContent?.includes('/contact'));
       expect(contactItem).toBeDefined();
-      expect(contactItem!.getAttribute('data-inherited')).toBeNull();
+      expect((contactItem as HTMLElement).getAttribute('data-inherited')).toBeNull();
     });
   });
 

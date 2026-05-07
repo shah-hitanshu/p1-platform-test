@@ -7,8 +7,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import React from 'react';
-import { useAgentEdit, useAgentTrigger } from '../src/hooks/index.js';
-import { PresenceContext } from '../src/PresenceContext.js';
+import { useAgentEdit, useAgentTrigger } from '../src/agent/index.js';
+import { PresenceContext } from '../src/core/PresenceContext.js';
 import type {
   CSSClient,
   AgentEditPermission,
@@ -16,7 +16,7 @@ import type {
   AgentEditCompleteResult,
   AgentEditAbortResult,
   RegisteredAgent,
-} from '@pantheon/css-client';
+} from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock Data

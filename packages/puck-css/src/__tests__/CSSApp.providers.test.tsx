@@ -36,11 +36,11 @@ vi.mock('../auth/index', () => ({
 // Use vi.hoisted to define mocks before vi.mock hoisting
 const { capturedPuckProviderProps, MockCSSClient } = vi.hoisted(() => ({
   capturedPuckProviderProps: vi.fn(),
-  MockCSSClient: vi.fn().mockImplementation(() => ({})),
+  MockCSSClient: vi.fn().mockImplementation(function () { return {}; }),
 }));
 
 // Capture CSSPuckProvider props for assertions
-vi.mock('../CSSPuckProvider', () => ({
+vi.mock('../editor/CSSPuckProvider', () => ({
   CSSPuckProvider: (props: Record<string, unknown>) => {
     const { children, ...rest } = props;
     capturedPuckProviderProps(rest);
@@ -49,26 +49,26 @@ vi.mock('../CSSPuckProvider', () => ({
 }));
 
 // Capture FocusHighlightProvider props
-vi.mock('../FocusHighlightContext', () => ({
+vi.mock('../core/FocusHighlightContext', () => ({
   FocusHighlightProvider: (props: Record<string, unknown>) => {
     const { children } = props;
     return <div data-testid="focus-highlight-provider">{children as React.ReactNode}</div>;
   },
 }));
 
-vi.mock('../CSSPuckContext', () => ({
+vi.mock('../core/CSSPuckContext', () => ({
   useCSSPuck: () => ({ safeData: { content: [], root: { props: {} }, zones: {} } }),
   CSSPuckContext: { Provider: ({ children }: { children: React.ReactNode }) => children },
 }));
-vi.mock('../PresenceContext', () => ({
+vi.mock('../core/PresenceContext', () => ({
   useOptionalPresenceContext: () => null,
 }));
 
-vi.mock('@pantheon/css-client', () => ({
+vi.mock('@pantheon-systems/css-client', () => ({
   CSSClient: MockCSSClient,
 }));
 
-import { CSSApp } from '../CSSApp';
+import { CSSApp } from '../editor/CSSApp';
 
 const baseConfig = {
   baseUrl: 'http://localhost:8787',

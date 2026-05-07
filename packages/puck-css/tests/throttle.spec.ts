@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { throttle } from '../src/utils/throttle.js';
+import { throttle } from '../src/core/utils/throttle.js';
 
 describe('throttle', () => {
   beforeEach(() => {

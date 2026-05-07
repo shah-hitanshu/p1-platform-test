@@ -5,8 +5,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { createStablePluginArray } from '../../src/utils/createStablePluginArray.js';
-import type { PuckPlugin } from '../../src/plugin/CSSPlugin.js';
+import { createStablePluginArray } from '../../src/editor/utils/createStablePluginArray.js';
+import type { PuckPlugin } from '../../src/editor/plugin/CSSPlugin.js';
 
 function makePlugin(name: string): PuckPlugin {
   return {

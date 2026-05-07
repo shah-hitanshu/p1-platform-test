@@ -81,9 +81,9 @@ class MockReconnectingWebSocket {
 let mockWSInstances: MockReconnectingWebSocket[] = [];
 
 vi.mock('partysocket', () => ({
-  WebSocket: vi.fn(
+  WebSocket: vi.fn().mockImplementation(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (url: any, protocols: string[] = [], options: MockWSOptions = {}) => {
+    function (url: any, protocols: string[] = [], options: MockWSOptions = {}) {
       const ws = new MockReconnectingWebSocket(url, protocols, options);
       mockWSInstances.push(ws);
       return ws;
@@ -124,7 +124,7 @@ describe('RealtimeClient tokenRefresher', () => {
     const partysocket = await import('partysocket');
     vi.mocked(partysocket.WebSocket).mockImplementation(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (url: any, protocols: string[] = [], options: MockWSOptions = {}) => {
+      function (url: any, protocols: string[] = [], options: MockWSOptions = {}) {
         const ws = new MockReconnectingWebSocket(url, protocols, options);
         mockWSInstances.push(ws);
         return ws as unknown as ReturnType<typeof MockWSCtor>;

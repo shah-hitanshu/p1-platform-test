@@ -17,11 +17,11 @@ afterEach(() => {
 // ============================================================
 
 // Mock css-client for PublishButton
-vi.mock('@pantheon/css-client', () => ({
+vi.mock('@pantheon-systems/css-client', () => ({
   CSSClient: vi.fn(),
 }));
 
-import { PublishButton } from '../components/PublishButton.js';
+import { PublishButton } from '../editor/components/PublishButton.js';
 
 describe('PublishButton PDS classes', () => {
   it('renders trigger button with pds-button classes', () => {
@@ -72,7 +72,7 @@ describe('PublishButton PDS classes', () => {
 // SaveIndicator Tests
 // ============================================================
 
-import { SaveIndicator } from '../components/SaveIndicator.js';
+import { SaveIndicator } from '../editor/components/SaveIndicator.js';
 
 describe('SaveIndicator PDS classes', () => {
   it('renders retry button with pds-button classes', () => {
@@ -90,7 +90,7 @@ describe('SaveIndicator PDS classes', () => {
 // HistoricalVersionBanner Tests
 // ============================================================
 
-import { HistoricalVersionBanner } from '../components/HistoricalVersionBanner.js';
+import { HistoricalVersionBanner } from '../versioning/components/HistoricalVersionBanner.js';
 
 describe('HistoricalVersionBanner PDS classes', () => {
   it('renders Return to current button with pds-button classes', () => {
@@ -117,7 +117,7 @@ describe('HistoricalVersionBanner PDS classes', () => {
 // ViewModeSelector Tests
 // ============================================================
 
-import { ViewModeSelector } from '../components/merge-preview/ViewModeSelector.js';
+import { ViewModeSelector } from '../editor/components/merge-preview/ViewModeSelector.js';
 
 describe('ViewModeSelector PDS classes', () => {
   it('renders view mode buttons with pds-button classes', () => {
@@ -148,7 +148,7 @@ describe('ViewModeSelector PDS classes', () => {
 // DiffHeader Tests
 // ============================================================
 
-import { DiffHeader } from '../components/version-compare/DiffHeader.js';
+import { DiffHeader } from '../versioning/components/version-compare/DiffHeader.js';
 
 describe('DiffHeader PDS classes', () => {
   it('renders close button with pds-button classes', () => {
@@ -166,7 +166,7 @@ describe('DiffHeader PDS classes', () => {
 // BranchDiffHeader Tests
 // ============================================================
 
-import { BranchDiffHeader } from '../components/version-compare/BranchDiffHeader.js';
+import { BranchDiffHeader } from '../versioning/components/version-compare/BranchDiffHeader.js';
 
 describe('BranchDiffHeader PDS classes', () => {
   it('renders close button with pds-button classes', () => {
@@ -188,7 +188,7 @@ describe('BranchDiffHeader PDS classes', () => {
 // Toast Tests
 // ============================================================
 
-import { Toast } from '../components/Toast.js';
+import { Toast } from '../editor/components/Toast.js';
 
 describe('Toast PDS classes', () => {
   it('renders action buttons with pds-button classes', () => {
@@ -233,7 +233,7 @@ describe('Toast PDS classes', () => {
 // AgentActivityBanner Tests
 // ============================================================
 
-import { AgentActivityBanner } from '../components/presence/AgentActivityBanner.js';
+import { AgentActivityBanner } from '../collaboration/components/AgentActivityBanner.js';
 
 describe('AgentActivityBanner PDS classes', () => {
   const mockAgent = {
@@ -267,9 +267,9 @@ describe('AgentActivityBanner PDS classes', () => {
 // ============================================================
 
 // Mock useConflictNotifications module
-vi.mock('../components/conflict-notifications/useConflictNotifications', () => ({}));
+vi.mock('../merge/components/conflict-notifications/useConflictNotifications', () => ({}));
 
-import { ConflictNotificationToast } from '../components/conflict-notifications/ConflictNotificationToast.js';
+import { ConflictNotificationToast } from '../merge/components/conflict-notifications/ConflictNotificationToast.js';
 
 describe('ConflictNotificationToast PDS classes', () => {
   it('renders action button with pds-button classes', () => {
@@ -310,9 +310,9 @@ describe('ConflictNotificationToast PDS classes', () => {
       btn.getAttribute('aria-label') === 'Dismiss notification'
     );
     expect(dismissBtn).toBeTruthy();
-    expect(dismissBtn!.className).toContain('pds-button');
-    expect(dismissBtn!.className).toContain('pds-button--subtle');
-    expect(dismissBtn!.className).toContain('pds-button--sm');
+    expect((dismissBtn as HTMLElement).className).toContain('pds-button');
+    expect((dismissBtn as HTMLElement).className).toContain('pds-button--subtle');
+    expect((dismissBtn as HTMLElement).className).toContain('pds-button--sm');
   });
 });
 
@@ -321,14 +321,20 @@ describe('ConflictNotificationToast PDS classes', () => {
 // ============================================================
 
 // Mock required CSSPlugin dependencies
-vi.mock('../components/PuckDataSynchronizer', () => ({
+vi.mock('../editor/components/PuckDataSynchronizer', () => ({
   PuckDataSynchronizer: () => null,
 }));
-vi.mock('../components/PuckSelectionTracker', () => ({
+vi.mock('../editor/components/PuckSelectionTracker', () => ({
   PuckSelectionTracker: () => null,
 }));
-vi.mock('../CSSPuckContext', () => ({
+vi.mock('../core/CSSPuckContext', () => ({
   useCSSPuck: () => ({
+    currentData: null,
+    remoteSyncKey: null,
+    currentDocument: null,
+    viewingVersion: null,
+  }),
+  useCSSPuckOptional: () => ({
     currentData: null,
     remoteSyncKey: null,
     currentDocument: null,
@@ -336,7 +342,7 @@ vi.mock('../CSSPuckContext', () => ({
   }),
 }));
 
-import { createCSSPlugin } from '../plugin/CSSPlugin.js';
+import { createCSSPlugin } from '../editor/plugin/CSSPlugin.js';
 import { P1EditorHeader } from '../pds/components/P1EditorHeader.js';
 import { PageNavigator } from '../pds/components/PageNavigator.js';
 
@@ -403,7 +409,7 @@ describe('CSSPlugin PDS button classes', () => {
 // AgentStatusPanel Tests
 // ============================================================
 
-import { AgentStatusPanel } from '../components/agent-actions/AgentStatusPanel.js';
+import { AgentStatusPanel } from '../agent/components/AgentStatusPanel.js';
 
 describe('AgentStatusPanel PDS classes', () => {
   it('renders cancel button with pds-button--subtle classes', () => {

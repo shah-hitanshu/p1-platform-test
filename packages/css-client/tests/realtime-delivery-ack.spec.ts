@@ -100,7 +100,7 @@ let mockWSInstances: MockReconnectingWebSocket[] = [];
 
 // Mock partysocket module - export WebSocket (ReconnectingWebSocket)
 vi.mock('partysocket', () => ({
-  WebSocket: vi.fn((url: string, protocols: string[] = [], options: MockWSOptions = {}) => {
+  WebSocket: vi.fn().mockImplementation(function (url: string, protocols: string[] = [], options: MockWSOptions = {}) {
     const ws = new MockReconnectingWebSocket(url, protocols, options);
     mockWSInstances.push(ws);
     return ws;
@@ -114,7 +114,7 @@ describe('RealtimeClient Delivery Acknowledgment', () => {
     // Re-mock to ensure fresh instances
     const partysocket = await import('partysocket');
     vi.mocked(partysocket.WebSocket).mockImplementation(
-      (url: string, protocols: string[] = [], options: MockWSOptions = {}) => {
+      function (url: string, protocols: string[] = [], options: MockWSOptions = {}) {
         const ws = new MockReconnectingWebSocket(url, protocols, options);
         mockWSInstances.push(ws);
         return ws as unknown as ReturnType<typeof partysocket.WebSocket>;

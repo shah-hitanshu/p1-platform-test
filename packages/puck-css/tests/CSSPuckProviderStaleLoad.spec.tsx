@@ -11,9 +11,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitFor, act } from '@testing-library/react';
 import React from 'react';
-import { CSSPuckProvider } from '../src/CSSPuckProvider.js';
-import { useCSSPuck } from '../src/CSSPuckContext.js';
-import type { CSSClient } from '@pantheon/css-client';
+import { CSSPuckProvider } from '../src/editor/CSSPuckProvider.js';
+import { useCSSPuck } from '../src/core/CSSPuckContext.js';
+import type { CSSClient } from '@pantheon-systems/css-client';
 
 // Helper: create a deferred promise for controlled resolution
 function createDeferred<T>() {
@@ -117,7 +117,7 @@ describe('Stale loadDocument Response Guard', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mockClient = createMockClient() as unknown as ReturnType<typeof createMockClient>;
-    globalThis.WebSocket = vi.fn((url: string) => {
+    globalThis.WebSocket = vi.fn().mockImplementation(function (url: string) {
       return new MockWebSocket(url);
     }) as unknown as typeof WebSocket;
     Object.assign(globalThis.WebSocket, {

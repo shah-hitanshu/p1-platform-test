@@ -9,14 +9,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import React from 'react';
-import type { CSSClient, Branch } from '@pantheon/css-client';
-import type { CSSPluginOptions } from '../../src/plugin/CSSPlugin.js';
+import type { CSSClient, Branch } from '@pantheon-systems/css-client';
+import type { CSSPluginOptions } from '../../src/editor/plugin/CSSPlugin.js';
 
 // =============================================================================
 // Mocks — declared BEFORE dynamic imports
 // =============================================================================
 
-vi.mock('../../src/hooks/useRealtime.js', () => ({
+vi.mock('../../src/editor/useRealtime.js', () => ({
   useRealtime: () => ({
     connected: false,
     applyLocalChange: vi.fn(),
@@ -32,7 +32,7 @@ vi.mock('../../src/hooks/useRealtime.js', () => ({
 // Capture options proxy so tests can read from it
 let capturedOptions: CSSPluginOptions | null = null;
 
-vi.mock('../../src/plugin/CSSPlugin.js', () => ({
+vi.mock('../../src/editor/plugin/CSSPlugin.js', () => ({
   createCSSPlugin: vi.fn((options: CSSPluginOptions) => {
     capturedOptions = options;
     return {
@@ -49,8 +49,8 @@ vi.mock('../../src/plugin/CSSPlugin.js', () => ({
 // Imports AFTER mocks
 // =============================================================================
 
-const { CSSPuckProvider } = await import('../../src/CSSPuckProvider.js');
-const { useCSSPlugin } = await import('../../src/hooks/useCSSPlugin.js');
+const { CSSPuckProvider } = await import('../../src/editor/CSSPuckProvider.js');
+const { useCSSPlugin } = await import('../../src/editor/useCSSPlugin.js');
 
 // =============================================================================
 // Mock Data

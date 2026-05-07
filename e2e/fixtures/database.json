@@ -1,0 +1,30 @@
+{
+  "/": {
+    "root": { "props": { "title": "My Puck Editor" } },
+    "content": [
+      {
+        "type": "HeadingBlock",
+        "props": {
+          "title": "Woah",
+          "level": "h1",
+          "id": "HeadingBlock-99002c8b-42d0-4886-ab5e-b7ebc7c0a742"
+        }
+      }
+    ],
+    "zones": {}
+  },
+  "/contact-us": {
+    "root": { "props": { "title": "New page" } },
+    "content": [
+      {
+        "type": "HeadingBlock",
+        "props": {
+          "title": "Heading ee",
+          "level": "h1",
+          "id": "HeadingBlock-c62993ce-d5db-4172-87bf-4ddfb473f7b4"
+        }
+      }
+    ],
+    "zones": {}
+  }
+}

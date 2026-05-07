@@ -610,6 +610,8 @@ export class RealtimeClient {
    * Buffers and coalesces updates when approaching the server's 50 msg/sec limit.
    */
   private rateLimitedSend(update: Uint8Array): void {
+    if (!this.ws) return;
+
     const now = Date.now();
 
     // Prune timestamps outside the sliding window
@@ -620,7 +622,7 @@ export class RealtimeClient {
     if (this.sendTimestamps.length < RealtimeClient.RATE_THRESHOLD) {
       // Under threshold — send immediately
       this.sendTimestamps.push(now);
-      this.ws!.send(update);
+      this.ws.send(update);
     } else {
       // At or above threshold — buffer for coalesced flush
       this.pendingUpdates.push(update);
@@ -745,6 +747,7 @@ export class RealtimeClient {
       return Promise.reject(new Error('Not connected'));
     }
 
+    const ws = this.ws;
     const requestId = crypto.randomUUID();
 
     return new Promise<void>((resolve, reject) => {
@@ -755,7 +758,7 @@ export class RealtimeClient {
 
       this.pendingDeliveryAcks.set(requestId, { resolve, reject, timer });
 
-      this.ws!.send(JSON.stringify({
+      ws.send(JSON.stringify({
         type: 'delivery_ack_request',
         requestId,
         timestamp: Date.now(),
@@ -779,6 +782,7 @@ export class RealtimeClient {
       return Promise.reject(new Error('Not connected'));
     }
 
+    const ws = this.ws;
     const requestId = crypto.randomUUID();
 
     return new Promise<PublishResult>((resolve, reject) => {
@@ -789,7 +793,7 @@ export class RealtimeClient {
 
       this.pendingPublishRequests.set(requestId, { resolve, reject, timer });
 
-      this.ws!.send(JSON.stringify({
+      ws.send(JSON.stringify({
         type: 'publish_request',
         requestId,
         timestamp: Date.now(),

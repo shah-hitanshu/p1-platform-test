@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ComponentClickOverlay } from '../components/merge-resolution/ComponentClickOverlay.js';
+import { ComponentClickOverlay } from '../merge/components/merge-resolution/ComponentClickOverlay.js';
 
 // =============================================================================
 // Helpers

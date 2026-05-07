@@ -10,7 +10,7 @@ export const Select = () => null;
 export const RadioGroup = () => null;
 // SegmentedButton stub: renders radio-like buttons for value-based selection testing
 export const SegmentedButton = (props: Record<string, unknown>) => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react') as typeof import('react');
   const options = (props.options ?? []) as Array<{ label: string; value: string; disabled?: boolean }>;
   const isActive = (value: string) => props.value === value;
@@ -46,13 +46,13 @@ export const SegmentedButton = (props: Record<string, unknown>) => {
 };
 export const Icon = () => null;
 export const PantheonLogo = (props: Record<string, unknown>) => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react') as typeof import('react');
   return React.createElement('span', { 'data-testid': props['data-testid'], className: 'pds-pantheon-logo' });
 };
 // IconButton stub: renders a <button> forwarding data-testid, aria-label, disabled, onClick
 export const IconButton = (props: Record<string, unknown>) => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react') as typeof import('react');
   return React.createElement('button', {
     'data-testid': props['data-testid'],
@@ -64,7 +64,7 @@ export const IconButton = (props: Record<string, unknown>) => {
 };
 // Button stub: renders a <button> so data-testid, onClick, etc. are accessible in tests
 export const Button = (props: Record<string, unknown>) => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react') as typeof import('react');
   return React.createElement(
     'button',
@@ -81,7 +81,7 @@ export const Button = (props: Record<string, unknown>) => {
 
 // Avatar stub: renders a div with the PDS avatar class structure
 export const Avatar = (props: Record<string, unknown>) => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react') as typeof import('react');
   const size = (props.size as string) ?? 's';
   const hasImage = !!props.imageSrc;
@@ -105,7 +105,7 @@ export const Avatar = (props: Record<string, unknown>) => {
 
 // Tooltip stub: wraps trigger in a span with title so getByTitle works in tests
 export const Tooltip = (props: Record<string, unknown>) => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react') as typeof import('react');
   return React.createElement(
     'span',
@@ -116,7 +116,7 @@ export const Tooltip = (props: Record<string, unknown>) => {
 
 // StatusIndicator stub: renders a div with dot + label matching the real component's structure
 export const StatusIndicator = (props: Record<string, unknown>) => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react') as typeof import('react');
   const type = (props.type as string) ?? 'neutral';
   return React.createElement(
@@ -139,7 +139,7 @@ interface MockMenuItem {
 
 // MenuButton stub: renders trigger button with label + menu items inline for testing
 export const MenuButton = (props: Record<string, unknown>) => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react') as typeof import('react');
   const items = (props.menuItems ?? []) as MockMenuItem[];
   return React.createElement(
@@ -177,7 +177,7 @@ export const MenuButton = (props: Record<string, unknown>) => {
 
 // SectionMessage stub: renders a status container and passes through message content
 export const SectionMessage = (props: Record<string, unknown>) => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react') as typeof import('react');
   return React.createElement(
     'div',
@@ -216,7 +216,7 @@ export const useToast = () => {
 
 // InlineMessage stub: renders title + optional message with type as data attribute
 export const InlineMessage = (props: Record<string, unknown>) => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react') as typeof import('react');
   return React.createElement(
     'div',
@@ -228,7 +228,7 @@ export const InlineMessage = (props: Record<string, unknown>) => {
 
 // UtilityButton stub: renders a button with label and onClick
 export const UtilityButton = (props: Record<string, unknown>) => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react') as typeof import('react');
   const extraProps = (props.buttonProps ?? {}) as Record<string, unknown>;
   return React.createElement(
@@ -246,7 +246,7 @@ export const UtilityButton = (props: Record<string, unknown>) => {
 
 // SplitButton stub: renders primary button + menu trigger + hidden menu items
 export const SplitButton = (props: Record<string, unknown>) => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react') as typeof import('react');
   const [menuOpen, setMenuOpen] = React.useState(false);
   const items = (props.actionItems ?? []) as MockMenuItem[];

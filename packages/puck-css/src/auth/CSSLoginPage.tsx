@@ -142,6 +142,20 @@ function CSSAuthServerLogin() {
   );
 }
 
+function P1Login() {
+  const { login, isLoading } = useCSSAuth();
+
+  return (
+    <button
+      className="pds-button pds-button--primary pds-button--full-width"
+      onClick={() => void login()}
+      disabled={isLoading}
+    >
+      {isLoading ? 'Complete login in the tab that opened...' : 'Sign in with Pantheon'}
+    </button>
+  );
+}
+
 function getAuthModeLabel(mode: AuthMode): string {
   switch (mode) {
     case 'mock':
@@ -152,6 +166,8 @@ function getAuthModeLabel(mode: AuthMode): string {
       return 'Auth0';
     case 'css-authserver':
       return 'CSS Auth Server';
+    case 'p1':
+      return 'Pantheon';
   }
 }
 
@@ -187,6 +203,7 @@ export function CSSLoginPage({
         {authMode === 'google' && <GoogleLogin />}
         {authMode === 'auth0' && <Auth0Login />}
         {authMode === 'css-authserver' && <CSSAuthServerLogin />}
+        {authMode === 'p1' && <P1Login />}
 
         {error && <div style={errorStyle}>{error}</div>}
       </div>

@@ -6,9 +6,9 @@
 
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { PropDiffRow } from '../src/components/version-compare/PropDiffRow.js';
-import { PropDiffPanel } from '../src/components/version-compare/PropDiffPanel.js';
-import type { PropDiff } from '../src/types.js';
+import { PropDiffRow } from '../src/versioning/components/version-compare/PropDiffRow.js';
+import { PropDiffPanel } from '../src/versioning/components/version-compare/PropDiffPanel.js';
+import type { PropDiff } from '../src/core/types.js';
 
 describe('PropDiffRow', () => {
   it('should render added prop with before empty and after value', () => {

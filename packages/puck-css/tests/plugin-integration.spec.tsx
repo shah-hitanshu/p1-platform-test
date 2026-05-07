@@ -11,8 +11,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { createCSSPlugin, createCSSOverrides } from '../src/plugin/index.js';
-import type { Branch, RegisteredAgent, ActorPresence } from '@pantheon/css-client';
+import { createCSSPlugin, createCSSOverrides } from '../src/editor/plugin/index.js';
+import type { Branch, RegisteredAgent, ActorPresence } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock Data

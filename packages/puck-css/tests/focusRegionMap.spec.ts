@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { PuckData, ActorPresence } from '@pantheon/css-client';
+import type { PuckData, ActorPresence } from '@pantheon-systems/css-client';
 
 // Import will fail until implementation exists
 // import {
@@ -14,7 +14,7 @@ import type { PuckData, ActorPresence } from '@pantheon/css-client';
 //   createFocusRegionMap,
 //   generateActorColor,
 //   type FocusHighlight,
-// } from '../src/utils/focusRegionMap.js';
+// } from '../src/collaboration/utils/focusRegionMap.js';
 
 // =============================================================================
 // Mock Data
@@ -83,7 +83,7 @@ const mockActors: ActorPresence[] = [
 
 describe('pathToComponentId', () => {
   // Dynamic import to handle module not existing yet
-  const getModule = async () => import('../src/utils/focusRegionMap.js');
+  const getModule = async () => import('../src/collaboration/utils/focusRegionMap.js');
 
   describe('content paths', () => {
     it('should return component ID for /content/0 path', async () => {
@@ -205,7 +205,7 @@ describe('pathToComponentId', () => {
 // =============================================================================
 
 describe('createFocusRegionMap', () => {
-  const getModule = async () => import('../src/utils/focusRegionMap.js');
+  const getModule = async () => import('../src/collaboration/utils/focusRegionMap.js');
 
   it('should create a map of component IDs to focus highlights', async () => {
     const { createFocusRegionMap } = await getModule();
@@ -328,7 +328,7 @@ describe('createFocusRegionMap', () => {
 // =============================================================================
 
 describe('generateActorColor', () => {
-  const getModule = async () => import('../src/utils/focusRegionMap.js');
+  const getModule = async () => import('../src/collaboration/utils/focusRegionMap.js');
 
   it('should return a valid hex color', async () => {
     const { generateActorColor } = await getModule();

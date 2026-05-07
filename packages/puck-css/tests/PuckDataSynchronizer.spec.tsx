@@ -6,8 +6,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, act, waitFor } from '@testing-library/react';
-import { PuckDataSynchronizer, _resetSyncTracking } from '../src/components/PuckDataSynchronizer.js';
-import type { PuckData } from '@pantheon/css-client';
+import { PuckDataSynchronizer, _resetSyncTracking } from '../src/editor/components/PuckDataSynchronizer.js';
+import type { PuckData } from '@pantheon-systems/css-client';
 
 // Mock @puckeditor/core
 const mockDispatch = vi.fn();

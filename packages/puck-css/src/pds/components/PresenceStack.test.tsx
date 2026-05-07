@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { PresenceStack } from './PresenceStack.js';
-import type { ActorPresence } from '@pantheon/css-client';
+import type { ActorPresence } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock Data

@@ -8,12 +8,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import React from 'react';
-import { useAgentEdit } from '../src/hooks/index.js';
-import { PresenceContext } from '../src/PresenceContext.js';
+import { useAgentEdit } from '../src/agent/index.js';
+import { PresenceContext } from '../src/core/PresenceContext.js';
 import type {
   CSSClient,
   AgentEditSession,
-} from '@pantheon/css-client';
+} from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock Data
@@ -193,8 +193,8 @@ const connectCalls: Array<{
 }> = [];
 
 // Mock RealtimeClient and Yjs binding
-vi.mock('@pantheon/css-client', async () => {
-  const actual = await vi.importActual('@pantheon/css-client');
+vi.mock('@pantheon-systems/css-client', async () => {
+  const actual = await vi.importActual('@pantheon-systems/css-client');
 
   class MockRealtimeClient {
     private ydoc = {
@@ -235,7 +235,7 @@ vi.mock('@pantheon/css-client', async () => {
 });
 
 // Mock puckYjsBinding to avoid Yjs issues
-vi.mock('../src/utils/puckYjsBinding.js', () => ({
+vi.mock('../src/editor/utils/puckYjsBinding.js', () => ({
   createPuckYjsBinding: () => ({
     applyLocalChange: () => {},
     destroy: () => {},
@@ -254,7 +254,7 @@ describe('useRealtime sessionId', () => {
 
   it('should accept sessionId in params', async () => {
     // Import dynamically to get mocked version
-    const { useRealtime } = await import('../src/hooks/useRealtime.js');
+    const { useRealtime } = await import('../src/editor/useRealtime.js');
 
     renderHook(() =>
       useRealtime({
@@ -275,7 +275,7 @@ describe('useRealtime sessionId', () => {
   });
 
   it('should not include sessionId when not provided', async () => {
-    const { useRealtime } = await import('../src/hooks/useRealtime.js');
+    const { useRealtime } = await import('../src/editor/useRealtime.js');
 
     renderHook(() =>
       useRealtime({

@@ -9,9 +9,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { DocumentResolutionDetail } from '../components/merge-resolution/DocumentResolutionDetail.js';
-import type { DocumentResolution } from '../hooks/useMergeResolution.js';
-import type { PuckData } from '@pantheon/css-client';
+import { DocumentResolutionDetail } from '../merge/components/merge-resolution/DocumentResolutionDetail.js';
+import type { DocumentResolution } from '../merge/useMergeResolution.js';
+import type { PuckData } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock Puck Render

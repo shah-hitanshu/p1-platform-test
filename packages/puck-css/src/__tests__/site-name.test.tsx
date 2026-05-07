@@ -21,7 +21,7 @@ const TEST_SITE_NAME = 'Airbus Migration';
 // Mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('../hooks/useRealtime', () => ({
+vi.mock('../editor/useRealtime', () => ({
   useRealtime: () => ({
     connected: false,
     provider: null,
@@ -33,7 +33,7 @@ vi.mock('../hooks/useRealtime', () => ({
   }),
 }));
 
-vi.mock('../hooks/useDocuments', () => ({
+vi.mock('../editor/useDocuments', () => ({
   useDocuments: () => ({
     documents: [],
     loading: false,
@@ -42,7 +42,7 @@ vi.mock('../hooks/useDocuments', () => ({
   }),
 }));
 
-vi.mock('../utils/debounce', () => ({
+vi.mock('../core/utils/debounce', () => ({
   debounce: (fn: (...args: unknown[]) => unknown) => {
     const debounced = fn as ((...args: unknown[]) => unknown) & {
       cancel: () => void;
@@ -54,7 +54,7 @@ vi.mock('../utils/debounce', () => ({
   },
 }));
 
-vi.mock('../utils/retry', () => ({
+vi.mock('../core/utils/retry', () => ({
   withRetry: (fn: () => unknown) => fn(),
 }));
 
@@ -96,8 +96,8 @@ function createMockClient(siteName: string | null = TEST_SITE_NAME) {
 // Imports (must come after mocks)
 // ---------------------------------------------------------------------------
 
-import { CSSPuckProvider } from '../CSSPuckProvider.js';
-import { useCSSPuck } from '../CSSPuckContext.js';
+import { CSSPuckProvider } from '../editor/CSSPuckProvider.js';
+import { useCSSPuck } from '../core/CSSPuckContext.js';
 
 // ---------------------------------------------------------------------------
 // Helper consumer component

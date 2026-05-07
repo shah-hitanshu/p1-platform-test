@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import type { ActorPresence, ActorState } from '@pantheon/css-client';
+import type { ActorPresence, ActorState } from '@pantheon-systems/css-client';
 import * as Y from 'yjs';
 
 // =============================================================================
@@ -100,12 +100,12 @@ class MockRealtimeClient {
 // Store instances for test access
 let mockClientInstances: MockRealtimeClient[] = [];
 
-// Mock @pantheon/css-client module
-vi.mock('@pantheon/css-client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@pantheon/css-client')>();
+// Mock @pantheon-systems/css-client module
+vi.mock('@pantheon-systems/css-client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@pantheon-systems/css-client')>();
   return {
     ...actual,
-    RealtimeClient: vi.fn((config: MockRealtimeClientConfig) => {
+    RealtimeClient: vi.fn().mockImplementation(function (config: MockRealtimeClientConfig) {
       const client = new MockRealtimeClient(config);
       mockClientInstances.push(client);
       return client;
@@ -130,7 +130,7 @@ describe('useRealtime WebSocket Presence', () => {
 
   describe('UseRealtimeParams presence callbacks', () => {
     it('should accept onPresenceUpdate callback in params', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const onPresenceUpdate = vi.fn();
       const { result } = renderHook(() =>
@@ -149,7 +149,7 @@ describe('useRealtime WebSocket Presence', () => {
     });
 
     it('should accept onFocusRegionBroadcast callback in params', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const onFocusRegionBroadcast = vi.fn();
       const { result } = renderHook(() =>
@@ -170,7 +170,7 @@ describe('useRealtime WebSocket Presence', () => {
 
   describe('onPresenceUpdate callback', () => {
     it('should call onPresenceUpdate when server sends presence_update', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const onPresenceUpdate = vi.fn();
       renderHook(() =>
@@ -215,7 +215,7 @@ describe('useRealtime WebSocket Presence', () => {
 
   describe('onFocusRegionBroadcast callback', () => {
     it('should call onFocusRegionBroadcast when server sends focus_region_broadcast', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const onFocusRegionBroadcast = vi.fn();
       renderHook(() =>
@@ -247,7 +247,7 @@ describe('useRealtime WebSocket Presence', () => {
 
   describe('sendFocusRegions method', () => {
     it('should return sendFocusRegions function', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result } = renderHook(() =>
         useRealtime({
@@ -264,7 +264,7 @@ describe('useRealtime WebSocket Presence', () => {
     });
 
     it('should send focus regions via WebSocket when connected', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result } = renderHook(() =>
         useRealtime({
@@ -294,7 +294,7 @@ describe('useRealtime WebSocket Presence', () => {
     });
 
     it('should return false when not connected', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result } = renderHook(() =>
         useRealtime({
@@ -319,7 +319,7 @@ describe('useRealtime WebSocket Presence', () => {
 
   describe('sendHeartbeat method', () => {
     it('should return sendHeartbeat function', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result } = renderHook(() =>
         useRealtime({
@@ -336,7 +336,7 @@ describe('useRealtime WebSocket Presence', () => {
     });
 
     it('should send heartbeat via WebSocket when connected', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result } = renderHook(() =>
         useRealtime({
@@ -366,7 +366,7 @@ describe('useRealtime WebSocket Presence', () => {
 
   describe('presenceViaWebSocket property', () => {
     it('should return presenceViaWebSocket boolean', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result } = renderHook(() =>
         useRealtime({
@@ -383,7 +383,7 @@ describe('useRealtime WebSocket Presence', () => {
     });
 
     it('should be false when not connected', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result } = renderHook(() =>
         useRealtime({
@@ -401,7 +401,7 @@ describe('useRealtime WebSocket Presence', () => {
     });
 
     it('should be true when connected', async () => {
-      const { useRealtime } = await import('../src/hooks/useRealtime.js');
+      const { useRealtime } = await import('../src/editor/useRealtime.js');
 
       const { result } = renderHook(() =>
         useRealtime({

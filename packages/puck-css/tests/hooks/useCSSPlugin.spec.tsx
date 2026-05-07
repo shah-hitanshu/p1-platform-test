@@ -7,13 +7,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import React from 'react';
-import type { CSSClient, Branch, PuckData, Document } from '@pantheon/css-client';
+import type { CSSClient, Branch, PuckData, Document } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock useRealtime hook
 // =============================================================================
 
-vi.mock('../../src/hooks/useRealtime.js', () => ({
+vi.mock('../../src/editor/useRealtime.js', () => ({
   useRealtime: () => ({
     connected: false,
     applyLocalChange: vi.fn(),
@@ -30,9 +30,9 @@ vi.mock('../../src/hooks/useRealtime.js', () => ({
 // Import AFTER the mock
 // =============================================================================
 
-const { CSSPuckProvider } = await import('../../src/CSSPuckProvider.js');
-const { useCSSPlugin } = await import('../../src/hooks/useCSSPlugin.js');
-const { useCSSPuck } = await import('../../src/CSSPuckContext.js');
+const { CSSPuckProvider } = await import('../../src/editor/CSSPuckProvider.js');
+const { useCSSPlugin } = await import('../../src/editor/useCSSPlugin.js');
+const { useCSSPuck } = await import('../../src/core/CSSPuckContext.js');
 
 // =============================================================================
 // Mock Data
@@ -149,7 +149,7 @@ describe('useCSSPlugin', () => {
 
     expect(result.current).toBeDefined();
     expect(result.current.name).toBe('css');
-    expect(result.current.label).toBe('');
+    expect(result.current.label).toBe('History');
     expect(result.current.icon).toBeDefined();
     expect(typeof result.current.render).toBe('function');
   });

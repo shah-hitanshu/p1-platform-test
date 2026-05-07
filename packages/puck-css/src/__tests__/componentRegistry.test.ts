@@ -11,7 +11,7 @@ import {
   extractDescriptors,
   buildRegistryIndex,
   type ComponentDescriptor,
-} from '../utils/componentRegistry.js';
+} from '../editor/utils/componentRegistry.js';
 
 describe('serializeField', () => {
   it('serializes a text field', () => {
@@ -203,18 +203,22 @@ describe('extractDescriptors', () => {
 
   it('uses component label when present, falls back to key; root always gets label "Page Root"', () => {
     const descriptors = extractDescriptors(mockConfig);
-    const hero = descriptors.find((d) => d.name === 'HeroBlock')!;
-    expect(hero.label).toBe('Hero');
-    const card = descriptors.find((d) => d.name === 'CardBlock')!;
-    expect(card.label).toBe('CardBlock');
-    const root = descriptors.find((d) => d.name === '__root__')!;
-    expect(root.label).toBe('Page Root');
+    const hero = descriptors.find((d) => d.name === 'HeroBlock');
+    expect(hero).toBeDefined();
+    expect((hero as ComponentDescriptor).label).toBe('Hero');
+    const card = descriptors.find((d) => d.name === 'CardBlock');
+    expect(card).toBeDefined();
+    expect((card as ComponentDescriptor).label).toBe('CardBlock');
+    const root = descriptors.find((d) => d.name === '__root__');
+    expect(root).toBeDefined();
+    expect((root as ComponentDescriptor).label).toBe('Page Root');
   });
 
   it('serializes fields correctly', () => {
     const descriptors = extractDescriptors(mockConfig);
-    const hero = descriptors.find((d) => d.name === 'HeroBlock')!;
-    expect(hero.fields).toEqual([
+    const hero = descriptors.find((d) => d.name === 'HeroBlock');
+    expect(hero).toBeDefined();
+    expect((hero as ComponentDescriptor).fields).toEqual([
       { type: 'text', name: 'title', label: 'Title' },
       { type: 'textarea', name: 'body', label: 'Body' },
     ]);
@@ -222,8 +226,9 @@ describe('extractDescriptors', () => {
 
   it('preserves defaultProps', () => {
     const descriptors = extractDescriptors(mockConfig);
-    const hero = descriptors.find((d) => d.name === 'HeroBlock')!;
-    expect(hero.defaultProps).toEqual({ title: 'Hello', body: '' });
+    const hero = descriptors.find((d) => d.name === 'HeroBlock');
+    expect(hero).toBeDefined();
+    expect((hero as ComponentDescriptor).defaultProps).toEqual({ title: 'Hello', body: '' });
   });
 
   it('populates descriptorHash and registeredAt', () => {
@@ -243,11 +248,12 @@ describe('extractDescriptors', () => {
 
   it('root descriptor has correct field serialization', () => {
     const descriptors = extractDescriptors(mockConfig);
-    const root = descriptors.find((d) => d.name === '__root__')!;
-    expect(root.fields).toEqual([
+    const root = descriptors.find((d) => d.name === '__root__');
+    expect(root).toBeDefined();
+    expect((root as ComponentDescriptor).fields).toEqual([
       { type: 'select', name: 'background', options: [{ label: 'White', value: 'white' }] },
     ]);
-    expect(root.defaultProps).toEqual({ background: 'white' });
+    expect((root as ComponentDescriptor).defaultProps).toEqual({ background: 'white' });
   });
 
   it('handles config with no root gracefully', () => {
@@ -279,23 +285,26 @@ describe('extractDescriptors with upstream', () => {
 
   it('marks component as "upstream" when site and upstream hashes match', () => {
     const descriptors = extractDescriptors(siteConfig, upstreamConfig);
-    const shared = descriptors.find((d) => d.name === 'SharedBlock')!;
-    expect(shared.provenance).toBe('upstream');
-    expect(shared.upstreamHash).toBeTruthy();
+    const shared = descriptors.find((d) => d.name === 'SharedBlock');
+    expect(shared).toBeDefined();
+    expect((shared as ComponentDescriptor).provenance).toBe('upstream');
+    expect((shared as ComponentDescriptor).upstreamHash).toBeTruthy();
   });
 
   it('marks component as "site" when not present in upstream', () => {
     const descriptors = extractDescriptors(siteConfig, upstreamConfig);
-    const siteOnly = descriptors.find((d) => d.name === 'SiteOnlyBlock')!;
-    expect(siteOnly.provenance).toBe('site');
-    expect(siteOnly.upstreamHash).toBeUndefined();
+    const siteOnly = descriptors.find((d) => d.name === 'SiteOnlyBlock');
+    expect(siteOnly).toBeDefined();
+    expect((siteOnly as ComponentDescriptor).provenance).toBe('site');
+    expect((siteOnly as ComponentDescriptor).upstreamHash).toBeUndefined();
   });
 
   it('marks component as "overridden" when hashes differ', () => {
     const descriptors = extractDescriptors(siteConfig, upstreamConfig);
-    const modified = descriptors.find((d) => d.name === 'ModifiedBlock')!;
-    expect(modified.provenance).toBe('overridden');
-    expect(modified.upstreamHash).toBeTruthy();
+    const modified = descriptors.find((d) => d.name === 'ModifiedBlock');
+    expect(modified).toBeDefined();
+    expect((modified as ComponentDescriptor).provenance).toBe('overridden');
+    expect((modified as ComponentDescriptor).upstreamHash).toBeTruthy();
   });
 });
 

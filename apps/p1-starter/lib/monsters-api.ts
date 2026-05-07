@@ -1,7 +1,7 @@
 import type {
   RemoteDatasourceFetcher,
   RemoteDatasourceFetcherParams,
-} from "@pantheon-systems/p1-client-sdk";
+} from "@pantheon-systems/puck-css/server";
 import { getFirstValue, savedValue } from "./fetcher-helpers";
 
 const GRAPHQL_POKEMON_ENDPOINT = "https://graphqlpokemon.favware.tech/v8";

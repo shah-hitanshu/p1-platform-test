@@ -7,10 +7,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, render } from '@testing-library/react';
 import React from 'react';
-import { useFocusRegionReporting } from '../src/hooks/useFocusRegionReporting.js';
-import { PuckSelectionTracker } from '../src/components/PuckSelectionTracker.js';
-import { PresenceContext } from '../src/PresenceContext.js';
-import type { CSSClient } from '@pantheon/css-client';
+import { useFocusRegionReporting } from '../src/collaboration/useFocusRegionReporting.js';
+import { PuckSelectionTracker } from '../src/editor/components/PuckSelectionTracker.js';
+import { PresenceContext } from '../src/core/PresenceContext.js';
+import type { CSSClient } from '@pantheon-systems/css-client';
 
 // Mock Puck's createUsePuck
 const mockUsePuckReturn = {

@@ -1,10 +1,10 @@
 import type {
   RemoteDatasourceFetcher,
   RemoteDatasourceFetcherParams,
-} from "@pantheon-systems/p1-client-sdk";
+} from "@pantheon-systems/puck-css/server";
 import { getFirstValue, savedValue } from "./fetcher-helpers";
 
-const SWAPI_BASE = "https://swapi.dev/api";
+const SWAPI_BASE = "https://swapi.info/api";
 
 function swapiPersonIdFromUrl(url: unknown): string | undefined {
   if (typeof url !== "string") return undefined;
@@ -27,7 +27,7 @@ async function fetchSwapiPerson(
 ): Promise<Record<string, unknown>> {
   if (!id || !/^\d+$/.test(id)) return {};
   try {
-    const res = await fetchImpl(`${SWAPI_BASE}/people/${id}/`);
+    const res = await fetchImpl(`${SWAPI_BASE}/people/${id}`);
     if (!res.ok) return {};
     const json: unknown = await res.json();
     if (json && typeof json === "object" && !Array.isArray(json)) {
@@ -43,12 +43,11 @@ async function fetchSwapiPeopleList(
   fetchImpl: typeof fetch,
 ): Promise<Array<{ id: string; name: string; url?: string }>> {
   try {
-    const res = await fetchImpl(`${SWAPI_BASE}/people/`);
+    const res = await fetchImpl(`${SWAPI_BASE}/people`);
     if (!res.ok) return [];
     const json: unknown = await res.json();
-    if (!json || typeof json !== "object" || Array.isArray(json)) return [];
-    const results = (json as { results?: unknown }).results;
-    if (!Array.isArray(results)) return [];
+    const results = Array.isArray(json) ? json : null;
+    if (!results) return [];
     const out: Array<{ id: string; name: string; url?: string }> = [];
     for (const row of results) {
       if (!row || typeof row !== "object" || Array.isArray(row)) continue;

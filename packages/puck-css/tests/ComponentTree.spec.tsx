@@ -6,9 +6,9 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ComponentNode } from '../src/components/version-compare/ComponentNode.js';
-import { ComponentTree } from '../src/components/version-compare/ComponentTree.js';
-import type { ComponentDiffWithPosition } from '../src/types.js';
+import { ComponentNode } from '../src/versioning/components/version-compare/ComponentNode.js';
+import { ComponentTree } from '../src/versioning/components/version-compare/ComponentTree.js';
+import type { ComponentDiffWithPosition } from '../src/core/types.js';
 
 describe('ComponentNode', () => {
   const baseDiff: ComponentDiffWithPosition = {

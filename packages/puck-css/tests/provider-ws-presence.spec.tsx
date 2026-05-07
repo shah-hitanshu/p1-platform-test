@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitFor, screen, act } from '@testing-library/react';
 import React, { useContext } from 'react';
-import type { ActorPresence, CSSClient, ActorState } from '@pantheon/css-client';
+import type { ActorPresence, CSSClient, ActorState } from '@pantheon-systems/css-client';
 import * as Y from 'yjs';
 
 // =============================================================================
@@ -109,11 +109,11 @@ class MockRealtimeClient {
 
 let mockClientInstances: MockRealtimeClient[] = [];
 
-vi.mock('@pantheon/css-client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@pantheon/css-client')>();
+vi.mock('@pantheon-systems/css-client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@pantheon-systems/css-client')>();
   return {
     ...actual,
-    RealtimeClient: vi.fn((config: MockRealtimeClientConfig) => {
+    RealtimeClient: vi.fn().mockImplementation(function (config: MockRealtimeClientConfig) {
       const client = new MockRealtimeClient(config);
       mockClientInstances.push(client);
       return client;
@@ -233,9 +233,9 @@ describe('CSSPuckProvider WebSocket Presence Integration', () => {
 
   describe('WebSocket presence when realtime and presence are both enabled', () => {
     it('should prefer WebSocket presence over HTTP polling when connected', async () => {
-      const { CSSPuckProvider } = await import('../src/CSSPuckProvider.js');
-      const { PresenceContext } = await import('../src/PresenceContext.js');
-      const { CSSPuckContext } = await import('../src/CSSPuckContext.js');
+      const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
+      const { PresenceContext } = await import('../src/core/PresenceContext.js');
+      const { CSSPuckContext } = await import('../src/core/CSSPuckContext.js');
 
       let presenceValue: { actors: ActorPresence[] } | null = null;
       let loadDocumentFn: ((path: string) => Promise<void>) | null = null;
@@ -313,9 +313,9 @@ describe('CSSPuckProvider WebSocket Presence Integration', () => {
     });
 
     it('should keep WS presence active in human-only sessions (no agents)', async () => {
-      const { CSSPuckProvider } = await import('../src/CSSPuckProvider.js');
-      const { PresenceContext } = await import('../src/PresenceContext.js');
-      const { CSSPuckContext } = await import('../src/CSSPuckContext.js');
+      const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
+      const { PresenceContext } = await import('../src/core/PresenceContext.js');
+      const { CSSPuckContext } = await import('../src/core/CSSPuckContext.js');
 
       let loadDocumentFn: ((path: string) => Promise<void>) | null = null;
       let presenceValue: { actors: ActorPresence[] } | null = null;
@@ -371,8 +371,8 @@ describe('CSSPuckProvider WebSocket Presence Integration', () => {
     });
 
     it('should fall back to HTTP polling when WebSocket disconnects', async () => {
-      const { CSSPuckProvider } = await import('../src/CSSPuckProvider.js');
-      const { CSSPuckContext } = await import('../src/CSSPuckContext.js');
+      const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
+      const { CSSPuckContext } = await import('../src/core/CSSPuckContext.js');
 
       let loadDocumentFn: ((path: string) => Promise<void>) | null = null;
 
@@ -437,8 +437,8 @@ describe('CSSPuckProvider WebSocket Presence Integration', () => {
 
   describe('sendFocusRegions via context', () => {
     it('should expose sendFocusRegions when realtime is enabled', async () => {
-      const { CSSPuckProvider } = await import('../src/CSSPuckProvider.js');
-      const { CSSPuckContext } = await import('../src/CSSPuckContext.js');
+      const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
+      const { CSSPuckContext } = await import('../src/core/CSSPuckContext.js');
 
       let contextValue: { sendFocusRegions?: (regions: string[]) => boolean } | null = null;
 
@@ -472,9 +472,9 @@ describe('CSSPuckProvider WebSocket Presence Integration', () => {
 
   describe('focus region broadcast updates', () => {
     it('should update actor focus regions when broadcast received', async () => {
-      const { CSSPuckProvider } = await import('../src/CSSPuckProvider.js');
-      const { PresenceContext } = await import('../src/PresenceContext.js');
-      const { CSSPuckContext } = await import('../src/CSSPuckContext.js');
+      const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
+      const { PresenceContext } = await import('../src/core/PresenceContext.js');
+      const { CSSPuckContext } = await import('../src/core/CSSPuckContext.js');
 
       let presenceValue: { actors: ActorPresence[] } | null = null;
       let loadDocumentFn: ((path: string) => Promise<void>) | null = null;

@@ -10,8 +10,8 @@ import React from 'react';
 import {
   VersionItem,
   AgentCheckpointBadge,
-} from '../src/components/version-history/index.js';
-import type { DocumentVersion, Checkpoint } from '@pantheon/css-client';
+} from '../src/versioning/components/version-history/index.js';
+import type { DocumentVersion, Checkpoint } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock Data

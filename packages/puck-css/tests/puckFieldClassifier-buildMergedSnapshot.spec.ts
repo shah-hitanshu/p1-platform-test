@@ -7,12 +7,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { PuckData } from '@pantheon/css-client';
-import type { PuckFieldClassification } from '../src/utils/puckFieldClassifier.js';
+import type { PuckData } from '@pantheon-systems/css-client';
+import type { PuckFieldClassification } from '../src/merge/utils/puckFieldClassifier.js';
 import {
   buildMergedSnapshot,
   classifyPuckFields,
-} from '../src/utils/puckFieldClassifier.js';
+} from '../src/merge/utils/puckFieldClassifier.js';
 
 // =============================================================================
 // Shared Fixtures

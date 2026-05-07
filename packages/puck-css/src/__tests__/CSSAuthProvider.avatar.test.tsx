@@ -17,7 +17,7 @@ import React from 'react';
 // Module-level mocks — declared before any imports of the modules under test
 // ---------------------------------------------------------------------------
 
-vi.mock('@pantheon/css-client', () => ({
+vi.mock('@pantheon-systems/css-client', () => ({
   createCSSAuthServerOAuth: vi.fn(),
   createGoogleOAuth: vi.fn(),
   createAuth0OAuth: vi.fn(),
@@ -28,7 +28,7 @@ vi.mock('@pantheon/css-client', () => ({
 import {
   createCSSAuthServerOAuth,
   validateToken,
-} from '@pantheon/css-client';
+} from '@pantheon-systems/css-client';
 
 import { CSSAuthProvider, useCSSAuth } from '../auth/CSSAuthProvider';
 
@@ -112,7 +112,7 @@ describe('CSSAuthProvider — avatar picture from oauth getUserInfo', () => {
     });
 
     expect(capturedUser).not.toBeNull();
-    expect(capturedUser!.picture).toBe('https://lh3.googleusercontent.com/photo.jpg');
+    expect((capturedUser as NonNullable<typeof capturedUser>).picture).toBe('https://lh3.googleusercontent.com/photo.jpg');
   });
 
   it('falls back to getUserInfo().picture when validateToken() returns no avatarUrl', async () => {
@@ -152,7 +152,8 @@ describe('CSSAuthProvider — avatar picture from oauth getUserInfo', () => {
       );
     });
 
-    expect(capturedUser!.picture).toBe('https://lh3.googleusercontent.com/fallback.jpg');
+    expect(capturedUser).not.toBeNull();
+    expect((capturedUser as NonNullable<typeof capturedUser>).picture).toBe('https://lh3.googleusercontent.com/fallback.jpg');
   });
 
   it('sets user.picture to undefined when getUserInfo() returns no picture', async () => {
@@ -194,6 +195,6 @@ describe('CSSAuthProvider — avatar picture from oauth getUserInfo', () => {
       expect(capturedUser).not.toBeNull();
     });
 
-    expect(capturedUser!.picture).toBeUndefined();
+    expect((capturedUser as NonNullable<typeof capturedUser>).picture).toBeUndefined();
   });
 });

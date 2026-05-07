@@ -15,15 +15,15 @@ import { renderHook, cleanup } from '@testing-library/react';
 // ============================================================
 
 // Mock css-client
-vi.mock('@pantheon/css-client', () => ({
+vi.mock('@pantheon-systems/css-client', () => ({
   CSSClient: vi.fn(),
 }));
 
 // Mock PuckDataSynchronizer and PuckSelectionTracker (used by CSSPlugin)
-vi.mock('../components/PuckDataSynchronizer', () => ({
+vi.mock('../editor/components/PuckDataSynchronizer', () => ({
   PuckDataSynchronizer: () => null,
 }));
-vi.mock('../components/PuckSelectionTracker', () => ({
+vi.mock('../editor/components/PuckSelectionTracker', () => ({
   PuckSelectionTracker: () => null,
 }));
 
@@ -32,7 +32,7 @@ const capturedPluginOptions: Record<string, unknown>[] = [];
 const capturedOverridesOptions: Record<string, unknown>[] = [];
 
 // Mock useCSSPlugin to capture options
-vi.mock('../hooks/useCSSPlugin', () => ({
+vi.mock('../editor/useCSSPlugin', () => ({
   useCSSPlugin: vi.fn((options: Record<string, unknown>) => {
     capturedPluginOptions.push({ ...options });
     return { name: 'css-plugin', render: () => null };
@@ -40,7 +40,7 @@ vi.mock('../hooks/useCSSPlugin', () => ({
 }));
 
 // Mock useCSSOverrides to capture options
-vi.mock('../hooks/useCSSOverrides', () => ({
+vi.mock('../editor/useCSSOverrides', () => ({
   useCSSOverrides: vi.fn((options: Record<string, unknown>) => {
     capturedOverridesOptions.push({ ...options });
     return {};
@@ -48,8 +48,8 @@ vi.mock('../hooks/useCSSOverrides', () => ({
 }));
 
 // Mock useVersions
-import { useVersions } from '../hooks/useVersions.js';
-vi.mock('../hooks/useVersions', () => ({
+import { useVersions } from '../versioning/useVersions.js';
+vi.mock('../versioning/useVersions', () => ({
   useVersions: vi.fn(),
 }));
 const mockUseVersions = vi.mocked(useVersions);
@@ -148,12 +148,12 @@ function createMockContext(overrides: Record<string, unknown> = {}) {
 // Mock CSSPuckContext — will be configured per test via mockContextValue
 let mockContextValue = createMockContext();
 
-vi.mock('../CSSPuckContext', () => ({
+vi.mock('../core/CSSPuckContext', () => ({
   useCSSPuck: () => mockContextValue,
 }));
 
 // Import after mocks are set up
-import { useCSSEditor } from '../hooks/useCSSEditor.js';
+import { useCSSEditor } from '../editor/useCSSEditor.js';
 
 beforeEach(() => {
   capturedPluginOptions.length = 0;

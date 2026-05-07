@@ -13,18 +13,18 @@ import React from 'react';
 // Dependency mocks — must be hoisted before any imports that use them
 // ---------------------------------------------------------------------------
 
-vi.mock('@pantheon/css-client', () => ({ CSSClient: vi.fn() }));
+vi.mock('@pantheon-systems/css-client', () => ({ CSSClient: vi.fn() }));
 
-vi.mock('../src/components/PuckDataSynchronizer.js', () => ({
+vi.mock('../src/editor/components/PuckDataSynchronizer.js', () => ({
   PuckDataSynchronizer: () => null,
   _resetSyncTracking: () => {},
 }));
 
-vi.mock('../src/components/PuckSelectionTracker.js', () => ({
+vi.mock('../src/editor/components/PuckSelectionTracker.js', () => ({
   PuckSelectionTracker: () => null,
 }));
 
-vi.mock('../src/components/PuckDataCapture.js', () => ({
+vi.mock('../src/editor/components/PuckDataCapture.js', () => ({
   PuckDataCapture: () => null,
 }));
 
@@ -89,8 +89,9 @@ const mockCSSContext = {
   _onRealtimeDataCapture: null,
 };
 
-vi.mock('../src/CSSPuckContext.js', () => ({
+vi.mock('../src/core/CSSPuckContext.js', () => ({
   useCSSPuck: () => mockCSSContext,
+  useCSSPuckOptional: () => mockCSSContext,
 }));
 
 // Stub P1EditorHeader so tests aren't coupled to PDS internals
@@ -210,7 +211,7 @@ vi.mock('../src/pds/components/P1EditorSubheader.js', () => ({
 }));
 
 // Stub MergeReviewPage
-vi.mock('../src/components/merge-resolution/MergeReviewPage.js', () => ({
+vi.mock('../src/merge/components/merge-resolution/MergeReviewPage.js', () => ({
   MergeReviewPage: ({ onClose }: { onClose: () => void }) => (
     <div data-testid="merge-resolution-page">
       <button onClick={onClose} type="button">
@@ -224,8 +225,8 @@ vi.mock('../src/components/merge-resolution/MergeReviewPage.js', () => ({
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
-import { createCSSPlugin } from '../src/plugin/CSSPlugin.js';
-import type { Branch, Document, ActorPresence } from '@pantheon/css-client';
+import { createCSSPlugin } from '../src/editor/plugin/CSSPlugin.js';
+import type { Branch, Document, ActorPresence } from '@pantheon-systems/css-client';
 
 // ---------------------------------------------------------------------------
 // Shared test data

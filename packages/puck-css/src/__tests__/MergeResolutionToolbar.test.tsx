@@ -9,7 +9,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MergeResolutionToolbar } from '../components/merge-resolution/MergeResolutionToolbar.js';
+import { MergeResolutionToolbar } from '../merge/components/merge-resolution/MergeResolutionToolbar.js';
 
 describe('MergeResolutionToolbar', () => {
   const defaultProps = {

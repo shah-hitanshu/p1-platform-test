@@ -2,30 +2,36 @@
   "name": "@pantheon-systems/p1-starter",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@pantheon-systems/cpub-react-sdk": "^5.2.1",
-    "@pantheon-systems/p1-client-sdk": "workspace:*",
+    "@pantheon-systems/css-client": "workspace:*",
+    "@pantheon-systems/p1-next-sdk": "workspace:*",
+    "@pantheon-systems/puck-css": "workspace:*",
     "@puckeditor/core": "^0.21.1",
     "@tailwindcss/postcss": "^4.2.2",
-    "classnames": "^2.3.2",
+    "classnames": "^2.5.1",
     "next": "^16.2.3",
-    "postcss": "^8.5.8",
+    "postcss": "^8.5.12",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-markdown": "^10.1.0",
     "tailwindcss": "^4.2.2"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@pantheon-systems/eslint-config": "workspace:*",
+    "@types/node": "^20.19.30",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "typescript": "^5.5.4",
-    "vitest": "^2.1.9"
+    "eslint": "^9.27.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
   }
 }

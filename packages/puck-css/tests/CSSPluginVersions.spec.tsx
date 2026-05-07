@@ -6,8 +6,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { createCSSPlugin } from '../src/plugin/index.js';
-import type { Branch, DocumentVersion } from '@pantheon/css-client';
+import { createCSSPlugin } from '../src/editor/plugin/index.js';
+import type { Branch, DocumentVersion } from '@pantheon-systems/css-client';
 
 describe('CSSPlugin Version History', () => {
   const mockBranches: Branch[] = [

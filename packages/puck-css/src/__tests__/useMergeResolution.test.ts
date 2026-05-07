@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 
 // Mock the puckFieldClassifier module
-vi.mock('../utils/puckFieldClassifier.js', () => ({
+vi.mock('../merge/utils/puckFieldClassifier.js', () => ({
   classifyPuckFields: vi.fn().mockReturnValue([
     {
       classification: 'conflicting',
@@ -26,9 +26,9 @@ vi.mock('../utils/puckFieldClassifier.js', () => ({
   }),
 }));
 
-import { useMergeResolution } from '../hooks/useMergeResolution.js';
-import type { UseMergeResolutionOptions } from '../hooks/useMergeResolution.js';
-import { classifyPuckFields } from '../utils/puckFieldClassifier.js';
+import { useMergeResolution } from '../merge/useMergeResolution.js';
+import type { UseMergeResolutionOptions } from '../merge/useMergeResolution.js';
+import { classifyPuckFields } from '../merge/utils/puckFieldClassifier.js';
 
 // =============================================================================
 // Mock Client Factory

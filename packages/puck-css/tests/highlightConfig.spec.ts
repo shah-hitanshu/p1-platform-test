@@ -7,8 +7,8 @@ import {
   createDiffMap,
   createHighlightedConfig,
   createHistoricalVersionConfig,
-} from '../src/utils/highlightConfig.js';
-import type { ComponentDiffWithPosition } from '../src/types.js';
+} from '../src/versioning/utils/highlightConfig.js';
+import type { ComponentDiffWithPosition } from '../src/core/types.js';
 
 describe('highlightConfig utilities', () => {
   describe('createDiffMap', () => {

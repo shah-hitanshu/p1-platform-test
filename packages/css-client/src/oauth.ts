@@ -264,7 +264,10 @@ export function createGoogleOAuth(config: GoogleOAuthConfig): OAuthSession {
     await loadScript(GOOGLE_GSI_SCRIPT);
     await waitForGoogle();
     if (!initialized) {
-      window.google!.accounts.id.initialize({
+      if (!window.google) {
+        throw new Error('Google Identity Services failed to load');
+      }
+      window.google.accounts.id.initialize({
         client_id: config.clientId,
         callback: handleCredentialResponse,
         use_fedcm_for_prompt: false,
@@ -283,7 +286,11 @@ export function createGoogleOAuth(config: GoogleOAuthConfig): OAuthSession {
         loginResolve = resolve;
         loginReject = reject;
 
-        window.google!.accounts.id.prompt((notification) => {
+        if (!window.google) {
+          reject(new Error('Google Identity Services not available'));
+          return;
+        }
+        window.google.accounts.id.prompt((notification) => {
           if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
             // One Tap was suppressed (cooldown, browser restrictions, FedCM issues).
             // Consumers should use renderButton() as a more reliable alternative.

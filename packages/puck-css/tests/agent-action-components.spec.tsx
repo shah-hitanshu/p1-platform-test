@@ -11,10 +11,10 @@ import {
   AgentActionButton,
   AgentActionModal,
   AgentStatusPanel,
-} from '../src/components/agent-actions/index.js';
-import { PresenceContext } from '../src/PresenceContext.js';
-import type { CSSClient, RegisteredAgent } from '@pantheon/css-client';
-import type { AgentAction, AgentTriggerStatus } from '../src/hooks/useAgentTrigger.js';
+} from '../src/agent/components/index.js';
+import { PresenceContext } from '../src/core/PresenceContext.js';
+import type { CSSClient, RegisteredAgent } from '@pantheon-systems/css-client';
+import type { AgentAction, AgentTriggerStatus } from '../src/agent/useAgentTrigger.js';
 
 // =============================================================================
 // Mock Data

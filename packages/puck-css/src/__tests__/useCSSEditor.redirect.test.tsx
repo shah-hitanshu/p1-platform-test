@@ -101,19 +101,19 @@ const mockCssContext = {
 // Mocks — declared before any imports from the module under test
 // ============================================================================
 
-vi.mock('../CSSPuckContext', () => ({
+vi.mock('../core/CSSPuckContext', () => ({
   useCSSPuck: () => mockCssContext,
 }));
 
-vi.mock('../hooks/useCSSPlugin', () => ({
+vi.mock('../editor/useCSSPlugin', () => ({
   useCSSPlugin: () => ({}),
 }));
 
-vi.mock('../hooks/useCSSOverrides', () => ({
+vi.mock('../editor/useCSSOverrides', () => ({
   useCSSOverrides: () => ({}),
 }));
 
-vi.mock('../hooks/useVersions', () => ({
+vi.mock('../versioning/useVersions', () => ({
   useVersions: () => ({
     versions: [],
     loading: false,
@@ -121,11 +121,11 @@ vi.mock('../hooks/useVersions', () => ({
   }),
 }));
 
-vi.mock('../hooks/useComponentRegistry', () => ({
+vi.mock('../editor/useComponentRegistry', () => ({
   useComponentRegistry: () => undefined,
 }));
 
-vi.mock('../utils/buildThumbnailOverride', () => ({
+vi.mock('../editor/utils/buildThumbnailOverride', () => ({
   buildThumbnailOverride: () => ({}),
 }));
 
@@ -134,7 +134,7 @@ vi.mock('../auth/index', () => ({
 }));
 
 // Import after mocks
-import { useCSSEditor } from '../hooks/useCSSEditor';
+import { useCSSEditor } from '../editor/useCSSEditor';
 
 // ============================================================================
 // Helpers

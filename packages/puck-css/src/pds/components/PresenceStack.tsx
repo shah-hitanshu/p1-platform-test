@@ -8,9 +8,9 @@
  */
 
 import React from 'react';
-import type { ActorPresence } from '@pantheon/css-client';
+import type { ActorPresence } from '@pantheon-systems/css-client';
 import { Avatar, Tooltip } from '@pantheon-systems/pds-toolkit-react';
-import { getAvatarStyleOverride } from '../../utils/avatarColor.js';
+import { getAvatarStyleOverride } from '../../collaboration/utils/avatarColor.js';
 import styles from './PresenceStack.module.css';
 
 export type { ActorPresence };

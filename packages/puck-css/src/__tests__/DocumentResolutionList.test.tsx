@@ -8,8 +8,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { DocumentResolutionList } from '../components/merge-resolution/DocumentResolutionList.js';
-import type { DocumentResolution } from '../hooks/useMergeResolution.js';
+import { DocumentResolutionList } from '../merge/components/merge-resolution/DocumentResolutionList.js';
+import type { DocumentResolution } from '../merge/useMergeResolution.js';
 
 // =============================================================================
 // Mock Data
@@ -107,10 +107,12 @@ describe('DocumentResolutionList', () => {
       <DocumentResolutionList {...defaultProps} goToNext={goToNext} />
     );
 
-    fireEvent.keyDown(container.firstElementChild!, { key: 'ArrowDown' });
+    const el = container.firstElementChild as HTMLElement;
+    expect(el).not.toBeNull();
+    fireEvent.keyDown(el, { key: 'ArrowDown' });
     expect(goToNext).toHaveBeenCalledTimes(1);
 
-    fireEvent.keyDown(container.firstElementChild!, { key: 'j' });
+    fireEvent.keyDown(el, { key: 'j' });
     expect(goToNext).toHaveBeenCalledTimes(2);
   });
 
@@ -120,10 +122,12 @@ describe('DocumentResolutionList', () => {
       <DocumentResolutionList {...defaultProps} goToPrevious={goToPrevious} />
     );
 
-    fireEvent.keyDown(container.firstElementChild!, { key: 'ArrowUp' });
+    const el = container.firstElementChild as HTMLElement;
+    expect(el).not.toBeNull();
+    fireEvent.keyDown(el, { key: 'ArrowUp' });
     expect(goToPrevious).toHaveBeenCalledTimes(1);
 
-    fireEvent.keyDown(container.firstElementChild!, { key: 'k' });
+    fireEvent.keyDown(el, { key: 'k' });
     expect(goToPrevious).toHaveBeenCalledTimes(2);
   });
 
@@ -136,7 +140,9 @@ describe('DocumentResolutionList', () => {
       />
     );
 
-    fireEvent.keyDown(container.firstElementChild!, { key: 'n' });
+    const el = container.firstElementChild as HTMLElement;
+    expect(el).not.toBeNull();
+    fireEvent.keyDown(el, { key: 'n' });
     expect(goToNextUnresolved).toHaveBeenCalledTimes(1);
   });
 
@@ -149,7 +155,9 @@ describe('DocumentResolutionList', () => {
       />
     );
 
-    fireEvent.keyDown(container.firstElementChild!, { key: 'Enter' });
+    const el = container.firstElementChild as HTMLElement;
+    expect(el).not.toBeNull();
+    fireEvent.keyDown(el, { key: 'Enter' });
     expect(onToggleDetail).toHaveBeenCalledTimes(1);
   });
 
@@ -163,13 +171,15 @@ describe('DocumentResolutionList', () => {
       />
     );
 
-    fireEvent.keyDown(container.firstElementChild!, { key: '1' });
+    const el = container.firstElementChild as HTMLElement;
+    expect(el).not.toBeNull();
+    fireEvent.keyDown(el, { key: '1' });
     expect(setStrategy).toHaveBeenCalledWith('doc-1', 'accept-draft');
 
-    fireEvent.keyDown(container.firstElementChild!, { key: '2' });
+    fireEvent.keyDown(el, { key: '2' });
     expect(setStrategy).toHaveBeenCalledWith('doc-1', 'accept-live');
 
-    fireEvent.keyDown(container.firstElementChild!, { key: '3' });
+    fireEvent.keyDown(el, { key: '3' });
     expect(setStrategy).toHaveBeenCalledWith('doc-1', 'cherry-pick');
   });
 
@@ -182,7 +192,9 @@ describe('DocumentResolutionList', () => {
       />
     );
 
-    fireEvent.keyDown(container.firstElementChild!, { key: 'D', shiftKey: true });
+    const el = container.firstElementChild as HTMLElement;
+    expect(el).not.toBeNull();
+    fireEvent.keyDown(el, { key: 'D', shiftKey: true });
     expect(setRemainingStrategy).toHaveBeenCalledWith('accept-draft');
   });
 
@@ -195,7 +207,9 @@ describe('DocumentResolutionList', () => {
       />
     );
 
-    fireEvent.keyDown(container.firstElementChild!, { key: 'L', shiftKey: true });
+    const el = container.firstElementChild as HTMLElement;
+    expect(el).not.toBeNull();
+    fireEvent.keyDown(el, { key: 'L', shiftKey: true });
     expect(setRemainingStrategy).toHaveBeenCalledWith('accept-live');
   });
 

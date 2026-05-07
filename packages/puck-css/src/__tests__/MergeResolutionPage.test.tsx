@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import type { PuckData } from '@pantheon/css-client';
+import type { PuckData } from '@pantheon-systems/css-client';
 
 // Mock Puck's Render component
 vi.mock('@puckeditor/core', () => ({
@@ -89,14 +89,14 @@ const defaultHookReturn = {
 
 let hookReturnOverrides: Record<string, unknown> = {};
 
-vi.mock('../hooks/useMergeResolution.js', () => ({
+vi.mock('../merge/useMergeResolution.js', () => ({
   useMergeResolution: () => ({
     ...defaultHookReturn,
     ...hookReturnOverrides,
   }),
 }));
 
-import { MergeResolutionPage } from '../components/merge-resolution/MergeResolutionPage.js';
+import { MergeResolutionPage } from '../merge/components/merge-resolution/MergeResolutionPage.js';
 
 describe('MergeResolutionPage', () => {
   const mockConfig = {

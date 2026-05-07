@@ -1,5 +1,5 @@
 /**
- * @pantheon/css-client
+ * @pantheon-systems/css-client
  *
  * TypeScript API client for the Collaborative State System.
  */

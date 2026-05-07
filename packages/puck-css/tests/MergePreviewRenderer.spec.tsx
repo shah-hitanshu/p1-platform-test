@@ -9,10 +9,10 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import type { PuckData } from '@pantheon/css-client';
-import type { ComponentDiffWithPosition } from '../src/types.js';
-import { MergePreviewRenderer } from '../src/components/merge-preview/MergePreviewRenderer.js';
-import { ViewModeSelector } from '../src/components/merge-preview/ViewModeSelector.js';
+import type { PuckData } from '@pantheon-systems/css-client';
+import type { ComponentDiffWithPosition } from '../src/core/types.js';
+import { MergePreviewRenderer } from '../src/editor/components/merge-preview/MergePreviewRenderer.js';
+import { ViewModeSelector } from '../src/editor/components/merge-preview/ViewModeSelector.js';
 
 // Mock Puck's Render component
 vi.mock('@puckeditor/core', () => ({

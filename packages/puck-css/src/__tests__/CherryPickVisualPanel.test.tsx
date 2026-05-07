@@ -8,10 +8,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { CherryPickVisualPanel } from '../components/merge-resolution/CherryPickVisualPanel.js';
-import type { DocumentResolution } from '../hooks/useMergeResolution.js';
-import type { PuckData } from '@pantheon/css-client';
-import type { ComponentDiffWithPosition } from '../types.js';
+import { CherryPickVisualPanel } from '../merge/components/merge-resolution/CherryPickVisualPanel.js';
+import type { DocumentResolution } from '../merge/useMergeResolution.js';
+import type { PuckData } from '@pantheon-systems/css-client';
+import type { ComponentDiffWithPosition } from '../core/types.js';
 
 // =============================================================================
 // Mock Puck Render

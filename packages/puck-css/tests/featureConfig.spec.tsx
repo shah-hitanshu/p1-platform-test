@@ -7,13 +7,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import React from 'react';
-import type { CSSClient, Branch } from '@pantheon/css-client';
+import type { CSSClient, Branch } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock useRealtime hook
 // =============================================================================
 
-vi.mock('../src/hooks/useRealtime.js', () => ({
+vi.mock('../src/editor/useRealtime.js', () => ({
   useRealtime: () => ({
     connected: false,
     applyLocalChange: vi.fn(),
@@ -30,10 +30,10 @@ vi.mock('../src/hooks/useRealtime.js', () => ({
 // Import AFTER the mock
 // =============================================================================
 
-const { CSSPuckProvider } = await import('../src/CSSPuckProvider.js');
-const { useCSSPlugin } = await import('../src/hooks/useCSSPlugin.js');
-const { useCSSOverrides } = await import('../src/hooks/useCSSOverrides.js');
-const { CSS_PRESETS } = await import('../src/featureConfig.js');
+const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
+const { useCSSPlugin } = await import('../src/editor/useCSSPlugin.js');
+const { useCSSOverrides } = await import('../src/editor/useCSSOverrides.js');
+const { CSS_PRESETS } = await import('../src/core/featureConfig.js');
 
 // =============================================================================
 // Mock Data

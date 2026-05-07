@@ -22,7 +22,7 @@ import React from 'react';
 // Module-level mocks — declared before any imports of the modules under test
 // ---------------------------------------------------------------------------
 
-vi.mock('@pantheon/css-client', () => ({
+vi.mock('@pantheon-systems/css-client', () => ({
   createCSSAuthServerOAuth: vi.fn(),
   createGoogleOAuth: vi.fn(),
   createAuth0OAuth: vi.fn(),
@@ -34,7 +34,7 @@ vi.mock('@pantheon/css-client', () => ({
 import {
   createCSSAuthServerOAuth,
   validateToken,
-} from '@pantheon/css-client';
+} from '@pantheon-systems/css-client';
 
 // Import the module under test after mocks are in place
 import { CSSAuthProvider, useCSSAuth } from '../auth/CSSAuthProvider';

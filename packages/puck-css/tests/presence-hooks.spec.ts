@@ -7,14 +7,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import React from 'react';
-import { usePresence, useBranchPresence, useSitePresence } from '../src/hooks/index.js';
-import { PresenceContext } from '../src/PresenceContext.js';
+import { usePresence, useBranchPresence, useSitePresence } from '../src/collaboration/index.js';
+import { PresenceContext } from '../src/core/PresenceContext.js';
 import type {
   ActorPresence,
   BranchPresence,
   SitePresence,
   CSSClient,
-} from '@pantheon/css-client';
+} from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock Data

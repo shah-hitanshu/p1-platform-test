@@ -11,7 +11,7 @@ import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { WorkstreamSwitcher } from './WorkstreamSwitcher.js';
-import type { Branch } from '@pantheon/css-client';
+import type { Branch } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock Data

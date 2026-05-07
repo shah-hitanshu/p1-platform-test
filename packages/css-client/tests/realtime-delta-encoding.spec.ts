@@ -133,12 +133,12 @@ let capturedUrlProviders: (string | (() => string | Promise<string>))[] = [];
 
 // Mock partysocket module
 vi.mock('partysocket', () => ({
-  WebSocket: vi.fn(
-    (
+  WebSocket: vi.fn().mockImplementation(
+    function (
       url: string | (() => string | Promise<string>),
       protocols: string[] = [],
       options: MockWSOptions = {},
-    ) => {
+    ) {
       capturedUrlProviders.push(url);
       const ws = new MockReconnectingWebSocket(url, protocols, options);
       mockWSInstances.push(ws);
@@ -156,11 +156,11 @@ describe('Delta encoding on WebSocket reconnect', () => {
     // Re-mock to ensure fresh instances
     const partysocket = await import('partysocket');
     vi.mocked(partysocket.WebSocket).mockImplementation(
-      (
+      function (
         url: string | (() => string | Promise<string>),
         protocols: string[] = [],
         options: MockWSOptions = {},
-      ) => {
+      ) {
         capturedUrlProviders.push(url);
         const ws = new MockReconnectingWebSocket(url, protocols, options);
         mockWSInstances.push(ws);

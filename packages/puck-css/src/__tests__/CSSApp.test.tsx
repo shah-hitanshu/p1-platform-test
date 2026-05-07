@@ -33,7 +33,7 @@ vi.mock('../auth/index', () => ({
 }));
 
 // Mock css-client (CSSPuckProvider depends on it)
-vi.mock('@pantheon/css-client', () => ({
+vi.mock('@pantheon-systems/css-client', () => ({
   CSSClient: vi.fn(),
   createGoogleOAuth: vi.fn(),
   createAuth0OAuth: vi.fn(),
@@ -42,21 +42,21 @@ vi.mock('@pantheon/css-client', () => ({
 }));
 
 // Mock CSSPuckProvider
-vi.mock('../CSSPuckProvider', () => ({
+vi.mock('../editor/CSSPuckProvider', () => ({
   CSSPuckProvider: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="css-puck-provider">{children}</div>
   ),
 }));
 
 // Mock FocusHighlightContext
-vi.mock('../FocusHighlightContext', () => ({
+vi.mock('../core/FocusHighlightContext', () => ({
   FocusHighlightProvider: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="focus-highlight-provider">{children}</div>
   ),
 }));
 
 // Import after mocks are set up
-import { CSSApp } from '../CSSApp';
+import { CSSApp } from '../editor/CSSApp';
 
 const testConfig = {
   baseUrl: 'http://localhost:8787',

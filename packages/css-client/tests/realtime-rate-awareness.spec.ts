@@ -79,12 +79,12 @@ class MockReconnectingWebSocket {
 let mockWSInstances: MockReconnectingWebSocket[] = [];
 
 vi.mock('partysocket', () => ({
-  WebSocket: vi.fn(
-    (
+  WebSocket: vi.fn().mockImplementation(
+    function (
       url: string | (() => string | Promise<string>),
       protocols: string[] = [],
       options: Record<string, unknown> = {},
-    ) => {
+    ) {
       const ws = new MockReconnectingWebSocket(url, protocols, options);
       mockWSInstances.push(ws);
       return ws;
@@ -132,11 +132,11 @@ describe('Client-side message rate awareness', () => {
 
     const partysocket = await import('partysocket');
     vi.mocked(partysocket.WebSocket).mockImplementation(
-      (
+      function (
         url: string | (() => string | Promise<string>),
         protocols: string[] = [],
         options: Record<string, unknown> = {},
-      ) => {
+      ) {
         const ws = new MockReconnectingWebSocket(url, protocols, options);
         mockWSInstances.push(ws);
         return ws as unknown as ReturnType<typeof partysocket.WebSocket>;

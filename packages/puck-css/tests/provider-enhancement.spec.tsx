@@ -7,16 +7,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import React from 'react';
-import { CSSPuckProvider } from '../src/CSSPuckProvider.js';
-import { useCSSPuck } from '../src/CSSPuckContext.js';
+import { CSSPuckProvider } from '../src/editor/CSSPuckProvider.js';
+import { useCSSPuck } from '../src/core/CSSPuckContext.js';
 import type {
   CSSClient,
   ActorPresence,
   BranchPresence,
   Branch,
   RegisteredAgent,
-} from '@pantheon/css-client';
-import type { ConflictNotification } from '../src/components/conflict-notifications/index.js';
+} from '@pantheon-systems/css-client';
+import type { ConflictNotification } from '../src/merge/components/conflict-notifications/index.js';
 
 // =============================================================================
 // Mock Data

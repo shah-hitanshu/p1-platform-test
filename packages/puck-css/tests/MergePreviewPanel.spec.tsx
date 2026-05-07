@@ -11,9 +11,9 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import type { PuckData } from '@pantheon/css-client';
-import type { DocumentDiffSummary } from '../src/utils/branchDiff.js';
-import { MergePreviewPanel } from '../src/components/merge-preview/MergePreviewPanel.js';
+import type { PuckData } from '@pantheon-systems/css-client';
+import type { DocumentDiffSummary } from '../src/versioning/utils/branchDiff.js';
+import { MergePreviewPanel } from '../src/editor/components/merge-preview/MergePreviewPanel.js';
 
 // Mock Puck's Render component to avoid deep dependency on Puck internals.
 // The mock verifies that data passed to Render is never null.

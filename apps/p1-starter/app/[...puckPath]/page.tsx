@@ -3,17 +3,25 @@
  */
 
 import { Client } from "./client";
-import { notFound } from "next/navigation";
 import { Metadata } from "next";
 import {
   loadRemoteDatasourceContext,
+  extractReferencedDatasourceIds,
   getPage,
   listRouteTemplateKeysFromDatabase,
   resolveDataTemplates,
   resolveStringTemplates,
+  ensureInitialized,
   pagePathFromCatchAllSegments,
-} from "@pantheon-systems/p1-client-sdk/server";
+} from "@pantheon-systems/puck-css/server";
 import { REMOTE_DATASOURCE_FETCHERS } from "../../lib/remote-datasource-fetchers";
+
+const initPromise = ensureInitialized({
+  cssBaseUrl: process.env.P1_CSS_BASE_URL,
+  cssApiKey: process.env.P1_CSS_API_KEY,
+  cssSiteId: process.env.P1_CSS_SITE_ID,
+  cssBranchId: process.env.P1_CSS_BRANCH_ID,
+});
 
 export async function generateMetadata({
   params,
@@ -22,25 +30,33 @@ export async function generateMetadata({
   params: Promise<{ puckPath: string[] }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
+  await initPromise;
   const { puckPath = [] } = await params;
   const path = pagePathFromCatchAllSegments(puckPath);
-  const rawTitle = getPage(path)?.root.props?.title;
+
+  const [pageData, sp, routeTemplateKeys] = await Promise.all([
+    getPage(path),
+    searchParams,
+    listRouteTemplateKeysFromDatabase(),
+  ]);
+
+  const rawTitle = pageData?.root.props?.title;
   if (typeof rawTitle !== "string") {
     return { title: rawTitle };
   }
   if (!rawTitle.includes("{{")) {
     return { title: rawTitle };
   }
-  const sp = await searchParams;
-  const routeTemplateKeys = listRouteTemplateKeysFromDatabase();
+  const referencedDatasourceIds = extractReferencedDatasourceIds(pageData);
   const context = await loadRemoteDatasourceContext({
     searchParams: sp,
     fetchImpl: fetch,
     pagePath: path,
     routeTemplateKeys,
     builtinFetchers: REMOTE_DATASOURCE_FETCHERS,
+    referencedDatasourceIds,
   });
-  return { title: resolveStringTemplates(rawTitle, context) };
+  return { title: await resolveStringTemplates(rawTitle, context) };
 }
 
 export default async function Page({
@@ -50,24 +66,64 @@ export default async function Page({
   params: Promise<{ puckPath: string[] }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await initPromise;
   const { puckPath = [] } = await params;
   const path = pagePathFromCatchAllSegments(puckPath);
-  const data = getPage(path);
+
+  const [data, searchParamData, routeTemplateKeys] = await Promise.all([
+    getPage(path),
+    searchParams,
+    listRouteTemplateKeysFromDatabase(),
+  ]);
 
   if (!data) {
-    return notFound();
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="mx-auto max-w-lg px-6 py-16 text-center">
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+            404 &ndash; This page doesn&apos;t exist yet
+          </h1>
+          <p className="mt-4 text-gray-600">
+            This page hasn&apos;t been created. Use the editor to build it.
+          </p>
+
+          <nav className="mt-10 flex flex-col gap-3">
+            <a
+              href={`/p1${path}`}
+              className="rounded-lg bg-gray-900 px-5 py-3 text-sm font-medium text-white hover:bg-gray-700"
+            >
+              Edit this page
+            </a>
+            <a
+              href="/p1"
+              className="rounded-lg border border-gray-300 px-5 py-3 text-sm font-medium text-gray-900 hover:bg-gray-100"
+            >
+              Open the Page Editor
+            </a>
+            <a
+              href="https://staging.content.pantheon.io/dashboard/sites"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-lg border border-gray-300 px-5 py-3 text-sm font-medium text-gray-900 hover:bg-gray-100"
+            >
+              P1 Dashboard &rarr;
+            </a>
+          </nav>
+        </div>
+      </main>
+    );
   }
 
-  const searchParamData = await searchParams;
-  const routeTemplateKeys = listRouteTemplateKeysFromDatabase();
+  const referencedDatasourceIds = extractReferencedDatasourceIds(data);
   const context = await loadRemoteDatasourceContext({
     searchParams: searchParamData,
     fetchImpl: fetch,
     pagePath: path,
     routeTemplateKeys,
     builtinFetchers: REMOTE_DATASOURCE_FETCHERS,
+    referencedDatasourceIds,
   });
-  const resolvedData = resolveDataTemplates(data, context);
+  const resolvedData = await resolveDataTemplates(data, context);
 
   return <Client data={resolvedData} />;
 }

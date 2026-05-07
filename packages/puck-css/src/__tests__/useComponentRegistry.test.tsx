@@ -7,9 +7,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import React from 'react';
-import { CSSPuckContext } from '../CSSPuckContext.js';
-import type { CSSPuckContextValue } from '../types.js';
-import { useComponentRegistry } from '../hooks/useComponentRegistry.js';
+import { CSSPuckContext } from '../core/CSSPuckContext.js';
+import type { CSSPuckContextValue } from '../core/types.js';
+import { useComponentRegistry } from '../editor/useComponentRegistry.js';
 
 // Build a minimal mock context
 function makeMockContext(overrides?: Partial<CSSPuckContextValue>): CSSPuckContextValue {
@@ -24,7 +24,7 @@ function makeMockContext(overrides?: Partial<CSSPuckContextValue>): CSSPuckConte
     },
   };
   return {
-    client: mockClient as unknown as import('@pantheon/css-client').CSSClient,
+    client: mockClient as unknown as import('@pantheon-systems/css-client').CSSClient,
     siteId: 'site-1',
     branchId: 'branch-1',
     userId: 'user-1',
@@ -115,7 +115,7 @@ describe('useComponentRegistry', () => {
     const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 
     // Compute what the actual hash would be for our mock config
-    const { extractDescriptors } = await import('../utils/componentRegistry.js');
+    const { extractDescriptors } = await import('../editor/utils/componentRegistry.js');
     const [descriptor] = extractDescriptors(simplePuckConfig);
     const storedHash = descriptor.descriptorHash;
 
@@ -205,7 +205,8 @@ describe('useComponentRegistry', () => {
     );
 
     await waitFor(() => expect(result.current.status).toBe('error'));
-    expect(result.current.error?.message).toBe('Network error');
+    expect(result.current.error).not.toBeNull();
+    expect((result.current.error as Error).message).toBe('Network error');
   });
 
   it('calls onRegistered callback with counts', async () => {
@@ -357,7 +358,7 @@ describe('useComponentRegistry', () => {
     );
     expect(componentCall).toBeDefined();
 
-    const snapshot = componentCall!.snapshot as Record<string, unknown>;
+    const snapshot = (componentCall as { documentId: string; snapshot: unknown }).snapshot as Record<string, unknown>;
 
     // name matches the component key
     expect(snapshot.name).toBe('FeatureCard');
@@ -401,7 +402,7 @@ describe('useComponentRegistry', () => {
     const ctx = makeMockContext();
     const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 
-    const { extractDescriptors } = await import('../utils/componentRegistry.js');
+    const { extractDescriptors } = await import('../editor/utils/componentRegistry.js');
     const [descriptor] = extractDescriptors(simplePuckConfig);
     const currentHash = descriptor.descriptorHash;
 
@@ -452,10 +453,14 @@ describe('useComponentRegistry', () => {
     const ctx = makeMockContext();
     const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 
-    const { extractDescriptors } = await import('../utils/componentRegistry.js');
+    const { extractDescriptors } = await import('../editor/utils/componentRegistry.js');
     const descriptors = extractDescriptors(twoComponentConfig);
-    const heroDescriptor = descriptors.find((d) => d.name === 'HeroBlock')!;
-    const cardDescriptor = descriptors.find((d) => d.name === 'CardBlock')!;
+    const heroDescriptor = descriptors.find((d) => d.name === 'HeroBlock');
+    expect(heroDescriptor).toBeDefined();
+    const cardDescriptor = descriptors.find((d) => d.name === 'CardBlock');
+    expect(cardDescriptor).toBeDefined();
+    const heroDesc = heroDescriptor as (typeof descriptors)[number];
+    const cardDesc = cardDescriptor as (typeof descriptors)[number];
 
     mockClient.documents.list.mockResolvedValue([
       { id: 'doc-hero', path: '_registry/components/HeroBlock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
@@ -476,7 +481,7 @@ describe('useComponentRegistry', () => {
               updatedAt: new Date().toISOString(),
               hashes: {
                 HeroBlock: 'stale-hash-000',
-                CardBlock: cardDescriptor.descriptorHash,
+                CardBlock: cardDesc.descriptorHash,
               },
             },
           });
@@ -513,10 +518,11 @@ describe('useComponentRegistry', () => {
     const indexWriteCall = createCalls.find(
       (args) => (args[1] as Record<string, string>).documentId === 'doc-index',
     );
-    const indexSnapshot = (indexWriteCall![1] as Record<string, unknown>).snapshot as Record<string, unknown>;
+    expect(indexWriteCall).toBeDefined();
+    const indexSnapshot = ((indexWriteCall as unknown[])[1] as Record<string, unknown>).snapshot as Record<string, unknown>;
     const writtenHashes = indexSnapshot.hashes as Record<string, string>;
-    expect(writtenHashes.HeroBlock).toBe(heroDescriptor.descriptorHash);
-    expect(writtenHashes.CardBlock).toBe(cardDescriptor.descriptorHash);
+    expect(writtenHashes.HeroBlock).toBe(heroDesc.descriptorHash);
+    expect(writtenHashes.CardBlock).toBe(cardDesc.descriptorHash);
   });
 
   it('fast path: written index includes hashes field enabling future fast-path runs', async () => {
@@ -538,7 +544,7 @@ describe('useComponentRegistry', () => {
       },
     );
 
-    const { extractDescriptors } = await import('../utils/componentRegistry.js');
+    const { extractDescriptors } = await import('../editor/utils/componentRegistry.js');
     const [descriptor] = extractDescriptors(simplePuckConfig);
 
     const { result } = renderHook(
@@ -554,7 +560,7 @@ describe('useComponentRegistry', () => {
     );
     expect(indexWrite).toBeDefined();
 
-    const indexSnapshot = indexWrite!.snapshot as Record<string, unknown>;
+    const indexSnapshot = (indexWrite as { documentId: string; snapshot: unknown }).snapshot as Record<string, unknown>;
     expect(indexSnapshot.hashes).toBeDefined();
 
     const hashes = indexSnapshot.hashes as Record<string, string>;
@@ -571,10 +577,14 @@ describe('useComponentRegistry', () => {
     const ctx = makeMockContext();
     const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 
-    const { extractDescriptors } = await import('../utils/componentRegistry.js');
+    const { extractDescriptors } = await import('../editor/utils/componentRegistry.js');
     const descriptors = extractDescriptors(twoComponentConfig);
-    const heroDescriptor = descriptors.find((d) => d.name === 'HeroBlock')!;
-    const cardDescriptor = descriptors.find((d) => d.name === 'CardBlock')!;
+    const heroDescriptor = descriptors.find((d) => d.name === 'HeroBlock');
+    expect(heroDescriptor).toBeDefined();
+    const cardDescriptor = descriptors.find((d) => d.name === 'CardBlock');
+    expect(cardDescriptor).toBeDefined();
+    const heroDesc = heroDescriptor as (typeof descriptors)[number];
+    const cardDesc = cardDescriptor as (typeof descriptors)[number];
 
     // CardBlock document exists; HeroBlock document is MISSING from the listing
     // (the desync we want to repair). Index doc exists.
@@ -597,8 +607,8 @@ describe('useComponentRegistry', () => {
               provenance: { HeroBlock: 'site', CardBlock: 'site' },
               updatedAt: new Date().toISOString(),
               hashes: {
-                HeroBlock: heroDescriptor.descriptorHash,
-                CardBlock: cardDescriptor.descriptorHash,
+                HeroBlock: heroDesc.descriptorHash,
+                CardBlock: cardDesc.descriptorHash,
               },
             },
           });
@@ -646,7 +656,7 @@ describe('useComponentRegistry', () => {
     const ctx = makeMockContext();
     const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 
-    const { extractDescriptors } = await import('../utils/componentRegistry.js');
+    const { extractDescriptors } = await import('../editor/utils/componentRegistry.js');
     const [descriptor] = extractDescriptors(simplePuckConfig);
     const currentHash = descriptor.descriptorHash;
 

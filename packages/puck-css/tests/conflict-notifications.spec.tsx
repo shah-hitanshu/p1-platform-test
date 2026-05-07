@@ -11,10 +11,10 @@ import React from 'react';
 import {
   useConflictNotifications,
   ConflictNotificationToast,
-} from '../src/components/conflict-notifications/index.js';
-import type { ConflictNotification } from '../src/components/conflict-notifications/index.js';
-import { PresenceContext } from '../src/PresenceContext.js';
-import type { PresenceContextValue } from '../src/PresenceContext.js';
+} from '../src/merge/components/conflict-notifications/index.js';
+import type { ConflictNotification } from '../src/merge/components/conflict-notifications/index.js';
+import { PresenceContext } from '../src/core/PresenceContext.js';
+import type { PresenceContextValue } from '../src/core/PresenceContext.js';
 
 // =============================================================================
 // Mock Data

@@ -6,9 +6,9 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { DiffHeader } from '../src/components/version-compare/DiffHeader.js';
-import { VersionComparePage } from '../src/components/version-compare/VersionComparePage.js';
-import type { ComponentDiffWithPosition } from '../src/types.js';
+import { DiffHeader } from '../src/versioning/components/version-compare/DiffHeader.js';
+import { VersionComparePage } from '../src/versioning/components/version-compare/VersionComparePage.js';
+import type { ComponentDiffWithPosition } from '../src/core/types.js';
 
 describe('DiffHeader', () => {
   it('should render version numbers', () => {

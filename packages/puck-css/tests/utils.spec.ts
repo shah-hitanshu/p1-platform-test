@@ -3,10 +3,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { debounce } from '../src/utils/debounce.js';
-import { withRetry } from '../src/utils/retry.js';
-import { diffPuckData, getChangedComponents, countChanges } from '../src/utils/diff.js';
-import type { PuckData } from '@pantheon/css-client';
+import { debounce } from '../src/core/utils/debounce.js';
+import { withRetry } from '../src/core/utils/retry.js';
+import { diffPuckData, getChangedComponents, countChanges } from '../src/versioning/utils/diff.js';
+import type { PuckData } from '@pantheon-systems/css-client';
 
 describe('debounce', () => {
   beforeEach(() => {

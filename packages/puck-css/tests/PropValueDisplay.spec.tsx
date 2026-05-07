@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { PropValueDisplay } from '../src/components/version-compare/PropValueDisplay.js';
+import { PropValueDisplay } from '../src/versioning/components/version-compare/PropValueDisplay.js';
 
 describe('PropValueDisplay', () => {
   describe('string values', () => {

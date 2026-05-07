@@ -415,7 +415,7 @@ puck-css-integration/
     css-client/      # @pantheon/css-client - TypeScript API client
     puck-css/        # @pantheon/puck-css - React integration
   apps/
-    demo/            # Demo application (run with: cd apps/demo && pnpm dev)
+    p1-starter/      # P1 Starter application (run with: cd apps/p1-starter && pnpm dev)
 ```
 
 ## Troubleshooting

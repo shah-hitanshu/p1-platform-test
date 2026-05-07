@@ -6,8 +6,6 @@
 .pnp.js
 
 .claude/
-database.json
-page-editor-meta.json
 
 # testing
 /coverage

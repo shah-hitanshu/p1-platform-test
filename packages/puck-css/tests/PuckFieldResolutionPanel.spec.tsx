@@ -9,9 +9,9 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import type { PuckData } from '@pantheon/css-client';
-import { PuckFieldResolutionPanel } from '../src/components/conflict-resolution/PuckFieldResolutionPanel.js';
-import { ComponentConflictGroup } from '../src/components/conflict-resolution/ComponentConflictGroup.js';
+import type { PuckData } from '@pantheon-systems/css-client';
+import { PuckFieldResolutionPanel } from '../src/merge/components/conflict-resolution/PuckFieldResolutionPanel.js';
+import { ComponentConflictGroup } from '../src/merge/components/conflict-resolution/ComponentConflictGroup.js';
 
 describe('PuckFieldResolutionPanel', () => {
   const base: PuckData = {

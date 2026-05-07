@@ -8,8 +8,8 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { VisualBranchCompare } from '../src/components/version-compare/VisualBranchCompare.js';
-import type { DocumentDiffSummary } from '../src/utils/branchDiff.js';
+import { VisualBranchCompare } from '../src/versioning/components/version-compare/VisualBranchCompare.js';
+import type { DocumentDiffSummary } from '../src/versioning/utils/branchDiff.js';
 
 // Mock Puck's Render component - simulate using the config's render functions
 vi.mock('@puckeditor/core', () => ({

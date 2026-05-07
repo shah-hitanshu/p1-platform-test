@@ -2,7 +2,7 @@
  * CSSAuthProvider
  *
  * Reusable auth context for any React app integrating with CSS.
- * Supports four auth modes: 'mock', 'google', 'auth0', and 'css-authserver'.
+ * Supports five auth modes: 'mock', 'google', 'auth0', 'css-authserver', and 'p1'.
  * Handles token lifecycle, validation, and expiry across all modes.
  *
  * Framework-agnostic within React — works with Next.js, Remix, Vite, CRA, etc.
@@ -22,10 +22,21 @@ import {
   createCSSAuthServerOAuth,
   validateToken,
   loginMockUser,
-} from '@pantheon/css-client';
-import type { OAuthSession, OAuthUserInfo } from '@pantheon/css-client';
+} from '@pantheon-systems/css-client';
+import type { OAuthSession, OAuthUserInfo } from '@pantheon-systems/css-client';
+import {
+  getStoredTokens,
+  getValidTokens,
+  getUserInfo as getP1UserInfo,
+  clearTokens as clearP1Tokens,
+  storeTokens as storeP1Tokens,
+  startDeviceFlow,
+  pollForToken,
+  isTokenExpired,
+} from '../data/auth.js';
+import type { AuthTokens } from '../data/auth.js';
 
-export type AuthMode = 'mock' | 'google' | 'auth0' | 'css-authserver';
+export type AuthMode = 'mock' | 'google' | 'auth0' | 'css-authserver' | 'p1';
 
 export interface AuthUser {
   id: string;
@@ -151,6 +162,23 @@ function oauthUserToAuthUser(info: OAuthUserInfo): AuthUser {
   };
 }
 
+function p1TokensToAuthUser(tokens: AuthTokens): AuthUser | null {
+  const info = getP1UserInfo(tokens);
+  try {
+    const parts = tokens.id_token.split('.');
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const payload = JSON.parse(atob(parts[1]!.replace(/-/g, '+').replace(/_/g, '/')));
+    return {
+      id: (payload.sub as string) ?? '',
+      name: info.name ?? info.email ?? (payload.sub as string) ?? 'Unknown',
+      email: info.email,
+      picture: info.picture,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement {
   const { authMode, cssBaseUrl, tokenStorageKey, children } = props;
   const storageKey = tokenStorageKey ?? DEFAULT_TOKEN_KEY;
@@ -174,6 +202,14 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
   );
 
   const getToken = useCallback(async (): Promise<string | null> => {
+    if (authMode === 'p1') {
+      const tokens = await getValidTokens();
+      if (tokens) return tokens.access_token;
+      setToken(null);
+      setUser(null);
+      setIsSessionExpired(true);
+      return null;
+    }
     if (authMode === 'mock') {
       return typeof localStorage !== 'undefined' ? localStorage.getItem(storageKey) : null;
     }
@@ -198,8 +234,39 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
   useEffect(() => {
     let cancelled = false;
 
+    function handleP1AuthChange() {
+      const tokens = getStoredTokens();
+      if (tokens && !isTokenExpired(tokens)) {
+        const authUser = p1TokensToAuthUser(tokens);
+        if (authUser) {
+          setToken(tokens.access_token);
+          setUser(authUser);
+        }
+      } else {
+        setToken(null);
+        setUser(null);
+      }
+    }
+
+    if (authMode === 'p1') {
+      window.addEventListener('p1-auth-change', handleP1AuthChange);
+    }
+
     async function checkExistingAuth() {
       setIsLoading(true);
+
+      if (authMode === 'p1') {
+        const tokens = await getValidTokens();
+        if (!cancelled && tokens) {
+          const authUser = p1TokensToAuthUser(tokens);
+          if (authUser) {
+            setToken(tokens.access_token);
+            setUser(authUser);
+          }
+        }
+        if (!cancelled) setIsLoading(false);
+        return;
+      }
 
       // Handle OAuth callback if returning from a CSS Auth Server redirect.
       // Uses a shared module-level Promise to deduplicate concurrent handleCallback()
@@ -303,6 +370,9 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
 
     return () => {
       cancelled = true;
+      if (authMode === 'p1') {
+        window.removeEventListener('p1-auth-change', handleP1AuthChange);
+      }
     };
   }, [authMode, oauthSession, cssBaseUrl, storageKey]);
 
@@ -312,7 +382,23 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
       setError(null);
 
       try {
-        if (authMode === 'mock') {
+        if (authMode === 'p1') {
+          const deviceCode = await startDeviceFlow();
+          window.open(
+            deviceCode.verification_uri_complete || deviceCode.verification_uri,
+            '_blank',
+          );
+          const tokens = await pollForToken(
+            deviceCode.device_code,
+            deviceCode.interval || 5,
+          );
+          storeP1Tokens(tokens);
+          const authUser = p1TokensToAuthUser(tokens);
+          if (authUser) {
+            setToken(tokens.access_token);
+            setUser(authUser);
+          }
+        } else if (authMode === 'mock') {
           const id = userId ?? DEMO_USERS[0]?.id ?? '11111111-1111-1111-1111-111111111111';
           const result = await loginMockUser(cssBaseUrl, id);
           localStorage.setItem(storageKey, result.token);
@@ -346,7 +432,9 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
   );
 
   const logout = useCallback(async () => {
-    if (authMode === 'mock') {
+    if (authMode === 'p1') {
+      clearP1Tokens();
+    } else if (authMode === 'mock') {
       localStorage.removeItem(storageKey);
     } else if (oauthSession) {
       await oauthSession.logout();
@@ -359,7 +447,7 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
   }, [authMode, oauthSession, storageKey]);
 
   const renderLoginButton = oauthSession?.renderButton
-    ? (container: HTMLElement) => oauthSession.renderButton!(container)
+    ? (container: HTMLElement) => oauthSession.renderButton?.(container) ?? null
     : undefined;
 
   const value: CSSAuthContextValue = {

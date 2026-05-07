@@ -9,19 +9,36 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 // Mock css-client
-vi.mock('@pantheon/css-client', () => ({
+vi.mock('@pantheon-systems/css-client', () => ({
   CSSClient: vi.fn(),
 }));
 
 // Mock PuckDataSynchronizer and PuckSelectionTracker (used by CSSPlugin)
-vi.mock('../components/PuckDataSynchronizer', () => ({
+vi.mock('../editor/components/PuckDataSynchronizer', () => ({
   PuckDataSynchronizer: () => null,
 }));
-vi.mock('../components/PuckSelectionTracker', () => ({
+vi.mock('../editor/components/PuckSelectionTracker', () => ({
   PuckSelectionTracker: () => null,
 }));
-vi.mock('../CSSPuckContext', () => ({
+vi.mock('../core/CSSPuckContext', () => ({
   useCSSPuck: () => ({
+    currentData: null,
+    remoteSyncKey: null,
+    currentDocument: null,
+    viewingVersion: null,
+    currentBranch: null,
+    presence: null,
+    publishDocument: vi.fn(),
+    hasActiveHumans: false,
+    humanPresenceCount: 0,
+    siteId: 'site-1',
+    siteName: 'Test Site',
+    branchId: 'branch-1',
+    createBranch: vi.fn(),
+    _realtimeDataCaptureRef: null,
+    _onRealtimeDataCapture: null,
+  }),
+  useCSSPuckOptional: () => ({
     currentData: null,
     remoteSyncKey: null,
     currentDocument: null,
@@ -57,7 +74,7 @@ afterEach(() => {
 // Header Published Status Badge Tests
 // ============================================================
 
-import { createCSSOverrides } from '../plugin/createCSSOverrides.js';
+import { createCSSOverrides } from '../editor/plugin/createCSSOverrides.js';
 
 describe('Header PublishedStatusBadge wiring', () => {
   const baseOptions = {
@@ -71,7 +88,8 @@ describe('Header PublishedStatusBadge wiring', () => {
       publishedStatus: 'published',
     });
 
-    render(overrides.headerActions!({ children: null }));
+    expect(overrides.headerActions).toBeDefined();
+    render((overrides.headerActions as (props: { children: unknown }) => React.ReactElement)({ children: null }));
 
     expect(screen.getByText('Published')).toBeTruthy();
     const badge = screen.getByText('Published').closest('.pds-status-badge');
@@ -84,7 +102,8 @@ describe('Header PublishedStatusBadge wiring', () => {
       publishedStatus: 'unpublished-changes',
     });
 
-    render(overrides.headerActions!({ children: null }));
+    expect(overrides.headerActions).toBeDefined();
+    render((overrides.headerActions as (props: { children: unknown }) => React.ReactElement)({ children: null }));
 
     expect(screen.getByText('Unpublished changes')).toBeTruthy();
   });
@@ -95,7 +114,8 @@ describe('Header PublishedStatusBadge wiring', () => {
       publishedStatus: 'draft',
     });
 
-    render(overrides.headerActions!({ children: null }));
+    expect(overrides.headerActions).toBeDefined();
+    render((overrides.headerActions as (props: { children: unknown }) => React.ReactElement)({ children: null }));
 
     expect(screen.getByText('Unpublished')).toBeTruthy();
   });
@@ -103,7 +123,8 @@ describe('Header PublishedStatusBadge wiring', () => {
   it('does not render PublishedStatusBadge when publishedStatus is not set', () => {
     const overrides = createCSSOverrides(baseOptions);
 
-    render(overrides.headerActions!({ children: null }));
+    expect(overrides.headerActions).toBeDefined();
+    render((overrides.headerActions as (props: { children: unknown }) => React.ReactElement)({ children: null }));
 
     expect(screen.queryByText('Published')).toBeNull();
     expect(screen.queryByText('Unpublished')).toBeNull();
@@ -130,7 +151,8 @@ describe('Header PublishedStatusBadge wiring', () => {
       onReturnToLatest: vi.fn(),
     });
 
-    render(overrides.headerActions!({ children: null }));
+    expect(overrides.headerActions).toBeDefined();
+    render((overrides.headerActions as (props: { children: unknown }) => React.ReactElement)({ children: null }));
 
     // Should show HistoricalVersionBanner instead
     expect(screen.queryByText('Published')).toBeNull();
@@ -142,7 +164,7 @@ describe('Header PublishedStatusBadge wiring', () => {
 // Version List VersionPublishedBadge Tests
 // ============================================================
 
-import { createCSSPlugin } from '../plugin/CSSPlugin.js';
+import { createCSSPlugin } from '../editor/plugin/CSSPlugin.js';
 
 describe('Version list VersionPublishedBadge wiring', () => {
   it('shows Published badge next to published versions', () => {
@@ -189,7 +211,7 @@ describe('Version list VersionPublishedBadge wiring', () => {
     // The badge should use the PDS badge classes
     const badge = badges[0].closest('.pds-badge');
     expect(badge).toBeTruthy();
-    expect(badge!.className).toContain('pds-badge--info');
+    expect((badge as Element).className).toContain('pds-badge--info');
   });
 
   it('does not show Published badge when no version is published', () => {
@@ -255,7 +277,8 @@ describe('Document list branch indicators', () => {
     // Both inherited docs should carry the attribute; local doc should not
     expect(inheritedItems.length).toBe(2);
     const localItem = items.find((el) => el.textContent?.includes('/local-page'));
-    expect(localItem!.getAttribute('data-inherited')).toBeNull();
+    expect(localItem).toBeDefined();
+    expect((localItem as HTMLElement).getAttribute('data-inherited')).toBeNull();
   });
 
   it('renders inherited and local documents together when isMainBranch is false', () => {

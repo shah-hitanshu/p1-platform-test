@@ -2312,7 +2312,7 @@
       class), so we target the second/last span child of the NavItem-link div. */
 [class*='NavItem-link'] > span[class=''],
 [class*='NavItem-link'] > span:not([class]) {
-  display: none !important;
+  display: none;
 }
 
 /* 2. Shared pseudo-element for injected SVG icons */
@@ -2362,20 +2362,5 @@ svg.lucide-layers {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 384 512'%3E%3Cpath fill='%23374151' d='M0 64C0 28.7 28.7 0 64 0L213.5 0c17 0 33.3 6.7 45.3 18.7L365.3 125.3c12 12 18.7 28.3 18.7 45.3L384 448c0 35.3-28.7 64-64 64L64 512c-35.3 0-64-28.7-64-64L0 64zm208-5.5l0 93.5c0 13.3 10.7 24 24 24L325.5 176 208 58.5zM120 256c-13.3 0-24 10.7-24 24s10.7 24 24 24l144 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-144 0zm0 96c-13.3 0-24 10.7-24 24s10.7 24 24 24l144 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-144 0z'/%3E%3C/svg%3E");
 }
 
-/* 5. Tooltips for non-React tabs are handled by NavTooltipBridge in CSSPlugin.tsx,
-      which renders portal tooltips into document.body to avoid overflow clipping. */
-
-.css-nav-tooltip {
-  position: fixed;
-  padding: 4px 8px;
-  background: #1f2937;
-  color: #fff;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.4;
-  white-space: nowrap;
-  pointer-events: none;
-  z-index: 9999;
-  transform: translateY(-50%);
-}
+/* 5. Nav tooltips are handled purely by PuckEditorTheme.css — Puck's own
+      _NavItem-linkLabel_ spans are restyled as hover tooltips. */

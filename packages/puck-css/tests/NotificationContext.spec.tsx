@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
-import { NotificationProvider, useNotifications } from '../src/NotificationContext.js';
+import { NotificationProvider, useNotifications } from '../src/core/NotificationContext.js';
 import React from 'react';
 
 // Test component that uses the notification hook

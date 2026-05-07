@@ -9,9 +9,9 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import type { Branch } from '@pantheon/css-client';
+import type { Branch } from '@pantheon-systems/css-client';
 import { Icon, Button, Avatar, PantheonLogo } from '@pantheon-systems/pds-toolkit-react';
-import { getAvatarStyleOverride } from '../../utils/avatarColor.js';
+import { getAvatarStyleOverride } from '../../collaboration/utils/avatarColor.js';
 import { WorkstreamSwitcher } from './WorkstreamSwitcher.js';
 import { PageNavigator } from './PageNavigator.js';
 import type { PageNavigatorDocument } from './PageNavigator.js';

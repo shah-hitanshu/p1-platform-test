@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createCSSConfig, createNextConfig, createNextContentClient } from '../config.js';
+import { createCSSConfig, createNextConfig, createNextContentClient } from '../core/config.js';
 
-vi.mock('@pantheon/css-client', () => {
+vi.mock('@pantheon-systems/css-client', () => {
   const MockCSSContentClient = vi.fn();
   return { CSSContentClient: MockCSSContentClient };
 });
@@ -61,12 +61,12 @@ describe('createNextConfig', () => {
     expect(() => createNextConfig()).toThrow('Missing required config: CSS_SITE_ID');
   });
 
-  it('defaults authMode to css-authserver when not set', () => {
+  it('defaults authMode to p1 when not set', () => {
     process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
     process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
 
     const config = createNextConfig();
-    expect(config.authMode).toBe('css-authserver');
+    expect(config.authMode).toBe('p1');
   });
 
   it('defaults enableRealtime and enablePresence to true when env vars are not set', () => {
@@ -106,9 +106,10 @@ describe('createNextConfig', () => {
     expect(config.wsBaseUrl).toBe('wss://custom-ws.example.com');
   });
 
-  it('derives cssAuthServerUrl from baseUrl with default css-authserver mode', () => {
+  it('derives cssAuthServerUrl from baseUrl when css-authserver mode is set', () => {
     process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
     process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+    process.env.NEXT_PUBLIC_CSS_AUTH_MODE = 'css-authserver';
 
     const config = createNextConfig();
     expect(config.cssAuthServerUrl).toBe('https://css.example.com/auth');
@@ -235,7 +236,7 @@ describe('createCSSConfig with css-authserver mode', () => {
     expect(config.wsBaseUrl).toBe('wss://css.example.com');
   });
 
-  it('defaults authMode to css-authserver when not provided via env or overrides', () => {
+  it('defaults authMode to p1 when not provided via env or overrides', () => {
     const config = createCSSConfig(
       {
         VITE_CSS_BASE_URL: 'https://css.example.com',
@@ -243,7 +244,7 @@ describe('createCSSConfig with css-authserver mode', () => {
       },
       { prefix: 'VITE_' },
     );
-    expect(config.authMode).toBe('css-authserver');
+    expect(config.authMode).toBe('p1');
   });
 
   it('defaults enableRealtime and enablePresence to true', () => {
@@ -332,7 +333,7 @@ describe('createNextContentClient', () => {
     process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
 
     const { CSSContentClient } = vi.mocked(
-      await import('@pantheon/css-client')
+      await import('@pantheon-systems/css-client')
     );
 
     const client = createNextContentClient({

@@ -6,8 +6,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { VisualVersionCompare } from '../src/components/version-compare/VisualVersionCompare.js';
-import type { ComponentDiffWithPosition } from '../src/types.js';
+import { VisualVersionCompare } from '../src/versioning/components/version-compare/VisualVersionCompare.js';
+import type { ComponentDiffWithPosition } from '../src/core/types.js';
 
 // Mock Puck's Render component - simulate using the config's render functions
 vi.mock('@puckeditor/core', () => ({

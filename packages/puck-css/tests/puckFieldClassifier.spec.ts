@@ -9,17 +9,17 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { PuckData } from '@pantheon/css-client';
+import type { PuckData } from '@pantheon-systems/css-client';
 import {
   isPuckData,
   classifyPuckFields,
   getReadablePropPath,
   groupFieldsByComponent,
-} from '../src/utils/puckFieldClassifier.js';
+} from '../src/merge/utils/puckFieldClassifier.js';
 import type {
   PuckFieldClassification,
   PuckComponentConflict,
-} from '../src/utils/puckFieldClassifier.js';
+} from '../src/merge/utils/puckFieldClassifier.js';
 
 describe('isPuckData', () => {
   it('should return true for valid Puck data with content array and root', () => {

@@ -1421,6 +1421,34 @@ NEXT_PUBLIC_CSS_SITE_ID=site-123
 **Test commits:** `fe50564` (red phase)
 **Implementation commits:** `ddc7eda`, `3e640c1`
 
+### p1-client-sdk → css-client Data Access Convergence (2026-04-14) ✅
+
+Made `p1-client-sdk` able to use `css-client` as an alternative data backend while retaining local-only mode with JSON files.
+
+**Problem:** `p1-client-sdk` stored page data in local JSON files only. The `css-client` package provides a full API client for the backend, but the two had no integration. Goal: share the data access layer so p1-starter can optionally persist to the API backend.
+
+**Core tension:** p1-client-sdk's DAL interfaces (`PageStore`, `EditorMetaStore`, `RemoteDatasourceDefStore`) are synchronous, but `css-client` is async. Solution: hydrate-on-init pattern — async factory loads all documents into memory at startup, returns a synchronous `PageStore` that writes through to the backend asynchronously.
+
+**Changes:**
+
+| Phase | Description | Commits |
+|-------|-------------|---------|
+| 1 | CSS-backed PageStore (`css-store.ts`) — async factory, sync interface, fire-and-forget write-through | `f583861` (tests), `8c47e8a` (impl) |
+| 2 | DAL initialization system — lazy getters + `initializeStores()` with backward-compatible delegate exports | `8fca355` (tests), `193fe65` (impl) |
+| 3 | Skipped — backward-compatible delegates made consumer changes unnecessary | — |
+| 4 | Expose `createCSSPageStore`, `initializeStores`, getters from server entry point; add optional peer dep | `d136410` |
+| 5 | `StoreCapabilities` type + `getCapabilities()` for feature detection (`branching`, `versioning`, `realtime`, `merge`, `offline`) | `08dcf97` |
+| 6 | p1-starter integration — `data-init.ts` with env-driven mode (`P1_DATA_MODE=css`), auto-detects main branch | `6007444` |
+
+**Key design decisions:**
+- `CSSStoreClient` is a structural interface (not an import of `@pantheon/css-client`) so p1-client-sdk has no hard dependency
+- `@pantheon/css-client` is an optional peer dependency — only loaded via dynamic import when CSS mode is active
+- Semantic patch entries and route template entries are stored as-is in the version snapshot field — all p1-specific business logic (templates, overrides, semantic ops) works unchanged
+- `EditorMetaStore` and `RemoteDatasourceDefStore` stay local-only for now
+- Write errors are logged but non-fatal (fire-and-forget)
+
+**Test coverage:** 28 new tests (19 css-store + 9 dal-init), 125/125 total passing
+
 ### P1EditorHeader / P1EditorSubheader Wiring (2026-04-18) ✅
 
 Wired the new PDS header chrome into `createCSSPlugin` as the default editor UI. Consumers no longer need to render header components manually — they are rendered automatically when the plugin is installed.
@@ -1530,3 +1558,196 @@ VITE_CSS_SITE_ID=your-site-id
 # WebSocket URL is derived from VITE_CSS_BASE_URL automatically.
 # To disable: VITE_CSS_ENABLE_REALTIME=false
 ```
+
+---
+
+## Unified SDK Migration
+
+### Goal
+Merge `p1-client-sdk` into `puck-css` (framework-agnostic), create `p1-next-sdk` (Next.js adapter), then delete `p1-client-sdk`.
+
+### Phase U1: Vitest Upgrade ✅ (2026-04-27)
+- Upgraded vitest from 1.x/2.x to 4.1.0 across root, puck-css, css-client, and p1-client-sdk
+- Required for vite 6.x compatibility (vitest 2.x only supports vite 5.x)
+- Fixed vi.fn() constructor pattern in 18 test files (arrow functions can't be `new`-invoked in vitest 4.x)
+- Created `@puckeditor/core` mock file for explicit module resolution
+- Added `@testing-library/dom` ^10.0.0 peer dep to puck-css
+- All tests passing: puck-css (1302), css-client (241)
+- Commit: `86b82bf`
+
+### Phase U2: Core Utilities ✅ (2026-04-27)
+- Moved 8 framework-agnostic utility modules to `src/lib/`: paths, route-templates, cross-reference, template-functions, utils, styles, semantic-ops, query-provider
+- Added `fast-json-patch` and `@tanstack/react-query` deps
+- 93 new tests, all passing
+- Commit: `540e7e2`
+
+### Phase U3: Remote Datasources (client-safe) ✅ (2026-04-27)
+- Moved remote-datasource-registry, fetch-http-json, user-remote-datasource-types, and template-autocomplete
+- Server-only files deferred to Phase 4
+- 21 new tests, all passing
+- Commit: `907b5e1`
+
+### Phase U4: DAL + Server Library Code ✅ (2026-04-27)
+- Moved 16 files: dal/ (6 files), page-store, page-store-migration, page-editor-meta, get-page, page-structure, cross-reference-resolve, resolve-data-templates, remote datasource loader + store + barrel
+- Added `jsep` dep
+- Fixed pre-existing css-store test failures (toDocPath path stripping)
+- 76 new tests, all passing
+- Commit: `9a17823`
+
+### Phase U5: Router Abstraction + Auth + Connectable ✅ (2026-04-27)
+- Created `P1RouterContext` / `useP1Router()` in `src/p1/router-context.tsx` — framework-agnostic router abstraction
+- Moved `lib/auth.ts` (device-code auth, JWT parsing, token management)
+- Moved `components/connectable.tsx` (datasource template resolution HOC)
+- 15 new tests, all passing (1507 total)
+- Commits: `b68d409` (tests), `5f12e8a` (implementation)
+
+### Phase U6: P1 Editor (refactored) ✅ (2026-04-27)
+- Moved 25 editor files to `src/p1/editor/` (client, auth-gate, user-bar, json-tree, hooks, remote-datasources, connect, icons)
+- Refactored `hooks.ts`: all 4 `useRouter()` calls → `useP1Router()`
+- Refactored `template-preview-params-toolbar.tsx`: `useRouter`/`usePathname`/`useSearchParams` → `useP1Router()`
+- All import paths adjusted for new directory depth
+- 13 new tests, all passing (1520 total)
+- Commits: `8a4eed3` (tests), `f7d55fa` (implementation)
+
+### Phase U7: Page Management UI (refactored) ✅ (2026-04-27)
+- Moved 8 page files to `src/p1/pages/` (structure-page, create-page-form, create-template-form, add-override-for-template, delete-row-button, render-client, hooks, index)
+- Refactored `hooks.ts`: both `useRouter()` calls → `useP1Router()`
+- Refactored `structure-page.tsx`: removed `next/link` import, replaced `<Link>` with `<a>` tags, removed `export const dynamic`
+- 3 new tests, all passing (1523 total)
+- Commits: `ee7f718` (tests), `607fcc1` (implementation)
+
+### Phase U8: Export Wiring ✅ (2026-04-27)
+- Added all migrated client-safe exports to `src/index.ts` (paths, route-templates, cross-reference, auth, styles, remote-datasources, semantic-ops, query-provider, router-context, connectable, editor, pages)
+- Created `src/server.ts` — server-only barrel re-exporting index + DAL, page-store, get-page, editor-meta, cross-ref resolve, template resolve, remote datasource loader/store, StructurePage
+- Added `./server` export path in package.json
+- 17 new tests (export verification), all passing (1540 total)
+- Commits: `b45ef62` (tests), `897760d` (implementation)
+
+### Phase U9: Create p1-next-sdk ✅ (2026-04-27)
+- Created `@pantheon-systems/p1-next-sdk` package with 18 source files
+- `createP1Handler` — catch-all API route handler using `NextResponse`
+- `createP1Pages` — page component factory with dashboard/structure/editor modes
+- `P1NextRouterProvider` — bridges Next.js router to `P1RouterContext`
+- Route handlers: page-data, publish, resolve-preview, preview-meta, remote-datasources, structure, auth (device-code, token)
+- 16 tests (server boundary verification), all passing
+- Commit: `36175bd`
+
+### Phase U10: Update apps/p1-starter ✅ (2026-04-27)
+- Repointed all 15+ files from `@pantheon-systems/p1-client-sdk` to `@pantheon/puck-css` (client) and `@pantheon-systems/p1-next-sdk` (handlers)
+- Wrapped `EditorClient` with `<P1NextRouterProvider>`
+- Updated `next.config.js` transpilePackages
+- Commit: `4ac26df`
+
+### Phase U11: Delete p1-client-sdk ✅ (2026-04-27)
+- Removed `packages/p1-client-sdk/` entirely (96 files, ~9,500 lines)
+- Updated lockfile
+- Commit: `6c5d014`
+
+### Phase U12: Final Verification ✅ (2026-04-27)
+- All puck-css tests passing: 1557 tests across 130 files
+- All p1-next-sdk tests passing: 20 tests across 2 files
+- Lint: only 3 pre-existing JSX errors remain (not introduced by migration)
+- Build: puck-css TS errors are all pre-existing (same files fail before and after)
+- p1-starter build: failure is pre-existing (same errors before and after)
+- Security review completed — 4 medium, 4 low, 2 info findings
+- Security hardening committed: prototype pollution guards, padStart/padEnd DoS cap, URL scheme validation, route path validation, auth config deduplication with SSRF prevention
+- Commits: `d95dca7` (security tests), `fb615ca` (security fixes)
+
+### Phase A: Domain Restructuring ✅
+
+Restructured `puck-css` (~44K LoC, 260 files) from type-based organization (hooks/, components/, utils/) to domain-based organization for better maintainability with parallel AI-assisted development.
+
+**Commits:**
+- `c52992a` — Extract `core/` domain + rename package scope to `@pantheon-systems`
+- `dba91b5` — Rename `lib/` to `data/`
+- `bedf968` — Extract `collaboration/`, `versioning/`, `merge/`, `agent/` domains
+- `e1c3fb3` — Extract `editor/` domain (composition layer)
+- `0e25402` — Add `editor/` barrel export
+
+**Domain structure:**
+```
+src/
+├── core/            # Shared types, contexts, config, leaf utilities
+├── data/            # DAL, page store, data resolution (renamed from lib/)
+├── auth/            # Auth provider (unchanged)
+├── collaboration/   # Presence hooks, avatars, focus regions
+├── versioning/      # Version compare, history, diff
+├── merge/           # Merge resolution, conflicts
+├── agent/           # Agent edit, trigger, actions
+├── editor/          # Composition layer — plugin factories, provider, app
+├── p1/              # P1 app layer (unchanged)
+└── pds/             # PDS theme integration (unchanged)
+```
+
+**Status:** All 1557 puck-css tests + 20 p1-next-sdk tests pass. Forwarding stubs remain at old locations for backwards compatibility. Stub removal and test import rewriting can happen incrementally.
+
+### Phase B: Plugin Registration System ✅
+
+Added a runtime plugin registration system for composable features.
+
+**B.1-B.3: Plugin interface, composition engine, built-in plugins**
+- `CSSFeaturePlugin` interface (`core/plugin-types.ts`) — name, featureFlags, priority, provider, puckPlugins, puckOverrides
+- `composePlugins` engine (`editor/composePlugins.tsx`) — resolveActivePlugins, composeProviders, collectPuckPlugins, mergeOverrides
+- Built-in plugins: `collaborationPlugin` (presence, priority 50), `agentPlugin` (agent mode, priority 60)
+
+**B.4: CSSPuckProvider plugin wiring**
+- Added `featurePlugins` and `featureConfig` props to CSSPuckProvider
+- Plugin composition wiring: resolveActivePlugins → composeProviders → ComposedPluginProviders wraps children
+- 9 tests covering plugin rendering, priority ordering, feature flag filtering, AND logic, backwards compat, deps injection
+
+**B.5: Feature config UI wiring**
+- Exposed `resolvedFeatureConfig` on CSSPuckContextValue
+- Gated 12 feature flags in useCSSPlugin, useCSSOverrides, CSSPlugin HeaderOverride:
+  - enableBranchSelector → branch selector, branch switching
+  - enableDocumentBrowser → document list, document select/create/delete
+  - enableVersionHistory → version history panel
+  - enableMergeControl → Compare with Live button, merge overlay
+  - enableAutoSave → SaveIndicator display
+  - enablePublishButton → publish action in subheader
+  - enableCollaboratorAvatars → avatar display in header
+  - enableAgentBanner → agent activity banner
+  - enableFocusHighlighting → focus region display
+- All gating is backwards-compatible (defaults to enabled when featureConfig is absent)
+- 8 tests covering config exposure, explicit overrides, derived defaults, precedence
+
+**B.6: Default preset**
+- `createDefaultPreset` factory (`editor/presets.ts`) — everything enabled, accepts additional plugins and config overrides
+
+**Security hardening (between B.4 and B.5)**
+- Resolved 11 dependency security vulnerabilities (flatted, happy-dom, lodash, vite, brace-expansion, uuid, postcss, ajv)
+- Zero audit vulnerabilities
+
+**Total tests:** 1591 (puck-css) + 241 (css-client) + 20 (p1-next-sdk) + 12 (p1-starter) = 1864
+
+### What Remains
+
+- **Forwarding stub cleanup** — Remove stubs at old locations and update remaining test imports to use domain paths directly
+- **34 pre-existing TS errors** — In auth/, data/, p1/ files (not introduced by Phase A/B)
+
+### Repository Structure (post-restructuring)
+
+```
+puck-css-integration/
+├── packages/
+│   ├── css-client/       # @pantheon-systems/css-client — API client
+│   ├── puck-css/         # @pantheon-systems/puck-css — unified framework-agnostic SDK
+│   └── p1-next-sdk/      # @pantheon-systems/p1-next-sdk — thin Next.js adapter
+├── apps/
+│   ├── demo/             # Demo application
+│   └── p1-starter/       # P1 starter (Next.js)
+└── pnpm-workspace.yaml
+```
+
+### Decisions Made
+- Router abstraction (`P1RouterContext`/`useP1Router()`) chosen over prop-drilling to minimize refactoring surface
+- `structure-page.tsx` uses `<a>` tags instead of accepting a `Link` prop for simplicity
+- Server-only barrel (`./server` subpath) keeps the tree-shaking boundary clean for client bundles
+- p1-next-sdk is `private: true` — not published independently, consumed via workspace protocol
+- Medium security findings #1 (SSRF via Auth0 config) and #3 (missing auth on postPreviewMeta) deferred for architectural review
+- Domain restructuring uses forwarding stubs (not lint boundaries) for incremental migration
+- `lib/` renamed to `data/` to better describe its DAL role
+- `mergePreviewPlugin` placed in `editor/` domain (alongside other plugin factories)
+- Package scope renamed from `@pantheon/` to `@pantheon-systems/`
+- One preset only ("everything enabled") — not three
+- `enableMergeControl` defaults to `true` (matches existing behavior where Compare with Live is always available)
+- Feature config gating uses no-op functions / empty arrays (not `undefined`) for type safety with required P1EditorHeader props

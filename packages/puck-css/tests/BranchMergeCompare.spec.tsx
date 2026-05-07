@@ -9,9 +9,9 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import type { ComponentDiffWithPosition } from '../src/types.js';
-import { BranchDiffHeader } from '../src/components/version-compare/BranchDiffHeader.js';
-import { BranchMergeCompare } from '../src/components/version-compare/BranchMergeCompare.js';
+import type { ComponentDiffWithPosition } from '../src/core/types.js';
+import { BranchDiffHeader } from '../src/versioning/components/version-compare/BranchDiffHeader.js';
+import { BranchMergeCompare } from '../src/versioning/components/version-compare/BranchMergeCompare.js';
 
 describe('BranchDiffHeader', () => {
   it('should render source and target branch names', () => {

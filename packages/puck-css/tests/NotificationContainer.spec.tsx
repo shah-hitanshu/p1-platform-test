@@ -4,8 +4,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { NotificationProvider, useNotifications } from '../src/NotificationContext.js';
-import { NotificationContainer } from '../src/components/NotificationContainer.js';
+import { NotificationProvider, useNotifications } from '../src/core/NotificationContext.js';
+import { NotificationContainer } from '../src/editor/components/NotificationContainer.js';
 import React, { useEffect } from 'react';
 
 // Test component that adds notifications

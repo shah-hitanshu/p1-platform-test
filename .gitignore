@@ -31,6 +31,9 @@ coverage/
 # Playwright reports
 playwright-report/
 
+# Test results
+test-results/
+
 # Packed packages
 *.tgz
 
@@ -45,3 +48,6 @@ playwright-report/
 
 # Worktrees
 .worktrees/
+
+# Turbo
+.turbo/

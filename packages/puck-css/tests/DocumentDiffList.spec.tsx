@@ -10,9 +10,9 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { DocumentDiffList } from '../src/components/version-compare/DocumentDiffList.js';
-import type { BranchDocumentComparison } from '../src/utils/branchDiff.js';
-import type { ComponentDiffWithPosition } from '../src/types.js';
+import { DocumentDiffList } from '../src/versioning/components/version-compare/DocumentDiffList.js';
+import type { BranchDocumentComparison } from '../src/versioning/utils/branchDiff.js';
+import type { ComponentDiffWithPosition } from '../src/core/types.js';
 
 const createComparison = (
   id: string,

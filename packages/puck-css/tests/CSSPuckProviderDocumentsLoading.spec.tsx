@@ -7,14 +7,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import React from 'react';
-import { useCSSPuck } from '../src/CSSPuckContext.js';
-import type { CSSClient, Branch } from '@pantheon/css-client';
+import { useCSSPuck } from '../src/core/CSSPuckContext.js';
+import type { CSSClient, Branch } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock useRealtime hook
 // =============================================================================
 
-vi.mock('../src/hooks/useRealtime.js', () => ({
+vi.mock('../src/editor/useRealtime.js', () => ({
   useRealtime: () => ({
     connected: false,
     applyLocalChange: vi.fn(),
@@ -31,7 +31,7 @@ vi.mock('../src/hooks/useRealtime.js', () => ({
 // Import CSSPuckProvider AFTER the mock
 // =============================================================================
 
-const { CSSPuckProvider } = await import('../src/CSSPuckProvider.js');
+const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
 
 // =============================================================================
 // Mock Data

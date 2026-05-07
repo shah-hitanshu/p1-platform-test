@@ -4,8 +4,8 @@
 
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { useDocuments } from '../src/hooks/useDocuments.js';
-import type { CSSClient } from '@pantheon/css-client';
+import { useDocuments } from '../src/editor/useDocuments.js';
+import type { CSSClient } from '@pantheon-systems/css-client';
 
 describe('useDocuments', () => {
   const mockClient = {

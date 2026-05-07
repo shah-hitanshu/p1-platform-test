@@ -7,8 +7,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { PublishButton } from '../../src/components/PublishButton.js';
-import type { Checkpoint } from '@pantheon/css-client';
+import { PublishButton } from '../../src/editor/components/PublishButton.js';
+import type { Checkpoint } from '@pantheon-systems/css-client';
 
 const createMockCheckpoint = (overrides: Partial<Checkpoint> = {}): Checkpoint => ({
   id: 'cp-1',

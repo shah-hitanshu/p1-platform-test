@@ -8,7 +8,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ResolutionStrategyPicker } from '../components/merge-resolution/ResolutionStrategyPicker.js';
+import { ResolutionStrategyPicker } from '../merge/components/merge-resolution/ResolutionStrategyPicker.js';
 
 describe('ResolutionStrategyPicker', () => {
   it('renders three strategy buttons', () => {
@@ -76,7 +76,7 @@ describe('ResolutionStrategyPicker', () => {
     expect(cherryPickBtn?.disabled).toBe(true);
 
     // Clicking disabled button should not invoke onSelect
-    fireEvent.click(cherryPickBtn!);
+    fireEvent.click(cherryPickBtn as HTMLElement);
     expect(onSelect).not.toHaveBeenCalled();
   });
 
@@ -94,7 +94,7 @@ describe('ResolutionStrategyPicker', () => {
 
     expect(cherryPickBtn?.disabled).toBe(true);
 
-    fireEvent.click(cherryPickBtn!);
+    fireEvent.click(cherryPickBtn as HTMLElement);
     expect(onSelect).not.toHaveBeenCalled();
   });
 });

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "env": [
+        "PCC_SITE_ID",
+        "PCC_TOKEN",
+        "P1_DATA_MODE",
+        "P1_CSS_BASE_URL",
+        "P1_CSS_API_KEY",
+        "P1_CSS_SITE_ID",
+        "P1_CSS_BRANCH_ID",
+        "P1_AUTH0_CONFIG_URL",
+        "P1_AUTH0_AUDIENCE"
+      ],
+      "outputs": ["dist/**", ".next/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["^build"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    }
+  }
+}

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import type { PuckData } from '@pantheon/css-client';
-import { createMergePreviewPlugin } from '../src/plugin/mergePreviewPlugin.js';
+import type { PuckData } from '@pantheon-systems/css-client';
+import { createMergePreviewPlugin } from '../src/editor/plugin/mergePreviewPlugin.js';
 
 // Mock Puck's Render component
 vi.mock('@puckeditor/core', () => ({
@@ -18,7 +18,7 @@ vi.mock('@puckeditor/core', () => ({
 
 // Mock useMergePreview so plugin tests don't need a CSSPuckProvider
 const mockUseMergePreview = vi.fn();
-vi.mock('../src/hooks/useMergePreview.js', () => ({
+vi.mock('../src/editor/useMergePreview.js', () => ({
   useMergePreview: () => mockUseMergePreview(),
 }));
 

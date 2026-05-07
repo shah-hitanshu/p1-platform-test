@@ -7,9 +7,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
-import { CSSPuckProvider } from '../src/CSSPuckProvider.js';
-import { useCSSPuck } from '../src/CSSPuckContext.js';
-import type { CSSClient } from '@pantheon/css-client';
+import { CSSPuckProvider } from '../src/editor/CSSPuckProvider.js';
+import { useCSSPuck } from '../src/core/CSSPuckContext.js';
+import type { CSSClient } from '@pantheon-systems/css-client';
 
 // Mock WebSocket
 class MockWebSocket {
@@ -102,7 +102,7 @@ describe('Phase 3.3-3.4: CSSPuckProvider Realtime Integration', () => {
     vi.resetAllMocks();
     mockCSSClient = createMockClient();
     mockWebSocketInstances = [];
-    global.WebSocket = vi.fn((url: string) => {
+    global.WebSocket = vi.fn().mockImplementation(function (url: string) {
       const ws = new MockWebSocket(url);
       mockWebSocketInstances.push(ws);
       return ws;
