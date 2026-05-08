@@ -12,3 +12,17 @@ service = "collaborative-state-worker-sbx1"
 
 [vars]
 CSS_BASE_URL = "https://collaborative-state-worker-sbx1.chris-801.workers.dev"
+
+[env.staging]
+name = "p1-media-staging"
+
+[[env.staging.r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "p1-media-staging"
+
+[[env.staging.services]]
+binding = "CSS_SERVICE"
+service = "collaborative-state-worker-staging"
+
+[env.staging.vars]
+CSS_BASE_URL = "https://collaborative-state-worker-staging.pantheon-content-publisher.workers.dev"
