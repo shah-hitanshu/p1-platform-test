@@ -245,6 +245,15 @@ export async function getModifiedDocumentsSince(
   const currentVersionsCte = options?.publishedOnly === true
     ? `
     current_versions AS (
+      -- Tombstone overlay: a delete written directly to document_versions
+      -- without a publish checkpoint capturing it must still be authoritative
+      -- for "doc no longer exists on target" — otherwise the last published
+      -- version (with content) leaks back into merge preview as a phantom
+      -- both-modified conflict instead of disappearing from the target view.
+      -- Mirrors the tombstone exclusion in listDocumentsOnBranch
+      -- (branch-document-service.ts:161-171). Source-side semantics
+      -- intentionally differ — tombstones must surface there as isDeleted
+      -- so the merge can propagate deletes to target.
       SELECT DISTINCT ON (cd.document_id)
         cd.document_id,
         dv.id AS version_id,
@@ -256,6 +265,13 @@ export async function getModifiedDocumentsSince(
       INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
       INNER JOIN app.document_versions dv ON dv.id = cd.document_version_id
       WHERE cp.branch_id = $1 ${publishTypeFilter}
+        AND NOT EXISTS (
+          SELECT 1 FROM app.document_versions dv_t
+          WHERE dv_t.document_id = cd.document_id
+            AND dv_t.branch_id = $1
+            AND dv_t.is_tombstone = true
+            AND dv_t.version_number > dv.version_number
+        )
       ORDER BY cd.document_id, cp.created_at DESC
     )`
     : `
@@ -304,8 +320,12 @@ export async function getModifiedDocumentsSince(
     INNER JOIN app.documents d ON d.id = cv.document_id
     WHERE
       (
-        -- Modified: version numbers differ
-        (cv.version_number IS DISTINCT FROM cd.version_number)
+        -- Modified: version IDs differ. Compare UUIDs, not version_number —
+        -- version_number is per-(branch, document) and can collide across
+        -- branches (e.g., feature branch's v2 vs main's v2 are entirely
+        -- different content). Only version_id (UUID) is globally unique
+        -- and safe to compare across the merge-base boundary.
+        (cv.version_id IS DISTINCT FROM cd.document_version_id)
         -- Or new document (not in checkpoint)
         OR (cd.document_id IS NULL)
       )

@@ -441,6 +441,56 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
       expect(result.sourceChanges).toHaveLength(1);
       expect(result.sourceChanges[0].documentId).toBe('doc-new');
     });
+
+    it('should treat target-side tombstone as non-existence: no conflict, source change passes through (verticon-2026 scenario)', async () => {
+      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
+      const mergeBaseService = await import('../../src/services/merge-base-service');
+
+      // Bug repro shape:
+      //  - main published doc-vert at v1, then again at v3 via merge
+      //  - main deleted doc-vert directly → tombstone v4 (not in publish checkpoint)
+      //  - verticon branch edited doc-vert
+      //  - merge preview verticon → main
+      //
+      // Pre-fix: target's getModifiedDocumentsSince(publishedOnly: true) returned
+      // doc-vert at v3 (last published), conflict detection saw both-modified,
+      // doc surfaced as a both-modified conflict.
+      //
+      // Post-fix: target's getModifiedDocumentsSince(publishedOnly: true) excludes
+      // doc-vert because v4 tombstone overlays the v3 publish reference. Conflict
+      // detection sees source-only modification → no conflict. Frontend then
+      // classifies as new-on-draft and renders in the merge preview list.
+
+      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+        checkpointId: 'merge-base-cp',
+        branchId: 'main-branch',
+        createdAt: '2026-04-23T00:15:25.262Z',
+      });
+
+      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+        // Source side (verticon): doc-vert was edited.
+        .mockResolvedValueOnce([
+          {
+            documentId: 'doc-vert',
+            documentPath: 'articles/verticon-2026',
+            latestVersionId: 'v-source',
+            latestVersionNumber: 2,
+            baseVersionId: 'v-base',
+            baseVersionNumber: 1,
+          },
+        ])
+        // Target side (main, publishedOnly: true): tombstone overlay excludes
+        // the doc. Empty result.
+        .mockResolvedValueOnce([]);
+
+      const result = await detectConflicts('verticon-branch', 'main-branch');
+
+      expect(result.hasConflicts).toBe(false);
+      expect(result.conflicts.documentConflicts).toHaveLength(0);
+      expect(result.sourceChanges).toHaveLength(1);
+      expect(result.sourceChanges[0].documentId).toBe('doc-vert');
+      expect(result.targetChanges).toHaveLength(0);
+    });
   });
 
   describe('checkMergeability', () => {

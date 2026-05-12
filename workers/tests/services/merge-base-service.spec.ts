@@ -437,6 +437,48 @@ describe('Phase 5.1b: Merge Base Service', () => {
       expect(sqlArg).toContain('current_versions');
     });
 
+    it('compares latest vs base by version_id (UUID), not version_number (per-branch sequence)', async () => {
+      // Bug repro: a feature branch and the merge-base checkpoint each
+      // reference different versions of the same doc that happen to share
+      // the same per-branch version_number (e.g., verticon's v2 vs main's
+      // v2 — different content lineages, same number). version_number is
+      // per-(branch, document); only version_id (UUID) is globally unique.
+      // The modified-detection comparison must use version_id, otherwise
+      // unrelated versions whose numbers collide get silently filtered out
+      // of sourceChanges.
+      //
+      // Concrete trigger: articles/verticon-2026 on Airbus. Verticon edited
+      // it to v2; the merge-base auto-checkpoint captured main's v2 (a
+      // different version_id). With version_number comparison, 2 IS DISTINCT
+      // FROM 2 = FALSE → doc disappears from sourceChanges. With version_id
+      // comparison, the UUIDs differ → modified, doc appears.
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
+
+      await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
+
+      const sqlArg = vi.mocked(db.query).mock.calls[0][0];
+      const sql = typeof sqlArg === 'string' ? sqlArg : '';
+
+      // Must compare cv.version_id with cd.document_version_id (the UUIDs).
+      // Match either direction: cv.X IS DISTINCT FROM cd.Y or cd.Y IS DISTINCT FROM cv.X.
+      const usesIdComparison =
+        /cv\.version_id\s+IS\s+DISTINCT\s+FROM\s+cd\.document_version_id/i.test(sql) ||
+        /cd\.document_version_id\s+IS\s+DISTINCT\s+FROM\s+cv\.version_id/i.test(sql);
+      expect(usesIdComparison, 'expected modified-detection to compare version_id (UUID), not version_number').toBe(true);
+
+      // And must NOT compare version_numbers for the modified-detection.
+      // (version_number is still selected as a column; this asserts the WHERE
+      // clause specifically. We look for the IS DISTINCT FROM pattern between
+      // version_number columns.)
+      const usesNumberComparison =
+        /cv\.version_number\s+IS\s+DISTINCT\s+FROM\s+cd\.version_number/i.test(sql) ||
+        /cd\.version_number\s+IS\s+DISTINCT\s+FROM\s+cv\.version_number/i.test(sql);
+      expect(usesNumberComparison, 'modified-detection must not use version_number — collides across branches').toBe(false);
+    });
+
     it('should detect tombstoned documents via is_tombstone column', async () => {
       const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
       const db = await import('../../src/db');
@@ -940,6 +982,128 @@ describe('Phase 5.1b: Merge Base Service', () => {
       expect(sql).toContain('FROM app.document_versions dv');
       expect(sql).toContain('checkpoint_docs');
       expect(sql).toContain('current_versions');
+    });
+  });
+
+  describe('getModifiedDocumentsSince — tombstone overlay on publishedOnly', () => {
+    // Bug repro (Airbus CSS, articles/verticon-2026): a doc was published on
+    // main, then deleted directly. The tombstone landed in document_versions
+    // with source='edit' but never made it into a publish-type checkpoint.
+    // Merge preview's publishedOnly query returned the last published version
+    // (with content, isDeleted=false), so the deletion was invisible and the
+    // doc surfaced as a both-modified conflict instead of disappearing from
+    // the target view (which would let the source-side write classify as
+    // new-on-draft).
+    //
+    // Fix: the publishedOnly current_versions CTE excludes any doc whose
+    // latest version on the branch is a tombstone with version_number greater
+    // than the captured published version. Mirrors the tombstone-exclusion
+    // pattern in branch-document-service.ts:161-171 (listDocumentsOnBranch).
+
+    async function captureLastSql(): Promise<() => string> {
+      const db = await import('../../src/db');
+      vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
+      return (): string => {
+        const calls = vi.mocked(db.query).mock.calls;
+        const last = calls[calls.length - 1];
+        return typeof last?.[0] === 'string' ? last[0] : '';
+      };
+    }
+
+    /**
+     * Slice the body of the `current_versions` CTE out of a captured SQL string.
+     * Locates `current_versions AS (` and returns the text up to the matching
+     * close-paren that precedes the `Find documents that differ` comment marker.
+     * Throws if the CTE shape isn't recognizable, which itself catches drift.
+     */
+    function extractCurrentVersionsCte(sql: string): string {
+      const start = sql.indexOf('current_versions AS (');
+      if (start === -1) throw new Error('current_versions CTE not found');
+      const bodyStart = sql.indexOf('(', start) + 1;
+      const sentinel = sql.indexOf('Find documents that differ', bodyStart);
+      if (sentinel === -1) throw new Error('Find-documents-that-differ marker not found');
+      const closingParen = sql.lastIndexOf(')', sentinel);
+      if (closingParen === -1) throw new Error('current_versions CTE close-paren not found');
+      return sql.slice(bodyStart, closingParen);
+    }
+
+    it('emits a NOT EXISTS subquery against document_versions with is_tombstone in the publishedOnly current_versions CTE', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const getLastSql = await captureLastSql();
+
+      await getModifiedDocumentsSince('main-branch', 'merge-base-cp', { publishedOnly: true });
+
+      const sql = getLastSql();
+
+      // The publishedOnly CTE body must contain a NOT EXISTS against
+      // document_versions referencing is_tombstone with a version_number
+      // comparison. Whitespace is intentionally not pinned.
+      const cteBody = extractCurrentVersionsCte(sql);
+
+      expect(cteBody).toMatch(/NOT\s+EXISTS\s*\(/i);
+      expect(cteBody).toMatch(/app\.document_versions/);
+      expect(cteBody).toMatch(/is_tombstone\s*=\s*true/);
+      expect(cteBody).toMatch(/version_number\s*>/);
+    });
+
+    it('passes through isDeleted=true when the publish checkpoint reference IS the tombstone (no overlay needed)', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const db = await import('../../src/db');
+
+      // Contract: when a publish checkpoint captures a tombstone version
+      // directly (e.g., a publish action recorded a deletion), the existing
+      // CTE returns that version with is_tombstone=true. The NOT EXISTS
+      // clause must NOT fire in this case — the strict version_number > dv
+      // comparison ensures a tombstone equal to the captured version doesn't
+      // exclude itself. Without this, the doc would silently drop from
+      // results and the merge would lose its delete signal.
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            document_id: 'doc-published-tombstone',
+            document_path: 'pages/removed',
+            latest_version_id: 'v-tombstone-published',
+            latest_version_number: 4,
+            base_version_id: 'v-base',
+            base_version_number: 1,
+            is_deleted: true,
+          },
+        ],
+      });
+
+      const result = await getModifiedDocumentsSince('main-branch', 'merge-base-cp', {
+        publishedOnly: true,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].isDeleted).toBe(true);
+      expect(result[0].latestVersionId).toBe('v-tombstone-published');
+    });
+
+    it('does NOT add the tombstone NOT EXISTS clause when publishedOnly is false (source-side unchanged)', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const getLastSql = await captureLastSql();
+
+      await getModifiedDocumentsSince('source-branch', 'merge-base-cp', { publishedOnly: false });
+
+      // Source-side reads document_versions directly and already surfaces
+      // tombstones via is_tombstone. The new exclusion must be scoped to the
+      // publishedOnly branch only — otherwise the merge would silently drop
+      // source-side delete intent and fail to propagate deletions to target.
+      const cteBody = extractCurrentVersionsCte(getLastSql());
+
+      expect(cteBody).not.toMatch(/NOT\s+EXISTS/i);
+    });
+
+    it('does NOT add the tombstone NOT EXISTS clause when publishedOnly is omitted (default)', async () => {
+      const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
+      const getLastSql = await captureLastSql();
+
+      await getModifiedDocumentsSince('source-branch', 'merge-base-cp');
+
+      const cteBody = extractCurrentVersionsCte(getLastSql());
+
+      expect(cteBody).not.toMatch(/NOT\s+EXISTS/i);
     });
   });
 });
