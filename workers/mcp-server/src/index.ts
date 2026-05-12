@@ -18,6 +18,7 @@ import {
   exchangeGoogleCode,
 } from './auth/google-handler.js';
 import { handleHealthCheck } from './health.js';
+import { logBindingModeOnce } from './binding-mode.js';
 
 export { handleHealthCheck };
 
@@ -37,6 +38,11 @@ interface UserProps {
 
 const mcpApiHandler: ExportedHandler<Env> = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    // PCC-3193: emit a one-shot cold-start log of which CSS_BACKEND mode is in
+    // use. Without the binding the agent key transits the public Internet —
+    // this is how a future env-config drift becomes visible.
+    logBindingModeOnce(env);
+
     // GET /mcp is for SSE notification streams which require persistent sessions.
     // Stateless workers don't support long-lived SSE, so reject GET requests.
     // The MCP client will fall back to POST-only mode.

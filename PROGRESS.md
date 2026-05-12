@@ -4182,3 +4182,23 @@ Added `AND cp.checkpoint_type = 'publish'` to all query sites:
 #### Regression Tests Added
 - `tests/services/document-version-service.published.spec.ts`: 4 new tests asserting SQL contains `checkpoint_type = 'publish'` for all 4 query functions
 - `tests/services/document-service.publish-state.spec.ts`: 2 new tests; CoW test verifies ≥3 occurrences of `checkpoint_type = 'publish'` (covering both LATERALs and outer JOIN)
+
+### Security: MCP prod CSS_BACKEND service binding (PCC-3193, 2026-05-12)
+
+**PR #110** — open against `main`. Closes red-team Finding 6 from `docs/security/mcp-server-red-team-2026-05-12.md` (PR #109).
+
+#### Issue
+`workers/mcp-server/wrangler.jsonc`: `env.production` was missing the `CSS_BACKEND` service binding that `sbx1` already declared (`:45-47`). With the binding absent, `McpApiClient.doFetch` (`src/shared/api-client.ts:230-235`) falls back to global `fetch()`, sending the shared agent API key (`X-API-Key: aak_…`) over the public Internet to `*.workers.dev` on every MCP tool call in production.
+
+#### Fix
+- `wrangler.jsonc`: added `services: [{ binding: "CSS_BACKEND", service: "collaborative-state-worker-prod" }]` to `env.production`. Worker name verified against `workers/wrangler.jsonc:218-219`. Wrangler dry-run confirms `env.CSS_BACKEND (collaborative-state-worker-prod)`.
+- `src/binding-mode.ts` (new): defense-in-depth one-shot cold-start log of the binding mode. `console.log` for service-binding mode, `console.warn` (`"public-fetch ... MISSING ... agent key transits public Internet"`) when the binding is absent. Module-scoped flag bounds the log to once per isolate. Pattern mirrors `src/health.ts` to avoid `@cloudflare/workers-oauth-provider` import side-effects in tests.
+- `src/index.ts`: `logBindingModeOnce(env)` wired at the top of `mcpApiHandler.fetch`, before GET/DELETE early returns.
+
+#### Tests Added (TDD per project §3)
+- `tests/config/wrangler-validation.spec.ts`: 3 new cases — production env declares `CSS_BACKEND` binding, prod binding points to `collaborative-state-worker-prod`, sbx1 regression guard.
+- `tests/binding-mode-log.spec.ts` (new): 3 cases — service-binding log path, public-fetch warn path with `MISSING` substring, one-shot-per-isolate guarantee.
+
+#### Out of Scope
+- `AGENT_API_KEY` rotation cadence (ticket recommendation #2) — operational/SRE work, will be tracked separately.
+- Pre-existing lint/test/typecheck failures from PR #52 (`Array<X>` lint, `_registry` create-page mock-fetch test, OAuthProvider type assignability) — flagged in PR description for separate cleanup per surgical-changes principle.
