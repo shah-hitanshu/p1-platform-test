@@ -9,6 +9,7 @@
 
 import { z } from 'zod';
 import type { McpApiClient, EditOperation } from './api-client.js';
+import type { ActingUser } from './types.js';
 
 // =============================================================================
 // ULID generator (inline — no external dependency required in Workers)
@@ -326,7 +327,24 @@ export interface ToolHandlers {
 // Tool Handlers Factory
 // =============================================================================
 
-export function createToolHandlers(apiClient: McpApiClient): ToolHandlers {
+export function createToolHandlers(
+  apiClient: McpApiClient,
+  actingUser?: ActingUser,
+): ToolHandlers {
+  // PCC-3189: when an OAuth user authenticated this request, attribute
+  // edit-session calls to that human. When actingUser is absent (or
+  // present but missing a usable id) we fall back to the historical
+  // 'autonomous' default. The empty-id fallback matters because the
+  // backend's validateAgentContext rejects trigger='human_requested'
+  // with an empty requestedById (HTTP 400) — better to ship an
+  // attributed-as-autonomous request than to fail the user's call.
+  // The actingUser-undefined branch fires when OAuth props are missing
+  // (already warned about at index.ts:57-59).
+  const requestedById =
+    actingUser?.id !== undefined && actingUser.id !== '' ? actingUser.id : undefined;
+  const trigger: 'human_requested' | 'autonomous' =
+    requestedById !== undefined ? 'human_requested' : 'autonomous';
+
   return {
     async list_sites(): Promise<ToolResult> {
       try {
@@ -405,7 +423,8 @@ export function createToolHandlers(apiClient: McpApiClient): ToolHandlers {
           documentPath: input.document_path,
           intent: input.intent,
           targetRegions: input.target_regions,
-          trigger: 'autonomous',
+          trigger,
+          requestedById,
         });
         if (result.canEdit) {
           return formatResult({
@@ -433,7 +452,8 @@ export function createToolHandlers(apiClient: McpApiClient): ToolHandlers {
           documentPath: input.document_path,
           intent: input.intent,
           targetRegions: input.target_regions,
-          trigger: 'autonomous',
+          trigger,
+          requestedById,
         });
         return formatResult({
           editSessionId: result.editSessionId,

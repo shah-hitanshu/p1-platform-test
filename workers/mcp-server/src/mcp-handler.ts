@@ -30,7 +30,10 @@ export function createMcpServer(config: McpHandlerConfig): McpServer {
     fetcher: config.fetcher,
   });
 
-  const handlers = createToolHandlers(apiClient);
+  // PCC-3189: pass actingUser so handlers can attribute edit-session calls
+  // to a real human (trigger='human_requested' + requestedById) instead of
+  // hardcoding 'autonomous' for everything.
+  const handlers = createToolHandlers(apiClient, config.actingUser);
   const server = new McpServer({
     name: config.serverName,
     version: config.serverVersion,

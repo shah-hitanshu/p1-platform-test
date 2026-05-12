@@ -4202,3 +4202,33 @@ Added `AND cp.checkpoint_type = 'publish'` to all query sites:
 #### Out of Scope
 - `AGENT_API_KEY` rotation cadence (ticket recommendation #2) — operational/SRE work, will be tracked separately.
 - Pre-existing lint/test/typecheck failures from PR #52 (`Array<X>` lint, `_registry` create-page mock-fetch test, OAuthProvider type assignability) — flagged in PR description for separate cleanup per surgical-changes principle.
+
+### Security: MCP human-vs-AI attribution (PCC-3189, 2026-05-12)
+
+**PR #112** — open against `main`. Closes red-team Finding 3 (Critical, only Critical from the report) — `docs/security/mcp-server-red-team-2026-05-12.md`.
+
+#### Issue
+Both `check_edit_permission` and `start_edit_session` in `workers/mcp-server/src/shared/tools.ts` (`:402-409`, `:430-437`) hardcoded `trigger:'autonomous'` and never set `requestedById`, regardless of whether a human authenticated via OAuth. The backend audit log (`agent_context_service.ts`) recorded `"autonomous"` for everything — defeating infosec criterion #6 and breaking incident attribution.
+
+#### Fix
+- `src/shared/tools.ts`: `createToolHandlers` gains optional `actingUser?: ActingUser` 2nd parameter. Closure-derived `trigger`/`requestedById` feed both edit-session call sites: `'human_requested' + actingUser.id` when present, the historical `'autonomous'` fallback when absent (preserves the bypassed-OAuth case already warned at `src/index.ts:57-59`).
+- `src/mcp-handler.ts`: pass `config.actingUser` through to `createToolHandlers`. Backward compatible — `actingUser` is optional, so the ~14 existing test callers that pass only `apiClient` still work.
+
+#### Tests Added (TDD per project §3)
+`tests/shared/tools.spec.ts` — new `Agent attribution (PCC-3189)` describe block, 5 cases:
+- `check_edit_permission with actingUser sends trigger=human_requested + requestedById`
+- `start_edit_session with actingUser sends trigger=human_requested + requestedById`
+- both `without actingUser falls back to trigger=autonomous + no requestedById` (backward-compat guards)
+- `NEVER sends trigger=autonomous when actingUser is set (regression invariant)` — the load-bearing contract per ticket recommendation
+
+#### Sbx1 deploy + end-to-end validation
+Deployed `worktree-pcc-3189-trigger-attribution` to `css-mcp-server-sbx1` (version `21afec3a-d4d0-449d-b460-9aa6d0b8f846`). User authenticated and ran `check_edit_permission` against airbus-migration site main-branch home document.
+
+Validation evidence (the audit-layer proof the ticket cites lives at the backend):
+- mcp-server tail: cold-start log fired, POST /mcp completed
+- Backend tail: `/can-agent-edit` POST → 200 OK (cpuTimeMs:16, wallTimeMs:1386)
+- **Decisive signal**: `agent-edit-permission-service.ts:104-106` short-circuits on `human_requested` BEFORE calling `activityDetector.canAgentProceed` (which would emit `[ActivityDetector] canAgentProceed called: { trigger: ..., ... }` per `activity-detection-service.ts:356`). Workers Logs query for that messageTemplate over the relevant window returned **zero entries** for the `/can-agent-edit` requestId — proving the short-circuit fired and the trigger sent was `human_requested`, not `autonomous`.
+
+#### Out of Scope
+- `examples/collaborative-state-mcp/src/tools.ts:379, 409` (local stdio MCP) has the same hardcoded `'autonomous'`. Memory tracks it as a residual TODO from PR #43. Different surface, separate work.
+- Pre-existing PR #52 failures (same as PR #110 baseline).

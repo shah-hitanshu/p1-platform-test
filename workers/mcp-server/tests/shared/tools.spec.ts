@@ -203,3 +203,161 @@ describe('Tool Handlers', () => {
     expect(parsed.actors).toContain('[human]');
   });
 });
+
+/**
+ * Agent attribution (PCC-3189 / red-team Finding 3 — Critical)
+ *
+ * Before the fix, both check_edit_permission and start_edit_session
+ * hardcoded trigger:'autonomous' and never set requestedById, so the
+ * backend audit log recorded "autonomous" for every MCP tool call —
+ * defeating human-vs-AI attribution at the audit layer.
+ *
+ * Contract these tests lock in:
+ *   - actingUser passed → trigger='human_requested', requestedById=actingUser.id
+ *   - actingUser absent → trigger='autonomous', requestedById omitted
+ *     (preserves the bypassed-OAuth fallback already warned about
+ *      at src/index.ts:57-59)
+ */
+describe('Agent attribution (PCC-3189)', () => {
+  beforeEach(() => { vi.resetAllMocks(); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  const defaultConfig = {
+    baseUrl: 'http://localhost:8787',
+    agentId: 'agent-1',
+    agentApiKey: 'aak_test',
+  };
+  const actingUser = { id: 'user-abc', email: 'a@b.test' };
+
+  function bodyOfCall(callIndex: number): Record<string, unknown> {
+    const [, options] = mockFetch.mock.calls[callIndex];
+    return JSON.parse(String(options.body)) as Record<string, unknown>;
+  }
+
+  it('check_edit_permission with actingUser sends trigger=human_requested + requestedById', async () => {
+    const { McpApiClient } = await import('../../src/shared/api-client.js');
+    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const client = new McpApiClient(defaultConfig);
+    const handlers = createToolHandlers(client, actingUser);
+
+    mockFetch.mockResolvedValueOnce(createMockResponse(true, { allowed: true }));
+    await handlers.check_edit_permission({
+      site_id: 's1', branch_id: 'b1', document_path: '/home',
+      intent: 'tweak hero', target_regions: ['root.props.title'],
+    });
+
+    const body = bodyOfCall(0);
+    expect(body.trigger).toBe('human_requested');
+    expect(body.requestedById).toBe('user-abc');
+  });
+
+  it('start_edit_session with actingUser sends trigger=human_requested + requestedById', async () => {
+    const { McpApiClient } = await import('../../src/shared/api-client.js');
+    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const client = new McpApiClient(defaultConfig);
+    const handlers = createToolHandlers(client, actingUser);
+
+    mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+      editSessionId: 'es-1', checkpointId: 'cp-1',
+      expiresAt: '2026-01-01', reservedRegions: ['root.props.title'],
+    }));
+    await handlers.start_edit_session({
+      site_id: 's1', branch_id: 'b1', document_path: '/home',
+      intent: 'tweak hero', target_regions: ['root.props.title'],
+    });
+
+    const body = bodyOfCall(0);
+    expect(body.trigger).toBe('human_requested');
+    expect(body.requestedById).toBe('user-abc');
+  });
+
+  it('check_edit_permission without actingUser falls back to trigger=autonomous + no requestedById', async () => {
+    const { McpApiClient } = await import('../../src/shared/api-client.js');
+    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const client = new McpApiClient(defaultConfig);
+    const handlers = createToolHandlers(client);
+
+    mockFetch.mockResolvedValueOnce(createMockResponse(true, { allowed: true }));
+    await handlers.check_edit_permission({
+      site_id: 's1', branch_id: 'b1', document_path: '/home',
+      intent: 'tweak hero', target_regions: ['root.props.title'],
+    });
+
+    const body = bodyOfCall(0);
+    expect(body.trigger).toBe('autonomous');
+    expect(body.requestedById).toBeUndefined();
+  });
+
+  it('start_edit_session without actingUser falls back to trigger=autonomous + no requestedById', async () => {
+    const { McpApiClient } = await import('../../src/shared/api-client.js');
+    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const client = new McpApiClient(defaultConfig);
+    const handlers = createToolHandlers(client);
+
+    mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+      editSessionId: 'es-1', checkpointId: 'cp-1',
+      expiresAt: '2026-01-01', reservedRegions: [],
+    }));
+    await handlers.start_edit_session({
+      site_id: 's1', branch_id: 'b1', document_path: '/home',
+      intent: 'tweak hero', target_regions: [],
+    });
+
+    const body = bodyOfCall(0);
+    expect(body.trigger).toBe('autonomous');
+    expect(body.requestedById).toBeUndefined();
+  });
+
+  // Per ticket: "Add a unit test that fails if trigger==='autonomous'
+  // while actingUser is set." This is the load-bearing invariant — the
+  // entire reason the audit log can distinguish human-from-AI work
+  // post-fix. Named explicitly so a future regression jumps out.
+  it('NEVER sends trigger=autonomous when actingUser is set (regression invariant)', async () => {
+    const { McpApiClient } = await import('../../src/shared/api-client.js');
+    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const client = new McpApiClient(defaultConfig);
+    const handlers = createToolHandlers(client, actingUser);
+
+    mockFetch.mockResolvedValueOnce(createMockResponse(true, { allowed: true }));
+    mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+      editSessionId: 'es-1', checkpointId: 'cp-1',
+      expiresAt: '2026-01-01', reservedRegions: [],
+    }));
+
+    await handlers.check_edit_permission({
+      site_id: 's1', branch_id: 'b1', document_path: '/home',
+      intent: 'tweak hero', target_regions: ['root.props.title'],
+    });
+    await handlers.start_edit_session({
+      site_id: 's1', branch_id: 'b1', document_path: '/home',
+      intent: 'tweak hero', target_regions: ['root.props.title'],
+    });
+
+    expect(bodyOfCall(0).trigger).not.toBe('autonomous');
+    expect(bodyOfCall(1).trigger).not.toBe('autonomous');
+  });
+
+  // Defensive edge case: if actingUser is somehow constructed with an
+  // empty id (Google's `sub` claim shouldn't ever be empty in practice,
+  // but a misconfigured upstream could deliver one), we must NOT ship
+  // trigger='human_requested' with requestedById=''. The backend's
+  // validateAgentContext (workers/src/services/agent-context-service.ts)
+  // would reject that combo with HTTP 400. Better to fall through to
+  // the autonomous path so the request still completes.
+  it('treats empty actingUser.id as missing — falls back to autonomous', async () => {
+    const { McpApiClient } = await import('../../src/shared/api-client.js');
+    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const client = new McpApiClient(defaultConfig);
+    const handlers = createToolHandlers(client, { id: '', email: 'a@b.test' });
+
+    mockFetch.mockResolvedValueOnce(createMockResponse(true, { allowed: true }));
+    await handlers.check_edit_permission({
+      site_id: 's1', branch_id: 'b1', document_path: '/home',
+      intent: 'tweak', target_regions: ['x'],
+    });
+
+    const body = bodyOfCall(0);
+    expect(body.trigger).toBe('autonomous');
+    expect(body.requestedById).toBeUndefined();
+  });
+});
