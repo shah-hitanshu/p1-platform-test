@@ -1,5 +1,5 @@
 /**
- * Tests for <CSSApp> component
+ * Tests for <P1App> component
  *
  * Validates authentication gating, loading states,
  * and provider composition behavior.
@@ -20,30 +20,30 @@ const mockAuthState = {
   logout: vi.fn(),
 };
 
-// Mock the auth module — CSSApp imports from the barrel export
+// Mock the auth module — P1App imports from the barrel export
 vi.mock('../auth/index', () => ({
-  CSSAuthProvider: ({ children }: { children: React.ReactNode }) => (
+  P1AuthProvider: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="css-auth-provider">{children}</div>
   ),
-  useCSSAuth: () => mockAuthState,
-  CSSLoginPage: ({ title }: { title?: string }) => (
+  useP1Auth: () => mockAuthState,
+  P1LoginPage: ({ title }: { title?: string }) => (
     <div data-testid="css-login-page">{title || 'Sign in'}</div>
   ),
   DEMO_USERS: [],
 }));
 
-// Mock css-client (CSSPuckProvider depends on it)
+// Mock css-client (P1PuckProvider depends on it)
 vi.mock('@pantheon-systems/css-client', () => ({
-  CSSClient: vi.fn(),
+  P1Client: vi.fn(),
   createGoogleOAuth: vi.fn(),
   createAuth0OAuth: vi.fn(),
   validateToken: vi.fn(),
   loginMockUser: vi.fn(),
 }));
 
-// Mock CSSPuckProvider
-vi.mock('../editor/CSSPuckProvider', () => ({
-  CSSPuckProvider: ({ children }: { children: React.ReactNode }) => (
+// Mock P1PuckProvider
+vi.mock('../editor/P1PuckProvider', () => ({
+  P1PuckProvider: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="css-puck-provider">{children}</div>
   ),
 }));
@@ -56,7 +56,7 @@ vi.mock('../core/FocusHighlightContext', () => ({
 }));
 
 // Import after mocks are set up
-import { CSSApp } from '../editor/CSSApp';
+import { P1App } from '../editor/P1App';
 
 const testConfig = {
   baseUrl: 'http://localhost:8787',
@@ -64,7 +64,7 @@ const testConfig = {
   authMode: 'mock' as const,
 };
 
-describe('CSSApp', () => {
+describe('P1App', () => {
   beforeEach(() => {
     mockAuthState.isAuthenticated = false;
     mockAuthState.isLoading = false;
@@ -80,9 +80,9 @@ describe('CSSApp', () => {
     mockAuthState.token = 'tok';
 
     render(
-      <CSSApp config={testConfig}>
+      <P1App config={testConfig}>
         <div data-testid="child">Hello</div>
-      </CSSApp>
+      </P1App>
     );
 
     expect(screen.getByTestId('child')).toBeVisible();
@@ -92,12 +92,12 @@ describe('CSSApp', () => {
     mockAuthState.isLoading = true;
 
     render(
-      <CSSApp
+      <P1App
         config={testConfig}
         loadingFallback={<div data-testid="loading">Loading...</div>}
       >
         <div data-testid="child">Hello</div>
-      </CSSApp>
+      </P1App>
     );
 
     expect(screen.getByTestId('loading')).toBeVisible();
@@ -108,9 +108,9 @@ describe('CSSApp', () => {
     mockAuthState.isLoading = true;
 
     render(
-      <CSSApp config={testConfig}>
+      <P1App config={testConfig}>
         <div data-testid="child">Hello</div>
-      </CSSApp>
+      </P1App>
     );
 
     expect(screen.getByText('Authenticating...')).toBeInTheDocument();
@@ -121,9 +121,9 @@ describe('CSSApp', () => {
     mockAuthState.isLoading = false;
 
     render(
-      <CSSApp config={testConfig}>
+      <P1App config={testConfig}>
         <div data-testid="child">Hello</div>
-      </CSSApp>
+      </P1App>
     );
 
     expect(screen.getByTestId('css-login-page')).toBeVisible();
@@ -134,12 +134,12 @@ describe('CSSApp', () => {
     mockAuthState.isLoading = false;
 
     render(
-      <CSSApp
+      <P1App
         config={testConfig}
         loginFallback={<div data-testid="custom-login">Custom</div>}
       >
         <div data-testid="child">Hello</div>
-      </CSSApp>
+      </P1App>
     );
 
     expect(screen.getByTestId('custom-login')).toBeVisible();
@@ -150,9 +150,9 @@ describe('CSSApp', () => {
     mockAuthState.isLoading = false;
 
     render(
-      <CSSApp config={testConfig} loginPageProps={{ title: 'My App' }}>
+      <P1App config={testConfig} loginPageProps={{ title: 'My App' }}>
         <div data-testid="child">Hello</div>
-      </CSSApp>
+      </P1App>
     );
 
     expect(screen.getByText('My App')).toBeVisible();
@@ -164,23 +164,23 @@ describe('CSSApp', () => {
     mockAuthState.authMode = 'css-authserver' as 'mock';
 
     render(
-      <CSSApp config={{ ...testConfig, authMode: 'css-authserver' as 'mock' }}>
+      <P1App config={{ ...testConfig, authMode: 'css-authserver' as 'mock' }}>
         <div data-testid="child">Hello</div>
-      </CSSApp>
+      </P1App>
     );
 
     expect(screen.getByTestId('css-login-page')).toBeVisible();
   });
 
-  it('wraps children in CSSAuthProvider', () => {
+  it('wraps children in P1AuthProvider', () => {
     mockAuthState.isAuthenticated = true;
     mockAuthState.user = { id: 'user-1', name: 'Test User', email: 'test@example.com' };
     mockAuthState.token = 'tok';
 
     render(
-      <CSSApp config={testConfig}>
+      <P1App config={testConfig}>
         <div data-testid="child">Hello</div>
-      </CSSApp>
+      </P1App>
     );
 
     expect(screen.getByTestId('css-auth-provider')).toBeInTheDocument();

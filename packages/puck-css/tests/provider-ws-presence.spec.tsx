@@ -1,7 +1,7 @@
 /**
- * CSSPuckProvider WebSocket Presence Integration Tests
+ * P1PuckProvider WebSocket Presence Integration Tests
  *
- * Tests for WebSocket-based presence features in CSSPuckProvider.
+ * Tests for WebSocket-based presence features in P1PuckProvider.
  * Verifies that WebSocket presence is preferred when available,
  * with HTTP polling as fallback.
  */
@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitFor, screen, act } from '@testing-library/react';
 import React, { useContext } from 'react';
-import type { ActorPresence, CSSClient, ActorState } from '@pantheon-systems/css-client';
+import type { ActorPresence, P1Client, ActorState } from '@pantheon-systems/css-client';
 import * as Y from 'yjs';
 
 // =============================================================================
@@ -126,7 +126,7 @@ const getLatestClient = (): MockRealtimeClient | undefined => {
 };
 
 // =============================================================================
-// Mock CSSClient
+// Mock P1Client
 // =============================================================================
 
 const mockBranchPresence = {
@@ -208,15 +208,15 @@ const createMockClient = () => {
     checkpoints: mockCheckpoints,
     presence: mockPresence,
     withPrincipal: vi.fn().mockReturnThis(),
-  } as unknown as CSSClient;
+  } as unknown as P1Client;
 };
 
 // =============================================================================
 // Tests
 // =============================================================================
 
-describe('CSSPuckProvider WebSocket Presence Integration', () => {
-  let mockClient: CSSClient;
+describe('P1PuckProvider WebSocket Presence Integration', () => {
+  let mockClient: P1Client;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -233,23 +233,23 @@ describe('CSSPuckProvider WebSocket Presence Integration', () => {
 
   describe('WebSocket presence when realtime and presence are both enabled', () => {
     it('should prefer WebSocket presence over HTTP polling when connected', async () => {
-      const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
+      const { P1PuckProvider } = await import('../src/editor/P1PuckProvider.js');
       const { PresenceContext } = await import('../src/core/PresenceContext.js');
-      const { CSSPuckContext } = await import('../src/core/CSSPuckContext.js');
+      const { P1PuckContext } = await import('../src/core/P1PuckContext.js');
 
       let presenceValue: { actors: ActorPresence[] } | null = null;
       let loadDocumentFn: ((path: string) => Promise<void>) | null = null;
 
       const TestConsumer = () => {
         const presenceContext = useContext(PresenceContext);
-        const cssContext = useContext(CSSPuckContext);
+        const p1Context = useContext(P1PuckContext);
         presenceValue = presenceContext;
-        loadDocumentFn = cssContext?.loadDocument ?? null;
+        loadDocumentFn = p1Context?.loadDocument ?? null;
         return <div>Presence: {presenceContext?.actors?.length ?? 0}</div>;
       };
 
       render(
-        <CSSPuckProvider
+        <P1PuckProvider
           client={mockClient}
           siteId="site-1"
           branchId="branch-1"
@@ -259,7 +259,7 @@ describe('CSSPuckProvider WebSocket Presence Integration', () => {
           presenceEnabled={true}
         >
           <TestConsumer />
-        </CSSPuckProvider>
+        </P1PuckProvider>
       );
 
       // Wait for initial mount
@@ -313,22 +313,22 @@ describe('CSSPuckProvider WebSocket Presence Integration', () => {
     });
 
     it('should keep WS presence active in human-only sessions (no agents)', async () => {
-      const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
+      const { P1PuckProvider } = await import('../src/editor/P1PuckProvider.js');
       const { PresenceContext } = await import('../src/core/PresenceContext.js');
-      const { CSSPuckContext } = await import('../src/core/CSSPuckContext.js');
+      const { P1PuckContext } = await import('../src/core/P1PuckContext.js');
 
       let loadDocumentFn: ((path: string) => Promise<void>) | null = null;
       let presenceValue: { actors: ActorPresence[] } | null = null;
 
       const TestConsumer = () => {
-        const cssContext = useContext(CSSPuckContext);
-        loadDocumentFn = cssContext?.loadDocument ?? null;
+        const p1Context = useContext(P1PuckContext);
+        loadDocumentFn = p1Context?.loadDocument ?? null;
         presenceValue = useContext(PresenceContext);
         return <div>Test</div>;
       };
 
       render(
-        <CSSPuckProvider
+        <P1PuckProvider
           client={mockClient}
           siteId="site-1"
           branchId="branch-1"
@@ -339,7 +339,7 @@ describe('CSSPuckProvider WebSocket Presence Integration', () => {
           presencePollingInterval={5000}
         >
           <TestConsumer />
-        </CSSPuckProvider>
+        </P1PuckProvider>
       );
 
       await act(async () => { await vi.advanceTimersByTimeAsync(10); });
@@ -371,19 +371,19 @@ describe('CSSPuckProvider WebSocket Presence Integration', () => {
     });
 
     it('should fall back to HTTP polling when WebSocket disconnects', async () => {
-      const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
-      const { CSSPuckContext } = await import('../src/core/CSSPuckContext.js');
+      const { P1PuckProvider } = await import('../src/editor/P1PuckProvider.js');
+      const { P1PuckContext } = await import('../src/core/P1PuckContext.js');
 
       let loadDocumentFn: ((path: string) => Promise<void>) | null = null;
 
       const TestConsumer = () => {
-        const cssContext = useContext(CSSPuckContext);
-        loadDocumentFn = cssContext?.loadDocument ?? null;
+        const p1Context = useContext(P1PuckContext);
+        loadDocumentFn = p1Context?.loadDocument ?? null;
         return <div>Test</div>;
       };
 
       render(
-        <CSSPuckProvider
+        <P1PuckProvider
           client={mockClient}
           siteId="site-1"
           branchId="branch-1"
@@ -394,7 +394,7 @@ describe('CSSPuckProvider WebSocket Presence Integration', () => {
           presencePollingInterval={5000}
         >
           <TestConsumer />
-        </CSSPuckProvider>
+        </P1PuckProvider>
       );
 
       // Wait for initial mount
@@ -437,19 +437,19 @@ describe('CSSPuckProvider WebSocket Presence Integration', () => {
 
   describe('sendFocusRegions via context', () => {
     it('should expose sendFocusRegions when realtime is enabled', async () => {
-      const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
-      const { CSSPuckContext } = await import('../src/core/CSSPuckContext.js');
+      const { P1PuckProvider } = await import('../src/editor/P1PuckProvider.js');
+      const { P1PuckContext } = await import('../src/core/P1PuckContext.js');
 
       let contextValue: { sendFocusRegions?: (regions: string[]) => boolean } | null = null;
 
       const TestConsumer = () => {
-        const context = useContext(CSSPuckContext);
+        const context = useContext(P1PuckContext);
         contextValue = context;
         return <div>Test</div>;
       };
 
       render(
-        <CSSPuckProvider
+        <P1PuckProvider
           client={mockClient}
           siteId="site-1"
           branchId="branch-1"
@@ -458,7 +458,7 @@ describe('CSSPuckProvider WebSocket Presence Integration', () => {
           wsBaseUrl="ws://localhost:8787"
         >
           <TestConsumer />
-        </CSSPuckProvider>
+        </P1PuckProvider>
       );
 
       await act(async () => {
@@ -472,23 +472,23 @@ describe('CSSPuckProvider WebSocket Presence Integration', () => {
 
   describe('focus region broadcast updates', () => {
     it('should update actor focus regions when broadcast received', async () => {
-      const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
+      const { P1PuckProvider } = await import('../src/editor/P1PuckProvider.js');
       const { PresenceContext } = await import('../src/core/PresenceContext.js');
-      const { CSSPuckContext } = await import('../src/core/CSSPuckContext.js');
+      const { P1PuckContext } = await import('../src/core/P1PuckContext.js');
 
       let presenceValue: { actors: ActorPresence[] } | null = null;
       let loadDocumentFn: ((path: string) => Promise<void>) | null = null;
 
       const TestConsumer = () => {
         const presenceContext = useContext(PresenceContext);
-        const cssContext = useContext(CSSPuckContext);
+        const p1Context = useContext(P1PuckContext);
         presenceValue = presenceContext;
-        loadDocumentFn = cssContext?.loadDocument ?? null;
+        loadDocumentFn = p1Context?.loadDocument ?? null;
         return <div>Actors: {presenceContext?.actors?.length ?? 0}</div>;
       };
 
       render(
-        <CSSPuckProvider
+        <P1PuckProvider
           client={mockClient}
           siteId="site-1"
           branchId="branch-1"
@@ -498,7 +498,7 @@ describe('CSSPuckProvider WebSocket Presence Integration', () => {
           presenceEnabled={true}
         >
           <TestConsumer />
-        </CSSPuckProvider>
+        </P1PuckProvider>
       );
 
       // Wait for initial mount

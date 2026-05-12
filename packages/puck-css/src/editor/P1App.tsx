@@ -1,16 +1,16 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { CSSClient } from '@pantheon-systems/css-client';
-import { CSSAuthProvider, useCSSAuth, CSSLoginPage } from '../auth/index.js';
-import { CSSPuckProvider } from './CSSPuckProvider.js';
-import { useCSSPuck } from '../core/CSSPuckContext.js';
+import { P1Client } from '@pantheon-systems/css-client';
+import { P1AuthProvider, useP1Auth, P1LoginPage } from '../auth/index.js';
+import { P1PuckProvider } from './P1PuckProvider.js';
+import { useP1Puck } from '../core/P1PuckContext.js';
 import { useOptionalPresenceContext } from '../core/PresenceContext.js';
 import { createFocusRegionMap } from '../collaboration/utils/focusRegionMap.js';
 import type { FocusHighlight } from '../collaboration/utils/focusRegionMap.js';
-import type { CSSConfig } from '../core/config.js';
+import type { P1Config } from '../core/config.js';
 import { pdsCoreCSS } from '../pds/theme/pds-core-content.js';
 
-export interface CSSAppProps {
-  config: CSSConfig;
+export interface P1AppProps {
+  config: P1Config;
   children: React.ReactNode;
   loadingFallback?: React.ReactNode;
   loginFallback?: React.ReactElement;
@@ -23,8 +23,8 @@ function AuthGate({
   loadingFallback,
   loginFallback,
   loginPageProps,
-}: CSSAppProps): React.ReactElement {
-  const { isAuthenticated, isLoading, user, token } = useCSSAuth();
+}: P1AppProps): React.ReactElement {
+  const { isAuthenticated, isLoading, user, token } = useP1Auth();
 
   if (isLoading) {
     return <>{loadingFallback ?? <div style={{ textAlign: 'center', padding: '2rem' }}>Authenticating...</div>}</>;
@@ -34,7 +34,7 @@ function AuthGate({
     if (loginFallback) {
       return loginFallback;
     }
-    return <CSSLoginPage {...loginPageProps} />;
+    return <P1LoginPage {...loginPageProps} />;
   }
 
   if (!user || !token) {
@@ -54,16 +54,16 @@ function AuthenticatedShell({
   token,
   children,
 }: {
-  config: CSSConfig;
+  config: P1Config;
   user: { id: string; name: string; email?: string };
   token: string;
   children: React.ReactNode;
 }): React.ReactElement {
-  const { getToken } = useCSSAuth();
+  const { getToken } = useP1Auth();
 
-  const cssClient = useMemo(
+  const p1Client = useMemo(
     () =>
-      new CSSClient({
+      new P1Client({
         baseUrl: config.clientBaseUrl || config.baseUrl,
         authProvider: async () => {
           const t = await getToken();
@@ -76,9 +76,9 @@ function AuthenticatedShell({
   );
 
   return (
-    <CSSPuckProvider
+    <P1PuckProvider
       key={user.id}
-      client={cssClient}
+      client={p1Client}
       siteId={config.siteId}
       branchId={config.branchId}
       userId={user.id}
@@ -96,16 +96,16 @@ function AuthenticatedShell({
       ) : (
         children
       )}
-    </CSSPuckProvider>
+    </P1PuckProvider>
   );
 }
 
 /**
- * Bridge component that reads presence data from CSSPuckProvider context
+ * Bridge component that reads presence data from P1PuckProvider context
  * and applies focus highlights directly to the DOM via Puck's
  * [data-puck-component] attributes. This avoids React re-renders in the
  * component tree, preventing scroll jumps and layout recalculation.
- * Must be rendered inside CSSPuckProvider.
+ * Must be rendered inside P1PuckProvider.
  */
 function PresenceFocusBridge({
   userId,
@@ -114,9 +114,9 @@ function PresenceFocusBridge({
   userId: string;
   children: React.ReactNode;
 }): React.ReactElement {
-  const css = useCSSPuck();
+  const css = useP1Puck();
   // Read presence from the dedicated PresenceContext (which updates reactively
-  // on presence changes) instead of the main CSSPuck context (which now uses
+  // on presence changes) instead of the main P1Puck context (which now uses
   // a ref-based getter to avoid cascading re-renders through the plugin tree).
   const presenceCtx = useOptionalPresenceContext();
   const prevHighlightedRef = useRef<Set<string>>(new Set());
@@ -171,13 +171,13 @@ function PresenceFocusBridge({
   return <>{children}</>;
 }
 
-export function CSSApp({
+export function P1App({
   config,
   children,
   loadingFallback,
   loginFallback,
   loginPageProps,
-}: CSSAppProps): React.ReactElement {
+}: P1AppProps): React.ReactElement {
   // PDS CANVAS ISOLATION — READ THIS BEFORE MODIFYING
   //
   // pds-core.css contains 1,371 element-level CSS rules (full CSS reset, typography,
@@ -215,16 +215,16 @@ export function CSSApp({
   // do not affect canvas content.
   return (
     <div className="puck-editor-theme">
-      <CSSAuthProvider
+      <P1AuthProvider
         authMode={config.authMode}
-        cssBaseUrl={config.baseUrl}
+        p1BaseUrl={config.baseUrl}
         siteId={config.siteId}
         googleClientId={config.googleClientId}
         auth0Domain={config.auth0Domain}
         auth0ClientId={config.auth0ClientId}
         auth0Audience={config.auth0Audience}
-        cssAuthServerUrl={config.cssAuthServerUrl}
-        cssAuthRedirectUri={config.cssAuthRedirectUri}
+        p1AuthServerUrl={config.p1AuthServerUrl}
+        p1AuthRedirectUri={config.p1AuthRedirectUri}
       >
         <AuthGate
           config={config}
@@ -234,7 +234,7 @@ export function CSSApp({
         >
           {children}
         </AuthGate>
-      </CSSAuthProvider>
+      </P1AuthProvider>
     </div>
   );
 }

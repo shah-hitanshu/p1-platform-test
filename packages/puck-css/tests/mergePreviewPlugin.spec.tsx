@@ -16,7 +16,7 @@ vi.mock('@puckeditor/core', () => ({
   ),
 }));
 
-// Mock useMergePreview so plugin tests don't need a CSSPuckProvider
+// Mock useMergePreview so plugin tests don't need a P1PuckProvider
 const mockUseMergePreview = vi.fn();
 vi.mock('../src/editor/useMergePreview.js', () => ({
   useMergePreview: () => mockUseMergePreview(),

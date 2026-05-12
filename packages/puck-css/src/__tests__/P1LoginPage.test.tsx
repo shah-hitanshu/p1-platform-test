@@ -14,16 +14,16 @@ const mockAuthState = {
   logout: vi.fn(),
 };
 
-vi.mock('../auth/CSSAuthProvider', () => ({
-  useCSSAuth: () => mockAuthState,
+vi.mock('../auth/P1AuthProvider', () => ({
+  useP1Auth: () => mockAuthState,
   DEMO_USERS: [
     { id: '11111111-1111-1111-1111-111111111111', name: 'Alice Developer' },
   ],
 }));
 
-import { CSSLoginPage } from '../auth/CSSLoginPage';
+import { P1LoginPage } from '../auth/P1LoginPage';
 
-describe('CSSLoginPage with css-authserver mode', () => {
+describe('P1LoginPage with css-authserver mode', () => {
   beforeEach(() => {
     mockAuthState.isLoading = false;
     mockAuthState.error = null;
@@ -32,13 +32,13 @@ describe('CSSLoginPage with css-authserver mode', () => {
   });
 
   it('renders a Sign in button for css-authserver mode', () => {
-    render(<CSSLoginPage />);
+    render(<P1LoginPage />);
     const button = screen.getByRole('button', { name: /sign in/i });
     expect(button).toBeInTheDocument();
   });
 
   it('calls login() when the Sign in button is clicked', () => {
-    render(<CSSLoginPage />);
+    render(<P1LoginPage />);
     const button = screen.getByRole('button', { name: /sign in/i });
     fireEvent.click(button);
     expect(mockLogin).toHaveBeenCalled();
@@ -46,18 +46,18 @@ describe('CSSLoginPage with css-authserver mode', () => {
 
   it('shows loading text when isLoading is true', () => {
     mockAuthState.isLoading = true;
-    render(<CSSLoginPage />);
+    render(<P1LoginPage />);
     expect(screen.getByText(/signing in/i)).toBeInTheDocument();
   });
 
-  it('shows CSS Auth Server label in subtitle', () => {
-    render(<CSSLoginPage />);
-    expect(screen.getByText(/CSS Auth Server/)).toBeInTheDocument();
+  it('shows P1 Auth Server label in subtitle', () => {
+    render(<P1LoginPage />);
+    expect(screen.getByText(/P1 Auth Server/)).toBeInTheDocument();
   });
 
   it('displays error message when error is present', () => {
     mockAuthState.error = 'Something went wrong';
-    render(<CSSLoginPage />);
+    render(<P1LoginPage />);
     expect(screen.getByText('Something went wrong')).toBeInTheDocument();
   });
 });

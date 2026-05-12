@@ -20,7 +20,7 @@ describe("editor-client uses P1 plugins", () => {
     expect(content).toContain("wrapConfigForEditorPreview");
   });
 
-  it("passes additionalPlugins to useCSSEditor", () => {
+  it("passes additionalPlugins to useP1Editor", () => {
     expect(content).toContain("additionalPlugins");
   });
 

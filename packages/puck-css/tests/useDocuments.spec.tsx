@@ -5,7 +5,7 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useDocuments } from '../src/editor/useDocuments.js';
-import type { CSSClient } from '@pantheon-systems/css-client';
+import type { P1Client } from '@pantheon-systems/css-client';
 
 describe('useDocuments', () => {
   const mockClient = {
@@ -17,7 +17,7 @@ describe('useDocuments', () => {
     versions: {
       create: vi.fn(),
     },
-  } as unknown as CSSClient;
+  } as unknown as P1Client;
 
   beforeEach(() => {
     vi.clearAllMocks();

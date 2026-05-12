@@ -6,10 +6,10 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { Checkpoint } from '@pantheon-systems/css-client';
-import type { CSSClient } from '@pantheon-systems/css-client';
+import type { P1Client } from '@pantheon-systems/css-client';
 
 export interface UseCheckpointsParams {
-  client: CSSClient;
+  client: P1Client;
   siteId: string;
   branchId: string;
 }

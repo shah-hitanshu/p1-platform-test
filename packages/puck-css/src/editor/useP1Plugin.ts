@@ -1,5 +1,5 @@
 /**
- * useCSSPlugin Hook
+ * useP1Plugin Hook
  *
  * Creates a referentially stable CSS plugin instance for Puck.
  * Internally reads context values and wires them through a Proxy pattern
@@ -7,18 +7,18 @@
  */
 
 import { useRef, useMemo } from 'react';
-import { useCSSPuck } from '../core/CSSPuckContext.js';
-import { createCSSPlugin } from './plugin/CSSPlugin.js';
-import type { CSSPluginOptions, PuckPlugin } from './plugin/CSSPlugin.js';
+import { useP1Puck } from '../core/P1PuckContext.js';
+import { createP1Plugin } from './plugin/P1Plugin.js';
+import type { P1PluginOptions, PuckPlugin } from './plugin/P1Plugin.js';
 import type { DocumentVersion, ActorPresence, RegisteredAgent } from '@pantheon-systems/css-client';
 import type { SiteMenuItem, CurrentUser } from '../pds/components/P1EditorHeader.js';
 
 /**
  * Options that consumers can pass to customize the plugin behavior.
  * Context-derived values (branches, documents, versions, etc.) are
- * automatically wired from CSSPuckProvider context.
+ * automatically wired from P1PuckProvider context.
  */
-export interface UseCSSPluginOptions {
+export interface UseP1PluginOptions {
   /** Callback when user selection changes in the Puck editor */
   onSelectionChange?: (path: string | null, itemId: string | null) => void;
   /** Puck config for rendering merge previews. Enables the built-in merge review overlay. */
@@ -81,11 +81,11 @@ export interface UseCSSPluginOptions {
 /**
  * Creates a referentially stable CSS plugin for Puck.
  *
- * Reads branches, documents, and other state from CSSPuckProvider context.
+ * Reads branches, documents, and other state from P1PuckProvider context.
  * The returned plugin object is stable across re-renders — it uses a Proxy
  * pattern to always delegate to the latest options without changing identity.
  *
- * Must be used inside a CSSPuckProvider.
+ * Must be used inside a P1PuckProvider.
  *
  * @param options - Optional customization (selection tracking, version display, etc.)
  * @returns A stable PuckPlugin instance
@@ -93,13 +93,13 @@ export interface UseCSSPluginOptions {
  * @example
  * ```tsx
  * function Editor() {
- *   const plugin = useCSSPlugin();
+ *   const plugin = useP1Plugin();
  *   return <Puck plugins={[plugin]} config={config} data={data} />;
  * }
  * ```
  */
-export function useCSSPlugin(options: UseCSSPluginOptions = {}): PuckPlugin {
-  const css = useCSSPuck();
+export function useP1Plugin(options: UseP1PluginOptions = {}): PuckPlugin {
+  const css = useP1Puck();
 
   const fc = css.featureConfig ?? {
     enableBranchSelector: true,
@@ -118,7 +118,7 @@ export function useCSSPlugin(options: UseCSSPluginOptions = {}): PuckPlugin {
 
   // Build the full plugin options from context + consumer options,
   // gating features by the resolved featureConfig flags.
-  const pluginOptions: CSSPluginOptions = {
+  const pluginOptions: P1PluginOptions = {
     branches: fc.enableBranchSelector ? css.branches : [],
     currentBranch: fc.enableBranchSelector ? css.currentBranch : null,
     onBranchSwitch: fc.enableBranchSelector ? css.switchBranch : () => {},
@@ -176,7 +176,7 @@ export function useCSSPlugin(options: UseCSSPluginOptions = {}): PuckPlugin {
   // Create a stable Proxy-backed options object that always reads from the ref
   const stableOptions = useMemo(
     () =>
-      new Proxy({} as CSSPluginOptions, {
+      new Proxy({} as P1PluginOptions, {
         get(_target, prop: string) {
           return (optionsRef.current as unknown as Record<string, unknown>)[prop];
         },
@@ -185,7 +185,7 @@ export function useCSSPlugin(options: UseCSSPluginOptions = {}): PuckPlugin {
   );
 
   // Create plugin once with stable proxy options
-  const plugin = useMemo(() => createCSSPlugin(stableOptions), [stableOptions]);
+  const plugin = useMemo(() => createP1Plugin(stableOptions), [stableOptions]);
 
   return plugin;
 }

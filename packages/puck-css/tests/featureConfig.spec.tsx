@@ -1,13 +1,13 @@
 /**
  * Feature Configuration Tests (TDD)
  *
- * Tests for CSSFeatureConfig type, presets, and integration with hooks.
+ * Tests for P1FeatureConfig type, presets, and integration with hooks.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import React from 'react';
-import type { CSSClient, Branch } from '@pantheon-systems/css-client';
+import type { P1Client, Branch } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock useRealtime hook
@@ -30,10 +30,10 @@ vi.mock('../src/editor/useRealtime.js', () => ({
 // Import AFTER the mock
 // =============================================================================
 
-const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
-const { useCSSPlugin } = await import('../src/editor/useCSSPlugin.js');
-const { useCSSOverrides } = await import('../src/editor/useCSSOverrides.js');
-const { CSS_PRESETS } = await import('../src/core/featureConfig.js');
+const { P1PuckProvider } = await import('../src/editor/P1PuckProvider.js');
+const { useP1Plugin } = await import('../src/editor/useP1Plugin.js');
+const { useP1Overrides } = await import('../src/editor/useP1Overrides.js');
+const { P1_PRESETS } = await import('../src/core/featureConfig.js');
 
 // =============================================================================
 // Mock Data
@@ -52,7 +52,7 @@ const mockBranch: Branch = {
 // Mock Client Factory
 // =============================================================================
 
-function createMockClient(): CSSClient {
+function createMockClient(): P1Client {
   return {
     branches: {
       list: vi.fn().mockResolvedValue([mockBranch]),
@@ -105,7 +105,7 @@ function createMockClient(): CSSClient {
       abortEdit: vi.fn(),
     },
     withPrincipal: vi.fn().mockReturnThis(),
-  } as unknown as CSSClient;
+  } as unknown as P1Client;
 }
 
 // =============================================================================
@@ -114,44 +114,44 @@ function createMockClient(): CSSClient {
 
 describe('CSS Feature Presets', () => {
   it('should export basic preset', () => {
-    expect(CSS_PRESETS.basic).toBeDefined();
-    expect(CSS_PRESETS.basic.enableAutoSave).toBe(true);
-    expect(CSS_PRESETS.basic.enablePublishButton).toBe(true);
+    expect(P1_PRESETS.basic).toBeDefined();
+    expect(P1_PRESETS.basic.enableAutoSave).toBe(true);
+    expect(P1_PRESETS.basic.enablePublishButton).toBe(true);
   });
 
   it('should export collaborative preset', () => {
-    expect(CSS_PRESETS.collaborative).toBeDefined();
-    expect(CSS_PRESETS.collaborative.enableRealtime).toBe(true);
-    expect(CSS_PRESETS.collaborative.presenceEnabled).toBe(true);
-    expect(CSS_PRESETS.collaborative.enableCollaboratorAvatars).toBe(true);
-    expect(CSS_PRESETS.collaborative.enableFocusHighlighting).toBe(true);
+    expect(P1_PRESETS.collaborative).toBeDefined();
+    expect(P1_PRESETS.collaborative.enableRealtime).toBe(true);
+    expect(P1_PRESETS.collaborative.presenceEnabled).toBe(true);
+    expect(P1_PRESETS.collaborative.enableCollaboratorAvatars).toBe(true);
+    expect(P1_PRESETS.collaborative.enableFocusHighlighting).toBe(true);
   });
 
   it('should export full preset with all features enabled', () => {
-    expect(CSS_PRESETS.full).toBeDefined();
-    expect(CSS_PRESETS.full.enableDocumentBrowser).toBe(true);
-    expect(CSS_PRESETS.full.enableBranchSelector).toBe(true);
-    expect(CSS_PRESETS.full.enableVersionHistory).toBe(true);
-    expect(CSS_PRESETS.full.enableMergeControl).toBe(true);
-    expect(CSS_PRESETS.full.enableAutoSave).toBe(true);
-    expect(CSS_PRESETS.full.enablePublishButton).toBe(true);
-    expect(CSS_PRESETS.full.enableRealtime).toBe(true);
-    expect(CSS_PRESETS.full.presenceEnabled).toBe(true);
-    expect(CSS_PRESETS.full.enableCollaboratorAvatars).toBe(true);
-    expect(CSS_PRESETS.full.enableAgentBanner).toBe(true);
-    expect(CSS_PRESETS.full.enableFocusHighlighting).toBe(true);
+    expect(P1_PRESETS.full).toBeDefined();
+    expect(P1_PRESETS.full.enableDocumentBrowser).toBe(true);
+    expect(P1_PRESETS.full.enableBranchSelector).toBe(true);
+    expect(P1_PRESETS.full.enableVersionHistory).toBe(true);
+    expect(P1_PRESETS.full.enableMergeControl).toBe(true);
+    expect(P1_PRESETS.full.enableAutoSave).toBe(true);
+    expect(P1_PRESETS.full.enablePublishButton).toBe(true);
+    expect(P1_PRESETS.full.enableRealtime).toBe(true);
+    expect(P1_PRESETS.full.presenceEnabled).toBe(true);
+    expect(P1_PRESETS.full.enableCollaboratorAvatars).toBe(true);
+    expect(P1_PRESETS.full.enableAgentBanner).toBe(true);
+    expect(P1_PRESETS.full.enableFocusHighlighting).toBe(true);
   });
 
-  it('presets should be usable as CSSFeatureConfig spread', () => {
+  it('presets should be usable as P1FeatureConfig spread', () => {
     // Verify presets can be spread without type errors
-    const combined = { ...CSS_PRESETS.basic, enableDocumentBrowser: true };
+    const combined = { ...P1_PRESETS.basic, enableDocumentBrowser: true };
     expect(combined.enableAutoSave).toBe(true);
     expect(combined.enableDocumentBrowser).toBe(true);
   });
 });
 
 describe('Feature config integration with hooks', () => {
-  let client: CSSClient;
+  let client: P1Client;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -163,9 +163,9 @@ describe('Feature config integration with hooks', () => {
     vi.clearAllMocks();
   });
 
-  it('useCSSPlugin should accept feature flags via options', () => {
+  it('useP1Plugin should accept feature flags via options', () => {
     const wrapper = ({ children }: { children: React.ReactNode }) =>
-      React.createElement(CSSPuckProvider, {
+      React.createElement(P1PuckProvider, {
         client,
         siteId: 'site-1',
         branchId: 'branch-1',
@@ -173,7 +173,7 @@ describe('Feature config integration with hooks', () => {
       }, children);
 
     const { result } = renderHook(
-      () => useCSSPlugin({
+      () => useP1Plugin({
         showPresenceIndicator: true,
         showAgentActivity: true,
       }),
@@ -184,9 +184,9 @@ describe('Feature config integration with hooks', () => {
     expect(result.current.name).toBe('css');
   });
 
-  it('useCSSOverrides should accept feature flags via options', () => {
+  it('useP1Overrides should accept feature flags via options', () => {
     const wrapper = ({ children }: { children: React.ReactNode }) =>
-      React.createElement(CSSPuckProvider, {
+      React.createElement(P1PuckProvider, {
         client,
         siteId: 'site-1',
         branchId: 'branch-1',
@@ -194,7 +194,7 @@ describe('Feature config integration with hooks', () => {
       }, children);
 
     const { result } = renderHook(
-      () => useCSSOverrides({
+      () => useP1Overrides({
         showCollaboratorAvatars: true,
         showAgentActivityBanner: true,
       }),

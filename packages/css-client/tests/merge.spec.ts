@@ -6,8 +6,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CSSClient } from '../src/client.js';
-import { CSSApiError, ValidationError } from '../src/errors.js';
+import { P1Client } from '../src/client.js';
+import { P1ApiError, ValidationError } from '../src/errors.js';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -20,11 +20,11 @@ describe('MergeEndpoint', () => {
   const sourceBranchId = 'branch-source';
   const targetBranchId = 'branch-target';
 
-  let client: CSSClient;
+  let client: P1Client;
 
   beforeEach(() => {
     mockFetch.mockReset();
-    client = new CSSClient({ baseUrl, apiKey });
+    client = new P1Client({ baseUrl, apiKey });
   });
 
   afterEach(() => {
@@ -434,7 +434,7 @@ describe('MergeEndpoint', () => {
   });
 
   describe('error handling', () => {
-    it('throws CSSApiError on 4xx response', async () => {
+    it('throws P1ApiError on 4xx response', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 400,
@@ -446,7 +446,7 @@ describe('MergeEndpoint', () => {
       ).rejects.toThrow(ValidationError);
     });
 
-    it('throws CSSApiError on 5xx response', async () => {
+    it('throws P1ApiError on 5xx response', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
@@ -455,7 +455,7 @@ describe('MergeEndpoint', () => {
 
       await expect(
         client.merge.preview(siteId, sourceBranchId, targetBranchId)
-      ).rejects.toThrow(CSSApiError);
+      ).rejects.toThrow(P1ApiError);
     });
   });
 });

@@ -6,10 +6,10 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { Branch } from '@pantheon-systems/css-client';
-import type { CSSClient } from '@pantheon-systems/css-client';
+import type { P1Client } from '@pantheon-systems/css-client';
 
 interface UseBranchesParams {
-  client: CSSClient;
+  client: P1Client;
   siteId: string;
   initialBranchId: string;
 }

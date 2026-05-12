@@ -1,8 +1,8 @@
 /**
- * Tests for site name fetching in CSSPuckProvider.
+ * Tests for site name fetching in P1PuckProvider.
  *
  * Validates:
- * - Provider fetches site name on mount and exposes it via useCSSPuck()
+ * - Provider fetches site name on mount and exposes it via useP1Puck()
  * - siteName is null before the fetch completes
  * - siteName stays null when the fetch fails
  */
@@ -96,15 +96,15 @@ function createMockClient(siteName: string | null = TEST_SITE_NAME) {
 // Imports (must come after mocks)
 // ---------------------------------------------------------------------------
 
-import { CSSPuckProvider } from '../editor/CSSPuckProvider.js';
-import { useCSSPuck } from '../core/CSSPuckContext.js';
+import { P1PuckProvider } from '../editor/P1PuckProvider.js';
+import { useP1Puck } from '../core/P1PuckContext.js';
 
 // ---------------------------------------------------------------------------
 // Helper consumer component
 // ---------------------------------------------------------------------------
 
 function SiteNameConsumer() {
-  const { siteName } = useCSSPuck();
+  const { siteName } = useP1Puck();
   return <span data-testid="site-name">{siteName ?? 'null'}</span>;
 }
 
@@ -117,18 +117,18 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('CSSPuckProvider — site name', () => {
+describe('P1PuckProvider — site name', () => {
   it('exposes siteName from the fetched site after mount', async () => {
     const client = createMockClient(TEST_SITE_NAME);
 
     render(
-      <CSSPuckProvider
+      <P1PuckProvider
         client={client as never}
         siteId={TEST_SITE_ID}
         userId="user-1"
       >
         <SiteNameConsumer />
-      </CSSPuckProvider>
+      </P1PuckProvider>
     );
 
     await waitFor(() => {
@@ -142,13 +142,13 @@ describe('CSSPuckProvider — site name', () => {
     const client = createMockClient(null); // mocked to reject
 
     render(
-      <CSSPuckProvider
+      <P1PuckProvider
         client={client as never}
         siteId={TEST_SITE_ID}
         userId="user-1"
       >
         <SiteNameConsumer />
-      </CSSPuckProvider>
+      </P1PuckProvider>
     );
 
     // Give the fetch time to fail

@@ -6,13 +6,13 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { PuckData } from '@pantheon-systems/css-client';
-import type { CSSClient } from '@pantheon-systems/css-client';
+import type { P1Client } from '@pantheon-systems/css-client';
 import type { SaveStatus, UseAutoSaveOptions, UseAutoSaveReturn } from '../core/types.js';
 import { debounce } from '../core/utils/debounce.js';
 import { withRetry } from '../core/utils/retry.js';
 
 interface UseAutoSaveParams {
-  client: CSSClient;
+  client: P1Client;
   siteId: string;
   branchId: string;
   documentId: string;

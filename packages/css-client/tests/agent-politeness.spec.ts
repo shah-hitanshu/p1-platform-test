@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CSSClient } from '../src/client.js';
+import { P1Client } from '../src/client.js';
 import { NotFoundError, ValidationError } from '../src/errors.js';
 
 // Mock fetch globally
@@ -58,7 +58,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockPresence,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const presence = await client.presence.getSitePresence('site-1');
 
         expect(presence).toEqual(mockPresence);
@@ -122,7 +122,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockPresence,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const presence = await client.presence.getBranchPresence('site-1', 'branch-1');
 
         expect(presence).toEqual(mockPresence);
@@ -172,7 +172,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockPresence,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const presence = await client.presence.getAgentPresence('org-1', 'agent-1');
 
         expect(presence).toEqual(mockPresence);
@@ -223,7 +223,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => ({ agents: mockAgents }),
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const agents = await client.agentRegistry.list('org-1');
 
         expect(agents).toEqual(mockAgents);
@@ -240,7 +240,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => ({ agents: [] }),
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         await client.agentRegistry.list('org-1', { status: 'active' });
 
         expect(mockFetch).toHaveBeenCalledWith(
@@ -270,7 +270,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockAgent,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const agent = await client.agentRegistry.get('org-1', 'agent-1');
 
         expect(agent).toEqual(mockAgent);
@@ -287,7 +287,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => ({ error: 'Agent not found' }),
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
 
         await expect(client.agentRegistry.get('org-1', 'nonexistent')).rejects.toThrow(
           NotFoundError
@@ -315,7 +315,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockAgent,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const agent = await client.agentRegistry.create('org-1', {
           name: 'NewAgent',
           description: 'A new agent',
@@ -343,7 +343,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => ({ error: 'name is required' }),
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
 
         await expect(
           client.agentRegistry.create('org-1', { name: '' })
@@ -371,7 +371,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockAgent,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const agent = await client.agentRegistry.update('org-1', 'agent-1', {
           name: 'UpdatedAgent',
           description: 'Updated description',
@@ -408,7 +408,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockAgent,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const agent = await client.agentRegistry.updateStatus('org-1', 'agent-1', 'suspended');
 
         expect(agent.status).toBe('suspended');
@@ -433,7 +433,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockAgent,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const agent = await client.agentRegistry.updateStatus('org-1', 'agent-1', 'active');
 
         expect(agent.status).toBe('active');
@@ -448,7 +448,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => ({}),
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         await client.agentRegistry.delete('org-1', 'agent-1');
 
         expect(mockFetch).toHaveBeenCalledWith(
@@ -476,7 +476,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockResponse,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const result = await client.agentEdit.canEdit('site-1', 'branch-1', '/home', {
           agentId: 'agent-1',
           trigger: 'human_requested',
@@ -514,7 +514,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockResponse,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const result = await client.agentEdit.canEdit('site-1', 'branch-1', '/home', {
           agentId: 'agent-1',
           trigger: 'autonomous',
@@ -540,7 +540,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockResponse,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const result = await client.agentEdit.canEdit('site-1', 'branch-1', '/home', {
           agentId: 'agent-1',
           trigger: 'autonomous',
@@ -567,7 +567,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockResponse,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const result = await client.agentEdit.startEdit('site-1', 'branch-1', '/home', {
           agentId: 'agent-1',
           trigger: 'autonomous',
@@ -605,7 +605,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockResponse,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const result = await client.agentEdit.startEdit('site-1', 'branch-1', '/home', {
           agentId: 'agent-1',
           trigger: 'human_requested',
@@ -632,7 +632,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockResponse,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const result = await client.agentEdit.completeEdit('site-1', 'branch-1', '/home', 'agent-1');
 
         expect(result.success).toBe(true);
@@ -660,7 +660,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockResponse,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const result = await client.agentEdit.abortEdit(
           'site-1',
           'branch-1',
@@ -696,7 +696,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockResponse,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const result = await client.agentEdit.stopAgent(
           'site-1',
           'branch-1',
@@ -728,7 +728,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockResponse,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         const result = await client.agentEdit.stopAgent(
           'site-1',
           'branch-1',
@@ -753,7 +753,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => mockResponse,
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
         await client.agentEdit.stopAgent(
           'site-1',
           'branch-1',
@@ -776,7 +776,7 @@ describe('Agent Politeness Endpoints', () => {
           json: async () => ({ error: 'Internal server error' }),
         });
 
-        const client = new CSSClient({ baseUrl, apiKey });
+        const client = new P1Client({ baseUrl, apiKey });
 
         await expect(
           client.agentEdit.stopAgent('site-1', 'branch-1', '/home', 'agent-1')
@@ -786,12 +786,12 @@ describe('Agent Politeness Endpoints', () => {
   });
 
   // ===========================================================================
-  // CSSClient Integration Tests
+  // P1Client Integration Tests
   // ===========================================================================
 
-  describe('CSSClient integration', () => {
+  describe('P1Client integration', () => {
     it('should expose presence endpoint', () => {
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       expect(client.presence).toBeDefined();
       expect(typeof client.presence.getSitePresence).toBe('function');
       expect(typeof client.presence.getBranchPresence).toBe('function');
@@ -799,7 +799,7 @@ describe('Agent Politeness Endpoints', () => {
     });
 
     it('should expose agentRegistry endpoint', () => {
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       expect(client.agentRegistry).toBeDefined();
       expect(typeof client.agentRegistry.list).toBe('function');
       expect(typeof client.agentRegistry.get).toBe('function');
@@ -810,7 +810,7 @@ describe('Agent Politeness Endpoints', () => {
     });
 
     it('should expose agentEdit endpoint', () => {
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       expect(client.agentEdit).toBeDefined();
       expect(typeof client.agentEdit.canEdit).toBe('function');
       expect(typeof client.agentEdit.startEdit).toBe('function');
@@ -826,7 +826,7 @@ describe('Agent Politeness Endpoints', () => {
         json: async () => ({ agents: [] }),
       });
 
-      const client = new CSSClient({
+      const client = new P1Client({
         baseUrl,
         apiKey,
         principal: { id: 'user-123', type: 'user' },
@@ -852,7 +852,7 @@ describe('Agent Politeness Endpoints', () => {
         json: async () => ({ allowed: true }),
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       const userClient = client.withPrincipal({ id: 'user-456', type: 'user' });
 
       await userClient.agentEdit.canEdit('site-1', 'branch-1', '/home', {

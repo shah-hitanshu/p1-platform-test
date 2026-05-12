@@ -13,7 +13,7 @@ import {
   AgentStatusPanel,
 } from '../src/agent/components/index.js';
 import { PresenceContext } from '../src/core/PresenceContext.js';
-import type { CSSClient, RegisteredAgent } from '@pantheon-systems/css-client';
+import type { P1Client, RegisteredAgent } from '@pantheon-systems/css-client';
 import type { AgentAction, AgentTriggerStatus } from '../src/agent/useAgentTrigger.js';
 
 // =============================================================================
@@ -62,7 +62,7 @@ const mockAction: AgentAction = {
 // Mock Client Factory
 // =============================================================================
 
-function createMockClient(overrides: Partial<CSSClient['agentEdit']> = {}): CSSClient {
+function createMockClient(overrides: Partial<P1Client['agentEdit']> = {}): P1Client {
   return {
     agentEdit: {
       canEdit: vi.fn().mockResolvedValue({ allowed: true }),
@@ -76,14 +76,14 @@ function createMockClient(overrides: Partial<CSSClient['agentEdit']> = {}): CSSC
       getBranchPresence: vi.fn().mockResolvedValue({ actors: [] }),
       getAgentPresence: vi.fn().mockResolvedValue({}),
     },
-  } as unknown as CSSClient;
+  } as unknown as P1Client;
 }
 
 // =============================================================================
 // Test Wrapper
 // =============================================================================
 
-function createWrapper(client: CSSClient = createMockClient()) {
+function createWrapper(client: P1Client = createMockClient()) {
   return function TestWrapper({ children }: { children: React.ReactNode }) {
     return React.createElement(
       PresenceContext.Provider,

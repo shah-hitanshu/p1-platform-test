@@ -5,7 +5,7 @@
  * the plugin references change. Filters out null/undefined entries.
  */
 
-import type { PuckPlugin } from '../plugin/CSSPlugin.js';
+import type { PuckPlugin } from '../plugin/P1Plugin.js';
 
 let lastPlugins: PuckPlugin[] = [];
 let lastResult: PuckPlugin[] = [];
@@ -17,14 +17,14 @@ let lastResult: PuckPlugin[] = [];
  * are passed in the same order. Filters out null/undefined entries.
  *
  * This is useful for consumers who manually assemble plugin arrays
- * outside of useCSSEditor and want to avoid unnecessary Puck re-renders.
+ * outside of useP1Editor and want to avoid unnecessary Puck re-renders.
  *
  * @param plugins - Plugin instances to include
  * @returns A stable array of non-null plugins
  *
  * @example
  * ```tsx
- * const plugins = createStablePluginArray(cssPlugin, aiPlugin, pccPlugin);
+ * const plugins = createStablePluginArray(p1Plugin, aiPlugin, pccPlugin);
  * return <Puck plugins={plugins} />;
  * ```
  */

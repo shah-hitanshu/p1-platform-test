@@ -1,5 +1,5 @@
 /**
- * Tests for sessionStorage-based branch persistence in CSSPuckProvider.
+ * Tests for sessionStorage-based branch persistence in P1PuckProvider.
  *
  * Validates:
  * - Provider reads persisted branch from sessionStorage on mount
@@ -111,15 +111,15 @@ function createMockClient(branchList = testBranches) {
 // Imports (must come after mocks)
 // ---------------------------------------------------------------------------
 
-import { CSSPuckProvider } from '../editor/CSSPuckProvider.js';
-import { useCSSPuck } from '../core/CSSPuckContext.js';
+import { P1PuckProvider } from '../editor/P1PuckProvider.js';
+import { useP1Puck } from '../core/P1PuckContext.js';
 
 // ---------------------------------------------------------------------------
 // Helper: consumer component that exposes context values
 // ---------------------------------------------------------------------------
 
 function BranchConsumer() {
-  const { branchId, currentBranch, switchBranch } = useCSSPuck();
+  const { branchId, currentBranch, switchBranch } = useP1Puck();
   return (
     <div>
       <span data-testid="branch-id">{branchId}</span>
@@ -171,13 +171,13 @@ describe('Branch persistence via sessionStorage', () => {
     const client = createMockClient();
 
     render(
-      <CSSPuckProvider
+      <P1PuckProvider
         client={client as never}
         siteId={TEST_SITE_ID}
         userId="user-1"
       >
         <BranchConsumer />
-      </CSSPuckProvider>
+      </P1PuckProvider>
     );
 
     // Wait for branches to load and context to settle
@@ -195,13 +195,13 @@ describe('Branch persistence via sessionStorage', () => {
     const client = createMockClient();
 
     render(
-      <CSSPuckProvider
+      <P1PuckProvider
         client={client as never}
         siteId={TEST_SITE_ID}
         userId="user-1"
       >
         <BranchConsumer />
-      </CSSPuckProvider>
+      </P1PuckProvider>
     );
 
     // Wait for initial branch load (defaults to main)
@@ -226,13 +226,13 @@ describe('Branch persistence via sessionStorage', () => {
 
     // First mount - switch to feature branch to persist it
     const { unmount } = render(
-      <CSSPuckProvider
+      <P1PuckProvider
         client={client as never}
         siteId={TEST_SITE_ID}
         userId="user-1"
       >
         <BranchConsumer />
-      </CSSPuckProvider>
+      </P1PuckProvider>
     );
 
     await waitFor(() => {
@@ -254,13 +254,13 @@ describe('Branch persistence via sessionStorage', () => {
 
     // Remount - should restore feature branch from sessionStorage
     render(
-      <CSSPuckProvider
+      <P1PuckProvider
         client={client2 as never}
         siteId={TEST_SITE_ID}
         userId="user-1"
       >
         <BranchConsumer />
-      </CSSPuckProvider>
+      </P1PuckProvider>
     );
 
     await waitFor(() => {
@@ -280,13 +280,13 @@ describe('Branch persistence via sessionStorage', () => {
     // refreshBranches enters the fallback path: it reads the persisted ID
     // (empty), then defaults to main.
     render(
-      <CSSPuckProvider
+      <P1PuckProvider
         client={client as never}
         siteId={TEST_SITE_ID}
         userId="user-1"
       >
         <BranchConsumer />
-      </CSSPuckProvider>
+      </P1PuckProvider>
     );
 
     // Should resolve to main since there is no persisted branch
@@ -304,13 +304,13 @@ describe('Branch persistence via sessionStorage', () => {
     const client2 = createMockClient();
 
     render(
-      <CSSPuckProvider
+      <P1PuckProvider
         client={client2 as never}
         siteId={TEST_SITE_ID}
         userId="user-1"
       >
         <BranchConsumer />
-      </CSSPuckProvider>
+      </P1PuckProvider>
     );
 
     // The initial state reads 'branch-nonexistent' from sessionStorage.
@@ -329,14 +329,14 @@ describe('Branch persistence via sessionStorage', () => {
     const client = createMockClient();
 
     render(
-      <CSSPuckProvider
+      <P1PuckProvider
         client={client as never}
         siteId={TEST_SITE_ID}
         branchId={mainBranch.id}
         userId="user-1"
       >
         <BranchConsumer />
-      </CSSPuckProvider>
+      </P1PuckProvider>
     );
 
     // Should use the explicit branchId prop, not the persisted value

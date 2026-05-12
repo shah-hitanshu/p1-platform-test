@@ -6,7 +6,7 @@
 
 import { createContext, useContext } from 'react';
 import type {
-  CSSClient,
+  P1Client,
   ActorPresence,
   AgentEditContext,
   AgentEditPermission,
@@ -29,8 +29,8 @@ export type PresenceUnsubscribe = () => void;
  * Context value for presence hooks.
  */
 export interface PresenceContextValue {
-  /** CSS Client instance */
-  client: CSSClient;
+  /** P1 Client instance */
+  client: P1Client;
   /** Current site ID */
   siteId: string;
   /** Current branch ID */
@@ -81,7 +81,7 @@ export function usePresenceContext(): PresenceContextValue {
 
   if (context === null) {
     throw new Error(
-      'Presence hooks must be used within a PresenceProvider or CSSPuckProvider'
+      'Presence hooks must be used within a PresenceProvider or P1PuckProvider'
     );
   }
 

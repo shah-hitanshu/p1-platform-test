@@ -7,13 +7,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CSSClient } from '../src/client.js';
+import { P1Client } from '../src/client.js';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-describe('CSSClient Session Authorization', () => {
+describe('P1Client Session Authorization', () => {
   const baseUrl = 'http://localhost:8787';
   const apiKey = 'test-api-key';
 
@@ -45,7 +45,7 @@ describe('CSSClient Session Authorization', () => {
         json: async () => mockVersion,
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       const sessionClient = client.withSessionId('session-abc');
 
       await sessionClient.versions.create('site-1', {
@@ -84,7 +84,7 @@ describe('CSSClient Session Authorization', () => {
         json: async () => mockVersion,
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       await client.versions.create('site-1', {
         documentId: 'doc-1',
         branchId: 'branch-1',
@@ -98,7 +98,7 @@ describe('CSSClient Session Authorization', () => {
     });
 
     it('should return a new client instance with sessionId set', () => {
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       const sessionClient = client.withSessionId('session-xyz');
 
       // Should be different instances
@@ -126,7 +126,7 @@ describe('CSSClient Session Authorization', () => {
         json: async () => mockVersion,
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       const agentClient = client
         .withPrincipal({ id: 'agent-1', type: 'agent' })
         .withSessionId('session-agent');
@@ -162,7 +162,7 @@ describe('CSSClient Session Authorization', () => {
         json: async () => mockSite,
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       const sessionClient = client.withSessionId('session-xyz');
 
       await sessionClient.sites.get('site-1');

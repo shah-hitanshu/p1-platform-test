@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useCSSPuck } from '../core/CSSPuckContext.js';
+import { useP1Puck } from '../core/P1PuckContext.js';
 import type { DocumentDiffSummary } from '../versioning/utils/branchDiff.js';
 
 export interface UseMergePreviewReturn {
@@ -13,10 +13,10 @@ export interface UseMergePreviewReturn {
 
 /**
  * Automatically loads a merge preview comparing the current branch against main.
- * Must be used inside a CSSPuckProvider.
+ * Must be used inside a P1PuckProvider.
  */
 export function useMergePreview(): UseMergePreviewReturn {
-  const css = useCSSPuck();
+  const css = useP1Puck();
 
   const mainBranch = css.branches.find((b) => b.isMain) ?? null;
   const isMainBranch = css.currentBranch?.isMain ?? false;

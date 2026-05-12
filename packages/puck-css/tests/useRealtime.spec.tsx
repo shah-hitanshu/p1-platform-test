@@ -66,8 +66,8 @@ class MockWebSocket {
 let mockWebSocketInstances: MockWebSocket[] = [];
 const originalWebSocket = global.WebSocket;
 
-// Mock CSSClient
-const mockCSSClient = {
+// Mock P1Client
+const mockP1Client = {
   sites: { list: vi.fn(), get: vi.fn() },
   branches: { list: vi.fn(), get: vi.fn() },
   documents: { getByPath: vi.fn() },

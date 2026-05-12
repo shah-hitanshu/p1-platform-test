@@ -11,7 +11,7 @@ import React from 'react';
 
 // Mock css-client
 vi.mock('@pantheon-systems/css-client', () => ({
-  CSSClient: vi.fn(),
+  P1Client: vi.fn(),
 }));
 
 afterEach(() => {

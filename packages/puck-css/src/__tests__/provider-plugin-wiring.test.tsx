@@ -1,7 +1,7 @@
 /**
- * B.4: CSSPuckProvider Plugin Wiring Tests
+ * B.4: P1PuckProvider Plugin Wiring Tests
  *
- * Tests that CSSPuckProvider accepts featurePlugins and featureConfig props,
+ * Tests that P1PuckProvider accepts featurePlugins and featureConfig props,
  * uses the composition engine to filter/sort/compose plugin providers, and
  * maintains backwards compatibility when the new props are omitted.
  */
@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
-import type { CSSFeaturePlugin } from '../core/plugin-types.js';
+import type { P1FeaturePlugin } from '../core/plugin-types.js';
 
 // ---------------------------------------------------------------------------
 // Mock heavy dependencies (same pattern as connectedDocumentPath-ref.test)
@@ -73,13 +73,13 @@ vi.mock('../core/NotificationContext', () => ({
   }),
 }));
 
-import { CSSPuckProvider } from '../editor/CSSPuckProvider.js';
+import { P1PuckProvider } from '../editor/P1PuckProvider.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const mockClient = mockClientMethods as unknown as Parameters<typeof CSSPuckProvider>[0]['client'];
+const mockClient = mockClientMethods as unknown as Parameters<typeof P1PuckProvider>[0]['client'];
 
 const baseProps = {
   client: mockClient,
@@ -93,12 +93,12 @@ beforeEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// B.4.1: CSSPuckProvider accepts featurePlugins prop
+// B.4.1: P1PuckProvider accepts featurePlugins prop
 // ---------------------------------------------------------------------------
 
-describe('CSSPuckProvider plugin wiring', () => {
+describe('P1PuckProvider plugin wiring', () => {
   it('renders plugin providers when featurePlugins are provided', () => {
-    const plugin: CSSFeaturePlugin = {
+    const plugin: P1FeaturePlugin = {
       name: 'test-plugin',
       provider: ({ children }) => (
         <div data-testid="test-plugin-provider">{children}</div>
@@ -106,9 +106,9 @@ describe('CSSPuckProvider plugin wiring', () => {
     };
 
     render(
-      <CSSPuckProvider {...baseProps} featurePlugins={[plugin]}>
+      <P1PuckProvider {...baseProps} featurePlugins={[plugin]}>
         <div data-testid="child">hello</div>
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
     expect(screen.getByTestId('test-plugin-provider')).toBeTruthy();
@@ -118,7 +118,7 @@ describe('CSSPuckProvider plugin wiring', () => {
   it('renders multiple plugin providers in priority order', () => {
     const renderOrder: string[] = [];
 
-    const outerPlugin: CSSFeaturePlugin = {
+    const outerPlugin: P1FeaturePlugin = {
       name: 'outer',
       priority: 10,
       provider: ({ children }) => {
@@ -127,7 +127,7 @@ describe('CSSPuckProvider plugin wiring', () => {
       },
     };
 
-    const innerPlugin: CSSFeaturePlugin = {
+    const innerPlugin: P1FeaturePlugin = {
       name: 'inner',
       priority: 20,
       provider: ({ children }) => {
@@ -137,9 +137,9 @@ describe('CSSPuckProvider plugin wiring', () => {
     };
 
     render(
-      <CSSPuckProvider {...baseProps} featurePlugins={[innerPlugin, outerPlugin]}>
+      <P1PuckProvider {...baseProps} featurePlugins={[innerPlugin, outerPlugin]}>
         <div data-testid="child">content</div>
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
     expect(screen.getByTestId('outer-provider')).toBeTruthy();
@@ -151,8 +151,8 @@ describe('CSSPuckProvider plugin wiring', () => {
   });
 
   it('does not render providers for plugins without a provider component', () => {
-    const pluginNoProvider: CSSFeaturePlugin = { name: 'no-provider' };
-    const pluginWithProvider: CSSFeaturePlugin = {
+    const pluginNoProvider: P1FeaturePlugin = { name: 'no-provider' };
+    const pluginWithProvider: P1FeaturePlugin = {
       name: 'with-provider',
       provider: ({ children }) => (
         <div data-testid="has-provider">{children}</div>
@@ -160,9 +160,9 @@ describe('CSSPuckProvider plugin wiring', () => {
     };
 
     render(
-      <CSSPuckProvider {...baseProps} featurePlugins={[pluginNoProvider, pluginWithProvider]}>
+      <P1PuckProvider {...baseProps} featurePlugins={[pluginNoProvider, pluginWithProvider]}>
         <div data-testid="child">hello</div>
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
     expect(screen.getByTestId('has-provider')).toBeTruthy();
@@ -174,9 +174,9 @@ describe('CSSPuckProvider plugin wiring', () => {
 // B.4.2: featureConfig filters plugins
 // ---------------------------------------------------------------------------
 
-describe('CSSPuckProvider featureConfig filtering', () => {
+describe('P1PuckProvider featureConfig filtering', () => {
   it('filters out plugins whose feature flags are disabled', () => {
-    const enabledPlugin: CSSFeaturePlugin = {
+    const enabledPlugin: P1FeaturePlugin = {
       name: 'enabled',
       featureFlags: ['enableVersionHistory'],
       provider: ({ children }) => (
@@ -184,7 +184,7 @@ describe('CSSPuckProvider featureConfig filtering', () => {
       ),
     };
 
-    const disabledPlugin: CSSFeaturePlugin = {
+    const disabledPlugin: P1FeaturePlugin = {
       name: 'disabled',
       featureFlags: ['enableMergeControl'],
       provider: ({ children }) => (
@@ -193,13 +193,13 @@ describe('CSSPuckProvider featureConfig filtering', () => {
     };
 
     render(
-      <CSSPuckProvider
+      <P1PuckProvider
         {...baseProps}
         featurePlugins={[enabledPlugin, disabledPlugin]}
         featureConfig={{ enableVersionHistory: true, enableMergeControl: false }}
       >
         <div data-testid="child">hello</div>
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
     expect(screen.getByTestId('enabled-provider')).toBeTruthy();
@@ -207,7 +207,7 @@ describe('CSSPuckProvider featureConfig filtering', () => {
   });
 
   it('uses AND logic for multiple feature flags', () => {
-    const plugin: CSSFeaturePlugin = {
+    const plugin: P1FeaturePlugin = {
       name: 'needs-both',
       featureFlags: ['presenceEnabled', 'enableCollaboratorAvatars'],
       provider: ({ children }) => (
@@ -216,13 +216,13 @@ describe('CSSPuckProvider featureConfig filtering', () => {
     };
 
     render(
-      <CSSPuckProvider
+      <P1PuckProvider
         {...baseProps}
         featurePlugins={[plugin]}
         featureConfig={{ presenceEnabled: true, enableCollaboratorAvatars: false }}
       >
         <div data-testid="child">hello</div>
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
     expect(screen.queryByTestId('needs-both-provider')).toBeNull();
@@ -233,19 +233,19 @@ describe('CSSPuckProvider featureConfig filtering', () => {
 // B.4.3: Default behavior without new props
 // ---------------------------------------------------------------------------
 
-describe('CSSPuckProvider backwards compatibility', () => {
+describe('P1PuckProvider backwards compatibility', () => {
   it('renders children without new props', () => {
     render(
-      <CSSPuckProvider {...baseProps}>
+      <P1PuckProvider {...baseProps}>
         <div data-testid="child">hello</div>
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
     expect(screen.getByTestId('child')).toBeTruthy();
   });
 
   it('derives featureConfig from existing boolean props', () => {
-    const plugin: CSSFeaturePlugin = {
+    const plugin: P1FeaturePlugin = {
       name: 'presence-plugin',
       featureFlags: ['presenceEnabled'],
       provider: ({ children }) => (
@@ -255,9 +255,9 @@ describe('CSSPuckProvider backwards compatibility', () => {
 
     // When presenceEnabled=false via the existing prop, the plugin should be filtered out
     render(
-      <CSSPuckProvider {...baseProps} presenceEnabled={false} featurePlugins={[plugin]}>
+      <P1PuckProvider {...baseProps} presenceEnabled={false} featurePlugins={[plugin]}>
         <div data-testid="child">hello</div>
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
     expect(screen.queryByTestId('presence-provider')).toBeNull();
@@ -267,9 +267,9 @@ describe('CSSPuckProvider backwards compatibility', () => {
     // DEFAULT_CSS_FEATURE_PLUGINS has collaborationPlugin and agentPlugin
     // Neither has a provider, so this just tests no crash
     render(
-      <CSSPuckProvider {...baseProps}>
+      <P1PuckProvider {...baseProps}>
         <div data-testid="child">hello</div>
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
     expect(screen.getByTestId('child')).toBeTruthy();
@@ -280,12 +280,12 @@ describe('CSSPuckProvider backwards compatibility', () => {
 // B.4.4: Plugin providers receive correct deps
 // ---------------------------------------------------------------------------
 
-describe('CSSPuckProvider plugin deps', () => {
+describe('P1PuckProvider plugin deps', () => {
   it('passes config and deps to plugin providers', () => {
     let receivedConfig: unknown = null;
     let receivedDeps: unknown = null;
 
-    const plugin: CSSFeaturePlugin = {
+    const plugin: P1FeaturePlugin = {
       name: 'deps-check',
       provider: ({ children, config, deps }) => {
         receivedConfig = config;
@@ -295,9 +295,9 @@ describe('CSSPuckProvider plugin deps', () => {
     };
 
     render(
-      <CSSPuckProvider {...baseProps} featurePlugins={[plugin]}>
+      <P1PuckProvider {...baseProps} featurePlugins={[plugin]}>
         <div>hello</div>
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
     expect(receivedConfig).toBeDefined();

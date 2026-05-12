@@ -1,15 +1,15 @@
 /**
- * CSSPlugin Version History Tests
+ * P1Plugin Version History Tests
  *
  * Tests for the version history section of the CSS Plugin.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { createCSSPlugin } from '../src/editor/plugin/index.js';
+import { createP1Plugin } from '../src/editor/plugin/index.js';
 import type { Branch, DocumentVersion } from '@pantheon-systems/css-client';
 
-describe('CSSPlugin Version History', () => {
+describe('P1Plugin Version History', () => {
   const mockBranches: Branch[] = [
     { id: 'b1', name: 'main', siteId: 's1', isMain: true, createdAt: new Date().toISOString() },
   ];
@@ -52,14 +52,14 @@ describe('CSSPlugin Version History', () => {
   });
 
   it('should not show version section when no versions provided', () => {
-    const plugin = createCSSPlugin(baseOptions);
+    const plugin = createP1Plugin(baseOptions);
     render(plugin.render());
 
     expect(screen.queryByText('Version History')).not.toBeInTheDocument();
   });
 
   it('should show version section when versions are provided', () => {
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       ...baseOptions,
       versions: mockVersions,
     });
@@ -69,7 +69,7 @@ describe('CSSPlugin Version History', () => {
   });
 
   it('should display version numbers', () => {
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       ...baseOptions,
       versions: mockVersions,
     });
@@ -81,7 +81,7 @@ describe('CSSPlugin Version History', () => {
   });
 
   it('should show loading state for versions', () => {
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       ...baseOptions,
       versions: [],
       versionsLoading: true,
@@ -92,7 +92,7 @@ describe('CSSPlugin Version History', () => {
   });
 
   it('should show empty state when no versions and not loading', () => {
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       ...baseOptions,
       versions: [],
       versionsLoading: false,
@@ -105,7 +105,7 @@ describe('CSSPlugin Version History', () => {
 
   it('should call onVersionSelect when version is clicked', () => {
     const onVersionSelect = vi.fn();
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       ...baseOptions,
       versions: mockVersions,
       onVersionSelect,
@@ -117,7 +117,7 @@ describe('CSSPlugin Version History', () => {
   });
 
   it('should highlight selected version', () => {
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       ...baseOptions,
       versions: mockVersions,
       selectedVersionId: 'v2',
@@ -129,7 +129,7 @@ describe('CSSPlugin Version History', () => {
   });
 
   it('should show current badge on latest version', () => {
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       ...baseOptions,
       versions: mockVersions,
     });
@@ -139,7 +139,7 @@ describe('CSSPlugin Version History', () => {
   });
 
   it('should format version timestamps', () => {
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       ...baseOptions,
       versions: mockVersions,
     });

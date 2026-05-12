@@ -1,5 +1,5 @@
 /**
- * CSSPuckProvider Getter Functions Tests (TDD)
+ * P1PuckProvider Getter Functions Tests (TDD)
  *
  * Tests for save-status getters, data sync getters, getHasUnsavedChanges,
  * and safeData exposed from context.
@@ -10,8 +10,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import React from 'react';
-import { useCSSPuck } from '../src/core/CSSPuckContext.js';
-import type { CSSClient, Branch, PuckData } from '@pantheon-systems/css-client';
+import { useP1Puck } from '../src/core/P1PuckContext.js';
+import type { P1Client, Branch, PuckData } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock useRealtime hook
@@ -38,10 +38,10 @@ vi.mock('../src/editor/useRealtime.js', () => ({
 }));
 
 // =============================================================================
-// Import CSSPuckProvider AFTER the mock
+// Import P1PuckProvider AFTER the mock
 // =============================================================================
 
-const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
+const { P1PuckProvider } = await import('../src/editor/P1PuckProvider.js');
 
 // =============================================================================
 // Mock Data
@@ -79,7 +79,7 @@ const mockVersionSnapshot: PuckData = {
 // Mock Client Factory
 // =============================================================================
 
-function createMockClient(): CSSClient {
+function createMockClient(): P1Client {
   return {
     branches: {
       list: vi.fn().mockResolvedValue([mockBranch]),
@@ -132,7 +132,7 @@ function createMockClient(): CSSClient {
       abortEdit: vi.fn(),
     },
     withPrincipal: vi.fn().mockReturnThis(),
-  } as unknown as CSSClient;
+  } as unknown as P1Client;
 }
 
 // =============================================================================
@@ -144,7 +144,7 @@ interface WrapperProps {
 }
 
 function createProviderWrapper(
-  client: CSSClient,
+  client: P1Client,
   options: {
     siteId?: string;
     branchId?: string;
@@ -165,7 +165,7 @@ function createProviderWrapper(
 
   return function Wrapper({ children }: WrapperProps) {
     return React.createElement(
-      CSSPuckProvider,
+      P1PuckProvider,
       {
         client,
         siteId,
@@ -184,8 +184,8 @@ function createProviderWrapper(
 // Test Suite: Item 2 - Save Status Getters
 // =============================================================================
 
-describe('CSSPuckProvider Save Status Getters (Item 2)', () => {
-  let client: CSSClient;
+describe('P1PuckProvider Save Status Getters (Item 2)', () => {
+  let client: P1Client;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -205,7 +205,7 @@ describe('CSSPuckProvider Save Status Getters (Item 2)', () => {
     autoSaveDelay?: number;
   } = {}) {
     const wrapper = createProviderWrapper(client, options);
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result } = renderHook(() => useP1Puck(), { wrapper });
 
     await act(async () => {
       await result.current.loadDocument('/pages/home');
@@ -368,8 +368,8 @@ describe('CSSPuckProvider Save Status Getters (Item 2)', () => {
 // Test Suite: Item 3 - Data Sync Getters
 // =============================================================================
 
-describe('CSSPuckProvider Data Sync Getters (Item 3)', () => {
-  let client: CSSClient;
+describe('P1PuckProvider Data Sync Getters (Item 3)', () => {
+  let client: P1Client;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -389,7 +389,7 @@ describe('CSSPuckProvider Data Sync Getters (Item 3)', () => {
     autoSaveDelay?: number;
   } = {}) {
     const wrapper = createProviderWrapper(client, options);
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result } = renderHook(() => useP1Puck(), { wrapper });
 
     await act(async () => {
       await result.current.loadDocument('/pages/home');
@@ -417,7 +417,7 @@ describe('CSSPuckProvider Data Sync Getters (Item 3)', () => {
 
   it('getSyncData should return undefined when no data loaded', () => {
     const wrapper = createProviderWrapper(createMockClient());
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result } = renderHook(() => useP1Puck(), { wrapper });
 
     expect(result.current.getSyncData()).toBeUndefined();
   });
@@ -452,7 +452,7 @@ describe('CSSPuckProvider Data Sync Getters (Item 3)', () => {
 
   it('getDataSyncKey should return undefined when no document loaded', () => {
     const wrapper = createProviderWrapper(createMockClient());
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result } = renderHook(() => useP1Puck(), { wrapper });
 
     expect(result.current.getDataSyncKey()).toBeUndefined();
   });
@@ -478,8 +478,8 @@ describe('CSSPuckProvider Data Sync Getters (Item 3)', () => {
 // Test Suite: Item 4 - safeData
 // =============================================================================
 
-describe('CSSPuckProvider safeData (Item 4)', () => {
-  let client: CSSClient;
+describe('P1PuckProvider safeData (Item 4)', () => {
+  let client: P1Client;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -495,7 +495,7 @@ describe('CSSPuckProvider safeData (Item 4)', () => {
 
   it('safeData should return empty PuckData when no document loaded', () => {
     const wrapper = createProviderWrapper(client);
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result } = renderHook(() => useP1Puck(), { wrapper });
 
     expect(result.current.safeData).toBeDefined();
     expect(result.current.safeData.content).toEqual([]);
@@ -504,7 +504,7 @@ describe('CSSPuckProvider safeData (Item 4)', () => {
 
   it('safeData should return current data when document is loaded', async () => {
     const wrapper = createProviderWrapper(client);
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result } = renderHook(() => useP1Puck(), { wrapper });
 
     await act(async () => {
       await result.current.loadDocument('/pages/home');
@@ -518,7 +518,7 @@ describe('CSSPuckProvider safeData (Item 4)', () => {
 
   it('safeData should never be null even when currentData is null', async () => {
     const wrapper = createProviderWrapper(client);
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result } = renderHook(() => useP1Puck(), { wrapper });
 
     // currentData is null initially
     expect(result.current.currentData).toBeNull();

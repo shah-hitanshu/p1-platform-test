@@ -1,25 +1,25 @@
 /**
- * CSS Auth module
+ * P1 Auth module
  *
- * Reusable authentication components for CSS-integrated React apps.
- * Exports CSSAuthProvider, useCSSAuth, and CSSLoginPage.
+ * Reusable authentication components for P1-integrated React apps.
+ * Exports P1AuthProvider, useP1Auth, and P1LoginPage.
  *
- * For standalone apps, use CSSLoginPage as a ready-made login screen.
- * For embedded apps, use useCSSAuth() to build your own login UI.
+ * For standalone apps, use P1LoginPage as a ready-made login screen.
+ * For embedded apps, use useP1Auth() to build your own login UI.
  */
 
 export {
-  CSSAuthProvider,
-  useCSSAuth,
-  useOptionalCSSAuth,
+  P1AuthProvider,
+  useP1Auth,
+  useOptionalP1Auth,
   DEMO_USERS,
-} from './CSSAuthProvider.js';
+} from './P1AuthProvider.js';
 export type {
   AuthMode,
   AuthUser,
-  CSSAuthContextValue,
-  CSSAuthProviderProps,
-} from './CSSAuthProvider.js';
+  P1AuthContextValue,
+  P1AuthProviderProps,
+} from './P1AuthProvider.js';
 
-export { CSSLoginPage } from './CSSLoginPage.js';
-export type { CSSLoginPageProps } from './CSSLoginPage.js';
+export { P1LoginPage } from './P1LoginPage.js';
+export type { P1LoginPageProps } from './P1LoginPage.js';

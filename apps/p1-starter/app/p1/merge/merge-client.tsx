@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
-  CSSApp,
+  P1App,
   createNextConfig,
-  useCSSAuth,
+  useP1Auth,
   DocumentDiffList,
   PuckFieldResolutionPanel,
   MergePreviewPanel,
@@ -29,19 +29,19 @@ import "./merge.css";
 
 import puckConfig from "../../../puck.config";
 
-const cssConfig = createNextConfig();
+const p1Config = createNextConfig();
 
 export function MergeReviewClient() {
   return (
-    <CSSApp
-      config={cssConfig}
+    <P1App
+      config={p1Config}
       loginPageProps={{
         title: "P1 Starter",
         subtitle: "Sign in to review merges",
       }}
     >
       <MergeReviewContent />
-    </CSSApp>
+    </P1App>
   );
 }
 
@@ -83,7 +83,7 @@ type MergeTab =
   | "conflict-resolution";
 
 function MergeReviewContent() {
-  const { getToken } = useCSSAuth();
+  const { getToken } = useP1Auth();
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [sourceBranchId, setSourceBranchId] = useState("");
@@ -98,7 +98,7 @@ function MergeReviewContent() {
   const apiFetch = useCallback(
     async <T,>(path: string, options?: RequestInit): Promise<T> => {
       const token = await getToken();
-      const res = await fetch(`${cssConfig.baseUrl}${path}`, {
+      const res = await fetch(`${p1Config.baseUrl}${path}`, {
         ...options,
         headers: {
           "Content-Type": "application/json",
@@ -120,9 +120,9 @@ function MergeReviewContent() {
   );
 
   useEffect(() => {
-    if (!cssConfig.siteId) return;
+    if (!p1Config.siteId) return;
     apiFetch<{ branches: Branch[] }>(
-      `/api/sites/${cssConfig.siteId}/branches`,
+      `/api/sites/${p1Config.siteId}/branches`,
     )
       .then((res) => {
         setBranches(res.branches ?? []);
@@ -159,7 +159,7 @@ function MergeReviewContent() {
     setPreview(null);
     try {
       const result = await apiFetch<MergePreviewResponse>(
-        `/api/sites/${cssConfig.siteId}/merge/preview`,
+        `/api/sites/${p1Config.siteId}/merge/preview`,
         {
           method: "POST",
           body: JSON.stringify({
@@ -244,7 +244,7 @@ function MergeReviewContent() {
     return { conflict, source: src, target: tgt, path: diff.documentPath };
   }, [preview]);
 
-  if (!cssConfig.siteId) {
+  if (!p1Config.siteId) {
     return (
       <div style={styles.page}>
         <p>Set NEXT_PUBLIC_CSS_SITE_ID to use merge review.</p>

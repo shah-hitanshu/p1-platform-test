@@ -1,20 +1,20 @@
 /**
- * CSS Feature Configuration
+ * P1 Feature Configuration
  *
- * Configuration-driven feature enablement for the CSS Puck integration.
+ * Configuration-driven feature enablement for the P1 Puck integration.
  * Features can be toggled via config flags instead of manual code wiring.
  */
 
 /**
- * Feature flags for CSS Puck integration UI features.
+ * Feature flags for P1 Puck integration UI features.
  *
  * These flags control which UI panels and behaviors are enabled.
- * They extend the existing CSSPuckConfig props (enableRealtime,
+ * They extend the existing P1PuckConfig props (enableRealtime,
  * presenceEnabled, agentModeEnabled) with flags for UI-specific features.
  */
-export interface CSSFeatureConfig {
+export interface P1FeatureConfig {
   // =========================================================================
-  // Existing CSSPuckConfig props (already supported by CSSPuckProvider)
+  // Existing P1PuckConfig props (already supported by P1PuckProvider)
   // =========================================================================
 
   /** Enable real-time collaborative editing */
@@ -51,7 +51,7 @@ export interface CSSFeatureConfig {
 /**
  * Preset configurations for common setups.
  */
-export const CSS_PRESETS: Record<'basic' | 'collaborative' | 'full', CSSFeatureConfig> = {
+export const P1_PRESETS: Record<'basic' | 'collaborative' | 'full', P1FeatureConfig> = {
   /**
    * Basic preset: auto-save and publish only.
    * Suitable for single-user editing without collaboration.
@@ -105,7 +105,7 @@ export const CSS_PRESETS: Record<'basic' | 'collaborative' | 'full', CSSFeatureC
  * @param config - Feature config with optional flags
  * @returns Resolved config with all flags set
  */
-export function resolveFeatureConfig(config: CSSFeatureConfig): Required<CSSFeatureConfig> {
+export function resolveFeatureConfig(config: P1FeatureConfig): Required<P1FeatureConfig> {
   return {
     enableRealtime: config.enableRealtime ?? true,
     presenceEnabled: config.presenceEnabled ?? true,

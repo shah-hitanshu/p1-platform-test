@@ -1,7 +1,7 @@
 /**
  * Phase 8: Plugin Integration Tests (TDD)
  *
- * Tests for enhanced createCSSPlugin and createCSSOverrides with
+ * Tests for enhanced createP1Plugin and createP1Overrides with
  * presence and agent features.
  *
  * These tests verify that the new options are accepted by the plugin
@@ -11,7 +11,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { createCSSPlugin, createCSSOverrides } from '../src/editor/plugin/index.js';
+import { createP1Plugin, createP1Overrides } from '../src/editor/plugin/index.js';
 import type { Branch, RegisteredAgent, ActorPresence } from '@pantheon-systems/css-client';
 
 // =============================================================================
@@ -63,13 +63,13 @@ const mockAgentPresence: ActorPresence = {
 };
 
 // =============================================================================
-// createCSSPlugin Tests - Presence/Agent Features
+// createP1Plugin Tests - Presence/Agent Features
 // =============================================================================
 
-describe('createCSSPlugin with presence/agent features', () => {
+describe('createP1Plugin with presence/agent features', () => {
   it('should accept showPresenceIndicator and presence options', () => {
     // @ts-expect-error - Testing new options not yet in types
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       branches: [mockBranch],
       currentBranch: mockBranch,
       onBranchSwitch: vi.fn(),
@@ -82,7 +82,7 @@ describe('createCSSPlugin with presence/agent features', () => {
 
   it('should accept showAgentActivity and activeAgents options', () => {
     // @ts-expect-error - Testing new options not yet in types
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       branches: [mockBranch],
       currentBranch: mockBranch,
       onBranchSwitch: vi.fn(),
@@ -94,7 +94,7 @@ describe('createCSSPlugin with presence/agent features', () => {
 
   it('should accept showAgentActions and availableAgents options', () => {
     // @ts-expect-error - Testing new options not yet in types
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       branches: [mockBranch],
       currentBranch: mockBranch,
       onBranchSwitch: vi.fn(),
@@ -107,7 +107,7 @@ describe('createCSSPlugin with presence/agent features', () => {
 
   it('should accept showFocusRegions and agentEditingRegions options', () => {
     // @ts-expect-error - Testing new options not yet in types
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       branches: [mockBranch],
       currentBranch: mockBranch,
       onBranchSwitch: vi.fn(),
@@ -119,7 +119,7 @@ describe('createCSSPlugin with presence/agent features', () => {
 
   it('should render presence section when showPresenceIndicator is true', () => {
     // @ts-expect-error - Testing new options not yet in types
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       branches: [mockBranch],
       currentBranch: mockBranch,
       onBranchSwitch: vi.fn(),
@@ -132,7 +132,7 @@ describe('createCSSPlugin with presence/agent features', () => {
 
   it('should show collaborator names in presence section', () => {
     // @ts-expect-error - Testing new options not yet in types
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       branches: [mockBranch],
       currentBranch: mockBranch,
       onBranchSwitch: vi.fn(),
@@ -145,7 +145,7 @@ describe('createCSSPlugin with presence/agent features', () => {
 
   it('should render agent activity section with agent name', () => {
     // @ts-expect-error - Testing new options not yet in types
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       branches: [mockBranch],
       currentBranch: mockBranch,
       onBranchSwitch: vi.fn(),
@@ -159,7 +159,7 @@ describe('createCSSPlugin with presence/agent features', () => {
 
   it('should render agent actions button when enabled', () => {
     // @ts-expect-error - Testing new options not yet in types
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       branches: [mockBranch],
       currentBranch: mockBranch,
       onBranchSwitch: vi.fn(),
@@ -172,7 +172,7 @@ describe('createCSSPlugin with presence/agent features', () => {
 
   it('should show focus regions when agent is editing', () => {
     // @ts-expect-error - Testing new options not yet in types
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       branches: [mockBranch],
       currentBranch: mockBranch,
       onBranchSwitch: vi.fn(),
@@ -187,10 +187,10 @@ describe('createCSSPlugin with presence/agent features', () => {
 });
 
 // =============================================================================
-// createCSSOverrides Tests - Presence/Agent Features
+// createP1Overrides Tests - Presence/Agent Features
 // =============================================================================
 
-describe('createCSSOverrides with presence/agent features', () => {
+describe('createP1Overrides with presence/agent features', () => {
   const baseOptions = {
     getSaveStatus: () => 'saved' as const,
     getLastSaved: () => new Date(),
@@ -201,7 +201,7 @@ describe('createCSSOverrides with presence/agent features', () => {
 
   it('should accept showCollaboratorAvatars and presence options', () => {
     // @ts-expect-error - Testing new options not yet in types
-    const overrides = createCSSOverrides({
+    const overrides = createP1Overrides({
       ...baseOptions,
       showCollaboratorAvatars: true,
       presence: [mockHumanPresence],
@@ -212,7 +212,7 @@ describe('createCSSOverrides with presence/agent features', () => {
 
   it('should accept showAgentActivityBanner and activeAgents options', () => {
     // @ts-expect-error - Testing new options not yet in types
-    const overrides = createCSSOverrides({
+    const overrides = createP1Overrides({
       ...baseOptions,
       showAgentActivityBanner: true,
       activeAgents: [mockAgentPresence],
@@ -223,7 +223,7 @@ describe('createCSSOverrides with presence/agent features', () => {
 
   it('should accept onStopAgent callback option', () => {
     const handleStopAgent = vi.fn();
-    const overrides = createCSSOverrides({
+    const overrides = createP1Overrides({
       ...baseOptions,
       showAgentActivityBanner: true,
       activeAgents: [mockAgentPresence],

@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CSSClient } from '../src/client.js';
+import { P1Client } from '../src/client.js';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -14,11 +14,11 @@ global.fetch = mockFetch;
 describe('PresenceEndpoint', () => {
   const baseUrl = 'http://localhost:8787';
   const apiKey = 'test-api-key';
-  let client: CSSClient;
+  let client: P1Client;
 
   beforeEach(() => {
     mockFetch.mockReset();
-    client = new CSSClient({
+    client = new P1Client({
       baseUrl,
       apiKey,
       principal: { id: 'user-123', type: 'user' },
@@ -141,7 +141,7 @@ describe('PresenceEndpoint', () => {
 
     it('should handle forbidden error for agent requests', async () => {
       // Create an agent client
-      const agentClient = new CSSClient({
+      const agentClient = new P1Client({
         baseUrl,
         apiKey,
         principal: { id: 'agent-1', type: 'agent' },

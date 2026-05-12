@@ -5,11 +5,11 @@
  * objects, hash-checks them for changes, and writes updated descriptors to CSS
  * documents under the /_registry/ path prefix.
  *
- * Uses the same CSSPuckContext pattern as useVersions, useAutoSave, and useDocuments.
+ * Uses the same P1PuckContext pattern as useVersions, useAutoSave, and useDocuments.
  */
 
 import { useState, useEffect } from 'react';
-import { useCSSPuck } from '../core/CSSPuckContext.js';
+import { useP1Puck } from '../core/P1PuckContext.js';
 import {
   extractDescriptors,
   buildRegistryIndex,
@@ -17,7 +17,7 @@ import {
   type RegistryIndex,
 } from './utils/componentRegistry.js';
 import { ConflictError } from '@pantheon-systems/css-client';
-import type { CSSClient } from '@pantheon-systems/css-client';
+import type { P1Client } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Public API types
@@ -69,7 +69,7 @@ interface DocumentInfo {
 }
 
 async function runRegistration(
-  client: CSSClient,
+  client: P1Client,
   siteId: string,
   branchId: string,
   descriptors: ComponentDescriptor[],
@@ -261,7 +261,7 @@ export function useComponentRegistry(
   options: UseComponentRegistryOptions,
 ): UseComponentRegistryReturn {
   const { puckConfig, upstreamPuckConfig, onRegistered, onError } = options;
-  const { client, siteId, branchId } = useCSSPuck();
+  const { client, siteId, branchId } = useP1Puck();
 
   const [status, setStatus] = useState<UseComponentRegistryReturn['status']>('idle');
   const [result, setResult] = useState<RegistrationResult | null>(null);
@@ -301,7 +301,7 @@ export function useComponentRegistry(
   // Dependency array rationale:
   //   - `puckConfig` / `upstreamPuckConfig`: re-run whenever the component schema changes.
   //   - `siteId` / `branchId`: re-run when the user switches sites or branches.
-  //   - `client`: intentionally omitted — CSSPuckContext provides a stable reference across renders;
+  //   - `client`: intentionally omitted — P1PuckContext provides a stable reference across renders;
   //     including it would cause spurious re-registrations on every context re-render.
   //   - `onRegistered` / `onError`: intentionally omitted — callback identity changes (e.g. from
   //     an inline arrow function) must not trigger re-registration. Callers are expected to

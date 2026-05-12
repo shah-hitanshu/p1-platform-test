@@ -1,7 +1,7 @@
 /**
  * Plugin Registration System Tests
  *
- * Tests for CSSFeaturePlugin interface, plugin composition engine,
+ * Tests for P1FeaturePlugin interface, plugin composition engine,
  * and built-in feature plugins.
  */
 
@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 
-import type { CSSFeaturePlugin, CSSFeaturePluginDeps } from '../core/plugin-types.js';
+import type { P1FeaturePlugin, P1FeaturePluginDeps } from '../core/plugin-types.js';
 import { resolveFeatureConfig } from '../core/featureConfig.js';
 import {
   resolveActivePlugins,
@@ -18,8 +18,8 @@ import {
   mergeOverrides,
 } from '../editor/composePlugins.js';
 
-const makeDeps = (overrides?: Partial<CSSFeaturePluginDeps>): CSSFeaturePluginDeps => ({
-  client: {} as CSSFeaturePluginDeps['client'],
+const makeDeps = (overrides?: Partial<P1FeaturePluginDeps>): P1FeaturePluginDeps => ({
+  client: {} as P1FeaturePluginDeps['client'],
   siteId: 'site-1',
   branchId: 'branch-1',
   userId: 'user-1',
@@ -28,20 +28,20 @@ const makeDeps = (overrides?: Partial<CSSFeaturePluginDeps>): CSSFeaturePluginDe
 });
 
 // ---------------------------------------------------------------------------
-// B.1: CSSFeaturePlugin interface
+// B.1: P1FeaturePlugin interface
 // ---------------------------------------------------------------------------
 
-describe('CSSFeaturePlugin interface', () => {
+describe('P1FeaturePlugin interface', () => {
   it('accepts a minimal plugin with just a name', () => {
-    const plugin: CSSFeaturePlugin = { name: 'minimal' };
+    const plugin: P1FeaturePlugin = { name: 'minimal' };
     expect(plugin.name).toBe('minimal');
   });
 
   it('accepts a full plugin with all optional fields', () => {
-    const TestProvider: CSSFeaturePlugin['provider'] = ({ children }) => (
+    const TestProvider: P1FeaturePlugin['provider'] = ({ children }) => (
       <div data-testid="test-provider">{children}</div>
     );
-    const plugin: CSSFeaturePlugin = {
+    const plugin: P1FeaturePlugin = {
       name: 'full',
       featureFlags: ['presenceEnabled'],
       priority: 50,
@@ -61,7 +61,7 @@ describe('CSSFeaturePlugin interface', () => {
 
 describe('resolveActivePlugins', () => {
   it('returns all plugins when no feature flags are specified', () => {
-    const plugins: CSSFeaturePlugin[] = [
+    const plugins: P1FeaturePlugin[] = [
       { name: 'a' },
       { name: 'b' },
     ];
@@ -71,7 +71,7 @@ describe('resolveActivePlugins', () => {
   });
 
   it('filters out plugins whose feature flags are disabled', () => {
-    const plugins: CSSFeaturePlugin[] = [
+    const plugins: P1FeaturePlugin[] = [
       { name: 'presence', featureFlags: ['presenceEnabled'] },
       { name: 'agent', featureFlags: ['agentModeEnabled'] },
       { name: 'always' },
@@ -82,7 +82,7 @@ describe('resolveActivePlugins', () => {
   });
 
   it('requires ALL feature flags to be true (AND logic)', () => {
-    const plugins: CSSFeaturePlugin[] = [
+    const plugins: P1FeaturePlugin[] = [
       { name: 'needs-both', featureFlags: ['presenceEnabled', 'enableRealtime'] },
     ];
     const config = resolveFeatureConfig({ presenceEnabled: true, enableRealtime: false });
@@ -91,7 +91,7 @@ describe('resolveActivePlugins', () => {
   });
 
   it('sorts plugins by priority (lower first)', () => {
-    const plugins: CSSFeaturePlugin[] = [
+    const plugins: P1FeaturePlugin[] = [
       { name: 'c', priority: 200 },
       { name: 'a', priority: 10 },
       { name: 'b', priority: 100 },
@@ -102,7 +102,7 @@ describe('resolveActivePlugins', () => {
   });
 
   it('uses default priority 100 when not specified', () => {
-    const plugins: CSSFeaturePlugin[] = [
+    const plugins: P1FeaturePlugin[] = [
       { name: 'high', priority: 200 },
       { name: 'default' },
       { name: 'low', priority: 50 },
@@ -115,7 +115,7 @@ describe('resolveActivePlugins', () => {
 
 describe('composeProviders', () => {
   it('returns identity wrapper when no plugins have providers', () => {
-    const plugins: CSSFeaturePlugin[] = [{ name: 'no-provider' }];
+    const plugins: P1FeaturePlugin[] = [{ name: 'no-provider' }];
     const deps = makeDeps();
     const Composed = composeProviders(plugins, deps.config, deps);
     render(<Composed>hello</Composed>);
@@ -124,13 +124,13 @@ describe('composeProviders', () => {
 
   it('nests providers in priority order (outer first)', () => {
     const order: string[] = [];
-    const makeProvider = (label: string): CSSFeaturePlugin['provider'] =>
+    const makeProvider = (label: string): P1FeaturePlugin['provider'] =>
       ({ children }) => {
         order.push(label);
         return <div data-testid={label}>{children}</div>;
       };
 
-    const plugins: CSSFeaturePlugin[] = [
+    const plugins: P1FeaturePlugin[] = [
       { name: 'outer', priority: 10, provider: makeProvider('outer') },
       { name: 'inner', priority: 20, provider: makeProvider('inner') },
     ];
@@ -144,7 +144,7 @@ describe('composeProviders', () => {
 
 describe('collectPuckPlugins', () => {
   it('aggregates puck plugins from all feature plugins', () => {
-    const plugins: CSSFeaturePlugin[] = [
+    const plugins: P1FeaturePlugin[] = [
       {
         name: 'a',
         puckPlugins: () => [
@@ -164,7 +164,7 @@ describe('collectPuckPlugins', () => {
   });
 
   it('returns empty array when no plugins provide puck plugins', () => {
-    const plugins: CSSFeaturePlugin[] = [{ name: 'plain' }];
+    const plugins: P1FeaturePlugin[] = [{ name: 'plain' }];
     const deps = makeDeps();
     expect(collectPuckPlugins(plugins, deps)).toEqual([]);
   });
@@ -172,7 +172,7 @@ describe('collectPuckPlugins', () => {
 
 describe('mergeOverrides', () => {
   it('shallow-merges overrides from all plugins', () => {
-    const plugins: CSSFeaturePlugin[] = [
+    const plugins: P1FeaturePlugin[] = [
       {
         name: 'a',
         puckOverrides: () => ({
@@ -193,7 +193,7 @@ describe('mergeOverrides', () => {
   });
 
   it('later plugins override earlier plugins for same key', () => {
-    const plugins: CSSFeaturePlugin[] = [
+    const plugins: P1FeaturePlugin[] = [
       {
         name: 'first',
         puckOverrides: () => ({
@@ -215,7 +215,7 @@ describe('mergeOverrides', () => {
   });
 
   it('returns empty object when no plugins provide overrides', () => {
-    const plugins: CSSFeaturePlugin[] = [{ name: 'plain' }];
+    const plugins: P1FeaturePlugin[] = [{ name: 'plain' }];
     const deps = makeDeps();
     expect(mergeOverrides(plugins, deps)).toEqual({});
   });
@@ -236,7 +236,7 @@ describe('createDefaultPreset', () => {
 
   it('accepts additional plugins', async () => {
     const { createDefaultPreset } = await import('../editor/presets.js');
-    const custom: CSSFeaturePlugin = { name: 'custom' };
+    const custom: P1FeaturePlugin = { name: 'custom' };
     const preset = createDefaultPreset([custom]);
     expect(preset.plugins.some((p) => p.name === 'custom')).toBe(true);
   });

@@ -77,9 +77,9 @@ describe('puck-css server exports', () => {
     expect(mod.initializeStores).toBeDefined();
   });
 
-  it('exports css-store', async () => {
-    const mod = await import('../../data/dal/css-store');
-    expect(mod.createCSSPageStore).toBeDefined();
+  it('exports p1-store', async () => {
+    const mod = await import('../../data/dal/p1-store');
+    expect(mod.createP1PageStore).toBeDefined();
   });
 
   it('exports page-store functions', async () => {

@@ -1,5 +1,5 @@
 /**
- * Tests for silent token refresh feature in CSSAuthProvider.
+ * Tests for silent token refresh feature in P1AuthProvider.
  *
  * Validates:
  * - isSessionExpired is exposed in context, defaulting to false
@@ -10,7 +10,7 @@
  * - isSessionExpired resets to false after logout
  *
  * NOTE: This is the TDD red-phase test file. The isSessionExpired and getToken
- * fields do not yet exist on CSSAuthContextValue. These tests are expected to
+ * fields do not yet exist on P1AuthContextValue. These tests are expected to
  * fail until the implementation is added.
  */
 
@@ -23,7 +23,7 @@ import React from 'react';
 // ---------------------------------------------------------------------------
 
 vi.mock('@pantheon-systems/css-client', () => ({
-  createCSSAuthServerOAuth: vi.fn(),
+  createP1AuthServerOAuth: vi.fn(),
   createGoogleOAuth: vi.fn(),
   createAuth0OAuth: vi.fn(),
   validateToken: vi.fn().mockResolvedValue(null),
@@ -32,12 +32,12 @@ vi.mock('@pantheon-systems/css-client', () => ({
 
 // Import mocked helpers after mock declarations
 import {
-  createCSSAuthServerOAuth,
+  createP1AuthServerOAuth,
   validateToken,
 } from '@pantheon-systems/css-client';
 
 // Import the module under test after mocks are in place
-import { CSSAuthProvider, useCSSAuth } from '../auth/CSSAuthProvider';
+import { P1AuthProvider, useP1Auth } from '../auth/P1AuthProvider';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -70,9 +70,9 @@ function makeFakeOAuthSession(overrides: Partial<{
 function AuthContextConsumer({
   onContext,
 }: {
-  onContext: (ctx: ReturnType<typeof useCSSAuth>) => void;
+  onContext: (ctx: ReturnType<typeof useP1Auth>) => void;
 }) {
-  const ctx = useCSSAuth();
+  const ctx = useP1Auth();
   onContext(ctx);
   return (
     <div
@@ -83,19 +83,19 @@ function AuthContextConsumer({
   );
 }
 
-/** Render a CSSAuthProvider in mock mode and return captured context values. */
-function renderMockProvider(props: Partial<Parameters<typeof CSSAuthProvider>[0]> = {}) {
-  const captured: { ctx: ReturnType<typeof useCSSAuth> | null } = { ctx: null };
+/** Render a P1AuthProvider in mock mode and return captured context values. */
+function renderMockProvider(props: Partial<Parameters<typeof P1AuthProvider>[0]> = {}) {
+  const captured: { ctx: ReturnType<typeof useP1Auth> | null } = { ctx: null };
 
   render(
-    <CSSAuthProvider
+    <P1AuthProvider
       authMode="mock"
-      cssBaseUrl="http://localhost:8787"
-      tokenStorageKey="css_auth_token"
+      p1BaseUrl="http://localhost:8787"
+      tokenStorageKey="p1_auth_token"
       {...props}
     >
       <AuthContextConsumer onContext={(c) => { captured.ctx = c; }} />
-    </CSSAuthProvider>,
+    </P1AuthProvider>,
   );
 
   return captured;
@@ -112,15 +112,15 @@ beforeEach(() => {
   // Default validateToken: returns null (no valid stored token)
   vi.mocked(validateToken).mockResolvedValue(null);
 
-  // Default createCSSAuthServerOAuth: returns a session that is not authenticated
-  vi.mocked(createCSSAuthServerOAuth).mockReturnValue(makeFakeOAuthSession());
+  // Default createP1AuthServerOAuth: returns a session that is not authenticated
+  vi.mocked(createP1AuthServerOAuth).mockReturnValue(makeFakeOAuthSession());
 });
 
 // ---------------------------------------------------------------------------
-// Group 1: isSessionExpired in CSSAuthContextValue
+// Group 1: isSessionExpired in P1AuthContextValue
 // ---------------------------------------------------------------------------
 
-describe('CSSAuthProvider isSessionExpired', () => {
+describe('P1AuthProvider isSessionExpired', () => {
   it('exposes isSessionExpired in context, defaulting to false', async () => {
     const captured = renderMockProvider();
 
@@ -130,7 +130,7 @@ describe('CSSAuthProvider isSessionExpired', () => {
 
     expect(captured.ctx).not.toBeNull();
     // isSessionExpired must exist and default to false
-    expect((captured.ctx as ReturnType<typeof useCSSAuth>).isSessionExpired).toBe(false);
+    expect((captured.ctx as ReturnType<typeof useP1Auth>).isSessionExpired).toBe(false);
   });
 
   it('exposes getToken function in context', async () => {
@@ -141,7 +141,7 @@ describe('CSSAuthProvider isSessionExpired', () => {
     });
 
     expect(captured.ctx).not.toBeNull();
-    expect(typeof (captured.ctx as ReturnType<typeof useCSSAuth>).getToken).toBe('function');
+    expect(typeof (captured.ctx as ReturnType<typeof useP1Auth>).getToken).toBe('function');
   });
 });
 
@@ -151,15 +151,15 @@ describe('CSSAuthProvider isSessionExpired', () => {
 
 describe('getToken behavior', () => {
   it('in mock mode returns token from localStorage', async () => {
-    localStorage.setItem('css_auth_token', 'mock-token-123');
+    localStorage.setItem('p1_auth_token', 'mock-token-123');
 
-    const captured = renderMockProvider({ tokenStorageKey: 'css_auth_token' });
+    const captured = renderMockProvider({ tokenStorageKey: 'p1_auth_token' });
 
     await waitFor(() => {
       expect(screen.getByTestId('consumer')).toBeInTheDocument();
     });
 
-    const ctx = captured.ctx as ReturnType<typeof useCSSAuth>;
+    const ctx = captured.ctx as ReturnType<typeof useP1Auth>;
     const result = await ctx.getToken();
     expect(result).toBe('mock-token-123');
   });
@@ -167,26 +167,26 @@ describe('getToken behavior', () => {
   it('in css-authserver mode calls oauthSession.getToken()', async () => {
     const fakeGetToken = vi.fn().mockResolvedValue('oauth-token-abc');
     const fakeSession = makeFakeOAuthSession({ getToken: fakeGetToken });
-    vi.mocked(createCSSAuthServerOAuth).mockReturnValue(fakeSession);
+    vi.mocked(createP1AuthServerOAuth).mockReturnValue(fakeSession);
 
-    const captured: { ctx: ReturnType<typeof useCSSAuth> | null } = { ctx: null };
+    const captured: { ctx: ReturnType<typeof useP1Auth> | null } = { ctx: null };
 
     render(
-      <CSSAuthProvider
+      <P1AuthProvider
         authMode="css-authserver"
-        cssBaseUrl="http://localhost:8787"
-        cssAuthServerUrl="https://auth.example.com"
+        p1BaseUrl="http://localhost:8787"
+        p1AuthServerUrl="https://auth.example.com"
         siteId="site-1"
       >
         <AuthContextConsumer onContext={(c) => { captured.ctx = c; }} />
-      </CSSAuthProvider>,
+      </P1AuthProvider>,
     );
 
     await waitFor(() => {
       expect(screen.getByTestId('consumer')).toBeInTheDocument();
     });
 
-    const ctx = captured.ctx as ReturnType<typeof useCSSAuth>;
+    const ctx = captured.ctx as ReturnType<typeof useP1Auth>;
     const result = await ctx.getToken();
 
     expect(fakeGetToken).toHaveBeenCalledTimes(1);
@@ -200,20 +200,20 @@ describe('getToken behavior', () => {
       // Simulate an authenticated session that then fails to refresh
       isAuthenticated: vi.fn().mockReturnValue(true),
     });
-    vi.mocked(createCSSAuthServerOAuth).mockReturnValue(fakeSession);
+    vi.mocked(createP1AuthServerOAuth).mockReturnValue(fakeSession);
     // validateToken won't be reached since getToken returns null — keep default null
 
-    const captured: { ctx: ReturnType<typeof useCSSAuth> | null } = { ctx: null };
+    const captured: { ctx: ReturnType<typeof useP1Auth> | null } = { ctx: null };
 
     render(
-      <CSSAuthProvider
+      <P1AuthProvider
         authMode="css-authserver"
-        cssBaseUrl="http://localhost:8787"
-        cssAuthServerUrl="https://auth.example.com"
+        p1BaseUrl="http://localhost:8787"
+        p1AuthServerUrl="https://auth.example.com"
         siteId="site-1"
       >
         <AuthContextConsumer onContext={(c) => { captured.ctx = c; }} />
-      </CSSAuthProvider>,
+      </P1AuthProvider>,
     );
 
     // Wait for the initial auth check to settle
@@ -221,7 +221,7 @@ describe('getToken behavior', () => {
       expect(screen.getByTestId('consumer')).toBeInTheDocument();
     });
 
-    const ctx = captured.ctx as ReturnType<typeof useCSSAuth>;
+    const ctx = captured.ctx as ReturnType<typeof useP1Auth>;
 
     // isSessionExpired must start as false
     expect(ctx.isSessionExpired).toBe(false);
@@ -253,26 +253,26 @@ describe('isSessionExpired resets on logout', () => {
       getToken: fakeGetToken,
       isAuthenticated: vi.fn().mockReturnValue(true),
     });
-    vi.mocked(createCSSAuthServerOAuth).mockReturnValue(fakeSession);
+    vi.mocked(createP1AuthServerOAuth).mockReturnValue(fakeSession);
 
-    const captured: { ctx: ReturnType<typeof useCSSAuth> | null } = { ctx: null };
+    const captured: { ctx: ReturnType<typeof useP1Auth> | null } = { ctx: null };
 
     render(
-      <CSSAuthProvider
+      <P1AuthProvider
         authMode="css-authserver"
-        cssBaseUrl="http://localhost:8787"
-        cssAuthServerUrl="https://auth.example.com"
+        p1BaseUrl="http://localhost:8787"
+        p1AuthServerUrl="https://auth.example.com"
         siteId="site-1"
       >
         <AuthContextConsumer onContext={(c) => { captured.ctx = c; }} />
-      </CSSAuthProvider>,
+      </P1AuthProvider>,
     );
 
     await waitFor(() => {
       expect(screen.getByTestId('consumer')).toBeInTheDocument();
     });
 
-    const ctx = captured.ctx as ReturnType<typeof useCSSAuth>;
+    const ctx = captured.ctx as ReturnType<typeof useP1Auth>;
 
     // Trigger session expiry by calling getToken when it returns null
     await act(async () => {

@@ -1,11 +1,11 @@
 /**
- * Tests that CSSAuthProvider propagates the `picture` field from
+ * Tests that P1AuthProvider propagates the `picture` field from
  * oauthSession.getUserInfo() into the AuthUser context when authenticating
  * via css-authserver mode.
  *
  * The css-authserver access token is a JWT issued by the auth server. The
- * `createCSSAuthServerOAuth` session parses the JWT and exposes `picture`
- * via `getUserInfo()`. `CSSAuthProvider` must merge this into `user.picture`
+ * `createP1AuthServerOAuth` session parses the JWT and exposes `picture`
+ * via `getUserInfo()`. `P1AuthProvider` must merge this into `user.picture`
  * for the account avatar in P1EditorHeader to be able to render it.
  */
 
@@ -18,7 +18,7 @@ import React from 'react';
 // ---------------------------------------------------------------------------
 
 vi.mock('@pantheon-systems/css-client', () => ({
-  createCSSAuthServerOAuth: vi.fn(),
+  createP1AuthServerOAuth: vi.fn(),
   createGoogleOAuth: vi.fn(),
   createAuth0OAuth: vi.fn(),
   validateToken: vi.fn().mockResolvedValue(null),
@@ -26,11 +26,11 @@ vi.mock('@pantheon-systems/css-client', () => ({
 }));
 
 import {
-  createCSSAuthServerOAuth,
+  createP1AuthServerOAuth,
   validateToken,
 } from '@pantheon-systems/css-client';
 
-import { CSSAuthProvider, useCSSAuth } from '../auth/CSSAuthProvider';
+import { P1AuthProvider, useP1Auth } from '../auth/P1AuthProvider';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -60,9 +60,9 @@ function makeFakeOAuthSession(overrides: Partial<{
 function CaptureAuthUser({
   onUser,
 }: {
-  onUser: (user: ReturnType<typeof useCSSAuth>['user']) => void;
+  onUser: (user: ReturnType<typeof useP1Auth>['user']) => void;
 }) {
-  const { user } = useCSSAuth();
+  const { user } = useP1Auth();
   onUser(user);
   return <div data-testid="consumer" data-picture={user?.picture ?? ''} />;
 }
@@ -75,17 +75,17 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   vi.mocked(validateToken).mockResolvedValue(null);
-  vi.mocked(createCSSAuthServerOAuth).mockReturnValue(makeFakeOAuthSession());
+  vi.mocked(createP1AuthServerOAuth).mockReturnValue(makeFakeOAuthSession());
 });
 
-describe('CSSAuthProvider — avatar picture from oauth getUserInfo', () => {
+describe('P1AuthProvider — avatar picture from oauth getUserInfo', () => {
   it('sets user.picture from validateToken() avatarUrl when existing oauth session is authenticated', async () => {
     const fakeSession = makeFakeOAuthSession({
       isAuthenticated: vi.fn().mockReturnValue(true),
       getToken: vi.fn().mockResolvedValue('access-token-abc'),
       getUserInfo: vi.fn().mockReturnValue(null),
     });
-    vi.mocked(createCSSAuthServerOAuth).mockReturnValue(fakeSession);
+    vi.mocked(createP1AuthServerOAuth).mockReturnValue(fakeSession);
     vi.mocked(validateToken).mockResolvedValue({
       id: 'user-1',
       type: 'user',
@@ -93,16 +93,16 @@ describe('CSSAuthProvider — avatar picture from oauth getUserInfo', () => {
       avatarUrl: 'https://lh3.googleusercontent.com/photo.jpg',
     });
 
-    let capturedUser: ReturnType<typeof useCSSAuth>['user'] = null;
+    let capturedUser: ReturnType<typeof useP1Auth>['user'] = null;
     render(
-      <CSSAuthProvider
+      <P1AuthProvider
         authMode="css-authserver"
-        cssBaseUrl="http://localhost:8787"
-        cssAuthServerUrl="https://auth.example.com"
+        p1BaseUrl="http://localhost:8787"
+        p1AuthServerUrl="https://auth.example.com"
         siteId="site-1"
       >
         <CaptureAuthUser onUser={(u) => { capturedUser = u; }} />
-      </CSSAuthProvider>,
+      </P1AuthProvider>,
     );
 
     await waitFor(() => {
@@ -126,7 +126,7 @@ describe('CSSAuthProvider — avatar picture from oauth getUserInfo', () => {
         picture: 'https://lh3.googleusercontent.com/fallback.jpg',
       }),
     });
-    vi.mocked(createCSSAuthServerOAuth).mockReturnValue(fakeSession);
+    vi.mocked(createP1AuthServerOAuth).mockReturnValue(fakeSession);
     vi.mocked(validateToken).mockResolvedValue({
       id: 'user-1',
       type: 'user',
@@ -134,16 +134,16 @@ describe('CSSAuthProvider — avatar picture from oauth getUserInfo', () => {
       // no avatarUrl
     });
 
-    let capturedUser: ReturnType<typeof useCSSAuth>['user'] = null;
+    let capturedUser: ReturnType<typeof useP1Auth>['user'] = null;
     render(
-      <CSSAuthProvider
+      <P1AuthProvider
         authMode="css-authserver"
-        cssBaseUrl="http://localhost:8787"
-        cssAuthServerUrl="https://auth.example.com"
+        p1BaseUrl="http://localhost:8787"
+        p1AuthServerUrl="https://auth.example.com"
         siteId="site-1"
       >
         <CaptureAuthUser onUser={(u) => { capturedUser = u; }} />
-      </CSSAuthProvider>,
+      </P1AuthProvider>,
     );
 
     await waitFor(() => {
@@ -167,23 +167,23 @@ describe('CSSAuthProvider — avatar picture from oauth getUserInfo', () => {
         picture: undefined,
       }),
     });
-    vi.mocked(createCSSAuthServerOAuth).mockReturnValue(fakeSession);
+    vi.mocked(createP1AuthServerOAuth).mockReturnValue(fakeSession);
     vi.mocked(validateToken).mockResolvedValue({
       id: 'user-2',
       type: 'user',
       email: 'nopic@example.com',
     });
 
-    let capturedUser: ReturnType<typeof useCSSAuth>['user'] = null;
+    let capturedUser: ReturnType<typeof useP1Auth>['user'] = null;
     render(
-      <CSSAuthProvider
+      <P1AuthProvider
         authMode="css-authserver"
-        cssBaseUrl="http://localhost:8787"
-        cssAuthServerUrl="https://auth.example.com"
+        p1BaseUrl="http://localhost:8787"
+        p1AuthServerUrl="https://auth.example.com"
         siteId="site-1"
       >
         <CaptureAuthUser onUser={(u) => { capturedUser = u; }} />
-      </CSSAuthProvider>,
+      </P1AuthProvider>,
     );
 
     await waitFor(() => {

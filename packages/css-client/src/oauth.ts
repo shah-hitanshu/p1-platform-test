@@ -1,6 +1,6 @@
 /**
- * OAuth integration helpers for CSS Client.
- * Provides Google and Auth0 OAuth flows that work with CSSClient's AuthProvider.
+ * OAuth integration helpers for P1 Client.
+ * Provides Google and Auth0 OAuth flows that work with P1Client's AuthProvider.
  */
 
 import type { AuthProvider } from './auth.js';
@@ -8,7 +8,7 @@ import type { AuthProvider } from './auth.js';
 /** Configuration for Google OAuth */
 export interface GoogleOAuthConfig {
   clientId: string;
-  /** Storage key for token persistence. Default: 'css_google_token' */
+  /** Storage key for token persistence. Default: 'p1_google_token' */
   storageKey?: string;
   /**
    * Called whenever a credential is received (from One Tap or renderButton).
@@ -17,17 +17,17 @@ export interface GoogleOAuthConfig {
   onCredential?: (userInfo: OAuthUserInfo, token: string) => void;
 }
 
-/** Configuration for CSS Auth Server OAuth */
-export interface CSSAuthServerOAuthConfig {
-  /** Base URL of the CSS Auth Server (e.g., "https://auth.css.example.com") */
+/** Configuration for P1 Auth Server OAuth */
+export interface P1AuthServerOAuthConfig {
+  /** Base URL of the P1 Auth Server (e.g., "https://auth.css.example.com") */
   authServerUrl: string;
   /** Site ID used as the OAuth client_id */
   siteId: string;
   /** Redirect URI for the OAuth callback. Default: current page URL (origin + pathname), so the user returns to the page they were on after login. */
   redirectUri?: string;
-  /** CSS backend base URL for token validation via /api/auth/me */
-  cssBaseUrl: string;
-  /** Storage key prefix for token persistence. Default: 'css_authserver' */
+  /** P1 backend base URL for token validation via /api/auth/me */
+  p1BaseUrl: string;
+  /** Storage key prefix for token persistence. Default: 'p1_authserver' */
   storageKey?: string;
 }
 
@@ -37,7 +37,7 @@ export interface Auth0OAuthConfig {
   clientId: string;
   audience?: string;
   redirectUri?: string;
-  /** Storage key for token persistence. Default: 'css_auth0_token' */
+  /** Storage key for token persistence. Default: 'p1_auth0_token' */
   storageKey?: string;
 }
 
@@ -195,7 +195,7 @@ const GOOGLE_GSI_SCRIPT = 'https://accounts.google.com/gsi/client';
  * @returns OAuthSession for managing Google sign-in
  */
 export function createGoogleOAuth(config: GoogleOAuthConfig): OAuthSession {
-  const storageKey = config.storageKey ?? 'css_google_token';
+  const storageKey = config.storageKey ?? 'p1_google_token';
   let userInfo: OAuthUserInfo | null = null;
   let loginResolve: (() => void) | null = null;
   let loginReject: ((err: Error) => void) | null = null;
@@ -384,7 +384,7 @@ export function createGoogleOAuth(config: GoogleOAuthConfig): OAuthSession {
  * @returns OAuthSession for managing Auth0 sign-in
  */
 export function createAuth0OAuth(config: Auth0OAuthConfig): OAuthSession {
-  const storageKey = config.storageKey ?? 'css_auth0_token';
+  const storageKey = config.storageKey ?? 'p1_auth0_token';
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let auth0Client: any = null;
   let userInfo: OAuthUserInfo | null = null;
@@ -505,18 +505,18 @@ export function createAuth0OAuth(config: Auth0OAuthConfig): OAuthSession {
 }
 
 /**
- * Create a CSS Auth Server OAuth session using Authorization Code + PKCE.
+ * Create a P1 Auth Server OAuth session using Authorization Code + PKCE.
  *
- * The CSS Auth Server is an OAuth 2.0 Authorization Server that proxies
+ * The P1 Auth Server is an OAuth 2.0 Authorization Server that proxies
  * Google/Auth0 authentication. Consuming sites never register with Google
- * directly — they authenticate against the CSS Auth Server using the site ID
+ * directly — they authenticate against the P1 Auth Server using the site ID
  * as the client_id.
  *
- * @param config - CSS Auth Server OAuth configuration
- * @returns OAuthSession for managing CSS Auth Server sign-in
+ * @param config - P1 Auth Server OAuth configuration
+ * @returns OAuthSession for managing P1 Auth Server sign-in
  */
-export function createCSSAuthServerOAuth(config: CSSAuthServerOAuthConfig): OAuthSession {
-  const keyPrefix = config.storageKey ?? 'css_authserver';
+export function createP1AuthServerOAuth(config: P1AuthServerOAuthConfig): OAuthSession {
+  const keyPrefix = config.storageKey ?? 'p1_authserver';
   const tokenKey = `${keyPrefix}_token`;
   const refreshKey = `${keyPrefix}_refresh_token`;
   const stateKey = `${keyPrefix}_state`;
@@ -711,7 +711,7 @@ export function createCSSAuthServerOAuth(config: CSSAuthServerOAuthConfig): OAut
 
 /**
  * Create an AuthProvider from an OAuthSession.
- * The returned AuthProvider is compatible with CSSClient's authProvider config option.
+ * The returned AuthProvider is compatible with P1Client's authProvider config option.
  *
  * @param session - The OAuth session to derive the auth provider from
  * @returns AuthProvider function that returns `Bearer <token>`
@@ -739,10 +739,10 @@ export interface AuthMeResponse {
 }
 
 /**
- * Validate a token against the CSS backend's /api/auth/me endpoint.
+ * Validate a token against the P1 backend's /api/auth/me endpoint.
  * Framework-agnostic — works in any JS environment with fetch().
  *
- * @param baseUrl - CSS backend base URL (e.g., "http://localhost:8787")
+ * @param baseUrl - P1 backend base URL (e.g., "http://localhost:8787")
  * @param token - Bearer token to validate
  * @returns The authenticated user info, or null if the token is invalid
  */
@@ -769,7 +769,7 @@ export async function validateToken(
  * `/api/auth/token` when `ENVIRONMENT === 'local'`; mock tokens are rejected
  * by all other environments. Do not use in production deployments.
  *
- * @param baseUrl - CSS backend base URL
+ * @param baseUrl - P1 backend base URL
  * @param userId - The mock user ID to log in as
  * @returns Token and user info
  */

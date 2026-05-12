@@ -1,7 +1,7 @@
 /**
- * CSSPuckProvider Stable Callbacks Tests (TDD - Red Phase)
+ * P1PuckProvider Stable Callbacks Tests (TDD - Red Phase)
  *
- * Tests that callback references from useCSSPuck() remain referentially stable
+ * Tests that callback references from useP1Puck() remain referentially stable
  * across re-renders when internal state changes (e.g., save status transitions).
  *
  * Consumers should not need to wrap these callbacks in refs/useCallback manually.
@@ -10,8 +10,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import React from 'react';
-import { useCSSPuck } from '../src/core/CSSPuckContext.js';
-import type { CSSClient, Branch, PuckData } from '@pantheon-systems/css-client';
+import { useP1Puck } from '../src/core/P1PuckContext.js';
+import type { P1Client, Branch, PuckData } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock useRealtime hook
@@ -38,10 +38,10 @@ vi.mock('../src/editor/useRealtime.js', () => ({
 }));
 
 // =============================================================================
-// Import CSSPuckProvider AFTER the mock
+// Import P1PuckProvider AFTER the mock
 // =============================================================================
 
-const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
+const { P1PuckProvider } = await import('../src/editor/P1PuckProvider.js');
 
 // =============================================================================
 // Mock Data
@@ -79,7 +79,7 @@ const mockVersionSnapshot: PuckData = {
 // Mock Client Factory
 // =============================================================================
 
-function createMockClient(): CSSClient {
+function createMockClient(): P1Client {
   return {
     branches: {
       list: vi.fn().mockResolvedValue([mockBranch]),
@@ -132,7 +132,7 @@ function createMockClient(): CSSClient {
       abortEdit: vi.fn(),
     },
     withPrincipal: vi.fn().mockReturnThis(),
-  } as unknown as CSSClient;
+  } as unknown as P1Client;
 }
 
 // =============================================================================
@@ -144,7 +144,7 @@ interface WrapperProps {
 }
 
 function createProviderWrapper(
-  client: CSSClient,
+  client: P1Client,
   options: {
     siteId?: string;
     branchId?: string;
@@ -165,7 +165,7 @@ function createProviderWrapper(
 
   return function Wrapper({ children }: WrapperProps) {
     return React.createElement(
-      CSSPuckProvider,
+      P1PuckProvider,
       {
         client,
         siteId,
@@ -184,8 +184,8 @@ function createProviderWrapper(
 // Test Suite
 // =============================================================================
 
-describe('CSSPuckProvider Stable Callbacks', () => {
-  let client: CSSClient;
+describe('P1PuckProvider Stable Callbacks', () => {
+  let client: P1Client;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -209,7 +209,7 @@ describe('CSSPuckProvider Stable Callbacks', () => {
     autoSaveDelay?: number;
   } = {}) {
     const wrapper = createProviderWrapper(client, options);
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result } = renderHook(() => useP1Puck(), { wrapper });
 
     // Load document so currentDocument and currentData are set
     await act(async () => {

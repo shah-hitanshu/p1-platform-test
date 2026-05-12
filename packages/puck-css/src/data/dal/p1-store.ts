@@ -1,7 +1,7 @@
 /**
- * CSS-backed PageStore — per-operation API calls.
+ * P1-backed PageStore — per-operation API calls.
  *
- * Each read/write/delete makes a real API call to the CSS backend.
+ * Each read/write/delete makes a real API call to the P1 backend.
  * No data is cached in memory — the backend is the source of truth.
  */
 
@@ -9,11 +9,11 @@ import type { PageStore } from "./types";
 import { getRequestAuthToken } from "./request-auth";
 
 /**
- * Minimal subset of CSSClient used by the store.
+ * Minimal subset of P1Client used by the store.
  * Declared here so consumers don't require a hard dependency on
  * @pantheon-systems/css-client — they pass in their own client instance.
  */
-export interface CSSStoreClient {
+export interface P1StoreClient {
   documents: {
     list(siteId: string, branchId: string): Promise<{ id: string; path: string }[]>;
     getByPath(siteId: string, path: string): Promise<{ id: string; path: string }>;
@@ -26,16 +26,16 @@ export interface CSSStoreClient {
   };
 }
 
-export interface CSSStoreConfig {
-  client: CSSStoreClient;
+export interface P1StoreConfig {
+  client: P1StoreClient;
   siteId: string;
   branchId: string;
   /** Factory to create a client with a specific bearer token (for user-auth writes). */
-  createAuthClient?: (bearerToken: string) => CSSStoreClient;
+  createAuthClient?: (bearerToken: string) => P1StoreClient;
 }
 
 /**
- * Creates an async PageStore backed by a CSS API client.
+ * Creates an async PageStore backed by a P1 API client.
  *
  * get/set/delete/has hit the API directly per call.
  * keys() is cached with a short TTL and retried on failure.
@@ -71,12 +71,12 @@ async function withRetry<T>(
   throw lastErr;
 }
 
-export function createCSSPageStore(config: CSSStoreConfig): PageStore {
+export function createP1PageStore(config: P1StoreConfig): PageStore {
   const { client, siteId, branchId, createAuthClient } = config;
 
   let _keysCache: { promise: Promise<string[]>; ts: number } | null = null;
 
-  function writeClient(): CSSStoreClient {
+  function writeClient(): P1StoreClient {
     const token = getRequestAuthToken();
     if (token && createAuthClient) {
       return createAuthClient(token);

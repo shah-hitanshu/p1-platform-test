@@ -17,10 +17,10 @@ import {
 import { REMOTE_DATASOURCE_FETCHERS } from "../../lib/remote-datasource-fetchers";
 
 const initPromise = ensureInitialized({
-  cssBaseUrl: process.env.P1_CSS_BASE_URL,
-  cssApiKey: process.env.P1_CSS_API_KEY,
-  cssSiteId: process.env.P1_CSS_SITE_ID,
-  cssBranchId: process.env.P1_CSS_BRANCH_ID,
+  p1BaseUrl: process.env.P1_CSS_BASE_URL,
+  p1ApiKey: process.env.P1_CSS_API_KEY,
+  p1SiteId: process.env.P1_CSS_SITE_ID,
+  p1BranchId: process.env.P1_CSS_BRANCH_ID,
 });
 
 export async function generateMetadata({

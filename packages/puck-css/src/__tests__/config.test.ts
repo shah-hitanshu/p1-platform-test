@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createCSSConfig, createNextConfig, createNextContentClient } from '../core/config.js';
+import { createP1Config, createNextConfig, createNextContentClient } from '../core/config.js';
 
 vi.mock('@pantheon-systems/css-client', () => {
-  const MockCSSContentClient = vi.fn();
-  return { CSSContentClient: MockCSSContentClient };
+  const MockP1ContentClient = vi.fn();
+  return { P1ContentClient: MockP1ContentClient };
 });
 
 describe('createNextConfig', () => {
@@ -106,13 +106,13 @@ describe('createNextConfig', () => {
     expect(config.wsBaseUrl).toBe('wss://custom-ws.example.com');
   });
 
-  it('derives cssAuthServerUrl from baseUrl when css-authserver mode is set', () => {
+  it('derives p1AuthServerUrl from baseUrl when css-authserver mode is set', () => {
     process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
     process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
     process.env.NEXT_PUBLIC_CSS_AUTH_MODE = 'css-authserver';
 
     const config = createNextConfig();
-    expect(config.cssAuthServerUrl).toBe('https://css.example.com/auth');
+    expect(config.p1AuthServerUrl).toBe('https://css.example.com/auth');
   });
 
   it('correctly parses boolean env vars', () => {
@@ -136,7 +136,7 @@ describe('createNextConfig', () => {
   });
 });
 
-describe('createCSSConfig with css-authserver mode', () => {
+describe('createP1Config with css-authserver mode', () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
@@ -148,23 +148,23 @@ describe('createCSSConfig with css-authserver mode', () => {
   });
 
   it('accepts css-authserver as a valid auth mode', () => {
-    const config = createCSSConfig(
+    const config = createP1Config(
       {},
       {
         overrides: {
           baseUrl: 'https://css.example.com',
           siteId: 'site-123',
           authMode: 'css-authserver',
-          cssAuthServerUrl: 'https://auth.css.example.com',
+          p1AuthServerUrl: 'https://auth.css.example.com',
         },
       },
     );
 
     expect(config.authMode).toBe('css-authserver');
-    expect(config.cssAuthServerUrl).toBe('https://auth.css.example.com');
+    expect(config.p1AuthServerUrl).toBe('https://auth.css.example.com');
   });
 
-  it('parses CSS_AUTH_SERVER_URL and CSS_AUTH_REDIRECT_URI from env', () => {
+  it('parses CSS_AUTH_SERVER_URL and P1_AUTH_REDIRECT_URI from env', () => {
     process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
     process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
     process.env.NEXT_PUBLIC_CSS_AUTH_MODE = 'css-authserver';
@@ -174,12 +174,12 @@ describe('createCSSConfig with css-authserver mode', () => {
     const config = createNextConfig();
 
     expect(config.authMode).toBe('css-authserver');
-    expect(config.cssAuthServerUrl).toBe('https://auth.css.example.com');
-    expect(config.cssAuthRedirectUri).toBe('https://mysite.com/auth/callback');
+    expect(config.p1AuthServerUrl).toBe('https://auth.css.example.com');
+    expect(config.p1AuthRedirectUri).toBe('https://mysite.com/auth/callback');
   });
 
   it('reads CSS_AUTH_SERVER_URL from prefixed env source', () => {
-    const config = createCSSConfig(
+    const config = createP1Config(
       {
         VITE_CSS_AUTH_SERVER_URL: 'https://auth.css.example.com',
         VITE_CSS_BASE_URL: 'https://css.example.com',
@@ -189,27 +189,27 @@ describe('createCSSConfig with css-authserver mode', () => {
       { prefix: 'VITE_' },
     );
 
-    expect(config.cssAuthServerUrl).toBe('https://auth.css.example.com');
+    expect(config.p1AuthServerUrl).toBe('https://auth.css.example.com');
   });
 
-  it('defaults cssAuthServerUrl to ${baseUrl}/auth when css-authserver mode and no URL provided', () => {
-    const config = createCSSConfig(
+  it('defaults p1AuthServerUrl to ${baseUrl}/auth when css-authserver mode and no URL provided', () => {
+    const config = createP1Config(
       {},
       {
         overrides: {
           baseUrl: 'https://css.example.com',
           siteId: 'site-123',
           authMode: 'css-authserver',
-          // No cssAuthServerUrl provided — should default to baseUrl + /auth
+          // No p1AuthServerUrl provided — should default to baseUrl + /auth
         },
       },
     );
 
-    expect(config.cssAuthServerUrl).toBe('https://css.example.com/auth');
+    expect(config.p1AuthServerUrl).toBe('https://css.example.com/auth');
   });
 
   it('derives ws:// wsBaseUrl from http:// baseUrl', () => {
-    const config = createCSSConfig(
+    const config = createP1Config(
       {},
       {
         overrides: {
@@ -223,7 +223,7 @@ describe('createCSSConfig with css-authserver mode', () => {
   });
 
   it('derives wss:// wsBaseUrl from https:// baseUrl', () => {
-    const config = createCSSConfig(
+    const config = createP1Config(
       {},
       {
         overrides: {
@@ -237,7 +237,7 @@ describe('createCSSConfig with css-authserver mode', () => {
   });
 
   it('defaults authMode to p1 when not provided via env or overrides', () => {
-    const config = createCSSConfig(
+    const config = createP1Config(
       {
         VITE_CSS_BASE_URL: 'https://css.example.com',
         VITE_CSS_SITE_ID: 'site-123',
@@ -248,7 +248,7 @@ describe('createCSSConfig with css-authserver mode', () => {
   });
 
   it('defaults enableRealtime and enablePresence to true', () => {
-    const config = createCSSConfig(
+    const config = createP1Config(
       {},
       {
         overrides: {
@@ -262,8 +262,8 @@ describe('createCSSConfig with css-authserver mode', () => {
     expect(config.enablePresence).toBe(true);
   });
 
-  it('does not default cssAuthServerUrl for non-css-authserver modes', () => {
-    const config = createCSSConfig(
+  it('does not default p1AuthServerUrl for non-css-authserver modes', () => {
+    const config = createP1Config(
       {},
       {
         overrides: {
@@ -274,23 +274,23 @@ describe('createCSSConfig with css-authserver mode', () => {
       },
     );
 
-    expect(config.cssAuthServerUrl).toBeUndefined();
+    expect(config.p1AuthServerUrl).toBeUndefined();
   });
 
-  it('explicit cssAuthServerUrl override takes precedence over default', () => {
-    const config = createCSSConfig(
+  it('explicit p1AuthServerUrl override takes precedence over default', () => {
+    const config = createP1Config(
       {},
       {
         overrides: {
           baseUrl: 'https://css.example.com',
           siteId: 'site-123',
           authMode: 'css-authserver',
-          cssAuthServerUrl: 'https://custom-auth.example.com/auth',
+          p1AuthServerUrl: 'https://custom-auth.example.com/auth',
         },
       },
     );
 
-    expect(config.cssAuthServerUrl).toBe('https://custom-auth.example.com/auth');
+    expect(config.p1AuthServerUrl).toBe('https://custom-auth.example.com/auth');
   });
 });
 
@@ -306,7 +306,7 @@ describe('createNextContentClient', () => {
     process.env = originalEnv;
   });
 
-  it('returns a CSSContentClient when required env vars are set', () => {
+  it('returns a P1ContentClient when required env vars are set', () => {
     process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
     process.env.CSS_API_KEY = 'api-token-123';
     process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
@@ -332,7 +332,7 @@ describe('createNextContentClient', () => {
     process.env.CSS_API_KEY = 'api-token-123';
     process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
 
-    const { CSSContentClient } = vi.mocked(
+    const { P1ContentClient } = vi.mocked(
       await import('@pantheon-systems/css-client')
     );
 
@@ -342,7 +342,7 @@ describe('createNextContentClient', () => {
     });
 
     expect(client).not.toBeNull();
-    expect(CSSContentClient).toHaveBeenCalledWith({
+    expect(P1ContentClient).toHaveBeenCalledWith({
       baseUrl: 'https://override.example.com',
       apiToken: 'override-token',
       siteId: 'site-123',

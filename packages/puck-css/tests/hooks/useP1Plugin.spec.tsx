@@ -1,20 +1,19 @@
 /**
- * CSSPuckProvider documentsLoading Tests (TDD)
+ * useP1Plugin Hook Tests (TDD)
  *
- * Tests that documentsLoading and documents list are exposed from context.
+ * Tests for the stable plugin creation hook.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import React from 'react';
-import { useCSSPuck } from '../src/core/CSSPuckContext.js';
-import type { CSSClient, Branch } from '@pantheon-systems/css-client';
+import type { P1Client, Branch, PuckData, Document } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock useRealtime hook
 // =============================================================================
 
-vi.mock('../src/editor/useRealtime.js', () => ({
+vi.mock('../../src/editor/useRealtime.js', () => ({
   useRealtime: () => ({
     connected: false,
     applyLocalChange: vi.fn(),
@@ -28,10 +27,12 @@ vi.mock('../src/editor/useRealtime.js', () => ({
 }));
 
 // =============================================================================
-// Import CSSPuckProvider AFTER the mock
+// Import AFTER the mock
 // =============================================================================
 
-const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
+const { P1PuckProvider } = await import('../../src/editor/P1PuckProvider.js');
+const { useP1Plugin } = await import('../../src/editor/useP1Plugin.js');
+const { useP1Puck } = await import('../../src/core/P1PuckContext.js');
 
 // =============================================================================
 // Mock Data
@@ -46,16 +47,11 @@ const mockBranch: Branch = {
   updatedAt: '2026-01-01T00:00:00Z',
 };
 
-const mockDocuments = [
-  { id: 'doc-1', siteId: 'site-1', path: 'pages/home', title: 'Home', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
-  { id: 'doc-2', siteId: 'site-1', path: 'pages/about', title: 'About', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
-];
-
 // =============================================================================
 // Mock Client Factory
 // =============================================================================
 
-function createMockClient(): CSSClient {
+function createMockClient(): P1Client {
   return {
     branches: {
       list: vi.fn().mockResolvedValue([mockBranch]),
@@ -65,7 +61,7 @@ function createMockClient(): CSSClient {
       delete: vi.fn(),
     },
     documents: {
-      list: vi.fn().mockResolvedValue(mockDocuments),
+      list: vi.fn().mockResolvedValue([]),
       get: vi.fn(),
       getByPath: vi.fn(),
       create: vi.fn(),
@@ -81,12 +77,12 @@ function createMockClient(): CSSClient {
         snapshot: { content: [], root: { props: {} } },
         createdAt: '2026-01-01T00:00:00Z',
       }),
-      create: vi.fn().mockResolvedValue({ id: 'v2', versionNumber: 2 }),
+      create: vi.fn(),
     },
     checkpoints: {
       list: vi.fn().mockResolvedValue([]),
       get: vi.fn(),
-      create: vi.fn().mockResolvedValue({ id: 'cp-1', name: 'test' }),
+      create: vi.fn(),
     },
     presence: {
       getSitePresence: vi.fn(),
@@ -108,17 +104,17 @@ function createMockClient(): CSSClient {
       abortEdit: vi.fn(),
     },
     withPrincipal: vi.fn().mockReturnThis(),
-  } as unknown as CSSClient;
+  } as unknown as P1Client;
 }
 
 // =============================================================================
-// Provider Wrapper Factory
+// Provider Wrapper
 // =============================================================================
 
-function createProviderWrapper(client: CSSClient) {
+function createProviderWrapper(client: P1Client) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return React.createElement(
-      CSSPuckProvider,
+      P1PuckProvider,
       {
         client,
         siteId: 'site-1',
@@ -134,8 +130,8 @@ function createProviderWrapper(client: CSSClient) {
 // Test Suite
 // =============================================================================
 
-describe('CSSPuckProvider documentsLoading (Item 8)', () => {
-  let client: CSSClient;
+describe('useP1Plugin', () => {
+  let client: P1Client;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -147,38 +143,68 @@ describe('CSSPuckProvider documentsLoading (Item 8)', () => {
     vi.clearAllMocks();
   });
 
-  it('should expose documentsLoading in context', () => {
+  it('should return a plugin object with correct structure', () => {
     const wrapper = createProviderWrapper(client);
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result } = renderHook(() => useP1Plugin(), { wrapper });
 
-    // documentsLoading should be defined
-    expect(result.current.documentsLoading).toBeDefined();
-    expect(typeof result.current.documentsLoading).toBe('boolean');
+    expect(result.current).toBeDefined();
+    expect(result.current.name).toBe('css');
+    expect(result.current.label).toBe('History');
+    expect(result.current.icon).toBeDefined();
+    expect(typeof result.current.render).toBe('function');
   });
 
-  it('should expose documents list in context', async () => {
+  it('should return referentially stable plugin across re-renders', () => {
     const wrapper = createProviderWrapper(client);
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result, rerender } = renderHook(() => useP1Plugin(), { wrapper });
 
-    // Wait for documents to load
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(100);
-    });
+    const plugin1 = result.current;
+    rerender();
+    const plugin2 = result.current;
 
-    expect(result.current.documents).toBeDefined();
-    expect(Array.isArray(result.current.documents)).toBe(true);
+    expect(plugin1).toBe(plugin2);
   });
 
-  it('documents should be populated after loading', async () => {
+  it('should return referentially stable plugin when context values change', async () => {
     const wrapper = createProviderWrapper(client);
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result } = renderHook(
+      () => {
+        const plugin = useP1Plugin();
+        const css = useP1Puck();
+        return { plugin, css };
+      },
+      { wrapper }
+    );
 
-    // Wait for documents to load
+    const plugin1 = result.current.plugin;
+
+    // Trigger a context state change by loading a document
+    const mockDoc = { id: 'doc-1', siteId: 'site-1', path: 'pages/home', title: 'Home', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' };
+    (client.documents.getByPath as ReturnType<typeof vi.fn>).mockResolvedValue(mockDoc);
+
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(100);
+      await result.current.css.loadDocument('/pages/home');
     });
 
-    expect(result.current.documents.length).toBe(2);
-    expect(result.current.documentsLoading).toBe(false);
+    const plugin2 = result.current.plugin;
+    expect(plugin1).toBe(plugin2);
+  });
+
+  it('should accept and use additional options', () => {
+    const onSelectionChange = vi.fn();
+    const wrapper = createProviderWrapper(client);
+    const { result } = renderHook(
+      () => useP1Plugin({ onSelectionChange }),
+      { wrapper }
+    );
+
+    expect(result.current).toBeDefined();
+    expect(result.current.name).toBe('css');
+  });
+
+  it('should throw if used outside P1PuckProvider', () => {
+    expect(() => {
+      renderHook(() => useP1Plugin());
+    }).toThrow('useP1Puck must be used within a P1PuckProvider');
   });
 });

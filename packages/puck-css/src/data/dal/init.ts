@@ -8,22 +8,22 @@
 
 import { initializeStores } from "./index";
 import type { EditorMetaStore, RemoteDatasourceDefStore } from "./types";
-import { createCSSPageStore, type CSSStoreClient } from "./css-store";
+import { createP1PageStore, type P1StoreClient } from "./p1-store";
 
 export interface P1DataConfig {
   /** Base URL of the API. */
-  cssBaseUrl?: string;
+  p1BaseUrl?: string;
 
   /** API key for the backend. */
-  cssApiKey?: string;
+  p1ApiKey?: string;
 
   /** Site ID in the backend. */
-  cssSiteId?: string;
+  p1SiteId?: string;
 
   /**
    * Branch ID. When omitted the SDK auto-detects the main branch.
    */
-  cssBranchId?: string;
+  p1BranchId?: string;
 }
 
 let _initPromise: Promise<void> | null = null;
@@ -41,48 +41,48 @@ export function ensureInitialized(dataConfig: P1DataConfig): Promise<void> {
 }
 
 async function doInit(cfg: P1DataConfig): Promise<void> {
-  const { cssBaseUrl, cssSiteId } = cfg;
+  const { p1BaseUrl, p1SiteId } = cfg;
 
-  if (!cssBaseUrl || !cssSiteId) {
+  if (!p1BaseUrl || !p1SiteId) {
     throw new Error(
-      "Missing required config: cssBaseUrl and cssSiteId must be set.",
+      "Missing required config: p1BaseUrl and p1SiteId must be set.",
     );
   }
 
   // Dynamic import so @pantheon-systems/css-client is only loaded when needed.
-  const cssClientModule = await import("@pantheon-systems/css-client");
-  const CSSClientCtor = cssClientModule.CSSClient as new (opts: { baseUrl: string; apiKey?: string; authProvider?: () => Promise<string> }) => CSSStoreClient & { branches: { list(siteId: string): Promise<{ id: string; isMain: boolean }[]> } };
+  const p1ClientModule = await import("@pantheon-systems/css-client");
+  const P1ClientCtor = p1ClientModule.P1Client as new (opts: { baseUrl: string; apiKey?: string; authProvider?: () => Promise<string> }) => P1StoreClient & { branches: { list(siteId: string): Promise<{ id: string; isMain: boolean }[]> } };
 
-  const client = new CSSClientCtor({
-    baseUrl: cssBaseUrl,
-    apiKey: cfg.cssApiKey,
+  const client = new P1ClientCtor({
+    baseUrl: p1BaseUrl,
+    apiKey: cfg.p1ApiKey,
   });
 
   // Auto-detect main branch when no branchId provided.
-  let branchId: string = cfg.cssBranchId ?? "";
+  let branchId: string = cfg.p1BranchId ?? "";
   if (!branchId) {
-    const branches = await client.branches.list(cssSiteId);
+    const branches = await client.branches.list(p1SiteId);
     const main = branches.find((b: { isMain: boolean }) => b.isMain);
     if (!main) {
-      throw new Error("No main branch found for site " + cssSiteId);
+      throw new Error("No main branch found for site " + p1SiteId);
     }
     branchId = main.id;
   }
 
-  const pageStore = createCSSPageStore({
+  const pageStore = createP1PageStore({
     client,
-    siteId: cssSiteId,
+    siteId: p1SiteId,
     branchId,
     createAuthClient: (bearerToken: string) => {
-      return new CSSClientCtor({
-        baseUrl: cssBaseUrl,
+      return new P1ClientCtor({
+        baseUrl: p1BaseUrl,
         authProvider: async () => `Bearer ${bearerToken}`,
-      }) as unknown as CSSStoreClient;
+      }) as unknown as P1StoreClient;
     },
   });
 
   // In-memory stores for editor metadata and remote datasource definitions.
-  // These don't have CSS-backed implementations yet — the in-memory defaults
+  // These don't have P1-backed implementations yet — the in-memory defaults
   // are sufficient for server-side rendering (SSR) and the editor persists
   // its own state client-side.
   const editorMetaData = new Map<string, Record<string, unknown>>();

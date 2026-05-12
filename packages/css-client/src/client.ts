@@ -20,11 +20,11 @@ import {
 } from './endpoints/index.js';
 
 /**
- * Configuration options for CSSClient.
+ * Configuration options for P1Client.
  */
-export interface CSSClientConfig {
+export interface P1ClientConfig {
   /**
-   * Base URL of the CSS API.
+   * Base URL of the P1 API.
    * Example: "https://api.example.com" or "http://localhost:8787"
    */
   baseUrl: string;
@@ -69,7 +69,7 @@ interface InternalConfig {
  *
  * @example
  * ```typescript
- * const client = new CSSClient({
+ * const client = new P1Client({
  *   baseUrl: 'http://localhost:8787',
  *   apiKey: 'your-api-key',
  *   principal: { id: 'user-123', type: 'user' },
@@ -89,7 +89,7 @@ interface InternalConfig {
  * });
  * ```
  */
-export class CSSClient {
+export class P1Client {
   private readonly baseEndpoint: BaseEndpoint;
 
   /**
@@ -137,7 +137,7 @@ export class CSSClient {
    */
   public readonly merge: MergeEndpoint;
 
-  constructor(config: CSSClientConfig | InternalConfig) {
+  constructor(config: P1ClientConfig | InternalConfig) {
     // Check if this is an internal config (has baseEndpoint)
     if ('baseEndpoint' in config) {
       this.baseEndpoint = config.baseEndpoint;
@@ -176,11 +176,11 @@ export class CSSClient {
    * Useful for making requests on behalf of different users.
    *
    * @param principal - The principal to use for requests
-   * @returns A new CSSClient instance with the updated principal
+   * @returns A new P1Client instance with the updated principal
    */
-  withPrincipal(principal: Principal): CSSClient {
+  withPrincipal(principal: Principal): P1Client {
     const newBaseEndpoint = this.baseEndpoint.withPrincipal(principal);
-    return new CSSClient({ baseEndpoint: newBaseEndpoint });
+    return new P1Client({ baseEndpoint: newBaseEndpoint });
   }
 
   /**
@@ -189,7 +189,7 @@ export class CSSClient {
    * enforcement of the Agent Politeness Protocol.
    *
    * @param sessionId - The session ID from startEdit()
-   * @returns A new CSSClient instance with the session ID set
+   * @returns A new P1Client instance with the session ID set
    *
    * @example
    * ```typescript
@@ -198,8 +198,8 @@ export class CSSClient {
    * await authorizedClient.versions.create(siteId, params);
    * ```
    */
-  withSessionId(sessionId: string): CSSClient {
+  withSessionId(sessionId: string): P1Client {
     const newBaseEndpoint = this.baseEndpoint.withSessionId(sessionId);
-    return new CSSClient({ baseEndpoint: newBaseEndpoint });
+    return new P1Client({ baseEndpoint: newBaseEndpoint });
   }
 }

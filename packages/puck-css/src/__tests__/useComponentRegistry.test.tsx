@@ -1,18 +1,18 @@
 /**
  * useComponentRegistry Hook Tests
  *
- * Tests for the hook that syncs Puck component config to CSS registry documents.
+ * Tests for the hook that syncs Puck component config to P1 registry documents.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import React from 'react';
-import { CSSPuckContext } from '../core/CSSPuckContext.js';
-import type { CSSPuckContextValue } from '../core/types.js';
+import { P1PuckContext } from '../core/P1PuckContext.js';
+import type { P1PuckContextValue } from '../core/types.js';
 import { useComponentRegistry } from '../editor/useComponentRegistry.js';
 
 // Build a minimal mock context
-function makeMockContext(overrides?: Partial<CSSPuckContextValue>): CSSPuckContextValue {
+function makeMockContext(overrides?: Partial<P1PuckContextValue>): P1PuckContextValue {
   const mockClient = {
     documents: {
       list: vi.fn().mockResolvedValue([]),
@@ -24,7 +24,7 @@ function makeMockContext(overrides?: Partial<CSSPuckContextValue>): CSSPuckConte
     },
   };
   return {
-    client: mockClient as unknown as import('@pantheon-systems/css-client').CSSClient,
+    client: mockClient as unknown as import('@pantheon-systems/css-client').P1Client,
     siteId: 'site-1',
     branchId: 'branch-1',
     userId: 'user-1',
@@ -42,12 +42,12 @@ function makeMockContext(overrides?: Partial<CSSPuckContextValue>): CSSPuckConte
     },
     switchBranch: vi.fn(),
     ...overrides,
-  } as unknown as CSSPuckContextValue;
+  } as unknown as P1PuckContextValue;
 }
 
-function wrapper(ctx: CSSPuckContextValue) {
+function wrapper(ctx: P1PuckContextValue) {
   return ({ children }: { children: React.ReactNode }) => (
-    <CSSPuckContext.Provider value={ctx}>{children}</CSSPuckContext.Provider>
+    <P1PuckContext.Provider value={ctx}>{children}</P1PuckContext.Provider>
   );
 }
 
@@ -305,7 +305,7 @@ describe('useComponentRegistry', () => {
     expect(heroVersionCall).toBeDefined();
   });
 
-  // Test 6: Snapshot content validation — full ComponentDescriptor shape written to CSS
+  // Test 6: Snapshot content validation — full ComponentDescriptor shape written to P1
   it('writes a valid ComponentDescriptor snapshot with all required fields', async () => {
     const ctx = makeMockContext();
     const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
@@ -762,7 +762,7 @@ describe('useComponentRegistry', () => {
 
     let ctxValue = { ...ctx, branchId: '' };
     const DynamicWrapper = ({ children }: { children: React.ReactNode }) => (
-      <CSSPuckContext.Provider value={ctxValue}>{children}</CSSPuckContext.Provider>
+      <P1PuckContext.Provider value={ctxValue}>{children}</P1PuckContext.Provider>
     );
 
     const { result, rerender } = renderHook(
@@ -794,7 +794,7 @@ describe('useComponentRegistry', () => {
     // Create a wrapper with a mutable context so we can update branchId
     let ctxValue = { ...ctx, branchId: 'branch-main' };
     const DynamicWrapper = ({ children }: { children: React.ReactNode }) => (
-      <CSSPuckContext.Provider value={ctxValue}>{children}</CSSPuckContext.Provider>
+      <P1PuckContext.Provider value={ctxValue}>{children}</P1PuckContext.Provider>
     );
 
     const { result, rerender } = renderHook(

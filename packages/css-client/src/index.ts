@@ -5,8 +5,8 @@
  */
 
 // Main client
-export { CSSClient } from './client.js';
-export type { CSSClientConfig } from './client.js';
+export { P1Client } from './client.js';
+export type { P1ClientConfig } from './client.js';
 
 // Types
 export type {
@@ -96,7 +96,7 @@ export type { AuthProvider, TokenStorage } from './auth.js';
 export {
   createGoogleOAuth,
   createAuth0OAuth,
-  createCSSAuthServerOAuth,
+  createP1AuthServerOAuth,
   createOAuthAuthProvider,
   validateToken,
   loginMockUser,
@@ -107,7 +107,7 @@ export {
 export type {
   GoogleOAuthConfig,
   Auth0OAuthConfig,
-  CSSAuthServerOAuthConfig,
+  P1AuthServerOAuthConfig,
   OAuthUserInfo,
   OAuthSession,
   AuthMeResponse,
@@ -115,7 +115,7 @@ export type {
 
 // Errors
 export {
-  CSSApiError,
+  P1ApiError,
   NetworkError,
   AuthenticationError,
   NotFoundError,
@@ -125,9 +125,9 @@ export {
 } from './errors.js';
 
 // Content delivery (read-only)
-export { CSSContentClient } from './content.js';
+export { P1ContentClient } from './content.js';
 export type {
-  CSSContentClientConfig,
+  P1ContentClientConfig,
   PageContent,
   PageListEntry,
   PageListResult,

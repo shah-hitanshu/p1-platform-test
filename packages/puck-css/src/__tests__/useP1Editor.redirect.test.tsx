@@ -1,5 +1,5 @@
 /**
- * Tests for useCSSEditor document-not-found behavior.
+ * Tests for useP1Editor document-not-found behavior.
  *
  * When loadDocument fails after a branch switch (the requested document
  * doesn't exist on the new branch), the hook:
@@ -101,16 +101,16 @@ const mockCssContext = {
 // Mocks — declared before any imports from the module under test
 // ============================================================================
 
-vi.mock('../core/CSSPuckContext', () => ({
-  useCSSPuck: () => mockCssContext,
+vi.mock('../core/P1PuckContext', () => ({
+  useP1Puck: () => mockCssContext,
 }));
 
-vi.mock('../editor/useCSSPlugin', () => ({
-  useCSSPlugin: () => ({}),
+vi.mock('../editor/useP1Plugin', () => ({
+  useP1Plugin: () => ({}),
 }));
 
-vi.mock('../editor/useCSSOverrides', () => ({
-  useCSSOverrides: () => ({}),
+vi.mock('../editor/useP1Overrides', () => ({
+  useP1Overrides: () => ({}),
 }));
 
 vi.mock('../versioning/useVersions', () => ({
@@ -130,11 +130,11 @@ vi.mock('../editor/utils/buildThumbnailOverride', () => ({
 }));
 
 vi.mock('../auth/index', () => ({
-  useCSSAuth: () => ({ user: null, logout: vi.fn() }),
+  useP1Auth: () => ({ user: null, logout: vi.fn() }),
 }));
 
 // Import after mocks
-import { useCSSEditor } from '../editor/useCSSEditor';
+import { useP1Editor } from '../editor/useP1Editor';
 
 // ============================================================================
 // Helpers
@@ -162,7 +162,7 @@ function resetContext() {
 // Tests
 // ============================================================================
 
-describe('useCSSEditor auto-redirect on document not found', () => {
+describe('useP1Editor auto-redirect on document not found', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetContext();
@@ -182,7 +182,7 @@ describe('useCSSEditor auto-redirect on document not found', () => {
 
     const { result, rerender } = renderHook(
       ({ documentPath }: { documentPath: string }) =>
-        useCSSEditor({ documentPath, puckConfig: {} }),
+        useP1Editor({ documentPath, puckConfig: {} }),
       { initialProps: { documentPath: '/current' } },
     );
 
@@ -210,7 +210,7 @@ describe('useCSSEditor auto-redirect on document not found', () => {
 
     const { result, rerender } = renderHook(
       ({ documentPath }: { documentPath: string }) =>
-        useCSSEditor({ documentPath, puckConfig: {} }),
+        useP1Editor({ documentPath, puckConfig: {} }),
       { initialProps: { documentPath: '/current' } },
     );
 
@@ -233,7 +233,7 @@ describe('useCSSEditor auto-redirect on document not found', () => {
 
     const { result, rerender } = renderHook(
       ({ documentPath }: { documentPath: string }) =>
-        useCSSEditor({ documentPath, puckConfig: {} }),
+        useP1Editor({ documentPath, puckConfig: {} }),
       { initialProps: { documentPath: '/current' } },
     );
 
@@ -264,7 +264,7 @@ describe('useCSSEditor auto-redirect on document not found', () => {
 
     const { result, rerender } = renderHook(
       ({ documentPath }: { documentPath: string }) =>
-        useCSSEditor({ documentPath, puckConfig: {}, onDocumentNotFound }),
+        useP1Editor({ documentPath, puckConfig: {}, onDocumentNotFound }),
       { initialProps: { documentPath: '/current' } },
     );
 
@@ -293,7 +293,7 @@ describe('useCSSEditor auto-redirect on document not found', () => {
       .mockRejectedValueOnce(new Error('not found'));
 
     const { result, rerender } = renderHook(() =>
-      useCSSEditor({ documentPath: '/current', puckConfig: {} }),
+      useP1Editor({ documentPath: '/current', puckConfig: {} }),
     );
 
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -318,7 +318,7 @@ describe('useCSSEditor auto-redirect on document not found', () => {
     let docPath = '/current';
 
     const { result, rerender } = renderHook(() =>
-      useCSSEditor({ documentPath: docPath, puckConfig: {} }),
+      useP1Editor({ documentPath: docPath, puckConfig: {} }),
     );
 
     await waitFor(() => expect(result.current.loading).toBe(false));

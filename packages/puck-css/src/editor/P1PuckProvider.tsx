@@ -1,7 +1,7 @@
 /**
- * CSS Puck Provider
+ * P1 Puck Provider
  *
- * React context provider for CSS Puck integration.
+ * React context provider for P1 Puck integration.
  */
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
@@ -13,8 +13,8 @@ import type {
   DocumentVersion,
   ActorPresence,
 } from '@pantheon-systems/css-client';
-import type { CSSPuckConfig, CSSPuckContextValue, SaveStatus, PresenceState } from '../core/types.js';
-import { CSSPuckContext } from '../core/CSSPuckContext.js';
+import type { P1PuckConfig, P1PuckContextValue, SaveStatus, PresenceState } from '../core/types.js';
+import { P1PuckContext } from '../core/P1PuckContext.js';
 import { NotificationProvider, useNotifications } from '../core/NotificationContext.js';
 import { PresenceContext } from '../core/PresenceContext.js';
 import type { PresenceContextValue } from '../core/PresenceContext.js';
@@ -25,13 +25,13 @@ import { useDocuments } from './useDocuments.js';
 import type { UseAgentEditReturn } from '../agent/useAgentEdit.js';
 import type { UseAgentTriggerReturn } from '../agent/useAgentTrigger.js';
 import type { ConflictNotification } from '../merge/components/conflict-notifications/index.js';
-import type { CSSFeaturePlugin, CSSFeaturePluginDeps } from '../core/plugin-types.js';
-import type { CSSFeatureConfig } from '../core/featureConfig.js';
+import type { P1FeaturePlugin, P1FeaturePluginDeps } from '../core/plugin-types.js';
+import type { P1FeatureConfig } from '../core/featureConfig.js';
 import { resolveFeatureConfig } from '../core/featureConfig.js';
 import { resolveActivePlugins, composeProviders } from './composePlugins.js';
 import { DEFAULT_CSS_FEATURE_PLUGINS } from './defaultPlugins.js';
 
-export interface CSSPuckProviderProps extends CSSPuckConfig {
+export interface P1PuckProviderProps extends P1PuckConfig {
   children: React.ReactNode;
   /**
    * Whether to show error notifications automatically.
@@ -47,19 +47,19 @@ export interface CSSPuckProviderProps extends CSSPuckConfig {
    * Each plugin can provide a React context wrapper, Puck plugins, and overrides.
    * Defaults to DEFAULT_CSS_FEATURE_PLUGINS when not provided.
    */
-  featurePlugins?: CSSFeaturePlugin[];
+  featurePlugins?: P1FeaturePlugin[];
   /**
    * Feature configuration flags controlling which UI features are enabled.
    * When provided, overrides boolean props (presenceEnabled, agentModeEnabled, etc.).
    * When omitted, derived from the existing boolean props for backwards compatibility.
    */
-  featureConfig?: CSSFeatureConfig;
+  featureConfig?: P1FeatureConfig;
 }
 
 /**
- * Provider component for CSS Puck integration.
+ * Provider component for P1 Puck integration.
  *
- * Wraps your Puck editor to provide CSS functionality including:
+ * Wraps your Puck editor to provide P1 functionality including:
  * - Auto-save with debouncing
  * - Document loading
  * - Checkpoint (publish) creation
@@ -68,32 +68,32 @@ export interface CSSPuckProviderProps extends CSSPuckConfig {
  *
  * @example
  * ```tsx
- * import { CSSPuckProvider, CSSPuckEditor } from '@pantheon-systems/puck-css';
- * import { CSSClient } from '@pantheon-systems/css-client';
+ * import { P1PuckProvider, P1PuckEditor } from '@pantheon-systems/puck-css';
+ * import { P1Client } from '@pantheon-systems/css-client';
  *
- * const client = new CSSClient({
+ * const client = new P1Client({
  *   baseUrl: 'http://localhost:8787',
  *   apiKey: 'your-api-key',
  * });
  *
  * function App() {
  *   return (
- *     <CSSPuckProvider
+ *     <P1PuckProvider
  *       client={client}
  *       siteId="site-123"
  *       branchId="branch-456"
  *       userId="user-789"
  *     >
- *       <CSSPuckEditor config={puckConfig} documentPath="/home" />
- *     </CSSPuckProvider>
+ *       <P1PuckEditor config={puckConfig} documentPath="/home" />
+ *     </P1PuckProvider>
  *   );
  * }
  * ```
  */
-export function CSSPuckProvider(props: CSSPuckProviderProps): React.ReactElement {
+export function P1PuckProvider(props: P1PuckProviderProps): React.ReactElement {
   return (
     <NotificationProvider>
-      <CSSPuckProviderInner {...props} />
+      <P1PuckProviderInner {...props} />
     </NotificationProvider>
   );
 }
@@ -101,7 +101,7 @@ export function CSSPuckProvider(props: CSSPuckProviderProps): React.ReactElement
 /**
  * Inner provider component that has access to notification context.
  */
-function CSSPuckProviderInner({
+function P1PuckProviderInner({
   client,
   siteId,
   branchId: initialBranchId,
@@ -131,12 +131,12 @@ function CSSPuckProviderInner({
   featurePlugins,
   featureConfig,
   children,
-}: CSSPuckProviderProps): React.ReactElement {
+}: P1PuckProviderProps): React.ReactElement {
   // Access notification context
   const notificationContext = useNotifications();
 
   // Persist selected branch in sessionStorage so it survives provider remounts
-  // (e.g. when CSSApp is rendered per-page instead of in a shared layout).
+  // (e.g. when P1App is rendered per-page instead of in a shared layout).
   const branchStorageKey = `css-branch-${siteId}`;
 
   const getPersistedBranchId = useCallback((): string => {
@@ -157,7 +157,7 @@ function CSSPuckProviderInner({
     }
   }, [branchStorageKey]);
 
-  // Site name — fetched once on mount from the CSS API
+  // Site name — fetched once on mount from the P1 API
   const [siteName, setSiteName] = useState<string | null>(null);
   useEffect(() => {
     client.sites?.get(siteId)
@@ -313,7 +313,7 @@ function CSSPuckProviderInner({
       const componentCount = data.content?.length ?? 0;
       const zoneCount = data.zones ? Object.keys(data.zones).length : 0;
       console.log(
-        '[CSSPuckProvider] onRemoteUpdate received:',
+        '[P1PuckProvider] onRemoteUpdate received:',
         `components=${componentCount}, zones=${zoneCount},`,
         `pendingRemoteUpdates=${pendingRemoteUpdatesRef.current},`,
         `viewingVersion=${viewingVersionRef.current !== null}`
@@ -322,7 +322,7 @@ function CSSPuckProviderInner({
       // Don't apply remote updates while viewing a historical version
       // The user is viewing read-only historical data and shouldn't see live changes
       if (viewingVersionRef.current !== null) {
-        console.log('[CSSPuckProvider] onRemoteUpdate SKIPPED: viewing historical version');
+        console.log('[P1PuckProvider] onRemoteUpdate SKIPPED: viewing historical version');
         return;
       }
 
@@ -336,7 +336,7 @@ function CSSPuckProviderInner({
         (!rootProps || Object.keys(rootProps).length === 0) &&
         !data.zones
       ) {
-        console.log('[CSSPuckProvider] onRemoteUpdate SKIPPED: empty data rejected');
+        console.log('[P1PuckProvider] onRemoteUpdate SKIPPED: empty data rejected');
         return;
       }
 
@@ -363,7 +363,7 @@ function CSSPuckProviderInner({
         if (dataToSync) {
           const syncComponentCount = dataToSync.content?.length ?? 0;
           console.log(
-            '[CSSPuckProvider] onRemoteUpdate APPLYING:',
+            '[P1PuckProvider] onRemoteUpdate APPLYING:',
             `components=${syncComponentCount},`,
             `pendingRemoteUpdates will be=${pendingRemoteUpdatesRef.current + 1}`
           );
@@ -456,7 +456,7 @@ function CSSPuckProviderInner({
       const dataOriginPath = currentDataDocumentPathRef.current;
       if (dataOriginPath !== currentPath) return;
 
-      console.log('[CSSPuckProvider] PuckDataCapture catch-up: sending missed data,', `components=${currentData.content?.length ?? 0}`);
+      console.log('[P1PuckProvider] PuckDataCapture catch-up: sending missed data,', `components=${currentData.content?.length ?? 0}`);
       realtimeRef.current.applyLocalChange(currentData);
       lastSentDataRef.current = dataJson;
     }, 800);
@@ -632,7 +632,7 @@ function CSSPuckProviderInner({
       // Note: We intentionally do NOT call setCurrentData(dataToSave) here.
       // The data is already in Puck's internal state (it came from Puck's onChange).
       // Updating currentData would trigger a re-render cascade that recreates the
-      // cssPlugin, causing Puck to potentially re-render and flicker.
+      // p1Plugin, causing Puck to potentially re-render and flicker.
       // currentData should only be updated when loading a document or switching versions.
       pendingDataRef.current = null;
       setSaveStatus('saved');
@@ -707,7 +707,7 @@ function CSSPuckProviderInner({
 
       // Suppress the onChange echo from PuckDataSynchronizer after loadDocument.
       if (suppressNextSaveRef.current) {
-        console.log(`[CSSPuckProvider] saveData SKIPPED: suppressNextSave (components=${componentCount})`);
+        console.log(`[P1PuckProvider] saveData SKIPPED: suppressNextSave (components=${componentCount})`);
         suppressNextSaveRef.current = false;
         return;
       }
@@ -720,12 +720,12 @@ function CSSPuckProviderInner({
       if (enableRealtime && realtime.connected) {
         if (pendingRemoteUpdatesRef.current > 0) {
           // Counter indicates this onChange is from a remote update or data load
-          console.log(`[CSSPuckProvider] saveData SKIPPED: pendingRemoteUpdates=${pendingRemoteUpdatesRef.current} (components=${componentCount})`);
+          console.log(`[P1PuckProvider] saveData SKIPPED: pendingRemoteUpdates=${pendingRemoteUpdatesRef.current} (components=${componentCount})`);
           pendingRemoteUpdatesRef.current -= 1;
           return;
         } else if (viewingVersionRef.current !== null) {
           // User is viewing historical version - don't broadcast or save
-          console.log(`[CSSPuckProvider] saveData SKIPPED: viewing historical version (components=${componentCount})`);
+          console.log(`[P1PuckProvider] saveData SKIPPED: viewing historical version (components=${componentCount})`);
           return;
         } else {
           const currentPath = currentDocumentRef.current?.path ?? null;
@@ -737,7 +737,7 @@ function CSSPuckProviderInner({
           const dataOriginPath = currentDataDocumentPathRef.current;
           if (dataOriginPath !== currentPath) {
             console.warn(
-              '[CSSPuckProvider] saveData SKIPPED: data origin mismatch.',
+              '[P1PuckProvider] saveData SKIPPED: data origin mismatch.',
               'dataOrigin:', dataOriginPath, 'currentDoc:', currentPath,
               `components=${componentCount}`,
             );
@@ -749,7 +749,7 @@ function CSSPuckProviderInner({
           const connectedPath = realtime.connectedDocumentPath;
           if (currentPath !== connectedPath) {
             console.warn(
-              '[CSSPuckProvider] saveData SKIPPED: connection identity mismatch.',
+              '[P1PuckProvider] saveData SKIPPED: connection identity mismatch.',
               'currentDoc:', currentPath, 'connectedDoc:', connectedPath,
               `components=${componentCount}`,
             );
@@ -760,7 +760,7 @@ function CSSPuckProviderInner({
           // Echo prevention is handled at lower layers:
           // - puckDataToYMap no-ops when Y.Doc already has identical data
           // - RealtimeClient.lastSentSnapshot drops sends matching last sent/received
-          console.log(`[CSSPuckProvider] saveData SENDING via realtime: components=${componentCount}, path=${currentPath}`);
+          console.log(`[P1PuckProvider] saveData SENDING via realtime: components=${componentCount}, path=${currentPath}`);
           realtime.applyLocalChange(data);
           trackSentData(data);
           lastActionRef.current = null;
@@ -773,7 +773,7 @@ function CSSPuckProviderInner({
       }
 
       // Non-realtime path: mark data as pending and trigger debounced REST save
-      console.log(`[CSSPuckProvider] saveData via REST (debounced): components=${componentCount}, realtimeEnabled=${enableRealtime}, connected=${realtime.connected}`);
+      console.log(`[P1PuckProvider] saveData via REST (debounced): components=${componentCount}, realtimeEnabled=${enableRealtime}, connected=${realtime.connected}`);
       pendingDataRef.current = data;
 
       if (debouncedSave.isPaused()) {
@@ -837,7 +837,7 @@ function CSSPuckProviderInner({
 
         // Staleness check: a newer loadDocument call has started
         if (thisRequestId !== loadRequestIdRef.current) {
-          console.debug('[CSSPuckProvider] Stale loadDocument — skipping (after getByPath)');
+          console.debug('[P1PuckProvider] Stale loadDocument — skipping (after getByPath)');
           return;
         }
 
@@ -857,7 +857,7 @@ function CSSPuckProviderInner({
 
         // Staleness check: a newer loadDocument call has started
         if (thisRequestId !== loadRequestIdRef.current) {
-          console.debug('[CSSPuckProvider] Stale loadDocument — skipping (after getLatest)');
+          console.debug('[P1PuckProvider] Stale loadDocument — skipping (after getLatest)');
           return;
         }
 
@@ -908,7 +908,7 @@ function CSSPuckProviderInner({
       } catch (error) {
         // Use warn, not error: callers handle this and console.error triggers
         // the Next.js dev overlay unnecessarily.
-        console.warn('[CSSPuckProvider] loadDocument failed:', error);
+        console.warn('[P1PuckProvider] loadDocument failed:', error);
         // Unload the current document so VersionBannerOverride shows the empty
         // state instead of the previous document's content.
         currentDataDocumentPathRef.current = null;
@@ -1395,7 +1395,7 @@ function CSSPuckProviderInner({
         try {
           await realtime.waitForDelivery();
         } catch {
-          console.warn('[CSSPuckProvider] Delivery ack before checkpoint failed, proceeding anyway');
+          console.warn('[P1PuckProvider] Delivery ack before checkpoint failed, proceeding anyway');
         }
       }
 
@@ -1678,7 +1678,7 @@ function CSSPuckProviderInner({
     return resolveActivePlugins(plugins, resolvedFeatureConfig);
   }, [featurePlugins, resolvedFeatureConfig]);
 
-  const pluginDeps: CSSFeaturePluginDeps = useMemo(() => ({
+  const pluginDeps: P1FeaturePluginDeps = useMemo(() => ({
     client: userClient,
     siteId,
     branchId,
@@ -1707,7 +1707,7 @@ function CSSPuckProviderInner({
   const safeData = lastGoodDataRef.current;
 
   // Context value
-  const contextValue: CSSPuckContextValue = useMemo(
+  const contextValue: P1PuckContextValue = useMemo(
     () => ({
       client: userClient,
       notifications: notificationContext,
@@ -1851,10 +1851,10 @@ function CSSPuckProviderInner({
   );
 
   return (
-    <CSSPuckContext.Provider value={contextValue}>
+    <P1PuckContext.Provider value={contextValue}>
       <ComposedPluginProviders>
         {wrappedChildren}
       </ComposedPluginProviders>
-    </CSSPuckContext.Provider>
+    </P1PuckContext.Provider>
   );
 }

@@ -1,9 +1,9 @@
 /**
- * CSSLoginPage
+ * P1LoginPage
  *
- * Default login page component for CSS auth integration.
+ * Default login page component for P1 auth integration.
  * This is a convenience component — consumers can build their own login UI
- * using the useCSSAuth() hook instead.
+ * using the useP1Auth() hook instead.
  *
  * Renders login UI appropriate for the current auth mode:
  * - mock: Demo user dropdown selector
@@ -13,8 +13,8 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { useCSSAuth, DEMO_USERS } from './CSSAuthProvider.js';
-import type { AuthMode } from './CSSAuthProvider.js';
+import { useP1Auth, DEMO_USERS } from './P1AuthProvider.js';
+import type { AuthMode } from './P1AuthProvider.js';
 
 const containerStyle: React.CSSProperties = {
   display: 'flex',
@@ -69,7 +69,7 @@ const errorStyle: React.CSSProperties = {
 };
 
 function MockLogin() {
-  const { login, isLoading } = useCSSAuth();
+  const { login, isLoading } = useP1Auth();
   const [selectedUserId, setSelectedUserId] = useState(DEMO_USERS[0]?.id ?? '');
 
   return (
@@ -98,7 +98,7 @@ function MockLogin() {
 }
 
 function GoogleLogin() {
-  const { isLoading, renderLoginButton } = useCSSAuth();
+  const { isLoading, renderLoginButton } = useP1Auth();
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -115,7 +115,7 @@ function GoogleLogin() {
 }
 
 function Auth0Login() {
-  const { login, isLoading } = useCSSAuth();
+  const { login, isLoading } = useP1Auth();
 
   return (
     <button
@@ -128,8 +128,8 @@ function Auth0Login() {
   );
 }
 
-function CSSAuthServerLogin() {
-  const { login, isLoading } = useCSSAuth();
+function P1AuthServerLogin() {
+  const { login, isLoading } = useP1Auth();
 
   return (
     <button
@@ -143,7 +143,7 @@ function CSSAuthServerLogin() {
 }
 
 function P1Login() {
-  const { login, isLoading } = useCSSAuth();
+  const { login, isLoading } = useP1Auth();
 
   return (
     <button
@@ -165,31 +165,31 @@ function getAuthModeLabel(mode: AuthMode): string {
     case 'auth0':
       return 'Auth0';
     case 'css-authserver':
-      return 'CSS Auth Server';
+      return 'P1 Auth Server';
     case 'p1':
       return 'Pantheon';
   }
 }
 
-export interface CSSLoginPageProps {
-  /** Title shown on the login card. Default: "CSS Puck Editor" */
+export interface P1LoginPageProps {
+  /** Title shown on the login card. Default: "P1 Puck Editor" */
   title?: string;
   /** Subtitle shown below the title. Default: "Sign in to start editing" */
   subtitle?: string;
 }
 
 /**
- * Default login page for CSS auth.
- * Uses useCSSAuth() internally — must be rendered within a CSSAuthProvider.
+ * Default login page for P1 auth.
+ * Uses useP1Auth() internally — must be rendered within a P1AuthProvider.
  *
  * This is a convenience component. For custom login UIs (e.g., embedded in
- * a larger app), use useCSSAuth() directly to access login/logout/state.
+ * a larger app), use useP1Auth() directly to access login/logout/state.
  */
-export function CSSLoginPage({
-  title = 'CSS Puck Editor',
+export function P1LoginPage({
+  title = 'P1 Puck Editor',
   subtitle = 'Sign in to start editing',
-}: CSSLoginPageProps): React.ReactElement {
-  const { error, authMode } = useCSSAuth();
+}: P1LoginPageProps): React.ReactElement {
+  const { error, authMode } = useP1Auth();
 
   return (
     <div style={containerStyle}>
@@ -202,7 +202,7 @@ export function CSSLoginPage({
         {authMode === 'mock' && <MockLogin />}
         {authMode === 'google' && <GoogleLogin />}
         {authMode === 'auth0' && <Auth0Login />}
-        {authMode === 'css-authserver' && <CSSAuthServerLogin />}
+        {authMode === 'css-authserver' && <P1AuthServerLogin />}
         {authMode === 'p1' && <P1Login />}
 
         {error && <div style={errorStyle}>{error}</div>}

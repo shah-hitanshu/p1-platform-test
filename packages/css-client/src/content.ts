@@ -1,14 +1,14 @@
 /**
- * CSS Content Client
+ * P1 Content Client
  *
- * Read-only client for fetching published content from the CSS content delivery API.
+ * Read-only client for fetching published content from the P1 content delivery API.
  * Designed for server-side use (e.g., Next.js SSR/SSG) without pulling in
  * browser dependencies like partysocket.
  */
 
-import { CSSApiError } from './errors.js';
+import { P1ApiError } from './errors.js';
 
-export interface CSSContentClientConfig {
+export interface P1ContentClientConfig {
   baseUrl: string;
   apiToken: string;
   siteId: string;
@@ -52,13 +52,13 @@ function trimLeadingSlashes(value: string): string {
   return value.slice(start);
 }
 
-export class CSSContentClient {
+export class P1ContentClient {
   private baseUrl: string;
   private apiToken: string;
   private siteId: string;
   private branchId?: string;
 
-  constructor(config: CSSContentClientConfig) {
+  constructor(config: P1ContentClientConfig) {
     this.baseUrl = trimTrailingSlashes(config.baseUrl);
     this.apiToken = config.apiToken;
     this.siteId = config.siteId;
@@ -79,7 +79,7 @@ export class CSSContentClient {
     }
     if (!response.ok) {
       const body = await response.json().catch(() => ({ error: 'Unknown error' }));
-      throw new CSSApiError(
+      throw new P1ApiError(
         (body as { error?: string }).error || `HTTP ${response.status}`,
         response.status,
       );
@@ -97,7 +97,7 @@ export class CSSContentClient {
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({ error: 'Unknown error' }));
-      throw new CSSApiError(
+      throw new P1ApiError(
         (body as { error?: string }).error || `HTTP ${response.status}`,
         response.status,
       );

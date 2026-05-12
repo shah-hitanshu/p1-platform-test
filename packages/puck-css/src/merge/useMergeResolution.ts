@@ -7,7 +7,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import type { CSSClient, PuckData, DocumentConflictType, MergePreview, MergeRequest, MergeRequestStatus } from '@pantheon-systems/css-client';
+import type { P1Client, PuckData, DocumentConflictType, MergePreview, MergeRequest, MergeRequestStatus } from '@pantheon-systems/css-client';
 import {
   classifyPuckFields,
   buildMergedSnapshot,
@@ -47,7 +47,7 @@ export interface DocumentResolution {
 }
 
 export interface UseMergeResolutionOptions {
-  client: CSSClient;
+  client: P1Client;
   siteId: string;
   sourceBranchId: string;
   targetBranchId: string;

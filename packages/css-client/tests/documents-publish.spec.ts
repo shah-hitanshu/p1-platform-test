@@ -3,14 +3,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CSSClient } from '../src/client.js';
-import { CSSApiError } from '../src/errors.js';
+import { P1Client } from '../src/client.js';
+import { P1ApiError } from '../src/errors.js';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-describe('CSSClient documents.publish', () => {
+describe('P1Client documents.publish', () => {
   const baseUrl = 'http://localhost:8787';
   const apiKey = 'test-api-key';
 
@@ -39,7 +39,7 @@ describe('CSSClient documents.publish', () => {
       json: async () => mockResult,
     });
 
-    const client = new CSSClient({ baseUrl, apiKey });
+    const client = new P1Client({ baseUrl, apiKey });
     const result = await client.documents.publish('site-1', 'branch-1', 'doc-1');
 
     expect(result).toEqual(mockResult);
@@ -64,7 +64,7 @@ describe('CSSClient documents.publish', () => {
       json: async () => mockResult,
     });
 
-    const client = new CSSClient({ baseUrl, apiKey });
+    const client = new P1Client({ baseUrl, apiKey });
     await client.documents.publish('site-1', 'branch-2', 'doc-2');
 
     expect(mockFetch).toHaveBeenCalledWith(
@@ -75,18 +75,18 @@ describe('CSSClient documents.publish', () => {
     );
   });
 
-  it('should throw CSSApiError on non-ok response', async () => {
+  it('should throw P1ApiError on non-ok response', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 500,
       json: async () => ({ error: 'Internal server error' }),
     });
 
-    const client = new CSSClient({ baseUrl, apiKey });
+    const client = new P1Client({ baseUrl, apiKey });
 
     await expect(
       client.documents.publish('site-1', 'branch-1', 'doc-1')
-    ).rejects.toThrow(CSSApiError);
+    ).rejects.toThrow(P1ApiError);
   });
 
   it('should pass auth headers correctly', async () => {
@@ -106,7 +106,7 @@ describe('CSSClient documents.publish', () => {
       json: async () => mockResult,
     });
 
-    const client = new CSSClient({ baseUrl, apiKey });
+    const client = new P1Client({ baseUrl, apiKey });
     await client.documents.publish('site-1', 'branch-1', 'doc-1');
 
     expect(mockFetch).toHaveBeenCalledWith(

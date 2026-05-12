@@ -2,7 +2,7 @@
  * WebSocket Publish Integration Tests
  *
  * Tests that the useRealtime hook exposes requestPublish, enabling
- * CSSPuckProvider to use WebSocket-driven publish when connected.
+ * P1PuckProvider to use WebSocket-driven publish when connected.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

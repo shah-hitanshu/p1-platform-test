@@ -1,33 +1,33 @@
 /**
- * useCSSEditor Hook
+ * useP1Editor Hook
  *
- * All-in-one hook for setting up a CSS-enabled Puck editor.
- * Composes useCSSPlugin and useCSSOverrides internally, handles
+ * All-in-one hook for setting up a P1-enabled Puck editor.
+ * Composes useP1Plugin and useP1Overrides internally, handles
  * document loading, version management, historical version protection,
  * and provides everything needed to render <Puck>.
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useCSSPuck } from '../core/CSSPuckContext.js';
-import { useCSSPlugin } from './useCSSPlugin.js';
-import { useCSSOverrides } from './useCSSOverrides.js';
+import { useP1Puck } from '../core/P1PuckContext.js';
+import { useP1Plugin } from './useP1Plugin.js';
+import { useP1Overrides } from './useP1Overrides.js';
 import { useVersions } from '../versioning/useVersions.js';
 import { useComponentRegistry } from './useComponentRegistry.js';
-import { useCSSAuth } from '../auth/index.js';
+import { useP1Auth } from '../auth/index.js';
 import { buildThumbnailOverride } from './utils/buildThumbnailOverride.js';
 import type { ThumbnailMap } from './utils/buildThumbnailOverride.js';
-import type { UseCSSPluginOptions } from './useCSSPlugin.js';
-import type { UseCSSOverridesOptions } from './useCSSOverrides.js';
+import type { UseP1PluginOptions } from './useP1Plugin.js';
+import type { UseP1OverridesOptions } from './useP1Overrides.js';
 import type { PuckOverrides } from './plugin/index.js';
 import type { Plugin } from '@puckeditor/core';
-import type { CSSPuckContextValue } from '../core/types.js';
+import type { P1PuckContextValue } from '../core/types.js';
 import type { PuckData, DocumentVersion } from '@pantheon-systems/css-client';
 import type { UiState } from '@puckeditor/core';
 
 /**
- * Options for useCSSEditor.
+ * Options for useP1Editor.
  */
-export interface UseCSSEditorOptions {
+export interface UseP1EditorOptions {
   /** Document path to load */
   documentPath: string;
   /** Puck component configuration */
@@ -35,7 +35,7 @@ export interface UseCSSEditorOptions {
   /** Additional plugins to include after the CSS plugin */
   additionalPlugins?: Plugin[];
   /**
-   * Additional overrides to merge with CSS overrides.
+   * Additional overrides to merge with P1 overrides.
    * Merged with stable memoization to prevent Puck's appStore.setState
    * from firing on every render (which causes preview iframe re-renders).
    * Nested objects (e.g. fieldTypes) are shallow-merged.
@@ -51,14 +51,14 @@ export interface UseCSSEditorOptions {
    * ```tsx
    * import { THUMBNAIL_MAP } from '@/data/thumbnails';
    *
-   * useCSSEditor({ thumbnails: THUMBNAIL_MAP, ... });
+   * useP1Editor({ thumbnails: THUMBNAIL_MAP, ... });
    * ```
    */
   thumbnails?: ThumbnailMap;
   /** Customization options for overrides */
-  overrideOptions?: UseCSSOverridesOptions;
+  overrideOptions?: UseP1OverridesOptions;
   /** Customization options for the CSS plugin (versions are managed internally) */
-  pluginOptions?: Omit<UseCSSPluginOptions, 'versions' | 'versionsLoading' | 'selectedVersionId' | 'onVersionSelect'>;
+  pluginOptions?: Omit<UseP1PluginOptions, 'versions' | 'versionsLoading' | 'selectedVersionId' | 'onVersionSelect'>;
   /** Callback when user selection changes */
   onSelectionChange?: (path: string | null, itemId: string | null) => void;
   /** Called when document loading fails. Return true to retry loading. */
@@ -86,9 +86,9 @@ export interface PuckProps {
 }
 
 /**
- * Return value from useCSSEditor.
+ * Return value from useP1Editor.
  */
-export interface UseCSSEditorReturn {
+export interface UseP1EditorReturn {
   /** Whether the initial document is still loading */
   loading: boolean;
   /** Error from document loading, if any */
@@ -97,8 +97,8 @@ export interface UseCSSEditorReturn {
   puckKey: string;
   /** Props to spread onto <Puck> */
   puckProps: PuckProps;
-  /** Full CSS context for advanced/escape-hatch use */
-  css: CSSPuckContextValue;
+  /** Full P1 context for advanced/escape-hatch use */
+  css: P1PuckContextValue;
   /**
    * @deprecated Always null. Branch-switch redirects have been removed; the
    * editor now unloads the page context and shows an empty state in the
@@ -108,21 +108,21 @@ export interface UseCSSEditorReturn {
 }
 
 /**
- * All-in-one hook for setting up a CSS-enabled Puck editor.
+ * All-in-one hook for setting up a P1-enabled Puck editor.
  *
  * Handles document loading, version management, plugin/overrides creation,
  * safe data, historical version protection, and plugin array assembly.
  * Returns everything needed to render <Puck> with minimal boilerplate.
  *
- * Must be used inside a CSSPuckProvider.
+ * Must be used inside a P1PuckProvider.
  *
  * @param options - Editor configuration
- * @returns Loading state, puck props, and CSS context
+ * @returns Loading state, puck props, and P1 context
  *
  * @example
  * ```tsx
  * function Editor() {
- *   const { loading, error, puckProps } = useCSSEditor({
+ *   const { loading, error, puckProps } = useP1Editor({
  *     documentPath: '/home',
  *     puckConfig: config,
  *   });
@@ -134,7 +134,7 @@ export interface UseCSSEditorReturn {
  * }
  * ```
  */
-export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
+export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   const {
     documentPath,
     puckConfig,
@@ -147,8 +147,8 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
     onDocumentNotFound,
   } = options;
 
-  const css = useCSSPuck();
-  const { user, logout } = useCSSAuth();
+  const css = useP1Puck();
+  const { user, logout } = useP1Auth();
 
   // =========================================================================
   // Document Loading
@@ -313,7 +313,7 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   );
 
   // =========================================================================
-  // Component Registry (runs at editor startup, writes descriptors to CSS backend)
+  // Component Registry (runs at editor startup, writes descriptors to P1 backend)
   // =========================================================================
 
   useComponentRegistry({ puckConfig });
@@ -335,7 +335,7 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
     [css, refreshVersions],
   );
 
-  const cssPlugin = useCSSPlugin({
+  const p1Plugin = useP1Plugin({
     onSelectionChange: handleSelectionChange,
     currentUser: user ? { id: user.id, name: user.name, email: user.email, avatar: user.picture } : undefined,
     onLogout: logout,
@@ -348,14 +348,14 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   });
 
   const wrappedOnPublishSuccess = useCallback(
-    (checkpoint: Parameters<NonNullable<UseCSSOverridesOptions['onPublishSuccess']>>[0]) => {
+    (checkpoint: Parameters<NonNullable<UseP1OverridesOptions['onPublishSuccess']>>[0]) => {
       void refreshVersions();
       consumerOnPublishSuccessRef.current?.(checkpoint);
     },
     [refreshVersions],
   );
 
-  const cssOverrides = useCSSOverrides({
+  const p1Overrides = useP1Overrides({
     ...overrideOptions,
     publishedStatus,
     ...(overrideOptions?.onPublishSuccess ? { onPublishSuccess: wrappedOnPublishSuccess } : {}),
@@ -370,12 +370,12 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
 
   const pluginCount = additionalPlugins?.length ?? 0;
   const plugins = useMemo(() => {
-    const result: Plugin[] = [cssPlugin];
+    const result: Plugin[] = [p1Plugin];
     if (additionalPluginsRef.current) {
       result.push(...additionalPluginsRef.current);
     }
     return result;
-  }, [cssPlugin, pluginCount]);
+  }, [p1Plugin, pluginCount]);
 
   // =========================================================================
   // Stable onChange (disabled for historical versions)
@@ -408,23 +408,23 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   // Stable merged overrides
   // =========================================================================
 
-  // Merge additional overrides (e.g. from media plugins) with CSS overrides.
+  // Merge additional overrides (e.g. from media plugins) with P1 overrides.
   // Uses ref pattern to keep the merge stable — only recomputes when
-  // cssOverrides changes, not when additionalOverrides reference changes
+  // p1Overrides changes, not when additionalOverrides reference changes
   // (which would happen every render if the consumer doesn't memoize).
   const additionalOverridesRef = useRef(additionalOverrides);
   additionalOverridesRef.current = additionalOverrides;
 
   // Thumbnail override — built from the thumbnails map and merged between
-  // cssOverrides and additionalOverrides so the site can still fully override
+  // p1Overrides and additionalOverrides so the site can still fully override
   // componentItem if needed.
   const thumbnailsRef = useRef(thumbnails);
   thumbnailsRef.current = thumbnails;
 
   const mergedOverrides = useMemo(() => {
-    // Layer order (last wins): cssOverrides → thumbnailOverride → additionalOverrides
+    // Layer order (last wins): p1Overrides → thumbnailOverride → additionalOverrides
     const layers: (Partial<PuckOverrides> | null)[] = [
-      cssOverrides,
+      p1Overrides,
       thumbnailsRef.current ? buildThumbnailOverride(thumbnailsRef.current) : null,
       additionalOverridesRef.current ?? null,
     ];
@@ -443,7 +443,7 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
       }
     }
     return merged as PuckOverrides;
-  }, [cssOverrides]);
+  }, [p1Overrides]);
 
   // =========================================================================
   // Assemble puckProps
@@ -471,7 +471,7 @@ export function useCSSEditor(options: UseCSSEditorOptions): UseCSSEditorReturn {
   }, [puckKey, css.siteId]);
 
   // Focus highlighting is handled via direct DOM manipulation in
-  // PresenceFocusBridge (CSSApp.tsx) — no config wrapping needed.
+  // PresenceFocusBridge (P1App.tsx) — no config wrapping needed.
 
   const puckProps: PuckProps = useMemo(
     () => ({

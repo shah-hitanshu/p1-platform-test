@@ -6,9 +6,9 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const srcDir = resolve(__dirname, "../..");
 
-describe("useCSSEditor additionalPlugins reactivity", () => {
+describe("useP1Editor additionalPlugins reactivity", () => {
   const content = readFileSync(
-    resolve(srcDir, "editor/useCSSEditor.ts"),
+    resolve(srcDir, "editor/useP1Editor.ts"),
     "utf-8",
   );
 

@@ -4,11 +4,11 @@
  * Tests for the silent token refresh feature:
  * - SessionExpiredError class
  * - BaseEndpoint.request() tokenRefresher behavior on 401
- * - CSSClient tokenRefresher propagation
+ * - P1Client tokenRefresher propagation
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CSSClient } from '../src/client.js';
+import { P1Client } from '../src/client.js';
 import { AuthenticationError, SessionExpiredError } from '../src/errors.js';
 import { BaseEndpoint } from '../src/endpoints/base.js';
 
@@ -258,10 +258,10 @@ describe('BaseEndpoint.request() tokenRefresher behavior', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. CSSClient.tokenRefresher propagation
+// 3. P1Client.tokenRefresher propagation
 // ---------------------------------------------------------------------------
 
-describe('CSSClient tokenRefresher propagation', () => {
+describe('P1Client tokenRefresher propagation', () => {
   const baseUrl = 'http://localhost:8787';
 
   beforeEach(() => {
@@ -272,7 +272,7 @@ describe('CSSClient tokenRefresher propagation', () => {
     vi.restoreAllMocks();
   });
 
-  // g. CSSClient constructed with tokenRefresher passes it through to BaseEndpoint —
+  // g. P1Client constructed with tokenRefresher passes it through to BaseEndpoint —
   //    verified by triggering a 401 and checking that tokenRefresher is invoked and
   //    the retry request is made with the returned token.
   it('(g) tokenRefresher is called on 401 and the retry uses the returned token', async () => {
@@ -293,7 +293,7 @@ describe('CSSClient tokenRefresher propagation', () => {
         json: async () => mockSite,
       });
 
-    const client = new CSSClient({
+    const client = new P1Client({
       baseUrl,
       tokenRefresher,
     });
@@ -314,7 +314,7 @@ describe('CSSClient tokenRefresher propagation', () => {
     expect(result).toEqual(mockSite);
   });
 
-  it('(g2) tokenRefresher returning null on 401 throws SessionExpiredError through CSSClient', async () => {
+  it('(g2) tokenRefresher returning null on 401 throws SessionExpiredError through P1Client', async () => {
     const tokenRefresher = vi.fn().mockResolvedValue(null);
 
     mockFetch.mockResolvedValueOnce({
@@ -323,7 +323,7 @@ describe('CSSClient tokenRefresher propagation', () => {
       json: async () => ({ error: 'Unauthorized' }),
     });
 
-    const client = new CSSClient({
+    const client = new P1Client({
       baseUrl,
       tokenRefresher,
     });
@@ -335,14 +335,14 @@ describe('CSSClient tokenRefresher propagation', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
-  it('(g3) CSSClient without tokenRefresher still throws AuthenticationError on 401', async () => {
+  it('(g3) P1Client without tokenRefresher still throws AuthenticationError on 401', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 401,
       json: async () => ({ error: 'Unauthorized' }),
     });
 
-    const client = new CSSClient({ baseUrl, apiKey: 'test-api-key' });
+    const client = new P1Client({ baseUrl, apiKey: 'test-api-key' });
 
     await expect(client.sites.list()).rejects.toThrow(AuthenticationError);
     expect(mockFetch).toHaveBeenCalledTimes(1);

@@ -43,7 +43,7 @@ function Thumbnail({ name, thumbnailMap }: { name: string; thumbnailMap: Thumbna
  * Returns a partial `PuckOverrides` object containing a `componentItem` override
  * that renders a thumbnail, the component name, and a drag-handle affordance.
  *
- * Pass the result to `useCSSEditor`'s `additionalOverrides` or merge it with
+ * Pass the result to `useP1Editor`'s `additionalOverrides` or merge it with
  * your existing overrides.
  */
 export function buildThumbnailOverride(thumbnailMap: ThumbnailMap): Partial<PuckOverrides> {

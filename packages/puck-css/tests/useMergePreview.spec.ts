@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useMergePreview } from '../src/editor/useMergePreview.js';
 
-// Mock useCSSPuck
-const mockUseCSSPuck = vi.fn();
-vi.mock('../src/core/CSSPuckContext.js', () => ({
-  useCSSPuck: () => mockUseCSSPuck(),
+// Mock useP1Puck
+const mockUseP1Puck = vi.fn();
+vi.mock('../src/core/P1PuckContext.js', () => ({
+  useP1Puck: () => mockUseP1Puck(),
 }));
 
 const mainBranch = { id: 'main-id', name: 'Live', isMain: true };
@@ -39,13 +39,13 @@ function makeMockContext(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockUseCSSPuck.mockReturnValue(makeMockContext());
+  mockUseP1Puck.mockReturnValue(makeMockContext());
 });
 
 describe('useMergePreview', () => {
   it('fetches comparison between current branch and main on mount', async () => {
     const ctx = makeMockContext();
-    mockUseCSSPuck.mockReturnValue(ctx);
+    mockUseP1Puck.mockReturnValue(ctx);
 
     const { result } = renderHook(() => useMergePreview());
 
@@ -72,7 +72,7 @@ describe('useMergePreview', () => {
   });
 
   it('skips fetch and returns isMainBranch=true when on main', async () => {
-    mockUseCSSPuck.mockReturnValue(
+    mockUseP1Puck.mockReturnValue(
       makeMockContext({
         branchId: mainBranch.id,
         currentBranch: mainBranch,
@@ -88,7 +88,7 @@ describe('useMergePreview', () => {
   });
 
   it('stays loading while branchesLoading is true', () => {
-    mockUseCSSPuck.mockReturnValue(makeMockContext({ branchesLoading: true }));
+    mockUseP1Puck.mockReturnValue(makeMockContext({ branchesLoading: true }));
 
     const { result } = renderHook(() => useMergePreview());
 
@@ -98,7 +98,7 @@ describe('useMergePreview', () => {
   it('sets error state when fetch fails', async () => {
     const ctx = makeMockContext();
     ctx.client.merge.preview = vi.fn().mockRejectedValue(new Error('Network error'));
-    mockUseCSSPuck.mockReturnValue(ctx);
+    mockUseP1Puck.mockReturnValue(ctx);
 
     const { result } = renderHook(() => useMergePreview());
 

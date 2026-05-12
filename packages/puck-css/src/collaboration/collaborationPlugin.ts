@@ -1,6 +1,6 @@
-import type { CSSFeaturePlugin } from '../core/plugin-types.js';
+import type { P1FeaturePlugin } from '../core/plugin-types.js';
 
-export const collaborationPlugin: CSSFeaturePlugin = {
+export const collaborationPlugin: P1FeaturePlugin = {
   name: 'collaboration',
   featureFlags: ['presenceEnabled'],
   priority: 50,

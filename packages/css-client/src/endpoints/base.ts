@@ -7,7 +7,7 @@
 import type { AuthProvider } from '../auth.js';
 import type { Principal } from '../types.js';
 import {
-  CSSApiError,
+  P1ApiError,
   NetworkError,
   AuthenticationError,
   NotFoundError,
@@ -61,7 +61,7 @@ export class BaseEndpoint {
   }
 
   /**
-   * Make an authenticated HTTP request to the CSS API.
+   * Make an authenticated HTTP request to the P1 API.
    */
   async request<T>(path: string, options: RequestOptions): Promise<T> {
     const url = `${this.baseUrl}${path}`;
@@ -149,7 +149,7 @@ export class BaseEndpoint {
       try {
         return (await response.json()) as T;
       } catch {
-        throw new CSSApiError('Failed to parse response JSON', response.status);
+        throw new P1ApiError('Failed to parse response JSON', response.status);
       }
     }
 
@@ -173,7 +173,7 @@ export class BaseEndpoint {
       case 409:
         throw new ConflictError(errorMessage, errorData?.details);
       default:
-        throw new CSSApiError(errorMessage, response.status, undefined, errorData?.details);
+        throw new P1ApiError(errorMessage, response.status, undefined, errorData?.details);
     }
   }
 

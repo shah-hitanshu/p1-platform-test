@@ -1,19 +1,19 @@
 /**
  * Document Create/Delete Wiring Tests
  *
- * Integration tests verifying that useCSSPlugin automatically wires
- * createDocument and deleteDocument from CSSPuckContext, so the plugin
+ * Integration tests verifying that useP1Plugin automatically wires
+ * createDocument and deleteDocument from P1PuckContext, so the plugin
  * panel renders the "+" create button and "×" delete buttons without
  * consumers having to explicitly pass callbacks.
  *
  * Regression: these buttons were lost when the context stopped exposing
- * create/delete operations, leaving useCSSPlugin with no callbacks to wire.
+ * create/delete operations, leaving useP1Plugin with no callbacks to wire.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor, render, screen } from '@testing-library/react';
 import React from 'react';
-import type { CSSClient, Branch, PuckData } from '@pantheon-systems/css-client';
+import type { P1Client, Branch, PuckData } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock useRealtime hook
@@ -36,9 +36,9 @@ vi.mock('../src/editor/useRealtime.js', () => ({
 // Import AFTER the mock
 // =============================================================================
 
-const { CSSPuckProvider } = await import('../src/editor/CSSPuckProvider.js');
-const { useCSSPlugin } = await import('../src/editor/useCSSPlugin.js');
-const { useCSSPuck } = await import('../src/core/CSSPuckContext.js');
+const { P1PuckProvider } = await import('../src/editor/P1PuckProvider.js');
+const { useP1Plugin } = await import('../src/editor/useP1Plugin.js');
+const { useP1Puck } = await import('../src/core/P1PuckContext.js');
 
 // =============================================================================
 // Mock Data
@@ -70,7 +70,7 @@ const mockVersionSnapshot: PuckData = {
 // Mock Client Factory
 // =============================================================================
 
-function createMockClient(): CSSClient {
+function createMockClient(): P1Client {
   return {
     branches: {
       list: vi.fn().mockResolvedValue([mockBranch]),
@@ -123,17 +123,17 @@ function createMockClient(): CSSClient {
       abortEdit: vi.fn(),
     },
     withPrincipal: vi.fn().mockReturnThis(),
-  } as unknown as CSSClient;
+  } as unknown as P1Client;
 }
 
 // =============================================================================
 // Provider Wrapper
 // =============================================================================
 
-function createProviderWrapper(client: CSSClient) {
+function createProviderWrapper(client: P1Client) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return React.createElement(
-      CSSPuckProvider,
+      P1PuckProvider,
       {
         client,
         siteId: 'site-1',
@@ -149,8 +149,8 @@ function createProviderWrapper(client: CSSClient) {
 // Tests
 // =============================================================================
 
-describe('useCSSPlugin auto-wires document create/delete from context', () => {
-  let client: CSSClient;
+describe('useP1Plugin auto-wires document create/delete from context', () => {
+  let client: P1Client;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -160,7 +160,7 @@ describe('useCSSPlugin auto-wires document create/delete from context', () => {
   it('context exposes createDocument function', async () => {
     const wrapper = createProviderWrapper(client);
 
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result } = renderHook(() => useP1Puck(), { wrapper });
 
     await waitFor(() => {
       expect(result.current.branchId).toBe('branch-1');
@@ -173,7 +173,7 @@ describe('useCSSPlugin auto-wires document create/delete from context', () => {
   it('context exposes deleteDocument function', async () => {
     const wrapper = createProviderWrapper(client);
 
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result } = renderHook(() => useP1Puck(), { wrapper });
 
     await waitFor(() => {
       expect(result.current.branchId).toBe('branch-1');
@@ -183,12 +183,12 @@ describe('useCSSPlugin auto-wires document create/delete from context', () => {
     expect(typeof result.current.deleteDocument).toBe('function');
   });
 
-  it('useCSSPlugin uses context createDocument when onDocumentCreate is not explicitly provided', async () => {
+  it('useP1Plugin uses context createDocument when onDocumentCreate is not explicitly provided', async () => {
     const wrapper = createProviderWrapper(client);
 
     // Verify that calling css.createDocument (the context function wired into the plugin)
     // reaches client.documents.create — confirming the wire-through works end-to-end.
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result } = renderHook(() => useP1Puck(), { wrapper });
 
     await waitFor(() => {
       expect(result.current.branchId).toBe('branch-1');
@@ -203,12 +203,12 @@ describe('useCSSPlugin auto-wires document create/delete from context', () => {
     );
   });
 
-  it('useCSSPlugin uses context deleteDocument when onDocumentDelete is not explicitly provided', async () => {
+  it('useP1Plugin uses context deleteDocument when onDocumentDelete is not explicitly provided', async () => {
     const wrapper = createProviderWrapper(client);
 
     // Verify that calling css.deleteDocument (the context function wired into the plugin)
     // reaches client.documents.delete — confirming the wire-through works end-to-end.
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result } = renderHook(() => useP1Puck(), { wrapper });
 
     await waitFor(() => {
       expect(result.current.branchId).toBe('branch-1');
@@ -224,7 +224,7 @@ describe('useCSSPlugin auto-wires document create/delete from context', () => {
   it('createDocument calls client.documents.create and refreshes the list', async () => {
     const wrapper = createProviderWrapper(client);
 
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result } = renderHook(() => useP1Puck(), { wrapper });
 
     await waitFor(() => {
       expect(result.current.branchId).toBe('branch-1');
@@ -246,7 +246,7 @@ describe('useCSSPlugin auto-wires document create/delete from context', () => {
   it('deleteDocument calls client.documents.delete and refreshes the list', async () => {
     const wrapper = createProviderWrapper(client);
 
-    const { result } = renderHook(() => useCSSPuck(), { wrapper });
+    const { result } = renderHook(() => useP1Puck(), { wrapper });
 
     await waitFor(() => {
       expect(result.current.branchId).toBe('branch-1');

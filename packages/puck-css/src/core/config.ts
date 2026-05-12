@@ -1,7 +1,7 @@
-import type { AuthMode } from '../auth/CSSAuthProvider.js';
-import { CSSContentClient } from '@pantheon-systems/css-client';
+import type { AuthMode } from '../auth/P1AuthProvider.js';
+import { P1ContentClient } from '@pantheon-systems/css-client';
 
-export interface CSSConfig {
+export interface P1Config {
   baseUrl: string;
   clientBaseUrl?: string;
   siteId: string;
@@ -11,8 +11,8 @@ export interface CSSConfig {
   auth0Domain?: string;
   auth0ClientId?: string;
   auth0Audience?: string;
-  cssAuthServerUrl?: string;
-  cssAuthRedirectUri?: string;
+  p1AuthServerUrl?: string;
+  p1AuthRedirectUri?: string;
   enableRealtime?: boolean;
   wsBaseUrl?: string;
   enablePresence?: boolean;
@@ -27,13 +27,13 @@ function httpToWs(url: string): string {
   return url.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
 }
 
-export function createCSSConfig(
+export function createP1Config(
   envSource: Record<string, string | undefined>,
   options?: {
     prefix?: string;
-    overrides?: Partial<CSSConfig>;
+    overrides?: Partial<P1Config>;
   },
-): CSSConfig {
+): P1Config {
   const prefix = options?.prefix ?? '';
   const overrides = options?.overrides ?? {};
 
@@ -78,12 +78,12 @@ export function createCSSConfig(
     auth0Domain: overrides.auth0Domain ?? env('CSS_AUTH0_DOMAIN'),
     auth0ClientId: overrides.auth0ClientId ?? env('CSS_AUTH0_CLIENT_ID'),
     auth0Audience: overrides.auth0Audience ?? env('CSS_AUTH0_AUDIENCE'),
-    // Default cssAuthServerUrl to ${baseUrl}/auth when using css-authserver mode.
-    // The CSS OAuth server is now inlined at /auth/* on the main worker, so the
+    // Default p1AuthServerUrl to ${baseUrl}/auth when using css-authserver mode.
+    // The P1 OAuth server is now inlined at /auth/* on the main worker, so the
     // auth URL can be derived from baseUrl without requiring explicit configuration.
-    cssAuthServerUrl: overrides.cssAuthServerUrl ?? env('CSS_AUTH_SERVER_URL') ??
+    p1AuthServerUrl: overrides.p1AuthServerUrl ?? env('CSS_AUTH_SERVER_URL') ??
       (authModeRaw === 'css-authserver' ? `${baseUrl}/auth` : undefined),
-    cssAuthRedirectUri: overrides.cssAuthRedirectUri ?? env('CSS_AUTH_REDIRECT_URI'),
+    p1AuthRedirectUri: overrides.p1AuthRedirectUri ?? env('CSS_AUTH_REDIRECT_URI'),
     enableRealtime: overrides.enableRealtime ?? envBool('CSS_ENABLE_REALTIME') ?? true,
     wsBaseUrl: overrides.wsBaseUrl ?? env('CSS_WS_BASE_URL') ?? httpToWs(baseUrl),
     enablePresence: overrides.enablePresence ?? envBool('CSS_ENABLE_PRESENCE') ?? true,
@@ -92,16 +92,16 @@ export function createCSSConfig(
   };
 }
 
-export function createNextConfig(overrides?: Partial<CSSConfig>): CSSConfig {
-  return createCSSConfig({}, {
+export function createNextConfig(overrides?: Partial<P1Config>): P1Config {
+  return createP1Config({}, {
     overrides: {
       baseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL,
       siteId: process.env.NEXT_PUBLIC_CSS_SITE_ID,
       authMode: process.env.NEXT_PUBLIC_CSS_AUTH_MODE as AuthMode | undefined,
       googleClientId: process.env.NEXT_PUBLIC_CSS_GOOGLE_CLIENT_ID,
       branchId: process.env.NEXT_PUBLIC_CSS_BRANCH_ID,
-      cssAuthServerUrl: process.env.NEXT_PUBLIC_CSS_AUTH_SERVER_URL,
-      cssAuthRedirectUri: process.env.NEXT_PUBLIC_CSS_AUTH_REDIRECT_URI,
+      p1AuthServerUrl: process.env.NEXT_PUBLIC_CSS_AUTH_SERVER_URL,
+      p1AuthRedirectUri: process.env.NEXT_PUBLIC_CSS_AUTH_REDIRECT_URI,
       enableRealtime: process.env.NEXT_PUBLIC_CSS_ENABLE_REALTIME !== undefined
         ? process.env.NEXT_PUBLIC_CSS_ENABLE_REALTIME === 'true'
         : undefined,
@@ -119,7 +119,7 @@ export function createNextContentClient(overrides?: {
   apiToken?: string;
   siteId?: string;
   branchId?: string;
-}): CSSContentClient | null {
+}): P1ContentClient | null {
   const baseUrl = overrides?.baseUrl ?? process.env.NEXT_PUBLIC_CSS_BASE_URL;
   const apiToken = overrides?.apiToken ?? process.env.CSS_API_KEY;
   const siteId = overrides?.siteId ?? process.env.NEXT_PUBLIC_CSS_SITE_ID;
@@ -127,5 +127,5 @@ export function createNextContentClient(overrides?: {
 
   if (!baseUrl || !apiToken || !siteId) return null;
 
-  return new CSSContentClient({ baseUrl, apiToken, siteId, branchId });
+  return new P1ContentClient({ baseUrl, apiToken, siteId, branchId });
 }

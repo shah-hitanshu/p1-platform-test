@@ -10,18 +10,18 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 // Mock css-client
 vi.mock('@pantheon-systems/css-client', () => ({
-  CSSClient: vi.fn(),
+  P1Client: vi.fn(),
 }));
 
-// Mock PuckDataSynchronizer and PuckSelectionTracker (used by CSSPlugin)
+// Mock PuckDataSynchronizer and PuckSelectionTracker (used by P1Plugin)
 vi.mock('../editor/components/PuckDataSynchronizer', () => ({
   PuckDataSynchronizer: () => null,
 }));
 vi.mock('../editor/components/PuckSelectionTracker', () => ({
   PuckSelectionTracker: () => null,
 }));
-vi.mock('../core/CSSPuckContext', () => ({
-  useCSSPuck: () => ({
+vi.mock('../core/P1PuckContext', () => ({
+  useP1Puck: () => ({
     currentData: null,
     remoteSyncKey: null,
     currentDocument: null,
@@ -38,7 +38,7 @@ vi.mock('../core/CSSPuckContext', () => ({
     _realtimeDataCaptureRef: null,
     _onRealtimeDataCapture: null,
   }),
-  useCSSPuckOptional: () => ({
+  useP1PuckOptional: () => ({
     currentData: null,
     remoteSyncKey: null,
     currentDocument: null,
@@ -74,7 +74,7 @@ afterEach(() => {
 // Header Published Status Badge Tests
 // ============================================================
 
-import { createCSSOverrides } from '../editor/plugin/createCSSOverrides.js';
+import { createP1Overrides } from '../editor/plugin/createP1Overrides.js';
 
 describe('Header PublishedStatusBadge wiring', () => {
   const baseOptions = {
@@ -83,7 +83,7 @@ describe('Header PublishedStatusBadge wiring', () => {
   };
 
   it('renders PublishedStatusBadge with "published" status in header', () => {
-    const overrides = createCSSOverrides({
+    const overrides = createP1Overrides({
       ...baseOptions,
       publishedStatus: 'published',
     });
@@ -97,7 +97,7 @@ describe('Header PublishedStatusBadge wiring', () => {
   });
 
   it('renders PublishedStatusBadge with "unpublished-changes" status', () => {
-    const overrides = createCSSOverrides({
+    const overrides = createP1Overrides({
       ...baseOptions,
       publishedStatus: 'unpublished-changes',
     });
@@ -109,7 +109,7 @@ describe('Header PublishedStatusBadge wiring', () => {
   });
 
   it('renders PublishedStatusBadge with "draft" status', () => {
-    const overrides = createCSSOverrides({
+    const overrides = createP1Overrides({
       ...baseOptions,
       publishedStatus: 'draft',
     });
@@ -121,7 +121,7 @@ describe('Header PublishedStatusBadge wiring', () => {
   });
 
   it('does not render PublishedStatusBadge when publishedStatus is not set', () => {
-    const overrides = createCSSOverrides(baseOptions);
+    const overrides = createP1Overrides(baseOptions);
 
     expect(overrides.headerActions).toBeDefined();
     render((overrides.headerActions as (props: { children: unknown }) => React.ReactElement)({ children: null }));
@@ -132,7 +132,7 @@ describe('Header PublishedStatusBadge wiring', () => {
   });
 
   it('does not render PublishedStatusBadge when viewing historical version', () => {
-    const overrides = createCSSOverrides({
+    const overrides = createP1Overrides({
       ...baseOptions,
       publishedStatus: 'published',
       isViewingHistoricalVersion: true,
@@ -164,11 +164,11 @@ describe('Header PublishedStatusBadge wiring', () => {
 // Version List VersionPublishedBadge Tests
 // ============================================================
 
-import { createCSSPlugin } from '../editor/plugin/CSSPlugin.js';
+import { createP1Plugin } from '../editor/plugin/P1Plugin.js';
 
 describe('Version list VersionPublishedBadge wiring', () => {
   it('shows Published badge next to published versions', () => {
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       branches: [],
       currentBranch: null,
       onBranchSwitch: vi.fn(),
@@ -215,7 +215,7 @@ describe('Version list VersionPublishedBadge wiring', () => {
   });
 
   it('does not show Published badge when no version is published', () => {
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       branches: [],
       currentBranch: null,
       onBranchSwitch: vi.fn(),

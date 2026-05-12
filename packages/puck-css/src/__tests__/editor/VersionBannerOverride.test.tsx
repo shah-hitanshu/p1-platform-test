@@ -5,8 +5,8 @@ import type { DocumentVersion } from '@pantheon-systems/css-client';
 
 let mockCurrentDocument: unknown = null;
 
-vi.mock('../../core/CSSPuckContext', () => ({
-  useCSSPuck: () => ({
+vi.mock('../../core/P1PuckContext', () => ({
+  useP1Puck: () => ({
     currentDocument: mockCurrentDocument,
   }),
 }));

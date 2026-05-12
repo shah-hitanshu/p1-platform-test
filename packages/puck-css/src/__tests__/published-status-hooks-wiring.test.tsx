@@ -2,9 +2,9 @@
  * Tests for published status derivation and wiring through convenience hooks.
  *
  * Validates:
- * - useCSSEditor derives publishedStatus from DocumentVersion.isPublished field
+ * - useP1Editor derives publishedStatus from DocumentVersion.isPublished field
  * - Correct publishedStatus for each scenario (published, unpublished-changes, draft)
- * - publishedStatus flows through to useCSSOverrides options
+ * - publishedStatus flows through to useP1Overrides options
  * - versionsLoading produces undefined publishedStatus
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -16,10 +16,10 @@ import { renderHook, cleanup } from '@testing-library/react';
 
 // Mock css-client
 vi.mock('@pantheon-systems/css-client', () => ({
-  CSSClient: vi.fn(),
+  P1Client: vi.fn(),
 }));
 
-// Mock PuckDataSynchronizer and PuckSelectionTracker (used by CSSPlugin)
+// Mock PuckDataSynchronizer and PuckSelectionTracker (used by P1Plugin)
 vi.mock('../editor/components/PuckDataSynchronizer', () => ({
   PuckDataSynchronizer: () => null,
 }));
@@ -27,21 +27,21 @@ vi.mock('../editor/components/PuckSelectionTracker', () => ({
   PuckSelectionTracker: () => null,
 }));
 
-// Track what useCSSPlugin and useCSSOverrides receive
+// Track what useP1Plugin and useP1Overrides receive
 const capturedPluginOptions: Record<string, unknown>[] = [];
 const capturedOverridesOptions: Record<string, unknown>[] = [];
 
-// Mock useCSSPlugin to capture options
-vi.mock('../editor/useCSSPlugin', () => ({
-  useCSSPlugin: vi.fn((options: Record<string, unknown>) => {
+// Mock useP1Plugin to capture options
+vi.mock('../editor/useP1Plugin', () => ({
+  useP1Plugin: vi.fn((options: Record<string, unknown>) => {
     capturedPluginOptions.push({ ...options });
     return { name: 'css-plugin', render: () => null };
   }),
 }));
 
-// Mock useCSSOverrides to capture options
-vi.mock('../editor/useCSSOverrides', () => ({
-  useCSSOverrides: vi.fn((options: Record<string, unknown>) => {
+// Mock useP1Overrides to capture options
+vi.mock('../editor/useP1Overrides', () => ({
+  useP1Overrides: vi.fn((options: Record<string, unknown>) => {
     capturedOverridesOptions.push({ ...options });
     return {};
   }),
@@ -55,7 +55,7 @@ vi.mock('../versioning/useVersions', () => ({
 const mockUseVersions = vi.mocked(useVersions);
 
 vi.mock('../auth/index.js', () => ({
-  useCSSAuth: () => ({
+  useP1Auth: () => ({
     isAuthenticated: false,
     isLoading: false,
     user: null,
@@ -81,7 +81,7 @@ const defaultVersionsReturn = {
   refresh: vi.fn().mockResolvedValue(undefined),
 };
 
-// Build a mock CSSPuckContextValue
+// Build a mock P1PuckContextValue
 const mockClient = { checkpoints: { list: vi.fn(), getDocuments: vi.fn() }, documents: { list: vi.fn() } };
 
 function createMockContext(overrides: Record<string, unknown> = {}) {
@@ -145,15 +145,15 @@ function createMockContext(overrides: Record<string, unknown> = {}) {
   };
 }
 
-// Mock CSSPuckContext — will be configured per test via mockContextValue
+// Mock P1PuckContext — will be configured per test via mockContextValue
 let mockContextValue = createMockContext();
 
-vi.mock('../core/CSSPuckContext', () => ({
-  useCSSPuck: () => mockContextValue,
+vi.mock('../core/P1PuckContext', () => ({
+  useP1Puck: () => mockContextValue,
 }));
 
 // Import after mocks are set up
-import { useCSSEditor } from '../editor/useCSSEditor.js';
+import { useP1Editor } from '../editor/useP1Editor.js';
 
 beforeEach(() => {
   capturedPluginOptions.length = 0;
@@ -184,7 +184,7 @@ describe('derived publishedStatus from version isPublished', () => {
 
     // viewingVersion is null, so current version = versions[0] = v3
     renderHook(() =>
-      useCSSEditor({
+      useP1Editor({
         documentPath: '/home',
         puckConfig: {},
       }),
@@ -207,7 +207,7 @@ describe('derived publishedStatus from version isPublished', () => {
     // viewingVersion is null, so current version = versions[0] = v3 (not published)
     // but v2 is published, so status = 'unpublished-changes'
     renderHook(() =>
-      useCSSEditor({
+      useP1Editor({
         documentPath: '/home',
         puckConfig: {},
       }),
@@ -228,7 +228,7 @@ describe('derived publishedStatus from version isPublished', () => {
     });
 
     renderHook(() =>
-      useCSSEditor({
+      useP1Editor({
         documentPath: '/home',
         puckConfig: {},
       }),
@@ -253,7 +253,7 @@ describe('derived publishedStatus from version isPublished', () => {
     });
 
     renderHook(() =>
-      useCSSEditor({
+      useP1Editor({
         documentPath: '/home',
         puckConfig: {},
       }),
@@ -266,10 +266,10 @@ describe('derived publishedStatus from version isPublished', () => {
 });
 
 // ============================================================
-// 2. publishedStatus flows to useCSSOverrides
+// 2. publishedStatus flows to useP1Overrides
 // ============================================================
 
-describe('publishedStatus flows to useCSSOverrides', () => {
+describe('publishedStatus flows to useP1Overrides', () => {
   it('passes "published" when current version isPublished', () => {
     mockUseVersions.mockReturnValue({
       ...defaultVersionsReturn,
@@ -281,7 +281,7 @@ describe('publishedStatus flows to useCSSOverrides', () => {
     });
 
     renderHook(() =>
-      useCSSEditor({
+      useP1Editor({
         documentPath: '/home',
         puckConfig: {},
       }),
@@ -302,7 +302,7 @@ describe('publishedStatus flows to useCSSOverrides', () => {
     });
 
     renderHook(() =>
-      useCSSEditor({
+      useP1Editor({
         documentPath: '/home',
         puckConfig: {},
       }),
@@ -323,7 +323,7 @@ describe('publishedStatus flows to useCSSOverrides', () => {
     });
 
     renderHook(() =>
-      useCSSEditor({
+      useP1Editor({
         documentPath: '/home',
         puckConfig: {},
       }),
@@ -340,7 +340,7 @@ describe('publishedStatus flows to useCSSOverrides', () => {
     });
 
     renderHook(() =>
-      useCSSEditor({
+      useP1Editor({
         documentPath: '/home',
         puckConfig: {},
       }),
@@ -367,7 +367,7 @@ describe('combined wiring of published status data', () => {
     });
 
     renderHook(() =>
-      useCSSEditor({
+      useP1Editor({
         documentPath: '/home',
         puckConfig: {},
       }),
@@ -391,7 +391,7 @@ describe('combined wiring of published status data', () => {
     const onPublishSuccess = vi.fn();
 
     renderHook(() =>
-      useCSSEditor({
+      useP1Editor({
         documentPath: '/home',
         puckConfig: {},
         overrideOptions: { onPublishSuccess },

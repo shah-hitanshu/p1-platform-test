@@ -8,7 +8,7 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useBranches } from '../src/editor/useBranches.js';
-import type { CSSClient, Branch } from '@pantheon-systems/css-client';
+import type { P1Client, Branch } from '@pantheon-systems/css-client';
 
 /** Helper to build a Branch object with sensible defaults. */
 function makeBranch(overrides: Partial<Branch> & { id: string }): Branch {
@@ -32,7 +32,7 @@ describe('useBranches', () => {
     branches: {
       list: vi.fn(),
     },
-  } as unknown as CSSClient;
+  } as unknown as P1Client;
 
   beforeEach(() => {
     vi.clearAllMocks();

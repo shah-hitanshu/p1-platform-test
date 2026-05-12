@@ -1,6 +1,6 @@
-import type { CSSFeaturePlugin } from '../core/plugin-types.js';
+import type { P1FeaturePlugin } from '../core/plugin-types.js';
 
-export const agentPlugin: CSSFeaturePlugin = {
+export const agentPlugin: P1FeaturePlugin = {
   name: 'agent',
   featureFlags: ['agentModeEnabled'],
   priority: 60,

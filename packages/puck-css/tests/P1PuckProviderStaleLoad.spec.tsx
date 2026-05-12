@@ -11,9 +11,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitFor, act } from '@testing-library/react';
 import React from 'react';
-import { CSSPuckProvider } from '../src/editor/CSSPuckProvider.js';
-import { useCSSPuck } from '../src/core/CSSPuckContext.js';
-import type { CSSClient } from '@pantheon-systems/css-client';
+import { P1PuckProvider } from '../src/editor/P1PuckProvider.js';
+import { useP1Puck } from '../src/core/P1PuckContext.js';
+import type { P1Client } from '@pantheon-systems/css-client';
 
 // Helper: create a deferred promise for controlled resolution
 function createDeferred<T>() {
@@ -90,7 +90,7 @@ const createMockClient = () => {
     withPrincipal: vi.fn(),
   };
   client.withPrincipal.mockReturnValue(client);
-  return client as unknown as CSSClient;
+  return client as unknown as P1Client;
 };
 
 // Test component to capture context
@@ -106,7 +106,7 @@ function ContextCapture({
 }: {
   onContext: (ctx: CapturedContext) => void;
 }): null {
-  const context = useCSSPuck();
+  const context = useP1Puck();
   onContext(context as unknown as CapturedContext);
   return null;
 }
@@ -163,14 +163,14 @@ describe('Stale loadDocument Response Guard', () => {
     let ctx: CapturedContext | null = null;
 
     render(
-      <CSSPuckProvider
-        client={mockClient as unknown as CSSClient}
+      <P1PuckProvider
+        client={mockClient as unknown as P1Client}
         siteId="site-1"
         branchId="branch-1"
         userId="user-1"
       >
         <ContextCapture onContext={(c) => { ctx = c; }} />
-      </CSSPuckProvider>
+      </P1PuckProvider>
     );
 
     // Wait for initial render
@@ -237,14 +237,14 @@ describe('Stale loadDocument Response Guard', () => {
     let ctx: CapturedContext | null = null;
 
     render(
-      <CSSPuckProvider
-        client={mockClient as unknown as CSSClient}
+      <P1PuckProvider
+        client={mockClient as unknown as P1Client}
         siteId="site-1"
         branchId="branch-1"
         userId="user-1"
       >
         <ContextCapture onContext={(c) => { ctx = c; }} />
-      </CSSPuckProvider>
+      </P1PuckProvider>
     );
 
     await waitFor(() => {
@@ -292,14 +292,14 @@ describe('Stale loadDocument Response Guard', () => {
     let ctx: CapturedContext | null = null;
 
     render(
-      <CSSPuckProvider
-        client={mockClient as unknown as CSSClient}
+      <P1PuckProvider
+        client={mockClient as unknown as P1Client}
         siteId="site-1"
         branchId="branch-1"
         userId="user-1"
       >
         <ContextCapture onContext={(c) => { ctx = c; }} />
-      </CSSPuckProvider>
+      </P1PuckProvider>
     );
 
     await waitFor(() => {

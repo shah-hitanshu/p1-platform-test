@@ -10,7 +10,7 @@ import React from 'react';
 import { useAgentEdit, useAgentTrigger } from '../src/agent/index.js';
 import { PresenceContext } from '../src/core/PresenceContext.js';
 import type {
-  CSSClient,
+  P1Client,
   AgentEditPermission,
   AgentEditSession,
   AgentEditCompleteResult,
@@ -67,7 +67,7 @@ const mockAgent: RegisteredAgent = {
 // Mock Client Factory
 // =============================================================================
 
-function createMockClient(overrides: Partial<CSSClient['agentEdit']> = {}): CSSClient {
+function createMockClient(overrides: Partial<P1Client['agentEdit']> = {}): P1Client {
   return {
     agentEdit: {
       canEdit: vi.fn().mockResolvedValue(mockPermissionAllowed),
@@ -81,7 +81,7 @@ function createMockClient(overrides: Partial<CSSClient['agentEdit']> = {}): CSSC
       getBranchPresence: vi.fn().mockResolvedValue({ actors: [] }),
       getAgentPresence: vi.fn().mockResolvedValue({}),
     },
-  } as unknown as CSSClient;
+  } as unknown as P1Client;
 }
 
 // =============================================================================
@@ -89,12 +89,12 @@ function createMockClient(overrides: Partial<CSSClient['agentEdit']> = {}): CSSC
 // =============================================================================
 
 interface TestWrapperProps {
-  client?: CSSClient;
+  client?: P1Client;
   documentPath?: string;
   children: React.ReactNode;
 }
 
-function createWrapper(client: CSSClient = createMockClient(), documentPath = '/pages/home') {
+function createWrapper(client: P1Client = createMockClient(), documentPath = '/pages/home') {
   return function TestWrapper({ children }: { children: React.ReactNode }) {
     return React.createElement(
       PresenceContext.Provider,

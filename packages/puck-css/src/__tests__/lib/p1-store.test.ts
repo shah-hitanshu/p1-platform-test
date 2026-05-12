@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
-// Mock CSSClient
+// Mock P1Client
 // ---------------------------------------------------------------------------
 
 interface MockDocument {
@@ -68,26 +68,26 @@ function createMockClient(opts: {
   };
 }
 
-type MockCSSClient = ReturnType<typeof createMockClient>;
+type MockP1Client = ReturnType<typeof createMockClient>;
 
 // ---------------------------------------------------------------------------
 // Import the module under test
 // ---------------------------------------------------------------------------
 
-import { createCSSPageStore, type CSSStoreConfig } from "../../data/dal/css-store";
+import { createP1PageStore, type P1StoreConfig } from "../../data/dal/p1-store";
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("createCSSPageStore", () => {
+describe("createP1PageStore", () => {
   const SITE_ID = "site-1";
   const BRANCH_ID = "branch-1";
 
-  let mockClient: MockCSSClient;
+  let mockClient: MockP1Client;
 
-  function makeConfig(client: MockCSSClient): CSSStoreConfig {
-    return { client: client as unknown as CSSStoreConfig["client"], siteId: SITE_ID, branchId: BRANCH_ID };
+  function makeConfig(client: MockP1Client): P1StoreConfig {
+    return { client: client as unknown as P1StoreConfig["client"], siteId: SITE_ID, branchId: BRANCH_ID };
   }
 
   beforeEach(() => {
@@ -101,7 +101,7 @@ describe("createCSSPageStore", () => {
   describe("factory", () => {
     it("returns a PageStore without any async init", () => {
       mockClient = createMockClient();
-      const store = createCSSPageStore(makeConfig(mockClient));
+      const store = createP1PageStore(makeConfig(mockClient));
       expect(store).toBeDefined();
       expect(typeof store.get).toBe("function");
       expect(typeof store.set).toBe("function");
@@ -124,7 +124,7 @@ describe("createCSSPageStore", () => {
         "doc-1": { id: "v-1", documentId: "doc-1", branchId: BRANCH_ID, snapshot: { root: { props: { title: "Home" } }, content: [] } },
       };
       mockClient = createMockClient({ documents: docs, versions });
-      const store = createCSSPageStore(makeConfig(mockClient));
+      const store = createP1PageStore(makeConfig(mockClient));
 
       const data = await store.get("/") as Record<string, unknown>;
       expect(data).toBeDefined();
@@ -135,7 +135,7 @@ describe("createCSSPageStore", () => {
 
     it("returns undefined for a non-existent path", async () => {
       mockClient = createMockClient({ documents: [] });
-      const store = createCSSPageStore(makeConfig(mockClient));
+      const store = createP1PageStore(makeConfig(mockClient));
 
       expect(await store.get("/nonexistent")).toBeUndefined();
     });
@@ -151,14 +151,14 @@ describe("createCSSPageStore", () => {
         { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
       ];
       mockClient = createMockClient({ documents: docs });
-      const store = createCSSPageStore(makeConfig(mockClient));
+      const store = createP1PageStore(makeConfig(mockClient));
 
       expect(await store.has("/")).toBe(true);
     });
 
     it("returns false for a non-existent path", async () => {
       mockClient = createMockClient({ documents: [] });
-      const store = createCSSPageStore(makeConfig(mockClient));
+      const store = createP1PageStore(makeConfig(mockClient));
 
       expect(await store.has("/nope")).toBe(false);
     });
@@ -175,7 +175,7 @@ describe("createCSSPageStore", () => {
         { id: "doc-2", path: "/about", siteId: SITE_ID, archived: false },
       ];
       mockClient = createMockClient({ documents: docs });
-      const store = createCSSPageStore(makeConfig(mockClient));
+      const store = createP1PageStore(makeConfig(mockClient));
 
       const keys = await store.keys();
       expect(keys.sort()).toEqual(["/", "/about"]);
@@ -193,7 +193,7 @@ describe("createCSSPageStore", () => {
         { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
       ];
       mockClient = createMockClient({ documents: docs });
-      const store = createCSSPageStore(makeConfig(mockClient));
+      const store = createP1PageStore(makeConfig(mockClient));
 
       const newData = { root: { props: { title: "Updated" } }, content: [] };
       await store.set("/", newData);
@@ -214,7 +214,7 @@ describe("createCSSPageStore", () => {
         { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
       ];
       mockClient = createMockClient({ documents: docs });
-      const store = createCSSPageStore(makeConfig(mockClient));
+      const store = createP1PageStore(makeConfig(mockClient));
 
       await store.set("/", { root: { props: {} }, content: [] });
       expect(mockClient.documents.create).not.toHaveBeenCalled();
@@ -228,7 +228,7 @@ describe("createCSSPageStore", () => {
   describe("set — new document", () => {
     it("creates a document then a version via css-client", async () => {
       mockClient = createMockClient({ documents: [] });
-      const store = createCSSPageStore(makeConfig(mockClient));
+      const store = createP1PageStore(makeConfig(mockClient));
 
       const newData = { root: { props: { title: "New" } }, content: [] };
       await store.set("/new-page", newData);
@@ -262,7 +262,7 @@ describe("createCSSPageStore", () => {
         { id: "doc-2", path: "/about", siteId: SITE_ID, archived: false },
       ];
       mockClient = createMockClient({ documents: docs });
-      const store = createCSSPageStore(makeConfig(mockClient));
+      const store = createP1PageStore(makeConfig(mockClient));
 
       await store.delete("/about");
       expect(mockClient.documents.getByPath).toHaveBeenCalledWith(SITE_ID, "about");
@@ -271,7 +271,7 @@ describe("createCSSPageStore", () => {
 
     it("is a no-op for non-existent paths", async () => {
       mockClient = createMockClient({ documents: [] });
-      const store = createCSSPageStore(makeConfig(mockClient));
+      const store = createP1PageStore(makeConfig(mockClient));
 
       await store.delete("/nope");
       expect(mockClient.documents.delete).not.toHaveBeenCalled();
@@ -296,7 +296,7 @@ describe("createCSSPageStore", () => {
         "doc-tpl": { id: "v-tpl", documentId: "doc-tpl", branchId: BRANCH_ID, snapshot: semanticEntry as unknown as Record<string, unknown> },
       };
       mockClient = createMockClient({ documents: docs, versions });
-      const store = createCSSPageStore(makeConfig(mockClient));
+      const store = createP1PageStore(makeConfig(mockClient));
 
       const entry = await store.get("/jedi/:id") as { kind: string; basePath: string; ops: unknown[] };
       expect(entry.kind).toBe("semantic");
@@ -313,7 +313,7 @@ describe("createCSSPageStore", () => {
     it("get returns undefined when API call fails", async () => {
       mockClient = createMockClient();
       mockClient.documents.getByPath.mockRejectedValue(new Error("Network error"));
-      const store = createCSSPageStore(makeConfig(mockClient));
+      const store = createP1PageStore(makeConfig(mockClient));
 
       expect(await store.get("/")).toBeUndefined();
     });
@@ -321,7 +321,7 @@ describe("createCSSPageStore", () => {
     it("delete is silent when API call fails", async () => {
       mockClient = createMockClient();
       mockClient.documents.getByPath.mockRejectedValue(new Error("Not found"));
-      const store = createCSSPageStore(makeConfig(mockClient));
+      const store = createP1PageStore(makeConfig(mockClient));
 
       await expect(store.delete("/nope")).resolves.toBeUndefined();
     });

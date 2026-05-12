@@ -1,14 +1,14 @@
 /**
- * CSS Client Error Classes
+ * P1 Client Error Classes
  *
  * Custom error types for API and network errors.
  */
 
 /**
- * Base error for CSS API errors.
+ * Base error for P1 API errors.
  */
-export class CSSApiError extends Error {
-  override name = 'CSSApiError';
+export class P1ApiError extends Error {
+  override name = 'P1ApiError';
   public readonly status: number;
   public readonly code?: string;
   public readonly details?: unknown;
@@ -18,7 +18,7 @@ export class CSSApiError extends Error {
     this.status = status;
     this.code = code;
     this.details = details;
-    Object.setPrototypeOf(this, CSSApiError.prototype);
+    Object.setPrototypeOf(this, P1ApiError.prototype);
   }
 }
 
@@ -51,7 +51,7 @@ export class AuthenticationError extends Error {
 /**
  * Error thrown when a resource is not found.
  */
-export class NotFoundError extends CSSApiError {
+export class NotFoundError extends P1ApiError {
   override name = 'NotFoundError';
 
   constructor(resource: string, id?: string) {
@@ -64,7 +64,7 @@ export class NotFoundError extends CSSApiError {
 /**
  * Error thrown when there's a conflict (e.g., duplicate resource).
  */
-export class ConflictError extends CSSApiError {
+export class ConflictError extends P1ApiError {
   override name = 'ConflictError';
 
   constructor(message: string, details?: unknown) {
@@ -76,7 +76,7 @@ export class ConflictError extends CSSApiError {
 /**
  * Error thrown when request validation fails.
  */
-export class ValidationError extends CSSApiError {
+export class ValidationError extends P1ApiError {
   override name = 'ValidationError';
 
   constructor(message: string, details?: unknown) {

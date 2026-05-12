@@ -1,5 +1,5 @@
 /**
- * Convert a route path to a CSS document path.
+ * Convert a route path to a P1 document path.
  * "/" -> "home"
  * "/about" -> "about"
  * "/en/products" -> "en/products"
@@ -12,7 +12,7 @@ function trimSlashes(value: string): string {
   return value.slice(start, end);
 }
 
-export function toCSSPath(routePath: string): string {
+export function toP1Path(routePath: string): string {
   const cleaned = trimSlashes(routePath);
   return cleaned === '' ? 'home' : cleaned;
 }

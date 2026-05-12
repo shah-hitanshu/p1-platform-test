@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useMemo } from 'react';
-import type { CSSClient } from '@pantheon-systems/css-client';
+import type { P1Client } from '@pantheon-systems/css-client';
 import { useMergeResolution } from '../../useMergeResolution.js';
 import { diffPuckDataWithPositions } from '../../../versioning/utils/diff.js';
 import type { ComponentDiffWithPosition } from '../../../core/types.js';
@@ -9,7 +9,7 @@ import type { DiffCounts } from './DocumentResolutionList.js';
 import { DocumentResolutionDetail } from './DocumentResolutionDetail.js';
 
 export interface MergeResolutionPageProps {
-  client: CSSClient;
+  client: P1Client;
   siteId: string;
   sourceBranchId: string;
   targetBranchId: string;

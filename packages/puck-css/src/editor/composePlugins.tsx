@@ -1,13 +1,13 @@
 import React from 'react';
-import type { CSSFeaturePlugin, CSSFeaturePluginDeps, PuckPluginDef } from '../core/plugin-types.js';
-import type { CSSFeatureConfig } from '../core/featureConfig.js';
+import type { P1FeaturePlugin, P1FeaturePluginDeps, PuckPluginDef } from '../core/plugin-types.js';
+import type { P1FeatureConfig } from '../core/featureConfig.js';
 
 const DEFAULT_PRIORITY = 100;
 
 export function resolveActivePlugins(
-  plugins: CSSFeaturePlugin[],
-  config: Required<CSSFeatureConfig>,
-): CSSFeaturePlugin[] {
+  plugins: P1FeaturePlugin[],
+  config: Required<P1FeatureConfig>,
+): P1FeaturePlugin[] {
   return plugins
     .filter((p) => {
       if (!p.featureFlags || p.featureFlags.length === 0) return true;
@@ -17,9 +17,9 @@ export function resolveActivePlugins(
 }
 
 export function composeProviders(
-  plugins: CSSFeaturePlugin[],
-  config: Required<CSSFeatureConfig>,
-  deps: CSSFeaturePluginDeps,
+  plugins: P1FeaturePlugin[],
+  config: Required<P1FeatureConfig>,
+  deps: P1FeaturePluginDeps,
 ): React.ComponentType<{ children: React.ReactNode }> {
   const withProviders = plugins.filter((p) => p.provider);
   if (withProviders.length === 0) {
@@ -39,8 +39,8 @@ export function composeProviders(
 }
 
 export function collectPuckPlugins(
-  plugins: CSSFeaturePlugin[],
-  deps: CSSFeaturePluginDeps,
+  plugins: P1FeaturePlugin[],
+  deps: P1FeaturePluginDeps,
 ): PuckPluginDef[] {
   const result: PuckPluginDef[] = [];
   for (const p of plugins) {
@@ -52,8 +52,8 @@ export function collectPuckPlugins(
 }
 
 export function mergeOverrides(
-  plugins: CSSFeaturePlugin[],
-  deps: CSSFeaturePluginDeps,
+  plugins: P1FeaturePlugin[],
+  deps: P1FeaturePluginDeps,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const p of plugins) {

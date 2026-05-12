@@ -6,12 +6,12 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { DocumentVersion, PuckData } from '@pantheon-systems/css-client';
-import type { CSSClient } from '@pantheon-systems/css-client';
+import type { P1Client } from '@pantheon-systems/css-client';
 import type { ComponentDiff } from '../core/types.js';
 import { diffPuckData } from './utils/diff.js';
 
 export interface UseVersionsParams {
-  client: CSSClient;
+  client: P1Client;
   siteId: string;
   branchId: string;
   documentId: string | null;

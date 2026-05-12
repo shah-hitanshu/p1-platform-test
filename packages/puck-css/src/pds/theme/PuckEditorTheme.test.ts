@@ -15,10 +15,10 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const cssPath = join(__dirname, 'PuckEditorTheme.css');
+const p1Path = join(__dirname, 'PuckEditorTheme.css');
 
 function readThemeCSS(): string {
-  return readFileSync(cssPath, 'utf-8');
+  return readFileSync(p1Path, 'utf-8');
 }
 
 describe('PuckEditorTheme.css', () => {

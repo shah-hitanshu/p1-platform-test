@@ -1,15 +1,15 @@
 /**
  * B.5: Feature Config UI Wiring Tests
  *
- * Tests that the resolved CSSFeatureConfig is exposed on the context value
- * and that useCSSPlugin / useCSSOverrides gate UI features based on flags.
+ * Tests that the resolved P1FeatureConfig is exposed on the context value
+ * and that useP1Plugin / useP1Overrides gate UI features based on flags.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import React, { useContext } from 'react';
-import type { CSSFeatureConfig } from '../core/featureConfig.js';
-import type { PuckOverrides } from '../editor/plugin/createCSSOverrides.js';
+import type { P1FeatureConfig } from '../core/featureConfig.js';
+import type { PuckOverrides } from '../editor/plugin/createP1Overrides.js';
 
 // ---------------------------------------------------------------------------
 // Mock heavy dependencies (same pattern as provider-plugin-wiring.test)
@@ -73,16 +73,16 @@ vi.mock('../core/NotificationContext', () => ({
   }),
 }));
 
-import { CSSPuckProvider } from '../editor/CSSPuckProvider.js';
-import { CSSPuckContext } from '../core/CSSPuckContext.js';
-import { useCSSOverrides } from '../editor/useCSSOverrides.js';
-import { useCSSPlugin } from '../editor/useCSSPlugin.js';
+import { P1PuckProvider } from '../editor/P1PuckProvider.js';
+import { P1PuckContext } from '../core/P1PuckContext.js';
+import { useP1Overrides } from '../editor/useP1Overrides.js';
+import { useP1Plugin } from '../editor/useP1Plugin.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const mockClient = mockClientMethods as unknown as Parameters<typeof CSSPuckProvider>[0]['client'];
+const mockClient = mockClientMethods as unknown as Parameters<typeof P1PuckProvider>[0]['client'];
 
 const baseProps = {
   client: mockClient,
@@ -101,22 +101,22 @@ beforeEach(() => {
 
 describe('featureConfig on context', () => {
   it('exposes resolved featureConfig with defaults', () => {
-    let capturedConfig: CSSFeatureConfig | undefined;
+    let capturedConfig: P1FeatureConfig | undefined;
 
     function ConfigReader() {
-      const ctx = useContext(CSSPuckContext);
+      const ctx = useContext(P1PuckContext);
       capturedConfig = ctx?.featureConfig;
       return null;
     }
 
     render(
-      <CSSPuckProvider {...baseProps}>
+      <P1PuckProvider {...baseProps}>
         <ConfigReader />
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
     expect(capturedConfig).toBeDefined();
-    const config = capturedConfig as CSSFeatureConfig;
+    const config = capturedConfig as P1FeatureConfig;
     expect(config.enableRealtime).toBe(true);
     expect(config.presenceEnabled).toBe(true);
     expect(config.enableAutoSave).toBe(true);
@@ -129,16 +129,16 @@ describe('featureConfig on context', () => {
   });
 
   it('respects explicit featureConfig prop', () => {
-    let capturedConfig: CSSFeatureConfig | undefined;
+    let capturedConfig: P1FeatureConfig | undefined;
 
     function ConfigReader() {
-      const ctx = useContext(CSSPuckContext);
+      const ctx = useContext(P1PuckContext);
       capturedConfig = ctx?.featureConfig;
       return null;
     }
 
     render(
-      <CSSPuckProvider
+      <P1PuckProvider
         {...baseProps}
         featureConfig={{
           enableAutoSave: false,
@@ -147,10 +147,10 @@ describe('featureConfig on context', () => {
         }}
       >
         <ConfigReader />
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
-    const config = capturedConfig as CSSFeatureConfig;
+    const config = capturedConfig as P1FeatureConfig;
     expect(config.enableAutoSave).toBe(false);
     expect(config.enablePublishButton).toBe(false);
     expect(config.enableBranchSelector).toBe(false);
@@ -160,21 +160,21 @@ describe('featureConfig on context', () => {
   });
 
   it('derives feature flags from existing boolean props', () => {
-    let capturedConfig: CSSFeatureConfig | undefined;
+    let capturedConfig: P1FeatureConfig | undefined;
 
     function ConfigReader() {
-      const ctx = useContext(CSSPuckContext);
+      const ctx = useContext(P1PuckContext);
       capturedConfig = ctx?.featureConfig;
       return null;
     }
 
     render(
-      <CSSPuckProvider {...baseProps} presenceEnabled={false} agentModeEnabled={true}>
+      <P1PuckProvider {...baseProps} presenceEnabled={false} agentModeEnabled={true}>
         <ConfigReader />
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
-    const config = capturedConfig as CSSFeatureConfig;
+    const config = capturedConfig as P1FeatureConfig;
     expect(config.presenceEnabled).toBe(false);
     expect(config.agentModeEnabled).toBe(true);
     // Derived defaults follow the source flags
@@ -185,25 +185,25 @@ describe('featureConfig on context', () => {
 });
 
 // ---------------------------------------------------------------------------
-// B.5.2: useCSSOverrides gates features based on featureConfig
+// B.5.2: useP1Overrides gates features based on featureConfig
 // ---------------------------------------------------------------------------
 
-describe('useCSSOverrides respects featureConfig', () => {
+describe('useP1Overrides respects featureConfig', () => {
   it('disables collaborator avatars when enableCollaboratorAvatars is false', () => {
     let overridesResult: PuckOverrides | undefined;
 
     function OverridesReader() {
-      overridesResult = useCSSOverrides();
+      overridesResult = useP1Overrides();
       return null;
     }
 
     render(
-      <CSSPuckProvider
+      <P1PuckProvider
         {...baseProps}
         featureConfig={{ enableCollaboratorAvatars: false }}
       >
         <OverridesReader />
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
     expect(overridesResult).toBeDefined();
@@ -214,17 +214,17 @@ describe('useCSSOverrides respects featureConfig', () => {
     let overridesResult: PuckOverrides | undefined;
 
     function OverridesReader() {
-      overridesResult = useCSSOverrides();
+      overridesResult = useP1Overrides();
       return null;
     }
 
     render(
-      <CSSPuckProvider
+      <P1PuckProvider
         {...baseProps}
         featureConfig={{ enableAgentBanner: false }}
       >
         <OverridesReader />
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
     expect(overridesResult).toBeDefined();
@@ -233,25 +233,25 @@ describe('useCSSOverrides respects featureConfig', () => {
 });
 
 // ---------------------------------------------------------------------------
-// B.5.3: useCSSPlugin gates features based on featureConfig
+// B.5.3: useP1Plugin gates features based on featureConfig
 // ---------------------------------------------------------------------------
 
-describe('useCSSPlugin respects featureConfig', () => {
+describe('useP1Plugin respects featureConfig', () => {
   it('omits branch selector data when enableBranchSelector is false', () => {
     let pluginResult: { overrides?: Record<string, unknown> } | undefined;
 
     function PluginReader() {
-      pluginResult = useCSSPlugin();
+      pluginResult = useP1Plugin();
       return null;
     }
 
     render(
-      <CSSPuckProvider
+      <P1PuckProvider
         {...baseProps}
         featureConfig={{ enableBranchSelector: false }}
       >
         <PluginReader />
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
     expect(pluginResult).toBeDefined();
@@ -262,17 +262,17 @@ describe('useCSSPlugin respects featureConfig', () => {
     let pluginResult: { overrides?: Record<string, unknown> } | undefined;
 
     function PluginReader() {
-      pluginResult = useCSSPlugin();
+      pluginResult = useP1Plugin();
       return null;
     }
 
     render(
-      <CSSPuckProvider
+      <P1PuckProvider
         {...baseProps}
         featureConfig={{ enableVersionHistory: false }}
       >
         <PluginReader />
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
     expect(pluginResult).toBeDefined();
@@ -285,17 +285,17 @@ describe('useCSSPlugin respects featureConfig', () => {
 
 describe('featureConfig precedence', () => {
   it('explicit featureConfig overrides derived boolean props', () => {
-    let capturedConfig: CSSFeatureConfig | undefined;
+    let capturedConfig: P1FeatureConfig | undefined;
 
     function ConfigReader() {
-      const ctx = useContext(CSSPuckContext);
+      const ctx = useContext(P1PuckContext);
       capturedConfig = ctx?.featureConfig;
       return null;
     }
 
     // presenceEnabled=true but featureConfig explicitly disables avatars
     render(
-      <CSSPuckProvider
+      <P1PuckProvider
         {...baseProps}
         presenceEnabled={true}
         featureConfig={{
@@ -304,10 +304,10 @@ describe('featureConfig precedence', () => {
         }}
       >
         <ConfigReader />
-      </CSSPuckProvider>,
+      </P1PuckProvider>,
     );
 
-    const config = capturedConfig as CSSFeatureConfig;
+    const config = capturedConfig as P1FeatureConfig;
     expect(config.presenceEnabled).toBe(true);
     expect(config.enableCollaboratorAvatars).toBe(false);
   });

@@ -1,21 +1,21 @@
 /**
- * useCSSOverrides Hook
+ * useP1Overrides Hook
  *
- * Creates referentially stable Puck overrides for CSS integration.
- * Internally reads getters and callbacks from CSSPuckProvider context
- * and wires them to createCSSOverrides with correct options.
+ * Creates referentially stable Puck overrides for P1 integration.
+ * Internally reads getters and callbacks from P1PuckProvider context
+ * and wires them to createP1Overrides with correct options.
  */
 
 import { useRef, useMemo } from 'react';
-import { useCSSPuck } from '../core/CSSPuckContext.js';
-import { createCSSOverrides } from './plugin/createCSSOverrides.js';
-import type { CSSOverridesOptions, PuckOverrides } from './plugin/createCSSOverrides.js';
+import { useP1Puck } from '../core/P1PuckContext.js';
+import { createP1Overrides } from './plugin/createP1Overrides.js';
+import type { P1OverridesOptions, PuckOverrides } from './plugin/createP1Overrides.js';
 import type { Checkpoint, ActorPresence } from '@pantheon-systems/css-client';
 
 /**
  * Options consumers can pass to customize override behavior.
  */
-export interface UseCSSOverridesOptions {
+export interface UseP1OverridesOptions {
   /** Whether to show the default Puck publish button */
   showDefaultPublish?: boolean;
   /** Callback when publish succeeds */
@@ -33,13 +33,13 @@ export interface UseCSSOverridesOptions {
 }
 
 /**
- * Creates referentially stable Puck overrides for CSS integration.
+ * Creates referentially stable Puck overrides for P1 integration.
  *
- * Reads stable getters and callbacks from CSSPuckProvider context and
- * wires them to createCSSOverrides. Uses a Proxy pattern to keep the
+ * Reads stable getters and callbacks from P1PuckProvider context and
+ * wires them to createP1Overrides. Uses a Proxy pattern to keep the
  * overrides object referentially stable across re-renders.
  *
- * Must be used inside a CSSPuckProvider.
+ * Must be used inside a P1PuckProvider.
  *
  * @param options - Optional customization
  * @returns Stable PuckOverrides instance
@@ -47,20 +47,20 @@ export interface UseCSSOverridesOptions {
  * @example
  * ```tsx
  * function Editor() {
- *   const overrides = useCSSOverrides({
+ *   const overrides = useP1Overrides({
  *     onPublishSuccess: (cp) => console.log('Published:', cp.name),
  *   });
  *   return <Puck overrides={overrides} config={config} data={data} />;
  * }
  * ```
  */
-export function useCSSOverrides(options: UseCSSOverridesOptions = {}): PuckOverrides {
-  const css = useCSSPuck();
+export function useP1Overrides(options: UseP1OverridesOptions = {}): PuckOverrides {
+  const css = useP1Puck();
 
   // Build the full overrides options from context + consumer options
   const fc = css.featureConfig;
 
-  const overridesOptions: CSSOverridesOptions = {
+  const overridesOptions: P1OverridesOptions = {
     // Use getter-based API for performance (avoids overrides recreation)
     getSaveStatus: css.getSaveStatus,
     getLastSaved: css.getLastSaved,
@@ -92,7 +92,7 @@ export function useCSSOverrides(options: UseCSSOverridesOptions = {}): PuckOverr
   // Create a stable Proxy-backed options object
   const stableOptions = useMemo(
     () =>
-      new Proxy({} as CSSOverridesOptions, {
+      new Proxy({} as P1OverridesOptions, {
         get(_target, prop: string) {
           return (optionsRef.current as unknown as Record<string, unknown>)[prop];
         },
@@ -101,7 +101,7 @@ export function useCSSOverrides(options: UseCSSOverridesOptions = {}): PuckOverr
   );
 
   // Create overrides once with stable proxy options
-  const overrides = useMemo(() => createCSSOverrides(stableOptions), [stableOptions]);
+  const overrides = useMemo(() => createP1Overrides(stableOptions), [stableOptions]);
 
   return overrides;
 }

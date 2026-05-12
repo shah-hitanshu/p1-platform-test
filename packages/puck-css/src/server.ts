@@ -68,9 +68,9 @@ export {
   getCapabilities,
 } from "./data/dal/index.js";
 
-// --- CSS-backed store ---
-export { createCSSPageStore } from "./data/dal/css-store.js";
-export type { CSSStoreConfig, CSSStoreClient } from "./data/dal/css-store.js";
+// --- P1-backed store ---
+export { createP1PageStore } from "./data/dal/p1-store.js";
+export type { P1StoreConfig, P1StoreClient } from "./data/dal/p1-store.js";
 export { ensureInitialized, type P1DataConfig } from "./data/dal/init.js";
 export { runWithAuthToken } from "./data/dal/request-auth.js";
 

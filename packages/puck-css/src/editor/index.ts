@@ -1,27 +1,27 @@
-export { CSSApp } from './CSSApp.js';
-export type { CSSAppProps } from './CSSApp.js';
-export { CSSPuckProvider } from './CSSPuckProvider.js';
-export type { CSSPuckProviderProps } from './CSSPuckProvider.js';
+export { P1App } from './P1App.js';
+export type { P1AppProps } from './P1App.js';
+export { P1PuckProvider } from './P1PuckProvider.js';
+export type { P1PuckProviderProps } from './P1PuckProvider.js';
 
 export { useAutoSave } from './useAutoSave.js';
 export { useDocuments } from './useDocuments.js';
 export { useBranches } from './useBranches.js';
 export { useRealtime } from './useRealtime.js';
 export type { UseRealtimeParams, UseRealtimeReturn } from './useRealtime.js';
-export { useCSSPlugin } from './useCSSPlugin.js';
-export type { UseCSSPluginOptions } from './useCSSPlugin.js';
-export { useCSSOverrides } from './useCSSOverrides.js';
-export type { UseCSSOverridesOptions } from './useCSSOverrides.js';
-export { useCSSEditor } from './useCSSEditor.js';
-export type { UseCSSEditorOptions, UseCSSEditorReturn, PuckProps } from './useCSSEditor.js';
+export { useP1Plugin } from './useP1Plugin.js';
+export type { UseP1PluginOptions } from './useP1Plugin.js';
+export { useP1Overrides } from './useP1Overrides.js';
+export type { UseP1OverridesOptions } from './useP1Overrides.js';
+export { useP1Editor } from './useP1Editor.js';
+export type { UseP1EditorOptions, UseP1EditorReturn, PuckProps } from './useP1Editor.js';
 export { useMergePreview } from './useMergePreview.js';
 export type { UseMergePreviewReturn } from './useMergePreview.js';
 export { useComponentRegistry } from './useComponentRegistry.js';
 
-export { createCSSPlugin } from './plugin/CSSPlugin.js';
-export type { CSSPluginOptions, PuckPlugin } from './plugin/CSSPlugin.js';
-export { createCSSOverrides } from './plugin/createCSSOverrides.js';
-export type { CSSOverridesOptions, PuckOverrides } from './plugin/createCSSOverrides.js';
+export { createP1Plugin } from './plugin/P1Plugin.js';
+export type { P1PluginOptions, PuckPlugin } from './plugin/P1Plugin.js';
+export { createP1Overrides } from './plugin/createP1Overrides.js';
+export type { P1OverridesOptions, PuckOverrides } from './plugin/createP1Overrides.js';
 export { createMergePreviewPlugin } from './plugin/mergePreviewPlugin.js';
 
 export { SaveIndicator } from './components/SaveIndicator.js';

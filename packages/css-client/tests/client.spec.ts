@@ -3,9 +3,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CSSClient } from '../src/client.js';
+import { P1Client } from '../src/client.js';
 import {
-  CSSApiError,
+  P1ApiError,
   NetworkError,
   NotFoundError,
   ValidationError,
@@ -16,7 +16,7 @@ import {
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-describe('CSSClient', () => {
+describe('P1Client', () => {
   const baseUrl = 'http://localhost:8787';
   const apiKey = 'test-api-key';
 
@@ -30,8 +30,8 @@ describe('CSSClient', () => {
 
   describe('constructor', () => {
     it('should create client with base URL', () => {
-      const client = new CSSClient({ baseUrl });
-      expect(client).toBeInstanceOf(CSSClient);
+      const client = new P1Client({ baseUrl });
+      expect(client).toBeInstanceOf(P1Client);
       expect(client.sites).toBeDefined();
       expect(client.branches).toBeDefined();
       expect(client.documents).toBeDefined();
@@ -40,8 +40,8 @@ describe('CSSClient', () => {
     });
 
     it('should create client with API key', () => {
-      const client = new CSSClient({ baseUrl, apiKey });
-      expect(client).toBeInstanceOf(CSSClient);
+      const client = new P1Client({ baseUrl, apiKey });
+      expect(client).toBeInstanceOf(P1Client);
     });
   });
 
@@ -58,7 +58,7 @@ describe('CSSClient', () => {
         json: async () => ({ sites: mockSites }),
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       const sites = await client.sites.list();
 
       expect(sites).toEqual(mockSites);
@@ -82,7 +82,7 @@ describe('CSSClient', () => {
         json: async () => mockSite,
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       const site = await client.sites.get('site-1');
 
       expect(site).toEqual(mockSite);
@@ -106,7 +106,7 @@ describe('CSSClient', () => {
         json: async () => ({ branches: mockBranches }),
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       const branches = await client.branches.list('site-1');
 
       expect(branches).toEqual(mockBranches);
@@ -125,7 +125,7 @@ describe('CSSClient', () => {
         json: async () => mockBranch,
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       const branch = await client.branches.create({
         siteId: 'site-1',
         name: 'feature',
@@ -156,7 +156,7 @@ describe('CSSClient', () => {
         json: async () => ({ documents: mockDocs }),
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       const docs = await client.documents.list('site-1', 'branch-1');
 
       expect(docs).toEqual(mockDocs);
@@ -175,7 +175,7 @@ describe('CSSClient', () => {
         json: async () => ({ document: mockDoc }),
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       const doc = await client.documents.create({
         siteId: 'site-1',
         branchId: 'branch-1',
@@ -202,7 +202,7 @@ describe('CSSClient', () => {
         json: async () => mockVersion,
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       const version = await client.versions.getLatest('site-1', 'branch-1', 'doc-1');
 
       expect(version).toEqual(mockVersion);
@@ -227,7 +227,7 @@ describe('CSSClient', () => {
         json: async () => mockVersion,
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       const version = await client.versions.create('site-1', {
         documentId: 'doc-1',
         branchId: 'branch-1',
@@ -253,7 +253,7 @@ describe('CSSClient', () => {
         json: async () => mockCheckpoint,
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       const checkpoint = await client.checkpoints.create('site-1', {
         branchId: 'branch-1',
         name: 'Release v1.0',
@@ -271,7 +271,7 @@ describe('CSSClient', () => {
         json: async () => ({ error: 'Site not found' }),
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
 
       await expect(client.sites.get('nonexistent')).rejects.toThrow(NotFoundError);
     });
@@ -283,7 +283,7 @@ describe('CSSClient', () => {
         json: async () => ({ error: 'path is required' }),
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
 
       await expect(
         client.documents.create({ siteId: 's1', branchId: 'b1', path: '' })
@@ -297,7 +297,7 @@ describe('CSSClient', () => {
         json: async () => ({ error: 'Document already exists' }),
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
 
       await expect(
         client.documents.create({ siteId: 's1', branchId: 'b1', path: '/home' })
@@ -307,21 +307,21 @@ describe('CSSClient', () => {
     it('should throw NetworkError on fetch failure', async () => {
       mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
 
       await expect(client.sites.list()).rejects.toThrow(NetworkError);
     });
 
-    it('should throw CSSApiError for other errors', async () => {
+    it('should throw P1ApiError for other errors', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
         json: async () => ({ error: 'Internal server error' }),
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
 
-      await expect(client.sites.list()).rejects.toThrow(CSSApiError);
+      await expect(client.sites.list()).rejects.toThrow(P1ApiError);
     });
   });
 
@@ -333,7 +333,7 @@ describe('CSSClient', () => {
         json: async () => ({ sites: [] }),
       });
 
-      const client = new CSSClient({
+      const client = new P1Client({
         baseUrl,
         apiKey,
         principal: { id: 'user-123', type: 'user' },
@@ -359,7 +359,7 @@ describe('CSSClient', () => {
         json: async () => ({ sites: [] }),
       });
 
-      const client = new CSSClient({ baseUrl, apiKey });
+      const client = new P1Client({ baseUrl, apiKey });
       const userClient = client.withPrincipal({ id: 'user-456', type: 'user' });
 
       await userClient.sites.list();

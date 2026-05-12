@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { IconButton } from '@pantheon-systems/pds-toolkit-react';
-import { useCSSPuck } from '../../../core/CSSPuckContext.js';
+import { useP1Puck } from '../../../core/P1PuckContext.js';
 import { MergeResolutionPage } from './MergeResolutionPage.js';
 
 export interface MergeReviewPageProps {
@@ -19,7 +19,7 @@ export function MergeReviewPage({
   onClose,
   onMergeComplete,
 }: MergeReviewPageProps): React.ReactElement {
-  const { client, siteId, branchId, branches, branchesLoading } = useCSSPuck();
+  const { client, siteId, branchId, branches, branchesLoading } = useP1Puck();
   const [showResolveConflicts, setShowResolveConflicts] = useState(false);
 
   const mainBranch = branches.find((b) => b.isMain);

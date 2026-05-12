@@ -1,15 +1,15 @@
 /**
- * Phase 3.3-3.4: CSSPuckProvider Realtime Integration Tests (TDD)
+ * Phase 3.3-3.4: P1PuckProvider Realtime Integration Tests (TDD)
  *
- * Tests for real-time collaborative editing integration in CSSPuckProvider.
+ * Tests for real-time collaborative editing integration in P1PuckProvider.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
-import { CSSPuckProvider } from '../src/editor/CSSPuckProvider.js';
-import { useCSSPuck } from '../src/core/CSSPuckContext.js';
-import type { CSSClient } from '@pantheon-systems/css-client';
+import { P1PuckProvider } from '../src/editor/P1PuckProvider.js';
+import { useP1Puck } from '../src/core/P1PuckContext.js';
+import type { P1Client } from '@pantheon-systems/css-client';
 
 // Mock WebSocket
 class MockWebSocket {
@@ -81,14 +81,14 @@ const createMockClient = () => {
   };
   // withPrincipal returns the same client structure
   client.withPrincipal.mockReturnValue(client);
-  return client as unknown as CSSClient;
+  return client as unknown as P1Client;
 };
 
-let mockCSSClient: CSSClient;
+let mockP1Client: P1Client;
 
 // Test component to access context values
 function RealtimeStatusDisplay(): React.ReactElement {
-  const context = useCSSPuck();
+  const context = useP1Puck();
   return (
     <div>
       <span data-testid="realtime-enabled">{String(context.realtimeEnabled)}</span>
@@ -97,10 +97,10 @@ function RealtimeStatusDisplay(): React.ReactElement {
   );
 }
 
-describe('Phase 3.3-3.4: CSSPuckProvider Realtime Integration', () => {
+describe('Phase 3.3-3.4: P1PuckProvider Realtime Integration', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mockCSSClient = createMockClient();
+    mockP1Client = createMockClient();
     mockWebSocketInstances = [];
     global.WebSocket = vi.fn().mockImplementation(function (url: string) {
       const ws = new MockWebSocket(url);
@@ -122,14 +122,14 @@ describe('Phase 3.3-3.4: CSSPuckProvider Realtime Integration', () => {
   describe('realtimeEnabled prop', () => {
     it('should expose realtimeEnabled as true by default in context', async () => {
       render(
-        <CSSPuckProvider
-          client={mockCSSClient}
+        <P1PuckProvider
+          client={mockP1Client}
           siteId="site-123"
           branchId="branch-1"
           userId="user-789"
         >
           <RealtimeStatusDisplay />
-        </CSSPuckProvider>
+        </P1PuckProvider>
       );
 
       await waitFor(() => {
@@ -139,8 +139,8 @@ describe('Phase 3.3-3.4: CSSPuckProvider Realtime Integration', () => {
 
     it('should expose realtimeEnabled as true when enabled', async () => {
       render(
-        <CSSPuckProvider
-          client={mockCSSClient}
+        <P1PuckProvider
+          client={mockP1Client}
           siteId="site-123"
           branchId="branch-1"
           userId="user-789"
@@ -148,7 +148,7 @@ describe('Phase 3.3-3.4: CSSPuckProvider Realtime Integration', () => {
           wsBaseUrl="ws://localhost:8787"
         >
           <RealtimeStatusDisplay />
-        </CSSPuckProvider>
+        </P1PuckProvider>
       );
 
       await waitFor(() => {
@@ -160,14 +160,14 @@ describe('Phase 3.3-3.4: CSSPuckProvider Realtime Integration', () => {
   describe('realtimeConnected state', () => {
     it('should expose realtimeConnected as false by default', async () => {
       render(
-        <CSSPuckProvider
-          client={mockCSSClient}
+        <P1PuckProvider
+          client={mockP1Client}
           siteId="site-123"
           branchId="branch-1"
           userId="user-789"
         >
           <RealtimeStatusDisplay />
-        </CSSPuckProvider>
+        </P1PuckProvider>
       );
 
       await waitFor(() => {
@@ -177,15 +177,15 @@ describe('Phase 3.3-3.4: CSSPuckProvider Realtime Integration', () => {
 
     it('should not connect when enableRealtime is false', async () => {
       render(
-        <CSSPuckProvider
-          client={mockCSSClient}
+        <P1PuckProvider
+          client={mockP1Client}
           siteId="site-123"
           branchId="branch-1"
           userId="user-789"
           enableRealtime={false}
         >
           <RealtimeStatusDisplay />
-        </CSSPuckProvider>
+        </P1PuckProvider>
       );
 
       // Give time for any potential WebSocket connection
@@ -196,8 +196,8 @@ describe('Phase 3.3-3.4: CSSPuckProvider Realtime Integration', () => {
 
     it('should not connect when enableRealtime is true but no document is loaded', async () => {
       render(
-        <CSSPuckProvider
-          client={mockCSSClient}
+        <P1PuckProvider
+          client={mockP1Client}
           siteId="site-123"
           branchId="branch-1"
           userId="user-789"
@@ -205,7 +205,7 @@ describe('Phase 3.3-3.4: CSSPuckProvider Realtime Integration', () => {
           wsBaseUrl="ws://localhost:8787"
         >
           <RealtimeStatusDisplay />
-        </CSSPuckProvider>
+        </P1PuckProvider>
       );
 
       // Give time for any potential WebSocket connection
@@ -221,8 +221,8 @@ describe('Phase 3.3-3.4: CSSPuckProvider Realtime Integration', () => {
     it('should require wsBaseUrl when enableRealtime is true', async () => {
       // This test verifies the prop types - wsBaseUrl should be required when realtime is enabled
       render(
-        <CSSPuckProvider
-          client={mockCSSClient}
+        <P1PuckProvider
+          client={mockP1Client}
           siteId="site-123"
           branchId="branch-1"
           userId="user-789"
@@ -230,7 +230,7 @@ describe('Phase 3.3-3.4: CSSPuckProvider Realtime Integration', () => {
           wsBaseUrl="ws://localhost:8787"
         >
           <RealtimeStatusDisplay />
-        </CSSPuckProvider>
+        </P1PuckProvider>
       );
 
       await waitFor(() => {
@@ -241,22 +241,22 @@ describe('Phase 3.3-3.4: CSSPuckProvider Realtime Integration', () => {
 
   describe('context value types', () => {
     it('should include realtimeEnabled boolean in context', async () => {
-      let contextValue: ReturnType<typeof useCSSPuck> | null = null;
+      let contextValue: ReturnType<typeof useP1Puck> | null = null;
 
       function ContextCapture(): null {
-        contextValue = useCSSPuck();
+        contextValue = useP1Puck();
         return null;
       }
 
       render(
-        <CSSPuckProvider
-          client={mockCSSClient}
+        <P1PuckProvider
+          client={mockP1Client}
           siteId="site-123"
           branchId="branch-1"
           userId="user-789"
         >
           <ContextCapture />
-        </CSSPuckProvider>
+        </P1PuckProvider>
       );
 
       await waitFor(() => {

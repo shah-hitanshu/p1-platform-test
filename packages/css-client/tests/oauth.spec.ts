@@ -6,12 +6,12 @@ import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vites
 import {
   createGoogleOAuth,
   createOAuthAuthProvider,
-  createCSSAuthServerOAuth,
+  createP1AuthServerOAuth,
   generateCodeVerifier,
   computeS256Challenge,
   generateState,
 } from '../src/oauth.js';
-import type { OAuthSession, CSSAuthServerOAuthConfig } from '../src/oauth.js';
+import type { OAuthSession, P1AuthServerOAuthConfig } from '../src/oauth.js';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -69,7 +69,7 @@ describe('createGoogleOAuth', () => {
   });
 
   it('should restore user info from a previously stored token', () => {
-    localStorageMock.setItem('css_google_token', testJwt);
+    localStorageMock.setItem('p1_google_token', testJwt);
     const session = createGoogleOAuth({ clientId: 'test-client-id' });
     expect(session.isAuthenticated()).toBe(true);
     const info = session.getUserInfo();
@@ -86,7 +86,7 @@ describe('createGoogleOAuth', () => {
   });
 
   it('should return the stored token from getToken', async () => {
-    localStorageMock.setItem('css_google_token', testJwt);
+    localStorageMock.setItem('p1_google_token', testJwt);
     const session = createGoogleOAuth({ clientId: 'test-client-id' });
     const token = await session.getToken();
     expect(token).toBe(testJwt);
@@ -99,7 +99,7 @@ describe('createGoogleOAuth', () => {
   });
 
   it('should clear token and user info on logout', async () => {
-    localStorageMock.setItem('css_google_token', testJwt);
+    localStorageMock.setItem('p1_google_token', testJwt);
     const session = createGoogleOAuth({ clientId: 'test-client-id' });
     expect(session.isAuthenticated()).toBe(true);
     expect(session.getUserInfo()).not.toBeNull();
@@ -107,7 +107,7 @@ describe('createGoogleOAuth', () => {
     await session.logout();
     expect(session.isAuthenticated()).toBe(false);
     expect(session.getUserInfo()).toBeNull();
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith('css_google_token');
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith('p1_google_token');
   });
 
   it('should reject login when loadScript fails (no document)', async () => {
@@ -276,7 +276,7 @@ describe('createOAuthAuthProvider', () => {
     expect(result).toBe('Bearer auth0-token-abc');
   });
 
-  it('should be compatible with CSSClient authProvider interface', async () => {
+  it('should be compatible with P1Client authProvider interface', async () => {
     const mockSession: OAuthSession = {
       provider: 'google',
       login: vi.fn(),
@@ -355,14 +355,14 @@ const locationMock = {
 
 const replaceStateMock = vi.fn();
 
-const defaultConfig: CSSAuthServerOAuthConfig = {
+const defaultConfig: P1AuthServerOAuthConfig = {
   authServerUrl: 'https://auth.css.example.com',
   siteId: 'site-abc-123',
   redirectUri: 'https://mysite.com/auth/callback',
-  cssBaseUrl: 'https://api.css.example.com',
+  p1BaseUrl: 'https://api.css.example.com',
 };
 
-describe('createCSSAuthServerOAuth', () => {
+describe('createP1AuthServerOAuth', () => {
   const savedSessionStorage = global.sessionStorage;
   const savedLocation = global.location;
   const savedHistory = global.history;
@@ -390,37 +390,37 @@ describe('createCSSAuthServerOAuth', () => {
   });
 
   it('creates a session with provider set to css-authserver', () => {
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    const session = createP1AuthServerOAuth(defaultConfig);
     expect(session.provider).toBe('css-authserver');
   });
 
   it('is not authenticated initially with no stored token', () => {
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    const session = createP1AuthServerOAuth(defaultConfig);
     expect(session.isAuthenticated()).toBe(false);
     expect(session.getUserInfo()).toBeNull();
   });
 
   it('restores token from localStorage on creation', () => {
-    localStorageMock.setItem('css_authserver_token', 'user123:grant456:secretxyz');
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    localStorageMock.setItem('p1_authserver_token', 'user123:grant456:secretxyz');
+    const session = createP1AuthServerOAuth(defaultConfig);
     expect(session.isAuthenticated()).toBe(true);
   });
 
   it('returns stored opaque token from getToken', async () => {
-    localStorageMock.setItem('css_authserver_token', 'user123:grant456:secretxyz');
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    localStorageMock.setItem('p1_authserver_token', 'user123:grant456:secretxyz');
+    const session = createP1AuthServerOAuth(defaultConfig);
     const token = await session.getToken();
     expect(token).toBe('user123:grant456:secretxyz');
   });
 
   it('returns null from getToken when not authenticated', async () => {
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    const session = createP1AuthServerOAuth(defaultConfig);
     const token = await session.getToken();
     expect(token).toBeNull();
   });
 
   it('login() sets location.href to auth server /authorize with correct params', async () => {
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    const session = createP1AuthServerOAuth(defaultConfig);
     await session.login();
 
     const redirectUrl = new URL(locationMock.href);
@@ -435,23 +435,23 @@ describe('createCSSAuthServerOAuth', () => {
   });
 
   it('login() stores state and code_verifier in sessionStorage', async () => {
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    const session = createP1AuthServerOAuth(defaultConfig);
     await session.login();
 
     expect(sessionStorageMock.setItem).toHaveBeenCalledWith(
-      'css_authserver_state',
+      'p1_authserver_state',
       expect.any(String),
     );
     expect(sessionStorageMock.setItem).toHaveBeenCalledWith(
-      'css_authserver_verifier',
+      'p1_authserver_verifier',
       expect.any(String),
     );
   });
 
   it('handleCallback() exchanges code for tokens on valid callback', async () => {
     const state = 'abc123def456';
-    sessionStorageMock.setItem('css_authserver_state', state);
-    sessionStorageMock.setItem('css_authserver_verifier', 'test-verifier');
+    sessionStorageMock.setItem('p1_authserver_state', state);
+    sessionStorageMock.setItem('p1_authserver_verifier', 'test-verifier');
     locationMock.search = `?code=auth-code-xyz&state=${state}`;
 
     const mockFetch = vi.fn().mockResolvedValue({
@@ -465,7 +465,7 @@ describe('createCSSAuthServerOAuth', () => {
     });
     global.fetch = mockFetch;
 
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    const session = createP1AuthServerOAuth(defaultConfig);
     await session.handleCallback!();
 
     expect(mockFetch).toHaveBeenCalledWith(
@@ -486,31 +486,31 @@ describe('createCSSAuthServerOAuth', () => {
     expect(params.get('code_verifier')).toBe('test-verifier');
 
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
-      'css_authserver_token',
+      'p1_authserver_token',
       'user1:grant1:secret1',
     );
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
-      'css_authserver_refresh_token',
+      'p1_authserver_refresh_token',
       'refresh-token-abc',
     );
 
-    expect(sessionStorageMock.removeItem).toHaveBeenCalledWith('css_authserver_state');
-    expect(sessionStorageMock.removeItem).toHaveBeenCalledWith('css_authserver_verifier');
+    expect(sessionStorageMock.removeItem).toHaveBeenCalledWith('p1_authserver_state');
+    expect(sessionStorageMock.removeItem).toHaveBeenCalledWith('p1_authserver_verifier');
   });
 
   it('handleCallback() rejects on state mismatch (CSRF protection)', async () => {
-    sessionStorageMock.setItem('css_authserver_state', 'correct-state');
-    sessionStorageMock.setItem('css_authserver_verifier', 'test-verifier');
+    sessionStorageMock.setItem('p1_authserver_state', 'correct-state');
+    sessionStorageMock.setItem('p1_authserver_verifier', 'test-verifier');
     locationMock.search = '?code=auth-code-xyz&state=wrong-state';
 
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    const session = createP1AuthServerOAuth(defaultConfig);
     await expect(session.handleCallback!()).rejects.toThrow('state mismatch');
   });
 
   it('handleCallback() rejects on token exchange failure', async () => {
     const state = 'valid-state';
-    sessionStorageMock.setItem('css_authserver_state', state);
-    sessionStorageMock.setItem('css_authserver_verifier', 'test-verifier');
+    sessionStorageMock.setItem('p1_authserver_state', state);
+    sessionStorageMock.setItem('p1_authserver_verifier', 'test-verifier');
     locationMock.search = `?code=auth-code-xyz&state=${state}`;
 
     global.fetch = vi.fn().mockResolvedValue({
@@ -519,34 +519,34 @@ describe('createCSSAuthServerOAuth', () => {
       json: () => Promise.resolve({ error: 'invalid_grant' }),
     });
 
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    const session = createP1AuthServerOAuth(defaultConfig);
     await expect(session.handleCallback!()).rejects.toThrow();
   });
 
   it('handleCallback() rejects when code is missing from URL', async () => {
-    sessionStorageMock.setItem('css_authserver_state', 'some-state');
-    sessionStorageMock.setItem('css_authserver_verifier', 'test-verifier');
+    sessionStorageMock.setItem('p1_authserver_state', 'some-state');
+    sessionStorageMock.setItem('p1_authserver_verifier', 'test-verifier');
     locationMock.search = '?state=some-state';
 
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    const session = createP1AuthServerOAuth(defaultConfig);
     await expect(session.handleCallback!()).rejects.toThrow('code');
   });
 
   it('logout() clears all stored tokens and user info', async () => {
-    localStorageMock.setItem('css_authserver_token', 'user1:grant1:secret1');
-    localStorageMock.setItem('css_authserver_refresh_token', 'refresh-abc');
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    localStorageMock.setItem('p1_authserver_token', 'user1:grant1:secret1');
+    localStorageMock.setItem('p1_authserver_refresh_token', 'refresh-abc');
+    const session = createP1AuthServerOAuth(defaultConfig);
 
     await session.logout();
 
     expect(session.isAuthenticated()).toBe(false);
     expect(session.getUserInfo()).toBeNull();
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith('css_authserver_token');
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith('css_authserver_refresh_token');
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith('p1_authserver_token');
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith('p1_authserver_refresh_token');
   });
 
   it('getToken() attempts refresh when access token is missing but refresh token exists', async () => {
-    localStorageMock.setItem('css_authserver_refresh_token', 'refresh-token-abc');
+    localStorageMock.setItem('p1_authserver_refresh_token', 'refresh-token-abc');
 
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -557,7 +557,7 @@ describe('createCSSAuthServerOAuth', () => {
         }),
     });
 
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    const session = createP1AuthServerOAuth(defaultConfig);
     const token = await session.getToken();
 
     expect(token).toBe('new-user1:new-grant1:new-secret1');
@@ -570,7 +570,7 @@ describe('createCSSAuthServerOAuth', () => {
   });
 
   it('getToken() returns null when refresh fails', async () => {
-    localStorageMock.setItem('css_authserver_refresh_token', 'expired-refresh');
+    localStorageMock.setItem('p1_authserver_refresh_token', 'expired-refresh');
 
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
@@ -578,14 +578,14 @@ describe('createCSSAuthServerOAuth', () => {
       json: () => Promise.resolve({ error: 'invalid_grant' }),
     });
 
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    const session = createP1AuthServerOAuth(defaultConfig);
     const token = await session.getToken();
     expect(token).toBeNull();
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith('css_authserver_refresh_token');
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith('p1_authserver_refresh_token');
   });
 
   it('renderButton returns null (css-authserver uses redirect, not provider widget)', () => {
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    const session = createP1AuthServerOAuth(defaultConfig);
     expect(session.renderButton).toBeDefined();
     const cleanup = session.renderButton!({} as HTMLElement);
     expect(cleanup).toBeNull();
@@ -593,7 +593,7 @@ describe('createCSSAuthServerOAuth', () => {
 
   it('uses custom storageKey when provided', () => {
     localStorageMock.setItem('my_custom_key_token', 'user1:grant1:secret1');
-    const session = createCSSAuthServerOAuth({
+    const session = createP1AuthServerOAuth({
       ...defaultConfig,
       storageKey: 'my_custom_key',
     });
@@ -607,9 +607,9 @@ describe('createCSSAuthServerOAuth', () => {
       name: 'Test User',
       picture: 'https://lh3.googleusercontent.com/avatar.jpg',
     });
-    localStorageMock.setItem('css_authserver_token', jwt);
+    localStorageMock.setItem('p1_authserver_token', jwt);
 
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    const session = createP1AuthServerOAuth(defaultConfig);
 
     const info = session.getUserInfo();
     expect(info).not.toBeNull();
@@ -620,15 +620,15 @@ describe('createCSSAuthServerOAuth', () => {
   });
 
   it('getUserInfo returns null on creation when stored token is opaque (not a JWT)', () => {
-    localStorageMock.setItem('css_authserver_token', 'opaque:token:value');
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    localStorageMock.setItem('p1_authserver_token', 'opaque:token:value');
+    const session = createP1AuthServerOAuth(defaultConfig);
     expect(session.getUserInfo()).toBeNull();
   });
 
   it('handleCallback() populates userInfo (including picture) from JWT access token', async () => {
     const state = 'test-state-xyz';
-    sessionStorageMock.setItem('css_authserver_state', state);
-    sessionStorageMock.setItem('css_authserver_verifier', 'test-verifier');
+    sessionStorageMock.setItem('p1_authserver_state', state);
+    sessionStorageMock.setItem('p1_authserver_verifier', 'test-verifier');
     locationMock.search = `?code=auth-code-abc&state=${state}`;
 
     const jwt = createTestJwt({
@@ -643,7 +643,7 @@ describe('createCSSAuthServerOAuth', () => {
       json: () => Promise.resolve({ access_token: jwt, token_type: 'bearer' }),
     });
 
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    const session = createP1AuthServerOAuth(defaultConfig);
     await session.handleCallback!();
 
     const info = session.getUserInfo();
@@ -653,7 +653,7 @@ describe('createCSSAuthServerOAuth', () => {
   });
 
   it('getToken() populates userInfo from JWT when access token is refreshed', async () => {
-    localStorageMock.setItem('css_authserver_refresh_token', 'refresh-token-xyz');
+    localStorageMock.setItem('p1_authserver_refresh_token', 'refresh-token-xyz');
 
     const jwt = createTestJwt({
       sub: 'user-789',
@@ -667,7 +667,7 @@ describe('createCSSAuthServerOAuth', () => {
       json: () => Promise.resolve({ access_token: jwt, token_type: 'bearer' }),
     });
 
-    const session = createCSSAuthServerOAuth(defaultConfig);
+    const session = createP1AuthServerOAuth(defaultConfig);
     await session.getToken();
 
     const info = session.getUserInfo();

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Icon } from '@pantheon-systems/pds-toolkit-react';
 import type { DocumentVersion } from '@pantheon-systems/css-client';
-import { useCSSPuck } from '../../core/CSSPuckContext.js';
+import { useP1Puck } from '../../core/P1PuckContext.js';
 import { WarningTriangleIcon } from '../icons/WarningTriangleIcon.js';
 
 export interface VersionBannerOverrideProps {
@@ -17,9 +17,9 @@ export function VersionBannerOverride({
   selectedVersionId,
   onVersionSelect,
 }: VersionBannerOverrideProps): React.ReactElement {
-  const cssContext = useCSSPuck();
+  const p1Context = useP1Puck();
   const isViewingOld = !!selectedVersionId && versions.length > 0 && selectedVersionId !== versions[0]?.id;
-  const hasDocument = cssContext.currentDocument !== null;
+  const hasDocument = p1Context.currentDocument !== null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

@@ -5,10 +5,10 @@ import { REMOTE_DATASOURCE_REGISTRY } from "../../../../lib/remote-datasources";
 
 const handler = createP1Handler({
   config,
-  cssBaseUrl: process.env.P1_CSS_BASE_URL,
-  cssApiKey: process.env.P1_CSS_API_KEY,
-  cssSiteId: process.env.P1_CSS_SITE_ID,
-  cssBranchId: process.env.P1_CSS_BRANCH_ID,
+  p1BaseUrl: process.env.P1_CSS_BASE_URL,
+  p1ApiKey: process.env.P1_CSS_API_KEY,
+  p1SiteId: process.env.P1_CSS_SITE_ID,
+  p1BranchId: process.env.P1_CSS_BRANCH_ID,
   builtinFetchers: REMOTE_DATASOURCE_FETCHERS,
   builtinDatasourceRegistry: REMOTE_DATASOURCE_REGISTRY,
 });

@@ -27,7 +27,7 @@ import { P1NextRouterProvider } from "./P1NextRouterProvider.js";
 
 export type P1PagesConfig = P1DataConfig & {
   config: Config;
-  /** React component to render the editor. Receives only the page path; handles its own data loading and auth via CSSApp. */
+  /** React component to render the editor. Receives only the page path; handles its own data loading and auth via P1App. */
   EditorClient: React.ComponentType<{
     path: string;
   }>;
@@ -167,7 +167,7 @@ export function createP1Pages(opts: P1PagesConfig) {
       );
     }
 
-    // Editor — CSSApp handles auth and data loading client-side
+    // Editor — P1App handles auth and data loading client-side
     if (mode === "editor") {
       return <EditorClient path={pagePath} />;
     }

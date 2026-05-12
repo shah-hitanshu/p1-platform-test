@@ -1,7 +1,7 @@
 /**
- * CSSAuthProvider
+ * P1AuthProvider
  *
- * Reusable auth context for any React app integrating with CSS.
+ * Reusable auth context for any React app integrating with P1.
  * Supports five auth modes: 'mock', 'google', 'auth0', 'css-authserver', and 'p1'.
  * Handles token lifecycle, validation, and expiry across all modes.
  *
@@ -19,7 +19,7 @@ import React, {
 import {
   createGoogleOAuth,
   createAuth0OAuth,
-  createCSSAuthServerOAuth,
+  createP1AuthServerOAuth,
   validateToken,
   loginMockUser,
 } from '@pantheon-systems/css-client';
@@ -45,7 +45,7 @@ export interface AuthUser {
   picture?: string;
 }
 
-export interface CSSAuthContextValue {
+export interface P1AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   user: AuthUser | null;
@@ -61,7 +61,7 @@ export interface CSSAuthContextValue {
   renderLoginButton?(container: HTMLElement): (() => void) | null;
 }
 
-const CSSAuthContext = createContext<CSSAuthContextValue | null>(null);
+const P1AuthContext = createContext<P1AuthContextValue | null>(null);
 
 /**
  * Default demo users for mock auth mode.
@@ -76,19 +76,19 @@ export const DEMO_USERS = [
   { id: '33333333-3333-3333-3333-333333333333', name: 'Carol Coder' },
 ];
 
-const DEFAULT_TOKEN_KEY = 'css_auth_token';
+const DEFAULT_TOKEN_KEY = 'p1_auth_token';
 
 // Module-level: persists across React StrictMode's double-mount in development.
 // OAuth authorization codes are single-use — only one concurrent handleCallback()
 // must exchange the code. The second effect awaits the same shared promise rather
 // than making a duplicate /token request (which would fail with invalid_grant).
-let cssAuthCallbackPromise: Promise<void> | null = null;
+let p1AuthCallbackPromise: Promise<void> | null = null;
 
-export interface CSSAuthProviderProps {
+export interface P1AuthProviderProps {
   /** Auth mode: 'mock' for demo users, 'google' or 'auth0' for OAuth. */
   authMode: AuthMode;
-  /** CSS backend base URL (e.g., "http://localhost:8787"). */
-  cssBaseUrl: string;
+  /** P1 backend base URL (e.g., "http://localhost:8787"). */
+  p1BaseUrl: string;
   /** Google OAuth client ID (required when authMode is 'google'). */
   googleClientId?: string;
   /** Auth0 domain (required when authMode is 'auth0'). */
@@ -99,23 +99,23 @@ export interface CSSAuthProviderProps {
   auth0Audience?: string;
   /** CSS site ID (used as OAuth client_id for css-authserver mode). */
   siteId?: string;
-  /** CSS Auth Server URL (required when authMode is 'css-authserver'). */
-  cssAuthServerUrl?: string;
-  /** Redirect URI for CSS Auth Server callback (optional). */
-  cssAuthRedirectUri?: string;
-  /** localStorage key for token persistence. Default: 'css_auth_token'. */
+  /** P1 Auth Server URL (required when authMode is 'css-authserver'). */
+  p1AuthServerUrl?: string;
+  /** Redirect URI for P1 Auth Server callback (optional). */
+  p1AuthRedirectUri?: string;
+  /** localStorage key for token persistence. Default: 'p1_auth_token'. */
   tokenStorageKey?: string;
   children: React.ReactNode;
 }
 
 function createOAuthSession(
   authMode: AuthMode,
-  props: CSSAuthProviderProps,
+  props: P1AuthProviderProps,
   onCredential?: (info: OAuthUserInfo, token: string) => void,
 ): OAuthSession | null {
   if (authMode === 'google') {
     if (!props.googleClientId) {
-      console.warn('CSSAuthProvider: googleClientId is required for google auth mode');
+      console.warn('P1AuthProvider: googleClientId is required for google auth mode');
       return null;
     }
     return createGoogleOAuth({ clientId: props.googleClientId, onCredential });
@@ -123,7 +123,7 @@ function createOAuthSession(
 
   if (authMode === 'auth0') {
     if (!props.auth0Domain || !props.auth0ClientId) {
-      console.warn('CSSAuthProvider: auth0Domain and auth0ClientId are required for auth0 auth mode');
+      console.warn('P1AuthProvider: auth0Domain and auth0ClientId are required for auth0 auth mode');
       return null;
     }
     return createAuth0OAuth({
@@ -134,19 +134,19 @@ function createOAuthSession(
   }
 
   if (authMode === 'css-authserver') {
-    if (!props.cssAuthServerUrl) {
-      console.warn('CSSAuthProvider: cssAuthServerUrl is required for css-authserver auth mode');
+    if (!props.p1AuthServerUrl) {
+      console.warn('P1AuthProvider: p1AuthServerUrl is required for css-authserver auth mode');
       return null;
     }
     if (!props.siteId) {
-      console.warn('CSSAuthProvider: siteId is required for css-authserver auth mode (used as OAuth client_id)');
+      console.warn('P1AuthProvider: siteId is required for css-authserver auth mode (used as OAuth client_id)');
       return null;
     }
-    return createCSSAuthServerOAuth({
-      authServerUrl: props.cssAuthServerUrl,
+    return createP1AuthServerOAuth({
+      authServerUrl: props.p1AuthServerUrl,
       siteId: props.siteId,
-      redirectUri: props.cssAuthRedirectUri,
-      cssBaseUrl: props.cssBaseUrl,
+      redirectUri: props.p1AuthRedirectUri,
+      p1BaseUrl: props.p1BaseUrl,
     });
   }
 
@@ -179,8 +179,8 @@ function p1TokensToAuthUser(tokens: AuthTokens): AuthUser | null {
   }
 }
 
-export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement {
-  const { authMode, cssBaseUrl, tokenStorageKey, children } = props;
+export function P1AuthProvider(props: P1AuthProviderProps): React.ReactElement {
+  const { authMode, p1BaseUrl, tokenStorageKey, children } = props;
   const storageKey = tokenStorageKey ?? DEFAULT_TOKEN_KEY;
 
   const [isLoading, setIsLoading] = useState(true);
@@ -268,30 +268,30 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
         return;
       }
 
-      // Handle OAuth callback if returning from a CSS Auth Server redirect.
+      // Handle OAuth callback if returning from a P1 Auth Server redirect.
       // Uses a shared module-level Promise to deduplicate concurrent handleCallback()
       // calls that arise from React StrictMode's double useEffect invocation in dev.
       // Authorization codes are single-use — only one /token fetch must occur.
       if (authMode === 'css-authserver' && oauthSession?.handleCallback) {
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('code') && urlParams.has('state')) {
-          if (!cssAuthCallbackPromise) {
+          if (!p1AuthCallbackPromise) {
             // First effect to reach this point initiates the exchange.
             // .finally() clears the URL and resets the shared promise so that
             // future navigations (with a fresh ?code=) are handled correctly.
-            cssAuthCallbackPromise = oauthSession.handleCallback().finally(() => {
+            p1AuthCallbackPromise = oauthSession.handleCallback().finally(() => {
               window.history.replaceState({}, document.title, window.location.pathname);
-              cssAuthCallbackPromise = null;
+              p1AuthCallbackPromise = null;
             });
           }
           // Both effects await the same promise — only one /token request is made.
           try {
-            await cssAuthCallbackPromise;
+            await p1AuthCallbackPromise;
             // getToken() reads from localStorage, which handleCallback() populated.
             const callbackToken = await oauthSession.getToken();
             if (!cancelled && callbackToken) {
               setToken(callbackToken);
-              const validated = await validateToken(cssBaseUrl, callbackToken);
+              const validated = await validateToken(p1BaseUrl, callbackToken);
               if (!cancelled && validated) {
                 const info = oauthSession.getUserInfo();
                 setUser({
@@ -317,7 +317,7 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
       if (authMode === 'mock') {
         const storedToken = localStorage.getItem(storageKey);
         if (storedToken) {
-          const validated = await validateToken(cssBaseUrl, storedToken);
+          const validated = await validateToken(p1BaseUrl, storedToken);
           if (!cancelled && validated) {
             setToken(storedToken);
             setUser({
@@ -335,7 +335,7 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
         if (oauthSession.isAuthenticated()) {
           const oauthToken = await oauthSession.getToken();
           if (!cancelled && oauthToken) {
-            const validated = await validateToken(cssBaseUrl, oauthToken);
+            const validated = await validateToken(p1BaseUrl, oauthToken);
             if (!cancelled && validated) {
               const info = oauthSession.getUserInfo();
               setToken(oauthToken);
@@ -374,7 +374,7 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
         window.removeEventListener('p1-auth-change', handleP1AuthChange);
       }
     };
-  }, [authMode, oauthSession, cssBaseUrl, storageKey]);
+  }, [authMode, oauthSession, p1BaseUrl, storageKey]);
 
   const login = useCallback(
     async (userId?: string) => {
@@ -400,9 +400,9 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
           }
         } else if (authMode === 'mock') {
           const id = userId ?? DEMO_USERS[0]?.id ?? '11111111-1111-1111-1111-111111111111';
-          const result = await loginMockUser(cssBaseUrl, id);
+          const result = await loginMockUser(p1BaseUrl, id);
           localStorage.setItem(storageKey, result.token);
-          const validated = await validateToken(cssBaseUrl, result.token);
+          const validated = await validateToken(p1BaseUrl, result.token);
           setToken(result.token);
           setUser({
             id: result.user.id,
@@ -428,7 +428,7 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
         setIsLoading(false);
       }
     },
-    [authMode, oauthSession, cssBaseUrl, storageKey],
+    [authMode, oauthSession, p1BaseUrl, storageKey],
   );
 
   const logout = useCallback(async () => {
@@ -450,7 +450,7 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
     ? (container: HTMLElement) => oauthSession.renderButton?.(container) ?? null
     : undefined;
 
-  const value: CSSAuthContextValue = {
+  const value: P1AuthContextValue = {
     isAuthenticated,
     isLoading,
     user,
@@ -465,27 +465,27 @@ export function CSSAuthProvider(props: CSSAuthProviderProps): React.ReactElement
   };
 
   return (
-    <CSSAuthContext.Provider value={value}>{children}</CSSAuthContext.Provider>
+    <P1AuthContext.Provider value={value}>{children}</P1AuthContext.Provider>
   );
 }
 
 /**
- * Hook to access the CSS auth context.
- * Must be used within a CSSAuthProvider.
+ * Hook to access the P1 auth context.
+ * Must be used within a P1AuthProvider.
  */
-export function useCSSAuth(): CSSAuthContextValue {
-  const ctx = useContext(CSSAuthContext);
+export function useP1Auth(): P1AuthContextValue {
+  const ctx = useContext(P1AuthContext);
   if (!ctx) {
-    throw new Error('useCSSAuth must be used within a CSSAuthProvider');
+    throw new Error('useP1Auth must be used within a P1AuthProvider');
   }
   return ctx;
 }
 
 /**
- * Like useCSSAuth but returns null when used outside a CSSAuthProvider.
+ * Like useP1Auth but returns null when used outside a P1AuthProvider.
  * Use this in internal components that need to subscribe to auth state
  * but may be rendered in contexts where the provider is absent.
  */
-export function useOptionalCSSAuth(): CSSAuthContextValue | null {
-  return useContext(CSSAuthContext);
+export function useOptionalP1Auth(): P1AuthContextValue | null {
+  return useContext(P1AuthContext);
 }

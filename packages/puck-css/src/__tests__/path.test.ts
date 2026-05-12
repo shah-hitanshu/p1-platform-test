@@ -1,43 +1,43 @@
 /**
- * Tests for toCSSPath()
+ * Tests for toP1Path()
  *
- * Validates URL path normalization for CSS document paths.
+ * Validates URL path normalization for P1 document paths.
  */
 import { describe, it, expect } from 'vitest';
-import { toCSSPath } from '../editor/utils/path';
+import { toP1Path } from '../editor/utils/path';
 
-describe('toCSSPath', () => {
+describe('toP1Path', () => {
   it('converts "/" to "home"', () => {
-    expect(toCSSPath('/')).toBe('home');
+    expect(toP1Path('/')).toBe('home');
   });
 
   it('converts "/about" to "about"', () => {
-    expect(toCSSPath('/about')).toBe('about');
+    expect(toP1Path('/about')).toBe('about');
   });
 
   it('converts "/en/products" to "en/products"', () => {
-    expect(toCSSPath('/en/products')).toBe('en/products');
+    expect(toP1Path('/en/products')).toBe('en/products');
   });
 
   it('strips leading slashes', () => {
-    expect(toCSSPath('/foo')).toBe('foo');
-    expect(toCSSPath('///bar')).toBe('bar');
+    expect(toP1Path('/foo')).toBe('foo');
+    expect(toP1Path('///bar')).toBe('bar');
   });
 
   it('strips trailing slashes', () => {
-    expect(toCSSPath('/about/')).toBe('about');
-    expect(toCSSPath('/products//')).toBe('products');
+    expect(toP1Path('/about/')).toBe('about');
+    expect(toP1Path('/products//')).toBe('products');
   });
 
   it('converts empty string to "home"', () => {
-    expect(toCSSPath('')).toBe('home');
+    expect(toP1Path('')).toBe('home');
   });
 
   it('passes through paths without leading slash', () => {
-    expect(toCSSPath('about')).toBe('about');
+    expect(toP1Path('about')).toBe('about');
   });
 
   it('converts "/a/b/c/" to "a/b/c"', () => {
-    expect(toCSSPath('/a/b/c/')).toBe('a/b/c');
+    expect(toP1Path('/a/b/c/')).toBe('a/b/c');
   });
 });

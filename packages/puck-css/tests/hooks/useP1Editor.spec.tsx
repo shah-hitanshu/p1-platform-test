@@ -1,5 +1,5 @@
 /**
- * useCSSEditor Hook Tests (TDD)
+ * useP1Editor Hook Tests (TDD)
  *
  * Tests for the all-in-one editor setup hook.
  */
@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import React from 'react';
-import type { CSSClient, Branch, PuckData } from '@pantheon-systems/css-client';
+import type { P1Client, Branch, PuckData } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock useRealtime hook
@@ -27,7 +27,7 @@ vi.mock('../../src/editor/useRealtime.js', () => ({
 }));
 
 vi.mock('../../src/auth/index.js', () => ({
-  useCSSAuth: () => ({
+  useP1Auth: () => ({
     isAuthenticated: false,
     isLoading: false,
     user: null,
@@ -46,8 +46,8 @@ vi.mock('../../src/auth/index.js', () => ({
 // Import AFTER the mock
 // =============================================================================
 
-const { CSSPuckProvider } = await import('../../src/editor/CSSPuckProvider.js');
-const { useCSSEditor } = await import('../../src/editor/useCSSEditor.js');
+const { P1PuckProvider } = await import('../../src/editor/P1PuckProvider.js');
+const { useP1Editor } = await import('../../src/editor/useP1Editor.js');
 
 // =============================================================================
 // Mock Data
@@ -90,7 +90,7 @@ const mockPuckConfig = {
 // Mock Client Factory
 // =============================================================================
 
-function createMockClient(): CSSClient {
+function createMockClient(): P1Client {
   return {
     branches: {
       list: vi.fn().mockResolvedValue([mockBranch]),
@@ -143,17 +143,17 @@ function createMockClient(): CSSClient {
       abortEdit: vi.fn(),
     },
     withPrincipal: vi.fn().mockReturnThis(),
-  } as unknown as CSSClient;
+  } as unknown as P1Client;
 }
 
 // =============================================================================
 // Provider Wrapper
 // =============================================================================
 
-function createProviderWrapper(client: CSSClient) {
+function createProviderWrapper(client: P1Client) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return React.createElement(
-      CSSPuckProvider,
+      P1PuckProvider,
       {
         client,
         siteId: 'site-1',
@@ -169,8 +169,8 @@ function createProviderWrapper(client: CSSClient) {
 // Test Suite
 // =============================================================================
 
-describe('useCSSEditor', () => {
-  let client: CSSClient;
+describe('useP1Editor', () => {
+  let client: P1Client;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -189,7 +189,7 @@ describe('useCSSEditor', () => {
   it('should return loading state initially', () => {
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/home',
         puckConfig: mockPuckConfig,
       }),
@@ -203,7 +203,7 @@ describe('useCSSEditor', () => {
   it('should return puckProps after document loads', async () => {
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/home',
         puckConfig: mockPuckConfig,
       }),
@@ -224,7 +224,7 @@ describe('useCSSEditor', () => {
   it('should set loading to false after document loads', async () => {
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/home',
         puckConfig: mockPuckConfig,
       }),
@@ -245,7 +245,7 @@ describe('useCSSEditor', () => {
   it('puckProps.data should use safeData (never null)', async () => {
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/home',
         puckConfig: mockPuckConfig,
       }),
@@ -262,7 +262,7 @@ describe('useCSSEditor', () => {
   it('puckProps.plugins should include the CSS plugin', async () => {
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/home',
         puckConfig: mockPuckConfig,
       }),
@@ -287,7 +287,7 @@ describe('useCSSEditor', () => {
 
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/home',
         puckConfig: mockPuckConfig,
         additionalPlugins: [additionalPlugin],
@@ -307,7 +307,7 @@ describe('useCSSEditor', () => {
   it('puckProps.overrides should have headerActions', async () => {
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/home',
         puckConfig: mockPuckConfig,
       }),
@@ -329,7 +329,7 @@ describe('useCSSEditor', () => {
   it('puckProps should be referentially stable across re-renders', async () => {
     const wrapper = createProviderWrapper(client);
     const { result, rerender } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/home',
         puckConfig: mockPuckConfig,
       }),
@@ -357,7 +357,7 @@ describe('useCSSEditor', () => {
   it('should expose css context for advanced use', async () => {
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/home',
         puckConfig: mockPuckConfig,
       }),
@@ -385,7 +385,7 @@ describe('useCSSEditor', () => {
 
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/home',
         puckConfig: mockPuckConfig,
       }),
@@ -423,7 +423,7 @@ describe('useCSSEditor', () => {
 
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/missing',
         puckConfig: mockPuckConfig,
       }),
@@ -449,7 +449,7 @@ describe('useCSSEditor', () => {
     const onDocumentNotFound = vi.fn().mockResolvedValue(false);
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/missing',
         puckConfig: mockPuckConfig,
         onDocumentNotFound,
@@ -474,7 +474,7 @@ describe('useCSSEditor', () => {
     const onDocumentNotFound = vi.fn().mockResolvedValue(true);
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/new-page',
         puckConfig: mockPuckConfig,
         onDocumentNotFound,
@@ -499,7 +499,7 @@ describe('useCSSEditor', () => {
     const onDocumentNotFound = vi.fn().mockResolvedValue(false);
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/missing',
         puckConfig: mockPuckConfig,
         onDocumentNotFound,
@@ -523,7 +523,7 @@ describe('useCSSEditor', () => {
     const onDocumentNotFound = vi.fn().mockRejectedValue(new Error('Create failed'));
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/missing',
         puckConfig: mockPuckConfig,
         onDocumentNotFound,
@@ -545,22 +545,22 @@ describe('useCSSEditor', () => {
   // =========================================================================
 
   it('should provide a default onMergeCompare when no override given', async () => {
-    // Spy on createCSSPlugin to capture the options passed to it
-    const createCSSPluginSpy = vi.fn();
-    const originalCreateCSSPlugin = (await import('../../src/editor/plugin/CSSPlugin.js')).createCSSPlugin;
-    const { createCSSPlugin } = await import('../../src/editor/plugin/CSSPlugin.js');
+    // Spy on createP1Plugin to capture the options passed to it
+    const createP1PluginSpy = vi.fn();
+    const originalCreateP1Plugin = (await import('../../src/editor/plugin/P1Plugin.js')).createP1Plugin;
+    const { createP1Plugin } = await import('../../src/editor/plugin/P1Plugin.js');
 
     // We can't easily spy on the module import, but we can verify the behavior
     // by checking that the default onMergeCompare navigates correctly.
-    // Instead, we test at the integration level: useCSSEditor without pluginOptions.onMergeCompare
+    // Instead, we test at the integration level: useP1Editor without pluginOptions.onMergeCompare
     // should still result in a plugin that has onMergeCompare defined.
-    void createCSSPluginSpy;
-    void originalCreateCSSPlugin;
-    void createCSSPlugin;
+    void createP1PluginSpy;
+    void originalCreateP1Plugin;
+    void createP1Plugin;
 
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/home',
         puckConfig: mockPuckConfig,
         // No pluginOptions.onMergeCompare provided — should get a default
@@ -583,7 +583,7 @@ describe('useCSSEditor', () => {
 
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
-      () => useCSSEditor({
+      () => useP1Editor({
         documentPath: '/pages/home',
         puckConfig: mockPuckConfig,
         pluginOptions: {
@@ -605,12 +605,12 @@ describe('useCSSEditor', () => {
   // Should throw outside provider
   // =========================================================================
 
-  it('should throw if used outside CSSPuckProvider', () => {
+  it('should throw if used outside P1PuckProvider', () => {
     expect(() => {
-      renderHook(() => useCSSEditor({
+      renderHook(() => useP1Editor({
         documentPath: '/pages/home',
         puckConfig: mockPuckConfig,
       }));
-    }).toThrow('useCSSPuck must be used within a CSSPuckProvider');
+    }).toThrow('useP1Puck must be used within a P1PuckProvider');
   });
 });

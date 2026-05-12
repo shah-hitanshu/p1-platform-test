@@ -1,5 +1,5 @@
 import React from 'react';
-import type { PuckPlugin } from './CSSPlugin.js';
+import type { PuckPlugin } from './P1Plugin.js';
 import { MergePreviewPanel } from '../components/merge-preview/MergePreviewPanel.js';
 import { useMergePreview } from '../useMergePreview.js';
 import { MergePreviewIcon } from '../icons/MergePreviewIcon.js';

@@ -4,7 +4,7 @@ const mockBranchesList = vi.fn();
 const mockInitializeStores = vi.fn();
 
 vi.mock('@pantheon-systems/css-client', () => ({
-  CSSClient: class MockCSSClient {
+  P1Client: class MockP1Client {
     branches = { list: mockBranchesList };
     documents = {
       list: vi.fn().mockResolvedValue([]),
@@ -36,27 +36,27 @@ describe('ensureInitialized', () => {
     vi.restoreAllMocks();
   });
 
-  it('throws when cssBaseUrl is missing', async () => {
+  it('throws when p1BaseUrl is missing', async () => {
     await expect(
-      ensureInitialized({ cssSiteId: 'site-1' }),
-    ).rejects.toThrow('cssBaseUrl and cssSiteId must be set');
+      ensureInitialized({ p1SiteId: 'site-1' }),
+    ).rejects.toThrow('p1BaseUrl and p1SiteId must be set');
   });
 
-  it('throws when cssSiteId is missing', async () => {
+  it('throws when p1SiteId is missing', async () => {
     await expect(
-      ensureInitialized({ cssBaseUrl: 'https://api.example.com' }),
-    ).rejects.toThrow('cssBaseUrl and cssSiteId must be set');
+      ensureInitialized({ p1BaseUrl: 'https://api.example.com' }),
+    ).rejects.toThrow('p1BaseUrl and p1SiteId must be set');
   });
 
-  it('auto-detects main branch when cssBranchId is omitted', async () => {
+  it('auto-detects main branch when p1BranchId is omitted', async () => {
     mockBranchesList.mockResolvedValue([
       { id: 'branch-dev', isMain: false },
       { id: 'branch-main', isMain: true },
     ]);
 
     await ensureInitialized({
-      cssBaseUrl: 'https://api.example.com',
-      cssSiteId: 'site-1',
+      p1BaseUrl: 'https://api.example.com',
+      p1SiteId: 'site-1',
     });
 
     expect(mockBranchesList).toHaveBeenCalledWith('site-1');
@@ -73,17 +73,17 @@ describe('ensureInitialized', () => {
 
     await expect(
       ensureInitialized({
-        cssBaseUrl: 'https://api.example.com',
-        cssSiteId: 'site-1',
+        p1BaseUrl: 'https://api.example.com',
+        p1SiteId: 'site-1',
       }),
     ).rejects.toThrow('No main branch found');
   });
 
-  it('uses provided cssBranchId without listing branches', async () => {
+  it('uses provided p1BranchId without listing branches', async () => {
     await ensureInitialized({
-      cssBaseUrl: 'https://api.example.com',
-      cssSiteId: 'site-1',
-      cssBranchId: 'branch-explicit',
+      p1BaseUrl: 'https://api.example.com',
+      p1SiteId: 'site-1',
+      p1BranchId: 'branch-explicit',
     });
 
     expect(mockBranchesList).not.toHaveBeenCalled();
@@ -94,8 +94,8 @@ describe('ensureInitialized', () => {
     mockBranchesList.mockResolvedValue([{ id: 'branch-main', isMain: true }]);
 
     const config = {
-      cssBaseUrl: 'https://api.example.com',
-      cssSiteId: 'site-1',
+      p1BaseUrl: 'https://api.example.com',
+      p1SiteId: 'site-1',
     };
 
     const p1 = ensureInitialized(config);
@@ -110,8 +110,8 @@ describe('ensureInitialized', () => {
     mockBranchesList.mockResolvedValue([{ id: 'branch-main', isMain: true }]);
 
     const config = {
-      cssBaseUrl: 'https://api.example.com',
-      cssSiteId: 'site-1',
+      p1BaseUrl: 'https://api.example.com',
+      p1SiteId: 'site-1',
     };
 
     await ensureInitialized(config);
@@ -127,8 +127,8 @@ describe('ensureInitialized', () => {
     mockBranchesList.mockResolvedValue([{ id: 'branch-main', isMain: true }]);
 
     await ensureInitialized({
-      cssBaseUrl: 'https://api.example.com',
-      cssSiteId: 'site-1',
+      p1BaseUrl: 'https://api.example.com',
+      p1SiteId: 'site-1',
     });
 
     expect(mockInitializeStores).toHaveBeenCalledWith(

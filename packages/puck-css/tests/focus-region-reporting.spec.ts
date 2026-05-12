@@ -10,7 +10,7 @@ import React from 'react';
 import { useFocusRegionReporting } from '../src/collaboration/useFocusRegionReporting.js';
 import { PuckSelectionTracker } from '../src/editor/components/PuckSelectionTracker.js';
 import { PresenceContext } from '../src/core/PresenceContext.js';
-import type { CSSClient } from '@pantheon-systems/css-client';
+import type { P1Client } from '@pantheon-systems/css-client';
 
 // Mock Puck's createUsePuck
 const mockUsePuckReturn = {
@@ -32,7 +32,7 @@ vi.mock('@puckeditor/core', () => ({
 // Mock Client Factory
 // =============================================================================
 
-function createMockClient(overrides: Partial<CSSClient> = {}): CSSClient {
+function createMockClient(overrides: Partial<P1Client> = {}): P1Client {
   return {
     presence: {
       getSitePresence: vi.fn(),
@@ -43,23 +43,23 @@ function createMockClient(overrides: Partial<CSSClient> = {}): CSSClient {
         focusRegions: [],
       }),
     },
-    sites: {} as CSSClient['sites'],
-    branches: {} as CSSClient['branches'],
-    documents: {} as CSSClient['documents'],
-    versions: {} as CSSClient['versions'],
-    checkpoints: {} as CSSClient['checkpoints'],
-    agents: {} as CSSClient['agents'],
-    agentEdits: {} as CSSClient['agentEdits'],
+    sites: {} as P1Client['sites'],
+    branches: {} as P1Client['branches'],
+    documents: {} as P1Client['documents'],
+    versions: {} as P1Client['versions'],
+    checkpoints: {} as P1Client['checkpoints'],
+    agents: {} as P1Client['agents'],
+    agentEdits: {} as P1Client['agentEdits'],
     withPrincipal: vi.fn(),
     ...overrides,
-  } as unknown as CSSClient;
+  } as unknown as P1Client;
 }
 
 // =============================================================================
 // Test Wrapper
 // =============================================================================
 
-function createWrapper(client: CSSClient) {
+function createWrapper(client: P1Client) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return React.createElement(
       PresenceContext.Provider,
@@ -187,7 +187,7 @@ describe('useFocusRegionReporting', () => {
               resolvePromise.resolve = resolve;
             })
           ),
-        } as unknown as CSSClient['presence'],
+        } as unknown as P1Client['presence'],
       });
 
       const { result } = renderHook(
@@ -404,7 +404,7 @@ describe('useFocusRegionReporting', () => {
         presence: {
           ...createMockClient().presence,
           updateFocusRegions: vi.fn().mockRejectedValue(new Error('Network error')),
-        } as unknown as CSSClient['presence'],
+        } as unknown as P1Client['presence'],
       });
 
       const { result } = renderHook(

@@ -1,13 +1,13 @@
 import type React from 'react';
-import type { CSSClient } from '@pantheon-systems/css-client';
-import type { CSSFeatureConfig } from './featureConfig.js';
+import type { P1Client } from '@pantheon-systems/css-client';
+import type { P1FeatureConfig } from './featureConfig.js';
 
-export interface CSSFeaturePluginDeps {
-  client: CSSClient;
+export interface P1FeaturePluginDeps {
+  client: P1Client;
   siteId: string;
   branchId: string;
   userId: string;
-  config: Required<CSSFeatureConfig>;
+  config: Required<P1FeatureConfig>;
 }
 
 export interface PuckPluginDef {
@@ -18,15 +18,15 @@ export interface PuckPluginDef {
   overrides?: Record<string, unknown>;
 }
 
-export interface CSSFeaturePlugin {
+export interface P1FeaturePlugin {
   name: string;
-  featureFlags?: (keyof CSSFeatureConfig)[];
+  featureFlags?: (keyof P1FeatureConfig)[];
   priority?: number;
   provider?: React.ComponentType<{
     children: React.ReactNode;
-    config: Required<CSSFeatureConfig>;
-    deps: CSSFeaturePluginDeps;
+    config: Required<P1FeatureConfig>;
+    deps: P1FeaturePluginDeps;
   }>;
-  puckPlugins?: (deps: CSSFeaturePluginDeps) => PuckPluginDef[];
-  puckOverrides?: (deps: CSSFeaturePluginDeps) => Record<string, unknown>;
+  puckPlugins?: (deps: P1FeaturePluginDeps) => PuckPluginDef[];
+  puckOverrides?: (deps: P1FeaturePluginDeps) => Record<string, unknown>;
 }

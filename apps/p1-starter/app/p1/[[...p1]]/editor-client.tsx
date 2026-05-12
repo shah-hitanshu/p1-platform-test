@@ -4,9 +4,9 @@ import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Puck } from "@puckeditor/core";
 import {
-  CSSApp,
+  P1App,
   createNextConfig,
-  useCSSEditor,
+  useP1Editor,
   useP1Plugins,
   wrapConfigForEditorPreview,
   P1QueryProvider,
@@ -19,24 +19,24 @@ import "@pantheon-systems/puck-css/pds/styles.css";
 
 import config from "../../../puck.config";
 
-let cssConfig: ReturnType<typeof createNextConfig> | null = null;
-let cssConfigError: string | null = null;
+let p1Config: ReturnType<typeof createNextConfig> | null = null;
+let p1ConfigError: string | null = null;
 
 try {
-  cssConfig = createNextConfig();
+  p1Config = createNextConfig();
 } catch (e) {
-  cssConfigError = e instanceof Error ? e.message : String(e);
+  p1ConfigError = e instanceof Error ? e.message : String(e);
 }
 
 const editorConfig = wrapConfigForEditorPreview(config);
 
 export function EditorClientWrapper({ path }: { path: string }) {
-  if (!cssConfig) {
+  if (!p1Config) {
     return (
       <div style={{ textAlign: "center", padding: "4rem", fontFamily: "system-ui" }}>
         <h3>Editor unavailable</h3>
         <p style={{ color: "#666" }}>
-          {cssConfigError ?? "CSS configuration is missing."}
+          {p1ConfigError ?? "P1 configuration is missing."}
         </p>
         <p style={{ color: "#888", fontSize: "14px" }}>
           Set NEXT_PUBLIC_CSS_BASE_URL and NEXT_PUBLIC_CSS_SITE_ID environment
@@ -49,12 +49,12 @@ export function EditorClientWrapper({ path }: { path: string }) {
   return (
     <P1QueryProvider>
       <P1NextRouterProvider>
-        <CSSApp
-          config={cssConfig}
+        <P1App
+          config={p1Config}
           loginPageProps={{ title: "P1 Starter", subtitle: "Sign in to edit" }}
         >
           <EditorContent path={path} />
-        </CSSApp>
+        </P1App>
       </P1NextRouterProvider>
     </P1QueryProvider>
   );
@@ -71,7 +71,7 @@ function EditorContent({ path }: { path: string }) {
     [router],
   );
 
-  const { loading, error, puckKey, puckProps } = useCSSEditor({
+  const { loading, error, puckKey, puckProps } = useP1Editor({
     documentPath: path,
     puckConfig: editorConfig,
     additionalPlugins: p1Plugins,

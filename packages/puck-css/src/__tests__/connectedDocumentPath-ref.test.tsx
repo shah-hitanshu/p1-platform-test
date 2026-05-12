@@ -1,7 +1,7 @@
 /**
  * Regression test: connectedDocumentPath ref pattern
  *
- * Validates that CSSPuckProvider reads connectedDocumentPath from a ref
+ * Validates that P1PuckProvider reads connectedDocumentPath from a ref
  * (live value) rather than the stale snapshot returned by useRealtime().
  *
  * Bug: useRealtime() returns `connectedDocumentPath: ref.current` which is
@@ -10,7 +10,7 @@
  * the WebSocket has since connected. This caused "Connection identity mismatch"
  * guards to silently reject all saves.
  *
- * Fix: CSSPuckProvider now mirrors connectedDocumentPath into its own ref
+ * Fix: P1PuckProvider now mirrors connectedDocumentPath into its own ref
  * (`connectedDocumentPathRef`) and reads from that ref inside saveData/saveNow.
  */
 
@@ -90,7 +90,7 @@ const mockClientMethods = {
 mockClientMethods.withPrincipal.mockReturnValue(mockClientMethods);
 
 vi.mock('@pantheon-systems/css-client', () => ({
-  CSSClient: vi.fn().mockImplementation(function () { return { ...mockClientMethods }; }),
+  P1Client: vi.fn().mockImplementation(function () { return { ...mockClientMethods }; }),
 }));
 
 // Mock NotificationContext
@@ -104,14 +104,14 @@ vi.mock('../core/NotificationContext', () => ({
 }));
 
 // Import after mocks
-import { CSSPuckContext } from '../core/CSSPuckContext';
-import { CSSPuckProvider } from '../editor/CSSPuckProvider';
+import { P1PuckContext } from '../core/P1PuckContext';
+import { P1PuckProvider } from '../editor/P1PuckProvider';
 
 // Helper to capture context value
-let capturedCtx: ReturnType<typeof useContext<typeof CSSPuckContext>> = null;
+let capturedCtx: ReturnType<typeof useContext<typeof P1PuckContext>> = null;
 
 function ContextCapture() {
-  capturedCtx = useContext(CSSPuckContext);
+  capturedCtx = useContext(P1PuckContext);
   return null;
 }
 
@@ -132,13 +132,13 @@ describe('connectedDocumentPath ref regression', () => {
 
   it('saveData sends via WebSocket when connectedDocumentPath matches (not stale null)', async () => {
     // Start disconnected (connectedDocumentPath = null)
-    const client = new (await import('@pantheon-systems/css-client')).CSSClient({
+    const client = new (await import('@pantheon-systems/css-client')).P1Client({
       baseUrl: 'http://localhost:8787',
       apiKey: 'test',
     });
 
     const { rerender } = render(
-      <CSSPuckProvider
+      <P1PuckProvider
         client={client}
         siteId="test-site"
         branchId="branch-1"
@@ -147,7 +147,7 @@ describe('connectedDocumentPath ref regression', () => {
         wsBaseUrl="ws://localhost:8787"
       >
         <ContextCapture />
-      </CSSPuckProvider>
+      </P1PuckProvider>
     );
 
     // Verify we have context
@@ -174,7 +174,7 @@ describe('connectedDocumentPath ref regression', () => {
 
     // Rerender so the ref gets the new value
     rerender(
-      <CSSPuckProvider
+      <P1PuckProvider
         client={client}
         siteId="test-site"
         branchId="branch-1"
@@ -183,7 +183,7 @@ describe('connectedDocumentPath ref regression', () => {
         wsBaseUrl="ws://localhost:8787"
       >
         <ContextCapture />
-      </CSSPuckProvider>
+      </P1PuckProvider>
     );
 
     // Call saveData (onChange handler)
@@ -208,13 +208,13 @@ describe('connectedDocumentPath ref regression', () => {
   });
 
   it('saveData still rejects when connectedDocumentPath genuinely mismatches', async () => {
-    const client = new (await import('@pantheon-systems/css-client')).CSSClient({
+    const client = new (await import('@pantheon-systems/css-client')).P1Client({
       baseUrl: 'http://localhost:8787',
       apiKey: 'test',
     });
 
     const { rerender } = render(
-      <CSSPuckProvider
+      <P1PuckProvider
         client={client}
         siteId="test-site"
         branchId="branch-1"
@@ -223,7 +223,7 @@ describe('connectedDocumentPath ref regression', () => {
         wsBaseUrl="ws://localhost:8787"
       >
         <ContextCapture />
-      </CSSPuckProvider>
+      </P1PuckProvider>
     );
 
     // Load document
@@ -246,7 +246,7 @@ describe('connectedDocumentPath ref regression', () => {
 
     // Rerender so saveData closure picks up connected=true and ref updates
     rerender(
-      <CSSPuckProvider
+      <P1PuckProvider
         client={client}
         siteId="test-site"
         branchId="branch-1"
@@ -255,7 +255,7 @@ describe('connectedDocumentPath ref regression', () => {
         wsBaseUrl="ws://localhost:8787"
       >
         <ContextCapture />
-      </CSSPuckProvider>
+      </P1PuckProvider>
     );
 
     // Wait for loadDocument's suppressNextSave and pendingRemoteUpdates guards

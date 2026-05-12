@@ -1,7 +1,7 @@
 /**
  * P1 Editor Header Wiring Tests
  *
- * Verifies that createCSSPlugin wires P1EditorHeader and P1EditorSubheader
+ * Verifies that createP1Plugin wires P1EditorHeader and P1EditorSubheader
  * into Puck's override system and plugin render tree.
  */
 
@@ -13,7 +13,7 @@ import React from 'react';
 // Dependency mocks — must be hoisted before any imports that use them
 // ---------------------------------------------------------------------------
 
-vi.mock('@pantheon-systems/css-client', () => ({ CSSClient: vi.fn() }));
+vi.mock('@pantheon-systems/css-client', () => ({ P1Client: vi.fn() }));
 
 vi.mock('../src/editor/components/PuckDataSynchronizer.js', () => ({
   PuckDataSynchronizer: () => null,
@@ -55,7 +55,7 @@ vi.mock('@puckeditor/core', () => ({
 // Controllable CSS context state
 const mockPublishDocument = vi.fn().mockResolvedValue({});
 
-const mockCSSContext = {
+const mockP1Context = {
   currentData: null,
   remoteSyncKey: null,
   currentDocument: {
@@ -89,9 +89,9 @@ const mockCSSContext = {
   _onRealtimeDataCapture: null,
 };
 
-vi.mock('../src/core/CSSPuckContext.js', () => ({
-  useCSSPuck: () => mockCSSContext,
-  useCSSPuckOptional: () => mockCSSContext,
+vi.mock('../src/core/P1PuckContext.js', () => ({
+  useP1Puck: () => mockP1Context,
+  useP1PuckOptional: () => mockP1Context,
 }));
 
 // Stub P1EditorHeader so tests aren't coupled to PDS internals
@@ -225,7 +225,7 @@ vi.mock('../src/merge/components/merge-resolution/MergeReviewPage.js', () => ({
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
-import { createCSSPlugin } from '../src/editor/plugin/CSSPlugin.js';
+import { createP1Plugin } from '../src/editor/plugin/P1Plugin.js';
 import type { Branch, Document, ActorPresence } from '@pantheon-systems/css-client';
 
 // ---------------------------------------------------------------------------
@@ -284,32 +284,32 @@ afterEach(() => {
   // Reset mutable mock state
   mockHistory.hasPast = false;
   mockHistory.hasFuture = false;
-  mockCSSContext.currentDocument = {
+  mockP1Context.currentDocument = {
     id: 'doc-1',
     path: '/home',
     isPublished: true,
     inherited: false,
   };
-  mockCSSContext.currentBranch = {
+  mockP1Context.currentBranch = {
     id: 'main',
     siteId: 'site-1',
     name: 'main',
     isMain: true,
     createdAt: '',
   };
-  mockCSSContext.presence = null;
-  mockCSSContext.hasActiveHumans = false;
-  mockCSSContext.humanPresenceCount = 0;
+  mockP1Context.presence = null;
+  mockP1Context.hasActiveHumans = false;
+  mockP1Context.humanPresenceCount = 0;
 });
 
-function renderHeader(plugin: ReturnType<typeof createCSSPlugin>) {
+function renderHeader(plugin: ReturnType<typeof createP1Plugin>) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const headerFn = (plugin.overrides as any)?.header as (() => React.ReactElement) | undefined;
   if (!headerFn) throw new Error('plugin.overrides.header not defined');
   return render(headerFn());
 }
 
-function renderPlugin(plugin: ReturnType<typeof createCSSPlugin>) {
+function renderPlugin(plugin: ReturnType<typeof createP1Plugin>) {
   return render(<>{plugin.render()}</>);
 }
 
@@ -317,33 +317,33 @@ function renderPlugin(plugin: ReturnType<typeof createCSSPlugin>) {
 // Tests: overrides.header — P1EditorHeader
 // ---------------------------------------------------------------------------
 
-describe('createCSSPlugin overrides.header — P1EditorHeader', () => {
+describe('createP1Plugin overrides.header — P1EditorHeader', () => {
   it('plugin exposes an overrides.header function', () => {
-    const plugin = createCSSPlugin(baseOptions);
+    const plugin = createP1Plugin(baseOptions);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(typeof (plugin.overrides as any)?.header).toBe('function');
   });
 
   it('renders P1EditorHeader with the configured siteName', () => {
-    const plugin = createCSSPlugin(baseOptions);
+    const plugin = createP1Plugin(baseOptions);
     renderHeader(plugin);
     expect(screen.getByTestId('site-name').textContent).toBe('Test Site');
   });
 
   it('renders the p1-subheader-slot anchor div', () => {
-    const plugin = createCSSPlugin(baseOptions);
+    const plugin = createP1Plugin(baseOptions);
     const { container } = renderHeader(plugin);
     expect(container.querySelector('#p1-subheader-slot')).toBeTruthy();
   });
 
   it('does not render Compare with Live button on main branch', () => {
-    const plugin = createCSSPlugin(baseOptions);
+    const plugin = createP1Plugin(baseOptions);
     renderHeader(plugin);
     expect(screen.queryByTestId('compare-with-live')).toBeNull();
   });
 
   it('renders Compare with Live button on non-main branch', () => {
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       ...baseOptions,
       currentBranch: draftBranch,
       branches: [mainBranch, draftBranch],
@@ -354,7 +354,7 @@ describe('createCSSPlugin overrides.header — P1EditorHeader', () => {
 
   it('calls consumer onCompareWithLive when provided and button is clicked', async () => {
     const onCompareWithLive = vi.fn();
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       ...baseOptions,
       currentBranch: draftBranch,
       branches: [mainBranch, draftBranch],
@@ -368,7 +368,7 @@ describe('createCSSPlugin overrides.header — P1EditorHeader', () => {
   });
 
   it('shows built-in merge overlay when no onCompareWithLive and button is clicked', async () => {
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       ...baseOptions,
       currentBranch: draftBranch,
       branches: [mainBranch, draftBranch],
@@ -381,7 +381,7 @@ describe('createCSSPlugin overrides.header — P1EditorHeader', () => {
   });
 
   it('merge overlay is not full-viewport — top style clears the header', async () => {
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       ...baseOptions,
       currentBranch: draftBranch,
       branches: [mainBranch, draftBranch],
@@ -399,7 +399,7 @@ describe('createCSSPlugin overrides.header — P1EditorHeader', () => {
   });
 
   it('passes siteMenuItems to P1EditorHeader', () => {
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       ...baseOptions,
       siteMenuItems: [{ label: 'A', callback: vi.fn() }, { label: 'B', callback: vi.fn() }],
     });
@@ -408,7 +408,7 @@ describe('createCSSPlugin overrides.header — P1EditorHeader', () => {
   });
 
   it('passes currentUser to P1EditorHeader when provided', () => {
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       ...baseOptions,
       currentUser: { id: 'user-1', avatar: 'https://example.com/a.jpg' },
     });
@@ -418,7 +418,7 @@ describe('createCSSPlugin overrides.header — P1EditorHeader', () => {
 
   it('calls onBranchSwitch when branch is changed via P1EditorHeader', async () => {
     const onBranchSwitch = vi.fn();
-    const plugin = createCSSPlugin({ ...baseOptions, onBranchSwitch });
+    const plugin = createP1Plugin({ ...baseOptions, onBranchSwitch });
     renderHeader(plugin);
     await act(async () => {
       screen.getByTestId('switch-branch-btn').click();
@@ -428,7 +428,7 @@ describe('createCSSPlugin overrides.header — P1EditorHeader', () => {
 
   it('calls onDocumentSelect when document is selected via P1EditorHeader', async () => {
     const onDocumentSelect = vi.fn();
-    const plugin = createCSSPlugin({ ...baseOptions, onDocumentSelect });
+    const plugin = createP1Plugin({ ...baseOptions, onDocumentSelect });
     renderHeader(plugin);
     await act(async () => {
       screen.getByTestId('select-doc-btn').click();
@@ -438,7 +438,7 @@ describe('createCSSPlugin overrides.header — P1EditorHeader', () => {
 
   it('calls onLogout when logout is triggered via P1EditorHeader', async () => {
     const onLogout = vi.fn();
-    const plugin = createCSSPlugin({ ...baseOptions, onLogout });
+    const plugin = createP1Plugin({ ...baseOptions, onLogout });
     renderHeader(plugin);
     await act(async () => {
       screen.getByTestId('logout-btn').click();
@@ -451,7 +451,7 @@ describe('createCSSPlugin overrides.header — P1EditorHeader', () => {
 // Tests: render() — P1EditorSubheader portal
 // ---------------------------------------------------------------------------
 
-describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
+describe('createP1Plugin render() — P1EditorSubheader portal', () => {
   beforeEach(() => {
     // Create the portal anchor that overrides.header would normally place
     const slot = document.createElement('div');
@@ -464,7 +464,7 @@ describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
   });
 
   it('portals P1EditorSubheader into the slot div', async () => {
-    const plugin = createCSSPlugin(baseOptions);
+    const plugin = createP1Plugin(baseOptions);
     renderPlugin(plugin);
     await waitFor(() => {
       expect(screen.getByTestId('p1-editor-subheader')).toBeTruthy();
@@ -473,7 +473,7 @@ describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
 
   it('undo button is disabled when hasPast is false', async () => {
     mockHistory.hasPast = false;
-    const plugin = createCSSPlugin(baseOptions);
+    const plugin = createP1Plugin(baseOptions);
     renderPlugin(plugin);
     await waitFor(() => {
       expect(screen.getByTestId('undo-btn')).toBeDisabled();
@@ -482,7 +482,7 @@ describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
 
   it('undo button is enabled when hasPast is true', async () => {
     mockHistory.hasPast = true;
-    const plugin = createCSSPlugin(baseOptions);
+    const plugin = createP1Plugin(baseOptions);
     renderPlugin(plugin);
     await waitFor(() => {
       expect(screen.getByTestId('undo-btn')).not.toBeDisabled();
@@ -491,7 +491,7 @@ describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
 
   it('redo button is disabled when hasFuture is false', async () => {
     mockHistory.hasFuture = false;
-    const plugin = createCSSPlugin(baseOptions);
+    const plugin = createP1Plugin(baseOptions);
     renderPlugin(plugin);
     await waitFor(() => {
       expect(screen.getByTestId('redo-btn')).toBeDisabled();
@@ -500,7 +500,7 @@ describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
 
   it('redo button is enabled when hasFuture is true', async () => {
     mockHistory.hasFuture = true;
-    const plugin = createCSSPlugin(baseOptions);
+    const plugin = createP1Plugin(baseOptions);
     renderPlugin(plugin);
     await waitFor(() => {
       expect(screen.getByTestId('redo-btn')).not.toBeDisabled();
@@ -508,7 +508,7 @@ describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
   });
 
   it('hasDrift is always false', async () => {
-    const plugin = createCSSPlugin(baseOptions);
+    const plugin = createP1Plugin(baseOptions);
     renderPlugin(plugin);
     await waitFor(() => {
       expect(screen.getByTestId('has-drift').textContent).toBe('false');
@@ -516,14 +516,14 @@ describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
   });
 
   it('derives docState as "live" on main branch with published document', async () => {
-    mockCSSContext.currentDocument = {
+    mockP1Context.currentDocument = {
       id: 'doc-1',
       path: '/home',
       isPublished: true,
       inherited: false,
     };
-    mockCSSContext.currentBranch = { ...mainBranch } as typeof mockCSSContext.currentBranch;
-    const plugin = createCSSPlugin(baseOptions);
+    mockP1Context.currentBranch = { ...mainBranch } as typeof mockP1Context.currentBranch;
+    const plugin = createP1Plugin(baseOptions);
     renderPlugin(plugin);
     await waitFor(() => {
       expect(screen.getByTestId('doc-state').textContent).toBe('live');
@@ -531,14 +531,14 @@ describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
   });
 
   it('derives docState as "unpublished" on main branch with unpublished document', async () => {
-    mockCSSContext.currentDocument = {
+    mockP1Context.currentDocument = {
       id: 'doc-1',
       path: '/home',
       isPublished: false,
       inherited: false,
     };
-    mockCSSContext.currentBranch = { ...mainBranch } as typeof mockCSSContext.currentBranch;
-    const plugin = createCSSPlugin(baseOptions);
+    mockP1Context.currentBranch = { ...mainBranch } as typeof mockP1Context.currentBranch;
+    const plugin = createP1Plugin(baseOptions);
     renderPlugin(plugin);
     await waitFor(() => {
       expect(screen.getByTestId('doc-state').textContent).toBe('unpublished');
@@ -546,16 +546,16 @@ describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
   });
 
   it('derives docState as "modified" on a draft branch with local document', async () => {
-    mockCSSContext.currentDocument = {
+    mockP1Context.currentDocument = {
       id: 'doc-1',
       path: '/home',
       isPublished: false,
       inherited: false,
     };
-    mockCSSContext.currentBranch = {
+    mockP1Context.currentBranch = {
       ...draftBranch,
-    } as typeof mockCSSContext.currentBranch;
-    const plugin = createCSSPlugin({
+    } as typeof mockP1Context.currentBranch;
+    const plugin = createP1Plugin({
       ...baseOptions,
       currentBranch: draftBranch,
     });
@@ -566,8 +566,8 @@ describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
   });
 
   it('sets context to "main" when on main branch', async () => {
-    mockCSSContext.currentBranch = { ...mainBranch } as typeof mockCSSContext.currentBranch;
-    const plugin = createCSSPlugin(baseOptions);
+    mockP1Context.currentBranch = { ...mainBranch } as typeof mockP1Context.currentBranch;
+    const plugin = createP1Plugin(baseOptions);
     renderPlugin(plugin);
     await waitFor(() => {
       expect(screen.getByTestId('branch-context').textContent).toBe('main');
@@ -575,10 +575,10 @@ describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
   });
 
   it('sets context to "branch" when on a draft branch', async () => {
-    mockCSSContext.currentBranch = {
+    mockP1Context.currentBranch = {
       ...draftBranch,
-    } as typeof mockCSSContext.currentBranch;
-    const plugin = createCSSPlugin({
+    } as typeof mockP1Context.currentBranch;
+    const plugin = createP1Plugin({
       ...baseOptions,
       currentBranch: draftBranch,
     });
@@ -599,15 +599,15 @@ describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
       lastActivityAt: '',
       joinedAt: '',
     };
-    mockCSSContext.presence = {
+    mockP1Context.presence = {
       actors: [agentPresence],
       agents: [agentPresence],
       humans: [],
       hasActiveHumans: false,
       hasActiveAgents: true,
       refresh: vi.fn(),
-    } as unknown as typeof mockCSSContext.presence;
-    const plugin = createCSSPlugin(baseOptions);
+    } as unknown as typeof mockP1Context.presence;
+    const plugin = createP1Plugin(baseOptions);
     renderPlugin(plugin);
     await waitFor(() => {
       expect(screen.getByTestId('agent-count').textContent).toBe('1');
@@ -625,17 +625,17 @@ describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
       lastActivityAt: '',
       joinedAt: '',
     };
-    mockCSSContext.hasActiveHumans = true;
-    mockCSSContext.humanPresenceCount = 1;
-    mockCSSContext.presence = {
+    mockP1Context.hasActiveHumans = true;
+    mockP1Context.humanPresenceCount = 1;
+    mockP1Context.presence = {
       actors: [humanPresence],
       agents: [],
       humans: [humanPresence],
       hasActiveHumans: true,
       hasActiveAgents: false,
       refresh: vi.fn(),
-    } as unknown as typeof mockCSSContext.presence;
-    const plugin = createCSSPlugin(baseOptions);
+    } as unknown as typeof mockP1Context.presence;
+    const plugin = createP1Plugin(baseOptions);
     renderPlugin(plugin);
     await waitFor(() => {
       expect(screen.getByTestId('human-count').textContent).toBe('1');
@@ -654,17 +654,17 @@ describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
       joinedAt: '',
       avatar: 'https://lh3.googleusercontent.com/a/bob.jpg',
     };
-    mockCSSContext.hasActiveHumans = true;
-    mockCSSContext.humanPresenceCount = 1;
-    mockCSSContext.presence = {
+    mockP1Context.hasActiveHumans = true;
+    mockP1Context.humanPresenceCount = 1;
+    mockP1Context.presence = {
       actors: [humanPresenceWithAvatar],
       agents: [],
       humans: [humanPresenceWithAvatar],
       hasActiveHumans: true,
       hasActiveAgents: false,
       refresh: vi.fn(),
-    } as unknown as typeof mockCSSContext.presence;
-    const plugin = createCSSPlugin(baseOptions);
+    } as unknown as typeof mockP1Context.presence;
+    const plugin = createP1Plugin(baseOptions);
     renderPlugin(plugin);
     await waitFor(() => {
       expect(screen.getByTestId('human-actor-avatar').textContent).toBe(
@@ -674,7 +674,7 @@ describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
   });
 
   it('wires onPublish to css.publishDocument from context', async () => {
-    const plugin = createCSSPlugin(baseOptions);
+    const plugin = createP1Plugin(baseOptions);
     renderPlugin(plugin);
     await waitFor(() => {
       expect(screen.getByTestId('publish-btn')).toBeTruthy();
@@ -687,7 +687,7 @@ describe('createCSSPlugin render() — P1EditorSubheader portal', () => {
 
   it('uses consumer-provided onPublish over context publishDocument when given', async () => {
     const customPublish = vi.fn().mockResolvedValue({});
-    const plugin = createCSSPlugin({ ...baseOptions, onPublish: customPublish });
+    const plugin = createP1Plugin({ ...baseOptions, onPublish: customPublish });
     renderPlugin(plugin);
     await waitFor(() => {
       expect(screen.getByTestId('publish-btn')).toBeTruthy();

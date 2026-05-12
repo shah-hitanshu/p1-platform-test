@@ -5,30 +5,30 @@
  */
 
 // High-level API
-export { CSSApp } from './editor/CSSApp.js';
-export type { CSSAppProps } from './editor/CSSApp.js';
-export { createCSSConfig, createNextConfig, createNextContentClient } from './core/config.js';
-export type { CSSConfig } from './core/config.js';
-export { toCSSPath } from './editor/utils/path.js';
+export { P1App } from './editor/P1App.js';
+export type { P1AppProps } from './editor/P1App.js';
+export { createP1Config, createNextConfig, createNextContentClient } from './core/config.js';
+export type { P1Config } from './core/config.js';
+export { toP1Path } from './editor/utils/path.js';
 
 // Auth
 export {
-  CSSAuthProvider,
-  useCSSAuth,
+  P1AuthProvider,
+  useP1Auth,
   DEMO_USERS,
-  CSSLoginPage,
+  P1LoginPage,
 } from './auth/index.js';
 export type {
   AuthMode,
   AuthUser,
-  CSSAuthContextValue,
-  CSSAuthProviderProps,
-  CSSLoginPageProps,
+  P1AuthContextValue,
+  P1AuthProviderProps,
+  P1LoginPageProps,
 } from './auth/index.js';
 
 // Provider and Context
-export { CSSPuckProvider } from './editor/CSSPuckProvider.js';
-export { CSSPuckContext, useCSSPuck } from './core/CSSPuckContext.js';
+export { P1PuckProvider } from './editor/P1PuckProvider.js';
+export { P1PuckContext, useP1Puck } from './core/P1PuckContext.js';
 export { NotificationProvider, NotificationContext, useNotifications } from './core/NotificationContext.js';
 export { PresenceContext, usePresenceContext } from './core/PresenceContext.js';
 export type { PresenceContextValue } from './core/PresenceContext.js';
@@ -49,12 +49,12 @@ export { useSitePresence } from './collaboration/useSitePresence.js';
 export type { UseSitePresenceOptions, UseSitePresenceReturn } from './collaboration/useSitePresence.js';
 
 // Stable Consumer API Hooks
-export { useCSSPlugin } from './editor/useCSSPlugin.js';
-export type { UseCSSPluginOptions } from './editor/useCSSPlugin.js';
-export { useCSSOverrides } from './editor/useCSSOverrides.js';
-export type { UseCSSOverridesOptions } from './editor/useCSSOverrides.js';
-export { useCSSEditor } from './editor/useCSSEditor.js';
-export type { UseCSSEditorOptions, UseCSSEditorReturn, PuckProps } from './editor/useCSSEditor.js';
+export { useP1Plugin } from './editor/useP1Plugin.js';
+export type { UseP1PluginOptions } from './editor/useP1Plugin.js';
+export { useP1Overrides } from './editor/useP1Overrides.js';
+export type { UseP1OverridesOptions } from './editor/useP1Overrides.js';
+export { useP1Editor } from './editor/useP1Editor.js';
+export type { UseP1EditorOptions, UseP1EditorReturn, PuckProps } from './editor/useP1Editor.js';
 
 // Focus Region Reporting (Proactive Collision Detection)
 export { useFocusRegionReporting } from './collaboration/useFocusRegionReporting.js';
@@ -236,11 +236,11 @@ export type {
 } from './merge/components/conflict-notifications/index.js';
 
 // Puck Plugin Integration
-export { createCSSPlugin, createCSSOverrides, createMergePreviewPlugin } from './editor/plugin/index.js';
+export { createP1Plugin, createP1Overrides, createMergePreviewPlugin } from './editor/plugin/index.js';
 export type {
-  CSSPluginOptions,
+  P1PluginOptions,
   PuckPlugin,
-  CSSOverridesOptions,
+  P1OverridesOptions,
   PuckOverrides,
   MergePreviewPluginOptions,
 } from './editor/plugin/index.js';
@@ -314,15 +314,15 @@ export type {
 export { createStablePluginArray } from './editor/utils/createStablePluginArray.js';
 
 // Feature Configuration
-export { CSS_PRESETS, resolveFeatureConfig } from './core/featureConfig.js';
-export type { CSSFeatureConfig } from './core/featureConfig.js';
+export { P1_PRESETS, resolveFeatureConfig } from './core/featureConfig.js';
+export type { P1FeatureConfig } from './core/featureConfig.js';
 
 // Types
 export type {
   SaveStatus,
-  CSSPuckConfig,
-  CSSPuckContextValue,
-  CSSPuckEditorProps,
+  P1PuckConfig,
+  P1PuckContextValue,
+  P1PuckEditorProps,
   UseAutoSaveOptions,
   UseAutoSaveReturn,
   ComponentDiff,
@@ -363,7 +363,7 @@ export type {
   DocumentVersion,
   Branch,
   Checkpoint,
-  CSSContentClientConfig,
+  P1ContentClientConfig,
   PageContent,
   PageListEntry,
   PageListResult,

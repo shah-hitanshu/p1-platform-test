@@ -1,16 +1,16 @@
 /**
  * Phase 9: Provider Enhancement Tests (TDD)
  *
- * Tests for enhanced CSSPuckProvider with presence and agent features.
+ * Tests for enhanced P1PuckProvider with presence and agent features.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import React from 'react';
-import { CSSPuckProvider } from '../src/editor/CSSPuckProvider.js';
-import { useCSSPuck } from '../src/core/CSSPuckContext.js';
+import { P1PuckProvider } from '../src/editor/P1PuckProvider.js';
+import { useP1Puck } from '../src/core/P1PuckContext.js';
 import type {
-  CSSClient,
+  P1Client,
   ActorPresence,
   BranchPresence,
   Branch,
@@ -102,7 +102,7 @@ const mockAgent: RegisteredAgent = {
 // Mock Client Factory
 // =============================================================================
 
-function createMockClient(): CSSClient {
+function createMockClient(): P1Client {
   return {
     branches: {
       list: vi.fn().mockResolvedValue([mockBranch]),
@@ -160,7 +160,7 @@ function createMockClient(): CSSClient {
       abortEdit: vi.fn().mockResolvedValue({ success: true }),
     },
     withPrincipal: vi.fn().mockReturnThis(),
-  } as unknown as CSSClient;
+  } as unknown as P1Client;
 }
 
 // =============================================================================
@@ -172,7 +172,7 @@ interface WrapperProps {
 }
 
 function createProviderWrapper(
-  client: CSSClient,
+  client: P1Client,
   options: {
     siteId?: string;
     branchId?: string;
@@ -205,7 +205,7 @@ function createProviderWrapper(
 
   return function Wrapper({ children }: WrapperProps) {
     return React.createElement(
-      CSSPuckProvider,
+      P1PuckProvider,
       {
         client,
         siteId,
@@ -230,7 +230,7 @@ function createProviderWrapper(
 // Test Suites
 // =============================================================================
 
-describe('CSSPuckProvider Enhancement - Phase 9', () => {
+describe('P1PuckProvider Enhancement - Phase 9', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -247,7 +247,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
   describe('basic provider functionality', () => {
     it('should provide core context values', async () => {
       const client = createMockClient();
-      const { result } = renderHook(() => useCSSPuck(), {
+      const { result } = renderHook(() => useP1Puck(), {
         wrapper: createProviderWrapper(client, {
           siteId: 'site-1',
           branchId: 'branch-1',
@@ -262,7 +262,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
 
     it('should provide client instance', () => {
       const client = createMockClient();
-      const { result } = renderHook(() => useCSSPuck(), {
+      const { result } = renderHook(() => useP1Puck(), {
         wrapper: createProviderWrapper(client),
       });
 
@@ -278,7 +278,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
     describe('when presenceEnabled is false (default)', () => {
       it('should have null presence object', () => {
         const client = createMockClient();
-        const { result } = renderHook(() => useCSSPuck(), {
+        const { result } = renderHook(() => useP1Puck(), {
           wrapper: createProviderWrapper(client, { presenceEnabled: false }),
         });
 
@@ -287,7 +287,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
 
       it('should not fetch presence data', async () => {
         const client = createMockClient();
-        renderHook(() => useCSSPuck(), {
+        renderHook(() => useP1Puck(), {
           wrapper: createProviderWrapper(client, { presenceEnabled: false }),
         });
 
@@ -303,7 +303,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
       it('should have presence object with actors', async () => {
         vi.useRealTimers();
         const client = createMockClient();
-        const { result } = renderHook(() => useCSSPuck(), {
+        const { result } = renderHook(() => useP1Puck(), {
           wrapper: createProviderWrapper(client, { presenceEnabled: true }),
         });
 
@@ -318,7 +318,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
       it('should separate humans and agents in presence', async () => {
         vi.useRealTimers();
         const client = createMockClient();
-        const { result } = renderHook(() => useCSSPuck(), {
+        const { result } = renderHook(() => useP1Puck(), {
           wrapper: createProviderWrapper(client, { presenceEnabled: true }),
         });
 
@@ -333,7 +333,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
       it('should provide hasActiveHumans and hasActiveAgents flags', async () => {
         vi.useRealTimers();
         const client = createMockClient();
-        const { result } = renderHook(() => useCSSPuck(), {
+        const { result } = renderHook(() => useP1Puck(), {
           wrapper: createProviderWrapper(client, { presenceEnabled: true }),
         });
 
@@ -348,7 +348,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
       it('should provide refresh function', async () => {
         vi.useRealTimers();
         const client = createMockClient();
-        const { result } = renderHook(() => useCSSPuck(), {
+        const { result } = renderHook(() => useP1Puck(), {
           wrapper: createProviderWrapper(client, { presenceEnabled: true }),
         });
 
@@ -361,7 +361,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
 
       it('should use custom polling interval', async () => {
         const client = createMockClient();
-        renderHook(() => useCSSPuck(), {
+        renderHook(() => useP1Puck(), {
           wrapper: createProviderWrapper(client, {
             presenceEnabled: true,
             presencePollingInterval: 10000,
@@ -396,7 +396,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
         const client = createMockClient();
         const onPresenceChange = vi.fn();
 
-        renderHook(() => useCSSPuck(), {
+        renderHook(() => useP1Puck(), {
           wrapper: createProviderWrapper(client, {
             presenceEnabled: true,
             onPresenceChange,
@@ -424,7 +424,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
     describe('when agentModeEnabled is false (default)', () => {
       it('should have null agentEdit', () => {
         const client = createMockClient();
-        const { result } = renderHook(() => useCSSPuck(), {
+        const { result } = renderHook(() => useP1Puck(), {
           wrapper: createProviderWrapper(client, { agentModeEnabled: false }),
         });
 
@@ -435,7 +435,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
     describe('when agentModeEnabled is true with agentId', () => {
       it('should provide agentEdit capabilities', async () => {
         const client = createMockClient();
-        const { result } = renderHook(() => useCSSPuck(), {
+        const { result } = renderHook(() => useP1Puck(), {
           wrapper: createProviderWrapper(client, {
             agentModeEnabled: true,
             agentId: 'agent-456',
@@ -455,7 +455,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
 
       it('should track isEditing state', async () => {
         const client = createMockClient();
-        const { result } = renderHook(() => useCSSPuck(), {
+        const { result } = renderHook(() => useP1Puck(), {
           wrapper: createProviderWrapper(client, {
             agentModeEnabled: true,
             agentId: 'agent-456',
@@ -471,7 +471,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
 
       it('should provide session info', async () => {
         const client = createMockClient();
-        const { result } = renderHook(() => useCSSPuck(), {
+        const { result } = renderHook(() => useP1Puck(), {
           wrapper: createProviderWrapper(client, {
             agentModeEnabled: true,
             agentId: 'agent-456',
@@ -489,7 +489,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
     describe('when agentModeEnabled is true without agentId (human user)', () => {
       it('should have null agentEdit but provide triggerAgent', async () => {
         const client = createMockClient();
-        const { result } = renderHook(() => useCSSPuck(), {
+        const { result } = renderHook(() => useP1Puck(), {
           wrapper: createProviderWrapper(client, {
             agentModeEnabled: true,
             // No agentId - this is a human user
@@ -515,7 +515,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
     describe('when agentModeEnabled is false', () => {
       it('should have null triggerAgent', () => {
         const client = createMockClient();
-        const { result } = renderHook(() => useCSSPuck(), {
+        const { result } = renderHook(() => useP1Puck(), {
           wrapper: createProviderWrapper(client, { agentModeEnabled: false }),
         });
 
@@ -526,7 +526,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
     describe('when agentModeEnabled is true for human user', () => {
       it('should provide triggerAgent function', async () => {
         const client = createMockClient();
-        const { result } = renderHook(() => useCSSPuck(), {
+        const { result } = renderHook(() => useP1Puck(), {
           wrapper: createProviderWrapper(client, {
             agentModeEnabled: true,
           }),
@@ -549,7 +549,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
   describe('conflict notifications', () => {
     it('should provide empty conflicts array initially', () => {
       const client = createMockClient();
-      const { result } = renderHook(() => useCSSPuck(), {
+      const { result } = renderHook(() => useP1Puck(), {
         wrapper: createProviderWrapper(client),
       });
 
@@ -558,7 +558,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
 
     it('should provide dismissConflict function', () => {
       const client = createMockClient();
-      const { result } = renderHook(() => useCSSPuck(), {
+      const { result } = renderHook(() => useP1Puck(), {
         wrapper: createProviderWrapper(client),
       });
 
@@ -571,7 +571,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
         const onAgentConflict = vi.fn();
 
         // Just verify the provider accepts the callback without error
-        const { result } = renderHook(() => useCSSPuck(), {
+        const { result } = renderHook(() => useP1Puck(), {
           wrapper: createProviderWrapper(client, {
             onAgentConflict,
           }),
@@ -589,7 +589,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
   describe('user display info props', () => {
     it('should accept userName prop', () => {
       const client = createMockClient();
-      const { result } = renderHook(() => useCSSPuck(), {
+      const { result } = renderHook(() => useP1Puck(), {
         wrapper: createProviderWrapper(client, {
           userName: 'John Doe',
         }),
@@ -600,7 +600,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
 
     it('should accept userAvatar prop', () => {
       const client = createMockClient();
-      const { result } = renderHook(() => useCSSPuck(), {
+      const { result } = renderHook(() => useP1Puck(), {
         wrapper: createProviderWrapper(client, {
           userAvatar: 'https://example.com/avatar.png',
         }),
@@ -618,7 +618,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
     it('should work with both presence and agent mode enabled', async () => {
       vi.useRealTimers();
       const client = createMockClient();
-      const { result } = renderHook(() => useCSSPuck(), {
+      const { result } = renderHook(() => useP1Puck(), {
         wrapper: createProviderWrapper(client, {
           presenceEnabled: true,
           agentModeEnabled: true,
@@ -636,7 +636,7 @@ describe('CSSPuckProvider Enhancement - Phase 9', () => {
 
     it('should maintain existing functionality with new features', async () => {
       const client = createMockClient();
-      const { result } = renderHook(() => useCSSPuck(), {
+      const { result } = renderHook(() => useP1Puck(), {
         wrapper: createProviderWrapper(client, {
           presenceEnabled: true,
           agentModeEnabled: true,

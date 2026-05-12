@@ -1,7 +1,7 @@
 /**
- * CSS Puck Overrides
+ * P1 Puck Overrides
  *
- * Creates Puck overrides for CSS integration, including
+ * Creates Puck overrides for P1 integration, including
  * header actions for save status and publish functionality.
  */
 
@@ -13,13 +13,13 @@ import { HistoricalVersionBanner } from '../../versioning/components/HistoricalV
 import { CollaboratorAvatars } from '../../collaboration/components/CollaboratorAvatars.js';
 import { AgentActivityBanner } from '../../collaboration/components/AgentActivityBanner.js';
 import { PublishedStatusBadge } from '../components/PublishedStatusBadge.js';
-// NOTE: PuckDataSynchronizer is NOT imported here - it's used in CSSPlugin instead
+// NOTE: PuckDataSynchronizer is NOT imported here - it's used in P1Plugin instead
 // because headerActions renders outside Puck's context where usePuck() doesn't work.
 
 /**
- * Options for creating CSS overrides
+ * Options for creating P1 overrides
  */
-export interface CSSOverridesOptions {
+export interface P1OverridesOptions {
   /**
    * Getter function for current save status.
    * Using a getter instead of direct value allows the overrides object to remain stable
@@ -87,14 +87,14 @@ export interface CSSOverridesOptions {
   onReturnToLatest?: () => void;
 
   /**
-   * @deprecated Pass syncData to createCSSPlugin instead. The plugin renders
+   * @deprecated Pass syncData to createP1Plugin instead. The plugin renders
    * inside Puck's context where usePuck() works correctly. Passing these props
    * here will be ignored.
    */
   syncData?: PuckData | null;
 
   /**
-   * @deprecated Pass dataSyncKey to createCSSPlugin instead. The plugin renders
+   * @deprecated Pass dataSyncKey to createP1Plugin instead. The plugin renders
    * inside Puck's context where usePuck() works correctly. Passing these props
    * here will be ignored.
    */
@@ -128,13 +128,13 @@ export interface PuckOverrides {
 }
 
 /**
- * Creates Puck overrides for CSS integration.
+ * Creates Puck overrides for P1 integration.
  *
  * Adds SaveIndicator and PublishButton to the header actions area.
  *
  * @example
  * ```tsx
- * import { createCSSOverrides, useCSSPuck } from '@pantheon-systems/puck-css';
+ * import { createP1Overrides, useP1Puck } from '@pantheon-systems/puck-css';
  *
  * function Editor() {
  *   const {
@@ -143,13 +143,13 @@ export interface PuckOverrides {
  *     saveError,
  *     saveNow,
  *     publishDocument,
- *   } = useCSSPuck();
+ *   } = useP1Puck();
  *
  *   // Preferred: use refs and getters for better performance
  *   const saveStatusRef = useRef(saveStatus);
  *   useEffect(() => { saveStatusRef.current = saveStatus; }, [saveStatus]);
  *
- *   const overrides = createCSSOverrides({
+ *   const overrides = createP1Overrides({
  *     getSaveStatus: () => saveStatusRef.current,
  *     getLastSaved: () => lastSavedRef.current,
  *     getSaveError: () => saveErrorRef.current,
@@ -157,7 +157,7 @@ export interface PuckOverrides {
  *   });
  *
  *   // Legacy: direct values (causes overrides to be recreated on changes)
- *   const overrides = createCSSOverrides({
+ *   const overrides = createP1Overrides({
  *     saveStatus,
  *     lastSaved,
  *     saveError,
@@ -168,7 +168,7 @@ export interface PuckOverrides {
  * }
  * ```
  */
-export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides {
+export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
   const {
     // New getter-based API (preferred)
     getSaveStatus,
@@ -186,7 +186,7 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
     dataSyncKey: _dataSyncKey,
     // Presence/Agent Features — NOT destructured here.
     // These are read lazily from `options` in the headerActions render function
-    // so that the Proxy pattern from useCSSOverrides provides live values.
+    // so that the Proxy pattern from useP1Overrides provides live values.
     // Destructuring would capture stale values from the initial call.
   } = options;
 
@@ -215,7 +215,7 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
   return {
     headerActions: ({ children }) => {
       // Read presence/agent values lazily from options (Proxy) each render
-      // so they reflect the latest state from useCSSOverrides' optionsRef.
+      // so they reflect the latest state from useP1Overrides' optionsRef.
       const _showCollaboratorAvatars = options.showCollaboratorAvatars ?? false;
       const _presence = options.presence ?? [];
       const _showAgentActivityBanner = options.showAgentActivityBanner ?? false;
@@ -234,7 +234,7 @@ export function createCSSOverrides(options: CSSOverridesOptions): PuckOverrides 
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {/* NOTE: PuckDataSynchronizer was removed from here because headerActions
-              renders outside Puck's context. Use syncData/dataSyncKey in createCSSPlugin
+              renders outside Puck's context. Use syncData/dataSyncKey in createP1Plugin
               instead, which renders inside Puck's context. */}
           {/* Agent Activity Banner - shown when agent is editing */}
           {_showAgentActivityBanner && _isAgentEditing && firstActiveAgent && (

@@ -1,5 +1,5 @@
 /**
- * CSS Client Types
+ * P1 Client Types
  *
  * TypeScript types matching the Collaborative State System API.
  */

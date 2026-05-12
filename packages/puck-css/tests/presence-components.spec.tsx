@@ -14,7 +14,7 @@ import {
   FocusRegionHighlight,
 } from '../src/collaboration/index.js';
 import { PresenceContext } from '../src/core/PresenceContext.js';
-import type { ActorPresence, CSSClient } from '@pantheon-systems/css-client';
+import type { ActorPresence, P1Client } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock Data
@@ -76,7 +76,7 @@ const mockIdleAgent: ActorPresence = {
 // Mock Client Factory
 // =============================================================================
 
-function createMockClient(): CSSClient {
+function createMockClient(): P1Client {
   return {
     presence: {
       getSitePresence: vi.fn().mockResolvedValue({}),
@@ -91,7 +91,7 @@ function createMockClient(): CSSClient {
       completeEdit: vi.fn().mockResolvedValue({}),
       abortEdit: vi.fn().mockResolvedValue({}),
     },
-  } as unknown as CSSClient;
+  } as unknown as P1Client;
 }
 
 // =============================================================================
@@ -99,7 +99,7 @@ function createMockClient(): CSSClient {
 // =============================================================================
 
 interface TestWrapperProps {
-  client?: CSSClient;
+  client?: P1Client;
   children: React.ReactNode;
 }
 

@@ -1,9 +1,9 @@
 /**
- * Puck CSS Integration Types
+ * Puck P1 Integration Types
  */
 
 import type {
-  CSSClient,
+  P1Client,
   PuckData,
   Document,
   Branch,
@@ -15,7 +15,7 @@ import type {
 import type { ConflictNotification } from '../merge/components/conflict-notifications/index.js';
 import type { UseAgentEditReturn } from '../agent/useAgentEdit.js';
 import type { UseAgentTriggerReturn } from '../agent/useAgentTrigger.js';
-import type { CSSFeatureConfig } from './featureConfig.js';
+import type { P1FeatureConfig } from './featureConfig.js';
 
 /**
  * Save status for auto-save functionality.
@@ -23,13 +23,13 @@ import type { CSSFeatureConfig } from './featureConfig.js';
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 /**
- * Configuration for the CSS Puck Provider.
+ * Configuration for the P1 Puck Provider.
  */
-export interface CSSPuckConfig {
+export interface P1PuckConfig {
   /**
-   * CSS API client instance.
+   * P1 API client instance.
    */
-  client: CSSClient;
+  client: P1Client;
 
   /**
    * Site ID to work with.
@@ -168,13 +168,13 @@ export interface CSSPuckConfig {
 }
 
 /**
- * Context value provided by CSSPuckProvider.
+ * Context value provided by P1PuckProvider.
  */
-export interface CSSPuckContextValue {
+export interface P1PuckContextValue {
   /**
-   * CSS client instance.
+   * P1 client instance.
    */
-  client: CSSClient;
+  client: P1Client;
 
   /**
    * Notification methods for displaying toast notifications.
@@ -187,7 +187,7 @@ export interface CSSPuckContextValue {
   siteId: string;
 
   /**
-   * Display name of the current site, fetched from the CSS API on mount.
+   * Display name of the current site, fetched from the P1 API on mount.
    * Null until the fetch resolves, or if the fetch fails.
    */
   siteName: string | null;
@@ -494,7 +494,7 @@ export interface CSSPuckContextValue {
    * Resolved feature configuration with all flags set.
    * Derived from the featureConfig prop or existing boolean props.
    */
-  featureConfig: Required<CSSFeatureConfig>;
+  featureConfig: Required<P1FeatureConfig>;
 
   // =========================================================================
   // Internal: Realtime Data Capture (for PuckDataCapture correction pass)
@@ -550,9 +550,9 @@ export interface PresenceState {
 }
 
 /**
- * Props for CSSPuckEditor component.
+ * Props for P1PuckEditor component.
  */
-export interface CSSPuckEditorProps {
+export interface P1PuckEditorProps {
   /**
    * Puck component configuration.
    */

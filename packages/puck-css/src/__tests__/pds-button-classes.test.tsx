@@ -18,7 +18,7 @@ afterEach(() => {
 
 // Mock css-client for PublishButton
 vi.mock('@pantheon-systems/css-client', () => ({
-  CSSClient: vi.fn(),
+  P1Client: vi.fn(),
 }));
 
 import { PublishButton } from '../editor/components/PublishButton.js';
@@ -317,24 +317,24 @@ describe('ConflictNotificationToast PDS classes', () => {
 });
 
 // ============================================================
-// CSSPlugin Tests
+// P1Plugin Tests
 // ============================================================
 
-// Mock required CSSPlugin dependencies
+// Mock required P1Plugin dependencies
 vi.mock('../editor/components/PuckDataSynchronizer', () => ({
   PuckDataSynchronizer: () => null,
 }));
 vi.mock('../editor/components/PuckSelectionTracker', () => ({
   PuckSelectionTracker: () => null,
 }));
-vi.mock('../core/CSSPuckContext', () => ({
-  useCSSPuck: () => ({
+vi.mock('../core/P1PuckContext', () => ({
+  useP1Puck: () => ({
     currentData: null,
     remoteSyncKey: null,
     currentDocument: null,
     viewingVersion: null,
   }),
-  useCSSPuckOptional: () => ({
+  useP1PuckOptional: () => ({
     currentData: null,
     remoteSyncKey: null,
     currentDocument: null,
@@ -342,11 +342,11 @@ vi.mock('../core/CSSPuckContext', () => ({
   }),
 }));
 
-import { createCSSPlugin } from '../editor/plugin/CSSPlugin.js';
+import { createP1Plugin } from '../editor/plugin/P1Plugin.js';
 import { P1EditorHeader } from '../pds/components/P1EditorHeader.js';
 import { PageNavigator } from '../pds/components/PageNavigator.js';
 
-describe('CSSPlugin PDS button classes', () => {
+describe('P1Plugin PDS button classes', () => {
   it('renders Compare with Live button in P1EditorHeader on non-main branch', () => {
     // The PDS Button mock renders a plain <button> without forwarding className,
     // so we verify the button is present rather than inspecting PDS class names.
@@ -373,7 +373,7 @@ describe('CSSPlugin PDS button classes', () => {
   });
 
   it('renders Ask Agent button with pds-button--primary classes', () => {
-    const plugin = createCSSPlugin({
+    const plugin = createP1Plugin({
       branches: [],
       currentBranch: null,
       onBranchSwitch: () => {},

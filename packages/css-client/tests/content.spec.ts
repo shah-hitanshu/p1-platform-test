@@ -3,14 +3,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CSSContentClient } from '../src/content.js';
-import { CSSApiError } from '../src/errors.js';
+import { P1ContentClient } from '../src/content.js';
+import { P1ApiError } from '../src/errors.js';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-describe('CSSContentClient', () => {
+describe('P1ContentClient', () => {
   const baseUrl = 'http://localhost:8787';
   const apiToken = 'test-api-token';
   const siteId = 'site-123';
@@ -25,12 +25,12 @@ describe('CSSContentClient', () => {
 
   describe('constructor', () => {
     it('should create client with required config', () => {
-      const client = new CSSContentClient({ baseUrl, apiToken, siteId });
-      expect(client).toBeInstanceOf(CSSContentClient);
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId });
+      expect(client).toBeInstanceOf(P1ContentClient);
     });
 
     it('should strip trailing slashes from baseUrl', async () => {
-      const client = new CSSContentClient({
+      const client = new P1ContentClient({
         baseUrl: 'http://localhost:8787///',
         apiToken,
         siteId,
@@ -71,7 +71,7 @@ describe('CSSContentClient', () => {
         json: async () => mockPage,
       });
 
-      const client = new CSSContentClient({ baseUrl, apiToken, siteId });
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId });
       const result = await client.getPage('home');
 
       expect(result).toEqual(mockPage);
@@ -90,7 +90,7 @@ describe('CSSContentClient', () => {
         json: async () => ({ documentId: 'doc-1', path: 'about/team' }),
       });
 
-      const client = new CSSContentClient({ baseUrl, apiToken, siteId });
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId });
       await client.getPage('/about/team');
 
       expect(mockFetch).toHaveBeenCalledWith(
@@ -107,7 +107,7 @@ describe('CSSContentClient', () => {
         json: async () => ({ documentId: 'doc-1', path: 'home' }),
       });
 
-      const client = new CSSContentClient({ baseUrl, apiToken, siteId, branchId });
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId, branchId });
       await client.getPage('home');
 
       expect(mockFetch).toHaveBeenCalledWith(
@@ -123,22 +123,22 @@ describe('CSSContentClient', () => {
         json: async () => ({ error: 'Not found' }),
       });
 
-      const client = new CSSContentClient({ baseUrl, apiToken, siteId });
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId });
       const result = await client.getPage('nonexistent');
 
       expect(result).toBeNull();
     });
 
-    it('should throw CSSApiError on non-404 errors', async () => {
+    it('should throw P1ApiError on non-404 errors', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
         json: async () => ({ error: 'Internal server error' }),
       });
 
-      const client = new CSSContentClient({ baseUrl, apiToken, siteId });
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId });
 
-      await expect(client.getPage('home')).rejects.toThrow(CSSApiError);
+      await expect(client.getPage('home')).rejects.toThrow(P1ApiError);
       await expect(async () => {
         mockFetch.mockResolvedValueOnce({
           ok: false,
@@ -159,9 +159,9 @@ describe('CSSContentClient', () => {
         json: async () => { throw new Error('not JSON'); },
       });
 
-      const client = new CSSContentClient({ baseUrl, apiToken, siteId });
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId });
 
-      await expect(client.getPage('home')).rejects.toThrow(CSSApiError);
+      await expect(client.getPage('home')).rejects.toThrow(P1ApiError);
     });
   });
 
@@ -183,7 +183,7 @@ describe('CSSContentClient', () => {
         json: async () => mockResult,
       });
 
-      const client = new CSSContentClient({ baseUrl, apiToken, siteId });
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId });
       const result = await client.getPagePaths();
 
       expect(result).toEqual(mockResult);
@@ -203,7 +203,7 @@ describe('CSSContentClient', () => {
         json: async () => ({ pages: [], branchId, branchName: 'dev', isMainBranch: false }),
       });
 
-      const client = new CSSContentClient({ baseUrl, apiToken, siteId, branchId });
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId, branchId });
       await client.getPagePaths();
 
       expect(mockFetch).toHaveBeenCalledWith(
@@ -212,16 +212,16 @@ describe('CSSContentClient', () => {
       );
     });
 
-    it('should throw CSSApiError on error responses', async () => {
+    it('should throw P1ApiError on error responses', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
         json: async () => ({ error: 'Server error' }),
       });
 
-      const client = new CSSContentClient({ baseUrl, apiToken, siteId });
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId });
 
-      await expect(client.getPagePaths()).rejects.toThrow(CSSApiError);
+      await expect(client.getPagePaths()).rejects.toThrow(P1ApiError);
       await expect(async () => {
         mockFetch.mockResolvedValueOnce({
           ok: false,

@@ -1,18 +1,18 @@
-import type { CSSFeaturePlugin } from '../core/plugin-types.js';
-import type { CSSFeatureConfig } from '../core/featureConfig.js';
+import type { P1FeaturePlugin } from '../core/plugin-types.js';
+import type { P1FeatureConfig } from '../core/featureConfig.js';
 import { resolveFeatureConfig } from '../core/featureConfig.js';
 import { DEFAULT_CSS_FEATURE_PLUGINS } from './defaultPlugins.js';
 
-export interface CSSPreset {
-  plugins: CSSFeaturePlugin[];
-  config: Required<CSSFeatureConfig>;
+export interface P1Preset {
+  plugins: P1FeaturePlugin[];
+  config: Required<P1FeatureConfig>;
 }
 
 export function createDefaultPreset(
-  additionalPlugins?: CSSFeaturePlugin[],
-  configOverrides?: CSSFeatureConfig,
-): CSSPreset {
-  const baseConfig: CSSFeatureConfig = {
+  additionalPlugins?: P1FeaturePlugin[],
+  configOverrides?: P1FeatureConfig,
+): P1Preset {
+  const baseConfig: P1FeatureConfig = {
     enableRealtime: true,
     presenceEnabled: true,
     agentModeEnabled: true,

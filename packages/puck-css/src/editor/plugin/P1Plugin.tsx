@@ -1,8 +1,8 @@
 /**
- * CSS Puck Plugin
+ * P1 Puck Plugin
  *
- * Adds CSS functionality to the Puck editor's plugin rail.
- * Provides branch selection, document management, and other CSS-specific controls.
+ * Adds P1 functionality to the Puck editor's plugin rail.
+ * Provides branch selection, document management, and other P1-specific controls.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -22,8 +22,8 @@ import { PuckDataSynchronizer } from '../components/PuckDataSynchronizer.js';
 import { AgentActivityBanner } from '../../collaboration/components/AgentActivityBanner.js';
 import { PuckSelectionTracker } from '../components/PuckSelectionTracker.js';
 import { PuckDataCapture } from '../components/PuckDataCapture.js';
-import { useCSSPuck, useCSSPuckOptional } from '../../core/CSSPuckContext.js';
-import { useOptionalCSSAuth } from '../../auth/index.js';
+import { useP1Puck, useP1PuckOptional } from '../../core/P1PuckContext.js';
+import { useOptionalP1Auth } from '../../auth/index.js';
 import { MergeResolutionPage } from '../../merge/components/merge-resolution/MergeResolutionPage.js';
 import { P1EditorHeader } from '../../pds/components/P1EditorHeader.js';
 import { NavIcon } from '../../pds/components/NavIcon.js';
@@ -65,7 +65,7 @@ interface PuckStateWithDispatch {
 /**
  * Props for the CSS Plugin panel content
  */
-interface CSSPluginPanelProps {
+interface P1PluginPanelProps {
   /** List of versions for the current document */
   versions?: DocumentVersion[];
   /** Whether versions are loading */
@@ -116,7 +116,7 @@ function formatVersionDate(dateString: string): string {
   });
 }
 
-function CSSPluginPanel({
+function P1PluginPanel({
   versions = [],
   versionsLoading = false,
   selectedVersionId,
@@ -136,7 +136,7 @@ function CSSPluginPanel({
   // Focus regions are shown within AgentActivityBanner
   showFocusRegions: _showFocusRegions = false,
   agentEditingRegions: _agentEditingRegions = [],
-}: CSSPluginPanelProps): React.ReactElement {
+}: P1PluginPanelProps): React.ReactElement {
   // Suppress unused variable warnings - these are passed through for future use
   void _showFocusRegions;
   void _agentEditingRegions;
@@ -316,7 +316,7 @@ function SyncDataPoller({
 }
 
 /**
- * Component that reads sync data directly from CSSPuckContext.
+ * Component that reads sync data directly from P1PuckContext.
  * This is the preferred sync mechanism as it keeps all sync logic in the integration layer,
  * rather than requiring consumers to manage sync state.
  *
@@ -329,7 +329,7 @@ function SyncDataPoller({
  * without any side effects during render.
  */
 function ContextSyncBridge(): React.ReactElement | null {
-  const context = useCSSPuckOptional();
+  const context = useP1PuckOptional();
   if (!context) return null;
 
   const { currentData, remoteSyncKey, currentDocument, viewingVersion } = context;
@@ -362,7 +362,7 @@ function ContextSyncBridge(): React.ReactElement | null {
  * batching — without this, the last keystroke in a typing burst is lost.
  */
 function RealtimeDataCaptureBridge(): React.ReactElement | null {
-  const context = useCSSPuckOptional();
+  const context = useP1PuckOptional();
   if (!context) return null;
 
   const { _realtimeDataCaptureRef, _onRealtimeDataCapture } = context;
@@ -379,7 +379,7 @@ function RealtimeDataCaptureBridge(): React.ReactElement | null {
 /**
  * Options for creating the CSS Plugin
  */
-export interface CSSPluginOptions {
+export interface P1PluginOptions {
   /** List of available branches */
   branches: Branch[];
   /** Currently selected branch */
@@ -438,7 +438,7 @@ export interface CSSPluginOptions {
    */
   getDataSyncKey?: () => string | undefined;
   /**
-   * When true, the plugin reads sync data directly from CSSPuckContext.
+   * When true, the plugin reads sync data directly from P1PuckContext.
    * This is the recommended approach as it keeps sync logic in the integration layer.
    * When false, you must provide syncData/dataSyncKey or getSyncData/getDataSyncKey.
    * @default true
@@ -511,17 +511,17 @@ export interface PuckPlugin {
 }
 
 /**
- * Inner component for P1SubheaderBridge — only rendered when CSSPuck context is available.
+ * Inner component for P1SubheaderBridge — only rendered when P1Puck context is available.
  * Separating into inner/outer avoids violating Rules of Hooks with a try/catch before hook calls.
  */
 function P1SubheaderBridgeInner({
   options,
-  cssContext,
+  p1Context,
 }: {
-  options: CSSPluginOptions;
-  cssContext: ReturnType<typeof useCSSPuck>;
+  options: P1PluginOptions;
+  p1Context: ReturnType<typeof useP1Puck>;
 }): React.ReactElement | null {
-  const { currentDocument, currentBranch, presence, publishDocument, hasActiveHumans, humanPresenceCount, siteId } = cssContext;
+  const { currentDocument, currentBranch, presence, publishDocument, hasActiveHumans, humanPresenceCount, siteId } = p1Context;
 
   // Read Puck history state — must be called unconditionally (Rules of Hooks)
   const history = usePluginPuckHistory((s) => (s as unknown as PuckStateWithHistory).history);
@@ -536,7 +536,7 @@ function P1SubheaderBridgeInner({
   }, []);
 
   // Persist sidebar visibility to localStorage on every user toggle.
-  // Initial state is set via the `ui` prop passed to <Puck> (see useCSSEditor.ts),
+  // Initial state is set via the `ui` prop passed to <Puck> (see useP1Editor.ts),
   // so no restore dispatch is needed here — we only need to write.
   const sidebarStorageKey = `css-sidebar-${siteId}`;
   useEffect(() => {
@@ -577,7 +577,7 @@ function P1SubheaderBridgeInner({
 
   // onPublish: consumer override or fall back to context publishDocument
   // Gated by enablePublishButton feature flag
-  const handlePublish = (cssContext.featureConfig?.enablePublishButton ?? true)
+  const handlePublish = (p1Context.featureConfig?.enablePublishButton ?? true)
     ? (options.onPublish ?? (async () => { await publishDocument(); }))
     : undefined;
 
@@ -647,13 +647,13 @@ function P1SubheaderBridgeInner({
  * editor header without being in the same React tree.
  *
  * Uses an error-boundary-like try/catch at the outer level to safely handle
- * cases where CSSPuckContext isn't available.
+ * cases where P1PuckContext isn't available.
  */
-function P1SubheaderBridge({ options }: { options: CSSPluginOptions }): React.ReactElement | null {
-  const cssContext = useCSSPuckOptional();
-  if (!cssContext) return null;
+function P1SubheaderBridge({ options }: { options: P1PluginOptions }): React.ReactElement | null {
+  const p1Context = useP1PuckOptional();
+  if (!p1Context) return null;
 
-  return <P1SubheaderBridgeInner options={options} cssContext={cssContext} />;
+  return <P1SubheaderBridgeInner options={options} p1Context={p1Context} />;
 }
 
 /**
@@ -661,26 +661,26 @@ function P1SubheaderBridge({ options }: { options: CSSPluginOptions }): React.Re
  *
  * @example
  * ```tsx
- * import { createCSSPlugin, useCSSPuck } from '@pantheon-systems/puck-css';
+ * import { createP1Plugin, useP1Puck } from '@pantheon-systems/puck-css';
  *
  * function Editor() {
- *   const { branches, currentBranch, switchBranch, saveStatus } = useCSSPuck();
+ *   const { branches, currentBranch, switchBranch, saveStatus } = useP1Puck();
  *
- *   const cssPlugin = createCSSPlugin({
+ *   const p1Plugin = createP1Plugin({
  *     branches,
  *     currentBranch,
  *     onBranchSwitch: switchBranch,
  *     hasUnsavedChanges: saveStatus === 'saving',
  *   });
  *
- *   return <Puck plugins={[cssPlugin]} {...otherProps} />;
+ *   return <Puck plugins={[p1Plugin]} {...otherProps} />;
  * }
  * ```
  */
 
-export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
+export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
   // Determine which sync mechanism to use (in order of preference):
-  // 1. Context-based (default): Reads from CSSPuckContext directly - most reliable
+  // 1. Context-based (default): Reads from P1PuckContext directly - most reliable
   // 2. Getter functions: Uses SyncDataPoller which polls for changes
   // 3. Direct values (legacy): Uses PuckDataSynchronizer directly (causes plugin recreation)
   const useContextSync = options.useContextSync !== false; // Default to true
@@ -696,9 +696,9 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
   // options change between renders (callbacks, branch list, etc.)
   const optionsRef = { current: options };
   optionsRef.current = options;
-  const stableOptions = new Proxy({} as CSSPluginOptions, {
+  const stableOptions = new Proxy({} as P1PluginOptions, {
     get(_target, prop: string) {
-      return optionsRef.current[prop as keyof CSSPluginOptions];
+      return optionsRef.current[prop as keyof P1PluginOptions];
     },
   });
 
@@ -709,8 +709,8 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
    */
   function HeaderOverride(): React.ReactElement {
     const [showMergeReview, setShowMergeReview] = useState(false);
-    const css = useCSSPuck();
-    const auth = useOptionalCSSAuth();
+    const css = useP1Puck();
+    const auth = useOptionalP1Auth();
 
     // Merge avatar from live auth state so the header re-renders when the
     // async token validation resolves (stableOptions alone won't trigger it).
@@ -824,7 +824,7 @@ export function createCSSPlugin(options: CSSPluginOptions): PuckPlugin {
         {/* Nav tooltips are handled by PuckEditorTheme.css — labels are repositioned as hover tooltips */}
         {/* Subheader bridge — portals P1EditorSubheader into the slot placed by header override */}
         <P1SubheaderBridge options={stableOptions} />
-        <CSSPluginPanel
+        <P1PluginPanel
           versions={options.versions}
           versionsLoading={options.versionsLoading}
           selectedVersionId={options.selectedVersionId}

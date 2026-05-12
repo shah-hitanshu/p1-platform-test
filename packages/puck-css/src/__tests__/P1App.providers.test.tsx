@@ -1,8 +1,8 @@
 /**
- * Tests for <CSSApp> provider composition
+ * Tests for <P1App> provider composition
  *
- * Validates that CSSApp creates CSSClient, wraps children in
- * CSSPuckProvider, and conditionally mounts FocusHighlightProvider.
+ * Validates that P1App creates P1Client, wraps children in
+ * P1PuckProvider, and conditionally mounts FocusHighlightProvider.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -23,25 +23,25 @@ const mockAuthState = {
 };
 
 vi.mock('../auth/index', () => ({
-  CSSAuthProvider: ({ children }: { children: React.ReactNode }) => (
+  P1AuthProvider: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="css-auth-provider">{children}</div>
   ),
-  useCSSAuth: () => mockAuthState,
-  CSSLoginPage: ({ title }: { title?: string }) => (
+  useP1Auth: () => mockAuthState,
+  P1LoginPage: ({ title }: { title?: string }) => (
     <div data-testid="css-login-page">{title || 'Sign in'}</div>
   ),
   DEMO_USERS: [],
 }));
 
 // Use vi.hoisted to define mocks before vi.mock hoisting
-const { capturedPuckProviderProps, MockCSSClient } = vi.hoisted(() => ({
+const { capturedPuckProviderProps, MockP1Client } = vi.hoisted(() => ({
   capturedPuckProviderProps: vi.fn(),
-  MockCSSClient: vi.fn().mockImplementation(function () { return {}; }),
+  MockP1Client: vi.fn().mockImplementation(function () { return {}; }),
 }));
 
-// Capture CSSPuckProvider props for assertions
-vi.mock('../editor/CSSPuckProvider', () => ({
-  CSSPuckProvider: (props: Record<string, unknown>) => {
+// Capture P1PuckProvider props for assertions
+vi.mock('../editor/P1PuckProvider', () => ({
+  P1PuckProvider: (props: Record<string, unknown>) => {
     const { children, ...rest } = props;
     capturedPuckProviderProps(rest);
     return <div data-testid="css-puck-provider">{children as React.ReactNode}</div>;
@@ -56,19 +56,19 @@ vi.mock('../core/FocusHighlightContext', () => ({
   },
 }));
 
-vi.mock('../core/CSSPuckContext', () => ({
-  useCSSPuck: () => ({ safeData: { content: [], root: { props: {} }, zones: {} } }),
-  CSSPuckContext: { Provider: ({ children }: { children: React.ReactNode }) => children },
+vi.mock('../core/P1PuckContext', () => ({
+  useP1Puck: () => ({ safeData: { content: [], root: { props: {} }, zones: {} } }),
+  P1PuckContext: { Provider: ({ children }: { children: React.ReactNode }) => children },
 }));
 vi.mock('../core/PresenceContext', () => ({
   useOptionalPresenceContext: () => null,
 }));
 
 vi.mock('@pantheon-systems/css-client', () => ({
-  CSSClient: MockCSSClient,
+  P1Client: MockP1Client,
 }));
 
-import { CSSApp } from '../editor/CSSApp';
+import { P1App } from '../editor/P1App';
 
 const baseConfig = {
   baseUrl: 'http://localhost:8787',
@@ -93,7 +93,7 @@ function setAuthenticated() {
   mockAuthState.getToken.mockResolvedValue('test-token');
 }
 
-describe('CSSApp provider composition', () => {
+describe('P1App provider composition', () => {
   beforeEach(() => {
     mockAuthState.isAuthenticated = false;
     mockAuthState.isLoading = false;
@@ -103,48 +103,48 @@ describe('CSSApp provider composition', () => {
     vi.clearAllMocks();
   });
 
-  it('wraps children in CSSPuckProvider when authenticated', () => {
+  it('wraps children in P1PuckProvider when authenticated', () => {
     setAuthenticated();
 
     render(
-      <CSSApp config={baseConfig}>
+      <P1App config={baseConfig}>
         <div data-testid="child">Hello</div>
-      </CSSApp>
+      </P1App>
     );
 
     expect(screen.getByTestId('css-puck-provider')).toBeInTheDocument();
     expect(screen.getByTestId('child')).toBeInTheDocument();
   });
 
-  it('creates CSSClient with correct baseUrl and token', async () => {
+  it('creates P1Client with correct baseUrl and token', async () => {
     setAuthenticated();
 
     render(
-      <CSSApp config={baseConfig}>
+      <P1App config={baseConfig}>
         <div>Hello</div>
-      </CSSApp>
+      </P1App>
     );
 
-    expect(MockCSSClient).toHaveBeenCalledWith(
+    expect(MockP1Client).toHaveBeenCalledWith(
       expect.objectContaining({
         baseUrl: 'http://localhost:8787',
       })
     );
 
     // Verify authProvider returns Bearer token
-    const callArgs = MockCSSClient.mock.calls[0][0];
+    const callArgs = MockP1Client.mock.calls[0][0];
     expect(callArgs.authProvider).toBeDefined();
     const authHeader = await callArgs.authProvider();
     expect(authHeader).toBe('Bearer test-token');
   });
 
-  it('passes config props to CSSPuckProvider', () => {
+  it('passes config props to P1PuckProvider', () => {
     setAuthenticated();
 
     render(
-      <CSSApp config={fullConfig}>
+      <P1App config={fullConfig}>
         <div>Hello</div>
-      </CSSApp>
+      </P1App>
     );
 
     expect(capturedPuckProviderProps).toHaveBeenCalledWith(
@@ -167,9 +167,9 @@ describe('CSSApp provider composition', () => {
     setAuthenticated();
 
     render(
-      <CSSApp config={{ ...baseConfig, enablePresence: true }}>
+      <P1App config={{ ...baseConfig, enablePresence: true }}>
         <div data-testid="child">Hello</div>
-      </CSSApp>
+      </P1App>
     );
 
     // PresenceFocusBridge renders children directly (no wrapper element)
@@ -181,9 +181,9 @@ describe('CSSApp provider composition', () => {
     setAuthenticated();
 
     render(
-      <CSSApp config={{ ...baseConfig, enablePresence: false }}>
+      <P1App config={{ ...baseConfig, enablePresence: false }}>
         <div data-testid="child">Hello</div>
-      </CSSApp>
+      </P1App>
     );
 
     expect(screen.queryByTestId('focus-highlight-provider')).not.toBeInTheDocument();
@@ -194,34 +194,34 @@ describe('CSSApp provider composition', () => {
     setAuthenticated();
 
     render(
-      <CSSApp config={baseConfig}>
+      <P1App config={baseConfig}>
         <div data-testid="child">Hello</div>
-      </CSSApp>
+      </P1App>
     );
 
     expect(screen.queryByTestId('focus-highlight-provider')).not.toBeInTheDocument();
   });
 
-  it('does not render CSSPuckProvider when not authenticated', () => {
+  it('does not render P1PuckProvider when not authenticated', () => {
     render(
-      <CSSApp config={baseConfig}>
+      <P1App config={baseConfig}>
         <div data-testid="child">Hello</div>
-      </CSSApp>
+      </P1App>
     );
 
     expect(screen.queryByTestId('css-puck-provider')).not.toBeInTheDocument();
   });
 
-  it('uses clientBaseUrl for CSSClient when provided', () => {
+  it('uses clientBaseUrl for P1Client when provided', () => {
     setAuthenticated();
 
     render(
-      <CSSApp config={{ ...baseConfig, clientBaseUrl: 'http://client.localhost:8787' }}>
+      <P1App config={{ ...baseConfig, clientBaseUrl: 'http://client.localhost:8787' }}>
         <div>Hello</div>
-      </CSSApp>
+      </P1App>
     );
 
-    expect(MockCSSClient).toHaveBeenCalledWith(
+    expect(MockP1Client).toHaveBeenCalledWith(
       expect.objectContaining({
         baseUrl: 'http://client.localhost:8787',
       })

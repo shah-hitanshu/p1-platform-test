@@ -1,10 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
 
-/**
- * Playwright configuration for end-to-end tests.
- *
- * @see https://playwright.dev/docs/test-configuration
- */
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -29,7 +24,7 @@ export default defineConfig({
 
   webServer: [
     {
-      command: 'npx tsx e2e/mock-css-server.ts',
+      command: 'npx tsx e2e/mock-p1-server.ts',
       url: 'http://localhost:4444/api/sites/test-site/branches',
       reuseExistingServer: !process.env.CI,
       timeout: 10_000,

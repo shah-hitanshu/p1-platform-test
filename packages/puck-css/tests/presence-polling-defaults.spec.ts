@@ -17,7 +17,7 @@ import type {
   ActorPresence,
   BranchPresence,
   SitePresence,
-  CSSClient,
+  P1Client,
 } from '@pantheon-systems/css-client';
 
 // =============================================================================
@@ -73,7 +73,7 @@ const mockSitePresence: SitePresence = {
 // Mock Client Factory
 // =============================================================================
 
-function createMockClient(): CSSClient {
+function createMockClient(): P1Client {
   return {
     presence: {
       getSitePresence: vi.fn().mockResolvedValue(mockSitePresence),
@@ -85,7 +85,7 @@ function createMockClient(): CSSClient {
         locations: [],
       }),
     },
-  } as unknown as CSSClient;
+  } as unknown as P1Client;
 }
 
 // =============================================================================
@@ -93,7 +93,7 @@ function createMockClient(): CSSClient {
 // =============================================================================
 
 function createWrapper(props: {
-  client: CSSClient;
+  client: P1Client;
   siteId: string;
   branchId: string;
   documentPath?: string;

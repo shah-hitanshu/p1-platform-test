@@ -6,10 +6,10 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Document, PuckData } from '@pantheon-systems/css-client';
-import type { CSSClient } from '@pantheon-systems/css-client';
+import type { P1Client } from '@pantheon-systems/css-client';
 
 interface UseDocumentsParams {
-  client: CSSClient;
+  client: P1Client;
   siteId: string;
   branchId: string;
 }
