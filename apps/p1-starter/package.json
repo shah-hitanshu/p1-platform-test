@@ -18,7 +18,7 @@
     "@puckeditor/core": "^0.21.1",
     "@tailwindcss/postcss": "^4.2.2",
     "classnames": "^2.5.1",
-    "next": "^16.2.3",
+    "next": "^16.2.6",
     "postcss": "^8.5.12",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
