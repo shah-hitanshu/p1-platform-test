@@ -369,13 +369,23 @@ async function handleRequest(
     }
   }
 
-  // Allowlist check: if users table has entries, only listed users can access
-  // Skip for mock auth mode (development ergonomics)
-  // Skip for service principals (they authenticate via site API tokens, not user accounts)
+  // Allowlist check: if users table has entries, only listed users can access.
+  // Skip for mock auth mode (development ergonomics).
+  // Skip for service principals (they authenticate via site API tokens, not user accounts).
+  //
+  // PCC-3190: agent principals carry no email of their own, so the previous
+  // `principal.email !== undefined` guard caused the gate to be skipped
+  // entirely for agent traffic — letting any authenticated Google user
+  // reach handlers via the MCP server's acting-user forwarding without
+  // being checked against the allowlist. When an agent forwards an
+  // acting user, treat the acting user's email as the allowlist subject.
   const isMockOnly = !hasOAuthProviders(env);
+  const subjectEmail =
+    principal.email
+    ?? (principal.type === 'agent' ? principal.actingUserEmail : undefined);
 
-  if (!isMockOnly && principal.type !== 'service' && principal.email !== undefined) {
-    const allowlistResult = await checkUserAllowlist(principal);
+  if (!isMockOnly && principal.type !== 'service' && subjectEmail !== undefined) {
+    const allowlistResult = await checkUserAllowlist(principal, subjectEmail);
     if (allowlistResult !== null) {
       return addCorsHeaders(allowlistResult, origin, env);
     }
@@ -403,8 +413,20 @@ async function handleRequest(
 /**
  * Check user against allowlist in database.
  * Returns an error response if user is not authorized, or null if authorized.
+ *
+ * `subjectEmail` is the email to check against app.users. For user
+ * principals this is principal.email; for agent principals forwarding an
+ * acting user (PCC-3190), it is principal.actingUserEmail.
+ *
+ * Agent principals are NOT enriched (dbUserId/systemRole/etc.) from the
+ * acting user's row — downstream agent-keyed authorization expects
+ * principal.id to remain the agent identity. Acting-user permissions
+ * are applied per-site via getEffectiveRole's intersection logic.
  */
-async function checkUserAllowlist(principal: AuthenticatedPrincipal): Promise<Response | null> {
+async function checkUserAllowlist(
+  principal: AuthenticatedPrincipal,
+  subjectEmail: string,
+): Promise<Response | null> {
   const userCountResult = await query<{ count: string }>(
     'SELECT COUNT(*) as count FROM app.users',
   );
@@ -421,12 +443,19 @@ async function checkUserAllowlist(principal: AuthenticatedPrincipal): Promise<Re
       avatar_url: string | null;
     }>(
       'SELECT id, principal_id, system_role, is_active, name, avatar_url FROM app.users WHERE email = $1',
-      [(principal.email ?? '').toLowerCase()],
+      [subjectEmail.toLowerCase()],
     );
 
     const userRow = userResult.rows[0];
     if (userRow?.is_active !== true) {
       return errorResponse('User not authorized', 403);
+    }
+
+    // Agent principals must not adopt the acting user's DB identity.
+    // The allowlist check above is sufficient; per-site authorization
+    // already intersects agent and acting-user roles via getEffectiveRole.
+    if (principal.type !== 'user') {
+      return null;
     }
 
     // Link principal_id on first login, and update name/avatar_url

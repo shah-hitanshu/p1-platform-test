@@ -756,6 +756,116 @@ describe('Phase 3.1: Site Service', () => {
       expect(sql).toContain('LIMIT');
       expect(sql).toContain('OFFSET');
     });
+
+    // ---------------------------------------------------------------------
+    // PCC-3190: when an agent acts on behalf of a user, the result must be
+    // intersected with the acting user's user_site_roles so the agent
+    // cannot leak sites the user has no access to.
+    // ---------------------------------------------------------------------
+    describe('PCC-3190: agent + actingUserId intersection', () => {
+      it('should join user_site_roles when actingUserId is provided with agent principal', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listSites({
+          principalId: 'agent-abc',
+          principalType: 'agent',
+          actingUserId: 'db-user-xyz',
+        });
+
+        const sql = vi.mocked(db.query).mock.calls[0][0];
+        const params = vi.mocked(db.query).mock.calls[0][1];
+
+        // Both joins must be present so the result intersects agent + user roles.
+        expect(sql).toContain('INNER JOIN app.agent_site_roles');
+        expect(sql).toContain('INNER JOIN app.user_site_roles');
+        // Both ids must be in the parameter list.
+        expect(params).toContain('agent-abc');
+        expect(params).toContain('db-user-xyz');
+      });
+
+      it('should NOT join user_site_roles when actingUserId is absent (legacy agent path)', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listSites({
+          principalId: 'agent-abc',
+          principalType: 'agent',
+        });
+
+        const sql = vi.mocked(db.query).mock.calls[0][0];
+
+        // Legacy agent calls (no acting user) keep the original SQL shape so
+        // direct agent traffic continues to work as before.
+        expect(sql).toContain('INNER JOIN app.agent_site_roles');
+        expect(sql).not.toContain('INNER JOIN app.user_site_roles');
+      });
+
+      it('should ignore actingUserId for user principals (not used in user-scoped flow)', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listSites({
+          principalId: 'user-1',
+          principalType: 'user',
+          actingUserId: 'should-be-ignored',
+        });
+
+        const sql = vi.mocked(db.query).mock.calls[0][0];
+        const params = vi.mocked(db.query).mock.calls[0][1];
+
+        // User principals already filter by the user's own role table; the
+        // actingUserId concept does not apply to them.
+        expect(sql).toContain('INNER JOIN app.user_site_roles');
+        expect(sql).not.toContain('app.agent_site_roles');
+        expect(params).not.toContain('should-be-ignored');
+      });
+
+      it('should support pagination with agent + actingUserId intersection', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listSites({
+          principalId: 'agent-abc',
+          principalType: 'agent',
+          actingUserId: 'db-user-xyz',
+          limit: 10,
+          offset: 20,
+        });
+
+        const sql = vi.mocked(db.query).mock.calls[0][0];
+        expect(sql).toContain('INNER JOIN app.agent_site_roles');
+        expect(sql).toContain('INNER JOIN app.user_site_roles');
+        expect(sql).toContain('LIMIT');
+        expect(sql).toContain('OFFSET');
+      });
+
+      it('should still respect agent_site_roles.revoked_at IS NULL when intersecting', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listSites({
+          principalId: 'agent-abc',
+          principalType: 'agent',
+          actingUserId: 'db-user-xyz',
+        });
+
+        const sql = vi.mocked(db.query).mock.calls[0][0];
+        // The revoked_at filter must remain even with the user join, otherwise
+        // revoked agent grants could come back through the intersection.
+        expect(sql).toContain('revoked_at IS NULL');
+      });
+    });
   });
 
   describe('getSiteAllowedOrigins', () => {

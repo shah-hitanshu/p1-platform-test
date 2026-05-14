@@ -51,6 +51,13 @@ export interface ListSitesOptions {
   principalId: string;
   /** Controls which role table to query. Defaults to 'user'. */
   principalType?: 'user' | 'agent';
+  /**
+   * When set on the agent path, intersects results with sites where this
+   * user (referenced by app.users.id) also has a role. Prevents an agent
+   * from leaking its full site list to an authenticated user that has
+   * no access to those sites. Ignored on the user path. (PCC-3190)
+   */
+  actingUserId?: string;
 }
 
 /**
@@ -457,16 +464,31 @@ export async function deleteSite(siteId: string): Promise<boolean> {
  * Lists sites the given principal has access to, with optional pagination.
  */
 export async function listSites(options: ListSitesOptions): Promise<Site[]> {
-  const { limit, offset, principalId, principalType } = options;
+  const { limit, offset, principalId, principalType, actingUserId } = options;
   const params: unknown[] = [principalId];
 
   let sql: string;
   if (principalType === 'agent') {
-    sql =
-      'SELECT DISTINCT s.* FROM app.sites s' +
-      ' INNER JOIN app.agent_site_roles asr ON asr.site_id = s.id' +
-      ' WHERE asr.agent_id = $1 AND asr.revoked_at IS NULL' +
-      ' ORDER BY s.created_at DESC';
+    // PCC-3190: when an agent acts on behalf of a user, intersect with
+    // the user's site roles so the result never leaks beyond what the
+    // acting user could see directly. The revoked_at filter on the agent
+    // grant must remain in either branch.
+    if (actingUserId !== undefined) {
+      params.push(actingUserId);
+      sql =
+        'SELECT DISTINCT s.* FROM app.sites s' +
+        ' INNER JOIN app.agent_site_roles asr ON asr.site_id = s.id' +
+        ' INNER JOIN app.user_site_roles usr ON usr.site_id = s.id' +
+        ' WHERE asr.agent_id = $1 AND asr.revoked_at IS NULL' +
+        ' AND usr.user_id = $2' +
+        ' ORDER BY s.created_at DESC';
+    } else {
+      sql =
+        'SELECT DISTINCT s.* FROM app.sites s' +
+        ' INNER JOIN app.agent_site_roles asr ON asr.site_id = s.id' +
+        ' WHERE asr.agent_id = $1 AND asr.revoked_at IS NULL' +
+        ' ORDER BY s.created_at DESC';
+    }
   } else {
     sql =
       'SELECT DISTINCT s.* FROM app.sites s' +

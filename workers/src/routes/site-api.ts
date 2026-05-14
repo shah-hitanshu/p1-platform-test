@@ -19,6 +19,7 @@ import {
 } from '../services';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
 import { validatePagination } from './validation';
+import { query } from '../db';
 
 /**
  * Request context for site routes
@@ -133,11 +134,34 @@ async function handleListSites(
     return errorResponse(pagination.error ?? 'Invalid pagination parameters', 400);
   }
 
+  // PCC-3190: when an agent acts on behalf of a user, restrict the listing
+  // to sites the acting user also has a role on. The MCP-server-forwarded
+  // X-Acting-User-Email is trusted only when principal.type === 'agent'
+  // (see extractActingUser). If the acting user is unknown to app.users
+  // we return an empty list rather than running the agent's full query.
+  let actingUserId: string | undefined;
+  if (
+    context.principal.type === 'agent'
+    && context.principal.actingUserEmail !== undefined
+    && context.principal.actingUserEmail !== ''
+  ) {
+    const actingUserResult = await query<{ id: string }>(
+      'SELECT id FROM app.users WHERE email = $1 AND is_active = true',
+      [context.principal.actingUserEmail.toLowerCase()],
+    );
+    const actingUserRow = actingUserResult.rows[0];
+    if (actingUserRow === undefined) {
+      return jsonResponse({ sites: [] });
+    }
+    actingUserId = actingUserRow.id;
+  }
+
   const sites = await listSites({
     limit: pagination.limit,
     offset: pagination.offset,
     principalId: context.principal.dbUserId ?? context.principal.id,
     principalType: context.principal.type as 'user' | 'agent',
+    actingUserId,
   });
 
   return jsonResponse({ sites });

@@ -43,6 +43,11 @@ vi.mock('../../src/auth/authorization', () => ({
   },
 }));
 
+// Mock db (used by the route layer for the acting-user email -> users.id lookup)
+vi.mock('../../src/db', () => ({
+  query: vi.fn(),
+}));
+
 describe('Phase 7.1.1b: Site API Routes', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -468,6 +473,154 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       expect(services.listSites).toHaveBeenCalledWith(
         expect.objectContaining({ principalId: 'agent-uuid', principalType: 'agent' }),
       );
+    });
+
+    // ---------------------------------------------------------------------
+    // PCC-3190: agent + acting-user must intersect listSites by user role
+    // so that an authenticated Google user only sees the sites where BOTH
+    // the calling agent AND the acting user have roles. This prevents the
+    // backend from leaking the full agent's site list when an agent acts
+    // on behalf of a user that has no access to those sites.
+    // ---------------------------------------------------------------------
+    describe('GET /api/sites — agent acting on behalf of a user (PCC-3190)', () => {
+      it('should return empty result and not call listSites when acting user is not in app.users allowlist', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const services = await import('../../src/services');
+        const db = await import('../../src/db');
+
+        // Acting-user lookup returns no row -> user is not in the allowlist
+        vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+        const request = new Request('https://api.example.com/api/sites', {
+          method: 'GET',
+        });
+
+        const response = await handleSiteRoutes(request, {
+          principal: {
+            id: 'agent-uuid',
+            type: 'agent',
+            actingUserEmail: 'unknown-user@example.com',
+            actingUserId: 'acting-user-uuid',
+          },
+        });
+
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.sites).toEqual([]);
+        // listSites must NOT be called when the acting user is unknown -- otherwise
+        // we would leak the agent's full site list.
+        expect(services.listSites).not.toHaveBeenCalled();
+      });
+
+      it('should pass actingUserId to listSites when acting user is in the allowlist', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const services = await import('../../src/services');
+        const db = await import('../../src/db');
+
+        // Acting-user lookup returns a row -> user is in the allowlist
+        vi.mocked(db.query).mockResolvedValueOnce({
+          rows: [{ id: 'db-acting-user-id' }],
+        });
+        vi.mocked(services.listSites).mockResolvedValueOnce([]);
+
+        const request = new Request('https://api.example.com/api/sites', {
+          method: 'GET',
+        });
+
+        await handleSiteRoutes(request, {
+          principal: {
+            id: 'agent-uuid',
+            type: 'agent',
+            actingUserEmail: 'known-user@example.com',
+            actingUserId: 'provider-acting-user-id',
+          },
+        });
+
+        expect(services.listSites).toHaveBeenCalledWith(
+          expect.objectContaining({
+            principalId: 'agent-uuid',
+            principalType: 'agent',
+            actingUserId: 'db-acting-user-id',
+          }),
+        );
+      });
+
+      it('should lowercase the acting user email when looking up the allowlist', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const db = await import('../../src/db');
+        const services = await import('../../src/services');
+
+        vi.mocked(db.query).mockResolvedValueOnce({
+          rows: [{ id: 'db-acting-user-id' }],
+        });
+        vi.mocked(services.listSites).mockResolvedValueOnce([]);
+
+        const request = new Request('https://api.example.com/api/sites', {
+          method: 'GET',
+        });
+
+        await handleSiteRoutes(request, {
+          principal: {
+            id: 'agent-uuid',
+            type: 'agent',
+            actingUserEmail: 'Known-User@Example.com',
+            actingUserId: 'provider-acting-user-id',
+          },
+        });
+
+        // The lookup must use the lowercased email so it matches the storage
+        // convention used elsewhere in the codebase (see app.users.email).
+        const queryCall = vi.mocked(db.query).mock.calls[0];
+        expect(queryCall[1]).toContain('known-user@example.com');
+      });
+
+      it('should NOT add actingUserId for agent without actingUserEmail (legacy direct agent traffic)', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const services = await import('../../src/services');
+        const db = await import('../../src/db');
+
+        vi.mocked(services.listSites).mockResolvedValueOnce([]);
+
+        const request = new Request('https://api.example.com/api/sites', {
+          method: 'GET',
+        });
+
+        await handleSiteRoutes(request, {
+          principal: { id: 'agent-uuid', type: 'agent' },
+        });
+
+        // Behavior unchanged for legacy agent calls: no email lookup happens
+        // and listSites is called without actingUserId.
+        expect(db.query).not.toHaveBeenCalled();
+        const listCall = vi.mocked(services.listSites).mock.calls[0][0];
+        expect(listCall.actingUserId).toBeUndefined();
+      });
+
+      it('should NOT add actingUserId for user principals', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const services = await import('../../src/services');
+        const db = await import('../../src/db');
+
+        vi.mocked(services.listSites).mockResolvedValueOnce([]);
+
+        const request = new Request('https://api.example.com/api/sites', {
+          method: 'GET',
+        });
+
+        await handleSiteRoutes(request, {
+          principal: {
+            id: 'user-1',
+            type: 'user',
+            email: 'user@example.com',
+          },
+        });
+
+        // User principals never carry the acting-user concept; no email lookup
+        // should occur and listSites should be called without actingUserId.
+        expect(db.query).not.toHaveBeenCalled();
+        const listCall = vi.mocked(services.listSites).mock.calls[0][0];
+        expect(listCall.actingUserId).toBeUndefined();
+      });
     });
   });
 
