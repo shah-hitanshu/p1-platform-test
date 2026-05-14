@@ -17,4 +17,13 @@ export interface Env {
 
   // Service binding to the API worker (avoids worker-to-worker fetch 1042 errors)
   CSS_BACKEND?: Fetcher;
+
+  // PCC-3192 — Rate Limiting bindings (red-team Finding 4). All four are
+  // optional so the rate-limit wrapper can fail OPEN with a one-shot warn
+  // when a binding is missing — mirrors the PCC-3193 binding-mode pattern.
+  // Drift becomes visible in Workers Logs without taking the service down.
+  RL_TOOLS_READ?: RateLimit;
+  RL_TOOLS_MUTATION?: RateLimit;
+  RL_TOOLS_ANON?: RateLimit;
+  RL_OAUTH?: RateLimit;
 }

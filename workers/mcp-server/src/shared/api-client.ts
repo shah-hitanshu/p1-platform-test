@@ -8,6 +8,7 @@
  */
 
 import type { McpApiClientConfig, ActingUser } from './types.js';
+import { getBackendBreaker } from '../circuit-breaker.js';
 
 // =============================================================================
 // Types
@@ -226,12 +227,27 @@ export class McpApiClient {
   /**
    * Fetch wrapper that uses the service binding when available,
    * falling back to global fetch for local development.
+   *
+   * Wrapped in the per-isolate circuit breaker (PCC-3192). Sustained 5xx
+   * from the backend trips the breaker and subsequent calls fast-fail with
+   * a clear error before hitting the upstream — preventing the cascade
+   * documented in docs/handoff-sbx1-500-errors.md (Hyperdrive connection
+   * exhaustion under load).
    */
-  private doFetch(url: string, init: RequestInit): Promise<Response> {
-    if (this.fetcher) {
-      return this.fetcher.fetch(url, init);
-    }
-    return fetch(url, init);
+  private async doFetch(url: string, init: RequestInit): Promise<Response> {
+    const breaker = getBackendBreaker();
+    return breaker.execute(() => {
+      if (this.fetcher) {
+        return this.fetcher.fetch(url, init);
+      }
+      return fetch(url, init);
+    });
+    // CircuitOpenError propagates as-is. Its message already includes the
+    // retry hint and is consumed by the existing tool-handler catch path
+    // (handleResponse → formatError) which turns Error instances into
+    // LLM-facing text. Re-throwing as a plain Error here would discard
+    // both the discriminator type and the `retryAfterMs` field, blocking
+    // any future programmatic backoff path. Caught in pre-merge review.
   }
 
   /**

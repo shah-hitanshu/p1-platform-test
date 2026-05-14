@@ -13,6 +13,29 @@
     { "binding": "OAUTH_KV", "id": "local-mcp-oauth-kv", "preview_id": "local-mcp-oauth-kv-preview" }
   ],
 
+  // PCC-3192 — Rate Limiting bindings (red-team Finding 4).
+  // Four bindings per env, each with a unique namespace_id so counters
+  // do NOT collide ACROSS BINDINGS (within an env) and so the three envs
+  // (local dev / sbx1 / production) do NOT share counters either.
+  //
+  // Cloudflare's Rate Limiting namespaces are ACCOUNT-scoped: any two
+  // bindings sharing a namespace_id share the same counters even across
+  // different workers. So if we used "3192100" for sbx1 AND production,
+  // a CI load-test against sbx1 from a runner IP would burn the prod
+  // OAuth bucket for that same IP, and a runaway agent in prod would
+  // poison the sbx1 bucket. Disjoint per-env series prevents that:
+  //   31923xx → top level (wrangler dev)
+  //   31921xx → sbx1
+  //   31922xx → production
+  // The `'env-stanzas use disjoint namespace_id sets'` test guards this.
+  // period must be 10 or 60 (Cloudflare API); standardised on 60.
+  "ratelimits": [
+    { "name": "RL_TOOLS_READ",     "namespace_id": "3192310", "simple": { "limit": 120, "period": 60 } },
+    { "name": "RL_TOOLS_MUTATION", "namespace_id": "3192320", "simple": { "limit": 30,  "period": 60 } },
+    { "name": "RL_OAUTH",          "namespace_id": "3192330", "simple": { "limit": 20,  "period": 60 } },
+    { "name": "RL_TOOLS_ANON",     "namespace_id": "3192340", "simple": { "limit": 60,  "period": 60 } }
+  ],
+
   // Non-secret environment variables
   "vars": {
     "ENVIRONMENT": "local",
@@ -45,6 +68,18 @@
       "services": [
         { "binding": "CSS_BACKEND", "service": "collaborative-state-worker-sbx1" }
       ],
+      // PCC-3192 — Rate Limiting bindings (red-team Finding 4). Re-declared
+      // per-env because wrangler env stanzas don't inherit `ratelimits` from
+      // the top level. sbx1 uses the 31921xx namespace series; production
+      // uses 31922xx; local dev (top-level) uses 31923xx. Namespaces are
+      // account-scoped, so disjoint series keep CI / sbx1 / prod buckets
+      // separate. See top-level ratelimits comment for the rationale.
+      "ratelimits": [
+        { "name": "RL_TOOLS_READ",     "namespace_id": "3192110", "simple": { "limit": 120, "period": 60 } },
+        { "name": "RL_TOOLS_MUTATION", "namespace_id": "3192120", "simple": { "limit": 30,  "period": 60 } },
+        { "name": "RL_OAUTH",          "namespace_id": "3192130", "simple": { "limit": 20,  "period": 60 } },
+        { "name": "RL_TOOLS_ANON",     "namespace_id": "3192140", "simple": { "limit": 60,  "period": 60 } }
+      ],
       // Workers Logs — required for the binding-mode cold-start warn to be
       // queryable. Without this the defense-in-depth log only surfaces under
       // reactive `wrangler tail` (PCC-3193). invocation_logs intentionally
@@ -74,6 +109,16 @@
       // Internet (PCC-3193, red-team Finding 6).
       "services": [
         { "binding": "CSS_BACKEND", "service": "collaborative-state-worker-prod" }
+      ],
+      // PCC-3192 — Rate Limiting bindings (red-team Finding 4). Re-declared
+      // per-env (see top-level ratelimits comment for rationale). Production
+      // uses the 31922xx namespace series — disjoint from sbx1 (31921xx)
+      // and dev (31923xx) so the three envs do NOT share counters.
+      "ratelimits": [
+        { "name": "RL_TOOLS_READ",     "namespace_id": "3192210", "simple": { "limit": 120, "period": 60 } },
+        { "name": "RL_TOOLS_MUTATION", "namespace_id": "3192220", "simple": { "limit": 30,  "period": 60 } },
+        { "name": "RL_OAUTH",          "namespace_id": "3192230", "simple": { "limit": 20,  "period": 60 } },
+        { "name": "RL_TOOLS_ANON",     "namespace_id": "3192240", "simple": { "limit": 60,  "period": 60 } }
       ],
       // Workers Logs — same rationale as sbx1.
       "observability": {

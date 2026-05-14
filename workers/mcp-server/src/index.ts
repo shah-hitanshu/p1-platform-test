@@ -19,6 +19,7 @@ import {
 } from './auth/google-handler.js';
 import { handleHealthCheck } from './health.js';
 import { logBindingModeOnce } from './binding-mode.js';
+import { checkOauthRateLimit, shouldBypassRateLimit } from './rate-limit.js';
 
 export { handleHealthCheck };
 
@@ -30,6 +31,30 @@ interface UserProps {
   userId: string;
   email: string;
   name?: string;
+}
+
+/**
+ * PCC-3192 — extract the client IP from the Cloudflare-injected header.
+ * Falls back to "unknown" so the key shape stays stable; an "unknown" bucket
+ * is shared across requests with no IP, which is intentional fail-safe
+ * grouping (better than skipping the limit entirely).
+ */
+function getClientIp(request: Request): string {
+  return request.headers.get('CF-Connecting-IP') ?? 'unknown';
+}
+
+/**
+ * PCC-3192 — return a 429 Response with a Retry-After hint.
+ * Used by the OAuth-endpoint rate-limit gates.
+ */
+function rateLimited(scope: string): Response {
+  return new Response(
+    JSON.stringify({ error: 'rate_limited', scope }),
+    {
+      status: 429,
+      headers: { 'Content-Type': 'application/json', 'Retry-After': '60' },
+    },
+  );
 }
 
 // =============================================================================
@@ -72,6 +97,18 @@ const mcpApiHandler: ExportedHandler<Env> = {
       serverVersion: env.MCP_SERVER_VERSION,
       actingUser: props ? { id: props.userId, email: props.email } : undefined,
       fetcher: env.CSS_BACKEND,
+      // PCC-3192 — per-tool rate limiting. Both undefined in local dev
+      // (no bindings configured); the wrapper fails OPEN with a one-shot
+      // warn in that case.
+      rateLimiters: {
+        toolsRead: env.RL_TOOLS_READ,
+        toolsMutation: env.RL_TOOLS_MUTATION,
+        toolsAnon: env.RL_TOOLS_ANON,
+      },
+      rateLimitContext: {
+        actingUserId: props?.userId,
+        clientIp: getClientIp(request),
+      },
     });
 
     const transport = new WebStandardStreamableHTTPServerTransport({
@@ -104,6 +141,28 @@ const defaultHandler: ExportedHandler<Env> = {
     // Health check
     if (url.pathname === '/health' && request.method === 'GET') {
       return handleHealthCheck(env.ENVIRONMENT);
+    }
+
+    // PCC-3192 — per-IP rate limit on the unauthenticated OAuth endpoints.
+    // /token and /register are intercepted by the wrapping fetch (below)
+    // before delegation to OAuthProvider; here we cover /authorize and
+    // /callback, which we own.
+    //
+    // OPTIONS bypass: a 429 here would be returned WITHOUT the CORS headers
+    // OAuthProvider sets in its main fetch path, breaking browser-based MCP
+    // clients. Preflight requests are cheap, must not be rate-limited.
+    if (
+      (url.pathname === '/authorize' || url.pathname === '/callback') &&
+      !shouldBypassRateLimit(request.method)
+    ) {
+      const verdict = await checkOauthRateLimit(
+        env.RL_OAUTH,
+        url.pathname,
+        getClientIp(request),
+      );
+      if (!verdict.allowed) {
+        return rateLimited('oauth');
+      }
     }
 
     // OAuth authorize endpoint - redirect to Google
@@ -214,7 +273,7 @@ const defaultHandler: ExportedHandler<Env> = {
 // OAuth Provider (wraps the Worker)
 // =============================================================================
 
-export default new OAuthProvider<Env>({
+const oauthProvider = new OAuthProvider<Env>({
   apiRoute: '/mcp',
   apiHandler: mcpApiHandler,
   defaultHandler,
@@ -224,3 +283,33 @@ export default new OAuthProvider<Env>({
   accessTokenTTL: 3600,      // 1 hour
   refreshTokenTTL: 2592000,  // 30 days
 });
+
+// PCC-3192 — wrap the OAuthProvider to apply per-IP rate limits on the
+// endpoints OAuthProvider owns internally (/token and /register). For
+// /authorize and /callback the gate lives inside defaultHandler. We only
+// intercept the two endpoints OAuthProvider takes from us; everything
+// else (including /mcp, which is handled by ctx.props-injecting machinery
+// inside OAuthProvider) is delegated unchanged.
+//
+// OPTIONS bypass: a 429 returned here would lack CORS headers, breaking
+// browser-based MCP clients. OAuthProvider's own fetch path returns the
+// CORS preflight response — we must let the request flow through.
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+    if (
+      (url.pathname === '/token' || url.pathname === '/register') &&
+      !shouldBypassRateLimit(request.method)
+    ) {
+      const verdict = await checkOauthRateLimit(
+        env.RL_OAUTH,
+        url.pathname,
+        getClientIp(request),
+      );
+      if (!verdict.allowed) {
+        return rateLimited('oauth');
+      }
+    }
+    return oauthProvider.fetch(request, env, ctx);
+  },
+} satisfies ExportedHandler<Env>;

@@ -18,14 +18,37 @@ const parseConfig = (raw: string): unknown => JSON.parse(
 );
 
 interface ServiceBinding { binding: string; service: string }
+interface RateLimitBinding {
+  name: string;
+  namespace_id: string;
+  simple: { limit: number; period: number };
+}
 interface EnvStanza {
   services?: ServiceBinding[];
   observability?: { logs?: { enabled?: boolean } };
+  ratelimits?: RateLimitBinding[];
 }
 interface WranglerConfig {
   main?: string;
   vars?: Record<string, unknown>;
+  ratelimits?: RateLimitBinding[];
   env?: Record<string, EnvStanza | undefined>;
+}
+
+// PCC-3192: the four rate-limit bindings every deployable env must wire.
+// Centralised so a typo in one assertion can't drift from the others.
+const REQUIRED_RATE_LIMIT_BINDINGS = [
+  'RL_TOOLS_READ',
+  'RL_TOOLS_MUTATION',
+  'RL_OAUTH',
+  'RL_TOOLS_ANON',
+] as const;
+
+// Resolve the effective ratelimits for an env. Wrangler does NOT inherit
+// top-level `ratelimits` into env stanzas the way `vars` work — bindings must
+// be declared per-env. So we read whichever the env declares.
+function ratelimitsFor(config: WranglerConfig, envName: 'sbx1' | 'production'): RateLimitBinding[] {
+  return config.env?.[envName]?.ratelimits ?? config.ratelimits ?? [];
 }
 
 describe('Wrangler Configuration', () => {
@@ -115,4 +138,95 @@ describe('Wrangler Configuration', () => {
       expect(obs?.logs?.enabled).toBe(true);
     });
   }
+
+  // =====================================================================
+  // PCC-3192 — Rate Limiting bindings (red-team Finding 4)
+  //
+  // The MCP server has 4 OAuth endpoints and 13 tool handlers that are
+  // entirely unprotected today. Without the rate-limit bindings declared,
+  // src/rate-limit.ts fails OPEN (drift visible in Workers Logs but no
+  // protection in effect). These tests pin the bindings so a future env
+  // edit can't silently drop them.
+  // =====================================================================
+  for (const envName of ['sbx1', 'production'] as const) {
+    it(`declares all 4 PCC-3192 rate-limit bindings in the ${envName} env`, () => {
+      const config = parseConfig(content) as WranglerConfig;
+      const rateLimits = ratelimitsFor(config, envName);
+      const names = rateLimits.map((rl) => rl.name);
+      for (const required of REQUIRED_RATE_LIMIT_BINDINGS) {
+        expect(names).toContain(required);
+      }
+    });
+
+    it(`uses unique namespace_id for each rate-limit binding in the ${envName} env`, () => {
+      const config = parseConfig(content) as WranglerConfig;
+      const rateLimits = ratelimitsFor(config, envName);
+      const namespaceIds = rateLimits
+        .filter((rl) => (REQUIRED_RATE_LIMIT_BINDINGS as readonly string[]).includes(rl.name))
+        .map((rl) => rl.namespace_id);
+      const unique = new Set(namespaceIds);
+      // Shared namespace_id means two limiters share counters — that would
+      // let an OAuth-endpoint flood eat into the per-tool budget, etc.
+      expect(unique.size).toBe(namespaceIds.length);
+    });
+
+    it(`uses period=60 and a positive integer limit for each rate-limit binding in ${envName}`, () => {
+      const config = parseConfig(content) as WranglerConfig;
+      const rateLimits = ratelimitsFor(config, envName);
+      for (const required of REQUIRED_RATE_LIMIT_BINDINGS) {
+        const binding = rateLimits.find((rl) => rl.name === required);
+        expect(binding, `missing ${required}`).toBeDefined();
+        // Cloudflare Rate Limiting binding only supports period=10 or 60.
+        // We standardise on 60 because per-minute matches the human-readable
+        // intent in the plan (read=120/min, mutation=30/min, etc.).
+        expect(binding?.simple.period).toBe(60);
+        expect(binding?.simple.limit).toBeGreaterThan(0);
+        expect(Number.isInteger(binding?.simple.limit)).toBe(true);
+      }
+    });
+
+    it(`mutation limiter is tighter than read limiter in ${envName}`, () => {
+      // The whole point of two separate limiters is that mutations cost more
+      // than reads. If they ever drift to the same number, replace one with
+      // the other in code — don't keep two for the sake of two.
+      // Also assert both limits are non-zero — `0 < 0` is false but `mutation
+      // < read` would silently pass for `mutation=0, read=0` if we didn't
+      // pin both to positive ints (caught in pre-merge review).
+      const config = parseConfig(content) as WranglerConfig;
+      const rateLimits = ratelimitsFor(config, envName);
+      const read = rateLimits.find((rl) => rl.name === 'RL_TOOLS_READ');
+      const mutation = rateLimits.find((rl) => rl.name === 'RL_TOOLS_MUTATION');
+      expect(read).toBeDefined();
+      expect(mutation).toBeDefined();
+      expect(read?.simple.limit).toBeGreaterThan(0);
+      expect(mutation?.simple.limit).toBeGreaterThan(0);
+      expect(mutation?.simple.limit).toBeLessThan(read?.simple.limit ?? Infinity);
+    });
+  }
+
+  // PCC-3192 (pre-merge review): Cloudflare's Rate Limiting namespaces are
+  // ACCOUNT-scoped, so any two bindings sharing a namespace_id share the
+  // same counters even across different workers and envs. If we ever
+  // copy-pasted a stanza wholesale and forgot to bump the namespace_ids,
+  // a CI load-test against sbx1 from a runner IP would burn the prod
+  // OAuth bucket for that same IP. This test catches that regression by
+  // pulling EVERY namespace_id from EVERY env stanza (top-level, sbx1,
+  // production) and asserting the three sets are pairwise disjoint.
+  it('env stanzas use disjoint namespace_id sets across dev / sbx1 / production', () => {
+    const config = parseConfig(content) as WranglerConfig;
+    const dev = new Set((config.ratelimits ?? []).map((rl) => rl.namespace_id));
+    const sbx1 = new Set((config.env?.sbx1?.ratelimits ?? []).map((rl) => rl.namespace_id));
+    const prod = new Set((config.env?.production?.ratelimits ?? []).map((rl) => rl.namespace_id));
+
+    expect(dev.size).toBeGreaterThan(0);
+    expect(sbx1.size).toBeGreaterThan(0);
+    expect(prod.size).toBeGreaterThan(0);
+
+    const intersect = (a: Set<string>, b: Set<string>): string[] =>
+      [...a].filter((x) => b.has(x));
+
+    expect(intersect(dev, sbx1)).toEqual([]);
+    expect(intersect(dev, prod)).toEqual([]);
+    expect(intersect(sbx1, prod)).toEqual([]);
+  });
 });
