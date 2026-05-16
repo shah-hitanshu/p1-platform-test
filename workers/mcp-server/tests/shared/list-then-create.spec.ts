@@ -122,7 +122,7 @@ describe('End-to-end agent workflow: list_components → create_page', () => {
     interface CreateBody {
       path: string;
       snapshot: {
-        content: Array<{ type: string; props: { id: string; [key: string]: unknown } }>;
+        content: { type: string; props: { id: string; [key: string]: unknown } }[];
       };
     }
     const body = JSON.parse(createInit.body) as CreateBody;

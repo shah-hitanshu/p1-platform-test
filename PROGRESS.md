@@ -4232,3 +4232,46 @@ Validation evidence (the audit-layer proof the ticket cites lives at the backend
 #### Out of Scope
 - `examples/collaborative-state-mcp/src/tools.ts:379, 409` (local stdio MCP) has the same hardcoded `'autonomous'`. Memory tracks it as a residual TODO from PR #43. Different surface, separate work.
 - Pre-existing PR #52 failures (same as PR #110 baseline).
+
+---
+
+### MCP `create_branch` tool (2026-05-12)
+
+**Branch:** `feature/mcp-create-branch-tool` — TDD implementation, plan at `~/.claude/plans/wild-growing-owl.md`.
+
+#### Motivation
+Agents could read branches via `list_branches` but had no way to create one. Branches are the unit of isolated work, so without `create_branch` an agent that takes on a discrete task ("draft a hero rewrite") needed a human to set up the branch first, breaking the autonomous-task loop. The backend `POST /api/sites/{siteId}/branches` already existed (workers/src/routes/branch-api.ts:91, gated by `canCreateBranch`); only the MCP layer was missing.
+
+#### Deliverables
+- **API client method `createBranch(siteId, { name, description?, parentBranchId? })`** added in both copies:
+  - `workers/mcp-server/src/shared/api-client.ts` (remote MCP, source of truth)
+  - `examples/collaborative-state-mcp/src/api-client.ts` (local stdio mirror)
+  - Both add a new exported `Branch` interface (kept separate from existing `BranchInfo` used by `list_branches`).
+  - Body construction conditionally includes `description`/`parentBranchId` only when provided.
+- **`create_branch` tool** added in both copies of `tools.ts` with:
+  - Schema: `{ site_id, name (min 1), description?, parent_branch_id? }`. Snake-case at the MCP boundary mapped to camelCase for the HTTP API in the handler.
+  - Tool description encodes the workflow rule (call `list_branches` first, prefer lowercase-kebab names, confirm with user before starting new work).
+- **Tool registration** added in `workers/mcp-server/src/mcp-handler.ts` and `examples/collaborative-state-mcp/src/index.ts`.
+- **Tests written first (RED), committed at `4471e13` before implementation**: 6 api-client tests + 3 tool tests in worker, mirrored 6+3 in example. Plus mechanical bumps of hardcoded "13 tools" → "14" in 3 unrelated test files (`mcp-handler.spec.ts`, `reference-comparison.spec.ts`, `streamable-http.spec.ts`).
+
+#### Design decisions
+- **`description` exposed as optional** — short note for human reviewers in the dashboard, no enforcement.
+- **No acting-user requirement at the MCP layer** — branches are non-destructive (don't touch main); backend already gates on `canCreateBranch`; existing permission-intersection (`min(agentRole, actingUserSiteRole)`) applies when acting-user headers are forwarded.
+- **`sourceBranch` (deprecated) NOT exposed** — only `parent_branch_id`, defaults server-side to main.
+- **No client-side name-format enforcement** — server validates non-empty (400) and uniqueness (409); tool description recommends `lowercase-kebab` style without rejecting other formats.
+
+#### Test/lint status
+- Worker: 99/100 passing (1 pre-existing `create-page` failure unrelated to this work).
+- Example: 60/60 passing.
+- Lint: clean in both packages.
+- Post-review fix: 409 error message aligned between `branch-api.ts` and test mocks (`'Branch with this name already exists'`).
+- Post-review fix: removed unnecessary `as string` assertions in `site-service.spec.ts`.
+
+#### Deployment
+- Deployed to sbx1 (`css-mcp-server-sbx1`) on 2026-05-16.
+- Verified: `create_branch` tool visible and functional via Claude MCP client on sbx1.
+
+#### Pre-existing drift surfaced (not addressed in this PR)
+- `examples/collaborative-state-mcp/src/index.ts` was already missing registration for `get_branch_presence` and `get_document_presence` (handlers exist in tools.ts but no `registerTool` call).
+- `examples/collaborative-state-mcp/src/tools.ts` is missing `list_components` and `create_page` entirely vs. the worker copy.
+- `tests/shared/create-page.spec.ts > rejects document_path starting with /_registry/` fails on origin/main.

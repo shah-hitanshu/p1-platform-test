@@ -397,6 +397,161 @@ describe('McpApiClient', () => {
     });
   });
 
+  // Tests for createBranch
+  describe('createBranch', () => {
+    it('sends POST to /api/sites/{siteId}/branches with name in body', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+        id: 'branch-new-1',
+        siteId: 'site-1',
+        name: 'draft-hero',
+        status: 'active',
+        isMain: false,
+        sourceBranchId: 'branch-main',
+        sourceCheckpointId: 'cp-1',
+        createdById: 'agent-uuid-1',
+        createdByType: 'agent',
+        createdAt: '2026-05-12T00:00:00Z',
+        updatedAt: '2026-05-12T00:00:00Z',
+      }, 201));
+
+      const result = await client.createBranch('site-1', { name: 'draft-hero' });
+
+      const [url, options] = mockFetch.mock.calls[0] as [string, { method: string; body: string }];
+      expect(url).toBe('http://localhost:8787/api/sites/site-1/branches');
+      expect(options.method).toBe('POST');
+      const body = JSON.parse(options.body) as { name: string };
+      expect(body.name).toBe('draft-hero');
+      expect(result.id).toBe('branch-new-1');
+      expect(result.name).toBe('draft-hero');
+      expect(result.isMain).toBe(false);
+      expect(result.sourceBranchId).toBe('branch-main');
+    });
+
+    it('includes optional description and parentBranchId in body when provided', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+        id: 'branch-new-2',
+        siteId: 'site-1',
+        name: 'feature-x',
+        description: 'PCC-1234: hero rewrite',
+        status: 'active',
+        isMain: false,
+        sourceBranchId: 'branch-staging',
+        createdById: 'agent-uuid-1',
+        createdByType: 'agent',
+        createdAt: '2026-05-12T00:00:00Z',
+        updatedAt: '2026-05-12T00:00:00Z',
+      }, 201));
+
+      await client.createBranch('site-1', {
+        name: 'feature-x',
+        description: 'PCC-1234: hero rewrite',
+        parentBranchId: 'branch-staging',
+      });
+
+      const [, options] = mockFetch.mock.calls[0] as [string, { body: string }];
+      const body = JSON.parse(options.body) as {
+        name: string;
+        description?: string;
+        parentBranchId?: string;
+      };
+      expect(body.name).toBe('feature-x');
+      expect(body.description).toBe('PCC-1234: hero rewrite');
+      expect(body.parentBranchId).toBe('branch-staging');
+    });
+
+    it('omits description and parentBranchId from body when not provided', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+        id: 'branch-new-3',
+        siteId: 'site-1',
+        name: 'minimal',
+        status: 'active',
+        isMain: false,
+        createdById: 'agent-uuid-1',
+        createdByType: 'agent',
+        createdAt: '2026-05-12T00:00:00Z',
+        updatedAt: '2026-05-12T00:00:00Z',
+      }, 201));
+
+      await client.createBranch('site-1', { name: 'minimal' });
+
+      const [, options] = mockFetch.mock.calls[0] as [string, { body: string }];
+      const body = JSON.parse(options.body) as Record<string, unknown>;
+      expect(body).not.toHaveProperty('description');
+      expect(body).not.toHaveProperty('parentBranchId');
+    });
+
+    it('includes agent auth headers and acting-user headers when configured', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient({
+        ...defaultConfig,
+        actingUser: { id: 'user-99', email: 'human@example.com' },
+      });
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+        id: 'b', siteId: 's', name: 'n', status: 'active', isMain: false,
+        createdById: 'agent-uuid-1', createdByType: 'agent',
+        createdAt: '', updatedAt: '',
+      }, 201));
+
+      await client.createBranch('site-1', { name: 'with-actor' });
+
+      const [, options] = mockFetch.mock.calls[0] as [string, { headers: Record<string, string> }];
+      expect(options.headers['X-API-Key']).toBe('aak_test-key');
+      expect(options.headers['X-Actor-Type']).toBe('agent');
+      expect(options.headers['X-Actor-Id']).toBe('agent-uuid-1');
+      expect(options.headers['X-Acting-User-Id']).toBe('user-99');
+      expect(options.headers['X-Acting-User-Email']).toBe('human@example.com');
+    });
+
+    it('surfaces 400 (missing name) as Error', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(false, {
+        error: 'Branch name is required',
+      }, 400));
+
+      await expect(
+        client.createBranch('site-1', { name: '' }),
+      ).rejects.toThrow('Branch name is required');
+    });
+
+    it('surfaces 404 (parent not found) as Error', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(false, {
+        error: 'Parent branch not found',
+      }, 404));
+
+      await expect(
+        client.createBranch('site-1', { name: 'x', parentBranchId: 'nope' }),
+      ).rejects.toThrow('Parent branch not found');
+    });
+
+    it('surfaces 409 (duplicate name) as Error', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(false, {
+        error: 'Branch with this name already exists',
+      }, 409));
+
+      await expect(
+        client.createBranch('site-1', { name: 'main' }),
+      ).rejects.toThrow('Branch with this name already exists');
+    });
+  });
+
   // Tests for createDocument
   describe('createDocument', () => {
     it('creates a document with snapshot in one atomic call', async () => {

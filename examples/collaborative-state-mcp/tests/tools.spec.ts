@@ -21,6 +21,7 @@ const completeAgentEditMock: Mock = vi.fn();
 const abortAgentEditMock: Mock = vi.fn();
 const getBranchPresenceMock: Mock = vi.fn();
 const getDocumentPresenceMock: Mock = vi.fn();
+const createBranchMock: Mock = vi.fn();
 
 // Create mock API client with typed mock functions
 const mockApiClient = {
@@ -35,6 +36,7 @@ const mockApiClient = {
   abortAgentEdit: abortAgentEditMock,
   getBranchPresence: getBranchPresenceMock,
   getDocumentPresence: getDocumentPresenceMock,
+  createBranch: createBranchMock,
 } as unknown as ApiClient;
 
 describe('MCP Tools', () => {
@@ -134,6 +136,15 @@ describe('MCP Tools', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.description.toLowerCase()).toContain('abort');
+    });
+
+    it('should define create_branch tool', async () => {
+      const { getToolDefinitions } = await import('../src/tools.js');
+      const tools = getToolDefinitions();
+      const tool = tools.find((t) => t.name === 'create_branch');
+
+      expect(tool).toBeDefined();
+      expect(tool?.description.toLowerCase()).toContain('branch');
     });
   });
 
@@ -530,6 +541,83 @@ describe('MCP Tools', () => {
         });
 
         expect(result.content[0]?.text).toContain('No active presence');
+      });
+    });
+
+    describe('create_branch', () => {
+      it('should call apiClient.createBranch with mapped fields and format result', async () => {
+        const { createToolHandlers } = await import('../src/tools.js');
+        const handlers = createToolHandlers(mockApiClient);
+
+        createBranchMock.mockResolvedValueOnce({
+          id: 'branch-new-1',
+          siteId: 'site-123',
+          name: 'draft-hero',
+          description: 'PCC-1234',
+          status: 'active',
+          isMain: false,
+          sourceBranchId: 'branch-main',
+          sourceCheckpointId: 'cp-1',
+          createdById: 'a0000000-0000-0000-0000-000000000001',
+          createdByType: 'agent',
+          createdAt: '2026-05-12T00:00:00Z',
+          updatedAt: '2026-05-12T00:00:00Z',
+        });
+
+        const result = await handlers.create_branch({
+          site_id: 'site-123',
+          name: 'draft-hero',
+          description: 'PCC-1234',
+          parent_branch_id: 'branch-main',
+        });
+
+        expect(createBranchMock).toHaveBeenCalledWith('site-123', {
+          name: 'draft-hero',
+          description: 'PCC-1234',
+          parentBranchId: 'branch-main',
+        });
+        const text = result.content[0]?.text ?? '';
+        expect(text).toContain('branch-new-1');
+        expect(text).toContain('draft-hero');
+        expect(result.isError).toBeFalsy();
+      });
+
+      it('should pass only name when description and parent_branch_id are absent', async () => {
+        const { createToolHandlers } = await import('../src/tools.js');
+        const handlers = createToolHandlers(mockApiClient);
+
+        createBranchMock.mockResolvedValueOnce({
+          id: 'b', siteId: 'site-123', name: 'minimal',
+          status: 'active', isMain: false,
+          createdById: '', createdByType: 'agent',
+          createdAt: '', updatedAt: '',
+        });
+
+        await handlers.create_branch({
+          site_id: 'site-123',
+          name: 'minimal',
+        });
+
+        const call = createBranchMock.mock.calls[0] as [string, Record<string, unknown>];
+        expect(call[0]).toBe('site-123');
+        expect(call[1].name).toBe('minimal');
+        expect(call[1]).not.toHaveProperty('description');
+        expect(call[1]).not.toHaveProperty('parentBranchId');
+      });
+
+      it('should return isError:true when API rejects', async () => {
+        const { createToolHandlers } = await import('../src/tools.js');
+        const handlers = createToolHandlers(mockApiClient);
+
+        createBranchMock.mockRejectedValueOnce(new Error('Branch with this name already exists'));
+
+        const result = await handlers.create_branch({
+          site_id: 'site-123',
+          name: 'main',
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0]?.text).toContain('already exists');
       });
     });
 

@@ -279,7 +279,7 @@ export async function handleBranchRoutes(
       return errorResponse('Site not found', 404);
     }
     if (error instanceof DuplicateBranchNameError) {
-      return errorResponse('Branch name already exists', 409);
+      return errorResponse('Branch with this name already exists', 409);
     }
 
     // Re-throw unknown errors

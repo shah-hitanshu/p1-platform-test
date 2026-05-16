@@ -148,7 +148,13 @@
       "hyperdrive": [
         { "binding": "HYPERDRIVE", "id": "994ab9a7250448b2b15f6addfca616bb" },
         { "binding": "HYPERDRIVE_NOCACHE", "id": "2a624aeb2efa4fb887f8e200d307a757" }
-      ]
+      ],
+      "observability": {
+        "logs": {
+          "enabled": true,
+          "invocation_logs": true
+        }
+      }
     },
 
     // Personal sandbox environment (independent CF/GCP account)

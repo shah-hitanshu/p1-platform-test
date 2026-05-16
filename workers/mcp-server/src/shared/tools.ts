@@ -145,6 +145,22 @@ const ListComponentsInputSchema = z.object({
   branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
 });
 
+const CreateBranchInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  name: z.string().min(1).describe(
+    'Branch name. Must be unique per site (server returns 409 on duplicate). ' +
+    'Recommended: lowercase-kebab, e.g. "draft-hero-rewrite" or "fix-pricing-typo".',
+  ),
+  description: z.string().optional().describe(
+    'Optional one-line note about why this branch exists, visible to humans ' +
+    'in the dashboard. Recommended: include the task or ticket reference.',
+  ),
+  parent_branch_id: z.string().optional().describe(
+    'Optional UUID of the main branch. Only the site\'s main branch is supported as a source — ' +
+    'passing any other branch UUID will result in an error. Omit to use the main branch automatically.',
+  ),
+});
+
 const CreatePageInputSchema = z.object({
   site_id: z.string().describe('The site ID (UUID from list_sites)'),
   branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
@@ -242,6 +258,12 @@ export function getToolDefinitions(): ToolDefinition[] {
         'Create a new page with a structured set of Puck components. Use list_components first to discover available component types and their field schemas. Each component is given a unique ID automatically. Returns the new document path and ID.',
       inputSchema: CreatePageInputSchema,
     },
+    {
+      name: 'create_branch',
+      description:
+        'Create a new branch on a site. Branches are isolated workspaces — edits made on a non-main branch do not affect the live site until the branch is published to main. Use this when starting a new piece of work that should be reviewable before going live. WORKFLOW: (1) Call `list_branches` first to confirm the desired name is not already in use. (2) Choose a name that hints at the work, lowercase-kebab style (e.g. "draft-hero-rewrite"). (3) After creating the branch, all subsequent edit-session calls should reference the new `branch_id`. The branch appears in the human dashboard immediately — confirm with the user before creating a branch unless they have explicitly authorized you to start new work.',
+      inputSchema: CreateBranchInputSchema,
+    },
   ];
 }
 
@@ -306,6 +328,7 @@ type GetBranchPresenceInput = z.infer<typeof GetBranchPresenceInputSchema>;
 type GetDocumentPresenceInput = z.infer<typeof GetDocumentPresenceInputSchema>;
 type ListComponentsInput = z.infer<typeof ListComponentsInputSchema>;
 type CreatePageInput = z.infer<typeof CreatePageInputSchema>;
+type CreateBranchInput = z.infer<typeof CreateBranchInputSchema>;
 
 export interface ToolHandlers {
   list_sites: () => Promise<ToolResult>;
@@ -321,6 +344,7 @@ export interface ToolHandlers {
   get_document_presence: (input: GetDocumentPresenceInput) => Promise<ToolResult>;
   list_components: (input: ListComponentsInput) => Promise<ToolResult>;
   create_page: (input: CreatePageInput) => Promise<ToolResult>;
+  create_branch: (input: CreateBranchInput) => Promise<ToolResult>;
 }
 
 // =============================================================================
@@ -703,6 +727,40 @@ export function createToolHandlers(
         return formatError(error);
       }
     },
+
+    async create_branch(input: CreateBranchInput): Promise<ToolResult> {
+      try {
+        const request: { name: string; description?: string; parentBranchId?: string } = {
+          name: input.name,
+        };
+        if (input.description !== undefined) {
+          request.description = input.description;
+        }
+        if (input.parent_branch_id !== undefined) {
+          request.parentBranchId = input.parent_branch_id;
+        }
+
+        const branch = await apiClient.createBranch(input.site_id, request);
+
+        return formatResult({
+          message: `Branch "${branch.name}" created.`,
+          branchId: branch.id,
+          name: branch.name,
+          siteId: branch.siteId,
+          status: branch.status,
+          isMain: branch.isMain,
+          ...(branch.description !== undefined && { description: branch.description }),
+          ...(branch.sourceBranchId !== undefined && { sourceBranchId: branch.sourceBranchId }),
+          ...(branch.sourceCheckpointId !== undefined && { sourceCheckpointId: branch.sourceCheckpointId }),
+          createdById: branch.createdById,
+          createdByType: branch.createdByType,
+          createdAt: branch.createdAt,
+          updatedAt: branch.updatedAt,
+        });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
   };
 }
 
@@ -724,4 +782,5 @@ export const schemas = {
   get_document_presence: GetDocumentPresenceInputSchema,
   list_components: ListComponentsInputSchema,
   create_page: CreatePageInputSchema,
+  create_branch: CreateBranchInputSchema,
 };

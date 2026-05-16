@@ -15,11 +15,11 @@ describe('Tool Definitions', () => {
   beforeEach(() => { vi.resetAllMocks(); });
   afterEach(() => { vi.restoreAllMocks(); });
 
-  // Test 18: 13 tool definitions
-  it('should return exactly 13 tool definitions', async () => {
+  // Test 18: 14 tool definitions
+  it('should return exactly 14 tool definitions', async () => {
     const { getToolDefinitions } = await import('../../src/shared/tools.js');
     const defs = getToolDefinitions();
-    expect(defs).toHaveLength(13);
+    expect(defs).toHaveLength(14);
     const names = defs.map((d) => d.name);
     expect(names).toContain('list_sites');
     expect(names).toContain('list_branches');
@@ -34,6 +34,7 @@ describe('Tool Definitions', () => {
     expect(names).toContain('get_document_presence');
     expect(names).toContain('list_components');
     expect(names).toContain('create_page');
+    expect(names).toContain('create_branch');
   });
 
   // Test 19: Each tool has required fields
@@ -172,6 +173,78 @@ describe('Tool Handlers', () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.totalActors).toBe(1);
     expect(parsed.totalDocuments).toBe(1);
+  });
+
+  // Test 26a: create_branch happy path
+  it('create_branch should call apiClient.createBranch with mapped fields and format result', async () => {
+    const { McpApiClient } = await import('../../src/shared/api-client.js');
+    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const client = new McpApiClient(defaultConfig);
+    const handlers = createToolHandlers(client);
+
+    mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+      id: 'branch-new-1',
+      siteId: 'site-1',
+      name: 'draft-hero',
+      description: 'PCC-1234',
+      status: 'active',
+      isMain: false,
+      sourceBranchId: 'branch-main',
+      sourceCheckpointId: 'cp-1',
+      createdById: 'agent-1',
+      createdByType: 'agent',
+      createdAt: '2026-05-12T00:00:00Z',
+      updatedAt: '2026-05-12T00:00:00Z',
+    }, 201));
+
+    const result = await handlers.create_branch({
+      site_id: 'site-1',
+      name: 'draft-hero',
+      description: 'PCC-1234',
+      parent_branch_id: 'branch-main',
+    });
+
+    const [url, options] = mockFetch.mock.calls[0] as [string, { body: string }];
+    expect(url).toBe('http://localhost:8787/api/sites/site-1/branches');
+    const body = JSON.parse(options.body) as { name: string; description?: string; parentBranchId?: string };
+    expect(body.name).toBe('draft-hero');
+    expect(body.description).toBe('PCC-1234');
+    expect(body.parentBranchId).toBe('branch-main');
+
+    const text = result.content[0]?.text ?? '';
+    expect(text).toContain('branch-new-1');
+    expect(text).toContain('draft-hero');
+    expect(result.isError).toBeFalsy();
+  });
+
+  // Test 26b: create_branch error path surfaces isError:true
+  it('create_branch should return isError:true when API rejects', async () => {
+    const { McpApiClient } = await import('../../src/shared/api-client.js');
+    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const client = new McpApiClient(defaultConfig);
+    const handlers = createToolHandlers(client);
+
+    mockFetch.mockResolvedValueOnce(createMockResponse(false, {
+      error: 'Branch with this name already exists',
+    }, 409));
+
+    const result = await handlers.create_branch({
+      site_id: 'site-1',
+      name: 'main',
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('already exists');
+  });
+
+  // Test 26c: create_branch schema rejects empty name
+  it('create_branch schema should reject empty name', async () => {
+    const { schemas } = await import('../../src/shared/tools.js');
+    const parseResult = schemas.create_branch.safeParse({
+      site_id: 'site-1',
+      name: '',
+    });
+    expect(parseResult.success).toBe(false);
   });
 
   // Test 26: get_document_presence formats actor list

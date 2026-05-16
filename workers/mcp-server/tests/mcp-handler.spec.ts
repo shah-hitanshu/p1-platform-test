@@ -28,8 +28,8 @@ describe('MCP Handler', () => {
     expect(server).toBeDefined();
   });
 
-  // Test 30: createMcpServer registers all 13 tools
-  it('should register all 13 tools on the MCP server', async () => {
+  // Test 30: createMcpServer registers all 14 tools
+  it('should register all 14 tools on the MCP server', async () => {
     const { createMcpServer } = await import('../src/mcp-handler.js');
     const { getToolDefinitions } = await import('../src/shared/tools.js');
     const server = createMcpServer({
@@ -43,19 +43,19 @@ describe('MCP Handler', () => {
     // McpServer exposes registered tools via server.resource or by listing
     // We verify via the tool definitions and the server being valid
     const expectedToolNames = getToolDefinitions().map((t) => t.name);
-    expect(expectedToolNames).toHaveLength(13);
+    expect(expectedToolNames).toHaveLength(14);
 
     // The server should be defined and functional
     expect(server).toBeDefined();
     expect(typeof server.connect).toBe('function');
 
-    // Verify all 13 tool names are in the expected set
+    // Verify all 14 tool names are in the expected set
     const expectedNames = [
       'list_sites', 'list_branches', 'list_documents', 'get_document',
       'check_edit_permission', 'start_edit_session', 'apply_document_edits',
       'complete_edit_session', 'abort_edit_session',
       'get_branch_presence', 'get_document_presence',
-      'list_components', 'create_page',
+      'list_components', 'create_page', 'create_branch',
     ];
     expect(expectedToolNames).toEqual(expectedNames);
   });

@@ -734,7 +734,7 @@ describe('Phase 3.1: Site Service', () => {
 
       await listSites({ principalId: 'agent-abc', principalType: 'agent' });
 
-      const sql = vi.mocked(db.query).mock.calls[0][0] as string;
+      const sql = vi.mocked(db.query).mock.calls[0][0];
       expect(sql).toContain('INNER JOIN app.agent_site_roles');
       expect(sql).toContain('revoked_at IS NULL');
       expect(db.query).toHaveBeenCalledWith(
@@ -751,7 +751,7 @@ describe('Phase 3.1: Site Service', () => {
 
       await listSites({ principalId: 'agent-abc', principalType: 'agent', limit: 10, offset: 20 });
 
-      const sql = vi.mocked(db.query).mock.calls[0][0] as string;
+      const sql = vi.mocked(db.query).mock.calls[0][0];
       expect(sql).toContain('INNER JOIN app.agent_site_roles');
       expect(sql).toContain('LIMIT');
       expect(sql).toContain('OFFSET');

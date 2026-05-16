@@ -182,6 +182,20 @@ async function main(): Promise<void> {
     },
   );
 
+  // create_branch
+  server.registerTool(
+    'create_branch',
+    {
+      description:
+        toolDefinitions.find((t) => t.name === 'create_branch')?.description ?? '',
+      inputSchema: schemas.create_branch,
+    },
+    async (params) => {
+      const result = await handlers.create_branch(params);
+      return result;
+    },
+  );
+
   // Create transport and connect
   const transport = new StdioServerTransport();
   await server.connect(transport);

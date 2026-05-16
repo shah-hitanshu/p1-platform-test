@@ -172,6 +172,132 @@ describe('ApiClient', () => {
     });
   });
 
+  describe('createBranch', () => {
+    it('sends POST to /api/sites/{siteId}/branches with name in body', async () => {
+      const { ApiClient } = await import('../src/api-client.js');
+      const client = new ApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse(true, {
+          id: 'branch-new-1',
+          siteId: 'site-123',
+          name: 'draft-hero',
+          status: 'active',
+          isMain: false,
+          sourceBranchId: 'branch-main',
+          sourceCheckpointId: 'cp-1',
+          createdById: defaultConfig.agentId,
+          createdByType: 'agent',
+          createdAt: '2026-05-12T00:00:00Z',
+          updatedAt: '2026-05-12T00:00:00Z',
+        }, 201),
+      );
+
+      const result = await client.createBranch('site-123', { name: 'draft-hero' });
+
+      const [url, options] = mockFetch.mock.calls[0] as [string, { method: string; headers: Record<string, string>; body: string }];
+      expect(url).toBe('http://localhost:8787/api/sites/site-123/branches');
+      expect(options.method).toBe('POST');
+      expect(options.headers['X-API-Key']).toBe('test-agent-key-zappy');
+      expect(options.headers['X-Actor-Type']).toBe('agent');
+      const body = JSON.parse(options.body) as { name: string };
+      expect(body.name).toBe('draft-hero');
+      expect(result.id).toBe('branch-new-1');
+      expect(result.name).toBe('draft-hero');
+      expect(result.isMain).toBe(false);
+    });
+
+    it('includes optional description and parentBranchId in body when provided', async () => {
+      const { ApiClient } = await import('../src/api-client.js');
+      const client = new ApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse(true, {
+          id: 'b2', siteId: 'site-123', name: 'feature-x',
+          description: 'PCC-1234', status: 'active', isMain: false,
+          sourceBranchId: 'branch-staging',
+          createdById: defaultConfig.agentId, createdByType: 'agent',
+          createdAt: '', updatedAt: '',
+        }, 201),
+      );
+
+      await client.createBranch('site-123', {
+        name: 'feature-x',
+        description: 'PCC-1234',
+        parentBranchId: 'branch-staging',
+      });
+
+      const [, options] = mockFetch.mock.calls[0] as [string, { body: string }];
+      const body = JSON.parse(options.body) as {
+        name: string;
+        description?: string;
+        parentBranchId?: string;
+      };
+      expect(body.description).toBe('PCC-1234');
+      expect(body.parentBranchId).toBe('branch-staging');
+    });
+
+    it('omits description and parentBranchId from body when not provided', async () => {
+      const { ApiClient } = await import('../src/api-client.js');
+      const client = new ApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse(true, {
+          id: 'b3', siteId: 'site-123', name: 'minimal',
+          status: 'active', isMain: false,
+          createdById: defaultConfig.agentId, createdByType: 'agent',
+          createdAt: '', updatedAt: '',
+        }, 201),
+      );
+
+      await client.createBranch('site-123', { name: 'minimal' });
+
+      const [, options] = mockFetch.mock.calls[0] as [string, { body: string }];
+      const body = JSON.parse(options.body) as Record<string, unknown>;
+      expect(body).not.toHaveProperty('description');
+      expect(body).not.toHaveProperty('parentBranchId');
+    });
+
+    it('surfaces 400 (missing name) as Error', async () => {
+      const { ApiClient } = await import('../src/api-client.js');
+      const client = new ApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse(false, { error: 'Branch name is required' }, 400),
+      );
+
+      await expect(
+        client.createBranch('site-123', { name: '' }),
+      ).rejects.toThrow('Branch name is required');
+    });
+
+    it('surfaces 404 (parent not found) as Error', async () => {
+      const { ApiClient } = await import('../src/api-client.js');
+      const client = new ApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse(false, { error: 'Parent branch not found' }, 404),
+      );
+
+      await expect(
+        client.createBranch('site-123', { name: 'x', parentBranchId: 'nope' }),
+      ).rejects.toThrow('Parent branch not found');
+    });
+
+    it('surfaces 409 (duplicate name) as Error', async () => {
+      const { ApiClient } = await import('../src/api-client.js');
+      const client = new ApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse(false, { error: 'Branch with this name already exists' }, 409),
+      );
+
+      await expect(
+        client.createBranch('site-123', { name: 'main' }),
+      ).rejects.toThrow('Branch with this name already exists');
+    });
+  });
+
   describe('listDocuments', () => {
     it('should list documents for a site and branch', async () => {
       const { ApiClient } = await import('../src/api-client.js');

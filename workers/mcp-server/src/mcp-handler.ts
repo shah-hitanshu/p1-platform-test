@@ -1,8 +1,8 @@
 /**
- * MCP Handler - Creates and configures the MCP server with all 13 tools.
+ * MCP Handler - Creates and configures the MCP server with all 14 tools.
  *
  * This module creates an McpServer instance from @modelcontextprotocol/sdk,
- * wires up the McpApiClient, and registers all 13 tools with their schemas
+ * wires up the McpApiClient, and registers all 14 tools with their schemas
  * and handlers.
  */
 
@@ -105,7 +105,7 @@ export function createMcpServer(config: McpHandlerConfig): McpServer {
   // PCC-3192 — every tool's invocation is gated by a rate-limit pre-check.
   // When rateLimiters/rateLimitContext are absent (local dev) the check is
   // a no-op so existing tests don't need to thread a binding through.
-  // Register all 13 tools
+  // Register all 14 tools
   server.registerTool(
     'list_sites',
     {
@@ -260,6 +260,15 @@ export function createMcpServer(config: McpHandlerConfig): McpServer {
       const denied = await rateLimitPreCheck('create_page', config);
       return denied ?? await handlers.create_page(params);
     },
+  );
+
+  server.registerTool(
+    'create_branch',
+    {
+      description: toolDefinitions.find((t) => t.name === 'create_branch')?.description ?? '',
+      inputSchema: schemas.create_branch,
+    },
+    async (params) => handlers.create_branch(params),
   );
 
   return server;

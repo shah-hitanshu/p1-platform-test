@@ -41,6 +41,21 @@ export interface ListBranchesResponse {
   total: number;
 }
 
+export interface Branch {
+  id: string;
+  siteId: string;
+  name: string;
+  description?: string;
+  status: string;
+  isMain: boolean;
+  sourceBranchId?: string;
+  sourceCheckpointId?: string;
+  createdById: string;
+  createdByType: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface DocumentInfo {
   id: string;
   path: string;
@@ -302,6 +317,31 @@ export class ApiClient {
     });
 
     return this.handleResponse<ListBranchesResponse>(response);
+  }
+
+  /**
+   * Create a new branch on a site
+   */
+  async createBranch(
+    siteId: string,
+    request: { name: string; description?: string; parentBranchId?: string },
+  ): Promise<Branch> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches`;
+    const body: Record<string, string> = { name: request.name };
+    if (request.description !== undefined) {
+      body.description = request.description;
+    }
+    if (request.parentBranchId !== undefined) {
+      body.parentBranchId = request.parentBranchId;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+
+    return this.handleResponse<Branch>(response);
   }
 
   /**
