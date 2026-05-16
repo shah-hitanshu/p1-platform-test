@@ -24,6 +24,7 @@ import {
   handleAuthRoutes,
 } from './middleware/authentication';
 import { handleHealth } from './middleware/health';
+import { handleDocsRoute, handleDocsSpecRoute } from './routes/docs-handler';
 import {
   jsonResponse,
   errorResponse,
@@ -239,6 +240,14 @@ async function handleRequest(
   if (path === '/health' || path === '/health/') {
     const response = await handleHealth(env);
     return addCorsHeaders(response, origin, env);
+  }
+
+  // API documentation (no auth required so the surface is publicly browseable)
+  if (path === '/docs' || path === '/docs/') {
+    return addCorsHeaders(handleDocsRoute(request), origin, env);
+  }
+  if (path === '/docs/openapi.yaml') {
+    return addCorsHeaders(handleDocsSpecRoute(request), origin, env);
   }
 
   // GET /api/auth/me - Return authenticated principal info (requires auth)

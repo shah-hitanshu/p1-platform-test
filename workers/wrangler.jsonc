@@ -4,7 +4,13 @@
   // Worker identity - follows Pantheon naming convention
   "name": "collaborative-state-worker",
   "main": "src/index.ts",
-  
+
+  // Treat .yaml files as raw text modules so they can be imported directly
+  // in TypeScript without a generated intermediate file.
+  "rules": [
+    { "type": "Text", "globs": ["**/*.yaml"] }
+  ],
+
   // Compatibility settings
   "compatibility_date": "2024-12-01",
   "compatibility_flags": ["nodejs_compat"],
