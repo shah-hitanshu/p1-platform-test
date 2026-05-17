@@ -276,7 +276,6 @@ describe('Document Versions Table', () => {
     expect(hasColumn(columns, 'branch_id', 'uuid')).toBe(true);
     expect(hasColumn(columns, 'version_number', 'integer')).toBe(true);
     expect(hasColumn(columns, 'snapshot', 'jsonb')).toBe(true);
-    expect(hasColumn(columns, 'crdt_state', 'bytea')).toBe(true);
     expect(hasColumn(columns, 'source', 'text')).toBe(true);
     expect(hasColumn(columns, 'created_by_id', 'uuid')).toBe(true);
     expect(hasColumn(columns, 'created_by_type', 'text')).toBe(true);

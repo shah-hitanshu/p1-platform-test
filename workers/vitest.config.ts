@@ -1,6 +1,16 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig, Plugin } from 'vitest/config';
+
+const yamlRawPlugin: Plugin = {
+  name: 'yaml-raw',
+  transform(code, id) {
+    if ((id.endsWith('.yaml') || id.endsWith('.yml')) && !id.includes('node_modules')) {
+      return `export default ${JSON.stringify(code)};`;
+    }
+  },
+};
 
 export default defineConfig({
+  plugins: [yamlRawPlugin],
   test: {
     // Test file patterns
     // Exclude integration tests by default (run with: npm run test:integration)

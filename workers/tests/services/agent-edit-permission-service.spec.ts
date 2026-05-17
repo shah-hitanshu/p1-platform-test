@@ -61,9 +61,8 @@ describe('Agent Politeness Phase 2.3: Agent Edit Permission Service', () => {
         const activityDetector = new ActivityDetector({ idleTimeoutMs: 5000 });
         const service = new AgentEditPermissionService({ activityDetector });
 
-        // Record recent human activity
-        activityDetector.recordHumanActivity('user-123', ['/content/0']);
-
+        // No human activity on the target region — human_requested is allowed immediately
+        // when there is no region conflict (conflict check applies to all triggers per e1f9e9d)
         const result = await service.canAgentEdit({
           agentId: 'agent-123',
           trigger: 'human_requested',
