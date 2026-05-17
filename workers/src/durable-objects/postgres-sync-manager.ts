@@ -15,6 +15,7 @@ import {
   COW_BASELINE_IDS_KEY,
 } from './document-session-types';
 import { applySnapshotToYMap } from './crdt-operations';
+import { reconstructVersionSnapshot } from '../services/document-version-service';
 
 /** Storage key for sync schedule (survives hibernation) */
 export const SYNC_SCHEDULE_KEY = 'syncSchedule';
@@ -95,7 +96,8 @@ export class PostgresSyncManager {
     const { documentId, branchId } = this.sessionInfo;
 
     interface VersionRow {
-      snapshot: Record<string, unknown>;
+      snapshot: Record<string, unknown> | null;
+      version_number: number;
     }
 
     interface BranchSourceRow {
@@ -107,7 +109,7 @@ export class PostgresSyncManager {
       { isHyperdrive: true },
       async () => {
         const result = await dbQuery<VersionRow>(
-          `SELECT dv.snapshot
+          `SELECT dv.snapshot, dv.version_number
            FROM app.document_versions dv
            WHERE dv.document_id = $1 AND dv.branch_id = $2
            ORDER BY dv.version_number DESC LIMIT 1`,
@@ -116,17 +118,16 @@ export class PostgresSyncManager {
 
         if (result.rows.length > 0) {
           const row = result.rows[0];
-          if (typeof row.snapshot === 'object') {
-            const root = this.getYdoc().getMap('root');
-            applySnapshotToYMap(root, row.snapshot);
-            console.log(
-              `Initialized doc ${documentId} from Hyperdrive snapshot`,
-            );
-            await this.persist();
-            this.lastSyncedStateVectorHash = this.computeStateVectorHash();
-            return true;
-          }
-          return false;
+          const snapshot = row.snapshot ?? await reconstructVersionSnapshot(documentId, branchId, row.version_number);
+          if (snapshot === null) return false;
+          const root = this.getYdoc().getMap('root');
+          applySnapshotToYMap(root, snapshot);
+          console.log(
+            `Initialized doc ${documentId} from Hyperdrive snapshot`,
+          );
+          await this.persist();
+          this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+          return true;
         }
 
         const branchResult = await dbQuery<BranchSourceRow>(
@@ -144,13 +145,14 @@ export class PostgresSyncManager {
         if (!sourceBranchId) return false;
 
         const cowResult = await dbQuery<VersionRow>(
-          `SELECT dv.snapshot
+          `SELECT dv.snapshot, dv.version_number
            FROM app.document_versions dv
            INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
            INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
            WHERE dv.document_id = $1
              AND dv.branch_id = $2
              AND cp.branch_id = $2
+             AND cp.checkpoint_type = 'publish'
            ORDER BY dv.version_number DESC
            LIMIT 1`,
           [documentId, sourceBranchId],
@@ -158,16 +160,19 @@ export class PostgresSyncManager {
 
         if (cowResult.rows.length === 0) return false;
 
-        const row = cowResult.rows[0];
+        const cowRow = cowResult.rows[0];
+        const cowSnapshot = cowRow.snapshot
+          ?? await reconstructVersionSnapshot(documentId, sourceBranchId, cowRow.version_number);
+        if (cowSnapshot === null) return false;
         const root = this.getYdoc().getMap('root');
-        applySnapshotToYMap(root, row.snapshot);
+        applySnapshotToYMap(root, cowSnapshot);
         console.log(
           `Initialized doc ${documentId} from CoW baseline (source branch ${sourceBranchId})`,
         );
 
         // Store CoW baseline component IDs so detectCoWBaselineMismatch()
         // can compare them against the first sync write (Failure Mode B guard).
-        const baselineIds = this.extractComponentIds(row.snapshot);
+        const baselineIds = this.extractComponentIds(cowSnapshot);
         if (baselineIds.length > 0) {
           await this.storage.put(COW_BASELINE_IDS_KEY, baselineIds);
         }

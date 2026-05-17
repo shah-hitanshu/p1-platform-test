@@ -17,6 +17,7 @@ import {
   createDocumentVersion,
   getLatestDocumentVersion,
   getLatestPublishedDocumentVersion,
+  reconstructVersionSnapshot,
 } from './document-version-service';
 import { getBranch } from './branch-service';
 
@@ -183,12 +184,14 @@ export async function loadLatestCrdtState(
     if (cowVersion === null) {
       return null;
     }
-    return { snapshot: cowVersion.snapshot ?? {} };
+    const cowSnapshot = cowVersion.snapshot
+      ?? await reconstructVersionSnapshot(document.id, sourceBranchId, cowVersion.versionNumber);
+    return { snapshot: cowSnapshot ?? {} };
   }
 
-  return {
-    snapshot: version.snapshot ?? {},
-  };
+  const snapshot = version.snapshot
+    ?? await reconstructVersionSnapshot(document.id, branchId, version.versionNumber);
+  return { snapshot: snapshot ?? {} };
 }
 
 // =============================================================================

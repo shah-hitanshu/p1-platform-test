@@ -25,6 +25,7 @@ vi.mock('../../src/services/document-version-service', () => ({
   createDocumentVersion: vi.fn(),
   getLatestDocumentVersion: vi.fn(),
   getLatestPublishedDocumentVersion: vi.fn(),
+  reconstructVersionSnapshot: vi.fn(),
 }));
 
 // Mock branch service
@@ -715,6 +716,110 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       // CoW path must not be triggered when a version exists
       expect(branchService.getBranch).not.toHaveBeenCalled();
       expect(documentVersionService.getLatestPublishedDocumentVersion).not.toHaveBeenCalled();
+    });
+  });
+
+  // =============================================================================
+  // Null-snapshot handling (regression tests)
+  // These cover the case where a version's snapshot has been nulled (diff-only
+  // storage) and must be reconstructed before being returned.
+  // =============================================================================
+
+  describe('loadLatestCrdtState — null snapshot reconstruction', () => {
+    it('reconstructs snapshot via reconstructVersionSnapshot when CoW published version has null snapshot', async () => {
+      const { loadLatestCrdtState } = await import('../../src/services/crdt-sync-service');
+      const documentService = await import('../../src/services/document-service');
+      const documentVersionService = await import('../../src/services/document-version-service');
+      const branchService = await import('../../src/services/branch-service');
+
+      const mockDoc = createMockDocument();
+      vi.mocked(documentService.getDocument).mockResolvedValue({
+        id: mockDoc.id,
+        siteId: mockDoc.site_id,
+        path: mockDoc.path,
+        createdAt: mockDoc.created_at,
+      });
+
+      vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
+
+      vi.mocked(branchService.getBranch).mockResolvedValue({
+        id: 'branch-uuid-456',
+        siteId: mockDoc.site_id,
+        name: 'feature-branch',
+        status: 'active',
+        isMain: false,
+        sourceBranchId: 'main-branch-id',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+        createdAt: '2026-01-25T10:00:00.000Z',
+        updatedAt: '2026-01-25T10:00:00.000Z',
+      });
+
+      // Published version has null snapshot (nulled during diff compaction)
+      vi.mocked(documentVersionService.getLatestPublishedDocumentVersion).mockResolvedValue({
+        id: 'version-uuid-pub',
+        documentId: mockDoc.id,
+        branchId: 'main-branch-id',
+        versionNumber: 22,
+        snapshot: null,
+        source: 'publish',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+        createdAt: '2026-01-20T10:00:00.000Z',
+      });
+
+      const reconstructed = { root: { title: 'Reconstructed Published' } };
+      vi.mocked(documentVersionService.reconstructVersionSnapshot).mockResolvedValue(reconstructed);
+
+      const result = await loadLatestCrdtState('site-uuid-456', 'doc-uuid-123', 'branch-uuid-456');
+
+      expect(result).not.toBeNull();
+      expect(result?.snapshot).toEqual(reconstructed);
+      expect(documentVersionService.reconstructVersionSnapshot).toHaveBeenCalledWith(
+        mockDoc.id,
+        'main-branch-id',
+        22,
+      );
+    });
+
+    it('reconstructs snapshot via reconstructVersionSnapshot when branch version has null snapshot', async () => {
+      const { loadLatestCrdtState } = await import('../../src/services/crdt-sync-service');
+      const documentService = await import('../../src/services/document-service');
+      const documentVersionService = await import('../../src/services/document-version-service');
+
+      const mockDoc = createMockDocument();
+      vi.mocked(documentService.getDocument).mockResolvedValue({
+        id: mockDoc.id,
+        siteId: mockDoc.site_id,
+        path: mockDoc.path,
+        createdAt: mockDoc.created_at,
+      });
+
+      // Branch has a version but snapshot is null (diff-only compaction)
+      vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue({
+        id: 'version-uuid-branch',
+        documentId: mockDoc.id,
+        branchId: 'branch-uuid-456',
+        versionNumber: 5,
+        snapshot: null,
+        source: 'realtime',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+        createdAt: '2026-01-25T10:00:00.000Z',
+      });
+
+      const reconstructed = { root: { title: 'Reconstructed Branch' } };
+      vi.mocked(documentVersionService.reconstructVersionSnapshot).mockResolvedValue(reconstructed);
+
+      const result = await loadLatestCrdtState('site-uuid-456', 'doc-uuid-123', 'branch-uuid-456');
+
+      expect(result).not.toBeNull();
+      expect(result?.snapshot).toEqual(reconstructed);
+      expect(documentVersionService.reconstructVersionSnapshot).toHaveBeenCalledWith(
+        mockDoc.id,
+        'branch-uuid-456',
+        5,
+      );
     });
   });
 
