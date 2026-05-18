@@ -2,19 +2,22 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { useP1Router } from "../router-context";
-import { getAuthHeaders } from "../../data/auth";
+import { useP1Auth } from "../../auth/P1AuthProvider";
 
 type StructureKind = "page" | "template" | "override";
 
 export function useCreateStructure(kind: StructureKind) {
   const router = useP1Router();
+  const { getToken } = useP1Auth();
 
   return useMutation({
     mutationFn: async (path: string) => {
-      const authHeaders = await getAuthHeaders();
+      const token = await getToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
       const res = await fetch(`/p1/api/structure/${kind}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders },
+        headers,
         body: JSON.stringify({ path }),
       });
       const data = (await res.json()) as {
@@ -35,13 +38,16 @@ export function useCreateStructure(kind: StructureKind) {
 
 export function useDeleteStructurePage() {
   const router = useP1Router();
+  const { getToken } = useP1Auth();
 
   return useMutation({
     mutationFn: async (path: string) => {
-      const authHeaders = await getAuthHeaders();
+      const token = await getToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
       const res = await fetch("/p1/api/structure/page", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json", ...authHeaders },
+        headers,
         body: JSON.stringify({ path }),
       });
       const data = (await res.json()) as {

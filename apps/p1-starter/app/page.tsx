@@ -6,10 +6,10 @@ import {
 import { CollectionNav } from "./collection-nav";
 
 const initPromise = ensureInitialized({
-  p1BaseUrl: process.env.P1_CSS_BASE_URL,
+  p1BaseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL,
   p1ApiKey: process.env.P1_CSS_API_KEY,
-  p1SiteId: process.env.P1_CSS_SITE_ID,
-  p1BranchId: process.env.P1_CSS_BRANCH_ID,
+  p1SiteId: process.env.NEXT_PUBLIC_CSS_SITE_ID,
+  p1BranchId: process.env.NEXT_PUBLIC_CSS_BRANCH_ID,
 });
 
 export const metadata = {

@@ -66,7 +66,6 @@ vi.mock('../auth/index.js', () => ({
     login: vi.fn().mockResolvedValue(undefined),
     logout: vi.fn().mockResolvedValue(undefined),
     getToken: vi.fn().mockResolvedValue(null),
-    renderLoginButton: undefined,
   }),
 }));
 

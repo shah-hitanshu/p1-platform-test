@@ -9,7 +9,7 @@ const mockAuthState = {
   user: null,
   token: null,
   error: null as string | null,
-  authMode: 'css-authserver' as string,
+  authMode: 'broker' as string,
   login: mockLogin,
   logout: vi.fn(),
 };
@@ -23,15 +23,15 @@ vi.mock('../auth/P1AuthProvider', () => ({
 
 import { P1LoginPage } from '../auth/P1LoginPage';
 
-describe('P1LoginPage with css-authserver mode', () => {
+describe('P1LoginPage with broker mode', () => {
   beforeEach(() => {
     mockAuthState.isLoading = false;
     mockAuthState.error = null;
-    mockAuthState.authMode = 'css-authserver';
+    mockAuthState.authMode = 'broker';
     mockLogin.mockClear();
   });
 
-  it('renders a Sign in button for css-authserver mode', () => {
+  it('renders a Sign in button for broker mode', () => {
     render(<P1LoginPage />);
     const button = screen.getByRole('button', { name: /sign in/i });
     expect(button).toBeInTheDocument();
@@ -50,9 +50,9 @@ describe('P1LoginPage with css-authserver mode', () => {
     expect(screen.getByText(/signing in/i)).toBeInTheDocument();
   });
 
-  it('shows P1 Auth Server label in subtitle', () => {
+  it('shows Broker label in subtitle', () => {
     render(<P1LoginPage />);
-    expect(screen.getByText(/P1 Auth Server/)).toBeInTheDocument();
+    expect(screen.getByText(/Broker/)).toBeInTheDocument();
   });
 
   it('displays error message when error is present', () => {

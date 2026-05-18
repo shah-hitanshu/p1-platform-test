@@ -22,8 +22,8 @@ import {
   ensureInitialized,
   type P1DataConfig,
 } from "@pantheon-systems/puck-css/server";
-import { AuthGate } from "@pantheon-systems/puck-css/auth-gate";
 import { P1NextRouterProvider } from "./P1NextRouterProvider.js";
+import { P1AuthShell } from "./P1AuthShell.js";
 
 export type P1PagesConfig = P1DataConfig & {
   config: Config;
@@ -97,7 +97,7 @@ export function createP1Pages(opts: P1PagesConfig) {
         // Backend timeout or API error — show empty state
       }
       return (
-        <AuthGate>
+        <P1AuthShell>
           <div
             style={{
               fontFamily: "system-ui, sans-serif",
@@ -151,7 +151,7 @@ export function createP1Pages(opts: P1PagesConfig) {
               </p>
             )}
           </div>
-        </AuthGate>
+        </P1AuthShell>
       );
     }
 
@@ -159,11 +159,11 @@ export function createP1Pages(opts: P1PagesConfig) {
     if (mode === "structure") {
       const { StructurePage } = await import("@pantheon-systems/puck-css/server");
       return (
-        <AuthGate>
+        <P1AuthShell>
           <P1NextRouterProvider>
             <StructurePage />
           </P1NextRouterProvider>
-        </AuthGate>
+        </P1AuthShell>
       );
     }
 

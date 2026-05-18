@@ -218,13 +218,6 @@ export function P1App({
       <P1AuthProvider
         authMode={config.authMode}
         p1BaseUrl={config.baseUrl}
-        siteId={config.siteId}
-        googleClientId={config.googleClientId}
-        auth0Domain={config.auth0Domain}
-        auth0ClientId={config.auth0ClientId}
-        auth0Audience={config.auth0Audience}
-        p1AuthServerUrl={config.p1AuthServerUrl}
-        p1AuthRedirectUri={config.p1AuthRedirectUri}
       >
         <AuthGate
           config={config}

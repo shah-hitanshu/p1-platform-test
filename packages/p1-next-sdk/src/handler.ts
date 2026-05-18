@@ -26,8 +26,6 @@ import {
   postResolvePreview,
   postPreviewMeta,
   postRemoteDatasources,
-  postAuthDeviceCode,
-  postAuthToken,
   postStructure,
   deleteRemoteDatasources,
   deleteStructurePage,
@@ -53,10 +51,10 @@ function extractBearerToken(request: Request): string | undefined {
   return match?.[1];
 }
 
-function withAuth<T>(request: Request, fn: () => T): T {
+function withAuth<T>(request: Request, fn: () => T): T | NextResponse {
   const token = extractBearerToken(request);
   if (token) return runWithAuthToken(token, fn);
-  return fn();
+  return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 }
 
 export function createP1Handler(opts: P1HandlerConfig) {
@@ -97,9 +95,6 @@ export function createP1Handler(opts: P1HandlerConfig) {
     if (action === "resolve-preview") return postResolvePreview(request);
     if (action === "preview-meta") return postPreviewMeta(request);
     if (action === "datasources") return withAuth(request, () => postRemoteDatasources(request));
-    if (action === "auth" && rest[0] === "device-code")
-      return postAuthDeviceCode();
-    if (action === "auth" && rest[0] === "token") return postAuthToken(request);
     if (action === "structure" && (rest[0] === "page" || rest[0] === "template" || rest[0] === "override"))
       return withAuth(request, () => postStructure(request, rest[0] as "page" | "template" | "override"));
 

@@ -7,14 +7,18 @@
  *
  * Renders login UI appropriate for the current auth mode:
  * - mock: Demo user dropdown selector
- * - google: "Sign in with Google" button
- * - auth0: "Sign in with Auth0" button
- * - css-authserver: "Sign in" redirect button
+ * - broker: "Sign in" button via auth broker
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useP1Auth, DEMO_USERS } from './P1AuthProvider.js';
 import type { AuthMode } from './P1AuthProvider.js';
+
+const LOGIN_BUTTON_CSS = `
+.css-login-btn { background: #2563eb; }
+.css-login-btn:hover:not(:disabled) { background: #1d4ed8; }
+.css-login-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+`;
 
 const containerStyle: React.CSSProperties = {
   display: 'flex',
@@ -68,6 +72,18 @@ const errorStyle: React.CSSProperties = {
   borderRadius: '6px',
 };
 
+const primaryButtonStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '12px 24px',
+  fontSize: '16px',
+  fontWeight: 600,
+  color: '#fff',
+  border: 'none',
+  borderRadius: '8px',
+  cursor: 'pointer',
+  transition: 'background 0.15s',
+};
+
 function MockLogin() {
   const { login, isLoading } = useP1Auth();
   const [selectedUserId, setSelectedUserId] = useState(DEMO_USERS[0]?.id ?? '');
@@ -87,7 +103,8 @@ function MockLogin() {
         ))}
       </select>
       <button
-        className="pds-button pds-button--primary pds-button--full-width"
+        className="css-login-btn"
+        style={primaryButtonStyle}
         onClick={() => void login(selectedUserId)}
         disabled={isLoading}
       >
@@ -97,43 +114,13 @@ function MockLogin() {
   );
 }
 
-function GoogleLogin() {
-  const { isLoading, renderLoginButton } = useP1Auth();
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!containerRef.current || !renderLoginButton) return;
-    const cleanup = renderLoginButton(containerRef.current);
-    return () => { cleanup?.(); };
-  }, [renderLoginButton]);
-
-  if (isLoading) {
-    return <div style={{ textAlign: 'center', padding: '12px' }}>Signing in...</div>;
-  }
-
-  return <div ref={containerRef} style={{ display: 'flex', justifyContent: 'center' }} />;
-}
-
-function Auth0Login() {
+function BrokerLogin() {
   const { login, isLoading } = useP1Auth();
 
   return (
     <button
-      className="pds-button pds-button--brand pds-button--full-width"
-      onClick={() => void login()}
-      disabled={isLoading}
-    >
-      {isLoading ? 'Signing in...' : 'Sign in with Auth0'}
-    </button>
-  );
-}
-
-function P1AuthServerLogin() {
-  const { login, isLoading } = useP1Auth();
-
-  return (
-    <button
-      className="pds-button pds-button--primary pds-button--full-width"
+      className="css-login-btn"
+      style={primaryButtonStyle}
       onClick={() => void login()}
       disabled={isLoading}
     >
@@ -142,39 +129,18 @@ function P1AuthServerLogin() {
   );
 }
 
-function P1Login() {
-  const { login, isLoading } = useP1Auth();
-
-  return (
-    <button
-      className="pds-button pds-button--primary pds-button--full-width"
-      onClick={() => void login()}
-      disabled={isLoading}
-    >
-      {isLoading ? 'Complete login in the tab that opened...' : 'Sign in with Pantheon'}
-    </button>
-  );
-}
-
 function getAuthModeLabel(mode: AuthMode): string {
   switch (mode) {
     case 'mock':
       return 'Demo Mode';
-    case 'google':
-      return 'Google';
-    case 'auth0':
-      return 'Auth0';
-    case 'css-authserver':
-      return 'P1 Auth Server';
-    case 'p1':
-      return 'Pantheon';
+    case 'broker':
+      return 'Broker';
   }
 }
 
 export interface P1LoginPageProps {
   /** Title shown on the login card. Default: "P1 Puck Editor" */
   title?: string;
-  /** Subtitle shown below the title. Default: "Sign in to start editing" */
   subtitle?: string;
 }
 
@@ -193,6 +159,7 @@ export function P1LoginPage({
 
   return (
     <div style={containerStyle}>
+      <style dangerouslySetInnerHTML={{ __html: LOGIN_BUTTON_CSS }} />
       <div style={cardStyle}>
         <h1 style={titleStyle}>{title}</h1>
         <p style={subtitleStyle}>
@@ -200,10 +167,7 @@ export function P1LoginPage({
         </p>
 
         {authMode === 'mock' && <MockLogin />}
-        {authMode === 'google' && <GoogleLogin />}
-        {authMode === 'auth0' && <Auth0Login />}
-        {authMode === 'css-authserver' && <P1AuthServerLogin />}
-        {authMode === 'p1' && <P1Login />}
+        {authMode === 'broker' && <BrokerLogin />}
 
         {error && <div style={errorStyle}>{error}</div>}
       </div>

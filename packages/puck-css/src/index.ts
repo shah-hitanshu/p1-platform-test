@@ -413,21 +413,6 @@ export type { SemanticOp } from './data/semantic-ops.js';
 export { P1QueryProvider } from './data/query-provider.js';
 export type { RouteRow, RouteKind } from './data/page-store.js';
 
-// P1 Client SDK — Auth (client-safe)
-export {
-  getStoredTokens,
-  storeTokens,
-  clearTokens,
-  getUserInfo,
-  isTokenExpired,
-  getValidTokens,
-  getAuthHeaders,
-  startDeviceFlow,
-  pollForToken,
-  refreshAccessToken,
-} from './data/auth.js';
-export type { AuthTokens, UserInfo, DeviceCodeResponse } from './data/auth.js';
-
 // P1 Client SDK — Styles
 export {
   primaryButton,
@@ -463,8 +448,6 @@ export {
   ConnectPreviewHitStyles,
   ConnectFieldModal,
   TemplateAutocompleteLayer,
-  UserBar,
-  AuthGate,
   useRemoteDatasources,
   useResolvePreview,
   usePublish,

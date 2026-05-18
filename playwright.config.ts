@@ -38,9 +38,9 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
       env: {
-        P1_CSS_BASE_URL: 'http://localhost:4444',
+        NEXT_PUBLIC_CSS_BASE_URL: 'http://localhost:4444',
+        NEXT_PUBLIC_CSS_SITE_ID: 'test-site',
         P1_CSS_API_KEY: 'test-api-key',
-        P1_CSS_SITE_ID: 'test-site',
       },
     },
   ],

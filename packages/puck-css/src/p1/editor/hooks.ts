@@ -8,7 +8,7 @@ import type { RemoteDatasourceContext } from "../../data/remote-datasources/load
 import type { RemoteDatasourceDefinition } from "../../data/remote-datasources/remote-datasource-registry";
 import type { RemoteDatasourceScope } from "../../data/remote-datasources/user-remote-datasource-types";
 import type { RouteRow } from "../../data/page-store";
-import { getAuthHeaders } from "../../data/auth";
+import { useP1Auth } from "../../auth/P1AuthProvider";
 import { createPreviewResolvePlugin } from "./editor-preview-resolve";
 import { createRemoteDatasourceExplorerPlugin } from "./remote-datasources/remote-datasource-explorer-plugin";
 import { createFieldConnectPlugin } from "./connect/field-connect-plugin";
@@ -70,12 +70,15 @@ export function useResolvePreview(
 /* ── mutations ── */
 
 export function usePublish(path: string) {
+  const { getToken } = useP1Auth();
   return useMutation({
     mutationFn: async (data: Data) => {
-      const authHeaders = await getAuthHeaders();
+      const token = await getToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
       const res = await fetch("/p1/api/publish", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders },
+        headers,
         body: JSON.stringify({ data, path }),
       });
       if (!res.ok) throw new Error("Publish failed");
@@ -86,6 +89,7 @@ export function usePublish(path: string) {
 export function useSaveRemoteDatasource(editorPath: string) {
   const queryClient = useQueryClient();
   const router = useP1Router();
+  const { getToken } = useP1Auth();
 
   return useMutation({
     mutationFn: async (body: {
@@ -93,10 +97,12 @@ export function useSaveRemoteDatasource(editorPath: string) {
       path: string;
       definition: unknown;
     }) => {
-      const authHeaders = await getAuthHeaders();
+      const token = await getToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
       const res = await fetch("/p1/api/datasources", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders },
+        headers,
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error("Could not save datasource. Check id collisions and required fields.");
@@ -111,6 +117,7 @@ export function useSaveRemoteDatasource(editorPath: string) {
 export function useRemoveRemoteDatasource(editorPath: string) {
   const queryClient = useQueryClient();
   const router = useP1Router();
+  const { getToken } = useP1Auth();
 
   return useMutation({
     mutationFn: async (body: {
@@ -118,10 +125,12 @@ export function useRemoveRemoteDatasource(editorPath: string) {
       path: string;
       id: string;
     }) => {
-      const authHeaders = await getAuthHeaders();
+      const token = await getToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
       await fetch("/p1/api/datasources", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json", ...authHeaders },
+        headers,
         body: JSON.stringify(body),
       });
     },
@@ -134,16 +143,19 @@ export function useRemoveRemoteDatasource(editorPath: string) {
 
 export function useSavePreviewMeta() {
   const router = useP1Router();
+  const { getToken } = useP1Auth();
 
   return useMutation({
     mutationFn: async (body: {
       path: string;
       previewParams: Record<string, string>;
     }) => {
-      const authHeaders = await getAuthHeaders();
+      const token = await getToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
       await fetch("/p1/api/preview-meta", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders },
+        headers,
         body: JSON.stringify(body),
       });
     },

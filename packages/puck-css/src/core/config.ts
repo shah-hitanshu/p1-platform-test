@@ -7,12 +7,6 @@ export interface P1Config {
   siteId: string;
   branchId?: string;
   authMode: AuthMode;
-  googleClientId?: string;
-  auth0Domain?: string;
-  auth0ClientId?: string;
-  auth0Audience?: string;
-  p1AuthServerUrl?: string;
-  p1AuthRedirectUri?: string;
   enableRealtime?: boolean;
   wsBaseUrl?: string;
   enablePresence?: boolean;
@@ -20,8 +14,8 @@ export interface P1Config {
   maxRetries?: number;
 }
 
-const VALID_AUTH_MODES: AuthMode[] = ['mock', 'google', 'auth0', 'css-authserver', 'p1'];
-const DEFAULT_AUTH_MODE: AuthMode = 'p1';
+const VALID_AUTH_MODES: AuthMode[] = ['mock', 'broker'];
+const DEFAULT_AUTH_MODE: AuthMode = 'broker';
 
 function httpToWs(url: string): string {
   return url.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
@@ -74,16 +68,6 @@ export function createP1Config(
     authMode: authModeRaw as AuthMode,
     clientBaseUrl: overrides.clientBaseUrl ?? env('CSS_CLIENT_BASE_URL'),
     branchId: overrides.branchId ?? env('CSS_BRANCH_ID'),
-    googleClientId: overrides.googleClientId ?? env('CSS_GOOGLE_CLIENT_ID'),
-    auth0Domain: overrides.auth0Domain ?? env('CSS_AUTH0_DOMAIN'),
-    auth0ClientId: overrides.auth0ClientId ?? env('CSS_AUTH0_CLIENT_ID'),
-    auth0Audience: overrides.auth0Audience ?? env('CSS_AUTH0_AUDIENCE'),
-    // Default p1AuthServerUrl to ${baseUrl}/auth when using css-authserver mode.
-    // The P1 OAuth server is now inlined at /auth/* on the main worker, so the
-    // auth URL can be derived from baseUrl without requiring explicit configuration.
-    p1AuthServerUrl: overrides.p1AuthServerUrl ?? env('CSS_AUTH_SERVER_URL') ??
-      (authModeRaw === 'css-authserver' ? `${baseUrl}/auth` : undefined),
-    p1AuthRedirectUri: overrides.p1AuthRedirectUri ?? env('CSS_AUTH_REDIRECT_URI'),
     enableRealtime: overrides.enableRealtime ?? envBool('CSS_ENABLE_REALTIME') ?? true,
     wsBaseUrl: overrides.wsBaseUrl ?? env('CSS_WS_BASE_URL') ?? httpToWs(baseUrl),
     enablePresence: overrides.enablePresence ?? envBool('CSS_ENABLE_PRESENCE') ?? true,
@@ -98,10 +82,7 @@ export function createNextConfig(overrides?: Partial<P1Config>): P1Config {
       baseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL,
       siteId: process.env.NEXT_PUBLIC_CSS_SITE_ID,
       authMode: process.env.NEXT_PUBLIC_CSS_AUTH_MODE as AuthMode | undefined,
-      googleClientId: process.env.NEXT_PUBLIC_CSS_GOOGLE_CLIENT_ID,
       branchId: process.env.NEXT_PUBLIC_CSS_BRANCH_ID,
-      p1AuthServerUrl: process.env.NEXT_PUBLIC_CSS_AUTH_SERVER_URL,
-      p1AuthRedirectUri: process.env.NEXT_PUBLIC_CSS_AUTH_REDIRECT_URI,
       enableRealtime: process.env.NEXT_PUBLIC_CSS_ENABLE_REALTIME !== undefined
         ? process.env.NEXT_PUBLIC_CSS_ENABLE_REALTIME === 'true'
         : undefined,

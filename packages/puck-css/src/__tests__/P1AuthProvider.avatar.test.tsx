@@ -1,40 +1,29 @@
 /**
  * Tests that P1AuthProvider propagates the `picture` field from
  * oauthSession.getUserInfo() into the AuthUser context when authenticating
- * via css-authserver mode.
+ * via broker mode.
  *
- * The css-authserver access token is a JWT issued by the auth server. The
- * `createP1AuthServerOAuth` session parses the JWT and exposes `picture`
- * via `getUserInfo()`. `P1AuthProvider` must merge this into `user.picture`
- * for the account avatar in P1EditorHeader to be able to render it.
+ * The broker access token is validated by the backend. `P1AuthProvider`
+ * must merge the avatar URL into `user.picture` for the account avatar
+ * in P1EditorHeader to be able to render it.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
-// ---------------------------------------------------------------------------
-// Module-level mocks — declared before any imports of the modules under test
-// ---------------------------------------------------------------------------
-
 vi.mock('@pantheon-systems/css-client', () => ({
-  createP1AuthServerOAuth: vi.fn(),
-  createGoogleOAuth: vi.fn(),
-  createAuth0OAuth: vi.fn(),
+  createBrokerAuth: vi.fn(),
   validateToken: vi.fn().mockResolvedValue(null),
   loginMockUser: vi.fn(),
 }));
 
 import {
-  createP1AuthServerOAuth,
+  createBrokerAuth,
   validateToken,
 } from '@pantheon-systems/css-client';
 
 import { P1AuthProvider, useP1Auth } from '../auth/P1AuthProvider';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function makeFakeOAuthSession(overrides: Partial<{
   getToken: ReturnType<typeof vi.fn>;
@@ -42,17 +31,14 @@ function makeFakeOAuthSession(overrides: Partial<{
   getUserInfo: ReturnType<typeof vi.fn>;
   login: ReturnType<typeof vi.fn>;
   logout: ReturnType<typeof vi.fn>;
-  handleCallback: ReturnType<typeof vi.fn>;
 }> = {}) {
   return {
-    provider: 'css-authserver' as const,
+    provider: 'broker' as const,
     login: vi.fn().mockResolvedValue(undefined),
     logout: vi.fn().mockResolvedValue(undefined),
     isAuthenticated: vi.fn().mockReturnValue(false),
     getUserInfo: vi.fn().mockReturnValue(null),
     getToken: vi.fn().mockResolvedValue(null),
-    handleCallback: vi.fn().mockResolvedValue(undefined),
-    renderButton: vi.fn().mockReturnValue(null),
     ...overrides,
   };
 }
@@ -67,15 +53,11 @@ function CaptureAuthUser({
   return <div data-testid="consumer" data-picture={user?.picture ?? ''} />;
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   vi.mocked(validateToken).mockResolvedValue(null);
-  vi.mocked(createP1AuthServerOAuth).mockReturnValue(makeFakeOAuthSession());
+  vi.mocked(createBrokerAuth).mockReturnValue(makeFakeOAuthSession());
 });
 
 describe('P1AuthProvider — avatar picture from oauth getUserInfo', () => {
@@ -85,7 +67,7 @@ describe('P1AuthProvider — avatar picture from oauth getUserInfo', () => {
       getToken: vi.fn().mockResolvedValue('access-token-abc'),
       getUserInfo: vi.fn().mockReturnValue(null),
     });
-    vi.mocked(createP1AuthServerOAuth).mockReturnValue(fakeSession);
+    vi.mocked(createBrokerAuth).mockReturnValue(fakeSession);
     vi.mocked(validateToken).mockResolvedValue({
       id: 'user-1',
       type: 'user',
@@ -96,10 +78,8 @@ describe('P1AuthProvider — avatar picture from oauth getUserInfo', () => {
     let capturedUser: ReturnType<typeof useP1Auth>['user'] = null;
     render(
       <P1AuthProvider
-        authMode="css-authserver"
+        authMode="broker"
         p1BaseUrl="http://localhost:8787"
-        p1AuthServerUrl="https://auth.example.com"
-        siteId="site-1"
       >
         <CaptureAuthUser onUser={(u) => { capturedUser = u; }} />
       </P1AuthProvider>,
@@ -126,21 +106,18 @@ describe('P1AuthProvider — avatar picture from oauth getUserInfo', () => {
         picture: 'https://lh3.googleusercontent.com/fallback.jpg',
       }),
     });
-    vi.mocked(createP1AuthServerOAuth).mockReturnValue(fakeSession);
+    vi.mocked(createBrokerAuth).mockReturnValue(fakeSession);
     vi.mocked(validateToken).mockResolvedValue({
       id: 'user-1',
       type: 'user',
       email: 'user@example.com',
-      // no avatarUrl
     });
 
     let capturedUser: ReturnType<typeof useP1Auth>['user'] = null;
     render(
       <P1AuthProvider
-        authMode="css-authserver"
+        authMode="broker"
         p1BaseUrl="http://localhost:8787"
-        p1AuthServerUrl="https://auth.example.com"
-        siteId="site-1"
       >
         <CaptureAuthUser onUser={(u) => { capturedUser = u; }} />
       </P1AuthProvider>,
@@ -167,7 +144,7 @@ describe('P1AuthProvider — avatar picture from oauth getUserInfo', () => {
         picture: undefined,
       }),
     });
-    vi.mocked(createP1AuthServerOAuth).mockReturnValue(fakeSession);
+    vi.mocked(createBrokerAuth).mockReturnValue(fakeSession);
     vi.mocked(validateToken).mockResolvedValue({
       id: 'user-2',
       type: 'user',
@@ -177,10 +154,8 @@ describe('P1AuthProvider — avatar picture from oauth getUserInfo', () => {
     let capturedUser: ReturnType<typeof useP1Auth>['user'] = null;
     render(
       <P1AuthProvider
-        authMode="css-authserver"
+        authMode="broker"
         p1BaseUrl="http://localhost:8787"
-        p1AuthServerUrl="https://auth.example.com"
-        siteId="site-1"
       >
         <CaptureAuthUser onUser={(u) => { capturedUser = u; }} />
       </P1AuthProvider>,
@@ -190,7 +165,6 @@ describe('P1AuthProvider — avatar picture from oauth getUserInfo', () => {
       expect(screen.getByTestId('consumer')).toBeInTheDocument();
     });
 
-    // Wait for loading to settle
     await waitFor(() => {
       expect(capturedUser).not.toBeNull();
     });

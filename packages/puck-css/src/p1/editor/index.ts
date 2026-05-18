@@ -11,8 +11,6 @@ export {
 } from "./connect/connect-preview-config";
 export { ConnectFieldModal } from "./connect/connect-field-modal";
 export { TemplateAutocompleteLayer } from "./template-autocomplete-layer";
-export { UserBar } from "./user-bar";
-export { AuthGate } from "./auth-gate";
 export {
   useRemoteDatasources,
   useResolvePreview,

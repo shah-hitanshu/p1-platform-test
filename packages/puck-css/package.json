@@ -49,9 +49,9 @@
       "types": "./dist/server.d.ts"
     },
     "./auth-gate": {
-      "import": "./dist/p1/editor/auth-gate.js",
-      "default": "./dist/p1/editor/auth-gate.js",
-      "types": "./dist/p1/editor/auth-gate.d.ts"
+      "import": "./dist/auth/AuthGate.js",
+      "default": "./dist/auth/AuthGate.js",
+      "types": "./dist/auth/AuthGate.d.ts"
     },
     "./connectable": {
       "import": "./dist/editor/components/connectable.js",

@@ -35,8 +35,7 @@ vi.mock('../auth/index', () => ({
 // Mock css-client (P1PuckProvider depends on it)
 vi.mock('@pantheon-systems/css-client', () => ({
   P1Client: vi.fn(),
-  createGoogleOAuth: vi.fn(),
-  createAuth0OAuth: vi.fn(),
+  createBrokerAuth: vi.fn(),
   validateToken: vi.fn(),
   loginMockUser: vi.fn(),
 }));
@@ -158,13 +157,13 @@ describe('P1App', () => {
     expect(screen.getByText('My App')).toBeVisible();
   });
 
-  it('shows default login page when not authenticated in css-authserver mode', () => {
+  it('shows default login page when not authenticated in broker mode', () => {
     mockAuthState.isAuthenticated = false;
     mockAuthState.isLoading = false;
-    mockAuthState.authMode = 'css-authserver' as 'mock';
+    mockAuthState.authMode = 'broker' as 'mock';
 
     render(
-      <P1App config={{ ...testConfig, authMode: 'css-authserver' as 'mock' }}>
+      <P1App config={{ ...testConfig, authMode: 'broker' as 'mock' }}>
         <div data-testid="child">Hello</div>
       </P1App>
     );

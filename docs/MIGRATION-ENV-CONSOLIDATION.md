@@ -8,7 +8,7 @@ This guide covers upgrading to `@pantheon/puck-css@0.3.x` which reduces the requ
 |----------|--------|-------|
 | `NEXT_PUBLIC_CSS_BASE_URL` | Required | **Required** (unchanged) |
 | `NEXT_PUBLIC_CSS_SITE_ID` | Required | **Required** (unchanged) |
-| `NEXT_PUBLIC_CSS_AUTH_MODE` | Required | Optional, defaults to `css-authserver` |
+| `NEXT_PUBLIC_CSS_AUTH_MODE` | Required | Optional, defaults to `broker` |
 | `NEXT_PUBLIC_CSS_ENABLE_REALTIME` | Optional, defaults to `false` | Optional, defaults to `true` |
 | `NEXT_PUBLIC_CSS_WS_BASE_URL` | Required when realtime enabled | Optional, derived from `CSS_BASE_URL` |
 | `NEXT_PUBLIC_CSS_ENABLE_PRESENCE` | Optional, defaults to `false` | Optional, defaults to `true` |
@@ -32,8 +32,7 @@ export function getCSSConfig(): CSSConfig {
   return createNextConfig({
     baseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL || "http://localhost:8787",
     siteId: process.env.NEXT_PUBLIC_CSS_SITE_ID || "",
-    authMode: (process.env.NEXT_PUBLIC_CSS_AUTH_MODE || "mock") as "mock" | "google",
-    googleClientId: process.env.NEXT_PUBLIC_CSS_GOOGLE_CLIENT_ID,
+    authMode: (process.env.NEXT_PUBLIC_CSS_AUTH_MODE || "mock") as "mock" | "broker",
     branchId: process.env.NEXT_PUBLIC_CSS_BRANCH_ID,
     enableRealtime: process.env.NEXT_PUBLIC_CSS_ENABLE_REALTIME === "true",
     wsBaseUrl: process.env.NEXT_PUBLIC_CSS_WS_BASE_URL,
@@ -131,15 +130,14 @@ NEXT_PUBLIC_CSS_WS_BASE_URL=wss://css.example.com
 NEXT_PUBLIC_CSS_BASE_URL=https://css.example.com
 ```
 
-### 5. Remove `CSS_AUTH_MODE` from env files (if using css-authserver)
+### 5. Remove `CSS_AUTH_MODE` from env files (if using the default)
 
-`css-authserver` is now the default. Only set `NEXT_PUBLIC_CSS_AUTH_MODE` if you need a different auth mode:
+`p1` is now the default. Only set `NEXT_PUBLIC_CSS_AUTH_MODE` if you need a different auth mode:
 
 ```
 # Only needed for non-default auth:
 NEXT_PUBLIC_CSS_AUTH_MODE=mock
-NEXT_PUBLIC_CSS_AUTH_MODE=google
-NEXT_PUBLIC_CSS_AUTH_MODE=auth0
+NEXT_PUBLIC_CSS_AUTH_MODE=broker
 ```
 
 ## Minimum .env After Migration

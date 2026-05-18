@@ -13,6 +13,7 @@ describe('p1-next-sdk file structure', () => {
     'handler-actions.ts',
     'pages-handler.tsx',
     'P1NextRouterProvider.tsx',
+    'P1AuthShell.tsx',
     'routes/page-data.ts',
     'routes/publish.ts',
     'routes/resolve-preview.ts',
@@ -20,9 +21,6 @@ describe('p1-next-sdk file structure', () => {
     'routes/remote-datasources-api.ts',
     'routes/structure.ts',
     'routes/editor-context.ts',
-    'routes/auth/index.ts',
-    'routes/auth/device-code.ts',
-    'routes/auth/token.ts',
   ];
 
   for (const file of expectedFiles) {

@@ -458,7 +458,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // initial `ui` prop so Puck never initializes with wrong defaults.
   const initialSidebarUi = useMemo<Partial<UiState>>(() => {
     try {
-      const stored = localStorage.getItem(`css-sidebar-${css.siteId}`);
+      const stored = localStorage.getItem(`p1-sidebar-${css.siteId}`);
       if (!stored) return {};
       const parsed = JSON.parse(stored) as { left?: boolean; right?: boolean };
       const ui: Partial<UiState> = {};

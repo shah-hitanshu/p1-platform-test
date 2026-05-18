@@ -6,13 +6,10 @@
       "env": [
         "PCC_SITE_ID",
         "PCC_TOKEN",
-        "P1_DATA_MODE",
-        "P1_CSS_BASE_URL",
-        "P1_CSS_API_KEY",
-        "P1_CSS_SITE_ID",
-        "P1_CSS_BRANCH_ID",
-        "P1_AUTH0_CONFIG_URL",
-        "P1_AUTH0_AUDIENCE"
+        "NEXT_PUBLIC_CSS_BASE_URL",
+        "NEXT_PUBLIC_CSS_SITE_ID",
+        "NEXT_PUBLIC_CSS_BRANCH_ID",
+        "P1_CSS_API_KEY"
       ],
       "outputs": ["dist/**", ".next/**"]
     },

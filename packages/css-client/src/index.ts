@@ -94,24 +94,19 @@ export type { AuthProvider, TokenStorage } from './auth.js';
 
 // OAuth utilities
 export {
-  createGoogleOAuth,
-  createAuth0OAuth,
-  createP1AuthServerOAuth,
   createOAuthAuthProvider,
   validateToken,
   loginMockUser,
-  generateCodeVerifier,
-  computeS256Challenge,
-  generateState,
 } from './oauth.js';
 export type {
-  GoogleOAuthConfig,
-  Auth0OAuthConfig,
-  P1AuthServerOAuthConfig,
   OAuthUserInfo,
   OAuthSession,
   AuthMeResponse,
 } from './oauth.js';
+
+// Broker authentication
+export { createBrokerAuth } from './broker.js';
+export type { BrokerAuthConfig } from './broker.js';
 
 // Errors
 export {

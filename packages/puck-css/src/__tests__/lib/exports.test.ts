@@ -19,13 +19,6 @@ describe('puck-css client exports', () => {
     expect(mod.isCrossPageRefTemplateString).toBeDefined();
   });
 
-  it('exports auth', async () => {
-    const mod = await import('../../data/auth');
-    expect(mod.getStoredTokens).toBeDefined();
-    expect(mod.storeTokens).toBeDefined();
-    expect(mod.clearTokens).toBeDefined();
-  });
-
   it('exports remote-datasource-registry', async () => {
     const mod = await import('../../data/remote-datasources/remote-datasource-registry');
     expect(mod.buildRemoteDatasourceRegistry).toBeDefined();
@@ -54,8 +47,6 @@ describe('puck-css client exports', () => {
     expect(mod.createRemoteDatasourceExplorerPlugin).toBeDefined();
     expect(mod.createFieldConnectPlugin).toBeDefined();
     expect(mod.wrapConfigForEditorPreview).toBeDefined();
-    expect(mod.UserBar).toBeDefined();
-    expect(mod.AuthGate).toBeDefined();
   });
 
   it('exports pages components', async () => {

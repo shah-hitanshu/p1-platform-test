@@ -57,7 +57,7 @@ test.describe('P1 Starter - Editor Dashboard', () => {
     await page.goto('/p1');
 
     // AuthGate blocks access when no auth tokens are present
-    await expect(page.getByText('Sign in required')).toBeVisible();
+    await expect(page.getByText('Sign in to start editing')).toBeVisible();
   });
 
   test('page title is set to P1 Dashboard', async ({ page }) => {

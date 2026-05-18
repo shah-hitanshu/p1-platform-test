@@ -20,8 +20,7 @@ describe('createNextConfig', () => {
   it('returns a valid config when all NEXT_PUBLIC_CSS_* env vars are set', () => {
     process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
     process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
-    process.env.NEXT_PUBLIC_CSS_AUTH_MODE = 'google';
-    process.env.NEXT_PUBLIC_CSS_GOOGLE_CLIENT_ID = 'google-client-id';
+    process.env.NEXT_PUBLIC_CSS_AUTH_MODE = 'broker';
     process.env.NEXT_PUBLIC_CSS_BRANCH_ID = 'branch-456';
     process.env.NEXT_PUBLIC_CSS_ENABLE_REALTIME = 'true';
     process.env.NEXT_PUBLIC_CSS_WS_BASE_URL = 'wss://ws.example.com';
@@ -31,8 +30,7 @@ describe('createNextConfig', () => {
 
     expect(config.baseUrl).toBe('https://css.example.com');
     expect(config.siteId).toBe('site-123');
-    expect(config.authMode).toBe('google');
-    expect(config.googleClientId).toBe('google-client-id');
+    expect(config.authMode).toBe('broker');
     expect(config.branchId).toBe('branch-456');
     expect(config.enableRealtime).toBe(true);
     expect(config.wsBaseUrl).toBe('wss://ws.example.com');
@@ -42,7 +40,7 @@ describe('createNextConfig', () => {
   it('allows overrides to take precedence over env vars', () => {
     process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
     process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
-    process.env.NEXT_PUBLIC_CSS_AUTH_MODE = 'google';
+    process.env.NEXT_PUBLIC_CSS_AUTH_MODE = 'broker';
 
     const config = createNextConfig({
       baseUrl: 'https://override.example.com',
@@ -51,7 +49,7 @@ describe('createNextConfig', () => {
 
     expect(config.baseUrl).toBe('https://override.example.com');
     expect(config.siteId).toBe('override-site');
-    expect(config.authMode).toBe('google');
+    expect(config.authMode).toBe('broker');
   });
 
   it('throws when required env vars are missing', () => {
@@ -61,12 +59,12 @@ describe('createNextConfig', () => {
     expect(() => createNextConfig()).toThrow('Missing required config: CSS_SITE_ID');
   });
 
-  it('defaults authMode to p1 when not set', () => {
+  it('defaults authMode to broker when not set', () => {
     process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
     process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
 
     const config = createNextConfig();
-    expect(config.authMode).toBe('p1');
+    expect(config.authMode).toBe('broker');
   });
 
   it('defaults enableRealtime and enablePresence to true when env vars are not set', () => {
@@ -106,15 +104,6 @@ describe('createNextConfig', () => {
     expect(config.wsBaseUrl).toBe('wss://custom-ws.example.com');
   });
 
-  it('derives p1AuthServerUrl from baseUrl when css-authserver mode is set', () => {
-    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
-    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
-    process.env.NEXT_PUBLIC_CSS_AUTH_MODE = 'css-authserver';
-
-    const config = createNextConfig();
-    expect(config.p1AuthServerUrl).toBe('https://css.example.com/auth');
-  });
-
   it('correctly parses boolean env vars', () => {
     process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
     process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
@@ -136,78 +125,7 @@ describe('createNextConfig', () => {
   });
 });
 
-describe('createP1Config with css-authserver mode', () => {
-  const originalEnv = process.env;
-
-  beforeEach(() => {
-    process.env = { ...originalEnv };
-  });
-
-  afterEach(() => {
-    process.env = originalEnv;
-  });
-
-  it('accepts css-authserver as a valid auth mode', () => {
-    const config = createP1Config(
-      {},
-      {
-        overrides: {
-          baseUrl: 'https://css.example.com',
-          siteId: 'site-123',
-          authMode: 'css-authserver',
-          p1AuthServerUrl: 'https://auth.css.example.com',
-        },
-      },
-    );
-
-    expect(config.authMode).toBe('css-authserver');
-    expect(config.p1AuthServerUrl).toBe('https://auth.css.example.com');
-  });
-
-  it('parses CSS_AUTH_SERVER_URL and P1_AUTH_REDIRECT_URI from env', () => {
-    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
-    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
-    process.env.NEXT_PUBLIC_CSS_AUTH_MODE = 'css-authserver';
-    process.env.NEXT_PUBLIC_CSS_AUTH_SERVER_URL = 'https://auth.css.example.com';
-    process.env.NEXT_PUBLIC_CSS_AUTH_REDIRECT_URI = 'https://mysite.com/auth/callback';
-
-    const config = createNextConfig();
-
-    expect(config.authMode).toBe('css-authserver');
-    expect(config.p1AuthServerUrl).toBe('https://auth.css.example.com');
-    expect(config.p1AuthRedirectUri).toBe('https://mysite.com/auth/callback');
-  });
-
-  it('reads CSS_AUTH_SERVER_URL from prefixed env source', () => {
-    const config = createP1Config(
-      {
-        VITE_CSS_AUTH_SERVER_URL: 'https://auth.css.example.com',
-        VITE_CSS_BASE_URL: 'https://css.example.com',
-        VITE_CSS_SITE_ID: 'site-123',
-        VITE_CSS_AUTH_MODE: 'css-authserver',
-      },
-      { prefix: 'VITE_' },
-    );
-
-    expect(config.p1AuthServerUrl).toBe('https://auth.css.example.com');
-  });
-
-  it('defaults p1AuthServerUrl to ${baseUrl}/auth when css-authserver mode and no URL provided', () => {
-    const config = createP1Config(
-      {},
-      {
-        overrides: {
-          baseUrl: 'https://css.example.com',
-          siteId: 'site-123',
-          authMode: 'css-authserver',
-          // No p1AuthServerUrl provided — should default to baseUrl + /auth
-        },
-      },
-    );
-
-    expect(config.p1AuthServerUrl).toBe('https://css.example.com/auth');
-  });
-
+describe('createP1Config', () => {
   it('derives ws:// wsBaseUrl from http:// baseUrl', () => {
     const config = createP1Config(
       {},
@@ -236,7 +154,7 @@ describe('createP1Config with css-authserver mode', () => {
     expect(config.wsBaseUrl).toBe('wss://css.example.com');
   });
 
-  it('defaults authMode to p1 when not provided via env or overrides', () => {
+  it('defaults authMode to broker when not provided via env or overrides', () => {
     const config = createP1Config(
       {
         VITE_CSS_BASE_URL: 'https://css.example.com',
@@ -244,7 +162,7 @@ describe('createP1Config with css-authserver mode', () => {
       },
       { prefix: 'VITE_' },
     );
-    expect(config.authMode).toBe('p1');
+    expect(config.authMode).toBe('broker');
   });
 
   it('defaults enableRealtime and enablePresence to true', () => {
@@ -262,35 +180,34 @@ describe('createP1Config with css-authserver mode', () => {
     expect(config.enablePresence).toBe(true);
   });
 
-  it('does not default p1AuthServerUrl for non-css-authserver modes', () => {
+  it('accepts broker as a valid auth mode', () => {
     const config = createP1Config(
       {},
       {
         overrides: {
           baseUrl: 'https://css.example.com',
           siteId: 'site-123',
-          authMode: 'mock',
+          authMode: 'broker',
         },
       },
     );
 
-    expect(config.p1AuthServerUrl).toBeUndefined();
+    expect(config.authMode).toBe('broker');
   });
 
-  it('explicit p1AuthServerUrl override takes precedence over default', () => {
-    const config = createP1Config(
-      {},
-      {
-        overrides: {
-          baseUrl: 'https://css.example.com',
-          siteId: 'site-123',
-          authMode: 'css-authserver',
-          p1AuthServerUrl: 'https://custom-auth.example.com/auth',
+  it('rejects invalid auth modes', () => {
+    expect(() =>
+      createP1Config(
+        {},
+        {
+          overrides: {
+            baseUrl: 'https://css.example.com',
+            siteId: 'site-123',
+            authMode: 'google' as 'mock',
+          },
         },
-      },
-    );
-
-    expect(config.p1AuthServerUrl).toBe('https://custom-auth.example.com/auth');
+      ),
+    ).toThrow('Invalid CSS_AUTH_MODE');
   });
 });
 

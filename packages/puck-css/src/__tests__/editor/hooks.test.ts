@@ -2,6 +2,10 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import React from 'react';
 
+vi.mock('../../auth/P1AuthProvider', () => ({
+  useP1Auth: () => ({ getToken: () => Promise.resolve('test-token') }),
+}));
+
 import { P1RouterContext, type P1Router } from '../../p1/router-context';
 import { usePublish, useLoadPageData } from '../../p1/editor/hooks';
 import { P1QueryProvider } from '../../data/query-provider';

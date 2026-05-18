@@ -169,14 +169,9 @@ Everything else has sensible defaults and can be omitted.
 | `NEXT_PUBLIC_CSS_ENABLE_REALTIME` | `true` | Real-time collaborative editing via WebSocket/Yjs CRDT |
 | `NEXT_PUBLIC_CSS_ENABLE_PRESENCE` | `true` | Presence awareness (collaborator avatars, focus highlighting) |
 
-**Authentication** — defaults to the built-in CSS auth server:
+**Authentication** — defaults to broker auth (proxied server-side via `P1_CSS_API_KEY`):
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NEXT_PUBLIC_CSS_AUTH_MODE` | `css-authserver` | Auth provider. Options: `css-authserver`, `mock`, `google`, `auth0` |
-| `NEXT_PUBLIC_CSS_GOOGLE_CLIENT_ID` | — | Google OAuth client ID (required when `AUTH_MODE=google`) |
-| `NEXT_PUBLIC_CSS_AUTH_SERVER_URL` | `${BASE_URL}/auth` | CSS OAuth server URL (derived automatically in `css-authserver` mode) |
-| `NEXT_PUBLIC_CSS_AUTH_REDIRECT_URI` | `${origin}/auth/callback` | OAuth callback redirect URI |
+> **Advanced:** Set `NEXT_PUBLIC_CSS_AUTH_MODE=mock` to use demo users for local development without a real auth backend. Do not set this in production.
 
 **Networking** — derived from `BASE_URL` when not set:
 

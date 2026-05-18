@@ -538,7 +538,7 @@ function P1SubheaderBridgeInner({
   // Persist sidebar visibility to localStorage on every user toggle.
   // Initial state is set via the `ui` prop passed to <Puck> (see useP1Editor.ts),
   // so no restore dispatch is needed here — we only need to write.
-  const sidebarStorageKey = `css-sidebar-${siteId}`;
+  const sidebarStorageKey = `p1-sidebar-${siteId}`;
   useEffect(() => {
     if (!puckUi) return;
     try {
