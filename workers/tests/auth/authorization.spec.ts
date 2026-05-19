@@ -290,6 +290,26 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
         expect(result3.roleName).toBe('NO_ACCESS');
       });
     });
+
+    describe('Service principals (sat_ tokens)', () => {
+      it('should throw AuthorizationError — service principals must use assertServicePermission', async () => {
+        const { getEffectiveRole, AuthorizationError } = await import('../../src/auth/authorization');
+
+        const principal: AuthenticatedPrincipal = {
+          id: 'token-id-abc',
+          type: 'service',
+          pantheonSiteRoles: {},
+          tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
+          siteId: 'site-1',
+          scopes: ['read:draft'],
+          authProvider: 'site_token',
+        };
+
+        await expect(
+          getEffectiveRole(principal, 'site-1', 'branch-1'),
+        ).rejects.toThrow(AuthorizationError);
+      });
+    });
   });
 
   describe('hasPermission', () => {
@@ -400,6 +420,77 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
         expect((error as InstanceType<typeof AuthorizationError>).roleName).toBe('EDITOR');
         expect((error as InstanceType<typeof AuthorizationError>).requiredPermission).toBe('canManageGrants');
       }
+    });
+
+    describe('Service principal dispatch', () => {
+      function createServicePrincipal(siteId: string): AuthenticatedPrincipal {
+        return {
+          id: 'token-id-abc',
+          type: 'service',
+          pantheonSiteRoles: {},
+          tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
+          siteId,
+          scopes: ['read:draft'],
+          authProvider: 'site_token',
+        };
+      }
+
+      it('should dispatch service principals to hasServicePermission instead of getEffectiveRole', async () => {
+        const { assertPermission } = await import('../../src/auth/authorization');
+        const db = await import('../../src/db');
+
+        const principal = createServicePrincipal('site-1');
+
+        await expect(
+          assertPermission(principal, 'site-1', 'branch-1', 'canView'),
+        ).resolves.toBeUndefined();
+        // No DB queries: dispatch went to hasServicePermission, not getEffectiveRole.
+        expect(vi.mocked(db.query)).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('hasServicePermission', () => {
+    function createServicePrincipal(siteId: string): AuthenticatedPrincipal {
+      return {
+        id: 'token-id-abc',
+        type: 'service',
+        pantheonSiteRoles: {},
+        tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
+        siteId,
+        scopes: ['read:draft'],
+        authProvider: 'site_token',
+      };
+    }
+
+    beforeEach(() => {
+      vi.resetAllMocks();
+    });
+
+    it('should return true when service principal targets its bound site', async () => {
+      const { hasServicePermission } = await import('../../src/auth/authorization');
+
+      const principal = createServicePrincipal('site-1');
+
+      await expect(hasServicePermission(principal, 'site-1')).resolves.toBe(true);
+    });
+
+    it('should return false when targeting a different site', async () => {
+      const { hasServicePermission } = await import('../../src/auth/authorization');
+
+      const principal = createServicePrincipal('site-1');
+
+      await expect(hasServicePermission(principal, 'site-2')).resolves.toBe(false);
+    });
+
+    it('should return false when called with a non-service principal', async () => {
+      const { hasServicePermission } = await import('../../src/auth/authorization');
+
+      const principal = createPrincipal({
+        pantheonSiteRoles: { 'site-1': 'owner' },
+      });
+
+      await expect(hasServicePermission(principal, 'site-1')).resolves.toBe(false);
     });
   });
 

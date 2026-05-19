@@ -220,6 +220,19 @@ export async function getEffectiveRole(
   branchId: string,
   masClient?: MASClient,
 ): Promise<EffectiveRoleResult> {
+  if (principal.type === 'service') {
+    // Service principals (sat_ tokens) should be authenticated and asserted independent
+  // of the role-based authorization system.
+    console.error(
+      '[authorization] getEffectiveRole called with a service principal; assertPermission/hasPermission must dispatch service principals to hasServicePermission',
+    );
+    throw new AuthorizationError(
+      'Authorization not available for this principal type.',
+      'canView',
+      'NO_ACCESS',
+    );
+  }
+
   // System admins have full access to all sites
   if (principal.systemRole === 'admin') {
     return {
@@ -321,6 +334,10 @@ export async function hasPermission(
   permission: keyof RolePermissions,
   masClient?: MASClient,
 ): Promise<boolean> {
+  if (principal.type === 'service') {
+    return hasServicePermission(principal, siteId);
+  }
+
   const { role } = await getEffectiveRole(principal, siteId, branchId, masClient);
   return role[permission];
 }
@@ -329,10 +346,18 @@ export async function hasPermission(
  * Asserts that a principal has a specific permission on a branch.
  * Throws AuthorizationError if the permission is not granted.
  *
+ * Dispatches by principal type:
+ * - Service principals (sat_ tokens) are mainly authorised by the scope check
+ *   in isServicePrincipalAllowed. This function only re-verifies
+ *   that the request's siteId matches the token's bound site. The
+ *   `branchId` and `permission` arguments are ignored for service
+ *   principals because their access is governed by scopes, not roles.
+ * - User/agent principals: role-based check via getEffectiveRole.
+ *
  * @param principal - The authenticated principal
  * @param siteId - The site ID
- * @param branchId - The branch ID
- * @param permission - The permission to assert
+ * @param branchId - The branch ID (ignored for service principals)
+ * @param permission - The permission to assert (ignored for service principals)
  * @param masClient - Optional MAS client for live role fetching
  * @throws AuthorizationError if the permission is not granted
  *
@@ -349,6 +374,17 @@ export async function assertPermission(
   permission: keyof RolePermissions,
   masClient?: MASClient,
 ): Promise<void> {
+  if (principal.type === 'service') {
+    if (!hasServicePermission(principal, siteId)) {
+      throw new AuthorizationError(
+        `Service token is not bound to site ${siteId}.`,
+        'canView',
+        'NO_ACCESS',
+      );
+    }
+    return;
+  }
+
   const { role, roleName } = await getEffectiveRole(principal, siteId, branchId, masClient);
 
   if (!role[permission]) {
@@ -358,4 +394,25 @@ export async function assertPermission(
       roleName,
     );
   }
+}
+
+/**
+ * Returns true if the principal is a service principal (sat_ token) bound
+ * to the given site.
+ *
+ * Service principals are gated by the scope check at index.ts
+ * (isServicePrincipalAllowed), which validates method, handler, and branch
+ * constraint against the token's scopes. By the time this runs, that gate
+ * has already passed. This function only re-verifies that the request's
+ * siteId matches the token's bound siteId.
+ *
+ * @param principal - The authenticated principal
+ * @param siteId - The site ID being accessed
+ * @returns True if the principal is a service principal bound to siteId
+ */
+export  function hasServicePermission(
+  principal: AuthenticatedPrincipal,
+  siteId: string,
+): boolean {
+  return principal.type === 'service' && principal.siteId === siteId;
 }
