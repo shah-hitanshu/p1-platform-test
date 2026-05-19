@@ -16,18 +16,24 @@
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.3.0",
-    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250320.0",
-    "@eslint/js": "^9.39.3",
-    "eslint": "^9.39.3",
+    "@cloudflare/workers-types": "^4.20260515.1",
+    "@eslint/js": "^9.39.4",
+    "eslint": "^9.39.4",
     "globals": "^15.15.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.56.1",
-    "vitest": "^2.1.9",
-    "wrangler": "^4.0.0"
+    "typescript-eslint": "^8.57.2",
+    "vite": "^7.0.0",
+    "vitest": "^4.1.5",
+    "wrangler": "^4.92.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "wrangler>path-to-regexp": "^8.4.0"
+    }
   },
   "engines": {
     "node": ">=20.0.0"

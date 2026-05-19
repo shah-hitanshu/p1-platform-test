@@ -79,16 +79,16 @@ describe('Service Principal Scope Enforcement (Phase 3)', () => {
       expect(result.allowed).toBe(true);
     });
 
-    it('should deny GET on documents handler', () => {
+    it('should allow GET on documents handler', () => {
       const principal = createServicePrincipal('site-123', ['read:all']);
       const result = isServicePrincipalAllowed(principal, 'site-123', 'GET', 'documents', true);
-      expect(result.allowed).toBe(false);
+      expect(result.allowed).toBe(true);
     });
 
-    it('should deny GET on branches handler', () => {
+    it('should allow GET on branches handler', () => {
       const principal = createServicePrincipal('site-123', ['read:all']);
       const result = isServicePrincipalAllowed(principal, 'site-123', 'GET', 'branches', true);
-      expect(result.allowed).toBe(false);
+      expect(result.allowed).toBe(true);
     });
 
     it('should deny POST on content handler', () => {

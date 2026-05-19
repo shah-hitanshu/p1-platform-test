@@ -186,8 +186,9 @@ describe('Principal ID Enrichment', () => {
     POSTGRES_CONNECTION_STRING: 'postgres://test:test@localhost:5432/test',
     FIRESTORE_PROJECT_ID: 'test-project',
     MOCK_JWT_SECRET: 'test-secret-that-is-at-least-32-characters-long',
-    // Setting GOOGLE_CLIENT_ID makes isMockOnly = false, enabling enrichment
-    GOOGLE_CLIENT_ID: 'test-google-client-id',
+    // Setting Auth0 vars makes hasRealAuthProviders() return true, enabling enrichment
+    AUTH0_ISSUER_BASE_URL: 'https://test.auth0.com',
+    AUTH0_AUDIENCE: 'test-audience',
     DOCUMENT_STATE: {} as DurableObjectNamespace,
     PRESENCE: {} as DurableObjectNamespace,
     SESSION: {} as DurableObjectNamespace,

@@ -297,7 +297,7 @@ async function handleCreateDocumentOnBranch(
     branchId,
     path: body.path,
     snapshot: body.snapshot,
-    createdById: principal.id,
+    createdById: principal.dbUserId ?? principal.id,
     createdByType: principal.type as 'user' | 'agent',
   });
 
@@ -355,7 +355,7 @@ async function handleDeleteDocumentOnBranch(
   await deleteDocumentOnBranch({
     documentId,
     branchId,
-    deletedById: principal.id,
+    deletedById: principal.dbUserId ?? principal.id,
     deletedByType: principal.type as 'user' | 'agent',
   });
 
@@ -475,7 +475,7 @@ async function handleCreateDocumentVersion(
     branchId,
     snapshot: body.snapshot,
     source: 'edit',
-    createdById: principal.id,
+    createdById: principal.dbUserId ?? principal.id,
     createdByType: principal.type as 'user' | 'agent',
   });
 
@@ -585,7 +585,7 @@ async function handleBranchScopedDocumentRoutes(
       siteId: context.siteId,
       branchId,
       documentId: context.documentId,
-      createdById: context.principal.id,
+      createdById: context.principal.dbUserId ?? context.principal.id,
       createdByType: context.principal.type as 'user' | 'agent',
     });
     return jsonResponse(result);

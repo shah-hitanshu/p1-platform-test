@@ -50,7 +50,7 @@ describe('Agent Politeness Phase 2.3: Agent Edit Permission Service', () => {
     });
 
     describe('canAgentEdit', () => {
-      it('should allow human-requested work immediately', async () => {
+      it('should allow human-requested work immediately when no region conflict', async () => {
         const { AgentEditPermissionService } = await import(
           '../../src/services/agent-edit-permission-service'
         );

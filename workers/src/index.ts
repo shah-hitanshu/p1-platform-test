@@ -18,7 +18,7 @@ import { extractActingUser } from './auth/acting-user';
 import { parseRoute } from './routes/route-parser';
 import { dispatchRoute } from './routes/route-dispatch';
 import {
-  hasOAuthProviders,
+  hasRealAuthProviders,
   authenticate,
   getMASClient,
   handleAuthRoutes,
@@ -34,10 +34,7 @@ import {
 
 // Route handlers (still needed for auth/internal routes handled in handleRequest)
 import { handleInternalRoutes } from './routes/internal-api';
-
-// Inlined CSS OAuth provider (serves /auth/* before authenticate() runs)
-import { authOAuthProvider } from './auth/oauth/oauth-provider-setup';
-import type { AuthOAuthEnv } from './routes/auth-routes';
+import { handleBrokerRoutes } from './routes/broker-routes';
 
 // Queue consumer (Phase 5.1)
 import { handleSyncQueue } from './queues/sync-consumer';
@@ -81,10 +78,19 @@ export interface Env {
   // Mock Identity Provider (local development only)
   MOCK_JWT_SECRET?: string;
 
-  // Auth providers (Phase 2/3 - future)
-  GOOGLE_CLIENT_ID?: string;
+  // Public-facing origin for URL generation (e.g. Auth0 callback URLs)
+  PUBLIC_ORIGIN?: string;
+
+  // Auth providers
   AUTH0_ISSUER_BASE_URL?: string;
   AUTH0_AUDIENCE?: string;
+  AUTH0_CLIENT_ID?: string;
+  AUTH0_CLIENT_SECRET?: string;
+
+  // Broker JWT (RS256 via GCP Cloud KMS)
+  GCP_KMS_KEY_RESOURCE?: string;
+  BROKER_JWT_AUDIENCE?: string;
+  BROKER_JWT_ISSUER?: string;
 
   // MAS (Membership Authorization Service) integration
   MAS_ENABLED?: string;
@@ -95,12 +101,8 @@ export interface Env {
   // Internal API secret for Durable Object to PostgreSQL sync
   INTERNAL_SECRET?: string;
 
-  // CSS OAuth provider (inlined into main worker — no separate auth-server worker needed)
-  GOOGLE_CLIENT_SECRET?: string;  // Google OAuth client secret for token exchange
-  OAUTH_KV?: KVNamespace;         // Token storage for @cloudflare/workers-oauth-provider
-  // Backward-compat: HTTP path to standalone auth server (deprecated, removed when CSS_AUTH_SERVER dropped)
-  CSS_AUTH_SERVER_URL?: string;
-  CSS_AUTH_SERVER?: Fetcher;
+  // KV namespace for broker login transactions
+  BROKER_KV?: KVNamespace;
 
   // Hyperdrive bindings (production/staging - handles connection pooling properly)
   // HYPERDRIVE: cached (short TTL) for document reads
@@ -277,7 +279,7 @@ async function handleRequest(
   }
 
   // Mock auth endpoints (local development only)
-  // Guard on ENVIRONMENT === 'local' rather than !hasOAuthProviders so the
+  // Guard on ENVIRONMENT === 'local' rather than !hasRealAuthProviders so the
   // endpoint is unreachable on sbx1/production even when OAuth secrets are
   // absent — consistent with how getIdentityProvider gates the MockIdentityProvider.
   if (path.startsWith('/api/auth')) {
@@ -297,20 +299,13 @@ async function handleRequest(
     return addCorsHeaders(response, origin, env);
   }
 
-  // CSS OAuth routes (/auth/*) — served by the inlined OAuthProvider.
-  // Must run before authenticate() so the browser's OAuth redirect flows can
-  // reach /auth/authorize and /auth/callback without a valid access token.
-  // Runs inside runWithConnection so getSiteAllowedOrigins() has DB access.
-  if (path.startsWith('/auth/')) {
-    if (
-      env.OAUTH_KV === undefined ||
-      env.GOOGLE_CLIENT_ID === undefined ||
-      env.GOOGLE_CLIENT_SECRET === undefined ||
-      env.INTERNAL_SECRET === undefined
-    ) {
-      return errorResponse('Auth provider not configured', 503);
+  // Broker routes (/broker/*) — brokered auth flow for third-party panels.
+  // Runs before parseRoute() since broker endpoints have their own auth model.
+  if (path.startsWith('/broker/') || path === '/auth/callback') {
+    const response = await handleBrokerRoutes(request, env as unknown as Record<string, unknown>, path);
+    if (response !== null) {
+      return addCorsHeaders(response, origin, env);
     }
-    return authOAuthProvider.fetch(request, env as unknown as AuthOAuthEnv, ctx);
   }
 
   // Parse route
@@ -388,7 +383,7 @@ async function handleRequest(
   // reach handlers via the MCP server's acting-user forwarding without
   // being checked against the allowlist. When an agent forwards an
   // acting user, treat the acting user's email as the allowlist subject.
-  const isMockOnly = !hasOAuthProviders(env);
+  const isMockOnly = !hasRealAuthProviders(env);
   const subjectEmail =
     principal.email
     ?? (principal.type === 'agent' ? principal.actingUserEmail : undefined);

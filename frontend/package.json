@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@auth0/auth0-react": "^2.15.0",
-    "@pantheon-systems/pds-toolkit-react": "^1.13.1",
+    "@pantheon-systems/pds-toolkit-react": "^1.16.1",
     "@react-oauth/google": "^0.13.4",
     "react": "18.2.0",
     "react-dom": "18.2.0",
@@ -54,6 +54,7 @@
     "typescript-eslint": "^8.56.1",
     "vite": "^8.0.13",
     "vitest": "^4.0.18",
-    "wrangler": "^4.70.0"
+    "wrangler": "^4.70.0",
+    "yaml": "^2.9.0"
   }
 }

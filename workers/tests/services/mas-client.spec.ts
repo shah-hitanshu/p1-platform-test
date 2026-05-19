@@ -1,19 +1,26 @@
 /**
  * MAS Client Tests
  *
- * Tests for the MAS REST client with mocked fetch.
+ * Tests for the MAS REST client with mocked fetch and GCP auth.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MASClient } from '../../src/services/mas-client';
 
-// Mock global fetch
+vi.mock('../../src/services/gcp-auth.js', () => ({
+  getGcpIdentityToken: vi.fn(),
+}));
+
 const mockFetch = vi.fn();
 
 describe('MASClient', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.stubGlobal('fetch', mockFetch);
     mockFetch.mockReset();
+
+    const { getGcpIdentityToken } = await import('../../src/services/gcp-auth.js');
+    vi.mocked(getGcpIdentityToken).mockReset();
+    vi.mocked(getGcpIdentityToken).mockResolvedValue('mock-identity-token');
   });
 
   afterEach(() => {
@@ -36,16 +43,6 @@ describe('MASClient', () => {
       });
       expect(client.cacheTtlSeconds).toBe(600);
     });
-
-    it('should handle invalid GCP key JSON gracefully', () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { /* noop */ });
-      const client = new MASClient({
-        baseUrl: 'https://memberships.svc.pantheon.io',
-        gcpServiceAccountKey: 'not-valid-json',
-      });
-      expect(client).toBeDefined();
-      consoleSpy.mockRestore();
-    });
   });
 
   describe('getUserSiteRole', () => {
@@ -61,82 +58,40 @@ describe('MASClient', () => {
     });
 
     it('should return the correct role for a user on a site', async () => {
-      // Mock the identity token exchange
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ id_token: 'mock-identity-token' }),
-        })
-        // Mock the MAS memberships API call
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            data: [
-              { user_id: 'user-1', role: 'admin' },
-              { user_id: 'user-2', role: 'developer' },
-            ],
-            page_info: { has_next_page: false },
-          }),
-        });
-
-      // Create a client with mock GCP key
-      const client = new MASClient({
-        baseUrl: 'https://memberships.svc.pantheon.io',
-        gcpServiceAccountKey: JSON.stringify({
-          client_email: 'test@test.iam.gserviceaccount.com',
-          private_key: 'mock-key',
-          project_id: 'test-project',
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          data: [
+            { user_id: 'user-1', role: 'admin' },
+            { user_id: 'user-2', role: 'developer' },
+          ],
+          page_info: { has_next_page: false },
         }),
       });
 
-      // Mock the crypto operations
-      const originalSubtle = globalThis.crypto?.subtle;
-      vi.stubGlobal('crypto', {
-        subtle: {
-          importKey: vi.fn().mockResolvedValue('mock-crypto-key'),
-          sign: vi.fn().mockResolvedValue(new ArrayBuffer(256)),
-        },
+      const client = new MASClient({
+        baseUrl: 'https://memberships.svc.pantheon.io',
+        gcpServiceAccountKey: '{"client_email":"test@test.iam.gserviceaccount.com","private_key":"mock","project_id":"test"}',
       });
 
       const role = await client.getUserSiteRole('user-1', 'site-1');
       expect(role).toBe('admin');
-
-      // Restore crypto
-      if (originalSubtle !== undefined) {
-        vi.stubGlobal('crypto', { subtle: originalSubtle });
-      }
     });
 
     it('should return null when user is not a member', async () => {
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ id_token: 'mock-identity-token' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            data: [
-              { user_id: 'user-2', role: 'developer' },
-            ],
-            page_info: { has_next_page: false },
-          }),
-        });
-
-      const client = new MASClient({
-        baseUrl: 'https://memberships.svc.pantheon.io',
-        gcpServiceAccountKey: JSON.stringify({
-          client_email: 'test@test.iam.gserviceaccount.com',
-          private_key: 'mock-key',
-          project_id: 'test-project',
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          data: [
+            { user_id: 'user-2', role: 'developer' },
+          ],
+          page_info: { has_next_page: false },
         }),
       });
 
-      vi.stubGlobal('crypto', {
-        subtle: {
-          importKey: vi.fn().mockResolvedValue('mock-crypto-key'),
-          sign: vi.fn().mockResolvedValue(new ArrayBuffer(256)),
-        },
+      const client = new MASClient({
+        baseUrl: 'https://memberships.svc.pantheon.io',
+        gcpServiceAccountKey: '{"client_email":"test@test.iam.gserviceaccount.com","private_key":"mock","project_id":"test"}',
       });
 
       const role = await client.getUserSiteRole('user-1', 'site-1');
@@ -145,30 +100,14 @@ describe('MASClient', () => {
 
     it('should return null on HTTP error from MAS', async () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { /* noop */ });
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ id_token: 'mock-identity-token' }),
-        })
-        .mockResolvedValueOnce({
-          ok: false,
-          status: 500,
-        });
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      });
 
       const client = new MASClient({
         baseUrl: 'https://memberships.svc.pantheon.io',
-        gcpServiceAccountKey: JSON.stringify({
-          client_email: 'test@test.iam.gserviceaccount.com',
-          private_key: 'mock-key',
-          project_id: 'test-project',
-        }),
-      });
-
-      vi.stubGlobal('crypto', {
-        subtle: {
-          importKey: vi.fn().mockResolvedValue('mock-crypto-key'),
-          sign: vi.fn().mockResolvedValue(new ArrayBuffer(256)),
-        },
+        gcpServiceAccountKey: '{"client_email":"test@test.iam.gserviceaccount.com","private_key":"mock","project_id":"test"}',
       });
 
       const role = await client.getUserSiteRole('user-1', 'site-1');
@@ -190,37 +129,21 @@ describe('MASClient', () => {
     });
 
     it('should return mapped memberships', async () => {
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ id_token: 'mock-identity-token' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            data: [
-              { user_id: 'user-1', role: 'admin' },
-              { user_id: 'user-2', role: 'team_member' },
-              { user_id: 'user-3', role: 'developer' },
-            ],
-            page_info: { has_next_page: false },
-          }),
-        });
-
-      const client = new MASClient({
-        baseUrl: 'https://memberships.svc.pantheon.io',
-        gcpServiceAccountKey: JSON.stringify({
-          client_email: 'test@test.iam.gserviceaccount.com',
-          private_key: 'mock-key',
-          project_id: 'test-project',
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          data: [
+            { user_id: 'user-1', role: 'admin' },
+            { user_id: 'user-2', role: 'team_member' },
+            { user_id: 'user-3', role: 'developer' },
+          ],
+          page_info: { has_next_page: false },
         }),
       });
 
-      vi.stubGlobal('crypto', {
-        subtle: {
-          importKey: vi.fn().mockResolvedValue('mock-crypto-key'),
-          sign: vi.fn().mockResolvedValue(new ArrayBuffer(256)),
-        },
+      const client = new MASClient({
+        baseUrl: 'https://memberships.svc.pantheon.io',
+        gcpServiceAccountKey: '{"client_email":"test@test.iam.gserviceaccount.com","private_key":"mock","project_id":"test"}',
       });
 
       const result = await client.getSiteMemberships('site-1');
@@ -235,17 +158,11 @@ describe('MASClient', () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ id_token: 'mock-identity-token' }),
-        })
-        // Page 1
-        .mockResolvedValueOnce({
-          ok: true,
           json: () => Promise.resolve({
             data: [{ user_id: 'user-1', role: 'admin' }],
             page_info: { has_next_page: true, next_page_token: 'page2' },
           }),
         })
-        // Page 2
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -256,18 +173,7 @@ describe('MASClient', () => {
 
       const client = new MASClient({
         baseUrl: 'https://memberships.svc.pantheon.io',
-        gcpServiceAccountKey: JSON.stringify({
-          client_email: 'test@test.iam.gserviceaccount.com',
-          private_key: 'mock-key',
-          project_id: 'test-project',
-        }),
-      });
-
-      vi.stubGlobal('crypto', {
-        subtle: {
-          importKey: vi.fn().mockResolvedValue('mock-crypto-key'),
-          sign: vi.fn().mockResolvedValue(new ArrayBuffer(256)),
-        },
+        gcpServiceAccountKey: '{"client_email":"test@test.iam.gserviceaccount.com","private_key":"mock","project_id":"test"}',
       });
 
       const result = await client.getSiteMemberships('site-1');
@@ -280,14 +186,10 @@ describe('MASClient', () => {
   });
 
   describe('identity token caching', () => {
-    it('should cache the identity token and reuse it', async () => {
+    it('should use shared GCP auth for identity tokens', async () => {
+      const { getGcpIdentityToken } = await import('../../src/services/gcp-auth.js');
+
       mockFetch
-        // First call: token exchange
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ id_token: 'cached-token' }),
-        })
-        // First call: MAS API
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -295,7 +197,6 @@ describe('MASClient', () => {
             page_info: { has_next_page: false },
           }),
         })
-        // Second call: MAS API (should reuse token, no second token exchange)
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -306,26 +207,14 @@ describe('MASClient', () => {
 
       const client = new MASClient({
         baseUrl: 'https://memberships.svc.pantheon.io',
-        gcpServiceAccountKey: JSON.stringify({
-          client_email: 'test@test.iam.gserviceaccount.com',
-          private_key: 'mock-key',
-          project_id: 'test-project',
-        }),
-      });
-
-      vi.stubGlobal('crypto', {
-        subtle: {
-          importKey: vi.fn().mockResolvedValue('mock-crypto-key'),
-          sign: vi.fn().mockResolvedValue(new ArrayBuffer(256)),
-        },
+        gcpServiceAccountKey: '{"client_email":"test@test.iam.gserviceaccount.com","private_key":"mock","project_id":"test"}',
       });
 
       await client.getUserSiteRole('user-1', 'site-1');
       await client.getUserSiteRole('user-2', 'site-2');
 
-      // Token exchange should only be called once (first mockFetch call)
-      // Total calls: 1 (token) + 1 (MAS site-1) + 1 (MAS site-2) = 3
-      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(getGcpIdentityToken).toHaveBeenCalledTimes(2);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
     });
   });
 });

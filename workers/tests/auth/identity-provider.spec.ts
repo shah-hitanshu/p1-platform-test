@@ -110,8 +110,8 @@ describe('Phase 1: Multi-Provider Auth Abstraction Layer', () => {
 
   describe('AuthProvider type', () => {
     it('should accept valid AuthProvider values', () => {
-      const providers: AuthProvider[] = ['auth0', 'google', 'mock', 'unknown', 'css_auth'];
-      expect(providers).toHaveLength(5);
+      const providers: AuthProvider[] = ['auth0', 'google', 'mock', 'unknown'];
+      expect(providers).toHaveLength(4);
     });
 
     it('should allow authProvider on AuthenticatedPrincipal', () => {
@@ -558,65 +558,3 @@ describe('Phase 1: Multi-Provider Auth Abstraction Layer', () => {
   });
 });
 
-describe('CSS Auth provider routing', () => {
-  it('routes opaque tokens (no dots, no known prefix) to CSSAuthIdentityProvider', async () => {
-    const { CSSAuthIdentityProvider } = await import('../../src/auth/css-auth-identity-provider.js');
-    const { GoogleIdentityProvider } = await import('../../src/auth/google-identity-provider.js');
-    const { MultiProviderIdentityProvider } = await import('../../src/auth/identity-provider.js');
-
-    const mockFetcher = {
-      fetch: vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({
-          active: true,
-          sub: 'some-sub',
-          props: { email: 'user@test.com', userId: 'some-sub' },
-        }), { status: 200 }),
-      ),
-    } as unknown as Fetcher;
-
-    const cssAuthProvider = new CSSAuthIdentityProvider({
-      authServerUrl: 'https://auth.example.com',
-      internalSecret: 'test-secret',
-      fetcher: mockFetcher,
-    });
-    const googleProvider = new GoogleIdentityProvider({ clientId: 'test-client' });
-
-    // An opaque token (no JWT dot structure, no sat_/aak_ prefix)
-    const opaqueToken = 'userid123:grantabc:secretxyz';
-    expect(googleProvider.canVerifyToken(opaqueToken)).toBe(false);
-    expect(cssAuthProvider.canVerifyToken(opaqueToken)).toBe(true);
-
-    const multi = new MultiProviderIdentityProvider([googleProvider, cssAuthProvider]);
-    const principal = await multi.validateToken(opaqueToken);
-    expect(principal).not.toBeNull();
-    expect(principal?.authProvider).toBe('css_auth');
-  });
-
-  it('Google JWTs are NOT routed to CSSAuthIdentityProvider', async () => {
-    const { CSSAuthIdentityProvider } = await import('../../src/auth/css-auth-identity-provider.js');
-    const provider = new CSSAuthIdentityProvider({
-      authServerUrl: 'https://auth.example.com',
-      internalSecret: 'test-secret',
-    });
-    const googleJwt = 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjMifQ.fakesig';
-    expect(provider.canVerifyToken(googleJwt)).toBe(false);
-  });
-
-  it('sat_ tokens are NOT routed to CSSAuthIdentityProvider', async () => {
-    const { CSSAuthIdentityProvider } = await import('../../src/auth/css-auth-identity-provider.js');
-    const provider = new CSSAuthIdentityProvider({
-      authServerUrl: 'https://auth.example.com',
-      internalSecret: 'test-secret',
-    });
-    expect(provider.canVerifyToken('sat_abc123')).toBe(false);
-  });
-
-  it('aak_ tokens are NOT routed to CSSAuthIdentityProvider', async () => {
-    const { CSSAuthIdentityProvider } = await import('../../src/auth/css-auth-identity-provider.js');
-    const provider = new CSSAuthIdentityProvider({
-      authServerUrl: 'https://auth.example.com',
-      internalSecret: 'test-secret',
-    });
-    expect(provider.canVerifyToken('aak_someagentkey')).toBe(false);
-  });
-});

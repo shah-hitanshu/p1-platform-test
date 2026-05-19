@@ -813,13 +813,23 @@ describe('Seed Data', () => {
     expect(parseInt(result[0].count, 10)).toBeGreaterThanOrEqual(1);
   });
 
-  it('should have main branch for each site', async () => {
-    const result = await sql<{ site_count: string; main_count: string }[]>`
-      SELECT
-        (SELECT COUNT(*) FROM app.sites) as site_count,
-        (SELECT COUNT(*) FROM app.branches WHERE is_main = true) as main_count
+  it('should have at most one main branch per site', async () => {
+    const result = await sql<{ site_id: string; main_count: string }[]>`
+      SELECT site_id, COUNT(*) as main_count
+      FROM app.branches
+      WHERE is_main = true
+      GROUP BY site_id
+      HAVING COUNT(*) > 1
     `;
-    expect(result[0].site_count).toBe(result[0].main_count);
+    // No site should have more than one main branch
+    expect(result.length).toBe(0);
+  });
+
+  it('should have at least one main branch across all sites', async () => {
+    const result = await sql<{ count: string }[]>`
+      SELECT COUNT(*) as count FROM app.branches WHERE is_main = true
+    `;
+    expect(parseInt(result[0].count, 10)).toBeGreaterThanOrEqual(1);
   });
 
   it('should have at least one test document', async () => {

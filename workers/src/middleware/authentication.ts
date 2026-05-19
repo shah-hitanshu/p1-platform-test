@@ -10,14 +10,12 @@ import {
   MultiProviderIdentityProvider,
   MockIdentityProviderAdapter,
 } from '../auth/identity-provider';
-import { GoogleIdentityProvider } from '../auth/google-identity-provider';
 import { Auth0IdentityProvider } from '../auth/auth0-identity-provider';
 import type { AuthenticatedPrincipal, MockIdentityConfig } from '../types';
 import { SiteApiTokenProvider } from '../auth/site-token-provider';
 import { AgentApiKeyProvider } from '../auth/agent-api-key-provider';
 import { MASClient } from '../services/mas-client';
-import { CSSAuthIdentityProvider } from '../auth/css-auth-identity-provider';
-import { authOAuthProvider } from '../auth/oauth/oauth-provider-setup';
+import { BrokerJwtIdentityProvider } from '../auth/broker-jwt-identity-provider';
 import { jsonResponse, errorResponse } from '../utils/http-helpers';
 import type { Env } from '../index';
 
@@ -86,24 +84,25 @@ export const DEFAULT_MOCK_CONFIG: MockIdentityConfig = {
 };
 
 /**
- * Check whether any real OAuth provider is configured.
+ * Check whether any real auth provider is configured.
  * When true, mock authentication should be disabled.
  */
-export function hasOAuthProviders(env: Env): boolean {
-  const hasGoogle = env.GOOGLE_CLIENT_ID !== undefined && env.GOOGLE_CLIENT_ID !== '';
+export function hasRealAuthProviders(env: Env): boolean {
   const hasAuth0 =
     env.AUTH0_ISSUER_BASE_URL !== undefined &&
     env.AUTH0_ISSUER_BASE_URL !== '' &&
     env.AUTH0_AUDIENCE !== undefined &&
     env.AUTH0_AUDIENCE !== '';
-  const hasCSSAuth = env.CSS_AUTH_SERVER !== undefined || env.OAUTH_KV !== undefined;
-  return hasGoogle || hasAuth0 || hasCSSAuth;
+  const hasBroker =
+    env.GCP_KMS_KEY_RESOURCE !== undefined &&
+    env.GCP_KMS_KEY_RESOURCE !== '' &&
+    env.MAS_GCP_SERVICE_ACCOUNT_KEY !== undefined &&
+    env.MAS_GCP_SERVICE_ACCOUNT_KEY !== '';
+  return hasAuth0 || hasBroker;
 }
 
 /**
  * Build a MultiProviderIdentityProvider with registered providers.
- * Mock provider is always available in non-production environments.
- * Google and Auth0 providers will be added in Phases 2 and 3.
  */
 export function getIdentityProvider(env: Env): MultiProviderIdentityProvider {
   const providers = [];
@@ -120,13 +119,6 @@ export function getIdentityProvider(env: Env): MultiProviderIdentityProvider {
     ));
   }
 
-  // Google OAuth provider (activated when client ID is configured)
-  if (env.GOOGLE_CLIENT_ID !== undefined && env.GOOGLE_CLIENT_ID !== '') {
-    providers.push(new GoogleIdentityProvider({
-      clientId: env.GOOGLE_CLIENT_ID,
-    }));
-  }
-
   // Auth0 provider (activated when issuer and audience are configured)
   if (
     env.AUTH0_ISSUER_BASE_URL !== undefined &&
@@ -140,49 +132,27 @@ export function getIdentityProvider(env: Env): MultiProviderIdentityProvider {
     }));
   }
 
+  // Broker JWT provider (activated when GCP KMS key is configured)
+  const kmsKeyResource = env.GCP_KMS_KEY_RESOURCE;
+  if (
+    kmsKeyResource !== undefined &&
+    kmsKeyResource !== '' &&
+    env.MAS_GCP_SERVICE_ACCOUNT_KEY !== undefined &&
+    env.MAS_GCP_SERVICE_ACCOUNT_KEY !== ''
+  ) {
+    providers.push(new BrokerJwtIdentityProvider({
+      issuer: env.BROKER_JWT_ISSUER ?? env.PUBLIC_ORIGIN ?? 'https://css-api.pantheon.io',
+      audience: env.BROKER_JWT_AUDIENCE ?? 'css-api',
+      serviceAccountKeyJson: env.MAS_GCP_SERVICE_ACCOUNT_KEY,
+      keyResource: kmsKeyResource,
+    }));
+  }
+
   // Site API token provider (always available — validates sat_ tokens against DB)
   providers.push(new SiteApiTokenProvider());
 
   // Agent API key provider (always available — validates aak_ keys against DB)
   providers.push(new AgentApiKeyProvider());
-
-  // CSS Auth Identity Provider — validates opaque tokens issued by the CSS OAuth server.
-  // Added LAST since token validation is async; JWT providers (Google, Auth0) verify locally.
-  //
-  // Two activation paths (mutually exclusive — OAUTH_KV takes precedence):
-  //
-  // 1. In-process (merged worker): activated when OAUTH_KV is configured.
-  //    Calls authOAuthProvider.fetch() directly — no network hop. The sentinel URL
-  //    http://internal/auth/internal/validate distinguishes in-process calls from
-  //    external requests, allowing the handler to call oauthHelpers.unwrapToken().
-  //
-  // 2. HTTP (standalone auth server, deprecated): activated when CSS_AUTH_SERVER
-  //    service binding is configured and OAUTH_KV is absent. Calls the external
-  //    auth server's POST /internal/token/validate via service binding.
-  //    Removed in Phase 4 when CSS_AUTH_SERVER binding is dropped.
-  if (env.OAUTH_KV !== undefined) {
-    // In-process path — env is passed directly to authOAuthProvider.fetch()
-    providers.push(new CSSAuthIdentityProvider({
-      oauthProvider: authOAuthProvider,
-      oauthEnv: env,
-    }));
-  } else if (env.CSS_AUTH_SERVER !== undefined) {
-    if (env.INTERNAL_SECRET === undefined || env.INTERNAL_SECRET === '') {
-      console.warn(
-        '[getIdentityProvider] CSS_AUTH_SERVER binding is configured but INTERNAL_SECRET is ' +
-        'empty or missing — CSSAuthIdentityProvider will not be registered. ' +
-        'Set INTERNAL_SECRET in .dev.vars (local) or Cloudflare secrets (production).',
-      );
-    } else {
-      providers.push(new CSSAuthIdentityProvider({
-        authServerUrl: (env.CSS_AUTH_SERVER_URL !== undefined && env.CSS_AUTH_SERVER_URL !== '')
-          ? env.CSS_AUTH_SERVER_URL
-          : 'http://css-auth-server',
-        internalSecret: env.INTERNAL_SECRET,
-        fetcher: env.CSS_AUTH_SERVER,
-      }));
-    }
-  }
 
   return new MultiProviderIdentityProvider(providers);
 }
@@ -240,8 +210,7 @@ export async function authenticate(
       return await identityProvider.validateToken(queryApiKey);
     }
     // Try validateToken for all other credentials — this handles:
-    //   - JWT tokens (dot-containing, e.g. Google/Auth0 JWTs)
-    //   - CSS auth server opaque tokens (userId:grantId:secret, no dots)
+    //   - JWT tokens (dot-containing, e.g. Auth0/broker JWTs)
     // The MultiProviderIdentityProvider routes to the correct provider via canVerifyToken().
     // Fall back to validateAgentKey for aak_ agent API keys, which return null from validateToken.
     const tokenResult = await identityProvider.validateToken(queryApiKey);

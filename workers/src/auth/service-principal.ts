@@ -36,7 +36,7 @@ export const SCOPE_RULES: Record<string, ScopeRule> = {
   },
   'read:all': {
     methods: ['GET'],
-    allowedHandlers: ['content'],
+    allowedHandlers: ['content', 'documents', 'branches'],
     mainBranchOnly: false,
   },
   'read:draft': {

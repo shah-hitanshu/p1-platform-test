@@ -4,8 +4,10 @@
  * Main application shell using PDS dashboard components.
  */
 
+import { useCallback } from 'react';
 import { NavLink, Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { getAuthConfig } from '../utils/auth-config';
 import {
   DashboardGlobal,
   DashboardInner,
@@ -24,10 +26,20 @@ const navItems = [
 ];
 
 export function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, activeProvider } = useAuth();
   const location = useLocation();
 
-  const userMenuItems = [{ label: 'Log out', callback: logout, iconName: 'xmark' as const }];
+  const handleLogout = useCallback(() => {
+    const provider = activeProvider;
+    logout();
+
+    if (provider === 'auth0') {
+      const config = getAuthConfig();
+      window.location.href = `https://${config.auth0.domain}/v2/logout?client_id=${encodeURIComponent(config.auth0.clientId)}&returnTo=${encodeURIComponent(window.location.origin)}`;
+    }
+  }, [logout, activeProvider]);
+
+  const userMenuItems = [{ label: 'Log out', callback: handleLogout, iconName: 'xmark' as const }];
 
   return (
     <DashboardGlobal logoLinkContent={<Link to="/">P1</Link>}>

@@ -51,19 +51,20 @@
     }
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260301.1",
+    "@cloudflare/workers-types": "^4.20260515.1",
     "@eslint/js": "^9.39.3",
     "@types/node": "^22.19.13",
     "@types/object-hash": "^3.0.6",
-    "@vitest/coverage-v8": "^2.1.9",
+    "@vitest/coverage-v8": "^4.1.6",
     "eslint": "^9.39.3",
     "fast-check": "^3.22.0",
     "globals": "^15.15.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1",
-    "vitest": "^2.1.9",
-    "wrangler": "^3.114.17"
+    "vite": "^8.0.13",
+    "vitest": "^4.1.6",
+    "wrangler": "^4.92.0"
   },
   "engines": {
     "node": ">=20.0.0",

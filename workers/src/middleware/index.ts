@@ -19,7 +19,7 @@ export type {
 // Authentication Middleware
 export {
   DEFAULT_MOCK_CONFIG,
-  hasOAuthProviders,
+  hasRealAuthProviders,
   getIdentityProvider,
   getMASClient,
   authenticate,

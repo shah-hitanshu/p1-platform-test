@@ -178,7 +178,9 @@ describe('Orphan user_site_roles self-heal on first login', () => {
     POSTGRES_CONNECTION_STRING: 'postgres://test:test@localhost:5432/test',
     FIRESTORE_PROJECT_ID: 'test-project',
     MOCK_JWT_SECRET: 'test-secret-that-is-at-least-32-characters-long',
-    GOOGLE_CLIENT_ID: 'test-google-client-id',
+    // Setting Auth0 vars makes hasRealAuthProviders() return true, enabling enrichment
+    AUTH0_ISSUER_BASE_URL: 'https://test.auth0.com',
+    AUTH0_AUDIENCE: 'test-audience',
     DOCUMENT_STATE: {} as DurableObjectNamespace,
     PRESENCE: {} as DurableObjectNamespace,
     SESSION: {} as DurableObjectNamespace,

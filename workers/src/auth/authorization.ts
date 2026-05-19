@@ -53,7 +53,8 @@ export class AuthorizationError extends Error {
  * Checks if a principal is a Pantheon user authenticated via Auth0.
  */
 export function isPantheonUser(principal: AuthenticatedPrincipal): boolean {
-  return principal.type === 'user' && principal.authProvider === 'auth0';
+  return principal.type === 'user' &&
+    (principal.authProvider === 'auth0' || principal.authProvider === 'broker');
 }
 
 /**
@@ -225,6 +226,15 @@ export async function getEffectiveRole(
       role: ROLES.ADMIN,
       roleName: 'ADMIN',
     };
+  }
+
+  // Service principals are authorized by scope enforcement in index.ts.
+  // Grant VIEWER only for the principal's bound site.
+  if (principal.type === 'service') {
+    if (principal.siteId !== siteId) {
+      return { role: ROLES.NO_ACCESS, roleName: 'NO_ACCESS' };
+    }
+    return { role: ROLES.VIEWER, roleName: 'VIEWER' };
   }
 
   // Step 1: Get baseline role from database (with JWT fallback)

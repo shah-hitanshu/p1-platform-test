@@ -134,7 +134,7 @@ export type AgentStatus = 'active' | 'suspended' | 'disabled';
 export type PresenceState = 'active' | 'idle' | 'editing';
 
 /** Authentication provider that validated the token */
-export type AuthProvider = 'auth0' | 'google' | 'mock' | 'site_token' | 'agent_key' | 'css_auth' | 'unknown';
+export type AuthProvider = 'auth0' | 'broker' | 'google' | 'mock' | 'site_token' | 'agent_key' | 'unknown';
 
 /**
  * Types of document-level conflicts during merge.
