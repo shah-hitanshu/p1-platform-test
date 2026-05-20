@@ -1,0 +1,26 @@
+{
+  "name": "@pantheon-systems/p1-content-validator",
+  "version": "1.0.0",
+  "description": "Validates Puck component edit operations against the CSS component registry",
+  "type": "module",
+  "private": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

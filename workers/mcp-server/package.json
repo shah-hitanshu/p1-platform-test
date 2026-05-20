@@ -17,6 +17,7 @@
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.3.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@pantheon-systems/p1-content-validator": "workspace:*",
     "zod": "^3.25.76"
   },
   "devDependencies": {

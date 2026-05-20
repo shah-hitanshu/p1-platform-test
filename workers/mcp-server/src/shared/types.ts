@@ -10,4 +10,6 @@ export interface McpApiClientConfig {
   actingUser?: ActingUser;
   /** Service binding fetcher — bypasses worker-to-worker fetch restrictions */
   fetcher?: Fetcher;
+  /** When true, apply_document_edits and create_page validate ops against the component registry */
+  enableValidation?: boolean;
 }

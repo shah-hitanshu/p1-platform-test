@@ -9,6 +9,8 @@
 
 import type { McpApiClientConfig, ActingUser } from './types.js';
 import { getBackendBreaker } from '../circuit-breaker.js';
+import type { ComponentSchema } from '@pantheon-systems/p1-content-validator';
+import { snapshotToComponentSchema } from '@pantheon-systems/p1-content-validator';
 
 // =============================================================================
 // Types
@@ -211,6 +213,18 @@ export interface DocumentPresenceResponse {
 }
 
 // =============================================================================
+// Registry schema cache (module-level — survives across requests in an isolate)
+// =============================================================================
+
+interface RegistryCacheEntry {
+  cachedAt: number;
+  schemas: Record<string, ComponentSchema>;
+}
+
+const registryCache = new Map<string, RegistryCacheEntry>();
+const REGISTRY_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// =============================================================================
 // API Client
 // =============================================================================
 
@@ -220,6 +234,7 @@ export class McpApiClient {
   private readonly agentApiKey: string;
   private readonly actingUser?: ActingUser;
   private readonly fetcher?: Fetcher;
+  readonly validationEnabled: boolean;
 
   constructor(config: McpApiClientConfig) {
     if (!config.baseUrl) {
@@ -237,6 +252,7 @@ export class McpApiClient {
     this.agentApiKey = config.agentApiKey;
     this.actingUser = config.actingUser;
     this.fetcher = config.fetcher;
+    this.validationEnabled = config.enableValidation ?? false;
   }
 
   /**
@@ -618,5 +634,55 @@ export class McpApiClient {
       headers: this.getHeaders(),
     });
     return this.handleResponse<DocumentPresenceResponse>(response);
+  }
+
+  /**
+   * Fetch component schemas from the CSS registry, with a 5-minute TTL cache.
+   *
+   * Uses listDocuments + getDocumentLatestVersion (both already go through the
+   * circuit breaker). Returns an empty object when no components are registered
+   * yet. Callers should treat an empty result as "skip validation" rather than
+   * "reject everything" — the registry is only populated after the editor opens.
+   *
+   * Cache is keyed by (siteId, branchId) at module level so it survives across
+   * requests within a Workers isolate. Registry documents only change when
+   * component code ships, so 5-minute staleness is acceptable.
+   */
+  async fetchRegistrySchemas(
+    siteId: string,
+    branchId: string,
+  ): Promise<Record<string, ComponentSchema>> {
+    const cacheKey = `${siteId}:${branchId}`;
+    const cached = registryCache.get(cacheKey);
+    if (cached !== undefined && Date.now() - cached.cachedAt < REGISTRY_TTL_MS) {
+      return cached.schemas;
+    }
+
+    const docs = await this.listDocuments(siteId, branchId, {
+      pathPrefix: '_registry/components/',
+    });
+
+    if (docs.documents.length === 0) {
+      // Cache the empty result so we don't re-hit listDocuments on every call
+      registryCache.set(cacheKey, { cachedAt: Date.now(), schemas: {} });
+      return {};
+    }
+
+    const schemas: Record<string, ComponentSchema> = {};
+
+    await Promise.all(
+      docs.documents.map(async (doc) => {
+        const name = doc.path.slice('_registry/components/'.length);
+        try {
+          const version = await this.getDocumentLatestVersion(siteId, branchId, doc.id);
+          schemas[name] = snapshotToComponentSchema(name, version.snapshot);
+        } catch {
+          // Skip components that fail to fetch — don't block other schemas
+        }
+      }),
+    );
+
+    registryCache.set(cacheKey, { cachedAt: Date.now(), schemas });
+    return schemas;
   }
 }

@@ -7,59 +7,6 @@ This document tracks the implementation progress of the Collaborative JSON State
 ---
 ## Completed Work
 
-### PCC-3211: Soft Delete for Sites, Branches, and Organizations
-
-**Status:** Complete (branch: `feat/PCC-3211-soft-delete-sites-branches-orgs`)
-**Commits:** `a30af7b` → `d86c1ab` (7 commits)
-
-#### Motivation
-DELETE on Sites, Branches, and Organizations previously performed cascading hard deletes — permanent and unrecoverable. A security review identified that any agent with `admin` role could trigger site cascade deletes via the API. This work extends the existing document soft-delete pattern (`archived_at`) to all three entity types.
-
-#### Deliverables
-
-**Migration** (`workers/src/db/migrations/034_soft_delete_sites_branches_orgs.sql`):
-- Adds `archived_at TIMESTAMPTZ DEFAULT NULL` to `app.sites`, `app.branches`, `app.organizations`
-- Adds partial indexes on each for filtered queries
-
-**Sites** (`workers/src/services/site-service.ts`, `workers/src/routes/site-api.ts`):
-- `archiveSite()`: transactional cascade to branches + documents using shared `NOW()` timestamp. Returns `'already_archived'` for double-archive (→ 409).
-- `restoreSite()`: matches exact cascade timestamp to undo only cascade-archived rows; independently-archived branches/docs remain untouched.
-- `DELETE /api/sites/:siteId` → soft delete (204). `POST /api/sites/:siteId/restore` → restore (200).
-- `GET /api/sites?archived=true` → list archived sites. Default excludes archived.
-- Permission check: restore requires `canManageGrants`.
-
-**Branches** (`workers/src/services/branch-service.ts`, `workers/src/routes/branch-api.ts`):
-- `archiveBranch()`: transactional; throws `MainBranchProtectionError` for main branch.
-- `restoreBranch()`: blocked if parent site is archived.
-- `DELETE /api/sites/:siteId/branches/:branchId` → soft delete. `POST .../restore` → restore.
-- `GET .../branches?archived=true` filter.
-
-**Organizations** (`workers/src/services/organization-service.ts`, `workers/src/routes/organization-api.ts`):
-- `archiveOrganization()`: pre-check + TOCTOU guard (NOT EXISTS subquery) blocks archive if org has active sites.
-- `restoreOrganization()`: clears `archived_at` where set.
-- Handler updated; note org routes not yet wired into route-parser/dispatch (pre-existing gap, separate work).
-
-**Types** (`workers/src/types/domain.ts`, `frontend/src/types/index.ts`):
-- `archivedAt: string | null` added to `Site`, `Branch`, `Organization` interfaces.
-
-**OpenAPI** (`docs/openapi.yaml`):
-- `archivedAt` field in Site, Branch, Organization schemas.
-- `?archived` query param on `GET /api/sites` and `GET /api/sites/:id/branches`.
-- `POST /api/sites/:id/restore` and `POST /api/sites/:id/branches/:id/restore` endpoints.
-
-#### Test/lint status
-- 2856 tests passing (31 net new); 62 pre-existing failures unchanged.
-- Lint: 0 errors in changed files.
-- Independent code review run for Sites (after reviewer flagged missing permission check on restore, missing transactions, unsafe `rows[0]` access — all fixed before commit).
-
-#### Design decisions
-- **Site cascade precision**: archive uses a single Postgres transaction so all `archived_at` values share the same `NOW()`. Restore matches on that exact timestamp — independently-archived branches/docs are untouched.
-- **Branch `status` vs `archived_at` coexist**: `status='archived'` is workflow state; `archived_at IS NOT NULL` is soft-delete. They are independent signals.
-- **Organization TOCTOU**: active-sites check runs pre-transaction as a fast early error; the UPDATE also contains a `NOT EXISTS` subquery guard to prevent race conditions.
-- **Org route wiring gap noted**: `handleOrganizationRoutes` not imported in `route-dispatch.ts` — pre-existing, out of scope.
-
----
-
 ### Phase 1.1: Project Configuration and Build Tooling
 
 **Status:** Complete
@@ -4329,3 +4276,94 @@ Agents could read branches via `list_branches` but had no way to create one. Bra
 - `examples/collaborative-state-mcp/src/tools.ts` is missing `list_components` and `create_page` entirely vs. the worker copy.
 - `tests/shared/create-page.spec.ts > rejects document_path starting with /_registry/` fails on origin/main.
 
+---
+
+### PCC-3169: P1 Content Validator — shared library + MCP server wiring (2026-05-16)
+
+**Branch:** `worktree-pcc-3169-p1-content-validator`
+
+#### Motivation
+
+Untrusted writers (MCP server, agent worker) had no shared validation against the component registry. The MCP server had zero validation — any hallucinated component type or prop passed through unchecked. A pen test session confirmed the gap: arbitrary prop keys, invalid enum values, missing/malformed ids, and `_registry/` documents in content listings all passed through.
+
+#### Deliverables
+
+**New package: `packages/p1-content-validator/`** (`@pantheon-systems/p1-content-validator`)
+- `validateOps(input)` — pure synchronous validation; returns all errors, never throws
+  - `unknown_component_type` — component type not in registry
+  - `invalid_prop_key` — prop key not in `defaultProps ∪ fields[] ∪ allowedAdditionalProps ∪ {id}`
+  - `invalid_prop_value` — invalid enum value on select/radio field; or malformed id format
+  - `missing_required_prop` — component missing required `id` prop
+  - `invalid_readonly_key` — write targeting Puck runtime `readOnly` sibling
+  - `deprecated_zones_usage` — zones key used instead of slot props
+  - Snapshot-based path validation: targeted prop writes (`content.2.props.background = "roger"`) resolved via `currentSnapshot` to find component type and validate key + enum value
+  - Slot recursion, `opaqueProps` skip, graceful degradation on empty registry
+- `fetchRegistry()` — fetches all component schemas with 5-minute TTL cache; extracts `fields[]`, `defaultProps`, `allowedAdditionalProps`, `opaqueProps`
+- `listRegistryVersions()` — metadata-only listing for future cache invalidation
+- 47 tests, all passing
+
+**MCP server changes (`workers/mcp-server/`)**
+- `McpApiClient.fetchRegistrySchemas()` — wraps existing `listDocuments`+`getDocumentLatestVersion`, module-level 5-min TTL cache, extracts `fields[]` for enum validation
+- `McpApiClientConfig.enableValidation` — opt-in flag; `false` by default (preserves existing tests), `true` in production via `mcp-handler.ts`
+- `apply_document_edits` — fetches component registry + live document snapshot before sending ops; rejects on validation errors
+- `create_page` — validates component types/props before building Puck snapshot
+- `list_documents` — now filters `_registry/` paths (system documents hidden from content listings)
+- `formatValidationError()` — structured `{ content: [{ type: 'text', text: '...' }], isError: true }` envelope
+
+**pnpm workspace**
+- Root `package.json` + `pnpm-workspace.yaml` introduced to link library into MCP server via `workspace:*`
+
+#### Key design decisions
+
+- **Option A (fetchRegistrySchemas on McpApiClient)**: keeps all CSS I/O on one surface; `enableValidation` flag prevents extra HTTP calls in tests
+- **fields[] as authoritative key source**: `defaultProps` alone is insufficient — optional props without defaults (e.g. `SectionHeaderBlock.subtitle`) must come from `fields[]`
+- **Snapshot required for targeted writes**: `content.2.props.background = "steve"` cannot be validated without knowing the component type at `content.2`; `apply_document_edits` fetches the document before validating
+- **ULID format preserved**: ULIDs are a valid unique identifier; UUID v4 and type-prefixed UUID v4 (Puck native) also accepted; arbitrary strings rejected
+
+#### Validation coverage (pen-test findings closed)
+
+| Finding | Status |
+|---|---|
+| Unknown component type via MCP | Caught: `unknown_component_type` |
+| Unknown prop key on full component replace | Caught: `invalid_prop_key` |
+| Unknown prop key on targeted write (snapshot) | Caught: `invalid_prop_key` |
+| Invalid enum value on full component replace | Caught: `invalid_prop_value` |
+| Invalid enum value on targeted write (snapshot) | Caught: `invalid_prop_value` |
+| Missing id prop | Caught: `missing_required_prop` |
+| Malformed id (arbitrary string) | Caught: `invalid_prop_value` |
+| `_registry/` docs in list_documents | Fixed: filtered from content listing |
+| Field in fields[] but not defaultProps (subtitle) | Fixed: fields[] names now in allowedKeys |
+
+#### Known limitations (Phase 2)
+
+- **`add` op inconsistency**: backend rejects `add` type differently from `replace` in some contexts — separate backend issue, not validator scope
+- **`allowedAdditionalProps`**: populated by registry exporter from `resolveFields` definitions — not yet implemented in exporter (Phase 2)
+- **`listRegistryVersions`**: CSS `listDocuments` response doesn't include `versionId`; doc ID used as proxy; full version-id tracking deferred
+
+#### Test / lint status
+- Library: 47/47 passing, lint clean
+- MCP server: 150/151 passing (1 pre-existing `/_registry/` mock-fetch test), lint clean in `src/`
+
+#### Deployment
+- Deployed to sbx1 (`css-mcp-server-sbx1`) iteratively during testing; final version `e3572392`
+- Validated end-to-end by pen-test session: all listed findings confirmed closed
+
+#### Phase 3: p1-chatbot agent worker adoption (2026-05-17)
+
+**PR:** https://github.com/pantheon-systems/p1-chatbot/pull/2 — `feat/pcc-3169-p1-content-validator`
+
+Replaced ~130 lines of local validation in `workers/agent/src/tools.ts` with `validateOps` from the shared library.
+
+**Deleted:** `assertNoNewKeys`, `validateComponentsAgainstRegistry`, `isPuckComponentShape`, `containsPuckComponent`, `getAtPath`
+
+**Changes to apply_document_edits:** snapshot + registry fetched in parallel for any add/replace op; single `validateOps` call with `currentSnapshot`; throws on errors; graceful degradation if either fetch fails.
+
+**Changes to create_page:** fresh ULIDs injected before validation (so `missing_required_prop` doesn't fire on pre-injection components); synthetic ops passed to `validateOps`.
+
+**Dependency mechanism:** vendored tarball (`vendor/pantheon-systems-p1-content-validator-1.0.0.tgz`, force-added past `*.tgz` gitignore) until CSS PR #116 merges and the package is published to npm.
+
+**Regression found during testing:** `columns: 6` on `StatsBlock` bypassed validation because `FieldOption.value` was typed `string` and `validateEnumValue` returned early on `typeof value !== 'string'`. Fixed in library (value type widened to `string | number | boolean`; error message uses `JSON.stringify` for accurate display). Repacked tarball, redeployed both MCP server and agent worker.
+
+**Test status:** 86/86 passing, type-check clean. Validated on sbx1 (`p1-chatbot-agent-sbx1` version `aaa4c49d`, `css-mcp-server-sbx1` version `1ee2cccb`).
+
+**Next step:** after CSS PR #116 merges, publish `@pantheon-systems/p1-content-validator@1.0.0` and replace the `file:` tarball reference with `"^1.0.0"` in both repos.

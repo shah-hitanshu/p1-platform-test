@@ -89,6 +89,7 @@ export function createMcpServer(config: McpHandlerConfig): McpServer {
     agentApiKey: config.agentApiKey,
     actingUser: config.actingUser,
     fetcher: config.fetcher,
+    enableValidation: true,
   });
 
   // PCC-3189: pass actingUser so handlers can attribute edit-session calls

@@ -249,7 +249,7 @@ const defaultHandler: ExportedHandler<Env> = {
 
       // Complete the authorization with user identity from Google
       const { redirectTo } = await oauthHelpers.completeAuthorization({
-        request: stateData.authRequest as AuthRequest,
+        request: stateData.authRequest,
         userId: googleResult.user.sub,
         metadata: {
           label: googleResult.user.name ?? googleResult.user.email,

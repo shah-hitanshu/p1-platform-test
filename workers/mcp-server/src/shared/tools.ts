@@ -8,8 +8,10 @@
  */
 
 import { z } from 'zod';
-import type { McpApiClient, EditOperation } from './api-client.js';
+import type { McpApiClient } from './api-client.js';
 import type { ActingUser } from './types.js';
+import { validateOps } from '@pantheon-systems/p1-content-validator';
+import type { ValidationError } from '@pantheon-systems/p1-content-validator';
 
 // =============================================================================
 // ULID generator (inline — no external dependency required in Workers)
@@ -312,6 +314,15 @@ function formatError(error: unknown): ToolResult {
   };
 }
 
+function formatValidationError(errors: ValidationError[]): ToolResult {
+  const n = errors.length;
+  const summary = `Validation failed: ${String(n)} error${n === 1 ? '' : 's'}. Correct the errors below and retry.`;
+  return {
+    content: [{ type: 'text', text: `${summary}\n${JSON.stringify(errors, null, 2)}` }],
+    isError: true,
+  };
+}
+
 // =============================================================================
 // Tool Handler Types
 // =============================================================================
@@ -406,10 +417,11 @@ export function createToolHandlers(
     async list_documents(input: ListDocumentsInput): Promise<ToolResult> {
       try {
         const result = await apiClient.listDocuments(input.site_id, input.branch_id);
-        if (result.documents.length === 0) {
+        const contentDocs = result.documents.filter((doc) => !doc.path.startsWith('_registry/'));
+        if (contentDocs.length === 0) {
           return formatResult('No documents found in this branch.');
         }
-        const formatted = result.documents
+        const formatted = contentDocs
           .map((doc) => `- ${doc.path} (id: ${doc.id})`)
           .join('\n');
         return formatResult(`Documents:\n${formatted}`);
@@ -498,12 +510,50 @@ export function createToolHandlers(
           ...op,
           path: normalizePath(op.path),
         }));
+
+        // Validate ops against the component registry before sending to CSS.
+        // Only runs when enableValidation is set on the client config (production).
+        // If the registry fetch fails for any reason, proceed without validation
+        // (graceful degradation — the backend will still enforce its own rules).
+        if (apiClient.validationEnabled) {
+          try {
+            const registry = await apiClient.fetchRegistrySchemas(input.site_id, input.branch_id);
+
+            // Fetch the current document snapshot so validateOps can resolve component
+            // types for targeted prop writes (e.g. content.2.props.background = "steve").
+            // Without the snapshot those ops look like primitive-content replacements
+            // and slip past content-shape validation.
+            let currentSnapshot: Record<string, unknown> | undefined;
+            try {
+              const doc = await apiClient.getDocument(
+                input.site_id,
+                input.branch_id,
+                input.document_path,
+              );
+              currentSnapshot = doc.snapshot;
+            } catch {
+              // Proceed without snapshot — content-shape ops still validate
+            }
+
+            const { errors } = validateOps({
+              operations: normalizedOperations,
+              registry,
+              currentSnapshot,
+            });
+            if (errors.length > 0) {
+              return formatValidationError(errors);
+            }
+          } catch {
+            // Registry fetch failed — proceed without validation
+          }
+        }
+
         const result = await apiClient.applyEdits({
           siteId: input.site_id,
           branchId: input.branch_id,
           documentPath: input.document_path,
           editSessionId: input.edit_session_id,
-          operations: normalizedOperations as EditOperation[],
+          operations: normalizedOperations,
         });
         return formatResult({
           success: result.success,
@@ -679,6 +729,29 @@ export function createToolHandlers(
               'Cannot create pages at the _registry/ path prefix — this is reserved for system use.',
             ),
           );
+        }
+
+        // Validate component types and props against the registry before writing.
+        // Construct synthetic add ops so we can reuse validateOps from the library.
+        // Only runs when enableValidation is set on the client config (production).
+        if (apiClient.validationEnabled) {
+          try {
+            const registry = await apiClient.fetchRegistrySchemas(input.site_id, input.branch_id);
+            const syntheticOps = input.components.map((component, i) => ({
+              type: 'add' as const,
+              path: `content.${String(i)}`,
+              content: {
+                type: component.type,
+                props: { id: generateULID(), ...component.props },
+              },
+            }));
+            const { errors } = validateOps({ operations: syntheticOps, registry });
+            if (errors.length > 0) {
+              return formatValidationError(errors);
+            }
+          } catch {
+            // Registry fetch failed — proceed without validation
+          }
         }
 
         // Build valid Puck Data
