@@ -1197,4 +1197,186 @@ describe('Phase 3.1: Site Service', () => {
       expect(requestSiteScreenshot).not.toHaveBeenCalled();
     });
   });
+
+  // ===========================================================================
+  // PCC-3211: Soft delete — archiveSite / restoreSite / listSites(archived)
+  // ===========================================================================
+
+  describe('archiveSite', () => {
+    const txOk = { rows: [], rowCount: 0 }; // mock for BEGIN / COMMIT
+
+    it('should set archived_at on the site and cascade to branches and documents', async () => {
+      const { archiveSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const archiveTs = '2026-05-17T10:00:00.000Z';
+      vi.mocked(db.query)
+        .mockResolvedValueOnce(txOk) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ archived_at: archiveTs }], rowCount: 1 }) // UPDATE sites
+        .mockResolvedValueOnce({ rows: [], rowCount: 2 }) // UPDATE branches
+        .mockResolvedValueOnce({ rows: [], rowCount: 3 }) // UPDATE documents
+        .mockResolvedValueOnce(txOk); // COMMIT
+
+      const result = await archiveSite('site-123');
+
+      expect(result).toBe(true);
+    });
+
+    it('should return false when site does not exist', async () => {
+      const { archiveSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce(txOk) // BEGIN
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE sites (no match)
+        .mockResolvedValueOnce({ rows: [] }) // SELECT id (not found)
+        .mockResolvedValueOnce(txOk); // COMMIT
+
+      const result = await archiveSite('non-existent');
+
+      expect(result).toBe(false);
+    });
+
+    it('should return already_archived when site exists but is already archived', async () => {
+      const { archiveSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce(txOk) // BEGIN
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE sites (no match: already archived)
+        .mockResolvedValueOnce({ rows: [{ id: 'site-123' }] }) // SELECT id (exists)
+        .mockResolvedValueOnce(txOk); // COMMIT
+
+      const result = await archiveSite('site-123');
+
+      expect(result).toBe('already_archived');
+    });
+
+    it('should cascade archived_at to branches and documents using the same timestamp', async () => {
+      const { archiveSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const archiveTs = '2026-05-17T10:00:00.000Z';
+      vi.mocked(db.query)
+        .mockResolvedValueOnce(txOk) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ archived_at: archiveTs }], rowCount: 1 }) // UPDATE sites
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE branches
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE documents
+        .mockResolvedValueOnce(txOk); // COMMIT
+
+      await archiveSite('site-123');
+
+      const calls = vi.mocked(db.query).mock.calls;
+      const branchCall = calls.find(
+        (c) => typeof c[0] === 'string' && c[0].includes('app.branches') && c[0].includes('archived_at'),
+      );
+      const documentCall = calls.find(
+        (c) => typeof c[0] === 'string' && c[0].includes('app.documents') && c[0].includes('archived_at'),
+      );
+      expect(branchCall).toBeDefined();
+      expect(documentCall).toBeDefined();
+      expect(branchCall?.[1]).toContain(archiveTs);
+      expect(documentCall?.[1]).toContain(archiveTs);
+    });
+  });
+
+  describe('restoreSite', () => {
+    const txOk = { rows: [], rowCount: 0 }; // mock for BEGIN / COMMIT
+
+    it('should clear archived_at on site and restore cascade-archived branches and documents', async () => {
+      const { restoreSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const archiveTs = '2026-05-17T10:00:00.000Z';
+      const mockSiteRow = { ...createMockSiteRow({ id: 'site-123' }), archived_at: archiveTs };
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [mockSiteRow] }) // SELECT (check archived_at)
+        .mockResolvedValueOnce(txOk) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ ...mockSiteRow, archived_at: null }], rowCount: 1 }) // UPDATE sites
+        .mockResolvedValueOnce({ rows: [], rowCount: 2 }) // UPDATE branches
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE documents
+        .mockResolvedValueOnce(txOk); // COMMIT
+
+      const result = await restoreSite('site-123');
+
+      expect(result).not.toBeNull();
+      expect(result?.id).toBe('site-123');
+    });
+
+    it('should return null when site not found', async () => {
+      const { restoreSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] }); // SELECT → not found
+
+      const result = await restoreSite('non-existent');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when site is not archived', async () => {
+      const { restoreSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const mockSiteRow = { ...createMockSiteRow({ id: 'site-123' }), archived_at: null };
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockSiteRow] }); // SELECT → active site
+
+      const result = await restoreSite('site-123');
+
+      expect(result).toBeNull();
+    });
+
+    it('should only restore branches/docs archived at the same timestamp (not independently-archived ones)', async () => {
+      const { restoreSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const archiveTs = '2026-05-17T10:00:00.000Z';
+      const mockSiteRow = { ...createMockSiteRow({ id: 'site-123' }), archived_at: archiveTs };
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [mockSiteRow] }) // SELECT
+        .mockResolvedValueOnce(txOk) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ ...mockSiteRow, archived_at: null }], rowCount: 1 }) // UPDATE sites
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE branches
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE documents
+        .mockResolvedValueOnce(txOk); // COMMIT
+
+      await restoreSite('site-123');
+
+      const calls = vi.mocked(db.query).mock.calls;
+      const branchRestoreCall = calls.find(
+        (c) =>
+          typeof c[0] === 'string' &&
+          c[0].includes('app.branches') &&
+          c[0].includes('archived_at = NULL'),
+      );
+      expect(branchRestoreCall).toBeDefined();
+      expect(branchRestoreCall?.[1]).toContain(archiveTs);
+    });
+  });
+
+  describe('listSites — archived filter (PCC-3211)', () => {
+    it('should exclude archived sites by default', async () => {
+      const { listSites } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      await listSites({ principalId: 'user-1' });
+
+      const sql = vi.mocked(db.query).mock.calls[0][0];
+      expect(sql).toContain('archived_at IS NULL');
+    });
+
+    it('should return only archived sites when archived=true', async () => {
+      const { listSites } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      await listSites({ principalId: 'user-1', archived: true });
+
+      const sql = vi.mocked(db.query).mock.calls[0][0];
+      expect(sql).toContain('archived_at IS NOT NULL');
+    });
+  });
 });

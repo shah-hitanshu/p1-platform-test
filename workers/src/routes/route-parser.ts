@@ -98,6 +98,15 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     };
   }
 
+  // /api/sites/{siteId}/restore
+  const siteRestoreMatch = /^\/api\/sites\/([^/]+)\/restore$/.exec(normalizedPath);
+  if (siteRestoreMatch) {
+    return {
+      handler: 'sites',
+      params: { siteId: siteRestoreMatch[1], action: 'restore' },
+    };
+  }
+
   // Site routes
   const siteMatch = /^\/api\/sites(?:\/([^/]+))?$/.exec(normalizedPath);
   if (siteMatch) {
@@ -527,6 +536,15 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
         siteId: collaboratorMatch[1],
         userId: collaboratorMatch[2],
       },
+    };
+  }
+
+  // /api/sites/{siteId}/branches/{branchId}/restore
+  const branchRestoreMatch = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/restore$/.exec(normalizedPath);
+  if (branchRestoreMatch) {
+    return {
+      handler: 'branches',
+      params: { siteId: branchRestoreMatch[1], branchId: branchRestoreMatch[2], action: 'restore' },
     };
   }
 

@@ -30,6 +30,7 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
     settings: OrganizationSettings | string;
     created_at: string;
     updated_at: string;
+    archived_at: string | null;
   }
 
   // Helper to create a mock organization row (database format)
@@ -42,6 +43,7 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
       settings: defaultOrganizationSettings,
       created_at: '2026-01-26T10:00:00.000Z',
       updated_at: '2026-01-26T10:00:00.000Z',
+      archived_at: null,
       ...overrides,
     };
   }
@@ -244,6 +246,130 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
       vi.mocked(db.query).mockRejectedValue(error);
 
       await expect(deleteOrganization('org-with-sites')).rejects.toThrow(OrganizationHasSitesError);
+    });
+  });
+
+  // ===========================================================================
+  // PCC-3211: Soft delete — archiveOrganization / restoreOrganization / list filter
+  // ===========================================================================
+
+  describe('archiveOrganization', () => {
+    const txOk = { rows: [], rowCount: 0 };
+
+    it('should set archived_at and return true', async () => {
+      const { archiveOrganization } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // no active sites check
+        .mockResolvedValueOnce(txOk) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ id: 'org-uuid-123' }], rowCount: 1 }) // UPDATE
+        .mockResolvedValueOnce(txOk); // COMMIT
+
+      const result = await archiveOrganization('org-uuid-123');
+
+      expect(result).toBe(true);
+    });
+
+    it('should return false when organization not found', async () => {
+      const { archiveOrganization } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // no active sites (pre-check)
+        .mockResolvedValueOnce(txOk) // BEGIN
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE → not found (TOCTOU guard)
+        .mockResolvedValueOnce(txOk) // COMMIT
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // recheck active sites → none
+        .mockResolvedValueOnce({ rows: [] }); // SELECT id → not found → return false
+
+      const result = await archiveOrganization('non-existent');
+
+      expect(result).toBe(false);
+    });
+
+    it('should return already_archived when org exists but is already archived', async () => {
+      const { archiveOrganization } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // no active sites (pre-check)
+        .mockResolvedValueOnce(txOk) // BEGIN
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE → no match (already archived)
+        .mockResolvedValueOnce(txOk) // COMMIT
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // recheck active sites → none
+        .mockResolvedValueOnce({ rows: [{ id: 'org-uuid-123' }] }); // SELECT id → exists
+
+      const result = await archiveOrganization('org-uuid-123');
+
+      expect(result).toBe('already_archived');
+    });
+
+    it('should throw OrganizationHasActiveSitesError when org has active sites', async () => {
+      const { archiveOrganization, OrganizationHasActiveSitesError } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '2' }] }); // active sites found
+
+      await expect(archiveOrganization('org-uuid-123')).rejects.toThrow(OrganizationHasActiveSitesError);
+    });
+  });
+
+  describe('restoreOrganization', () => {
+    const txOk = { rows: [], rowCount: 0 };
+
+    it('should clear archived_at and return true', async () => {
+      const { restoreOrganization } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce(txOk) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ id: 'org-uuid-123' }], rowCount: 1 }) // UPDATE
+        .mockResolvedValueOnce(txOk); // COMMIT
+
+      const result = await restoreOrganization('org-uuid-123');
+
+      expect(result).toBe(true);
+    });
+
+    it('should return false when organization not found or not archived', async () => {
+      const { restoreOrganization } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce(txOk) // BEGIN
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE → no match
+        .mockResolvedValueOnce(txOk); // COMMIT
+
+      const result = await restoreOrganization('non-existent');
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('listOrganizations — archived filter (PCC-3211)', () => {
+    it('should exclude archived organizations by default', async () => {
+      const { listOrganizations } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      await listOrganizations();
+
+      const sql = vi.mocked(db.query).mock.calls[0][0];
+      expect(sql).toContain('archived_at IS NULL');
+    });
+
+    it('should return only archived organizations when archived=true', async () => {
+      const { listOrganizations } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      await listOrganizations({ archived: true });
+
+      const sql = vi.mocked(db.query).mock.calls[0][0];
+      expect(sql).toContain('archived_at IS NOT NULL');
     });
   });
 

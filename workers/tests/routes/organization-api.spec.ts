@@ -13,6 +13,8 @@ vi.mock('../../src/services', () => ({
   getOrganizationById: vi.fn(),
   updateOrganization: vi.fn(),
   deleteOrganization: vi.fn(),
+  archiveOrganization: vi.fn(),
+  restoreOrganization: vi.fn(),
   listOrganizations: vi.fn(),
   linkSiteToOrganization: vi.fn(),
   unlinkSiteFromOrganization: vi.fn(),
@@ -318,11 +320,11 @@ describe('Agent Politeness Phase 1.5: Organization API Routes', () => {
   // ===========================================================================
 
   describe('DELETE /api/organizations/{organizationId}', () => {
-    it('should delete organization', async () => {
+    it('should archive organization (soft delete)', async () => {
       const { handleOrganizationRoutes } = await import('../../src/routes/organization-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.deleteOrganization).mockResolvedValueOnce(true);
+      vi.mocked(services.archiveOrganization).mockResolvedValueOnce(true);
 
       const request = new Request('https://api.example.com/api/organizations/org-uuid-123', {
         method: 'DELETE',
@@ -340,7 +342,7 @@ describe('Agent Politeness Phase 1.5: Organization API Routes', () => {
       const { handleOrganizationRoutes } = await import('../../src/routes/organization-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.deleteOrganization).mockResolvedValueOnce(false);
+      vi.mocked(services.archiveOrganization).mockResolvedValueOnce(false);
 
       const request = new Request('https://api.example.com/api/organizations/non-existent', {
         method: 'DELETE',
@@ -354,11 +356,11 @@ describe('Agent Politeness Phase 1.5: Organization API Routes', () => {
       expect(response.status).toBe(404);
     });
 
-    it('should return 409 when organization has linked sites', async () => {
+    it('should return 409 when organization has active sites', async () => {
       const { handleOrganizationRoutes } = await import('../../src/routes/organization-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.deleteOrganization).mockRejectedValueOnce(
+      vi.mocked(services.archiveOrganization).mockRejectedValueOnce(
         new services.OrganizationHasSitesError('org-uuid-123'),
       );
 
@@ -487,6 +489,119 @@ describe('Agent Politeness Phase 1.5: Organization API Routes', () => {
       });
 
       expect(response.status).toBe(204);
+    });
+  });
+
+  // ===========================================================================
+  // PCC-3211: Soft delete — DELETE → archive, POST restore, GET ?archived
+  // ===========================================================================
+
+  describe('DELETE /api/organizations/{organizationId} — soft delete (PCC-3211)', () => {
+    it('should archive the organization and return 204', async () => {
+      const { handleOrganizationRoutes } = await import('../../src/routes/organization-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.archiveOrganization).mockResolvedValueOnce(true);
+
+      const response = await handleOrganizationRoutes(
+        new Request('https://api.example.com/api/organizations/org-123', { method: 'DELETE' }),
+        { principal: { id: 'user-1', type: 'user' }, organizationId: 'org-123' },
+      );
+
+      expect(response.status).toBe(204);
+      expect(services.archiveOrganization).toHaveBeenCalledWith('org-123');
+    });
+
+    it('should return 404 when archiveOrganization returns false', async () => {
+      const { handleOrganizationRoutes } = await import('../../src/routes/organization-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.archiveOrganization).mockResolvedValueOnce(false);
+
+      const response = await handleOrganizationRoutes(
+        new Request('https://api.example.com/api/organizations/nonexistent', { method: 'DELETE' }),
+        { principal: { id: 'user-1', type: 'user' }, organizationId: 'nonexistent' },
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should return 409 when org is already archived', async () => {
+      const { handleOrganizationRoutes } = await import('../../src/routes/organization-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.archiveOrganization).mockResolvedValueOnce('already_archived');
+
+      const response = await handleOrganizationRoutes(
+        new Request('https://api.example.com/api/organizations/org-123', { method: 'DELETE' }),
+        { principal: { id: 'user-1', type: 'user' }, organizationId: 'org-123' },
+      );
+
+      expect(response.status).toBe(409);
+    });
+
+    it('should return 409 when org has active sites', async () => {
+      const { handleOrganizationRoutes } = await import('../../src/routes/organization-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.archiveOrganization).mockRejectedValueOnce(
+        new services.OrganizationHasSitesError('org-123'),
+      );
+
+      const response = await handleOrganizationRoutes(
+        new Request('https://api.example.com/api/organizations/org-123', { method: 'DELETE' }),
+        { principal: { id: 'user-1', type: 'user' }, organizationId: 'org-123' },
+      );
+
+      expect(response.status).toBe(409);
+    });
+  });
+
+  describe('POST /api/organizations/{organizationId}/restore (PCC-3211)', () => {
+    it('should restore an archived organization and return 200', async () => {
+      const { handleOrganizationRoutes } = await import('../../src/routes/organization-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.restoreOrganization).mockResolvedValueOnce(true);
+
+      const response = await handleOrganizationRoutes(
+        new Request('https://api.example.com/api/organizations/org-123/restore', { method: 'POST' }),
+        { principal: { id: 'user-1', type: 'user' }, organizationId: 'org-123', action: 'restore' },
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it('should return 404 when restoreOrganization returns false', async () => {
+      const { handleOrganizationRoutes } = await import('../../src/routes/organization-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.restoreOrganization).mockResolvedValueOnce(false);
+
+      const response = await handleOrganizationRoutes(
+        new Request('https://api.example.com/api/organizations/nonexistent/restore', { method: 'POST' }),
+        { principal: { id: 'user-1', type: 'user' }, organizationId: 'nonexistent', action: 'restore' },
+      );
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('GET /api/organizations?archived=true (PCC-3211)', () => {
+    it('should pass archived=true to listOrganizations', async () => {
+      const { handleOrganizationRoutes } = await import('../../src/routes/organization-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.listOrganizations).mockResolvedValueOnce([]);
+
+      await handleOrganizationRoutes(
+        new Request('https://api.example.com/api/organizations?archived=true'),
+        { principal: { id: 'user-1', type: 'user' } },
+      );
+
+      expect(services.listOrganizations).toHaveBeenCalledWith(
+        expect.objectContaining({ archived: true }),
+      );
     });
   });
 });

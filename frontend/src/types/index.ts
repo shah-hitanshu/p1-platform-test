@@ -37,6 +37,7 @@ export interface Site {
   allowedOrigins: string[];
   createdAt: string;
   updatedAt: string;
+  archivedAt?: string | null;
 }
 
 // Branch types

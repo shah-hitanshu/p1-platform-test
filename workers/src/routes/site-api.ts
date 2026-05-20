@@ -10,7 +10,8 @@ import {
   createSite,
   getSite,
   updateSite,
-  deleteSite,
+  archiveSite,
+  restoreSite,
   listSites,
   listBranches,
   getMainBranch,
@@ -27,6 +28,7 @@ import { query } from '../db';
  */
 export interface SiteRouteContext {
   siteId?: string;
+  action?: string;
   principal: AuthenticatedPrincipal;
 }
 
@@ -135,6 +137,8 @@ async function handleListSites(
   const url = new URL(request.url);
   const limitParam = url.searchParams.get('limit');
   const offsetParam = url.searchParams.get('offset');
+  const archivedParam = url.searchParams.get('archived');
+  const archived = archivedParam === 'true' ? true : archivedParam === 'false' ? false : undefined;
 
   // Validate pagination parameters
   const pagination = validatePagination(limitParam, offsetParam);
@@ -170,6 +174,7 @@ async function handleListSites(
     principalId: context.principal.dbUserId ?? context.principal.id,
     principalType: context.principal.type as 'user' | 'agent',
     actingUserId,
+    archived,
   });
 
   return jsonResponse({ sites });
@@ -227,12 +232,9 @@ async function handleUpdateSite(
 }
 
 /**
- * Handle DELETE /api/sites/{siteId} - Delete Site
+ * Handle DELETE /api/sites/{siteId} - Archive Site (soft delete)
  *
- * Site can be deleted when:
- * - Only the main branch exists (no other non-archived branches), OR
- * - All branches are archived/merged
- *
+ * Soft-deletes the site by setting archived_at. Cascades to branches and documents.
  * Returns 409 if non-main, non-archived branches exist.
  */
 async function handleDeleteSite(context: SiteRouteContext): Promise<Response> {
@@ -248,19 +250,42 @@ async function handleDeleteSite(context: SiteRouteContext): Promise<Response> {
 
   if (nonArchivedNonMainBranches.length > 0) {
     return errorResponse(
-      'Cannot delete site with active branches. Archive or delete all non-main branches first.',
+      'Cannot delete site with active non-main branches. Archive or delete all non-main branches first.',
       409,
       { branchCount: nonArchivedNonMainBranches.length },
     );
   }
 
-  const deleted = await deleteSite(context.siteId);
+  const result = await archiveSite(context.siteId);
 
-  if (!deleted) {
+  if (result === false) {
     return errorResponse('Site not found', 404);
+  }
+  if (result === 'already_archived') {
+    return errorResponse('Site is already archived', 409);
   }
 
   return new Response(null, { status: 204 });
+}
+
+/**
+ * Handle POST /api/sites/{siteId}/restore - Restore archived site
+ */
+async function handleRestoreSite(context: SiteRouteContext): Promise<Response> {
+  if (context.siteId === undefined) {
+    return errorResponse('Site ID is required', 400);
+  }
+
+  const site = await restoreSite(context.siteId);
+
+  if (site === null) {
+    return errorResponse('Site not found or not archived', 404);
+  }
+
+  return new Response(JSON.stringify(site), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
 
 /**
@@ -277,6 +302,17 @@ export async function handleSiteRoutes(
     // Routes with siteId (single site operations)
     if (context.siteId !== undefined) {
       const mainBranch = await getMainBranch(context.siteId);
+
+      // POST /api/sites/:siteId/restore — site is archived so mainBranch may still resolve;
+      // we require canManageGrants and accept a missing mainBranch as a 404.
+      if (method === 'POST' && context.action === 'restore') {
+        if (mainBranch === null) {
+          return errorResponse('Site not found', 404);
+        }
+        await assertPermission(context.principal, context.siteId, mainBranch.id, 'canManageGrants');
+        return await handleRestoreSite(context);
+      }
+
       if (mainBranch === null) {
         return errorResponse('Site not found', 404);
       }

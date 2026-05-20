@@ -63,6 +63,11 @@ export interface ListSitesOptions {
    * no access to those sites. Ignored on the user path. (PCC-3190)
    */
   actingUserId?: string;
+  /**
+   * Filter by archived status. true = archived only, false = active only,
+   * undefined = active only (same as false, the safe default).
+   */
+  archived?: boolean;
 }
 
 /**
@@ -78,6 +83,7 @@ interface SiteRow {
   allowed_origins: string[] | null;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
 }
 
 // =============================================================================
@@ -153,6 +159,7 @@ function mapRowToSite(row: SiteRow): Site {
     allowedOrigins: row.allowed_origins ?? [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    archivedAt: row.archived_at ?? null,
   };
 }
 
@@ -539,11 +546,96 @@ export async function deleteSite(siteId: string): Promise<boolean> {
 }
 
 /**
+ * Soft-deletes a site by setting archived_at. Cascades to non-archived branches
+ * and documents using the same transaction timestamp so restore can precisely undo
+ * only the cascade (not independently-archived rows).
+ * Returns false if the site does not exist, 'already_archived' if already soft-deleted.
+ */
+export async function archiveSite(siteId: string): Promise<boolean | 'already_archived'> {
+  await query('BEGIN');
+  try {
+    const result = await query<{ archived_at: string }>(
+      `UPDATE app.sites SET archived_at = NOW()
+       WHERE id = $1 AND archived_at IS NULL
+       RETURNING archived_at`,
+      [siteId],
+    );
+    if ((result.rowCount ?? 0) === 0) {
+      // Distinguish not-found vs already-archived
+      const exists = await query<{ id: string }>(
+        'SELECT id FROM app.sites WHERE id = $1',
+        [siteId],
+      );
+      await query('COMMIT');
+      return exists.rows.length > 0 ? 'already_archived' : false;
+    }
+    const archiveTs = result.rows[0].archived_at;
+    await query(
+      'UPDATE app.branches SET archived_at = $1 WHERE site_id = $2 AND archived_at IS NULL',
+      [archiveTs, siteId],
+    );
+    await query(
+      'UPDATE app.documents SET archived_at = $1 WHERE site_id = $2 AND archived_at IS NULL',
+      [archiveTs, siteId],
+    );
+    await query('COMMIT');
+    return true;
+  } catch (error) {
+    await query('ROLLBACK');
+    throw error;
+  }
+}
+
+/**
+ * Restores a soft-deleted site. Clears archived_at on the site and on any
+ * branches/documents that share the exact cascade timestamp, leaving
+ * independently-archived rows untouched.
+ * Returns the restored Site, or null if not found or not archived.
+ */
+export async function restoreSite(siteId: string): Promise<Site | null> {
+  const selectResult = await query<SiteRow>(
+    'SELECT * FROM app.sites WHERE id = $1',
+    [siteId],
+  );
+  const row = selectResult.rows[0];
+  if (row?.archived_at == null) {
+    return null;
+  }
+  const archiveTs = row.archived_at;
+  await query('BEGIN');
+  try {
+    const updateResult = await query<SiteRow>(
+      'UPDATE app.sites SET archived_at = NULL WHERE id = $1 RETURNING *',
+      [siteId],
+    );
+    if (updateResult.rows.length === 0) {
+      await query('COMMIT');
+      return null;
+    }
+    await query(
+      'UPDATE app.branches SET archived_at = NULL WHERE site_id = $1 AND archived_at = $2',
+      [siteId, archiveTs],
+    );
+    await query(
+      'UPDATE app.documents SET archived_at = NULL WHERE site_id = $1 AND archived_at = $2',
+      [siteId, archiveTs],
+    );
+    await query('COMMIT');
+    return mapRowToSite(updateResult.rows[0]);
+  } catch (error) {
+    await query('ROLLBACK');
+    throw error;
+  }
+}
+
+/**
  * Lists sites the given principal has access to, with optional pagination.
  */
 export async function listSites(options: ListSitesOptions): Promise<Site[]> {
-  const { limit, offset, principalId, principalType, actingUserId } = options;
+  const { limit, offset, principalId, principalType, actingUserId, archived } = options;
   const params: unknown[] = [principalId];
+
+  const archivedFilter = archived === true ? ' AND s.archived_at IS NOT NULL' : ' AND s.archived_at IS NULL';
 
   let sql: string;
   if (principalType === 'agent') {
@@ -559,12 +651,14 @@ export async function listSites(options: ListSitesOptions): Promise<Site[]> {
         ' INNER JOIN app.user_site_roles usr ON usr.site_id = s.id' +
         ' WHERE asr.agent_id = $1 AND asr.revoked_at IS NULL' +
         ' AND usr.user_id = $2' +
+        archivedFilter +
         ' ORDER BY s.created_at DESC';
     } else {
       sql =
         'SELECT DISTINCT s.* FROM app.sites s' +
         ' INNER JOIN app.agent_site_roles asr ON asr.site_id = s.id' +
         ' WHERE asr.agent_id = $1 AND asr.revoked_at IS NULL' +
+        archivedFilter +
         ' ORDER BY s.created_at DESC';
     }
   } else {
@@ -572,6 +666,7 @@ export async function listSites(options: ListSitesOptions): Promise<Site[]> {
       'SELECT DISTINCT s.* FROM app.sites s' +
       ' INNER JOIN app.user_site_roles usr ON usr.site_id = s.id' +
       ' WHERE usr.user_id = $1' +
+      archivedFilter +
       ' ORDER BY s.created_at DESC';
   }
 

@@ -412,12 +412,17 @@ paths:
   /api/sites:
     get:
       summary: List sites
-      description: Returns all sites the principal has access to.
+      description: Returns all sites the principal has access to. Defaults to active (non-archived) sites only.
       operationId: listSites
       tags: [Sites]
       parameters:
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
+        - name: archived
+          in: query
+          description: Filter by archived state. true = archived only, false = active only (default).
+          schema:
+            type: boolean
       responses:
         '200':
           description: List of sites
@@ -493,17 +498,39 @@ paths:
           $ref: '#/components/responses/NotFound'
 
     delete:
-      summary: Delete site
-      description: Deletes a site and all associated data. Fails if the site has active non-archived branches.
+      summary: Archive site (soft delete)
+      description: Soft-deletes a site by setting archivedAt. Cascades to branches and documents. Fails if the site has active non-archived branches. Recoverable via POST /api/sites/{siteId}/restore.
       operationId: deleteSite
       tags: [Sites]
       responses:
         '204':
-          description: Site deleted
+          description: Site archived
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Site has active branches and cannot be deleted
+          description: Site has active branches or is already archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/sites/{siteId}/restore:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+    post:
+      summary: Restore archived site
+      description: Restores a soft-deleted site. Also restores branches and documents that were cascade-archived at the same time; independently-archived branches/docs remain archived.
+      operationId: restoreSite
+      tags: [Sites]
+      responses:
+        '200':
+          description: Site restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Site'
+        '404':
+          description: Site not found or not archived
           content:
             application/json:
               schema:
@@ -535,7 +562,7 @@ paths:
       - $ref: '#/components/parameters/siteIdParam'
     get:
       summary: List branches
-      description: Returns all branches for a site.
+      description: Returns all branches for a site. Defaults to active (non-archived) branches only.
       operationId: listBranches
       tags: [Branches]
       parameters:
@@ -546,6 +573,11 @@ paths:
           description: Filter by branch status
           schema:
             $ref: '#/components/schemas/BranchStatus'
+        - name: archived
+          in: query
+          description: Filter by archived state. true = archived only, false = active only (default).
+          schema:
+            type: boolean
       responses:
         '200':
           description: List of branches
@@ -622,21 +654,50 @@ paths:
           $ref: '#/components/responses/NotFound'
 
     delete:
-      summary: Delete branch
-      description: Deletes a branch. Cannot delete main branch.
+      summary: Archive branch (soft delete)
+      description: Soft-deletes a branch by setting archivedAt. Cannot archive main branch. Recoverable via POST /api/sites/{siteId}/branches/{branchId}/restore.
       operationId: deleteBranch
       tags: [Branches]
       responses:
         '204':
-          description: Branch deleted
+          description: Branch archived
         '400':
-          description: Cannot delete main branch
+          description: Cannot archive main branch
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: Branch is already archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/sites/{siteId}/branches/{branchId}/restore:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+    post:
+      summary: Restore archived branch
+      description: Restores a soft-deleted branch. Blocked if the parent site is archived.
+      operationId: restoreBranch
+      tags: [Branches]
+      responses:
+        '200':
+          description: Branch restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+        '404':
+          description: Branch not found or not archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/sites/{siteId}/branches/{branchId}/presence:
     parameters:
@@ -3039,6 +3100,11 @@ components:
         updatedAt:
           type: string
           format: date-time
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO timestamp when the organization was soft-deleted; null if active.
 
     CreateOrganizationRequest:
       type: object
@@ -3192,6 +3258,11 @@ components:
         updatedAt:
           type: string
           format: date-time
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO timestamp when the site was soft-deleted; null if active.
 
     CreateSiteRequest:
       type: object
@@ -3263,6 +3334,11 @@ components:
         updatedAt:
           type: string
           format: date-time
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO timestamp when the branch was soft-deleted; null if active.
 
     CreateBranchRequest:
       type: object

@@ -7,6 +7,59 @@ This document tracks the implementation progress of the Collaborative JSON State
 ---
 ## Completed Work
 
+### PCC-3211: Soft Delete for Sites, Branches, and Organizations
+
+**Status:** Complete (branch: `feat/PCC-3211-soft-delete-sites-branches-orgs`)
+**Commits:** `a30af7b` → `d86c1ab` (7 commits)
+
+#### Motivation
+DELETE on Sites, Branches, and Organizations previously performed cascading hard deletes — permanent and unrecoverable. A security review identified that any agent with `admin` role could trigger site cascade deletes via the API. This work extends the existing document soft-delete pattern (`archived_at`) to all three entity types.
+
+#### Deliverables
+
+**Migration** (`workers/src/db/migrations/034_soft_delete_sites_branches_orgs.sql`):
+- Adds `archived_at TIMESTAMPTZ DEFAULT NULL` to `app.sites`, `app.branches`, `app.organizations`
+- Adds partial indexes on each for filtered queries
+
+**Sites** (`workers/src/services/site-service.ts`, `workers/src/routes/site-api.ts`):
+- `archiveSite()`: transactional cascade to branches + documents using shared `NOW()` timestamp. Returns `'already_archived'` for double-archive (→ 409).
+- `restoreSite()`: matches exact cascade timestamp to undo only cascade-archived rows; independently-archived branches/docs remain untouched.
+- `DELETE /api/sites/:siteId` → soft delete (204). `POST /api/sites/:siteId/restore` → restore (200).
+- `GET /api/sites?archived=true` → list archived sites. Default excludes archived.
+- Permission check: restore requires `canManageGrants`.
+
+**Branches** (`workers/src/services/branch-service.ts`, `workers/src/routes/branch-api.ts`):
+- `archiveBranch()`: transactional; throws `MainBranchProtectionError` for main branch.
+- `restoreBranch()`: blocked if parent site is archived.
+- `DELETE /api/sites/:siteId/branches/:branchId` → soft delete. `POST .../restore` → restore.
+- `GET .../branches?archived=true` filter.
+
+**Organizations** (`workers/src/services/organization-service.ts`, `workers/src/routes/organization-api.ts`):
+- `archiveOrganization()`: pre-check + TOCTOU guard (NOT EXISTS subquery) blocks archive if org has active sites.
+- `restoreOrganization()`: clears `archived_at` where set.
+- Handler updated; note org routes not yet wired into route-parser/dispatch (pre-existing gap, separate work).
+
+**Types** (`workers/src/types/domain.ts`, `frontend/src/types/index.ts`):
+- `archivedAt: string | null` added to `Site`, `Branch`, `Organization` interfaces.
+
+**OpenAPI** (`docs/openapi.yaml`):
+- `archivedAt` field in Site, Branch, Organization schemas.
+- `?archived` query param on `GET /api/sites` and `GET /api/sites/:id/branches`.
+- `POST /api/sites/:id/restore` and `POST /api/sites/:id/branches/:id/restore` endpoints.
+
+#### Test/lint status
+- 2856 tests passing (31 net new); 62 pre-existing failures unchanged.
+- Lint: 0 errors in changed files.
+- Independent code review run for Sites (after reviewer flagged missing permission check on restore, missing transactions, unsafe `rows[0]` access — all fixed before commit).
+
+#### Design decisions
+- **Site cascade precision**: archive uses a single Postgres transaction so all `archived_at` values share the same `NOW()`. Restore matches on that exact timestamp — independently-archived branches/docs are untouched.
+- **Branch `status` vs `archived_at` coexist**: `status='archived'` is workflow state; `archived_at IS NOT NULL` is soft-delete. They are independent signals.
+- **Organization TOCTOU**: active-sites check runs pre-transaction as a fast early error; the UPDATE also contains a `NOT EXISTS` subquery guard to prevent race conditions.
+- **Org route wiring gap noted**: `handleOrganizationRoutes` not imported in `route-dispatch.ts` — pre-existing, out of scope.
+
+---
+
 ### Phase 1.1: Project Configuration and Build Tooling
 
 **Status:** Complete
@@ -4275,3 +4328,4 @@ Agents could read branches via `list_branches` but had no way to create one. Bra
 - `examples/collaborative-state-mcp/src/index.ts` was already missing registration for `get_branch_presence` and `get_document_presence` (handlers exist in tools.ts but no `registerTool` call).
 - `examples/collaborative-state-mcp/src/tools.ts` is missing `list_components` and `create_page` entirely vs. the worker copy.
 - `tests/shared/create-page.spec.ts > rejects document_path starting with /_registry/` fails on origin/main.
+

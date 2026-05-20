@@ -66,6 +66,8 @@ export interface Organization {
   settings: OrganizationSettings;
   createdAt: string;
   updatedAt: string;
+  /** ISO timestamp when the organization was soft-deleted; null if active. */
+  archivedAt: string | null;
 }
 
 /**
@@ -112,6 +114,8 @@ export interface Site {
   allowedOrigins: string[];
   createdAt: string;
   updatedAt: string;
+  /** ISO timestamp when the site was soft-deleted; null if active. */
+  archivedAt: string | null;
 }
 
 /**
@@ -153,6 +157,8 @@ export interface Branch {
   createdByType: 'user' | 'agent';
   createdAt: string;
   updatedAt: string;
+  /** ISO timestamp when the branch was soft-deleted; null if active. */
+  archivedAt: string | null;
 }
 
 /**

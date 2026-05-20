@@ -11,12 +11,15 @@ import {
   getOrganizationById,
   updateOrganization,
   deleteOrganization,
+  archiveOrganization,
+  restoreOrganization,
   listOrganizations,
   linkSiteToOrganization,
   unlinkSiteFromOrganization,
   getSitesByOrganization,
   InvalidOrganizationParamsError,
   OrganizationHasSitesError,
+  OrganizationHasActiveSitesError,
 } from '../services';
 import { validatePagination } from './validation';
 
@@ -25,6 +28,7 @@ import { validatePagination } from './validation';
  */
 export interface OrganizationRouteContext {
   organizationId?: string;
+  action?: string;
   subResource?: 'sites';
   subResourceId?: string;
   principal: {
@@ -118,9 +122,13 @@ async function handleListOrganizations(request: Request): Promise<Response> {
     return errorResponse(pagination.error ?? 'Invalid pagination parameters', 400);
   }
 
+  const archivedParam = url.searchParams.get('archived');
+  const archived = archivedParam === 'true' ? true : archivedParam === 'false' ? false : undefined;
+
   const organizations = await listOrganizations({
     limit: pagination.limit,
     offset: pagination.offset,
+    archived,
   });
 
   return jsonResponse({ organizations });
@@ -169,20 +177,40 @@ async function handleUpdateOrganization(
 }
 
 /**
- * Handle DELETE /api/organizations/{organizationId} - Delete Organization
+ * Handle DELETE /api/organizations/{organizationId} - Archive Organization (soft delete)
  */
 async function handleDeleteOrganization(context: OrganizationRouteContext): Promise<Response> {
   if (context.organizationId === undefined) {
     return errorResponse('Organization ID is required', 400);
   }
 
-  const deleted = await deleteOrganization(context.organizationId);
+  const result = await archiveOrganization(context.organizationId);
 
-  if (!deleted) {
+  if (result === false) {
     return errorResponse('Organization not found', 404);
+  }
+  if (result === 'already_archived') {
+    return errorResponse('Organization is already archived', 409);
   }
 
   return new Response(null, { status: 204 });
+}
+
+/**
+ * Handle POST /api/organizations/{organizationId}/restore - Restore archived organization
+ */
+async function handleRestoreOrganization(context: OrganizationRouteContext): Promise<Response> {
+  if (context.organizationId === undefined) {
+    return errorResponse('Organization ID is required', 400);
+  }
+
+  const restored = await restoreOrganization(context.organizationId);
+
+  if (!restored) {
+    return errorResponse('Organization not found or not archived', 404);
+  }
+
+  return jsonResponse({ restored: true });
 }
 
 /**
@@ -263,6 +291,11 @@ export async function handleOrganizationRoutes(
 
     // Routes with organizationId (single organization operations)
     if (context.organizationId !== undefined) {
+      // POST /api/organizations/:orgId/restore
+      if (method === 'POST' && context.action === 'restore') {
+        return await handleRestoreOrganization(context);
+      }
+
       switch (method) {
         case 'GET':
           return await handleGetOrganization(context);
@@ -291,6 +324,9 @@ export async function handleOrganizationRoutes(
     }
     if (error instanceof OrganizationHasSitesError) {
       return errorResponse('Cannot delete organization with linked sites', 409);
+    }
+    if (error instanceof OrganizationHasActiveSitesError) {
+      return errorResponse('Cannot archive organization with active sites', 409);
     }
 
     // Log and return generic error for unknown errors

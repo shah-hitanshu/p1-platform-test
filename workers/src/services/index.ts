@@ -11,6 +11,8 @@ export {
   getSiteByPantheonId,
   updateSite,
   deleteSite,
+  archiveSite,
+  restoreSite,
   listSites,
   DuplicatePantheonSiteIdError,
   InvalidSiteParamsError,
@@ -81,6 +83,8 @@ export {
   updateBranch,
   updateBranchStatus,
   deleteBranch,
+  archiveBranch,
+  restoreBranch,
   isValidStatusTransition,
   // Note: SiteNotFoundError is already exported from document-service
   // Import directly from branch-service if you need the branch-specific error class
@@ -392,6 +396,8 @@ export {
   getOrganizationById,
   updateOrganization,
   deleteOrganization,
+  archiveOrganization,
+  restoreOrganization,
   listOrganizations,
   linkSiteToOrganization,
   unlinkSiteFromOrganization,
@@ -399,6 +405,7 @@ export {
   getOrganizationForSite,
   InvalidOrganizationParamsError,
   OrganizationHasSitesError,
+  OrganizationHasActiveSitesError,
   OrganizationNotFoundError,
 } from './organization-service';
 

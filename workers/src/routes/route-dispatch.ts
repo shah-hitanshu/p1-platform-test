@@ -72,6 +72,7 @@ export async function dispatchRoute(
     case 'sites':
       return await handleSiteRoutes(request, {
         siteId: route.params.siteId,
+        action: route.params.action,
         principal,
       }, env);
 
@@ -85,6 +86,7 @@ export async function dispatchRoute(
       return await handleBranchRoutes(request, {
         siteId: route.params.siteId ?? '',
         branchId: route.params.branchId,
+        action: route.params.action,
         principal,
       });
 

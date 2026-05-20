@@ -14,6 +14,8 @@ vi.mock('../../src/services', () => ({
   getSite: vi.fn(),
   updateSite: vi.fn(),
   deleteSite: vi.fn(),
+  archiveSite: vi.fn(),
+  restoreSite: vi.fn(),
   listSites: vi.fn(),
   listBranches: vi.fn(),
   getMainBranch: vi.fn(),
@@ -860,7 +862,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
 
       // No non-archived branches
       vi.mocked(services.listBranches).mockResolvedValueOnce([]);
-      vi.mocked(services.deleteSite).mockResolvedValueOnce(true);
+      vi.mocked(services.archiveSite).mockResolvedValueOnce(true);
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1',
@@ -1074,7 +1076,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       });
 
       vi.mocked(services.listBranches).mockResolvedValueOnce([]);
-      vi.mocked(services.deleteSite).mockResolvedValueOnce(true);
+      vi.mocked(services.archiveSite).mockResolvedValueOnce(true);
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1',
@@ -1513,6 +1515,202 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       });
 
       expect(response.status).toBe(400);
+    });
+  });
+
+  // ===========================================================================
+  // PCC-3211: Soft delete — DELETE → archive, POST restore, GET ?archived
+  // ===========================================================================
+
+  describe('DELETE /api/sites/{siteId} — soft delete (PCC-3211)', () => {
+    it('should archive the site (call archiveSite) and return 204', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+      vi.mocked(services.listBranches).mockResolvedValueOnce([]);
+      vi.mocked(services.archiveSite).mockResolvedValueOnce(true);
+
+      const response = await handleSiteRoutes(
+        new Request('https://api.example.com/api/sites/site-1', { method: 'DELETE' }),
+        { siteId: 'site-1', principal: { id: 'user-1', type: 'user' } },
+      );
+
+      expect(response.status).toBe(204);
+      expect(services.archiveSite).toHaveBeenCalledWith('site-1');
+    });
+
+    it('should return 404 when site not found (getMainBranch returns null)', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(null);
+
+      const response = await handleSiteRoutes(
+        new Request('https://api.example.com/api/sites/nonexistent', { method: 'DELETE' }),
+        { siteId: 'nonexistent', principal: { id: 'user-1', type: 'user' } },
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should return 409 when site is already archived (archiveSite returns already_archived)', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+      vi.mocked(services.listBranches).mockResolvedValueOnce([]);
+      vi.mocked(services.archiveSite).mockResolvedValueOnce('already_archived');
+
+      const response = await handleSiteRoutes(
+        new Request('https://api.example.com/api/sites/site-1', { method: 'DELETE' }),
+        { siteId: 'site-1', principal: { id: 'user-1', type: 'user' } },
+      );
+
+      expect(response.status).toBe(409);
+    });
+  });
+
+  describe('POST /api/sites/{siteId}/restore (PCC-3211)', () => {
+    const mockMainBranch = {
+      id: 'main-branch-id',
+      siteId: 'site-1',
+      name: 'main',
+      isMain: true,
+      status: 'active' as const,
+      createdAt: '2026-01-24T10:00:00.000Z',
+      createdById: 'user-1',
+      createdByType: 'user' as const,
+    };
+
+    it('should restore an archived site and return 200 with site JSON', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      const restoredSite = {
+        id: 'site-1',
+        pantheonSiteId: 'psite-1',
+        name: 'Restored Site',
+        workflowSettings: {
+          mergeApprovalMode: 'optional',
+          minApprovers: 1,
+          allowSelfApproval: true,
+          approverMode: 'both',
+          approverMinRole: 'EDITOR',
+        },
+        allowedOrigins: [],
+        createdAt: '2026-01-24T10:00:00.000Z',
+        updatedAt: '2026-05-17T10:00:00.000Z',
+        archivedAt: null,
+      };
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(mockMainBranch);
+      vi.mocked(services.restoreSite).mockResolvedValueOnce(restoredSite);
+
+      const response = await handleSiteRoutes(
+        new Request('https://api.example.com/api/sites/site-1/restore', { method: 'POST' }),
+        { siteId: 'site-1', action: 'restore', principal: { id: 'user-1', type: 'user' } },
+      );
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.id).toBe('site-1');
+    });
+
+    it('should return 404 when site not found (getMainBranch returns null)', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(null);
+
+      const response = await handleSiteRoutes(
+        new Request('https://api.example.com/api/sites/nonexistent/restore', { method: 'POST' }),
+        { siteId: 'nonexistent', action: 'restore', principal: { id: 'user-1', type: 'user' } },
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should return 404 when restoreSite returns null (not found or not archived)', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({ ...mockMainBranch, siteId: 'active-site' });
+      vi.mocked(services.restoreSite).mockResolvedValueOnce(null);
+
+      const response = await handleSiteRoutes(
+        new Request('https://api.example.com/api/sites/active-site/restore', { method: 'POST' }),
+        { siteId: 'active-site', action: 'restore', principal: { id: 'user-1', type: 'user' } },
+      );
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('GET /api/sites?archived=true (PCC-3211)', () => {
+    it('should pass archived=true to listSites', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.listSites).mockResolvedValueOnce([]);
+
+      await handleSiteRoutes(
+        new Request('https://api.example.com/api/sites?archived=true'),
+        { principal: { id: 'user-1', type: 'user' } },
+      );
+
+      expect(services.listSites).toHaveBeenCalledWith(
+        expect.objectContaining({ archived: true }),
+      );
+    });
+
+    it('should pass archived=false when ?archived=false', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.listSites).mockResolvedValueOnce([]);
+
+      await handleSiteRoutes(
+        new Request('https://api.example.com/api/sites?archived=false'),
+        { principal: { id: 'user-1', type: 'user' } },
+      );
+
+      expect(services.listSites).toHaveBeenCalledWith(
+        expect.objectContaining({ archived: false }),
+      );
+    });
+
+    it('should not pass archived param when query param is absent (default excludes archived)', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.listSites).mockResolvedValueOnce([]);
+
+      await handleSiteRoutes(
+        new Request('https://api.example.com/api/sites'),
+        { principal: { id: 'user-1', type: 'user' } },
+      );
+
+      expect(services.listSites).toHaveBeenCalledWith(
+        expect.not.objectContaining({ archived: true }),
+      );
     });
   });
 });

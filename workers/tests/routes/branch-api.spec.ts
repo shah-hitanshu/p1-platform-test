@@ -15,8 +15,16 @@ vi.mock('../../src/services', () => ({
   updateBranch: vi.fn(),
   updateBranchStatus: vi.fn(),
   deleteBranch: vi.fn(),
+  archiveBranch: vi.fn(),
+  restoreBranch: vi.fn(),
   getLatestCheckpoint: vi.fn(),
   createCheckpoint: vi.fn(),
+  MainBranchProtectionError: class MainBranchProtectionError extends Error {
+    name = 'MainBranchProtectionError';
+    constructor(public operation: string) {
+      super(`Cannot ${operation} the main branch`);
+    }
+  },
   BranchNotFoundError: class BranchNotFoundError extends Error {
     name = 'BranchNotFoundError';
     constructor(public branchId: string) {
@@ -635,13 +643,13 @@ describe('Phase 7.1a: Branch API Routes', () => {
   // ===========================================================================
 
   describe('DELETE /api/sites/{siteId}/branches/{branchId}', () => {
-    it('should delete a branch', async () => {
+    it('should archive a branch (soft delete)', async () => {
       const { handleBranchRoutes } = await import(
         '../../src/routes/branch-api'
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.deleteBranch).mockResolvedValueOnce(undefined);
+      vi.mocked(services.archiveBranch).mockResolvedValueOnce(true);
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-1',
@@ -663,9 +671,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.deleteBranch).mockRejectedValueOnce(
-        new services.BranchNotFoundError('nonexistent'),
-      );
+      vi.mocked(services.archiveBranch).mockResolvedValueOnce(false);
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/nonexistent',
@@ -894,6 +900,119 @@ describe('Phase 7.1a: Branch API Routes', () => {
       });
 
       expect(response.status).toBe(403);
+    });
+  });
+
+  // ===========================================================================
+  // PCC-3211: Soft delete — DELETE → archive, POST restore, GET ?archived
+  // ===========================================================================
+
+  describe('DELETE /api/sites/{siteId}/branches/{branchId} — soft delete (PCC-3211)', () => {
+    it('should archive the branch and return 204', async () => {
+      const { handleBranchRoutes } = await import('../../src/routes/branch-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.archiveBranch).mockResolvedValueOnce(true);
+
+      const response = await handleBranchRoutes(
+        new Request('https://api.example.com/api/sites/site-1/branches/branch-1', { method: 'DELETE' }),
+        { siteId: 'site-1', branchId: 'branch-1', principal: { id: 'user-1', type: 'user' } },
+      );
+
+      expect(response.status).toBe(204);
+      expect(services.archiveBranch).toHaveBeenCalledWith('branch-1');
+    });
+
+    it('should return 400 when archiving the main branch', async () => {
+      const { handleBranchRoutes } = await import('../../src/routes/branch-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.archiveBranch).mockRejectedValueOnce(
+        new services.MainBranchProtectionError('archive'),
+      );
+
+      const response = await handleBranchRoutes(
+        new Request('https://api.example.com/api/sites/site-1/branches/main-id', { method: 'DELETE' }),
+        { siteId: 'site-1', branchId: 'main-id', principal: { id: 'user-1', type: 'user' } },
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should return 409 when branch is already archived', async () => {
+      const { handleBranchRoutes } = await import('../../src/routes/branch-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.archiveBranch).mockResolvedValueOnce('already_archived');
+
+      const response = await handleBranchRoutes(
+        new Request('https://api.example.com/api/sites/site-1/branches/branch-1', { method: 'DELETE' }),
+        { siteId: 'site-1', branchId: 'branch-1', principal: { id: 'user-1', type: 'user' } },
+      );
+
+      expect(response.status).toBe(409);
+    });
+  });
+
+  describe('POST /api/sites/{siteId}/branches/{branchId}/restore (PCC-3211)', () => {
+    it('should restore an archived branch and return 200 with branch JSON', async () => {
+      const { handleBranchRoutes } = await import('../../src/routes/branch-api');
+      const services = await import('../../src/services');
+
+      const restoredBranch = {
+        id: 'branch-1',
+        siteId: 'site-1',
+        name: 'feature',
+        isMain: false,
+        status: 'active' as const,
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user' as const,
+        archivedAt: null,
+      };
+      vi.mocked(services.restoreBranch).mockResolvedValueOnce(restoredBranch);
+
+      const response = await handleBranchRoutes(
+        new Request('https://api.example.com/api/sites/site-1/branches/branch-1/restore', { method: 'POST' }),
+        { siteId: 'site-1', branchId: 'branch-1', action: 'restore', principal: { id: 'user-1', type: 'user' } },
+      );
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.id).toBe('branch-1');
+    });
+
+    it('should return 404 when restoreBranch returns null', async () => {
+      const { handleBranchRoutes } = await import('../../src/routes/branch-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.restoreBranch).mockResolvedValueOnce(null);
+
+      const response = await handleBranchRoutes(
+        new Request('https://api.example.com/api/sites/site-1/branches/nonexistent/restore', { method: 'POST' }),
+        { siteId: 'site-1', branchId: 'nonexistent', action: 'restore', principal: { id: 'user-1', type: 'user' } },
+      );
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('GET /api/sites/{siteId}/branches?archived=true (PCC-3211)', () => {
+    it('should pass archived=true to listBranches', async () => {
+      const { handleBranchRoutes } = await import('../../src/routes/branch-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.listBranches).mockResolvedValueOnce([]);
+
+      await handleBranchRoutes(
+        new Request('https://api.example.com/api/sites/site-1/branches?archived=true'),
+        { siteId: 'site-1', principal: { id: 'user-1', type: 'user' } },
+      );
+
+      expect(services.listBranches).toHaveBeenCalledWith(
+        'site-1',
+        expect.objectContaining({ archived: true }),
+      );
     });
   });
 });

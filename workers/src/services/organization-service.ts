@@ -36,6 +36,8 @@ export interface UpdateOrganizationParams {
 export interface ListOrganizationsOptions {
   limit?: number;
   offset?: number;
+  /** Filter by archived state. true = archived only, false/undefined = active only. */
+  archived?: boolean;
 }
 
 /**
@@ -47,6 +49,7 @@ interface OrganizationRow {
   settings: OrganizationSettings | string;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
 }
 
 /**
@@ -87,6 +90,18 @@ export class OrganizationHasSitesError extends Error {
   constructor(public readonly organizationId: string) {
     super(`Cannot delete organization "${organizationId}" because it has linked sites.`);
     Object.setPrototypeOf(this, OrganizationHasSitesError.prototype);
+  }
+}
+
+/**
+ * Error thrown when attempting to archive an organization that has active (non-archived) sites.
+ */
+export class OrganizationHasActiveSitesError extends Error {
+  public readonly name = 'OrganizationHasActiveSitesError';
+
+  constructor(public readonly organizationId: string) {
+    super(`Cannot archive organization "${organizationId}" because it has active sites.`);
+    Object.setPrototypeOf(this, OrganizationHasActiveSitesError.prototype);
   }
 }
 
@@ -148,6 +163,7 @@ function mapRowToOrganization(row: OrganizationRow): Organization {
     settings: parseSettings(row.settings),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    archivedAt: row.archived_at ?? null,
   };
 }
 
@@ -208,7 +224,7 @@ export async function createOrganization(params: CreateOrganizationParams): Prom
   const result = await query<OrganizationRow>(`
     INSERT INTO app.organizations (name, settings)
     VALUES ($1, $2)
-    RETURNING id, name, settings, created_at, updated_at
+    RETURNING id, name, settings, created_at, updated_at, archived_at
   `, [params.name, JSON.stringify(settings)]);
 
   return mapRowToOrganization(result.rows[0]);
@@ -222,7 +238,7 @@ export async function createOrganization(params: CreateOrganizationParams): Prom
  */
 export async function getOrganizationById(id: string): Promise<Organization | null> {
   const result = await query<OrganizationRow>(`
-    SELECT id, name, settings, created_at, updated_at
+    SELECT id, name, settings, created_at, updated_at, archived_at
     FROM app.organizations
     WHERE id = $1
   `, [id]);
@@ -277,7 +293,7 @@ export async function updateOrganization(
     UPDATE app.organizations
     SET ${updates.join(', ')}
     WHERE id = $${String(paramIndex)}
-    RETURNING id, name, settings, created_at, updated_at
+    RETURNING id, name, settings, created_at, updated_at, archived_at
   `, values);
 
   if (result.rows.length === 0) {
@@ -312,19 +328,98 @@ export async function deleteOrganization(id: string): Promise<boolean> {
 }
 
 /**
+ * Soft-deletes an organization by setting archived_at.
+ * Blocked if the org has active (non-archived) sites.
+ * Returns true on success, false if not found, 'already_archived' if already soft-deleted.
+ */
+export async function archiveOrganization(id: string): Promise<boolean | 'already_archived'> {
+  // Pre-check active sites outside the transaction to surface a clean error early.
+  // The UPDATE itself also guards via a NOT EXISTS subquery to prevent TOCTOU.
+  const siteCheck = await query<{ count: string }>(
+    `SELECT COUNT(*) AS count FROM app.sites WHERE organization_id = $1 AND archived_at IS NULL`,
+    [id],
+  );
+  if (parseInt(siteCheck.rows[0]?.count ?? '0', 10) > 0) {
+    throw new OrganizationHasActiveSitesError(id);
+  }
+
+  await query('BEGIN');
+  let rowCount: number;
+  try {
+    const result = await query<{ id: string }>(
+      `UPDATE app.organizations SET archived_at = NOW()
+       WHERE id = $1 AND archived_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM app.sites WHERE organization_id = $1 AND archived_at IS NULL
+         )
+       RETURNING id`,
+      [id],
+    );
+    rowCount = result.rowCount ?? 0;
+    await query('COMMIT');
+  } catch (error) {
+    await query('ROLLBACK');
+    throw error;
+  }
+
+  // Post-commit: UPDATE matched — done.
+  if (rowCount > 0) {
+    return true;
+  }
+
+  // UPDATE matched 0 rows. Re-check outside the transaction to avoid ROLLBACK
+  // on an already-committed transaction (PostgreSQL emits a WARNING for that).
+  const recheck = await query<{ count: string }>(
+    `SELECT COUNT(*) AS count FROM app.sites WHERE organization_id = $1 AND archived_at IS NULL`,
+    [id],
+  );
+  if (parseInt(recheck.rows[0]?.count ?? '0', 10) > 0) {
+    throw new OrganizationHasActiveSitesError(id);
+  }
+  const exists = await query<{ id: string }>(
+    'SELECT id FROM app.organizations WHERE id = $1',
+    [id],
+  );
+  return exists.rows.length > 0 ? 'already_archived' : false;
+}
+
+/**
+ * Restores a soft-deleted organization.
+ * Returns true on success, false if not found or not archived.
+ */
+export async function restoreOrganization(id: string): Promise<boolean> {
+  await query('BEGIN');
+  try {
+    const result = await query<{ id: string }>(
+      `UPDATE app.organizations SET archived_at = NULL
+       WHERE id = $1 AND archived_at IS NOT NULL
+       RETURNING id`,
+      [id],
+    );
+    await query('COMMIT');
+    return (result.rowCount ?? 0) > 0;
+  } catch (error) {
+    await query('ROLLBACK');
+    throw error;
+  }
+}
+
+/**
  * Lists all organizations with optional pagination.
  *
- * @param options - Pagination options
+ * @param options - Pagination and filter options
  * @returns Array of organizations
  */
 export async function listOrganizations(
   options: ListOrganizationsOptions = {},
 ): Promise<Organization[]> {
-  const { limit = 100, offset = 0 } = options;
+  const { limit = 100, offset = 0, archived } = options;
+  const archivedFilter = archived === true ? 'AND archived_at IS NOT NULL' : 'AND archived_at IS NULL';
 
   const result = await query<OrganizationRow>(`
-    SELECT id, name, settings, created_at, updated_at
+    SELECT id, name, settings, created_at, updated_at, archived_at
     FROM app.organizations
+    WHERE TRUE ${archivedFilter}
     ORDER BY created_at DESC
     LIMIT $1 OFFSET $2
   `, [limit, offset]);
@@ -403,7 +498,7 @@ export async function getSitesByOrganization(organizationId: string): Promise<Si
  */
 export async function getOrganizationForSite(siteId: string): Promise<Organization | null> {
   const result = await query<OrganizationRow>(`
-    SELECT o.id, o.name, o.settings, o.created_at, o.updated_at
+    SELECT o.id, o.name, o.settings, o.created_at, o.updated_at, o.archived_at
     FROM app.organizations o
     INNER JOIN app.sites s ON s.organization_id = o.id
     WHERE s.id = $1

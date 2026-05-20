@@ -51,6 +51,8 @@ export interface ListBranchesOptions {
   status?: BranchStatus;
   limit?: number;
   offset?: number;
+  /** Filter by soft-delete state. true = archived only, false/undefined = active only. */
+  archived?: boolean;
 }
 
 /**
@@ -69,6 +71,7 @@ interface BranchRow {
   created_by_type: 'user' | 'agent';
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
 }
 
 // =============================================================================
@@ -233,6 +236,7 @@ function mapRowToBranch(row: BranchRow): Branch {
     createdByType: row.created_by_type,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    archivedAt: row.archived_at ?? null,
   };
 }
 
@@ -494,6 +498,73 @@ export async function getMainBranch(siteId: string): Promise<Branch | null> {
 }
 
 /**
+ * Soft-deletes a branch by setting archived_at.
+ * Returns false if not found, 'already_archived' if already soft-deleted,
+ * and throws MainBranchProtectionError for the main branch.
+ */
+export async function archiveBranch(branchId: string): Promise<boolean | 'already_archived'> {
+  const branch = await getBranch(branchId);
+  if (branch === null) {
+    return false;
+  }
+  if (branch.isMain) {
+    throw new MainBranchProtectionError('archive');
+  }
+  await query('BEGIN');
+  try {
+    const result = await query<{ id: string }>(
+      `UPDATE app.branches SET archived_at = NOW()
+       WHERE id = $1 AND archived_at IS NULL
+       RETURNING id`,
+      [branchId],
+    );
+    await query('COMMIT');
+    return (result.rowCount ?? 0) > 0 ? true : 'already_archived';
+  } catch (error) {
+    await query('ROLLBACK');
+    throw error;
+  }
+}
+
+/**
+ * Restores a soft-deleted branch. Returns null if not found, not archived,
+ * or if the parent site is archived.
+ */
+export async function restoreBranch(branchId: string): Promise<Branch | null> {
+  const selectResult = await query<BranchRow>(
+    'SELECT * FROM app.branches WHERE id = $1',
+    [branchId],
+  );
+  const row = selectResult.rows[0];
+  if (row?.archived_at == null) {
+    return null;
+  }
+  // Refuse to restore a branch whose site is archived
+  const siteResult = await query<{ archived_at: string | null }>(
+    'SELECT archived_at FROM app.sites WHERE id = $1',
+    [row.site_id],
+  );
+  if (siteResult.rows[0]?.archived_at != null) {
+    return null;
+  }
+  await query('BEGIN');
+  try {
+    const updateResult = await query<BranchRow>(
+      'UPDATE app.branches SET archived_at = NULL WHERE id = $1 RETURNING *',
+      [branchId],
+    );
+    await query('COMMIT');
+    if (updateResult.rows.length === 0) {
+      return null;
+    }
+    return mapRowToBranch(updateResult.rows[0]);
+  } catch (error) {
+    await query('ROLLBACK');
+    throw error;
+  }
+}
+
+/**
  * Lists branches for a site with optional filtering.
  *
  * @param siteId - The site ID
@@ -504,19 +575,20 @@ export async function listBranches(
   siteId: string,
   options: ListBranchesOptions = {},
 ): Promise<Branch[]> {
-  const { status, limit, offset } = options;
+  const { status, limit, offset, archived } = options;
 
-  let sql = 'SELECT * FROM app.branches WHERE site_id = $1';
+  const archivedFilter = archived === true ? ' AND b.archived_at IS NOT NULL' : ' AND b.archived_at IS NULL';
+  let sql = `SELECT b.* FROM app.branches b WHERE b.site_id = $1${archivedFilter}`;
   const params: unknown[] = [siteId];
   let paramIndex = 2;
 
   if (status !== undefined) {
-    sql += ` AND status = $${String(paramIndex)}`;
+    sql += ` AND b.status = $${String(paramIndex)}`;
     params.push(status);
     paramIndex++;
   }
 
-  sql += ' ORDER BY created_at DESC';
+  sql += ' ORDER BY b.created_at DESC';
 
   if (limit !== undefined) {
     sql += ` LIMIT $${String(paramIndex)}`;

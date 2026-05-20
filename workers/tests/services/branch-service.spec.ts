@@ -34,6 +34,7 @@ describe('Phase 3.2: Branch Service', () => {
     created_by_type: 'user' | 'agent';
     created_at: string;
     updated_at: string;
+    archived_at: string | null;
   }
 
   // Helper to create a mock branch row (database format)
@@ -51,6 +52,7 @@ describe('Phase 3.2: Branch Service', () => {
       created_by_type: 'user',
       created_at: '2026-01-23T10:00:00.000Z',
       updated_at: '2026-01-23T10:00:00.000Z',
+      archived_at: null,
       ...overrides,
     };
   }
@@ -883,6 +885,155 @@ describe('Phase 3.2: Branch Service', () => {
       );
       expect(deleteCall).toBeDefined();
       expect(deleteCall?.[1]).toContain('branch-to-delete');
+    });
+  });
+
+  // ===========================================================================
+  // PCC-3211: Soft delete — archiveBranch / restoreBranch / listBranches(archived)
+  // ===========================================================================
+
+  describe('archiveBranch', () => {
+    const txOk = { rows: [], rowCount: 0 };
+
+    it('should set archived_at on a non-main branch', async () => {
+      const { archiveBranch } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      const branchRow = { ...createMockBranchRow({ id: 'branch-123', is_main: false }), archived_at: null };
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [branchRow] }) // getBranch check
+        .mockResolvedValueOnce(txOk) // BEGIN
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE branches SET archived_at
+        .mockResolvedValueOnce(txOk); // COMMIT
+
+      const result = await archiveBranch('branch-123');
+
+      expect(result).toBe(true);
+    });
+
+    it('should return false when branch not found', async () => {
+      const { archiveBranch } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] }); // getBranch → not found
+
+      const result = await archiveBranch('non-existent');
+
+      expect(result).toBe(false);
+    });
+
+    it('should throw MainBranchProtectionError for main branch', async () => {
+      const { archiveBranch, MainBranchProtectionError } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      const mainRow = createMainBranchRow('site-uuid-456');
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mainRow] }); // getBranch → main
+
+      await expect(archiveBranch('main-branch-uuid')).rejects.toThrow(MainBranchProtectionError);
+    });
+
+    it('should return already_archived when branch exists but is already archived', async () => {
+      const { archiveBranch } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      const branchRow = { ...createMockBranchRow({ id: 'branch-123', is_main: false }), archived_at: '2026-05-01T00:00:00.000Z' };
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [branchRow] }) // getBranch
+        .mockResolvedValueOnce(txOk) // BEGIN
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE → no match (already archived)
+        .mockResolvedValueOnce(txOk); // COMMIT
+
+      const result = await archiveBranch('branch-123');
+
+      expect(result).toBe('already_archived');
+    });
+  });
+
+  describe('restoreBranch', () => {
+    const txOk = { rows: [], rowCount: 0 };
+
+    it('should clear archived_at and return the restored branch', async () => {
+      const { restoreBranch } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      const archiveTs = '2026-05-17T10:00:00.000Z';
+      const archivedRow = { ...createMockBranchRow({ id: 'branch-123', is_main: false }), archived_at: archiveTs };
+      const activeRow = { ...archivedRow, archived_at: null };
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [archivedRow] }) // SELECT branch
+        .mockResolvedValueOnce({ rows: [{ archived_at: null }] }) // SELECT site (not archived)
+        .mockResolvedValueOnce(txOk) // BEGIN
+        .mockResolvedValueOnce({ rows: [activeRow], rowCount: 1 }) // UPDATE SET archived_at = NULL
+        .mockResolvedValueOnce(txOk); // COMMIT
+
+      const result = await restoreBranch('branch-123');
+
+      expect(result).not.toBeNull();
+      expect(result?.id).toBe('branch-123');
+    });
+
+    it('should return null when branch not found', async () => {
+      const { restoreBranch } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] }); // SELECT → not found
+
+      const result = await restoreBranch('non-existent');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when branch is not archived', async () => {
+      const { restoreBranch } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      const activeRow = createMockBranchRow({ id: 'branch-123', is_main: false });
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [activeRow] }); // SELECT → active
+
+      const result = await restoreBranch('branch-123');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when parent site is archived', async () => {
+      const { restoreBranch } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      const archiveTs = '2026-05-17T10:00:00.000Z';
+      const archivedRow = { ...createMockBranchRow({ id: 'branch-123', is_main: false }), archived_at: archiveTs };
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [archivedRow] }) // SELECT branch
+        .mockResolvedValueOnce({ rows: [{ archived_at: archiveTs }] }); // SELECT site → also archived
+
+      const result = await restoreBranch('branch-123');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('listBranches — archived filter (PCC-3211)', () => {
+    it('should exclude archived branches by default', async () => {
+      const { listBranches } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      await listBranches('site-123');
+
+      const sql = vi.mocked(db.query).mock.calls[0][0];
+      expect(sql).toContain('archived_at IS NULL');
+    });
+
+    it('should return only archived branches when archived=true', async () => {
+      const { listBranches } = await import('../../src/services/branch-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      await listBranches('site-123', { archived: true });
+
+      const sql = vi.mocked(db.query).mock.calls[0][0];
+      expect(sql).toContain('archived_at IS NOT NULL');
     });
   });
 

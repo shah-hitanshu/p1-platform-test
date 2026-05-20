@@ -13,10 +13,13 @@ import {
   updateBranch,
   updateBranchStatus,
   deleteBranch,
+  archiveBranch,
+  restoreBranch,
   createCheckpoint,
   BranchNotFoundError,
   SiteNotFoundError,
   DuplicateBranchNameError,
+  MainBranchProtectionError,
 } from '../services';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
 
@@ -26,6 +29,7 @@ import { assertPermission, AuthorizationError } from '../auth/authorization';
 export interface BranchRouteContext {
   siteId: string;
   branchId?: string;
+  action?: string;
   principal: AuthenticatedPrincipal;
 }
 
@@ -162,11 +166,13 @@ async function handleListBranches(
   const url = new URL(request.url);
   const statusParam = url.searchParams.get('status');
   const status = statusParam as BranchStatus | null;
+  const archivedParam = url.searchParams.get('archived');
+  const archived = archivedParam === 'true' ? true : archivedParam === 'false' ? false : undefined;
 
-  const branches = await listBranches(
-    context.siteId,
-    status !== null ? { status } : {},
-  );
+  const branches = await listBranches(context.siteId, {
+    ...(status !== null ? { status } : {}),
+    archived,
+  });
 
   return jsonResponse({ branches });
 }
@@ -226,9 +232,33 @@ async function handleDeleteBranch(
     return errorResponse('Branch ID is required', 400);
   }
 
-  await deleteBranch(context.branchId);
+  const result = await archiveBranch(context.branchId);
+
+  if (result === false) {
+    return errorResponse('Branch not found', 404);
+  }
+  if (result === 'already_archived') {
+    return errorResponse('Branch is already archived', 409);
+  }
 
   return new Response(null, { status: 204 });
+}
+
+async function handleRestoreBranch(context: BranchRouteContext): Promise<Response> {
+  if (context.branchId === undefined) {
+    return errorResponse('Branch ID is required', 400);
+  }
+
+  const branch = await restoreBranch(context.branchId);
+
+  if (branch === null) {
+    return errorResponse('Branch not found or not archived', 404);
+  }
+
+  return new Response(JSON.stringify(branch), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
 
 /**
@@ -243,6 +273,12 @@ export async function handleBranchRoutes(
   try {
     // Routes with branchId (single branch operations)
     if (context.branchId !== undefined) {
+      // POST /branches/:branchId/restore
+      if (method === 'POST' && context.action === 'restore') {
+        await assertPermission(context.principal, context.siteId, context.branchId, 'canManageGrants');
+        return await handleRestoreBranch(context);
+      }
+
       switch (method) {
         case 'GET':
           await assertPermission(context.principal, context.siteId, context.branchId, 'canView');
@@ -280,6 +316,9 @@ export async function handleBranchRoutes(
     }
     if (error instanceof DuplicateBranchNameError) {
       return errorResponse('Branch with this name already exists', 409);
+    }
+    if (error instanceof MainBranchProtectionError) {
+      return errorResponse('Cannot archive the main branch', 400);
     }
 
     // Re-throw unknown errors
