@@ -12,6 +12,7 @@ import { SiteDetailPage } from '../../pages/SiteDetailPage';
 // Mock react-router-dom
 vi.mock('react-router-dom', () => ({
   useParams: () => ({ siteId: 'site-123' }),
+  useNavigate: () => vi.fn(),
   Link: ({ children, ...props }: { children: React.ReactNode; [key: string]: unknown }) => (
     <div {...props}>{children}</div>
   ),
@@ -106,6 +107,7 @@ vi.mock('../../api/sites', () => ({
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }),
+  deleteSite: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../api/branches', () => ({

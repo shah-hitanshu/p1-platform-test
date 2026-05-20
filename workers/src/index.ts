@@ -38,7 +38,9 @@ import { handleBrokerRoutes } from './routes/broker-routes';
 
 // Queue consumer (Phase 5.1)
 import { handleSyncQueue } from './queues/sync-consumer';
-import type { SyncQueueMessage } from './types/queue-messages';
+import { handleScreenshotQueue } from './queues/screenshot-consumer';
+import { runWeeklyScreenshotRefresh } from './scheduled/screenshot-refresh';
+import type { SyncQueueMessage, ScreenshotQueueMessage } from './types/queue-messages';
 
 // Metrics
 import {
@@ -113,6 +115,16 @@ export interface Env {
 
   // Queue binding (Phase 5.1: Queue-Based Sync Decoupling)
   SYNC_QUEUE?: Queue;
+
+  // Site screenshot pipeline
+  SCREENSHOT_QUEUE?: Queue<ScreenshotQueueMessage>;
+  R2_SCREENSHOTS?: R2Bucket;
+  R2_SCREENSHOTS_BUCKET?: string;
+  CF_ACCOUNT_ID?: string;
+  CF_BROWSER_API_TOKEN?: string;
+  R2_ACCOUNT_ID?: string;
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
 
   // Durable Object bindings
   DOCUMENT_STATE: DurableObjectNamespace;
@@ -219,11 +231,21 @@ export default {
   },
 
   /**
-   * Phase 5.1: Queue handler for DO-to-PostgreSQL sync.
-   * Processes batches of sync messages from Cloudflare Queues.
+   * Queue dispatcher. Routes a batch to its handler based on the queue name.
    */
   async queue(batch: MessageBatch, env: Env): Promise<void> {
+    if (batch.queue.startsWith('css-screenshot-queue')) {
+      await handleScreenshotQueue(batch as MessageBatch<ScreenshotQueueMessage>, env);
+      return;
+    }
     await handleSyncQueue(batch as MessageBatch<SyncQueueMessage>, env);
+  },
+
+  /**
+   * Cron handler. Currently runs the weekly screenshot refresh.
+   */
+  scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): void {
+    ctx.waitUntil(runWeeklyScreenshotRefresh(env));
   },
 };
 

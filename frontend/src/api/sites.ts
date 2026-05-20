@@ -12,10 +12,13 @@ interface SitesResponse {
 export interface CreateSiteParams {
   name: string;
   pantheonSiteId?: string;
+  url?: string;
 }
 
-interface UpdateSiteParams {
+export interface UpdateSiteParams {
   name?: string;
+  /** `null` clears the column; omit to leave it unchanged. */
+  url?: string | null;
   allowedOrigins?: string[];
 }
 

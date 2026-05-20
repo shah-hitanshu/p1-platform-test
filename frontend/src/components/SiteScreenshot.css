@@ -1,0 +1,39 @@
+.site-screenshot {
+  position: relative;
+  width: 100%;
+  background-color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--dt-color-gray-6, #9a9a9a);
+}
+
+.site-screenshot--thumbnail {
+  aspect-ratio: 16 / 9;
+  border-radius: 6px 6px 0 0;
+}
+
+.site-screenshot--hero {
+  aspect-ratio: 16 / 9;
+  max-width: 600px;
+  border-radius: 8px;
+  border: 1px solid var(--dt-color-gray-3, #e6e6e6);
+}
+
+.site-screenshot__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.site-screenshot--placeholder {
+  background-color: var(--dt-color-gray-2, #f3f3f3);
+}
+
+.site-screenshot__icon {
+  width: 32px;
+  height: 32px;
+  opacity: 0.8;
+}

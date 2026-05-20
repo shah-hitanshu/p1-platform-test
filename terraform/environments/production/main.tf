@@ -176,6 +176,21 @@ output "queue_id" {
   value       = module.cloudflare.queue_id
 }
 
+output "screenshot_queue_id" {
+  description = "Screenshot queue ID"
+  value       = module.cloudflare.screenshot_queue_id
+}
+
+output "screenshot_queue_name" {
+  description = "Screenshot queue name"
+  value       = module.cloudflare.screenshot_queue_name
+}
+
+output "screenshot_bucket_name" {
+  description = "R2 bucket name for site screenshots"
+  value       = module.cloudflare.screenshot_bucket_name
+}
+
 output "hyperdrive_id" {
   description = "Hyperdrive config ID for wrangler.jsonc"
   value       = module.cloudflare.hyperdrive_id

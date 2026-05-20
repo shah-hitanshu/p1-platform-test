@@ -80,6 +80,15 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     };
   }
 
+  // Site screenshot route (must come before generic site routes)
+  const siteScreenshotMatch = /^\/api\/sites\/([^/]+)\/screenshot$/.exec(normalizedPath);
+  if (siteScreenshotMatch) {
+    return {
+      handler: 'site-screenshot',
+      params: { siteId: siteScreenshotMatch[1] },
+    };
+  }
+
   // Site token routes (must come before generic site routes)
   const siteTokenMatch = /^\/api\/sites\/([^/]+)\/tokens(?:\/([^/]+))?$/.exec(normalizedPath);
   if (siteTokenMatch) {

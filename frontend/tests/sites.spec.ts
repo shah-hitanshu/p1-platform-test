@@ -30,7 +30,7 @@ test.describe('Sites Page', () => {
   test('should have create site button', async ({ page }) => {
     const createBtn = page.getByTestId('create-site-btn');
     await expect(createBtn).toBeVisible();
-    await expect(createBtn).toContainText('Create site');
+    await expect(createBtn).toContainText('Create new site');
   });
 
   test('should toggle create form on button click', async ({ page }) => {
@@ -70,7 +70,7 @@ test.describe('Sites Page', () => {
   });
 });
 
-test.describe('Sites Table', () => {
+test.describe('Sites grid', () => {
   test.beforeEach(async ({ page }) => {
     // Login before each test
     await page.goto('/login');
@@ -83,31 +83,25 @@ test.describe('Sites Table', () => {
     await expect(page).toHaveURL('/sites');
   });
 
-  test('should show table headers when sites exist', async ({ page }) => {
-    // Wait for sites to load
+  test('should render either the sites grid or the empty state', async ({ page }) => {
     await page.waitForTimeout(1000);
 
-    // Check if table or empty state is shown
-    const table = page.getByTestId('sites-table');
+    const grid = page.getByTestId('sites-grid');
     const emptyState = page.getByTestId('empty-state');
 
-    // One of these should be visible
-    const tableVisible = await table.isVisible();
+    const gridVisible = await grid.isVisible();
     const emptyVisible = await emptyState.isVisible();
 
-    expect(tableVisible || emptyVisible).toBe(true);
+    expect(gridVisible || emptyVisible).toBe(true);
 
-    // If table is visible, check headers
-    if (tableVisible) {
-      await expect(page.getByTestId('sites-table').locator('th').first()).toContainText('Name');
+    if (gridVisible) {
+      await expect(grid.locator('[data-testid^="site-row-"]').first()).toBeVisible();
     }
   });
 
   test('should show empty state when no sites', async ({ page }) => {
-    // Wait for loading
     await page.waitForTimeout(1000);
 
-    // If empty state is shown, verify message
     const emptyState = page.getByTestId('empty-state');
     if (await emptyState.isVisible()) {
       await expect(emptyState).toContainText('No sites found');

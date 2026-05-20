@@ -13,6 +13,7 @@ import { createMainBranch } from './branch-service';
 import { grantRole as grantAgentRole } from './agent-site-role-service';
 import { grantRole as grantUserRole } from './user-site-role-service';
 import { getFirstRow } from '../db/helpers';
+import { requestSiteScreenshot, type ScreenshotProducerEnv } from '../queues/screenshot-producer';
 
 // =============================================================================
 // Types
@@ -24,6 +25,7 @@ import { getFirstRow } from '../db/helpers';
 export interface CreateSiteParams {
   pantheonSiteId: string;
   name: string;
+  url?: string;
   workflowSettings?: Partial<WorkflowSettings>;
   allowedOrigins?: string[];
   /** When provided, the creator is granted the appropriate site role based on createdByType. */
@@ -34,9 +36,12 @@ export interface CreateSiteParams {
 
 /**
  * Parameters for updating a site.
+ *
+ * `url: null` clears the column. `url: undefined` (or omitted) leaves it untouched.
  */
 export interface UpdateSiteParams {
   name?: string;
+  url?: string | null;
   workflowSettings?: Partial<WorkflowSettings>;
   allowedOrigins?: string[];
 }
@@ -68,6 +73,7 @@ interface SiteRow {
   id: string;
   pantheon_site_id: string;
   name: string;
+  url: string | null;
   workflow_settings: WorkflowSettings | string;
   allowed_origins: string[] | null;
   created_at: string;
@@ -142,11 +148,29 @@ function mapRowToSite(row: SiteRow): Site {
     id: row.id,
     pantheonSiteId: row.pantheon_site_id,
     name: row.name,
+    url: row.url ?? undefined,
     workflowSettings: parseWorkflowSettings(row.workflow_settings),
     allowedOrigins: row.allowed_origins ?? [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+/**
+ * Validates a URL string. Only http(s) schemes are permitted.
+ */
+function assertValidUrl(value: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new InvalidSiteParamsError(`url is not a valid URL: ${value}`);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new InvalidSiteParamsError(
+      `url scheme not allowed: ${parsed.protocol} (must be http or https)`,
+    );
+  }
 }
 
 /**
@@ -172,13 +196,19 @@ function isUniqueConstraintViolation(error: unknown): boolean {
  * @throws DuplicatePantheonSiteIdError if pantheonSiteId already exists
  * @throws InvalidSiteParamsError if required fields are missing
  */
-export async function createSite(params: CreateSiteParams): Promise<Site> {
+export async function createSite(
+  params: CreateSiteParams,
+  env?: ScreenshotProducerEnv,
+): Promise<Site> {
   // Validate required fields
   if (!params.pantheonSiteId || params.pantheonSiteId.trim() === '') {
     throw new InvalidSiteParamsError('pantheonSiteId is required');
   }
   if (!params.name || params.name.trim() === '') {
     throw new InvalidSiteParamsError('name is required');
+  }
+  if (params.url !== undefined) {
+    assertValidUrl(params.url);
   }
 
   // Merge workflow settings with defaults
@@ -190,12 +220,13 @@ export async function createSite(params: CreateSiteParams): Promise<Site> {
   await query('BEGIN');
   try {
     const result = await query<SiteRow>(
-      `INSERT INTO app.sites (pantheon_site_id, name, workflow_settings, allowed_origins)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO app.sites (pantheon_site_id, name, url, workflow_settings, allowed_origins)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
       [
         params.pantheonSiteId,
         params.name,
+        params.url ?? null,
         JSON.stringify(workflowSettings),
         params.allowedOrigins ?? [],
       ],
@@ -229,6 +260,11 @@ export async function createSite(params: CreateSiteParams): Promise<Site> {
     });
 
     await query('COMMIT');
+
+    if (env !== undefined && site.url !== undefined && site.url !== '') {
+      await requestSiteScreenshot(env, site, 'url_changed');
+    }
+
     return site;
   } catch (error) {
     await query('ROLLBACK');
@@ -288,12 +324,25 @@ export async function getSiteByPantheonId(
 export async function updateSite(
   siteId: string,
   updates: UpdateSiteParams,
+  env?: ScreenshotProducerEnv,
 ): Promise<Site | null> {
-  // If updating workflow settings, we need to merge with existing
+  const urlProvided = 'url' in updates;
+  const urlValue: string | null = updates.url ?? null;
+  if (urlProvided && urlValue !== null) {
+    assertValidUrl(urlValue);
+  }
+
+  const wantUrlChangeDetection = env !== undefined && urlProvided;
+  let priorUrl: string | undefined;
+
   if (updates.workflowSettings) {
     const existing = await getSite(siteId);
     if (!existing) {
       return null;
+    }
+
+    if (wantUrlChangeDetection) {
+      priorUrl = existing.url;
     }
 
     const mergedSettings: WorkflowSettings = {
@@ -304,13 +353,16 @@ export async function updateSite(
     const result = await query<SiteRow>(
       `UPDATE app.sites
        SET name = COALESCE($1, name),
-           workflow_settings = $2,
-           allowed_origins = COALESCE($3::text[], allowed_origins),
+           url = CASE WHEN $2::boolean THEN $3 ELSE url END,
+           workflow_settings = $4,
+           allowed_origins = COALESCE($5::text[], allowed_origins),
            updated_at = NOW()
-       WHERE id = $4
+       WHERE id = $6
        RETURNING *`,
       [
         updates.name ?? null,
+        urlProvided,
+        urlValue,
         JSON.stringify(mergedSettings),
         updates.allowedOrigins ?? null,
         siteId,
@@ -321,25 +373,51 @@ export async function updateSite(
       return null;
     }
 
-    return mapRowToSite(result.rows[0]);
+    const updated = mapRowToSite(result.rows[0]);
+    await maybeEnqueueOnUrlChange(env, updated, priorUrl);
+    return updated;
   }
 
-  // Simple update without workflow settings
+  if (wantUrlChangeDetection) {
+    const existing = await getSite(siteId);
+    priorUrl = existing?.url;
+  }
+
   const result = await query<SiteRow>(
     `UPDATE app.sites
      SET name = COALESCE($1, name),
-         allowed_origins = COALESCE($2::text[], allowed_origins),
+         url = CASE WHEN $2::boolean THEN $3 ELSE url END,
+         allowed_origins = COALESCE($4::text[], allowed_origins),
          updated_at = NOW()
-     WHERE id = $3
+     WHERE id = $5
      RETURNING *`,
-    [updates.name ?? null, updates.allowedOrigins ?? null, siteId],
+    [
+      updates.name ?? null,
+      urlProvided,
+      urlValue,
+      updates.allowedOrigins ?? null,
+      siteId,
+    ],
   );
 
   if (result.rows.length === 0) {
     return null;
   }
 
-  return mapRowToSite(result.rows[0]);
+  const updated = mapRowToSite(result.rows[0]);
+  await maybeEnqueueOnUrlChange(env, updated, priorUrl);
+  return updated;
+}
+
+async function maybeEnqueueOnUrlChange(
+  env: ScreenshotProducerEnv | undefined,
+  updated: Site,
+  priorUrl: string | undefined,
+): Promise<void> {
+  if (env === undefined) return;
+  if (updated.url === undefined || updated.url === '') return;
+  if (updated.url === priorUrl) return;
+  await requestSiteScreenshot(env, updated, 'url_changed');
 }
 
 /**

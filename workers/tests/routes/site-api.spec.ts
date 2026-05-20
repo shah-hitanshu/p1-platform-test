@@ -230,6 +230,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
 
       expect(services.createSite).toHaveBeenCalledWith(
         expect.objectContaining({ creatorId: 'user-1' }),
+        undefined,
       );
     });
 
@@ -285,6 +286,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
 
       expect(services.createSite).toHaveBeenCalledWith(
         expect.objectContaining({ creatorId: 'db-user-123' }),
+        undefined,
       );
     });
 
@@ -326,6 +328,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
           creatorId: 'agent-uuid',
           createdByType: 'agent',
         }),
+        undefined,
       );
     });
   });
@@ -1258,6 +1261,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       expect(response.status).toBe(201);
       expect(services.createSite).toHaveBeenCalledWith(
         expect.objectContaining({ allowedOrigins: ['https://newsite.com'] }),
+        undefined,
       );
     });
 
@@ -1316,6 +1320,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       expect(services.updateSite).toHaveBeenCalledWith(
         'site-1',
         expect.objectContaining({ allowedOrigins: ['https://updated.com'] }),
+        undefined,
       );
     });
 
@@ -1372,6 +1377,142 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       const createSiteCall = vi.mocked(services.createSite).mock.calls[0][0];
       const allowedOriginsValue = createSiteCall.allowedOrigins;
       expect(allowedOriginsValue === undefined || allowedOriginsValue.length === 0).toBe(true);
+    });
+
+    it('POST /api/sites passes url to createSite', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.createSite).mockResolvedValueOnce({
+        id: 'site-new',
+        pantheonSiteId: 'site-abc-789',
+        name: 'New Site',
+        allowedOrigins: [],
+        workflowSettings: {
+          mergeApprovalMode: 'optional',
+          minApprovers: 1,
+          allowSelfApproval: true,
+          approverMode: 'both',
+          approverMinRole: 'EDITOR',
+        },
+        createdAt: '2026-01-24T10:00:00.000Z',
+        updatedAt: '2026-01-24T10:00:00.000Z',
+      });
+      vi.mocked(services.createMainBranch).mockResolvedValueOnce({
+        id: 'branch-main-uuid',
+        siteId: 'site-new',
+        name: 'main',
+        description: 'Main branch',
+        status: 'active',
+        isMain: true,
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        updatedAt: '2026-01-24T10:00:00.000Z',
+      });
+
+      const request = new Request('https://api.example.com/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pantheonSiteId: 'site-abc-789',
+          name: 'New Site',
+          url: 'https://newsite.example.com',
+        }),
+      });
+
+      const response = await handleSiteRoutes(request, {
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(201);
+      expect(services.createSite).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'https://newsite.example.com' }),
+        undefined,
+      );
+    });
+
+    it('PATCH /api/sites/:siteId passes url to updateSite', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockReset();
+      vi.mocked(services.updateSite).mockReset();
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      vi.mocked(services.updateSite).mockResolvedValueOnce({
+        id: 'site-1',
+        pantheonSiteId: 'pantheon-1',
+        name: 'Site Name',
+        allowedOrigins: [],
+        workflowSettings: {
+          mergeApprovalMode: 'optional',
+          minApprovers: 1,
+          allowSelfApproval: true,
+          approverMode: 'both',
+          approverMinRole: 'EDITOR',
+        },
+        createdAt: '2026-01-24T10:00:00.000Z',
+        updatedAt: '2026-01-24T10:30:00.000Z',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: 'https://updated.example.com',
+          }),
+        },
+      );
+
+      const response = await handleSiteRoutes(request, {
+        siteId: 'site-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(services.updateSite).toHaveBeenCalledWith(
+        'site-1',
+        expect.objectContaining({ url: 'https://updated.example.com' }),
+        undefined,
+      );
+    });
+
+    it('POST /api/sites returns 400 when url is malformed', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.createSite).mockRejectedValueOnce(
+        new (await import('../../src/services')).InvalidSiteParamsError('url is invalid'),
+      );
+
+      const request = new Request('https://api.example.com/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pantheonSiteId: 'site-abc-bad',
+          name: 'Bad URL Site',
+          url: 'not a url',
+        }),
+      });
+
+      const response = await handleSiteRoutes(request, {
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(400);
     });
   });
 });

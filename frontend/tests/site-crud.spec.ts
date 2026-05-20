@@ -5,7 +5,7 @@
  * These tests use unique timestamps to ensure test isolation.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 // User IDs from LoginPage.tsx (must be UUIDs to match database schema)
 const ALICE_USER_ID = '11111111-1111-1111-1111-111111111111';
@@ -16,7 +16,7 @@ function uniqueName(prefix: string): string {
 }
 
 // Helper to create a site and wait for API response
-async function createSite(page: import('@playwright/test').Page, siteName: string, pantheonId: string) {
+async function createSite(page: Page, siteName: string, pantheonId: string) {
   await page.getByTestId('create-site-btn').click();
   await page.getByTestId('site-name-input').fill(siteName);
   await page.getByTestId('pantheon-id-input').fill(pantheonId);
@@ -30,6 +30,21 @@ async function createSite(page: import('@playwright/test').Page, siteName: strin
 
   // Wait for form to close
   await expect(page.getByTestId('create-form')).not.toBeVisible({ timeout: 10000 });
+}
+
+// Locator for a site card by visible name. Cards carry data-testid="site-row-{id}".
+function siteCard(page: Page, siteName: string) {
+  return page.locator('[data-testid^="site-row-"]', { hasText: siteName });
+}
+
+// Open the delete confirmation modal: navigate from the list to the site
+// detail page and click the Delete site button.
+async function openDeleteModal(page: Page, siteName: string) {
+  const card = siteCard(page, siteName);
+  await expect(card).toBeVisible();
+  await card.getByTestId(/^view-site-/).click();
+  await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+$/);
+  await page.getByTestId('delete-site-btn').click();
 }
 
 test.describe('Site Creation', () => {
@@ -70,9 +85,29 @@ test.describe('Site Creation', () => {
     // Wait for the form to close (indicates success)
     await expect(page.getByTestId('create-form')).not.toBeVisible({ timeout: 10000 });
 
-    // Verify site appears in the table
-    await expect(page.getByTestId('sites-table')).toBeVisible();
-    await expect(page.getByTestId('sites-table')).toContainText(siteName);
+    // Verify the site appears as a card in the grid
+    await expect(page.getByTestId('sites-grid')).toBeVisible();
+    await expect(siteCard(page, siteName)).toBeVisible();
+  });
+
+  test('should accept an optional URL on create', async ({ page }) => {
+    const siteName = uniqueName('Site With URL');
+    const pantheonId = uniqueName('with-url');
+
+    await page.getByTestId('create-site-btn').click();
+    await page.getByTestId('site-name-input').fill(siteName);
+    await page.getByTestId('pantheon-id-input').fill(pantheonId);
+    await page.getByTestId('site-url-input').fill('https://example.com');
+
+    const responsePromise = page.waitForResponse(resp =>
+      resp.url().includes('/api/sites') && resp.request().method() === 'POST'
+    );
+    await page.getByTestId('submit-site-btn').click();
+    const response = await responsePromise;
+    expect(response.status()).toBe(201);
+
+    await expect(page.getByTestId('create-form')).not.toBeVisible({ timeout: 10000 });
+    await expect(siteCard(page, siteName)).toBeVisible();
   });
 
   test('should not create site with empty name', async ({ page }) => {
@@ -96,6 +131,17 @@ test.describe('Site Creation', () => {
     // Submit button should be disabled
     await expect(page.getByTestId('submit-site-btn')).toBeDisabled();
   });
+
+  test('should block submission when the URL is invalid', async ({ page }) => {
+    await page.getByTestId('create-site-btn').click();
+    await page.getByTestId('site-name-input').fill(uniqueName('Bad URL'));
+    await page.getByTestId('pantheon-id-input').fill(uniqueName('bad-url'));
+    await page.getByTestId('site-url-input').fill('not a url');
+    await page.getByTestId('submit-site-btn').click();
+
+    await expect(page.getByTestId('url-validation-error')).toBeVisible();
+    await expect(page.getByTestId('create-form')).toBeVisible();
+  });
 });
 
 test.describe('Site Deletion', () => {
@@ -115,13 +161,8 @@ test.describe('Site Deletion', () => {
     const siteName = uniqueName('Modal Test');
     const pantheonId = uniqueName('modal');
 
-    // Create a site
     await createSite(page, siteName, pantheonId);
-
-    // Find and click the delete button for our site
-    const siteRow = page.locator(`tr:has-text("${siteName}")`);
-    await expect(siteRow).toBeVisible();
-    await siteRow.locator('[data-testid^="delete-site-"]').click();
+    await openDeleteModal(page, siteName);
 
     // Modal should be visible (PDS Modal uses role="dialog" with aria label)
     const dialog = page.getByRole('dialog', { name: /Delete site confirmation/i });
@@ -132,12 +173,8 @@ test.describe('Site Deletion', () => {
     const siteName = uniqueName('Confirm Test');
     const pantheonId = uniqueName('confirm');
 
-    // Create a site
     await createSite(page, siteName, pantheonId);
-
-    // Click delete
-    const siteRow = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow.locator('[data-testid^="delete-site-"]').click();
+    await openDeleteModal(page, siteName);
 
     // Delete button should be disabled initially
     const deleteBtn = page.getByTestId('delete-button');
@@ -165,8 +202,7 @@ test.describe('Site Deletion', () => {
     await createSite(page, siteName, pantheonId);
 
     // Navigate to site to create an additional branch
-    const siteRow = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow.locator('[data-testid^="view-site-"]').click();
+    await siteCard(page, siteName).getByTestId(/^view-site-/).click();
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+$/);
 
     // Create a feature branch
@@ -181,13 +217,8 @@ test.describe('Site Deletion', () => {
     await expect(page.getByTestId('create-branch-form')).not.toBeVisible({ timeout: 10000 });
     await expect(page.locator('tr:has-text("feature-branch")')).toBeVisible({ timeout: 10000 });
 
-    // Go back to sites list
-    await page.click('.nav-link >> text=Sites');
-    await expect(page).toHaveURL('/sites');
-
-    // Try to delete (should fail because of non-main branch)
-    const siteRow2 = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow2.locator('[data-testid^="delete-site-"]').click();
+    // Try to delete from the detail page (should fail because of non-main branch)
+    await page.getByTestId('delete-site-btn').click();
     await page.getByTestId('confirm-input').fill(siteName);
     await page.getByTestId('delete-button').click();
 
@@ -197,9 +228,11 @@ test.describe('Site Deletion', () => {
     // Modal should still be open
     await expect(page.getByRole('dialog')).toBeVisible();
 
-    // Site should still exist after closing modal
+    // Cancel the modal and verify site still exists by going back to the list
     await page.getByTestId('cancel-button').click();
-    await expect(page.getByTestId('sites-table')).toContainText(siteName);
+    await page.click('.nav-link >> text=Sites');
+    await expect(page).toHaveURL('/sites');
+    await expect(siteCard(page, siteName)).toBeVisible();
   });
 
   test('should successfully delete site after archiving non-main branches', async ({ page }) => {
@@ -210,8 +243,7 @@ test.describe('Site Deletion', () => {
     await createSite(page, siteName, pantheonId);
 
     // Navigate to site to create an additional branch
-    const siteRow = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow.locator('[data-testid^="view-site-"]').click();
+    await siteCard(page, siteName).getByTestId(/^view-site-/).click();
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+$/);
 
     // Create a feature branch
@@ -235,13 +267,8 @@ test.describe('Site Deletion', () => {
     // Verify branch is now archived
     await expect(featureRow.locator('.tag')).toContainText('archived');
 
-    // Go back to sites list
-    await page.click('.nav-link >> text=Sites');
-    await expect(page).toHaveURL('/sites');
-
-    // Delete the site (should work now since branch is archived)
-    const siteRow2 = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow2.locator('[data-testid^="delete-site-"]').click();
+    // Delete the site from the detail page (should work now since branch is archived)
+    await page.getByTestId('delete-site-btn').click();
     await page.getByTestId('confirm-input').fill(siteName);
 
     const deleteResponsePromise = page.waitForResponse(resp =>
@@ -250,23 +277,19 @@ test.describe('Site Deletion', () => {
     await page.getByTestId('delete-button').click();
     await deleteResponsePromise;
 
-    // Modal should close
-    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 10000 });
+    // Should redirect back to the sites list
+    await expect(page).toHaveURL('/sites');
 
-    // Site should be removed from list
-    await expect(page.getByTestId('sites-table')).not.toContainText(siteName);
+    // Site should be removed from the grid
+    await expect(siteCard(page, siteName)).not.toBeVisible();
   });
 
   test('should close modal when clicking cancel', async ({ page }) => {
     const siteName = uniqueName('Cancel Test');
     const pantheonId = uniqueName('cancel');
 
-    // Create a site
     await createSite(page, siteName, pantheonId);
-
-    // Open delete modal
-    const siteRow = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow.locator('[data-testid^="delete-site-"]').click();
+    await openDeleteModal(page, siteName);
     await expect(page.getByRole('dialog')).toBeVisible();
 
     // Click cancel
@@ -275,20 +298,18 @@ test.describe('Site Deletion', () => {
     // Modal should close
     await expect(page.getByRole('dialog')).not.toBeVisible();
 
-    // Site should still exist
-    await expect(page.getByTestId('sites-table')).toContainText(siteName);
+    // Site should still exist (still on detail page; navigate back to confirm)
+    await page.click('.nav-link >> text=Sites');
+    await expect(page).toHaveURL('/sites');
+    await expect(siteCard(page, siteName)).toBeVisible();
   });
 
   test('should close modal when clicking overlay', async ({ page }) => {
     const siteName = uniqueName('Overlay Test');
     const pantheonId = uniqueName('overlay');
 
-    // Create a site
     await createSite(page, siteName, pantheonId);
-
-    // Open delete modal
-    const siteRow = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow.locator('[data-testid^="delete-site-"]').click();
+    await openDeleteModal(page, siteName);
     await expect(page.getByRole('dialog')).toBeVisible();
 
     // Click overlay (PDS Modal uses @reach/dialog overlay)
@@ -298,7 +319,9 @@ test.describe('Site Deletion', () => {
     await expect(page.getByRole('dialog')).not.toBeVisible();
 
     // Site should still exist
-    await expect(page.getByTestId('sites-table')).toContainText(siteName);
+    await page.click('.nav-link >> text=Sites');
+    await expect(page).toHaveURL('/sites');
+    await expect(siteCard(page, siteName)).toBeVisible();
   });
 });
 
@@ -312,16 +335,15 @@ test.describe('Site Navigation', () => {
     await expect(page).toHaveURL('/sites');
   });
 
-  test('should navigate to site detail page when clicking View', async ({ page }) => {
+  test('should navigate to site detail page when clicking Site overview', async ({ page }) => {
     const siteName = uniqueName('View Site');
     const pantheonId = uniqueName('view');
 
     // Create a site
     await createSite(page, siteName, pantheonId);
 
-    // Click View link
-    const siteRow = page.locator(`tr:has-text("${siteName}")`);
-    await siteRow.locator('[data-testid^="view-site-"]').click();
+    // Click Site overview link on the card
+    await siteCard(page, siteName).getByTestId(/^view-site-/).click();
 
     // Should navigate to site detail page
     await expect(page).toHaveURL(/\/sites\/[a-z0-9-]+$/);

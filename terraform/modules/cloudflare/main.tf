@@ -2,7 +2,8 @@
 #
 # Creates Cloudflare infrastructure resources for the Collaborative State System:
 # - KV Namespaces (config + session storage)
-# - Queue (sync decoupling)
+# - Queues (sync decoupling, screenshot capture)
+# - R2 buckets (site screenshots)
 # - Hyperdrive (PostgreSQL connection pooling)
 #
 # Note: Worker deployment and Durable Object migrations are handled by wrangler,
@@ -73,6 +74,12 @@ variable "hyperdrive_nocache_origin_connection_limit" {
   default     = 10
 }
 
+variable "hyperdrive_cached_caching_disabled" {
+  description = "When true, also disables caching on the 'cached' Hyperdrive config. Used in staging where caching has been turned off out-of-band; sbx1 and production leave this at the default."
+  type        = bool
+  default     = false
+}
+
 # -----------------------------------------------------------------------------
 # Locals
 # -----------------------------------------------------------------------------
@@ -127,6 +134,20 @@ resource "cloudflare_queue" "sync_queue" {
   queue_name = "css-sync-queue-${var.environment}"
 }
 
+resource "cloudflare_queue" "screenshot_queue" {
+  account_id = var.cloudflare_account_id
+  queue_name = "css-screenshot-queue-${var.environment}"
+}
+
+# -----------------------------------------------------------------------------
+# R2 Buckets — site screenshots PNG storage
+# -----------------------------------------------------------------------------
+
+resource "cloudflare_r2_bucket" "screenshots" {
+  account_id = var.cloudflare_account_id
+  name       = "css-screenshots-${var.environment}"
+}
+
 # -----------------------------------------------------------------------------
 # Hyperdrive (PostgreSQL connection pooling)
 # -----------------------------------------------------------------------------
@@ -142,6 +163,10 @@ resource "cloudflare_hyperdrive_config" "postgres" {
     database = var.postgres_database
     user     = var.postgres_user
     password = var.postgres_password
+  }
+
+  caching = {
+    disabled = var.hyperdrive_cached_caching_disabled
   }
 
   # Soft limit — Hyperdrive may temporarily exceed during traffic spikes.
@@ -200,6 +225,21 @@ output "queue_id" {
 output "queue_name" {
   description = "Sync queue name"
   value       = cloudflare_queue.sync_queue.queue_name
+}
+
+output "screenshot_queue_id" {
+  description = "Screenshot queue ID"
+  value       = cloudflare_queue.screenshot_queue.id
+}
+
+output "screenshot_queue_name" {
+  description = "Screenshot queue name"
+  value       = cloudflare_queue.screenshot_queue.queue_name
+}
+
+output "screenshot_bucket_name" {
+  description = "R2 bucket name for site screenshots (used by R2_SCREENSHOTS_BUCKET in wrangler.jsonc)"
+  value       = cloudflare_r2_bucket.screenshots.name
 }
 
 output "hyperdrive_id" {

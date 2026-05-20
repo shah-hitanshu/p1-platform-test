@@ -42,6 +42,8 @@ export type {
   AgentSettings,
   RegisteredAgent,
   Site,
+  SiteScreenshot,
+  SiteScreenshotStatus,
   Branch,
   Document,
   DocumentVersion,

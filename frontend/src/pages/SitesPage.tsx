@@ -7,14 +7,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
-import { listSites, createSite as createSiteApi, deleteSite as deleteSiteApi } from '../api/sites';
+import { listSites, createSite as createSiteApi } from '../api/sites';
 import type { CreateSiteParams } from '../api/sites';
 import { ApiResponse } from '../components/ApiResponse';
-import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
+import { SiteScreenshot } from '../components/SiteScreenshot';
 import type { Site } from '../types';
+import { isValidUrl } from '../utils/url';
 import {
   Button,
-  ButtonLink,
   CompactEmptyState,
   InlineMessage,
   Panel,
@@ -22,15 +22,31 @@ import {
 } from '@pantheon-systems/pds-toolkit-react';
 import './SitesPage.css';
 
+const RELATIVE_TIME_FORMAT = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+  const diffMs = then - Date.now();
+  const diffSec = Math.round(diffMs / 1000);
+  const absSec = Math.abs(diffSec);
+  if (absSec < 60) return RELATIVE_TIME_FORMAT.format(diffSec, 'second');
+  if (absSec < 3600) return RELATIVE_TIME_FORMAT.format(Math.round(diffSec / 60), 'minute');
+  if (absSec < 86400) return RELATIVE_TIME_FORMAT.format(Math.round(diffSec / 3600), 'hour');
+  if (absSec < 2592000) return RELATIVE_TIME_FORMAT.format(Math.round(diffSec / 86400), 'day');
+  if (absSec < 31536000) return RELATIVE_TIME_FORMAT.format(Math.round(diffSec / 2592000), 'month');
+  return RELATIVE_TIME_FORMAT.format(Math.round(diffSec / 31536000), 'year');
+}
+
 export function SitesPage() {
   const { data: sites, isLoading, error, execute: fetchSites } = useApi<Site[], []>(listSites);
   const { execute: createSiteRequest, isLoading: isCreating, error: createError } = useApi<Site, [CreateSiteParams]>(createSiteApi);
-  const { execute: deleteSiteRequest, isLoading: isDeleting, error: deleteError } = useApi<void, [string]>(deleteSiteApi);
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newSiteName, setNewSiteName] = useState('');
   const [newPantheonSiteId, setNewPantheonSiteId] = useState('');
-  const [siteToDelete, setSiteToDelete] = useState<Site | null>(null);
+  const [newSiteUrl, setNewSiteUrl] = useState('');
+  const [urlValidationError, setUrlValidationError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSites();
@@ -40,26 +56,23 @@ export function SitesPage() {
     e.preventDefault();
     if (!newSiteName.trim() || !newPantheonSiteId.trim()) return;
 
+    const trimmedUrl = newSiteUrl.trim();
+    if (!isValidUrl(trimmedUrl)) {
+      setUrlValidationError('Enter a valid URL (e.g. https://example.com).');
+      return;
+    }
+    setUrlValidationError(null);
+
     const result = await createSiteRequest({
       name: newSiteName.trim(),
-      pantheonSiteId: newPantheonSiteId.trim()
+      pantheonSiteId: newPantheonSiteId.trim(),
+      ...(trimmedUrl !== '' ? { url: trimmedUrl } : {}),
     });
     if (result) {
       setNewSiteName('');
       setNewPantheonSiteId('');
+      setNewSiteUrl('');
       setShowCreateForm(false);
-      fetchSites();
-    }
-  };
-
-  const handleDeleteSite = async () => {
-    if (!siteToDelete) return;
-
-    const result = await deleteSiteRequest(siteToDelete.id);
-    // Only close modal and refresh if deletion succeeded
-    // For void functions: undefined = success, null = error
-    if (result !== null) {
-      setSiteToDelete(null);
       fetchSites();
     }
   };
@@ -74,7 +87,7 @@ export function SitesPage() {
         <Button
           variant={showCreateForm ? 'secondary' : 'primary'}
           onClick={() => setShowCreateForm(!showCreateForm)}
-          label={showCreateForm ? 'Cancel' : '+ Create site'}
+          label={showCreateForm ? 'Cancel' : '+ Create new site'}
           data-testid="create-site-btn"
         />
       </Panel>
@@ -100,6 +113,17 @@ export function SitesPage() {
                 placeholder="Enter Pantheon Site ID..."
                 data-testid="pantheon-id-input"
               />
+              <TextInput
+                id="site-url"
+                label="Site URL (optional)"
+                value={newSiteUrl}
+                onChange={(e) => {
+                  setNewSiteUrl(e.target.value);
+                  if (urlValidationError !== null) setUrlValidationError(null);
+                }}
+                placeholder="https://example.pantheonsite.io"
+                data-testid="site-url-input"
+              />
             </div>
             <Button
               variant="primary"
@@ -111,6 +135,9 @@ export function SitesPage() {
               data-testid="submit-site-btn"
             />
           </form>
+          {urlValidationError && (
+            <InlineMessage type="critical" title={urlValidationError} className="create-error-alert" data-testid="url-validation-error" />
+          )}
           {createError && (
             <InlineMessage type="critical" title={createError} className="create-error-alert" data-testid="create-error" />
           )}
@@ -128,58 +155,39 @@ export function SitesPage() {
           <ApiResponse data={null} isLoading={true} error={null} />
         </div>
       ) : sites && sites.length > 0 ? (
-        <table data-testid="sites-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>ID</th>
-              <th>Created</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sites.map((site: Site) => (
-              <tr key={site.id} data-testid={`site-row-${site.id}`}>
-                <td className="site-name">{site.name}</td>
-                <td className="site-id">
-                  <code>{site.id}</code>
-                </td>
-                <td className="site-date">
-                  {new Date(site.createdAt).toLocaleDateString()}
-                </td>
-                <td className="site-actions">
-                  <ButtonLink
-                    variant="secondary"
+        <div className="sites-grid" data-testid="sites-grid">
+          {sites.map((site: Site) => (
+            <article key={site.id} className="site-card" data-testid={`site-row-${site.id}`}>
+              <SiteScreenshot siteId={site.id} size="thumbnail" alt={`${site.name} screenshot`} />
+              <div className="site-card__body">
+                <h2 className="site-card__name" data-testid={`site-name-${site.id}`}>{site.name}</h2>
+                <p className="site-card__meta">Updated {formatRelativeTime(site.updatedAt)}</p>
+                <div className="site-card__actions">
+                  <Link
+                    to={`/sites/${site.id}`}
+                    className="site-card__overview"
                     data-testid={`view-site-${site.id}`}
-                    linkContent={<Link to={`/sites/${site.id}`}>View</Link>}
-                  />
-                  <Button
-                    variant="critical"
-                    onClick={() => setSiteToDelete(site)}
-                    label="Delete"
-                    data-testid={`delete-site-${site.id}`}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  >
+                    Site overview
+                  </Link>
+                  <Link
+                    to={`/sites/${site.id}`}
+                    className="site-card__editor"
+                    data-testid={`editor-site-${site.id}`}
+                  >
+                    Editor
+                  </Link>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
       ) : (
         <CompactEmptyState
           data-testid="empty-state"
           heading="No sites found. Create your first site to get started."
         />
       )}
-
-      <ConfirmDeleteModal
-        isOpen={siteToDelete !== null}
-        resourceType="site"
-        resourceName={siteToDelete?.name ?? ''}
-        onConfirm={handleDeleteSite}
-        onCancel={() => setSiteToDelete(null)}
-        isDeleting={isDeleting}
-        error={deleteError}
-      />
     </div>
   );
 }

@@ -13,6 +13,7 @@ import { SiteDetailPage } from '../../pages/SiteDetailPage';
 // Mock react-router-dom
 vi.mock('react-router-dom', () => ({
   useParams: () => ({ siteId: 'site-123' }),
+  useNavigate: () => vi.fn(),
   Link: ({ children, ...props }: { children: React.ReactNode; [key: string]: unknown }) => (
     <div {...props}>{children}</div>
   ),
@@ -96,6 +97,7 @@ const mockUpdateSite = vi.fn();
 vi.mock('../../api/sites', () => ({
   getSite: (...args: unknown[]) => mockGetSite(...args),
   updateSite: (...args: unknown[]) => mockUpdateSite(...args),
+  deleteSite: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../api/branches', () => ({

@@ -52,6 +52,16 @@ MOCK_JWT_SECRET=local-dev-jwt-secret-do-not-use-in-production
 # Auth0 configuration (optional — uncomment and fill in to enable Auth0 provider)
 # AUTH0_ISSUER_BASE_URL=https://your-tenant.auth0.com
 # AUTH0_AUDIENCE=your-api-identifier
+
+# Site screenshot pipeline (optional locally — leave unset to skip captures)
+# CF_ACCOUNT_ID and CF_BROWSER_API_TOKEN are needed by the screenshot consumer
+# to call the Cloudflare Browser Rendering REST API.
+# CF_ACCOUNT_ID=
+# CF_BROWSER_API_TOKEN=
+# R2 presigning for GET /api/sites/{siteId}/screenshot:
+# R2_ACCOUNT_ID=
+# R2_ACCESS_KEY_ID=
+# R2_SECRET_ACCESS_KEY=
 EOF
 
 # Set permissions (readable only by owner)

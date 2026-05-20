@@ -19,6 +19,7 @@ import {
 } from '../services';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
 import { validatePagination } from './validation';
+import type { ScreenshotProducerEnv } from '../queues/screenshot-producer';
 import { query } from '../db';
 
 /**
@@ -43,6 +44,7 @@ async function parseJsonBody<T>(request: Request): Promise<T> {
 interface CreateSiteBody {
   pantheonSiteId?: string;
   name?: string;
+  url?: string;
   workflowSettings?: Partial<WorkflowSettings>;
   allowedOrigins?: string[];
 }
@@ -52,6 +54,7 @@ interface CreateSiteBody {
  */
 interface UpdateSiteBody {
   name?: string;
+  url?: string | null;
   workflowSettings?: Partial<WorkflowSettings>;
   allowedOrigins?: string[];
 }
@@ -93,6 +96,7 @@ function errorResponse(
 async function handleCreateSite(
   request: Request,
   context: SiteRouteContext,
+  env: ScreenshotProducerEnv | undefined,
 ): Promise<Response> {
   const body = await parseJsonBody<CreateSiteBody>(request);
 
@@ -105,14 +109,18 @@ async function handleCreateSite(
     return errorResponse('name is required', 400);
   }
 
-  const site = await createSite({
-    pantheonSiteId: body.pantheonSiteId,
-    name: body.name,
-    workflowSettings: body.workflowSettings,
-    allowedOrigins: body.allowedOrigins,
-    creatorId: context.principal.dbUserId ?? context.principal.id,
-    createdByType: context.principal.type as 'user' | 'agent',
-  });
+  const site = await createSite(
+    {
+      pantheonSiteId: body.pantheonSiteId,
+      name: body.name,
+      url: body.url,
+      workflowSettings: body.workflowSettings,
+      allowedOrigins: body.allowedOrigins,
+      creatorId: context.principal.dbUserId ?? context.principal.id,
+      createdByType: context.principal.type as 'user' | 'agent',
+    },
+    env,
+  );
 
   return jsonResponse(site, 201);
 }
@@ -190,6 +198,7 @@ async function handleGetSite(context: SiteRouteContext): Promise<Response> {
 async function handleUpdateSite(
   request: Request,
   context: SiteRouteContext,
+  env: ScreenshotProducerEnv | undefined,
 ): Promise<Response> {
   if (context.siteId === undefined) {
     return errorResponse('Site ID is required', 400);
@@ -197,11 +206,18 @@ async function handleUpdateSite(
 
   const body = await parseJsonBody<UpdateSiteBody>(request);
 
-  const updatedSite = await updateSite(context.siteId, {
+  const params: Parameters<typeof updateSite>[1] = {
     name: body.name,
     workflowSettings: body.workflowSettings,
     allowedOrigins: body.allowedOrigins,
-  });
+  };
+  // Preserve url-key presence: only set when the request contained it, so the
+  // service can distinguish "leave as-is" (omitted) from "clear" (null).
+  if ('url' in body) {
+    params.url = body.url;
+  }
+
+  const updatedSite = await updateSite(context.siteId, params, env);
 
   if (updatedSite === null) {
     return errorResponse('Site not found', 404);
@@ -253,6 +269,7 @@ async function handleDeleteSite(context: SiteRouteContext): Promise<Response> {
 export async function handleSiteRoutes(
   request: Request,
   context: SiteRouteContext,
+  env?: ScreenshotProducerEnv,
 ): Promise<Response> {
   const method = request.method;
 
@@ -270,7 +287,7 @@ export async function handleSiteRoutes(
           return await handleGetSite(context);
         case 'PATCH':
           await assertPermission(context.principal, context.siteId, mainBranch.id, 'canManageGrants');
-          return await handleUpdateSite(request, context);
+          return await handleUpdateSite(request, context, env);
         case 'DELETE':
           await assertPermission(context.principal, context.siteId, mainBranch.id, 'canManageGrants');
           return await handleDeleteSite(context);
@@ -284,7 +301,7 @@ export async function handleSiteRoutes(
       case 'GET':
         return await handleListSites(request, context);
       case 'POST':
-        return await handleCreateSite(request, context);
+        return await handleCreateSite(request, context, env);
       default:
         return errorResponse('Method not allowed', 405);
     }

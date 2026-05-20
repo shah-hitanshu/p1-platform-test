@@ -5,9 +5,9 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
-import { getSite, updateSite } from '../api/sites';
+import { getSite, updateSite, deleteSite as deleteSiteApi } from '../api/sites';
 import { listBranches, createBranch, updateBranch, deleteBranch as deleteBranchApi } from '../api/branches';
 import {
   listCollaborators,
@@ -34,7 +34,10 @@ import { ApiResponse } from '../components/ApiResponse';
 import { CacheSettings } from '../components/CacheSettings';
 import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import { ScopeSelector } from '../components/ScopeSelector';
+import { SiteScreenshot } from '../components/SiteScreenshot';
+import { GlobeIcon } from '../components/icons/GlobeIcon';
 import type { Site, Branch, Collaborator, SystemUser, SiteApiToken, AgentSiteRole, RegisteredAgent } from '../types';
+import { isValidUrl } from '../utils/url';
 import {
   Breadcrumb,
   Button,
@@ -54,6 +57,7 @@ interface CreateBranchParams {
 
 export function SiteDetailPage() {
   const { siteId } = useParams<{ siteId: string }>();
+  const navigate = useNavigate();
 
   const { data: site, isLoading: siteLoading, error: siteError, execute: fetchSite } =
     useApi<Site, [string]>(getSite);
@@ -129,6 +133,18 @@ export function SiteDetailPage() {
   const [showOriginForm, setShowOriginForm] = useState(false);
   const [newOriginValue, setNewOriginValue] = useState('');
   const [originToRemove, setOriginToRemove] = useState<string | null>(null);
+
+  // URL editing state
+  const { execute: updateUrlRequest, isLoading: isUpdatingUrl, error: updateUrlError } =
+    useApi<Site, [string, { url: string | null }]>(updateSite);
+  const [showUrlForm, setShowUrlForm] = useState(false);
+  const [newUrlValue, setNewUrlValue] = useState('');
+  const [urlValidationError, setUrlValidationError] = useState<string | null>(null);
+
+  // Site delete state
+  const { execute: deleteSiteRequest, isLoading: isDeletingSite, error: deleteSiteError } =
+    useApi<void, [string]>(deleteSiteApi);
+  const [confirmDeleteSite, setConfirmDeleteSite] = useState(false);
 
   useEffect(() => {
     if (siteId) {
@@ -295,6 +311,39 @@ export function SiteDetailPage() {
     }
   };
 
+  const openUrlForm = () => {
+    setNewUrlValue(site?.url ?? '');
+    setUrlValidationError(null);
+    setShowUrlForm(true);
+  };
+
+  const handleSaveUrl = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!siteId) return;
+
+    const trimmed = newUrlValue.trim();
+    if (!isValidUrl(trimmed)) {
+      setUrlValidationError('Enter a valid URL (e.g. https://example.com).');
+      return;
+    }
+    setUrlValidationError(null);
+
+    const result = await updateUrlRequest(siteId, { url: trimmed === '' ? null : trimmed });
+    if (result) {
+      setShowUrlForm(false);
+      fetchSite(siteId);
+    }
+  };
+
+  const handleDeleteSite = async () => {
+    if (!siteId) return;
+    const result = await deleteSiteRequest(siteId);
+    if (result !== null) {
+      setConfirmDeleteSite(false);
+      navigate('/sites');
+    }
+  };
+
   const handleSaveSettings = async (settings: { cacheTtlMain?: number | null; cacheTtlBranch?: number | null }) => {
     if (!siteId) return;
     await updateSettingsRequest(siteId, settings as Partial<SiteSettings>);
@@ -346,25 +395,129 @@ export function SiteDetailPage() {
 
       {/* Site Info Header */}
       <Panel>
-        <div className="site-info">
-          <h1 className="site-title" data-testid="site-title">{site?.name}</h1>
-          <div className="site-meta">
-            <span className="meta-item">
-              <strong>ID:</strong> <code>{site?.id}</code>
-            </span>
-            <span className="meta-item">
-              <strong>Pantheon ID:</strong> <code>{site?.pantheonSiteId}</code>
-            </span>
-            <span className="meta-item">
-              <strong>Created:</strong> {site?.createdAt ? new Date(site.createdAt).toLocaleDateString() : '-'}
-            </span>
+        <div className="site-header">
+          {site?.id && (
+            <div className="site-header__hero" data-testid="site-screenshot-hero">
+              <SiteScreenshot siteId={site.id} size="hero" alt={`${site.name ?? ''} screenshot`} />
+            </div>
+          )}
+          <div className="site-header__info">
+            <h1 className="site-title" data-testid="site-title">{site?.name}</h1>
+            <div className="site-meta-grid">
+              <div className="site-meta-cell">
+                <span className="site-meta-cell__label">Last changed</span>
+                <span className="site-meta-cell__value">
+                  {site?.updatedAt
+                    ? new Date(site.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                    : '-'}
+                </span>
+              </div>
+              <div className="site-meta-cell">
+                <span className="site-meta-cell__label">Pantheon ID</span>
+                <span className="site-meta-cell__value"><code>{site?.pantheonSiteId}</code></span>
+              </div>
+              <div className="site-meta-cell">
+                <span className="site-meta-cell__label">Site ID</span>
+                <span className="site-meta-cell__value"><code>{site?.id}</code></span>
+              </div>
+            </div>
+            <div className="site-url-row" data-testid="site-url-row">
+              <GlobeIcon className="site-url-row__icon" />
+              <span className="site-url-row__label">Site URL:</span>
+              {showUrlForm ? (
+                <form onSubmit={handleSaveUrl} className="site-url-row__form">
+                  <input
+                    type="text"
+                    className="site-url-row__input"
+                    value={newUrlValue}
+                    onChange={(e) => {
+                      setNewUrlValue(e.target.value);
+                      if (urlValidationError !== null) setUrlValidationError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        setShowUrlForm(false);
+                        setUrlValidationError(null);
+                      }
+                    }}
+                    placeholder="https://example.com"
+                    autoFocus
+                    aria-label="Site URL"
+                    data-testid="site-url-input"
+                  />
+                  <Button
+                    variant="primary"
+                    buttonType="submit"
+                    onClick={() => {}}
+                    isLoading={isUpdatingUrl}
+                    disabled={isUpdatingUrl}
+                    label={isUpdatingUrl ? 'Saving...' : 'Save'}
+                    data-testid="save-site-url-btn"
+                  />
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setShowUrlForm(false);
+                      setUrlValidationError(null);
+                    }}
+                    label="Cancel"
+                    data-testid="cancel-site-url-btn"
+                  />
+                </form>
+              ) : site?.url ? (
+                <>
+                  <a
+                    href={site.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="site-url-row__link"
+                    data-testid="site-url-value"
+                  >
+                    {site.url}
+                    <ExternalLinkIcon className="site-url-row__external" />
+                  </a>
+                  <button
+                    type="button"
+                    className="site-url-row__edit"
+                    onClick={openUrlForm}
+                    aria-label="Edit site URL"
+                    data-testid="edit-site-url-btn"
+                  >
+                    <PencilIcon />
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="site-url-row__add"
+                  onClick={openUrlForm}
+                  data-testid="edit-site-url-btn"
+                >
+                  + Add URL
+                </button>
+              )}
+            </div>
+            {urlValidationError && (
+              <InlineMessage type="critical" title={urlValidationError} data-testid="site-url-validation-error" />
+            )}
+            {updateUrlError && (
+              <InlineMessage type="critical" title={updateUrlError} data-testid="site-url-error" />
+            )}
+          </div>
+          <div className="site-header__actions">
+            <ButtonLink
+              variant="secondary"
+              data-testid="merge-requests-link"
+              linkContent={<Link to={`/sites/${siteId}/merge-requests`}>Merge requests</Link>}
+            />
+            <Button
+              variant="critical"
+              onClick={() => setConfirmDeleteSite(true)}
+              label="Delete site"
+              data-testid="delete-site-btn"
+            />
           </div>
         </div>
-        <ButtonLink
-          variant="secondary"
-          data-testid="merge-requests-link"
-          linkContent={<Link to={`/sites/${siteId}/merge-requests`}>Merge requests</Link>}
-        />
       </Panel>
 
       {/* Branches Section */}
@@ -953,6 +1106,39 @@ export function SiteDetailPage() {
         isDeleting={isUpdatingOrigins}
         error={updateOriginsError}
       />
+
+      <ConfirmDeleteModal
+        isOpen={confirmDeleteSite}
+        resourceType="site"
+        resourceName={site?.name ?? ''}
+        onConfirm={handleDeleteSite}
+        onCancel={() => setConfirmDeleteSite(false)}
+        isDeleting={isDeletingSite}
+        error={deleteSiteError}
+      />
     </div>
+  );
+}
+
+interface IconProps {
+  className?: string;
+}
+
+function ExternalLinkIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 4h6v6" />
+      <path d="M10 14L20 4" />
+      <path d="M19 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h6" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+    </svg>
   );
 }

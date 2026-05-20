@@ -15,6 +15,11 @@ vi.mock('../../src/db', () => ({
   query: vi.fn(),
 }));
 
+// Mock the screenshot producer so we can assert when the trigger fires.
+vi.mock('../../src/queues/screenshot-producer', () => ({
+  requestSiteScreenshot: vi.fn().mockResolvedValue(undefined),
+}));
+
 describe('Phase 3.1: Site Service', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -962,6 +967,234 @@ describe('Phase 3.1: Site Service', () => {
       expect(error).toBeInstanceOf(Error);
       expect(error.name).toBe('InvalidSiteParamsError');
       expect(error.message).toContain('name is required');
+    });
+  });
+
+  describe('Site url field', () => {
+    it('should persist url on createSite', async () => {
+      const { createSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const mockRow: MockSiteRow & { url: string } = {
+        ...createMockSiteRow(),
+        url: 'https://example.com',
+      };
+      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+
+      const result = await createSite({
+        pantheonSiteId: 'pantheon-site-abc',
+        name: 'Test Site',
+        url: 'https://example.com',
+      });
+
+      expect(result.url).toBe('https://example.com');
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO'),
+        expect.arrayContaining(['https://example.com']),
+      );
+    });
+
+    it('should accept createSite without a url', async () => {
+      const { createSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockSiteRow();
+      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+
+      const result = await createSite({
+        pantheonSiteId: 'pantheon-site-abc',
+        name: 'Test Site',
+      });
+
+      expect(result.url).toBeUndefined();
+    });
+
+    it('should reject createSite when url is malformed', async () => {
+      const { createSite, InvalidSiteParamsError } = await import('../../src/services/site-service');
+
+      await expect(
+        createSite({
+          pantheonSiteId: 'pantheon-site-abc',
+          name: 'Test Site',
+          url: 'not a url',
+        }),
+      ).rejects.toThrow(InvalidSiteParamsError);
+    });
+
+    it('should persist url on updateSite', async () => {
+      const { updateSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const updatedRow: MockSiteRow & { url: string } = {
+        ...createMockSiteRow({ id: 'site-123' }),
+        url: 'https://new.example.com',
+      };
+      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+
+      const result = await updateSite('site-123', {
+        url: 'https://new.example.com',
+      });
+
+      expect(result?.url).toBe('https://new.example.com');
+      const calls = vi.mocked(db.query).mock.calls;
+      const updateCall = calls.find(
+        (c) => typeof c[0] === 'string' && c[0].includes('UPDATE app.sites'),
+      );
+      expect(updateCall?.[1]).toEqual(expect.arrayContaining(['https://new.example.com']));
+    });
+
+    it('should reject updateSite when url is malformed', async () => {
+      const { updateSite, InvalidSiteParamsError } = await import('../../src/services/site-service');
+
+      await expect(
+        updateSite('site-123', { url: 'also not a url' }),
+      ).rejects.toThrow(InvalidSiteParamsError);
+    });
+
+    it('should include url in getSite result when present in row', async () => {
+      const { getSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const row: MockSiteRow & { url: string } = {
+        ...createMockSiteRow({ id: 'site-123' }),
+        url: 'https://example.com',
+      };
+      vi.mocked(db.query).mockResolvedValue({ rows: [row] });
+
+      const result = await getSite('site-123');
+
+      expect(result?.url).toBe('https://example.com');
+    });
+  });
+
+  describe('Screenshot trigger on url change', () => {
+    const fakeEnv = { SCREENSHOT_QUEUE: { send: vi.fn() } };
+
+    it('createSite with env and a url enqueues a screenshot request', async () => {
+      const { createSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+      const { requestSiteScreenshot } = await import('../../src/queues/screenshot-producer');
+
+      const mockRow: MockSiteRow & { url: string } = {
+        ...createMockSiteRow({ id: 'site-99' }),
+        url: 'https://example.com',
+      };
+      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+
+      await createSite(
+        { pantheonSiteId: 'p1', name: 'S', url: 'https://example.com' },
+        fakeEnv as unknown as Parameters<typeof createSite>[1],
+      );
+
+      expect(requestSiteScreenshot).toHaveBeenCalledWith(
+        fakeEnv,
+        expect.objectContaining({ id: 'site-99', url: 'https://example.com' }),
+        'url_changed',
+      );
+    });
+
+    it('createSite without env never triggers a screenshot', async () => {
+      const { createSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+      const { requestSiteScreenshot } = await import('../../src/queues/screenshot-producer');
+
+      const mockRow: MockSiteRow & { url: string } = {
+        ...createMockSiteRow({ id: 'site-99' }),
+        url: 'https://example.com',
+      };
+      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+
+      await createSite({ pantheonSiteId: 'p1', name: 'S', url: 'https://example.com' });
+
+      expect(requestSiteScreenshot).not.toHaveBeenCalled();
+    });
+
+    it('createSite with env but no url does not trigger', async () => {
+      const { createSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+      const { requestSiteScreenshot } = await import('../../src/queues/screenshot-producer');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [createMockSiteRow()] });
+
+      await createSite(
+        { pantheonSiteId: 'p1', name: 'S' },
+        fakeEnv as unknown as Parameters<typeof createSite>[1],
+      );
+
+      expect(requestSiteScreenshot).not.toHaveBeenCalled();
+    });
+
+    it('updateSite triggers when url is set to a new value', async () => {
+      const { updateSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+      const { requestSiteScreenshot } = await import('../../src/queues/screenshot-producer');
+
+      const priorRow: MockSiteRow & { url: string | null } = {
+        ...createMockSiteRow({ id: 'site-77' }),
+        url: 'https://old.example.com',
+      };
+      const updatedRow: MockSiteRow & { url: string } = {
+        ...createMockSiteRow({ id: 'site-77' }),
+        url: 'https://new.example.com',
+      };
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [priorRow] }) // getSite for prior url
+        .mockResolvedValueOnce({ rows: [updatedRow] }); // UPDATE result
+
+      await updateSite(
+        'site-77',
+        { url: 'https://new.example.com' },
+        fakeEnv as unknown as Parameters<typeof updateSite>[2],
+      );
+
+      expect(requestSiteScreenshot).toHaveBeenCalledWith(
+        fakeEnv,
+        expect.objectContaining({ id: 'site-77', url: 'https://new.example.com' }),
+        'url_changed',
+      );
+    });
+
+    it('updateSite does not trigger when url is unchanged', async () => {
+      const { updateSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+      const { requestSiteScreenshot } = await import('../../src/queues/screenshot-producer');
+
+      const sameUrl = 'https://example.com';
+      const priorRow: MockSiteRow & { url: string } = {
+        ...createMockSiteRow({ id: 'site-77' }),
+        url: sameUrl,
+      };
+      const updatedRow: MockSiteRow & { url: string } = {
+        ...createMockSiteRow({ id: 'site-77' }),
+        url: sameUrl,
+      };
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [priorRow] })
+        .mockResolvedValueOnce({ rows: [updatedRow] });
+
+      await updateSite(
+        'site-77',
+        { url: sameUrl },
+        fakeEnv as unknown as Parameters<typeof updateSite>[2],
+      );
+
+      expect(requestSiteScreenshot).not.toHaveBeenCalled();
+    });
+
+    it('updateSite without env never triggers', async () => {
+      const { updateSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+      const { requestSiteScreenshot } = await import('../../src/queues/screenshot-producer');
+
+      const updatedRow: MockSiteRow & { url: string } = {
+        ...createMockSiteRow({ id: 'site-77' }),
+        url: 'https://new.example.com',
+      };
+      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+
+      await updateSite('site-77', { url: 'https://new.example.com' });
+
+      expect(requestSiteScreenshot).not.toHaveBeenCalled();
     });
   });
 });

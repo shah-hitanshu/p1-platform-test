@@ -12,6 +12,7 @@ import type { MASClient } from '../services/mas-client';
 
 // Route handlers
 import { handleSiteRoutes } from './site-api';
+import { handleSiteScreenshotRoutes } from './site-screenshot-api';
 import { handleBranchRoutes } from './branch-api';
 import { handleDocumentRoutes } from './document-api';
 import { handleCheckpointRoutes } from './checkpoint-api';
@@ -72,7 +73,13 @@ export async function dispatchRoute(
       return await handleSiteRoutes(request, {
         siteId: route.params.siteId,
         principal,
-      });
+      }, env);
+
+    case 'site-screenshot':
+      return await handleSiteScreenshotRoutes(request, {
+        siteId: route.params.siteId,
+        principal,
+      }, env);
 
     case 'branches':
       return await handleBranchRoutes(request, {

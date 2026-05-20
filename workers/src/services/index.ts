@@ -22,6 +22,19 @@ export type {
   ListSitesOptions,
 } from './site-service';
 
+// Site Screenshot Service
+export {
+  upsertSiteScreenshot,
+  getSiteScreenshot,
+  listSitesNeedingScreenshotRefresh,
+} from './site-screenshot-service';
+
+export type {
+  UpsertSiteScreenshotParams,
+  ListSitesNeedingScreenshotRefreshOptions,
+  SiteNeedingScreenshotRefresh,
+} from './site-screenshot-service';
+
 // Document Service
 export {
   createDocument,

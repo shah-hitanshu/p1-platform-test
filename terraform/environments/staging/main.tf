@@ -119,6 +119,8 @@ module "cloudflare" {
   postgres_user     = module.database.username
   postgres_password = module.database.password
   postgres_database = module.database.database
+
+  hyperdrive_cached_caching_disabled = true
 }
 
 # -----------------------------------------------------------------------------
@@ -156,6 +158,21 @@ output "session_kv_id" {
 output "queue_id" {
   description = "Sync queue ID"
   value       = module.cloudflare.queue_id
+}
+
+output "screenshot_queue_id" {
+  description = "Screenshot queue ID"
+  value       = module.cloudflare.screenshot_queue_id
+}
+
+output "screenshot_queue_name" {
+  description = "Screenshot queue name"
+  value       = module.cloudflare.screenshot_queue_name
+}
+
+output "screenshot_bucket_name" {
+  description = "R2 bucket name for site screenshots"
+  value       = module.cloudflare.screenshot_bucket_name
 }
 
 output "hyperdrive_id" {

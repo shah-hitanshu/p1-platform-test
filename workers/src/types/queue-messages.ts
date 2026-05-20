@@ -16,3 +16,13 @@ export interface SyncQueueMessage {
   actionType?: string; // Puck action type (e.g., "insert", "reorder", "set")
   actionMetadata?: Record<string, unknown>; // Additional Puck action context
 }
+
+/**
+ * Request to capture a fresh screenshot for a site.
+ */
+export interface ScreenshotQueueMessage {
+  siteId: string;
+  url: string;
+  enqueuedAt: number;
+  reason: 'url_changed' | 'published' | 'cron';
+}

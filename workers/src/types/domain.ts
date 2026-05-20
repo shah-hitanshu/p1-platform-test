@@ -105,9 +105,33 @@ export interface Site {
   /** Organization this site belongs to (for agent configuration) */
   organizationId?: string;
   name: string;
+  /** Public URL of the site, used for screenshotting and Pantheon lookups. */
+  url?: string;
   workflowSettings: WorkflowSettings;
   /** Allowed origin patterns for OAuth redirect URI validation */
   allowedOrigins: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Outcome of the most recent screenshot capture for a site.
+ * - 'ok'     : R2 object exists at r2Key and is the current screenshot.
+ * - 'failed' : nothing stored. The reason (HTTP error, auth-gated page,
+ *              browser timeout, etc.) is in `error`.
+ */
+export type SiteScreenshotStatus = 'ok' | 'failed';
+
+/**
+ * Current screenshot state for a site. One row per site.
+ */
+export interface SiteScreenshot {
+  siteId: string;
+  r2Key: string;
+  status: SiteScreenshotStatus;
+  capturedAt: string;
+  /** Short reason when status != 'ok'. */
+  error?: string;
   createdAt: string;
   updatedAt: string;
 }
