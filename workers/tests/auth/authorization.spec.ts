@@ -472,7 +472,7 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
 
       const principal = createServicePrincipal('site-1');
 
-      await expect(hasServicePermission(principal, 'site-1')).resolves.toBe(true);
+      expect(hasServicePermission(principal, 'site-1')).toBe(true);
     });
 
     it('should return false when targeting a different site', async () => {
@@ -480,7 +480,7 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
 
       const principal = createServicePrincipal('site-1');
 
-      await expect(hasServicePermission(principal, 'site-2')).resolves.toBe(false);
+      expect(hasServicePermission(principal, 'site-2')).toBe(false);
     });
 
     it('should return false when called with a non-service principal', async () => {
@@ -490,7 +490,7 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
         pantheonSiteRoles: { 'site-1': 'owner' },
       });
 
-      await expect(hasServicePermission(principal, 'site-1')).resolves.toBe(false);
+      expect(hasServicePermission(principal, 'site-1')).toBe(false);
     });
   });
 

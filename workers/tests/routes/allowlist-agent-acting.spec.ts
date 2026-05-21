@@ -189,9 +189,11 @@ describe('PCC-3190: allowlist gate for agent principals with acting user', () =>
     POSTGRES_CONNECTION_STRING: 'postgres://test:test@localhost:5432/test',
     FIRESTORE_PROJECT_ID: 'test-project',
     MOCK_JWT_SECRET: 'test-secret-that-is-at-least-32-characters-long',
-    // Setting GOOGLE_CLIENT_ID makes hasOAuthProviders() return true,
-    // which means isMockOnly === false and the allowlist gate runs.
-    GOOGLE_CLIENT_ID: 'test-google-client-id',
+    // hasRealAuthProviders() checks for Auth0 or broker credentials (not GOOGLE_CLIENT_ID,
+    // which was removed with the Google OAuth flow). Setting these makes isMockOnly === false
+    // so the allowlist gate runs.
+    AUTH0_ISSUER_BASE_URL: 'https://test.auth0.com',
+    AUTH0_AUDIENCE: 'test-audience',
     DOCUMENT_STATE: {} as DurableObjectNamespace,
     PRESENCE: {} as DurableObjectNamespace,
     SESSION: {} as DurableObjectNamespace,
