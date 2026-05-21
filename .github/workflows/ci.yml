@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            workers/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: workers
+
+      - name: Unit tests
+        run: pnpm test
+        working-directory: workers
+
+  check-migrations:
+    name: Check migration numbering
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Detect duplicate migration numbers
+        run: |
+          DUPES=$(ls workers/src/db/migrations/*.sql \
+            | xargs -n1 basename \
+            | grep -oE '^[0-9]+' \
+            | sort | uniq -d)
+
+          if [ -n "$DUPES" ]; then
+            echo "❌ Duplicate migration number(s) found: $DUPES"
+            echo ""
+            echo "Each migration file must have a unique numeric prefix."
+            echo "Conflicting files:"
+            for num in $DUPES; do
+              ls workers/src/db/migrations/${num}_*.sql
+            done
+            exit 1
+          fi
+
+          echo "✅ All migration numbers are unique."

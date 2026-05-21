@@ -15,7 +15,7 @@ export default defineConfig({
     // Test file patterns
     // Exclude integration tests by default (run with: npm run test:integration)
     include: ['tests/**/*.spec.ts', 'tests/**/*.test.ts'],
-    exclude: ['node_modules', 'dist', 'tests/integration/**'],
+    exclude: ['node_modules', 'dist', 'tests/integration/**', 'tests/db/**'],
 
     // Environment
     environment: 'node',
