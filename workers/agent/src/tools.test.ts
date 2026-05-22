@@ -359,10 +359,10 @@ describe('executeTool apply_document_edits key-validation', () => {
       executeTool('apply_document_edits', {
         ...baseInput,
         operations: [
-          { type: 'replace', path: 'content.0.props', content: { id: 'abc', label: 'Hello', visible: true } },
+          { type: 'replace', path: 'content.0.props', content: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Hello', visible: true } },
         ],
       }, cssApi, 'user-1'),
-    ).rejects.toThrow(/Invalid key\(s\) at "content\.0\.props": "label".*Valid keys are:.*text/);
+    ).rejects.toThrow(/Unknown prop "label" on "Hero"/);
   });
 
   it('replace with correct keys passes and forwards to applyEdits', async () => {
@@ -370,7 +370,7 @@ describe('executeTool apply_document_edits key-validation', () => {
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [
-        { type: 'replace', path: 'content.0.props', content: { id: 'abc', text: 'Updated', visible: false } },
+        { type: 'replace', path: 'content.0.props', content: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'Updated', visible: false } },
       ],
     }, cssApi, 'user-1');
     expect(cssApi.applyEdits).toHaveBeenCalledOnce();
@@ -386,12 +386,12 @@ describe('executeTool apply_document_edits key-validation', () => {
             type: 'replace',
             path: 'content',
             content: [
-              { type: 'Hero', props: { id: 'abc', label: 'Bad key', visible: true } },
+              { type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Bad key', visible: true } },
             ],
           },
         ],
       }, cssApi, 'user-1'),
-    ).rejects.toThrow(/Invalid key\(s\) at "content\.0\.props": "label"/);
+    ).rejects.toThrow(/Unknown prop "label" on "Hero"/);
   });
 
   it('add to an array where the new item has a renamed key throws', async () => {
@@ -411,10 +411,10 @@ describe('executeTool apply_document_edits key-validation', () => {
       executeTool('apply_document_edits', {
         ...baseInput,
         operations: [
-          { type: 'add', path: 'content.1', content: { type: 'Hero', props: { id: 'def', label: 'Bad', visible: false } } },
+          { type: 'add', path: 'content.1', content: { type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Bad', visible: false } } },
         ],
       }, cssApi, 'user-1'),
-    ).rejects.toThrow(/Invalid key\(s\) at "content\.1\.props": "label"/);
+    ).rejects.toThrow(/Unknown prop "label" on "Hero"/);
   });
 
   it('add to an array with correct keys passes and forwards to applyEdits', async () => {
@@ -422,7 +422,7 @@ describe('executeTool apply_document_edits key-validation', () => {
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [
-        { type: 'add', path: 'content.1', content: { type: 'Hero', props: { id: 'def', text: 'New', visible: false } } },
+        { type: 'add', path: 'content.1', content: { type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'New', visible: false } } },
       ],
     }, cssApi, 'user-1');
     expect(cssApi.applyEdits).toHaveBeenCalledOnce();
@@ -435,7 +435,7 @@ describe('executeTool apply_document_edits key-validation', () => {
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [
-        { type: 'replace', path: 'content.0.props', content: { id: 'abc', label: 'Bad key', visible: true } },
+        { type: 'replace', path: 'content.0.props', content: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Bad key', visible: true } },
       ],
     }, cssApi, 'user-1');
     expect(cssApi.applyEdits).toHaveBeenCalledOnce();
@@ -463,8 +463,8 @@ describe('executeTool apply_document_edits key-validation', () => {
           path: 'content',
           // Same components, reordered — Footer first, Hero second
           content: [
-            { type: 'Footer', props: { id: 'f1', copyright: '©', links: [] } },
-            { type: 'Hero', props: { id: 'h1', text: 'Hi', visible: true } },
+            { type: 'Footer', props: { id: '550e8400-e29b-41d4-a716-446655440000', copyright: '©', links: [] } },
+            { type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440001', text: 'Hi', visible: true } },
           ],
         },
       ],
@@ -498,7 +498,7 @@ describe('executeTool apply_document_edits op translation', () => {
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [
-        { type: 'add', path: 'content.2', content: { type: 'Hero', props: { id: 'x', text: 'hi' } } },
+        { type: 'add', path: 'content.2', content: { type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'hi' } } },
       ],
     }, cssApi, 'user-1');
     const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Array<Record<string, unknown>> };
@@ -569,7 +569,7 @@ describe('executeTool apply_document_edits op translation', () => {
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [
-        { type: 'add', path: 'content.0', content: { type: 'Hero', props: { id: 'h', text: 'Hi' } } },
+        { type: 'add', path: 'content.0', content: { type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'Hi' } } },
         { type: 'replace', path: 'content.1.props.text', content: 'Updated' },
         { type: 'move', path: 'content', fromIndex: 0, toIndex: 2 },
         { type: 'remove', path: 'content.3' },
@@ -637,11 +637,11 @@ describe('executeTool apply_document_edits registry-based validation', () => {
           {
             type: 'replace',
             path: 'content',
-            content: [{ type: 'Hero', props: { id: 'abc', label: 'Bad', visible: true } }],
+            content: [{ type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Bad', visible: true } }],
           },
         ],
       }, cssApi, 'user-1'),
-    ).rejects.toThrow(/Invalid key\(s\) at "content\.0\.props": "label"/);
+    ).rejects.toThrow(/Unknown prop "label" on "Hero"/);
     expect(cssApi.applyEdits).not.toHaveBeenCalled();
   });
 
@@ -654,11 +654,11 @@ describe('executeTool apply_document_edits registry-based validation', () => {
           {
             type: 'add',
             path: 'content.0',
-            content: { type: 'Hero', props: { id: 'abc', label: 'Bad', visible: true } },
+            content: { type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Bad', visible: true } },
           },
         ],
       }, cssApi, 'user-1'),
-    ).rejects.toThrow(/Invalid key\(s\) at "content\.0\.props": "label"/);
+    ).rejects.toThrow(/Unknown prop "label" on "Hero"/);
     expect(cssApi.applyEdits).not.toHaveBeenCalled();
   });
 
@@ -670,7 +670,7 @@ describe('executeTool apply_document_edits registry-based validation', () => {
         {
           type: 'replace',
           path: 'content',
-          content: [{ type: 'Hero', props: { id: 'abc', text: 'Hello', visible: true } }],
+          content: [{ type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'Hello', visible: true } }],
         },
       ],
     }, cssApi, 'user-1');
@@ -686,14 +686,14 @@ describe('executeTool apply_document_edits registry-based validation', () => {
         {
           type: 'replace',
           path: 'content',
-          content: [{ type: 'Hero', props: { id: 'abc', label: 'Bad' } }],
+          content: [{ type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Bad' } }],
         },
       ],
     }, cssApi, 'user-1');
     expect(cssApi.applyEdits).toHaveBeenCalledOnce();
   });
 
-  it('does not call listComponents when no add/replace ops contain Puck components', async () => {
+  it('calls listComponents for prop-level replace ops', async () => {
     const cssApi = makeCssApiWithRegistry(heroRegistry);
     await executeTool('apply_document_edits', {
       ...baseInput,
@@ -701,7 +701,8 @@ describe('executeTool apply_document_edits registry-based validation', () => {
         { type: 'replace', path: 'content.0.props.text', content: 'Updated text' },
       ],
     }, cssApi, 'user-1');
-    expect(cssApi.listComponents).not.toHaveBeenCalled();
+    expect(cssApi.listComponents).toHaveBeenCalledOnce();
+    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
   });
 
   it('does not call listComponents for remove ops', async () => {
@@ -724,7 +725,7 @@ describe('executeTool apply_document_edits registry-based validation', () => {
           {
             type: 'replace',
             path: 'content',
-            content: [{ type: 'Hallucinated', props: { id: 'abc', text: 'hi' } }],
+            content: [{ type: 'Hallucinated', props: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'hi' } }],
           },
         ],
       }, cssApi, 'user-1'),
@@ -862,12 +863,12 @@ describe('executeTool create_page prop validation', () => {
         components: [
           {
             type: 'Stats',
-            // 'label' is hallucinated — should be 'text' inside items
-            props: { items: [{ label: 'Revenue' }], columns: '3' },
+            // 'badProp' is hallucinated — not a valid top-level prop on Stats
+            props: { items: [{ text: 'Revenue' }], columns: '3', badProp: 'oops' },
           },
         ],
       }, cssApi, 'user-1'),
-    ).rejects.toThrow(/Invalid key\(s\) at "Stats\.props\.items\.0": "label".*Valid keys are:.*text/);
+    ).rejects.toThrow(/Unknown prop "badProp" on "Stats"/);
     expect(cssApi.createDocument).not.toHaveBeenCalled();
   });
 
@@ -885,7 +886,7 @@ describe('executeTool create_page prop validation', () => {
           },
         ],
       }, cssApi, 'user-1'),
-    ).rejects.toThrow(/Invalid key\(s\) at "Stats\.props": "heading"/);
+    ).rejects.toThrow(/Unknown prop "heading" on "Stats"/);
     expect(cssApi.createDocument).not.toHaveBeenCalled();
   });
 
@@ -967,7 +968,7 @@ describe('executeTool create_page prop validation', () => {
           { type: 'Nonexistent', props: {} },
         ],
       }, cssApi, 'user-1'),
-    ).rejects.toThrow(/Unknown component type\(s\): Nonexistent/);
+    ).rejects.toThrow(/Unknown component type "Nonexistent"/);
     expect(cssApi.createDocument).not.toHaveBeenCalled();
   });
 

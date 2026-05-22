@@ -1,5 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { McpApiClient } from './css-api.js';
+import { validateOps } from '@pantheon-systems/p1-content-validator';
+import type { ComponentSchema } from '@pantheon-systems/p1-content-validator';
 
 // Inline ULID generator — no external dependency required in Workers
 const ULID_ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -51,96 +53,18 @@ export function injectPuckIds(content: unknown): unknown {
   return content;
 }
 
-function getAtPath(obj: unknown, path: string): unknown {
-  return path.split('.').reduce<unknown>((cur, key) => {
-    if (cur === null || cur === undefined) return undefined;
-    if (Array.isArray(cur)) return cur[parseInt(key, 10)];
-    return (cur as Record<string, unknown>)[key];
-  }, obj);
-}
-
-function containsPuckComponent(content: unknown): boolean {
-  if (Array.isArray(content)) return content.some(containsPuckComponent);
-  if (content !== null && typeof content === 'object') {
-    const obj = content as Record<string, unknown>;
-    return typeof obj.type === 'string' && typeof obj.props === 'object' && obj.props !== null;
-  }
-  return false;
-}
-
-function validateComponentsAgainstRegistry(
-  content: unknown,
-  schemaMap: Map<string, Record<string, unknown>>,
-  path: string,
-): void {
-  if (Array.isArray(content)) {
-    content.forEach((item, i) => validateComponentsAgainstRegistry(item, schemaMap, `${path}.${i}`));
-    return;
-  }
-  if (content !== null && typeof content === 'object') {
-    const obj = content as Record<string, unknown>;
-    if (typeof obj.type === 'string' && typeof obj.props === 'object' && obj.props !== null) {
-      const schema = schemaMap.get(obj.type);
-      if (!schema) {
-        throw new Error(
-          `Unknown component type "${obj.type}" at "${path}". ` +
-          `Available types: ${[...schemaMap.keys()].join(', ')}. ` +
-          `Do not invent component names — only use types returned by list_components.`
-        );
-      }
-      const defaultProps = schema.defaultProps as Record<string, unknown> | undefined;
-      if (defaultProps) {
-        const { id: _id, ...propsToValidate } = obj.props as Record<string, unknown>;
-        assertNoNewKeys(defaultProps, propsToValidate, `${path}.props`);
-      }
+function buildRegistry(components: unknown[]): Record<string, ComponentSchema> {
+  const registry: Record<string, ComponentSchema> = {};
+  for (const comp of components as Array<Record<string, unknown>>) {
+    if (typeof comp.name === 'string') {
+      registry[comp.name] = {
+        name: comp.name,
+        defaultProps: (comp.defaultProps as Record<string, unknown> | undefined) ?? {},
+        fields: Array.isArray(comp.fields) ? (comp.fields as ComponentSchema['fields']) : undefined,
+      };
     }
   }
-}
-
-function isPuckComponentShape(v: unknown): boolean {
-  return v !== null && typeof v === 'object' && !Array.isArray(v) &&
-    typeof (v as Record<string, unknown>).type === 'string' &&
-    typeof (v as Record<string, unknown>).props === 'object' &&
-    (v as Record<string, unknown>).props !== null;
-}
-
-function assertNoNewKeys(existing: unknown, replacement: unknown, path: string): void {
-  // Puck-component arrays are heterogeneous — a positional comparison against
-  // existing[0] would reject any item whose type differs from the first.
-  // Per-component validation against the registry runs separately.
-  if (Array.isArray(existing) && Array.isArray(replacement)) {
-    if (replacement.some(isPuckComponentShape)) return;
-    const ref = existing[0];
-    if (ref === undefined) return;
-    for (let i = 0; i < replacement.length; i++) {
-      assertNoNewKeys(ref, replacement[i], `${path}.${i}`);
-    }
-    return;
-  }
-  // Replacing a Puck component with one of a different type is legal — registry
-  // validation handles per-type prop checking. Skip positional key comparison.
-  if (isPuckComponentShape(existing) && isPuckComponentShape(replacement)) return;
-  if (
-    existing !== null && typeof existing === 'object' && !Array.isArray(existing) &&
-    replacement !== null && typeof replacement === 'object' && !Array.isArray(replacement)
-  ) {
-    const existingKeys = Object.keys(existing as object);
-    const invalidKeys = Object.keys(replacement as object).filter(k => !existingKeys.includes(k));
-    if (invalidKeys.length > 0) {
-      throw new Error(
-        `Invalid key(s) at "${path}": ${invalidKeys.map(k => `"${k}"`).join(', ')} ` +
-        `do not exist in the component schema. Valid keys are: ${existingKeys.join(', ')}. ` +
-        `Do not rename or add keys — only change values.`
-      );
-    }
-    for (const key of Object.keys(replacement as object)) {
-      assertNoNewKeys(
-        (existing as Record<string, unknown>)[key],
-        (replacement as Record<string, unknown>)[key],
-        `${path}.${key}`,
-      );
-    }
-  }
+  return registry;
 }
 
 // Anthropic tool definitions for CSS capabilities.
@@ -472,64 +396,36 @@ export async function executeTool(
         return normalized;
       });
 
-      try {
-        const siteId = toolInput.site_id as string;
-        const branchId = toolInput.branch_id as string;
-        const rawDocPath = toolInput.document_path as string;
-        const documentPath = rawDocPath.startsWith('/') ? rawDocPath.slice(1) : rawDocPath;
-        const docs = await cssApi.listDocuments(siteId, branchId, { pathPrefix: documentPath });
-        const doc = docs.documents.find(d => d.path === documentPath);
-        if (doc) {
-          const version = await cssApi.getDocumentLatestVersion(siteId, branchId, doc.id);
-          const snapshot = version.snapshot;
-          for (const op of operations) {
-            if (op.type === 'replace' && op.content !== undefined) {
-              assertNoNewKeys(getAtPath(snapshot, op.path), op.content, op.path);
-            } else if (op.type === 'add' && op.content !== undefined) {
-              const segments = op.path.split('.');
-              const parentPath = segments.slice(0, -1).join('.');
-              const parentVal = parentPath ? getAtPath(snapshot, parentPath) : snapshot;
-              if (Array.isArray(parentVal) && parentVal.length > 0) {
-                assertNoNewKeys(parentVal[0], op.content, op.path);
-              }
-            }
-          }
-        }
-      } catch (err) {
-        if (err instanceof Error && err.message.startsWith('Invalid key(s)')) {
-          throw err;
-        }
-      }
+      const siteId = toolInput.site_id as string;
+      const branchId = toolInput.branch_id as string;
+      const rawDocPath = toolInput.document_path as string;
+      const documentPath = rawDocPath.startsWith('/') ? rawDocPath.slice(1) : rawDocPath;
 
-      // Registry-based validation for any add/replace ops containing Puck components.
-      // Snapshot-based validation above silently skips empty arrays (no reference item),
-      // so this pass catches hallucinated props when inserting into empty or new content.
-      const componentOps = operations.filter(
-        op => (op.type === 'add' || op.type === 'replace') &&
-          op.content !== undefined &&
-          containsPuckComponent(op.content),
-      );
-      if (componentOps.length > 0) {
-        try {
-          const registryResult = await cssApi.listComponents(
-            toolInput.site_id as string,
-            toolInput.branch_id as string,
-          );
-          const schemaMap = new Map<string, Record<string, unknown>>();
-          for (const comp of registryResult.components as Array<Record<string, unknown>>) {
-            if (typeof comp.name === 'string') schemaMap.set(comp.name, comp);
-          }
-          for (const op of componentOps) {
-            validateComponentsAgainstRegistry(op.content, schemaMap, op.path);
-          }
-        } catch (err) {
-          if (err instanceof Error && (
-            err.message.startsWith('Invalid key(s)') ||
-            err.message.startsWith('Unknown component type')
-          )) {
-            throw err;
-          }
-          // Registry fetch failed — proceed without registry validation
+      // Fetch snapshot and registry in parallel for validation.
+      // Both failures are handled gracefully — the library validates what it can.
+      const hasContentOp = operations.some(op => op.type === 'add' || op.type === 'replace');
+      let snapshot: Record<string, unknown> | undefined;
+      let registry: Record<string, ComponentSchema> = {};
+
+      if (hasContentOp) {
+        await Promise.allSettled([
+          (async () => {
+            const docs = await cssApi.listDocuments(siteId, branchId, { pathPrefix: documentPath });
+            const doc = docs.documents.find(d => d.path === documentPath);
+            if (doc) {
+              const version = await cssApi.getDocumentLatestVersion(siteId, branchId, doc.id);
+              snapshot = version.snapshot;
+            }
+          })(),
+          (async () => {
+            const result = await cssApi.listComponents(siteId, branchId);
+            registry = buildRegistry(result.components as unknown[]);
+          })(),
+        ]);
+
+        const { errors } = validateOps({ operations, registry, currentSnapshot: snapshot });
+        if (errors.length > 0) {
+          throw new Error(errors.map(e => e.message).join('\n'));
         }
       }
 
@@ -610,37 +506,30 @@ export async function executeTool(
         parentId?: string;
       }>;
 
-      // Validate all component types against the registry — never allow invented names
-      const registryComponents = await cssApi.listComponents(toolInput.site_id as string, toolInput.branch_id as string);
-      const schemaMap = new Map<string, Record<string, unknown>>();
-      for (const comp of registryComponents.components as Array<Record<string, unknown>>) {
-        if (typeof comp.name === 'string') {
-          schemaMap.set(comp.name, comp);
-        }
-      }
-      const validNames = new Set(schemaMap.keys());
-      const invalid = components.map(c => c.type).filter(t => !validNames.has(t));
-      if (invalid.length > 0) {
-        throw new Error(
-          `Unknown component type(s): ${invalid.join(', ')}. Available: ${[...validNames].join(', ')}`
-        );
-      }
-
-      // Validate props and build component instances with fresh ULIDs
+      // Build components with fresh ULIDs then validate against the registry.
+      // ULIDs are injected before validation so id format checks pass.
       interface PuckComponent { type: string; props: Record<string, unknown> & { id: string } }
-      const contentComponents: PuckComponent[] = [];
+      const contentComponents: PuckComponent[] = components.map(c => ({
+        type: c.type,
+        props: { ...c.props, id: generateULID() }, // fresh ULID overwrites any agent-provided id
+      }));
 
-      for (const component of components) {
-        const schema = schemaMap.get(component.type);
-        const defaultProps = schema?.defaultProps as Record<string, unknown> | undefined;
-        if (defaultProps) {
-          // Exclude id from validation — it's never in defaultProps but we always inject it
-          const { id: _ignore, ...propsForValidation } = component.props;
-          assertNoNewKeys(defaultProps, propsForValidation, `${component.type}.props`);
+      const registryComponents = await cssApi.listComponents(
+        toolInput.site_id as string,
+        toolInput.branch_id as string,
+      );
+      const registry = buildRegistry(registryComponents.components as unknown[]);
+
+      if (contentComponents.length > 0) {
+        const syntheticOps = contentComponents.map((c, i) => ({
+          type: 'add' as const,
+          path: `content.${String(i)}`,
+          content: c,
+        }));
+        const { errors } = validateOps({ operations: syntheticOps, registry });
+        if (errors.length > 0) {
+          throw new Error(errors.map(e => e.message).join('\n'));
         }
-        // Overwrite any agent-provided id with a fresh ULID
-        const id = generateULID();
-        contentComponents.push({ type: component.type, props: { ...component.props, id } });
       }
 
       const siteId = toolInput.site_id as string;
