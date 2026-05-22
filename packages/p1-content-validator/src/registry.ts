@@ -83,7 +83,7 @@ export async function fetchRegistry(
   }
 
   const { documents } = (await listRes.json()) as {
-    documents: Array<{ id: string; path: string }>;
+    documents: { id: string; path: string }[];
   };
 
   if (documents.length === 0) {
@@ -128,7 +128,7 @@ export async function listRegistryVersions(
   siteId: string,
   branchId: string,
   opts: FetchRegistryOpts,
-): Promise<Array<{ name: string; versionId: string }>> {
+): Promise<{ name: string; versionId: string }[]> {
   const base = cssBaseUrl.replace(/\/$/, '');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -145,7 +145,7 @@ export async function listRegistryVersions(
   }
 
   const { documents } = (await res.json()) as {
-    documents: Array<{ id: string; path: string }>;
+    documents: { id: string; path: string }[];
   };
 
   return documents.map((doc) => ({
