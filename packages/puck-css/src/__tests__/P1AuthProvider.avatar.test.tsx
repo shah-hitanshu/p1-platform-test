@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import React from 'react';
 
 vi.mock('@pantheon-systems/css-client', () => ({
@@ -85,12 +85,11 @@ describe('P1AuthProvider — avatar picture from oauth getUserInfo', () => {
       </P1AuthProvider>,
     );
 
-    await waitFor(() => {
-      expect(screen.getByTestId('consumer').getAttribute('data-picture')).toBe(
-        'https://lh3.googleusercontent.com/photo.jpg',
-      );
-    });
+    await act(async () => {});
 
+    expect(screen.getByTestId('consumer').getAttribute('data-picture')).toBe(
+      'https://lh3.googleusercontent.com/photo.jpg',
+    );
     expect(capturedUser).not.toBeNull();
     expect((capturedUser as NonNullable<typeof capturedUser>).picture).toBe('https://lh3.googleusercontent.com/photo.jpg');
   });
@@ -123,12 +122,11 @@ describe('P1AuthProvider — avatar picture from oauth getUserInfo', () => {
       </P1AuthProvider>,
     );
 
-    await waitFor(() => {
-      expect(screen.getByTestId('consumer').getAttribute('data-picture')).toBe(
-        'https://lh3.googleusercontent.com/fallback.jpg',
-      );
-    });
+    await act(async () => {});
 
+    expect(screen.getByTestId('consumer').getAttribute('data-picture')).toBe(
+      'https://lh3.googleusercontent.com/fallback.jpg',
+    );
     expect(capturedUser).not.toBeNull();
     expect((capturedUser as NonNullable<typeof capturedUser>).picture).toBe('https://lh3.googleusercontent.com/fallback.jpg');
   });
@@ -161,14 +159,10 @@ describe('P1AuthProvider — avatar picture from oauth getUserInfo', () => {
       </P1AuthProvider>,
     );
 
-    await waitFor(() => {
-      expect(screen.getByTestId('consumer')).toBeInTheDocument();
-    });
+    await act(async () => {});
 
-    await waitFor(() => {
-      expect(capturedUser).not.toBeNull();
-    });
-
+    expect(screen.getByTestId('consumer')).toBeInTheDocument();
+    expect(capturedUser).not.toBeNull();
     expect((capturedUser as NonNullable<typeof capturedUser>).picture).toBeUndefined();
   });
 });
