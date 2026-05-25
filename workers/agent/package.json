@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@pantheon-systems/p1-content-validator": "file:../../vendor/pantheon-systems-p1-content-validator-1.0.0.tgz",
+    "@pantheon-systems/p1-content-validator": "^1.0.0",
     "agents": "^0.11.0"
   },
   "devDependencies": {
