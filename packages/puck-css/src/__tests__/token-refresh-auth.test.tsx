@@ -18,11 +18,15 @@ vi.mock('@pantheon-systems/css-client', () => ({
   createBrokerAuth: vi.fn(),
   validateToken: vi.fn().mockResolvedValue(null),
   loginMockUser: vi.fn(),
+  hasPendingBrokerLogin: vi.fn().mockReturnValue(false),
+  redeemPendingBrokerLogin: vi.fn().mockResolvedValue(null),
 }));
 
 import {
   createBrokerAuth,
   validateToken,
+  hasPendingBrokerLogin,
+  redeemPendingBrokerLogin,
 } from '@pantheon-systems/css-client';
 
 
@@ -193,6 +197,178 @@ describe('getToken behavior', () => {
       const consumer = screen.getByTestId('consumer');
       expect(consumer.getAttribute('data-session-expired')).toBe('true');
     });
+  });
+});
+
+describe('redirect-return login flow', () => {
+  it('detects pending broker login and redeems on mount', async () => {
+    vi.mocked(hasPendingBrokerLogin).mockReturnValue(true);
+    vi.mocked(redeemPendingBrokerLogin).mockResolvedValue({
+      token: 'redeemed-broker-token',
+      userInfo: {
+        id: 'user-redirect',
+        email: 'redirect@example.com',
+        name: 'Redirect User',
+      },
+    });
+    vi.mocked(validateToken).mockResolvedValue({
+      id: 'user-redirect',
+      type: 'user',
+      email: 'redirect@example.com',
+      name: 'Redirect User',
+      avatarUrl: 'https://example.com/avatar.png',
+    });
+
+    const fakeSession = makeFakeOAuthSession();
+    vi.mocked(createBrokerAuth).mockReturnValue(fakeSession);
+
+    const captured: { ctx: ReturnType<typeof useP1Auth> | null } = { ctx: null };
+
+    render(
+      <P1AuthProvider authMode="broker" p1BaseUrl="http://localhost:8787">
+        <AuthContextConsumer onContext={(c) => { captured.ctx = c; }} />
+      </P1AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(captured.ctx).not.toBeNull();
+      const ctx = captured.ctx as ReturnType<typeof useP1Auth>;
+      expect(ctx.isAuthenticated).toBe(true);
+    });
+
+    expect(redeemPendingBrokerLogin).toHaveBeenCalled();
+    const ctx = captured.ctx as ReturnType<typeof useP1Auth>;
+    expect(ctx.token).toBe('redeemed-broker-token');
+    expect(ctx.user).toEqual(expect.objectContaining({
+      id: 'user-redirect',
+      email: 'redirect@example.com',
+      name: 'Redirect User',
+    }));
+  });
+
+  it('shows error when redirect redeem fails', async () => {
+    vi.mocked(hasPendingBrokerLogin).mockReturnValue(true);
+    vi.mocked(redeemPendingBrokerLogin).mockRejectedValue(
+      new Error('Broker login failed: transaction expired'),
+    );
+
+    const fakeSession = makeFakeOAuthSession();
+    vi.mocked(createBrokerAuth).mockReturnValue(fakeSession);
+
+    const captured: { ctx: ReturnType<typeof useP1Auth> | null } = { ctx: null };
+
+    render(
+      <P1AuthProvider authMode="broker" p1BaseUrl="http://localhost:8787">
+        <AuthContextConsumer onContext={(c) => { captured.ctx = c; }} />
+      </P1AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(captured.ctx).not.toBeNull();
+      const ctx = captured.ctx as ReturnType<typeof useP1Auth>;
+      expect(ctx.isLoading).toBe(false);
+    });
+
+    const ctx = captured.ctx as ReturnType<typeof useP1Auth>;
+    expect(ctx.isAuthenticated).toBe(false);
+    expect(ctx.error).toContain('transaction expired');
+  });
+
+  it('keeps isLoading true after redirect-mode login (no flash of unauthenticated UI)', async () => {
+    let pendingTx = false;
+    const fakeSession = makeFakeOAuthSession({
+      login: vi.fn().mockImplementation(async () => {
+        pendingTx = true;
+      }),
+    });
+    vi.mocked(hasPendingBrokerLogin).mockImplementation(() => pendingTx);
+    vi.mocked(createBrokerAuth).mockReturnValue(fakeSession);
+
+    const captured: { ctx: ReturnType<typeof useP1Auth> | null } = { ctx: null };
+
+    render(
+      <P1AuthProvider authMode="broker" p1BaseUrl="http://localhost:8787">
+        <AuthContextConsumer onContext={(c) => { captured.ctx = c; }} />
+      </P1AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(captured.ctx).not.toBeNull();
+      const ctx = captured.ctx as ReturnType<typeof useP1Auth>;
+      expect(ctx.isLoading).toBe(false);
+    });
+
+    const ctx = captured.ctx as ReturnType<typeof useP1Auth>;
+
+    await act(async () => {
+      await ctx.login();
+    });
+
+    expect(fakeSession.login).toHaveBeenCalledTimes(1);
+    expect(hasPendingBrokerLogin()).toBe(true);
+    const ctxAfter = captured.ctx as ReturnType<typeof useP1Auth>;
+    expect(ctxAfter.isLoading).toBe(true);
+  });
+
+  it('only redeems once even if mount effect runs twice', async () => {
+    vi.mocked(hasPendingBrokerLogin).mockReturnValue(true);
+    vi.mocked(redeemPendingBrokerLogin).mockResolvedValue({
+      token: 'redeemed-token',
+      userInfo: {
+        id: 'user-once',
+        email: 'once@example.com',
+        name: 'Once User',
+      },
+    });
+    vi.mocked(validateToken).mockResolvedValue({
+      id: 'user-once',
+      type: 'user',
+      email: 'once@example.com',
+      name: 'Once User',
+      avatarUrl: null,
+    });
+
+    const fakeSession = makeFakeOAuthSession();
+    vi.mocked(createBrokerAuth).mockReturnValue(fakeSession);
+
+    const captured: { ctx: ReturnType<typeof useP1Auth> | null } = { ctx: null };
+
+    render(
+      <P1AuthProvider authMode="broker" p1BaseUrl="http://localhost:8787">
+        <AuthContextConsumer onContext={(c) => { captured.ctx = c; }} />
+      </P1AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(captured.ctx).not.toBeNull();
+      const ctx = captured.ctx as ReturnType<typeof useP1Auth>;
+      expect(ctx.isLoading).toBe(false);
+    });
+
+    expect(redeemPendingBrokerLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips redirect redeem when hasPendingBrokerLogin returns false', async () => {
+    vi.mocked(hasPendingBrokerLogin).mockReturnValue(false);
+
+    const fakeSession = makeFakeOAuthSession();
+    vi.mocked(createBrokerAuth).mockReturnValue(fakeSession);
+
+    const captured: { ctx: ReturnType<typeof useP1Auth> | null } = { ctx: null };
+
+    render(
+      <P1AuthProvider authMode="broker" p1BaseUrl="http://localhost:8787">
+        <AuthContextConsumer onContext={(c) => { captured.ctx = c; }} />
+      </P1AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(captured.ctx).not.toBeNull();
+      const ctx = captured.ctx as ReturnType<typeof useP1Auth>;
+      expect(ctx.isLoading).toBe(false);
+    });
+
+    expect(redeemPendingBrokerLogin).not.toHaveBeenCalled();
   });
 });
 

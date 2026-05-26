@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 
 export async function postBrokerLogin(
-  _request: Request,
+  request: Request,
   apiKey: string | undefined,
   baseUrl: string | undefined,
+  redirectUrl?: string,
+  prompt?: string,
 ) {
   if (!apiKey || !baseUrl) {
     return NextResponse.json(
@@ -12,12 +14,24 @@ export async function postBrokerLogin(
     );
   }
 
-  const response = await fetch(`${baseUrl}/broker/login`, {
+  const headers: Record<string, string> = {
+    "Authorization": `Bearer ${apiKey}`,
+  };
+  const fetchInit: RequestInit = {
     method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-    },
+    headers,
+  };
+
+  const requestUrl = new URL(request.url);
+  const basePath = requestUrl.pathname.replace(/\/auth\/.*$/, '') || '/';
+  const effectiveRedirectUrl = redirectUrl ?? requestUrl.origin + basePath;
+  headers["Content-Type"] = "application/json";
+  fetchInit.body = JSON.stringify({
+    redirectUrl: effectiveRedirectUrl,
+    ...(prompt !== undefined ? { prompt } : {}),
   });
+
+  const response = await fetch(`${baseUrl}/broker/login`, fetchInit);
 
   const body = await response.json().catch(() => ({ error: "Unknown error" }));
 

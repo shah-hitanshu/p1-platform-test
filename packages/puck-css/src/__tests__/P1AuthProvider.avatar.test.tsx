@@ -16,6 +16,8 @@ vi.mock('@pantheon-systems/css-client', () => ({
   createBrokerAuth: vi.fn(),
   validateToken: vi.fn().mockResolvedValue(null),
   loginMockUser: vi.fn(),
+  hasPendingBrokerLogin: vi.fn().mockReturnValue(false),
+  redeemPendingBrokerLogin: vi.fn().mockResolvedValue(null),
 }));
 
 import {

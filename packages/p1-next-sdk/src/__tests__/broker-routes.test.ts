@@ -81,6 +81,37 @@ describe("postBrokerLogin", () => {
     expect((resp as { status: number }).status).toBe(403);
     expect((resp as { __body: unknown }).__body).toEqual({ error: "forbidden" });
   });
+
+  it("forwards redirectUrl to upstream when provided in options", async () => {
+    const upstream = { transactionId: "tx-1", loginUrl: "https://auth0.example.com/login" };
+    fetchSpy.mockResolvedValueOnce(okResponse(upstream));
+
+    const resp = await postBrokerLogin(
+      makeRequest(),
+      "test-api-key",
+      "https://css.example.com",
+      "https://myapp.example.com/p1/editor",
+    );
+
+    const [url, opts] = fetchSpy.mock.calls[0];
+    expect(url).toBe("https://css.example.com/broker/login");
+    const body = JSON.parse(opts.body);
+    expect(body.redirectUrl).toBe("https://myapp.example.com/p1/editor");
+
+    const respBody = (resp as { __body: unknown }).__body;
+    expect(respBody).toEqual(upstream);
+  });
+
+  it("auto-derives redirectUrl from request origin and app base path", async () => {
+    const upstream = { transactionId: "tx-2", loginUrl: "https://auth0.example.com/login" };
+    fetchSpy.mockResolvedValueOnce(okResponse(upstream));
+
+    await postBrokerLogin(makeRequest(), "key", "https://css.example.com");
+
+    const [, opts] = fetchSpy.mock.calls[0];
+    const body = JSON.parse(opts.body);
+    expect(body.redirectUrl).toBe("http://localhost/p1");
+  });
 });
 
 describe("postBrokerRedeem", () => {

@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createBrokerAuth } from '../src/broker.js';
+import { createBrokerAuth, hasPendingBrokerLogin, redeemPendingBrokerLogin } from '../src/broker.js';
 import { createOAuthAuthProvider } from '../src/oauth.js';
 import type { BrokerAuthConfig } from '../src/broker.js';
 
@@ -31,9 +31,30 @@ const localStorageMock = (() => {
   };
 })();
 
+const sessionStorageMock = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: vi.fn((key: string) => store[key] ?? null),
+    setItem: vi.fn((key: string, value: string) => {
+      store[key] = value;
+    }),
+    removeItem: vi.fn((key: string) => {
+      delete store[key];
+    }),
+    clear: vi.fn(() => {
+      store = {};
+    }),
+    get length() {
+      return Object.keys(store).length;
+    },
+    key: vi.fn((_index: number) => null),
+  };
+})();
+
 Object.defineProperty(global, 'localStorage', { value: localStorageMock, writable: true });
+Object.defineProperty(global, 'sessionStorage', { value: sessionStorageMock, writable: true });
 Object.defineProperty(global, 'window', {
-  value: { localStorage: localStorageMock },
+  value: { localStorage: localStorageMock, sessionStorage: sessionStorageMock },
   writable: true,
   configurable: true,
 });
@@ -58,6 +79,7 @@ describe('createBrokerAuth', () => {
 
   beforeEach(() => {
     localStorageMock.clear();
+    sessionStorageMock.clear();
     mockFetch.mockReset();
     global.fetch = mockFetch;
     vi.restoreAllMocks();
@@ -628,6 +650,321 @@ describe('createBrokerAuth', () => {
     it('logout does not throw when window is undefined', async () => {
       const session = createBrokerAuth(defaultConfig);
       await expect(session.logout()).resolves.not.toThrow();
+    });
+  });
+
+  describe('redirect mode login()', () => {
+    it('stores transactionId in sessionStorage and calls onLoginUrl', async () => {
+      const onLoginUrl = vi.fn();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          transactionId: 'tx-redirect-1',
+          loginUrl: 'https://auth0.example.com/authorize?tx=redirect-1',
+        }),
+      });
+
+      const session = createBrokerAuth({
+        ...defaultConfig,
+        onLoginUrl,
+        loginMode: 'redirect',
+      });
+      await session.login();
+
+      expect(onLoginUrl).toHaveBeenCalledWith(
+        'https://auth0.example.com/authorize?tx=redirect-1',
+      );
+
+      const stored = JSON.parse(sessionStorageMock.getItem('css_broker_pending_tx')!);
+      expect(stored.transactionId).toBe('tx-redirect-1');
+    });
+
+    it('does not poll the redeem endpoint', async () => {
+      const onLoginUrl = vi.fn();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          transactionId: 'tx-redirect-no-poll',
+          loginUrl: 'https://auth0.example.com/authorize',
+        }),
+      });
+
+      const session = createBrokerAuth({
+        ...defaultConfig,
+        onLoginUrl,
+        loginMode: 'redirect',
+        pollIntervalMs: 10,
+      });
+      await session.login();
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws when /broker/login fails in redirect mode', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ error: 'Unauthorized' }),
+      });
+
+      const session = createBrokerAuth({
+        ...defaultConfig,
+        loginMode: 'redirect',
+      });
+      await expect(session.login()).rejects.toThrow(/401/);
+    });
+  });
+
+  describe('hasPendingBrokerLogin()', () => {
+    it('returns false when no pending transaction exists', () => {
+      expect(hasPendingBrokerLogin()).toBe(false);
+    });
+
+    it('returns true when a pending transaction exists in sessionStorage', () => {
+      sessionStorageMock.setItem(
+        'css_broker_pending_tx',
+        JSON.stringify({ transactionId: 'tx-pending' }),
+      );
+      expect(hasPendingBrokerLogin()).toBe(true);
+    });
+  });
+
+  describe('redeemPendingBrokerLogin()', () => {
+    it('returns null when no pending transaction exists', async () => {
+      const result = await redeemPendingBrokerLogin({
+        cssBaseUrl: 'https://css-api.example.com',
+        siteApiToken: 'sat_test-token-123',
+      });
+      expect(result).toBeNull();
+    });
+
+    it('redeems pending transaction and returns token and user info', async () => {
+      const brokerJwt = createTestJwt({
+        sub: 'user-redirect',
+        email: 'redirect@example.com',
+        name: 'Redirect User',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+
+      sessionStorageMock.setItem(
+        'css_broker_pending_tx',
+        JSON.stringify({ transactionId: 'tx-redeem-1' }),
+      );
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ token: brokerJwt }),
+      });
+
+      const result = await redeemPendingBrokerLogin({
+        cssBaseUrl: 'https://css-api.example.com',
+        siteApiToken: 'sat_test-token-123',
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.token).toBe(brokerJwt);
+      expect(result!.userInfo).not.toBeNull();
+      expect(result!.userInfo!.id).toBe('user-redirect');
+      expect(result!.userInfo!.email).toBe('redirect@example.com');
+    });
+
+    it('stores the redeemed token in localStorage', async () => {
+      const brokerJwt = createTestJwt({
+        sub: 'user-stored',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+
+      sessionStorageMock.setItem(
+        'css_broker_pending_tx',
+        JSON.stringify({ transactionId: 'tx-store-ls' }),
+      );
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ token: brokerJwt }),
+      });
+
+      await redeemPendingBrokerLogin({
+        cssBaseUrl: 'https://css-api.example.com',
+        siteApiToken: 'sat_test-token-123',
+      });
+
+      expect(localStorageMock.setItem).toHaveBeenCalledWith('css_broker_token', brokerJwt);
+    });
+
+    it('clears sessionStorage after successful redeem', async () => {
+      const brokerJwt = createTestJwt({
+        sub: 'user-clear',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+
+      sessionStorageMock.setItem(
+        'css_broker_pending_tx',
+        JSON.stringify({ transactionId: 'tx-clear' }),
+      );
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ token: brokerJwt }),
+      });
+
+      await redeemPendingBrokerLogin({
+        cssBaseUrl: 'https://css-api.example.com',
+        siteApiToken: 'sat_test-token-123',
+      });
+
+      expect(sessionStorageMock.removeItem).toHaveBeenCalledWith('css_broker_pending_tx');
+    });
+
+    it('throws on 410 (expired) and clears sessionStorage', async () => {
+      sessionStorageMock.setItem(
+        'css_broker_pending_tx',
+        JSON.stringify({ transactionId: 'tx-expired' }),
+      );
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 410,
+        json: () => Promise.resolve({ error: 'Transaction expired' }),
+      });
+
+      await expect(
+        redeemPendingBrokerLogin({
+          cssBaseUrl: 'https://css-api.example.com',
+          siteApiToken: 'sat_test-token-123',
+        }),
+      ).rejects.toThrow(/expired/i);
+
+      expect(sessionStorageMock.removeItem).toHaveBeenCalledWith('css_broker_pending_tx');
+    });
+
+    it('throws on 400 (rejected) and clears sessionStorage', async () => {
+      sessionStorageMock.setItem(
+        'css_broker_pending_tx',
+        JSON.stringify({ transactionId: 'tx-rejected' }),
+      );
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: () => Promise.resolve({ error: 'Transaction rejected' }),
+      });
+
+      await expect(
+        redeemPendingBrokerLogin({
+          cssBaseUrl: 'https://css-api.example.com',
+          siteApiToken: 'sat_test-token-123',
+        }),
+      ).rejects.toThrow(/rejected/i);
+
+      expect(sessionStorageMock.removeItem).toHaveBeenCalledWith('css_broker_pending_tx');
+    });
+
+    it('uses proxy mode when siteApiToken is not provided', async () => {
+      const brokerJwt = createTestJwt({
+        sub: 'user-proxy',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+
+      sessionStorageMock.setItem(
+        'css_broker_pending_tx',
+        JSON.stringify({ transactionId: 'tx-proxy-redeem' }),
+      );
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ token: brokerJwt }),
+      });
+
+      await redeemPendingBrokerLogin({
+        cssBaseUrl: 'https://css-api.example.com',
+      });
+
+      const [url] = mockFetch.mock.calls[0];
+      expect(url).toBe('/p1/auth/redeem');
+    });
+
+    it('preserves sessionStorage when redeem returns 500 (transient error)', async () => {
+      sessionStorageMock.setItem(
+        'css_broker_pending_tx',
+        JSON.stringify({ transactionId: 'tx-transient' }),
+      );
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({ error: 'Internal server error' }),
+      });
+
+      await expect(
+        redeemPendingBrokerLogin({
+          cssBaseUrl: 'https://css-api.example.com',
+          siteApiToken: 'sat_test-token-123',
+        }),
+      ).rejects.toThrow(/500/);
+
+      expect(sessionStorageMock.getItem('css_broker_pending_tx')).not.toBeNull();
+    });
+
+    it('clears sessionStorage on terminal 410 error', async () => {
+      sessionStorageMock.setItem(
+        'css_broker_pending_tx',
+        JSON.stringify({ transactionId: 'tx-terminal' }),
+      );
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 410,
+        json: () => Promise.resolve({ error: 'Transaction expired' }),
+      });
+
+      await expect(
+        redeemPendingBrokerLogin({
+          cssBaseUrl: 'https://css-api.example.com',
+          siteApiToken: 'sat_test-token-123',
+        }),
+      ).rejects.toThrow(/expired/i);
+
+      expect(sessionStorageMock.getItem('css_broker_pending_tx')).toBeNull();
+    });
+
+    it('returns null and clears sessionStorage when pending tx has malformed JSON', async () => {
+      sessionStorageMock.setItem('css_broker_pending_tx', '{corrupt');
+
+      const result = await redeemPendingBrokerLogin({
+        cssBaseUrl: 'https://css-api.example.com',
+        siteApiToken: 'sat_test-token-123',
+      });
+
+      expect(result).toBeNull();
+      expect(sessionStorageMock.getItem('css_broker_pending_tx')).toBeNull();
+    });
+
+    it('uses custom storageKey', async () => {
+      const brokerJwt = createTestJwt({
+        sub: 'user-custom',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+
+      sessionStorageMock.setItem(
+        'css_broker_pending_tx',
+        JSON.stringify({ transactionId: 'tx-custom' }),
+      );
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ token: brokerJwt }),
+      });
+
+      await redeemPendingBrokerLogin({
+        cssBaseUrl: 'https://css-api.example.com',
+        siteApiToken: 'sat_test-token-123',
+        storageKey: 'my_custom_key',
+      });
+
+      expect(localStorageMock.setItem).toHaveBeenCalledWith('my_custom_key', brokerJwt);
     });
   });
 

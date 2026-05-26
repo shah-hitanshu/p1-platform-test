@@ -28,7 +28,21 @@ export interface BrokerAuthConfig {
   pollIntervalMs?: number;
   maxPollAttempts?: number;
   signal?: AbortSignal;
+  loginMode?: 'popup' | 'redirect';
 }
+
+export interface BrokerRedeemResult {
+  token: string;
+  userInfo: OAuthUserInfo | null;
+}
+
+export interface BrokerRedeemConfig {
+  cssBaseUrl: string;
+  siteApiToken?: string;
+  storageKey?: string;
+}
+
+const PENDING_TX_KEY = 'css_broker_pending_tx';
 
 const PROXY_PATH = '/p1/auth';
 
@@ -50,6 +64,7 @@ export function createBrokerAuth(config: BrokerAuthConfig): OAuthSession {
   const storageKey = config.storageKey ?? 'css_broker_token';
   const pollIntervalMs = config.pollIntervalMs ?? 2000;
   const maxPollAttempts = config.maxPollAttempts ?? 150;
+  const loginMode = config.loginMode ?? 'popup';
   let userInfo: OAuthUserInfo | null = null;
 
   const existingToken =
@@ -82,6 +97,17 @@ export function createBrokerAuth(config: BrokerAuthConfig): OAuthSession {
         transactionId: string;
         loginUrl: string;
       };
+
+      if (loginMode === 'redirect') {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem(
+            PENDING_TX_KEY,
+            JSON.stringify({ transactionId }),
+          );
+        }
+        config.onLoginUrl(loginUrl);
+        return;
+      }
 
       config.onLoginUrl(loginUrl);
 
@@ -152,4 +178,66 @@ export function createBrokerAuth(config: BrokerAuthConfig): OAuthSession {
   };
 
   return session;
+}
+
+export function hasPendingBrokerLogin(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.sessionStorage.getItem(PENDING_TX_KEY) !== null;
+}
+
+export async function redeemPendingBrokerLogin(
+  config: BrokerRedeemConfig,
+): Promise<BrokerRedeemResult | null> {
+  if (typeof window === 'undefined') return null;
+
+  const raw = window.sessionStorage.getItem(PENDING_TX_KEY);
+  if (!raw) return null;
+
+  let transactionId: string;
+  try {
+    ({ transactionId } = JSON.parse(raw) as { transactionId: string });
+  } catch {
+    window.sessionStorage.removeItem(PENDING_TX_KEY);
+    return null;
+  }
+
+  const storageKey = config.storageKey ?? 'css_broker_token';
+
+  const endpoint = config.siteApiToken
+    ? `${trimTrailingSlash(config.cssBaseUrl)}/broker/redeem`
+    : `${PROXY_PATH}/redeem`;
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (config.siteApiToken) {
+    headers['Authorization'] = `Bearer ${config.siteApiToken}`;
+  }
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ transactionId }),
+  });
+
+  if (response.status === 410) {
+    window.sessionStorage.removeItem(PENDING_TX_KEY);
+    throw new Error('Broker login failed: transaction expired');
+  }
+  if (response.status === 400) {
+    window.sessionStorage.removeItem(PENDING_TX_KEY);
+    throw new Error('Broker login failed: transaction rejected');
+  }
+  if (!response.ok) {
+    throw new Error(`Broker redeem failed (${response.status})`);
+  }
+
+  window.sessionStorage.removeItem(PENDING_TX_KEY);
+  const { token } = (await response.json()) as { token: string };
+  window.localStorage.setItem(storageKey, token);
+
+  return {
+    token,
+    userInfo: extractUserInfo(token),
+  };
 }

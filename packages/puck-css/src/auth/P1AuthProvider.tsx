@@ -20,8 +20,10 @@ import {
   createBrokerAuth,
   validateToken,
   loginMockUser,
+  hasPendingBrokerLogin,
+  redeemPendingBrokerLogin,
 } from '@pantheon-systems/css-client';
-import type { OAuthSession, OAuthUserInfo } from '@pantheon-systems/css-client';
+import type { OAuthSession, OAuthUserInfo, BrokerRedeemResult } from '@pantheon-systems/css-client';
 
 export type AuthMode = 'mock' | 'broker';
 
@@ -91,12 +93,16 @@ export function P1AuthProvider(props: P1AuthProviderProps): React.ReactElement {
   const stateRef = useRef({ setUser, setToken, setIsLoading });
   stateRef.current = { setUser, setToken, setIsLoading };
 
+  const redirectingRef = useRef(false);
+  const redeemPromiseRef = useRef<Promise<BrokerRedeemResult | null> | null>(null);
+
   const [brokerSession] = useState<OAuthSession | null>(() => {
     if (typeof window === 'undefined') return null;
     if (authMode !== 'broker') return null;
     return createBrokerAuth({
       cssBaseUrl: props.p1BaseUrl,
-      onLoginUrl: (url) => window.open(url, '_blank'),
+      loginMode: 'redirect',
+      onLoginUrl: (url) => { window.location.href = url; },
     });
   });
 
@@ -125,6 +131,41 @@ export function P1AuthProvider(props: P1AuthProviderProps): React.ReactElement {
 
     async function checkExistingAuth() {
       setIsLoading(true);
+
+      if (authMode === 'broker' && hasPendingBrokerLogin()) {
+        if (!redeemPromiseRef.current) {
+          redeemPromiseRef.current = redeemPendingBrokerLogin({
+            cssBaseUrl: p1BaseUrl,
+          });
+        }
+        try {
+          const result = await redeemPromiseRef.current;
+          if (result && !cancelled) {
+            setToken(result.token);
+            if (result.userInfo) {
+              setUser(oauthUserToAuthUser(result.userInfo));
+            }
+            const validated = await validateToken(p1BaseUrl, result.token);
+            if (!cancelled && validated) {
+              setUser({
+                id: validated.id,
+                name: validated.name ?? validated.email ?? validated.id,
+                email: validated.email,
+                picture: validated.avatarUrl,
+              });
+            }
+          }
+        } catch (err) {
+          if (!cancelled) {
+            setError(err instanceof Error ? err.message : 'Login failed');
+          }
+        }
+        if (!cancelled) {
+          setIsLoading(false);
+          redeemPromiseRef.current = null;
+        }
+        return;
+      }
 
       if (authMode === 'mock') {
         const storedToken = localStorage.getItem(storageKey);
@@ -200,6 +241,10 @@ export function P1AuthProvider(props: P1AuthProviderProps): React.ReactElement {
           });
         } else if (brokerSession) {
           await brokerSession.login();
+          if (hasPendingBrokerLogin()) {
+            redirectingRef.current = true;
+            return;
+          }
           const brokerToken = await brokerSession.getToken();
           if (brokerToken) {
             setToken(brokerToken);
@@ -213,7 +258,9 @@ export function P1AuthProvider(props: P1AuthProviderProps): React.ReactElement {
         const msg = err instanceof Error ? err.message : 'Login failed';
         setError(msg);
       } finally {
-        setIsLoading(false);
+        if (!redirectingRef.current) {
+          setIsLoading(false);
+        }
       }
     },
     [authMode, brokerSession, p1BaseUrl, storageKey],
