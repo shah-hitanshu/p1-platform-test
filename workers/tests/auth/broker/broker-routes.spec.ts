@@ -99,6 +99,48 @@ describe('BrokerRoutes', () => {
       expect(response?.status).toBe(401);
     });
 
+    it('stores redirectUrl from request body in the transaction', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { createTransaction } = await import('../../../src/auth/broker/transaction.js');
+      const { authenticate } = await import('../../../src/middleware/authentication.js');
+
+      vi.mocked(authenticate).mockResolvedValue({
+        id: 'token-id-1',
+        type: 'service',
+        authProvider: 'site_token',
+        siteId: 'site-123',
+        pantheonSiteRoles: {},
+        tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
+      });
+
+      vi.mocked(createTransaction).mockResolvedValue({
+        id: 'tx-redirect-1',
+        siteId: 'site-123',
+        siteApiTokenId: 'token-id-1',
+        status: 'pending',
+        createdAt: 1000,
+        expiresAt: 1300,
+        redirectUrl: 'https://myapp.example.com/p1/editor',
+      });
+
+      const request = new Request('https://css.example.com/broker/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ redirectUrl: 'https://myapp.example.com/p1/editor' }),
+      });
+
+      const response = await handleBrokerRoutes(request, createMockEnv(), '/broker/login');
+      expect(response).not.toBeNull();
+      expect(response?.status).toBe(200);
+
+      expect(createTransaction).toHaveBeenCalledWith(
+        expect.anything(),
+        'site-123',
+        'token-id-1',
+        { redirectUrl: 'https://myapp.example.com/p1/editor', prompt: undefined },
+      );
+    });
+
     it('returns 403 if principal has no siteId', async () => {
       const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
       const { authenticate } = await import('../../../src/middleware/authentication.js');
@@ -203,6 +245,82 @@ describe('BrokerRoutes', () => {
           userName: 'Test User',
         }),
       );
+    });
+
+    it('redirects to transaction redirectUrl after successful auth', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { approveTransaction } = await import('../../../src/auth/broker/transaction.js');
+      const { exchangeAuth0Code } = await import('../../../src/auth/oauth/auth0-handler.js');
+      const { verifyAndParseState } = await import('../../../src/auth/oauth/state-signing.js');
+
+      vi.mocked(verifyAndParseState).mockResolvedValue({ txId: 'tx-redirect-1' });
+
+      vi.mocked(exchangeAuth0Code).mockResolvedValue({
+        accessToken: 'auth0-access-token',
+        user: {
+          sub: 'auth0|user-1',
+          email: 'user@example.com',
+          name: 'Test User',
+        },
+      });
+
+      vi.mocked(approveTransaction).mockResolvedValue({
+        id: 'tx-redirect-1',
+        siteId: 'site-123',
+        siteApiTokenId: 'token-id-1',
+        status: 'approved',
+        createdAt: 1000,
+        expiresAt: 1300,
+        userId: 'auth0|user-1',
+        userEmail: 'user@example.com',
+        userName: 'Test User',
+        redirectUrl: 'https://myapp.example.com/p1/editor',
+      });
+
+      const url = 'https://css.example.com/auth/callback?code=auth-code&state=signed-state';
+      const request = new Request(url);
+      const response = await handleBrokerRoutes(request, createMockEnv(), '/auth/callback');
+
+      expect(response?.status).toBe(302);
+      expect(response?.headers.get('Location')).toBe('https://myapp.example.com/p1/editor');
+    });
+
+    it('shows close-window page when no redirectUrl is set', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { approveTransaction } = await import('../../../src/auth/broker/transaction.js');
+      const { exchangeAuth0Code } = await import('../../../src/auth/oauth/auth0-handler.js');
+      const { verifyAndParseState } = await import('../../../src/auth/oauth/state-signing.js');
+
+      vi.mocked(verifyAndParseState).mockResolvedValue({ txId: 'tx-no-redirect' });
+
+      vi.mocked(exchangeAuth0Code).mockResolvedValue({
+        accessToken: 'auth0-access-token',
+        user: {
+          sub: 'auth0|user-1',
+          email: 'user@example.com',
+          name: 'Test User',
+        },
+      });
+
+      vi.mocked(approveTransaction).mockResolvedValue({
+        id: 'tx-no-redirect',
+        siteId: 'site-123',
+        siteApiTokenId: 'token-id-1',
+        status: 'approved',
+        createdAt: 1000,
+        expiresAt: 1300,
+        userId: 'auth0|user-1',
+        userEmail: 'user@example.com',
+        userName: 'Test User',
+      });
+
+      const url = 'https://css.example.com/auth/callback?code=auth-code&state=signed-state';
+      const request = new Request(url);
+      const response = await handleBrokerRoutes(request, createMockEnv(), '/auth/callback');
+
+      expect(response?.status).toBe(200);
+      const body = await response?.text();
+      expect(body).toContain('close this window');
     });
 
     it('returns 400 if state verification fails', async () => {

@@ -26,6 +26,8 @@ export interface LoginTransaction {
   userId?: string;
   userEmail?: string;
   userName?: string;
+  redirectUrl?: string;
+  prompt?: string;
 }
 
 export interface ApproveUserInfo {
@@ -42,6 +44,7 @@ export async function createTransaction(
   kv: KVNamespace,
   siteId: string,
   siteApiTokenId: string,
+  options?: { redirectUrl?: string; prompt?: string },
 ): Promise<LoginTransaction> {
   const now = Math.floor(Date.now() / 1000);
   const tx: LoginTransaction = {
@@ -51,6 +54,8 @@ export async function createTransaction(
     status: 'pending',
     createdAt: now,
     expiresAt: now + TRANSACTION_TTL_SECONDS,
+    ...(options?.redirectUrl !== undefined ? { redirectUrl: options.redirectUrl } : {}),
+    ...(options?.prompt !== undefined ? { prompt: options.prompt } : {}),
   };
 
   await kv.put(

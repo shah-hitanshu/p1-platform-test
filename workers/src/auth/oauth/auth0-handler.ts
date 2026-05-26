@@ -20,6 +20,7 @@ export interface Auth0AuthUrlParams {
   scope: string;
   audience?: string;
   nonce?: string;
+  prompt?: string;
 }
 
 export interface Auth0CodeExchangeParams {
@@ -71,6 +72,9 @@ export function getAuth0AuthorizationUrl(params: Auth0AuthUrlParams): string {
   }
   if (params.nonce !== undefined && params.nonce !== '') {
     url.searchParams.set('nonce', params.nonce);
+  }
+  if (params.prompt !== undefined && params.prompt !== '') {
+    url.searchParams.set('prompt', params.prompt);
   }
   return url.toString();
 }

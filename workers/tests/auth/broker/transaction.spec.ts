@@ -194,6 +194,26 @@ describe('BrokerTransaction', () => {
     });
   });
 
+  describe('createTransaction with redirectUrl', () => {
+    it('stores redirectUrl when provided', async () => {
+      const { createTransaction, getTransaction } = await import('../../../src/auth/broker/transaction.js');
+      const tx = await createTransaction(kv, 'site-123', 'token-id-456', { redirectUrl: 'https://myapp.example.com/p1/editor' });
+
+      expect(tx.redirectUrl).toBe('https://myapp.example.com/p1/editor');
+
+      const retrieved = await getTransaction(kv, tx.id);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved!.redirectUrl).toBe('https://myapp.example.com/p1/editor');
+    });
+
+    it('leaves redirectUrl undefined when not provided', async () => {
+      const { createTransaction } = await import('../../../src/auth/broker/transaction.js');
+      const tx = await createTransaction(kv, 'site-123', 'token-id-456');
+
+      expect(tx.redirectUrl).toBeUndefined();
+    });
+  });
+
   describe('transaction expiry', () => {
     it('treats expired pending transaction as non-redeemable', async () => {
       const { createTransaction, getTransaction } = await import('../../../src/auth/broker/transaction.js');

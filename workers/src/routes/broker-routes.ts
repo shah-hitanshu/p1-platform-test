@@ -73,7 +73,25 @@ export async function handleBrokerRoutes(
       return errorResponse('Site API token required', 403);
     }
 
-    const tx = await createTransaction(kv, principal.siteId, principal.id);
+    let redirectUrl: string | undefined;
+    let prompt: string | undefined;
+    const contentType = request.headers.get('Content-Type');
+    if (contentType?.includes('application/json') === true) {
+      try {
+        const body: { redirectUrl?: string; prompt?: string } = await request.json();
+        if (typeof body.redirectUrl === 'string' && body.redirectUrl !== '') {
+          redirectUrl = body.redirectUrl;
+        }
+        const ALLOWED_PROMPTS = new Set(['login', 'none', 'consent', 'select_account']);
+        if (typeof body.prompt === 'string' && ALLOWED_PROMPTS.has(body.prompt)) {
+          prompt = body.prompt;
+        }
+      } catch {
+        // No body or invalid JSON is fine
+      }
+    }
+
+    const tx = await createTransaction(kv, principal.siteId, principal.id, { redirectUrl, prompt });
 
     const origin = getPublicOrigin(request, env);
     const loginUrl = `${origin}/broker/login/${tx.id}`;
@@ -108,6 +126,7 @@ export async function handleBrokerRoutes(
       state: signedState,
       scope: 'openid email profile',
       nonce,
+      prompt: tx.prompt,
     });
 
     return new Response(null, {
@@ -165,6 +184,16 @@ export async function handleBrokerRoutes(
         '<html><body><h1>Login failed</h1><p>Transaction expired or already used.</p></body></html>',
         { status: 410, headers: { 'Content-Type': 'text/html' } },
       );
+    }
+
+    if (approved.redirectUrl !== undefined && approved.redirectUrl !== '') {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: approved.redirectUrl,
+          'Referrer-Policy': 'no-referrer',
+        },
+      });
     }
 
     return new Response(
