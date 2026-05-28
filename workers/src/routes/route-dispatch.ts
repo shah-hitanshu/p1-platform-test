@@ -32,6 +32,8 @@ import { handleAgentRoleRoutes } from './agent-role-api';
 import { handleSiteAgentRoleRoutes } from './site-agent-role-api';
 import { handleSiteSettingsRoutes } from './site-settings-api';
 import { handleContentRoutes } from './content-api';
+import { handleSiteExportRoute } from './site-export-api';
+import { handleSiteImportRoute } from './site-import-api';
 import { getMainBranch } from '../services/branch-service';
 import { errorResponse } from '../utils/http-helpers';
 
@@ -75,6 +77,18 @@ export async function dispatchRoute(
         action: route.params.action,
         principal,
       }, env);
+
+    case 'site-export':
+      return await handleSiteExportRoute(request, {
+        siteId: route.params.siteId,
+        principal,
+      }, env);
+
+    case 'site-import':
+      return await handleSiteImportRoute(request, {
+        siteId: route.params.siteId,
+        principal,
+      }, { CONFIG_KV: env.CONFIG_KV });
 
     case 'site-screenshot':
       return await handleSiteScreenshotRoutes(request, {

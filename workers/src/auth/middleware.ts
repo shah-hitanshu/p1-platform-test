@@ -93,6 +93,19 @@ export function requirePermission(permission: keyof RolePermissions): Middleware
         return;
       }
 
+      // Service principals are gated by the scope check in index.ts.
+      // Here we only verify the token is bound to the requested site.
+      if (req.principal.type === 'service') {
+        if (req.principal.siteId !== siteId) {
+          res.status(403).json({
+            error: `Service token is not bound to site ${siteId}`,
+          });
+          return;
+        }
+        next();
+        return;
+      }
+
       // Special case: guests have fixed VIEWER role
       if (req.principal.type === 'guest') {
         if (permission !== 'canView') {
@@ -178,6 +191,19 @@ export function requireRole(minRole: 'VIEWER' | 'EDITOR' | 'ADMIN'): Middleware 
         res.status(400).json({
           error: 'Missing required parameter: branchId',
         });
+        return;
+      }
+
+      // Service principals are gated by the scope check in index.ts.
+      // Here we only verify the token is bound to the requested site.
+      if (req.principal.type === 'service') {
+        if (req.principal.siteId !== siteId) {
+          res.status(403).json({
+            error: `Service token is not bound to site ${siteId}`,
+          });
+          return;
+        }
+        next();
         return;
       }
 

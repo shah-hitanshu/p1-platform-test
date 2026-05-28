@@ -2701,6 +2701,205 @@ paths:
           $ref: '#/components/responses/NotFound'
 
   # ===========================================================================
+  # Admin — Site Export/Import (PROPOSAL-013)
+  # ===========================================================================
+  /api/admin/sites/{siteId}/export:
+    get:
+      summary: Export site bundle
+      description: |
+        Assembles a full site bundle as a versioned ZIP file, writes it to R2, and returns
+        a presigned download URL (7-day TTL) plus an HMAC-SHA256 signature.
+
+        The bundle is self-contained and integrity-verified:
+        - `bundle.json` contains a SHA-256 manifest of all other files
+        - `bundleSignature` in the response is an HMAC-SHA256 of `bundle.json` keyed to
+          `INTERNAL_SECRET`; pass it as `bundleSignature` when calling the import endpoint
+          so tampered bundles are rejected
+
+        **Version selection:**
+        - Main branch: all published versions + latest draft if not yet published
+        - Non-main branches: latest version only
+        - `_registry/` documents are excluded (they rebuild automatically on first editor open)
+
+        **What is NOT exported:** Yjs/CRDT state, collaborators/agent roles, site API tokens,
+        allowed origins.
+
+        **Size limit:** Bundle is assembled in memory. For very large sites, use the SQL
+        migration path instead.
+
+        Requires `read:all` or `write:create` scoped `sat_` token, or admin credentials.
+      operationId: exportSite
+      tags: [Admin]
+      parameters:
+        - name: siteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Bundle written to R2; presigned URL and signature returned
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [downloadUrl, expiresAt, exportedAt, bundleKey, documentCount, branchCount]
+                properties:
+                  downloadUrl:
+                    type: string
+                    format: uri
+                    description: Presigned R2 download URL (7-day TTL)
+                  expiresAt:
+                    type: string
+                    format: date-time
+                  exportedAt:
+                    type: string
+                    format: date-time
+                  bundleKey:
+                    type: string
+                    description: R2 object key (e.g. `{siteId}/{timestamp}.zip`)
+                  bundleSignature:
+                    type: string
+                    description: |
+                      HMAC-SHA256 of bundle.json keyed to INTERNAL_SECRET.
+                      Pass this as `bundleSignature` when calling the import endpoint.
+                      Absent if INTERNAL_SECRET is not configured on the source environment.
+                  documentCount:
+                    type: integer
+                  branchCount:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: R2 bundle storage not configured
+
+  /api/admin/sites/{siteId}/import:
+    post:
+      summary: Import site bundle
+      description: |
+        Accepts a multipart ZIP bundle and imports it into the target site.
+
+        **Processing order:** site → branches → documents → versions → publish checkpoints
+
+        **Idempotency:** Progress is tracked in KV keyed by `(targetSiteId, exportedAt)`.
+        Re-running the same import resumes from where it left off. The empty-site check is
+        skipped on resume, so partial imports can be continued safely.
+
+        **Target site requirements:** Must be empty (no non-registry documents, no non-main
+        branches) for a first-time import.
+
+        **UUID remapping:** All source UUIDs are replaced with new UUIDs on the target.
+        Source IDs are stored in `import_id_maps` for traceability.
+
+        **Collaborators:** Users and agents with roles on the source site are listed in
+        `requiresSetup.collaborators` in the response. They are never created automatically
+        — the operator must add them manually.
+
+        Requires `write:create` scoped `sat_` token or admin credentials on the **target** site.
+      operationId: importSite
+      tags: [Admin]
+      parameters:
+        - name: siteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: ZIP bundle produced by the export endpoint
+                bundleSignature:
+                  type: string
+                  description: |
+                    HMAC-SHA256 signature returned by the export endpoint.
+                    When provided, the import verifies the signature before processing
+                    any data. Strongly recommended — omitting it skips tamper detection.
+      responses:
+        '200':
+          description: Import complete (or resumed)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [importKey, completedPhases, documentCount, sourceSiteId, crossSiteImport]
+                properties:
+                  importKey:
+                    type: string
+                    description: KV key for this import run (use to resume)
+                  completedPhases:
+                    type: array
+                    items:
+                      type: string
+                    description: Phases completed in this run (including prior runs)
+                  documentCount:
+                    type: integer
+                  sourceSiteId:
+                    type: string
+                    format: uuid
+                  crossSiteImport:
+                    type: boolean
+                    description: True when source and target site IDs differ (migration use case)
+                  requiresSetup:
+                    type: object
+                    description: Resources that must be configured manually on the target
+                    properties:
+                      collaborators:
+                        type: object
+                        properties:
+                          users:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                email:
+                                  type: string
+                                name:
+                                  type: string
+                                role:
+                                  type: string
+                          agents:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                role:
+                                  type: string
+        '400':
+          description: Invalid or corrupt ZIP
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Target site is not empty (first-time import only)
+        '422':
+          description: Bundle manifest validation failed or signature mismatch
+
+  # ===========================================================================
   # Admin — User Allowlist
   # ===========================================================================
   /api/admin/users:
@@ -4567,7 +4766,13 @@ components:
           type: array
           items:
             type: string
-          description: Optional permission scopes
+            enum: [read:published, read:all, read:draft, write:create]
+          description: |
+            Permission scopes for this token. Defaults to [read:published].
+            - read:published: GET published content on main branch only
+            - read:all: GET all content, documents, and branches
+            - read:draft: GET draft and published content on any branch
+            - write:create: GET and POST (create) on all handlers and branches; cannot update or delete
 
     GenerateSiteTokenResponse:
       allOf:

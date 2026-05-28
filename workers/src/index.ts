@@ -126,6 +126,10 @@ export interface Env {
   R2_ACCESS_KEY_ID?: string;
   R2_SECRET_ACCESS_KEY?: string;
 
+  // R2 bundle storage for site export/import
+  R2_BUNDLES?: R2Bucket;
+  R2_BUNDLES_BUCKET?: string;
+
   // Durable Object bindings
   DOCUMENT_STATE: DurableObjectNamespace;
   PRESENCE: DurableObjectNamespace;
@@ -258,7 +262,7 @@ async function handleRequest(
   env: Env,
   path: string,
   origin: string | null,
-  ctx: ExecutionContext,
+  _ctx: ExecutionContext,
 ): Promise<Response> {
   // Health endpoint (no auth required)
   if (path === '/health' || path === '/health/') {

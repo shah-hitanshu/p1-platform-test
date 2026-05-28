@@ -66,6 +66,9 @@ const TOKEN_RANDOM_BYTES = 32;
 const DISPLAY_PREFIX_LENGTH = 8; // chars after sat_ to store for display
 const DEFAULT_SCOPES = ['read:published'];
 
+export const VALID_SCOPES = ['read:published', 'read:all', 'read:draft', 'write:create'] as const;
+export type TokenScope = typeof VALID_SCOPES[number];
+
 // Base62 alphabet for encoding
 const BASE62_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 
@@ -127,6 +130,11 @@ export async function generateToken(
   }
 
   const scopes = params.scopes ?? DEFAULT_SCOPES;
+
+  const invalidScopes = scopes.filter((s) => !VALID_SCOPES.includes(s as TokenScope));
+  if (invalidScopes.length > 0) {
+    throw new Error(`Invalid scopes: ${invalidScopes.join(', ')}. Valid scopes: ${VALID_SCOPES.join(', ')}`);
+  }
 
   // Generate random bytes and encode as base62
   const randomBytes = new Uint8Array(TOKEN_RANDOM_BYTES);

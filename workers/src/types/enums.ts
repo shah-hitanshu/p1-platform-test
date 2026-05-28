@@ -40,10 +40,11 @@ export type BranchStatus = 'active' | 'review' | 'merged' | 'archived';
  * - auto: Created automatically by the system
  * - pre_merge: Created before a merge operation
  * - post_merge: Created after a merge operation
+ * - publish: Created when content is published to main (drives branch inheritance)
  * - agent_pre_edit: Created before an agent starts editing (for rollback)
  * - agent_post_edit: Created after an agent completes editing (for audit)
  */
-export type CheckpointType = 'manual' | 'auto' | 'pre_merge' | 'post_merge' | 'agent_pre_edit' | 'agent_post_edit';
+export type CheckpointType = 'manual' | 'auto' | 'pre_merge' | 'post_merge' | 'publish' | 'agent_pre_edit' | 'agent_post_edit';
 
 /**
  * Source of a document version creation.

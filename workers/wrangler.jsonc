@@ -83,7 +83,8 @@
     "INTERNAL_API_URL": "http://localhost:8787",
     // GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET set in .dev.vars for local development
     // INTERNAL_SECRET set in .dev.vars for local development
-    "R2_SCREENSHOTS_BUCKET": "css-screenshots"
+    "R2_SCREENSHOTS_BUCKET": "css-screenshots",
+    "R2_BUNDLES_BUCKET": "ccr-bundles-local"
   },
 
   // ==========================================================================
@@ -115,7 +116,8 @@
   // R2 Buckets — site screenshots PNG storage
   // ==========================================================================
   "r2_buckets": [
-    { "binding": "R2_SCREENSHOTS", "bucket_name": "css-screenshots" }
+    { "binding": "R2_SCREENSHOTS", "bucket_name": "css-screenshots" },
+    { "binding": "R2_BUNDLES", "bucket_name": "ccr-bundles-local" }
   ],
 
   // ==========================================================================
@@ -147,7 +149,8 @@
         "DOCUMENT_SYNC_BATCH_SIZE": "50",
         "PRESENCE_TTL_SECONDS": "120",
         "APP_VERSION": "sbx1",
-        "R2_SCREENSHOTS_BUCKET": "css-screenshots-sbx1"
+        "R2_SCREENSHOTS_BUCKET": "css-screenshots-sbx1",
+        "R2_BUNDLES_BUCKET": "ccr-bundles-sbx1"
         // Secrets set via wrangler secret put --name collaborative-state-worker-sbx1:
         //   INTERNAL_SECRET   — HMAC key for OAuth state signing
         //   GOOGLE_CLIENT_ID  — Google OAuth app client ID
@@ -182,7 +185,8 @@
         ]
       },
       "r2_buckets": [
-        { "binding": "R2_SCREENSHOTS", "bucket_name": "css-screenshots-sbx1" }
+        { "binding": "R2_SCREENSHOTS", "bucket_name": "css-screenshots-sbx1" },
+        { "binding": "R2_BUNDLES", "bucket_name": "ccr-bundles-sbx1" }
       ],
       "triggers": {
         "crons": ["7 3 * * *"]
@@ -236,7 +240,8 @@
         "DOCUMENT_SYNC_BATCH_SIZE": "50",
         "PRESENCE_TTL_SECONDS": "120",
         "APP_VERSION": "staging",
-        "R2_SCREENSHOTS_BUCKET": "css-screenshots-staging"
+        "R2_SCREENSHOTS_BUCKET": "css-screenshots-staging",
+        "R2_BUNDLES_BUCKET": "ccr-bundles-staging"
       },
       "durable_objects": {
         "bindings": [
@@ -261,7 +266,8 @@
         ]
       },
       "r2_buckets": [
-        { "binding": "R2_SCREENSHOTS", "bucket_name": "css-screenshots-staging" }
+        { "binding": "R2_SCREENSHOTS", "bucket_name": "css-screenshots-staging" },
+        { "binding": "R2_BUNDLES", "bucket_name": "ccr-bundles-staging" }
       ],
       "triggers": {
         "crons": ["7 3 * * *"]
@@ -286,7 +292,8 @@
         "CORS_ORIGINS": "*",
         "METRICS_ENABLED": "true",
         "INTERNAL_API_URL": "https://collaborative-state-worker-prod.pantheon.workers.dev",
-        "R2_SCREENSHOTS_BUCKET": "css-screenshots-prod"
+        "R2_SCREENSHOTS_BUCKET": "css-screenshots-prod",
+        "R2_BUNDLES_BUCKET": "ccr-bundles-prod"
         // Secrets set via wrangler secret put --name collaborative-state-worker-prod:
         //   INTERNAL_SECRET      — HMAC key for OAuth state signing
         //   GOOGLE_CLIENT_ID     — Google OAuth app client ID
@@ -308,7 +315,8 @@
         ]
       },
       "r2_buckets": [
-        { "binding": "R2_SCREENSHOTS", "bucket_name": "css-screenshots-prod" }
+        { "binding": "R2_SCREENSHOTS", "bucket_name": "css-screenshots-prod" },
+        { "binding": "R2_BUNDLES", "bucket_name": "ccr-bundles-prod" }
       ],
       "triggers": {
         "crons": ["7 3 * * *"]

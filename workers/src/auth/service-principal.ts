@@ -36,12 +36,20 @@ export const SCOPE_RULES: Record<string, ScopeRule> = {
   },
   'read:all': {
     methods: ['GET'],
-    allowedHandlers: ['content', 'documents', 'branches'],
+    allowedHandlers: ['content', 'documents', 'branches', 'site-export'],
     mainBranchOnly: false,
   },
   'read:draft': {
     methods: ['GET'],
     allowedHandlers: ['content', 'documents', 'branches'],
+    mainBranchOnly: false,
+  },
+  // Allows the site import endpoint (POST) and site export endpoint (GET).
+  // Intentionally narrow — does not grant access to content, branch, grant,
+  // checkpoint, or merge handlers. Use read:all for general read access.
+  'write:create': {
+    methods: ['GET', 'POST'],
+    allowedHandlers: ['site-import', 'site-export'],
     mainBranchOnly: false,
   },
 };

@@ -202,4 +202,56 @@ describe('Service Principal Scope Enforcement (Phase 3)', () => {
       expect(result.reason).toContain('site');
     });
   });
+
+  // =========================================================================
+  // read:all scope: includes site-export
+  // =========================================================================
+  describe('read:all scope — site-export access', () => {
+    it('allows GET on site-export handler', () => {
+      const principal = createServicePrincipal('site-1', ['read:all']);
+      const result = isServicePrincipalAllowed(principal, 'site-1', 'GET', 'site-export');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('denies POST on site-export handler (read-only scope)', () => {
+      const principal = createServicePrincipal('site-1', ['read:all']);
+      const result = isServicePrincipalAllowed(principal, 'site-1', 'POST', 'site-export');
+      expect(result.allowed).toBe(false);
+    });
+  });
+
+  // =========================================================================
+  // Test 35: write:create scope — limited to migration endpoints only
+  // =========================================================================
+  describe('write:create scope (Test 35)', () => {
+    it('allows GET on site-export handler', () => {
+      const principal = createServicePrincipal('site-1', ['write:create']);
+      const result = isServicePrincipalAllowed(principal, 'site-1', 'GET', 'site-export');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('allows POST on site-import handler', () => {
+      const principal = createServicePrincipal('site-1', ['write:create']);
+      const result = isServicePrincipalAllowed(principal, 'site-1', 'POST', 'site-import');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('denies POST on grants handler (privilege escalation guard)', () => {
+      const principal = createServicePrincipal('site-1', ['write:create']);
+      const result = isServicePrincipalAllowed(principal, 'site-1', 'POST', 'grants');
+      expect(result.allowed).toBe(false);
+    });
+
+    it('denies DELETE on any handler', () => {
+      const principal = createServicePrincipal('site-1', ['write:create']);
+      const result = isServicePrincipalAllowed(principal, 'site-1', 'DELETE', 'site-import');
+      expect(result.allowed).toBe(false);
+    });
+
+    it('denies POST on documents handler', () => {
+      const principal = createServicePrincipal('site-1', ['write:create']);
+      const result = isServicePrincipalAllowed(principal, 'site-1', 'POST', 'documents');
+      expect(result.allowed).toBe(false);
+    });
+  });
 });

@@ -4367,3 +4367,60 @@ Replaced ~130 lines of local validation in `workers/agent/src/tools.ts` with `va
 **Test status:** 86/86 passing, type-check clean. Validated on sbx1 (`p1-chatbot-agent-sbx1` version `aaa4c49d`, `css-mcp-server-sbx1` version `1ee2cccb`).
 
 **Next step:** after CSS PR #116 merges, publish `@pantheon-systems/p1-content-validator@1.0.0` and replace the `file:` tarball reference with `"^1.0.0"` in both repos.
+
+
+---
+
+## PCC-3249: Site Export/Import Bundle (PROPOSAL-013)
+
+**Status:** Complete
+**Branch:** `pcc-3249-export-import`
+**Date:** 2026-05-27
+
+### Summary
+
+Added `GET /api/admin/sites/{siteId}/export` and `POST /api/admin/sites/{siteId}/import` endpoints to the CSS backend, implementing a versioned ZIP bundle format for full site data portability across environments.
+
+### What was built
+
+**Endpoints:**
+- `GET /api/admin/sites/{siteId}/export` — Assembles site data (branches, documents, versions, publish checkpoints) into a ZIP bundle, writes to R2 (`ccr-bundles-{env}`), returns a presigned 7-day download URL.
+- `POST /api/admin/sites/{siteId}/import` — Accepts multipart/form-data ZIP bundle, validates SHA-256 manifest, processes entities in dependency order (site → branches → documents → versions → checkpoints), resumes from KV progress on retry.
+
+**Services created:**
+- `workers/src/services/bundle-export-service.ts` — Version selection logic and `createdByRef` portable reference resolution.
+- `workers/src/services/bundle-import-service.ts` — SHA-256 bundle validation, `resolveCreatedByRefToId`, KV progress tracking.
+
+**Route handlers:**
+- `workers/src/routes/site-export-api.ts`
+- `workers/src/routes/site-import-api.ts`
+
+**Migration:**
+- `workers/src/db/migrations/038_import_id_maps.sql` — Source→target UUID traceability table (`app.import_id_maps`). Applied to Docker dev DB.
+
+**Infrastructure:**
+- `fflate` added as a dependency for synchronous ZIP generation/parsing in Workers.
+- R2 binding `R2_BUNDLES` added to `wrangler.jsonc` for all environments (local, sbx1, staging, production).
+- `R2_BUNDLES` and `R2_BUNDLES_BUCKET` added to `Env` interface.
+
+**Cleanup:**
+- Deleted `workers/scripts/migrate-site.ts` and `workers/tsconfig.scripts.json` (old API-based migration approach, replaced by these endpoints).
+
+### Key decisions
+
+- **R2 storage for bundles:** Export writes ZIP to R2, returns presigned URL. Avoids Worker response size limit.
+- **Empty-site-only import:** Import rejects target sites that already have non-registry documents or non-main branches (returns 409).
+- **fflate for ZIP:** Synchronous `zipSync`/`unzipSync` in Workers runtime — no Node.js `zlib` available.
+- **SYSTEM_UUID fallback:** Any `createdByRef` that can't be resolved in the target environment maps to `00000000-0000-0000-0000-000000000000`.
+- **`canManageGrants` permission:** Highest permission in `RolePermissions`; used for both endpoints.
+- **`branchName` field in `versions.jsonl`:** Each version line carries its source branch name so the import handler can route to the correct target branch.
+- **Sequential version numbering on target:** Source version numbers are NOT replicated (they collide across branches); import assigns sequential numbers starting at 1 per document+branch pair.
+- **Validation always re-runs:** SHA-256 manifest validation is not tracked as a KV phase — it runs on every import request, even when resuming from partial progress.
+- **`bundle.json` not in `manifest.files`:** It's the manifest container itself; self-hashing would be circular.
+
+### Tests
+
+- Unit tests: 42 tests across 4 new spec files (bundle-export-service, bundle-import-service, site-export-api, site-import-api).
+- Integration tests: 5 tests covering real DB interactions (selectVersionsForDocument, resolveCreatedByRefToId, import_id_maps table, validateBundleManifest with real crypto.subtle).
+- Full test suite: 160 files, 2875 tests passing.
+- Lint: 0 errors.

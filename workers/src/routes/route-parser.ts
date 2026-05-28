@@ -53,6 +53,18 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     };
   }
 
+  // Site export route (must be before generic site routes)
+  const siteExportMatch = /^\/api\/admin\/sites\/([^/]+)\/export$/.exec(normalizedPath);
+  if (siteExportMatch) {
+    return { handler: 'site-export', params: { siteId: siteExportMatch[1] } };
+  }
+
+  // Site import route (must be before generic site routes)
+  const siteImportMatch = /^\/api\/admin\/sites\/([^/]+)\/import$/.exec(normalizedPath);
+  if (siteImportMatch) {
+    return { handler: 'site-import', params: { siteId: siteImportMatch[1] } };
+  }
+
   // Site settings routes (must come before generic site routes)
   const siteSettingsMatch = /^\/api\/sites\/([^/]+)\/settings$/.exec(normalizedPath);
   if (siteSettingsMatch) {
