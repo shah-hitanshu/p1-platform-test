@@ -34,7 +34,7 @@
     "@pantheon-systems/eslint-config": "workspace:*",
     "eslint": "^9.27.0",
     "typescript": "^5.9.3",
-    "vitest": "^2.1.9"
+    "vitest": "^4.1.0"
   },
   "engines": {
     "node": ">=20.0.0"
