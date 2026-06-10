@@ -269,3 +269,9 @@
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-position: center;
 }
+
+/* ── Viewport Controls Toggle Button (Full Screen Canvas) ── */
+.puck-editor-theme [class*="_ViewportControls-toggleButton_"] {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}

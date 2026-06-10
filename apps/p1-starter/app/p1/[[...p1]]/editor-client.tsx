@@ -110,7 +110,7 @@ function EditorContent({ path }: { path: string }) {
   return (
     <div className="puck-editor-theme">
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-      <Puck key={puckKey} {...puckProps as any} />
+      <Puck key={puckKey} {...puckProps as any} _experimentalFullScreenCanvas={true} />
     </div>
   );
 }

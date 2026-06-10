@@ -750,6 +750,7 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
           currentBranch={(fc.enableBranchSelector ?? true) ? (stableOptions.currentBranch ?? null) : null}
           documents={(fc.enableDocumentBrowser ?? true) ? mappedDocs : []}
           currentDocument={(fc.enableDocumentBrowser ?? true) ? currentDocMapped : null}
+          selectedDocumentPath={(fc.enableDocumentBrowser ?? true) ? stableOptions.selectedDocumentPath : null}
           siteName={stableOptions.siteName ?? css.siteName ?? ''}
           siteMenuItems={stableOptions.siteMenuItems ?? DEFAULT_SITE_MENU_ITEMS}
           currentUser={currentUser}

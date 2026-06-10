@@ -60,16 +60,20 @@ export function PageNavigator({
       e.preventDefault();
       if (!newPath.trim() || !onCreateDocument) return;
       const path = newPath.startsWith('/') ? newPath.slice(1) : newPath;
+      const normalizedPath = path.startsWith('/') ? path : `/${path}`;
       setCreateError(null);
       try {
         await onCreateDocument(path);
         setNewPath('');
         setIsCreating(false);
+        // Navigate to the newly created page
+        onSelect({ id: normalizedPath, path: normalizedPath, archived: false });
+        onClose();
       } catch (err) {
         setCreateError(err instanceof Error ? err.message : 'Failed to create page');
       }
     },
-    [newPath, onCreateDocument],
+    [newPath, onCreateDocument, onSelect, onClose],
   );
 
   if (!open) return null;

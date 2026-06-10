@@ -128,6 +128,33 @@
   border-color: oklch(0.75 0 0); /* borderStrong */
 }
 
+/* ── External link button ──────────────────────────────────────────────── */
+
+.externalLinkButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0.5rem;
+  background: transparent;
+  border: 1px solid oklch(0.96 0 0); /* borderSubtle */
+  border-radius: var(--pds-border-radius-default, 0.188rem);
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background 0.2s cubic-bezier(0.2, 0, 0, 1),
+    border-color 0.2s cubic-bezier(0.2, 0, 0, 1);
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+}
+
+.externalLinkButton:hover {
+  background: oklch(0.96 0 0); /* bgSubtle */
+  border-color: oklch(0.75 0 0); /* borderStrong */
+}
+
 /* ── Spacer ──────────────────────────────────────────────────────────── */
 
 .spacer {

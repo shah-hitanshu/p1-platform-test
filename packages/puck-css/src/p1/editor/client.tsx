@@ -138,6 +138,7 @@ function ClientInner(props: ClientProps) {
         overrides={overrides}
         plugins={plugins}
         onPublish={onPublish}
+        _experimentalFullScreenCanvas={true}
       />
     </>
   );

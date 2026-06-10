@@ -37,6 +37,7 @@ export interface P1EditorHeaderProps {
   currentBranch: Branch | null;
   documents: PageNavigatorDocument[];
   currentDocument: PageNavigatorDocument | null;
+  selectedDocumentPath?: string | null;
   currentUser?: CurrentUser;
   siteName: string;
   siteMenuItems: SiteMenuItem[];
@@ -53,6 +54,7 @@ export function P1EditorHeader({
   currentBranch,
   documents,
   currentDocument,
+  selectedDocumentPath,
   currentUser,
   siteName,
   siteMenuItems,
@@ -259,10 +261,44 @@ export function P1EditorHeader({
       >
         <Icon iconName="folderTree" iconSize="s" aria-hidden="true" />
         <span className={styles.labelText}>
-          {currentDocument ? currentDocument.path : 'Select a page'}
+          {currentDocument?.path || selectedDocumentPath || 'Select a page'}
           <Icon iconName="angleDown" iconSize="s" aria-hidden="true" />
         </span>
       </button>
+
+      {/* Open in new tab button — shown when editing a page with a valid path */}
+      {(() => {
+        const pagePath = currentDocument?.path || selectedDocumentPath;
+        // Show button if there's a path and it's not empty/root
+        const shouldShow = pagePath && pagePath !== '/' && pagePath !== '';
+        return shouldShow ? (
+          <a
+            href={pagePath}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.externalLinkButton}
+            title="Open page in new tab"
+            data-testid="open-external"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+              <polyline points="15 3 21 3 21 9" />
+              <line x1="10" x2="21" y1="14" y2="3" />
+            </svg>
+          </a>
+        ) : null;
+      })()}
 
       {/* Page navigator — portal-rendered with pre-computed position to avoid flash */}
       <PageNavigator
