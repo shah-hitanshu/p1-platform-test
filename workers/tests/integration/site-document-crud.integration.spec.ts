@@ -526,4 +526,133 @@ describe('Phase 3.1: Integration Tests - Site and Document CRUD', () => {
       expect(await getSite(site.id)).toBeNull();
     });
   });
+
+  describe('Path Normalization - Integration', () => {
+    let testSiteId: string;
+
+    beforeEach(async () => {
+      const site = await createSite({
+        name: 'Path Normalization Test Site',
+        pantheonSiteId: `pantheon-path-norm-${Date.now()}`,
+      });
+      testSiteId = site.id;
+      createdSiteIds.push(site.id);
+    });
+
+    it('should create document at root path "/" and store as empty string', async () => {
+      const doc = await createDocument({
+        siteId: testSiteId,
+        path: '/',
+      });
+
+      expect(doc.path).toBe(''); // Normalized to empty string
+      expect(doc.siteId).toBe(testSiteId);
+      createdDocumentIds.push(doc.id);
+
+      // Verify we can retrieve it
+      const retrieved = await getDocument(doc.id);
+      expect(retrieved?.path).toBe('');
+    });
+
+    it('should normalize leading slashes', async () => {
+      const doc = await createDocument({
+        siteId: testSiteId,
+        path: '/pages/normalized',
+      });
+
+      expect(doc.path).toBe('pages/normalized');
+      createdDocumentIds.push(doc.id);
+
+      // Verify retrieval by normalized path
+      const byPath = await getDocumentByPath(testSiteId, 'pages/normalized');
+      expect(byPath?.id).toBe(doc.id);
+
+      // Also retrievable by original path (gets normalized)
+      const byOriginalPath = await getDocumentByPath(testSiteId, '/pages/normalized');
+      expect(byOriginalPath?.id).toBe(doc.id);
+    });
+
+    it('should normalize trailing slashes', async () => {
+      const doc = await createDocument({
+        siteId: testSiteId,
+        path: 'pages/trailing/',
+      });
+
+      expect(doc.path).toBe('pages/trailing');
+      createdDocumentIds.push(doc.id);
+    });
+
+    it('should normalize both leading and trailing slashes', async () => {
+      const doc = await createDocument({
+        siteId: testSiteId,
+        path: '/pages/both/',
+      });
+
+      expect(doc.path).toBe('pages/both');
+      createdDocumentIds.push(doc.id);
+    });
+
+    it('should treat "/example" and "example" as duplicate paths', async () => {
+      await createDocument({
+        siteId: testSiteId,
+        path: 'pages/duplicate',
+      });
+
+      await expect(
+        createDocument({
+          siteId: testSiteId,
+          path: '/pages/duplicate', // Same after normalization
+        }),
+      ).rejects.toThrow(DuplicateDocumentPathError);
+    });
+
+    it('should treat "example/" and "example" as duplicate paths', async () => {
+      await createDocument({
+        siteId: testSiteId,
+        path: 'pages/another',
+      });
+
+      await expect(
+        createDocument({
+          siteId: testSiteId,
+          path: 'pages/another/', // Same after normalization
+        }),
+      ).rejects.toThrow(DuplicateDocumentPathError);
+    });
+
+    it('should normalize paths when updating', async () => {
+      const doc = await createDocument({
+        siteId: testSiteId,
+        path: 'pages/original',
+      });
+      createdDocumentIds.push(doc.id);
+
+      const updated = await updateDocumentPath(doc.id, '/pages/updated/');
+      expect(updated?.path).toBe('pages/updated');
+    });
+
+    it('should allow root path and regular paths to coexist', async () => {
+      const root = await createDocument({
+        siteId: testSiteId,
+        path: '/',
+      });
+      createdDocumentIds.push(root.id);
+
+      const regular = await createDocument({
+        siteId: testSiteId,
+        path: 'pages/home',
+      });
+      createdDocumentIds.push(regular.id);
+
+      expect(root.path).toBe('');
+      expect(regular.path).toBe('pages/home');
+
+      // Both should be retrievable
+      const rootRetrieved = await getDocument(root.id);
+      const regularRetrieved = await getDocument(regular.id);
+
+      expect(rootRetrieved?.path).toBe('');
+      expect(regularRetrieved?.path).toBe('pages/home');
+    });
+  });
 });

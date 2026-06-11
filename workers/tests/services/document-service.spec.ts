@@ -103,26 +103,42 @@ describe('Phase 3.1: Document Service', () => {
       ).rejects.toThrow(InvalidDocumentPathError);
     });
 
-    it('should throw InvalidDocumentPathError for path with leading slash', async () => {
-      const { createDocument, InvalidDocumentPathError } = await import('../../src/services/document-service');
+    it('should normalize path with leading slash', async () => {
+      const { createDocument } = await import('../../src/services/document-service');
+      const db = await import('../../src/db');
 
-      await expect(
-        createDocument({
-          siteId: 'site-1',
-          path: '/pages/home',
-        }),
-      ).rejects.toThrow(InvalidDocumentPathError);
+      const mockDocRow = createMockDocumentRow({ path: 'pages/home' });
+      vi.mocked(db.query).mockResolvedValue({ rows: [mockDocRow] });
+
+      const result = await createDocument({
+        siteId: 'site-1',
+        path: '/pages/home',
+      });
+
+      expect(result.path).toBe('pages/home');
+      expect(vi.mocked(db.query)).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO app.documents'),
+        ['site-1', 'pages/home'],
+      );
     });
 
-    it('should throw InvalidDocumentPathError for path with trailing slash', async () => {
-      const { createDocument, InvalidDocumentPathError } = await import('../../src/services/document-service');
+    it('should normalize path with trailing slash', async () => {
+      const { createDocument } = await import('../../src/services/document-service');
+      const db = await import('../../src/db');
 
-      await expect(
-        createDocument({
-          siteId: 'site-1',
-          path: 'pages/home/',
-        }),
-      ).rejects.toThrow(InvalidDocumentPathError);
+      const mockDocRow = createMockDocumentRow({ path: 'pages/home' });
+      vi.mocked(db.query).mockResolvedValue({ rows: [mockDocRow] });
+
+      const result = await createDocument({
+        siteId: 'site-1',
+        path: 'pages/home/',
+      });
+
+      expect(result.path).toBe('pages/home');
+      expect(vi.mocked(db.query)).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO app.documents'),
+        ['site-1', 'pages/home'],
+      );
     });
 
     it('should throw InvalidDocumentPathError for path with traversal sequence', async () => {
@@ -136,15 +152,40 @@ describe('Phase 3.1: Document Service', () => {
       ).rejects.toThrow(InvalidDocumentPathError);
     });
 
-    it('should throw InvalidDocumentPathError for path with double dots', async () => {
+    it('should throw InvalidDocumentPathError for path with double dots as complete segment', async () => {
       const { createDocument, InvalidDocumentPathError } = await import('../../src/services/document-service');
+
+      // ".." as a complete path segment should be rejected
+      await expect(
+        createDocument({
+          siteId: 'site-1',
+          path: '../pages',
+        }),
+      ).rejects.toThrow(InvalidDocumentPathError);
 
       await expect(
         createDocument({
           siteId: 'site-1',
-          path: '..hidden',
+          path: 'pages/../home',
         }),
       ).rejects.toThrow(InvalidDocumentPathError);
+    });
+
+    it('should allow filenames containing ".." that are not path traversal', async () => {
+      const { createDocument } = await import('../../src/services/document-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockDocumentRow({
+        path: '..hidden',
+      });
+      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+
+      const result = await createDocument({
+        siteId: 'site-1',
+        path: '..hidden',
+      });
+
+      expect(result.path).toBe('..hidden');
     });
 
     it('should return created document with timestamp', async () => {
@@ -298,6 +339,23 @@ describe('Phase 3.1: Document Service', () => {
         expect.arrayContaining(['site-abc', 'components/footer']),
       );
     });
+
+    it('should not return archived documents', async () => {
+      const { getDocumentByPath } = await import('../../src/services/document-service');
+      const db = await import('../../src/db');
+
+      // Return empty result to simulate archived-only scenario
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      const result = await getDocumentByPath('site-1', 'pages/archived');
+
+      expect(result).toBeNull();
+      // Verify query includes archived_at IS NULL filter
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringContaining('archived_at IS NULL'),
+        expect.any(Array),
+      );
+    });
   });
 
   describe('updateDocumentPath', () => {
@@ -342,12 +400,19 @@ describe('Phase 3.1: Document Service', () => {
       expect(result).toBeNull();
     });
 
-    it('should validate new path format', async () => {
-      const { updateDocumentPath, InvalidDocumentPathError } = await import('../../src/services/document-service');
+    it('should normalize new path format', async () => {
+      const { updateDocumentPath } = await import('../../src/services/document-service');
+      const db = await import('../../src/db');
 
-      await expect(
-        updateDocumentPath('doc-123', '/invalid/path'),
-      ).rejects.toThrow(InvalidDocumentPathError);
+      const updatedRow = createMockDocumentRow({ path: 'pages/updated' });
+      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+
+      await updateDocumentPath('doc-123', '/pages/updated/');
+
+      expect(vi.mocked(db.query)).toHaveBeenCalledWith(
+        expect.stringContaining('UPDATE app.documents'),
+        ['pages/updated', 'doc-123'],
+      );
     });
 
     it('should execute UPDATE query', async () => {
@@ -464,9 +529,10 @@ describe('Phase 3.1: Document Service', () => {
 
       await listDocuments('site-1', { pathPrefix: 'pages/' });
 
+      // After normalization, 'pages/' becomes 'pages' (trailing slash removed)
       expect(db.query).toHaveBeenCalledWith(
         expect.stringContaining("ESCAPE '\\'"),
-        expect.arrayContaining(['pages/%']),
+        expect.arrayContaining(['pages%']),
       );
     });
 
@@ -1016,18 +1082,30 @@ describe('Phase 3.1: Document Service', () => {
         ).rejects.toThrow(SiteNotFoundError);
       });
 
-      it('should throw InvalidDocumentPathError for invalid path', async () => {
-        const { createDocumentOnBranch, InvalidDocumentPathError } = await import('../../src/services/document-service');
+      it('should normalize path with leading slash', async () => {
+        const { createDocumentOnBranch } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
 
-        await expect(
-          createDocumentOnBranch({
-            siteId: 'site-uuid-456',
-            branchId: 'branch-uuid-456',
-            path: '/invalid/path',
-            createdById: 'user-uuid-789',
-            createdByType: 'user',
-          }),
-        ).rejects.toThrow(InvalidDocumentPathError);
+        const mockDocRow = createMockDocumentRow({ path: 'pages/test' });
+        const mockVersionRow = createMockVersionRow();
+
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_doc
+          .mockResolvedValueOnce({ rows: [mockDocRow] }) // INSERT document (normalized path)
+          .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_doc
+          .mockResolvedValueOnce({ rows: [mockVersionRow] }) // INSERT version
+          .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+        const result = await createDocumentOnBranch({
+          siteId: 'site-uuid-456',
+          branchId: 'branch-uuid-456',
+          path: '/pages/test/',
+          createdById: 'user-uuid-789',
+          createdByType: 'user',
+        });
+
+        expect(result.document.path).toBe('pages/test');
       });
 
       it('should set version source to edit', async () => {

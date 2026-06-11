@@ -7,6 +7,50 @@ This document tracks the implementation progress of the Collaborative JSON State
 ---
 ## Completed Work
 
+### Path Normalization for Document Paths (PCC-3269)
+
+**Status:** Complete  
+**Branch:** `PCC-3269-managing-the-root-home-page-of-a-site-in-ccr-css-is-not-supported-by-p-1-back-end-naturally-and-leads-to-errors-in-p-1-client`  
+**Commits:**
+- `7ec875b` - test: add path normalization and validation tests
+- `6dad5f7` - feat: implement path normalization for document paths
+- `14ee2b4` - feat: apply path normalization to document services
+- `431c52e` - test: add integration tests for path normalization
+- `348f1cf` - chore: update pnpm workspace configuration
+
+#### Problem
+Users could not create documents at the root path "/" for homepage content. The API rejected paths with leading/trailing slashes, forcing workarounds like storing homepage at `/home` and mapping to "/" in the frontend.
+
+#### Solution
+Implemented path normalization that:
+- Accepts "/" (root), "/example" (leading slash), or "example/" (trailing slash)
+- Normalizes all paths to consistent format: "/" → "" (empty string for root)
+- Strips leading and trailing slashes: "/pages/about/" → "pages/about"
+- Maintains security by still rejecting path traversal sequences
+
+#### Implementation Details
+**Core Functions** (`workers/src/services/document-types.ts`):
+- Added `normalizePath()` function (exported for reuse)
+- Updated `validatePath()` to work with normalized paths
+- Empty string represents root path
+
+**Services Updated**:
+- `document-service.ts`: Applied normalization in `createDocument()`, `updateDocumentPath()`, `getDocumentByPath()`
+- `branch-document-service.ts`: Applied normalization in `createDocumentOnBranch()`
+
+**Tests**:
+- Unit tests: 22 new tests for normalization/validation logic
+- Updated 4 existing tests to expect normalization instead of rejection
+- Integration tests: 8 new tests verifying database operations with normalization
+
+#### User Impact
+- ✅ Can create homepage at "/" directly
+- ✅ Flexible path input (with or without slashes)
+- ✅ Backward compatible (existing valid paths unchanged)
+- ✅ Duplicate detection works across normalized variations
+
+---
+
 ### Phase 1.1: Project Configuration and Build Tooling
 
 **Status:** Complete

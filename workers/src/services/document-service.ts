@@ -13,6 +13,7 @@ import { query } from '../db';
 import type { DocumentRow, ListDocumentsOptions } from './document-types';
 import {
   mapRowToDocument,
+  normalizePath,
   validatePath,
   escapeLikePattern,
   isUniqueConstraintViolation,
@@ -38,6 +39,7 @@ export {
   isTombstoneRow,
   mapRowToDocumentOnBranch,
   mapRowToDocument,
+  normalizePath,
   validatePath,
   escapeLikePattern,
   isUniqueConstraintViolation,
@@ -84,14 +86,15 @@ export {
 export async function createDocument(
   params: { siteId: string; path: string },
 ): Promise<Document> {
-  validatePath(params.path);
+  const normalizedPath = normalizePath(params.path);
+  validatePath(normalizedPath);
 
   try {
     const result = await query<DocumentRow>(
       `INSERT INTO app.documents (site_id, path)
        VALUES ($1, $2)
        RETURNING *`,
-      [params.siteId, params.path],
+      [params.siteId, normalizedPath],
     );
 
     return mapRowToDocument(result.rows[0]);
@@ -100,7 +103,7 @@ export async function createDocument(
       throw new SiteNotFoundError(params.siteId);
     }
     if (isUniqueConstraintViolation(error)) {
-      throw new DuplicateDocumentPathError(params.path, params.siteId);
+      throw new DuplicateDocumentPathError(normalizedPath, params.siteId);
     }
     throw error;
   }
@@ -129,22 +132,22 @@ export async function getDocument(documentId: string): Promise<Document | null> 
  * Retrieves a document by its path within a site.
  *
  * @param siteId - The site ID
- * @param path - The document path
+ * @param path - The document path (will be normalized)
  * @returns The document or null if not found
  */
 export async function getDocumentByPath(
   siteId: string,
   path: string,
 ): Promise<Document | null> {
-  // Order by archived_at NULLS FIRST to prefer non-archived documents
-  // This ensures if both an archived and non-archived document exist with the same path,
-  // we return the non-archived one
+  const normalizedPath = normalizePath(path);
+
+  // Only return non-archived documents
+  // Archived documents with the same path are considered deleted and should not be returned
   const result = await query<DocumentRow>(
     `SELECT * FROM app.documents
-     WHERE site_id = $1 AND path = $2
-     ORDER BY archived_at NULLS FIRST
+     WHERE site_id = $1 AND path = $2 AND archived_at IS NULL
      LIMIT 1`,
-    [siteId, path],
+    [siteId, normalizedPath],
   );
 
   if (result.rows.length === 0) {
@@ -167,7 +170,8 @@ export async function updateDocumentPath(
   documentId: string,
   newPath: string,
 ): Promise<Document | null> {
-  validatePath(newPath);
+  const normalizedPath = normalizePath(newPath);
+  validatePath(normalizedPath);
 
   try {
     const result = await query<DocumentRow>(
@@ -175,7 +179,7 @@ export async function updateDocumentPath(
        SET path = $1
        WHERE id = $2
        RETURNING *`,
-      [newPath, documentId],
+      [normalizedPath, documentId],
     );
 
     if (result.rows.length === 0) {
@@ -185,7 +189,7 @@ export async function updateDocumentPath(
     return mapRowToDocument(result.rows[0]);
   } catch (error) {
     if (isUniqueConstraintViolation(error)) {
-      throw new DuplicateDocumentPathError(newPath);
+      throw new DuplicateDocumentPathError(normalizedPath);
     }
     throw error;
   }
@@ -231,8 +235,9 @@ export async function listDocuments(
   }
 
   if (pathPrefix !== undefined && pathPrefix !== '') {
-    // Escape LIKE wildcards to prevent injection, then add trailing % for prefix match
-    params.push(escapeLikePattern(pathPrefix) + '%');
+    // Normalize prefix to match stored paths, then escape LIKE wildcards
+    const normalizedPrefix = normalizePath(pathPrefix);
+    params.push(escapeLikePattern(normalizedPrefix) + '%');
     sql += ' AND path LIKE $' + String(params.length) + " ESCAPE '\\'";
   }
 
@@ -264,11 +269,12 @@ export async function documentExists(
   siteId: string,
   path: string,
 ): Promise<boolean> {
+  const normalizedPath = normalizePath(path);
   const result = await query<{ exists: boolean }>(
     `SELECT EXISTS(
        SELECT 1 FROM app.documents WHERE site_id = $1 AND path = $2 AND archived_at IS NULL
      ) as exists`,
-    [siteId, path],
+    [siteId, normalizedPath],
   );
 
   return result.rows[0]?.exists ?? false;

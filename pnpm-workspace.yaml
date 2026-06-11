@@ -1,3 +1,9 @@
 packages:
   - 'packages/*'
   - 'workers/mcp-server'
+  - 'frontend'
+allowBuilds:
+  browser-tabs-lock: true
+  esbuild: true
+  sharp: true
+  workerd: true

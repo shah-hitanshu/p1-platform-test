@@ -24,6 +24,7 @@ import {
   mapRowToDocumentOnBranch,
   mapRowToDocument,
   mapRowToDocumentVersion,
+  normalizePath,
   validatePath,
   isUniqueConstraintViolation,
   isForeignKeyViolation,
@@ -82,7 +83,9 @@ export async function listDocumentsOnBranch(
     const params: unknown[] = [branchId, mainBranchId];
 
     if (pathPrefix !== undefined && pathPrefix !== '') {
-      const escapedPrefix = escapeLikePattern(pathPrefix) + '%';
+      // Normalize prefix to match stored paths, then escape LIKE wildcards
+      const normalizedPrefix = normalizePath(pathPrefix);
+      const escapedPrefix = escapeLikePattern(normalizedPrefix) + '%';
       params.push(escapedPrefix);
       sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\'`;
     }
@@ -197,7 +200,8 @@ export async function listDocumentsOnBranch(
 export async function createDocumentOnBranch(
   params: CreateDocumentOnBranchParams,
 ): Promise<CreateDocumentOnBranchResult> {
-  validatePath(params.path);
+  const normalizedPath = normalizePath(params.path);
+  validatePath(normalizedPath);
 
   try {
     await query('BEGIN');
@@ -213,7 +217,7 @@ export async function createDocumentOnBranch(
         `INSERT INTO app.documents (site_id, path)
          VALUES ($1, $2)
          RETURNING *`,
-        [params.siteId, params.path],
+        [params.siteId, normalizedPath],
       );
       await query('RELEASE SAVEPOINT insert_doc');
       document = mapRowToDocument(docResult.rows[0]);
@@ -226,11 +230,11 @@ export async function createDocumentOnBranch(
         const existingResult = await query<DocumentRow>(
           `SELECT * FROM app.documents
            WHERE site_id = $1 AND path = $2 AND archived_at IS NULL`,
-          [params.siteId, params.path],
+          [params.siteId, normalizedPath],
         );
         if (existingResult.rows.length === 0) {
           await query('ROLLBACK');
-          throw new DuplicateDocumentPathError(params.path, params.siteId);
+          throw new DuplicateDocumentPathError(normalizedPath, params.siteId);
         }
         document = mapRowToDocument(existingResult.rows[0]);
 
@@ -258,7 +262,7 @@ export async function createDocumentOnBranch(
           } else {
             // Document exists and is not tombstoned - this is a duplicate
             await query('ROLLBACK');
-            throw new DuplicateDocumentPathError(params.path, params.siteId);
+            throw new DuplicateDocumentPathError(normalizedPath, params.siteId);
           }
         }
         // If no versions exist on this branch, it's fine to create version 1

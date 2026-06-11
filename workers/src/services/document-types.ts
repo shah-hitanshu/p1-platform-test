@@ -246,28 +246,114 @@ export function mapRowToDocument(row: DocumentRow): DocumentWithArchive {
   return doc;
 }
 
+// Maximum path length to prevent DoS attacks
+const MAX_PATH_LENGTH = 1024;
+
 /**
- * Validates document path format.
- * - Must not be empty
- * - Must not start with /
- * - Must not end with /
- * - Must not contain path traversal sequences
+ * Normalizes a document path to a consistent format.
+ * - Strips leading and trailing slashes
+ * - Collapses multiple consecutive slashes
+ * - Converts backslashes to forward slashes
+ * - "/" becomes "" (root path)
+ * - Preserves internal structure
  *
- * @throws InvalidDocumentPathError if path is invalid
+ * Examples:
+ * - "/" → ""
+ * - "/example" → "example"
+ * - "example/" → "example"
+ * - "/example/" → "example"
+ * - "pages/home" → "pages/home"
+ * - "pages//home" → "pages/home"
+ * - "pages\\home" → "pages/home"
+ *
+ * @param path - The path to normalize
+ * @returns The normalized path
+ * @throws InvalidDocumentPathError if path is empty, whitespace-only, or too long
  */
-export function validatePath(path: string): void {
+export function normalizePath(path: string): string {
   if (!path || path.trim() === '') {
     throw new InvalidDocumentPathError('path cannot be empty');
   }
-  if (path.startsWith('/')) {
-    throw new InvalidDocumentPathError('path cannot start with /');
+
+  if (path.length > MAX_PATH_LENGTH) {
+    throw new InvalidDocumentPathError(
+      `path length exceeds maximum of ${String(MAX_PATH_LENGTH)} characters`,
+    );
   }
-  if (path.endsWith('/')) {
-    throw new InvalidDocumentPathError('path cannot end with /');
+
+  let normalized = path.trim();
+
+  // Convert backslashes to forward slashes for consistent path separators
+  normalized = normalized.replace(/\\/g, '/');
+
+  // Collapse multiple consecutive slashes into single slash
+  normalized = normalized.replace(/\/+/g, '/');
+
+  // Remove leading slashes
+  while (normalized.startsWith('/')) {
+    normalized = normalized.slice(1);
   }
-  // Check for path traversal attempts
-  if (path.includes('..')) {
-    throw new InvalidDocumentPathError('path cannot contain traversal sequences');
+
+  // Remove trailing slashes
+  while (normalized.endsWith('/') && normalized.length > 0) {
+    normalized = normalized.slice(0, -1);
+  }
+
+  // Empty string after normalization represents the root path
+  return normalized;
+}
+
+/**
+ * Validates a normalized document path.
+ * - Empty string is valid (represents root path "/")
+ * - Must not contain path traversal sequences
+ * - Must not contain NULL bytes or control characters
+ * - Must not contain internal whitespace
+ *
+ * Note: This function expects a normalized path (use normalizePath first).
+ *
+ * @param normalizedPath - The normalized path to validate
+ * @throws InvalidDocumentPathError if path contains invalid characters or sequences
+ */
+export function validatePath(normalizedPath: string): void {
+  // Empty string is valid (represents root path "/")
+  if (normalizedPath === '') {
+    return;
+  }
+
+  // Check for NULL bytes (potential injection attack)
+  if (normalizedPath.includes('\0')) {
+    throw new InvalidDocumentPathError(
+      'path cannot contain NULL bytes',
+    );
+  }
+
+  // Check for control characters (0x00-0x1F and 0x7F)
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1F\x7F]/.test(normalizedPath)) {
+    throw new InvalidDocumentPathError(
+      'path cannot contain control characters',
+    );
+  }
+
+  // Check for internal whitespace in segments
+  // Allow leading dots for hidden files, but reject whitespace-only or whitespace in middle
+  const segments = normalizedPath.split('/');
+  for (const seg of segments) {
+    if (seg.trim() !== seg || seg.includes(' ') || seg.includes('\t')) {
+      throw new InvalidDocumentPathError(
+        'path segments cannot contain whitespace',
+      );
+    }
+  }
+
+  // Check for path traversal attempts by validating segments
+  // Only reject ".." or "." as complete path segments, not as part of filenames
+  // This allows filenames like "file..name" while blocking "pages/../etc"
+  if (segments.some((seg) => seg === '..' || seg === '.')) {
+    throw new InvalidDocumentPathError(
+      'path cannot contain traversal sequences',
+    );
   }
 }
 
