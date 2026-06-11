@@ -109,11 +109,11 @@ describe('Wrangler Configuration', () => {
 
   // PCC-3193: pin the actual prod backend worker name so a typo or rename
   // can't silently route the binding to the wrong worker (or to nothing).
-  it('should bind production CSS_BACKEND to collaborative-state-worker-prod', () => {
+  it('should bind production CSS_BACKEND to collaborative-state-worker-production', () => {
     const config = parseConfig(content) as WranglerConfig;
     const services = config.env?.production?.services ?? [];
     const cssBackend = services.find((s) => s.binding === 'CSS_BACKEND');
-    expect(cssBackend?.service).toBe('collaborative-state-worker-prod');
+    expect(cssBackend?.service).toBe('collaborative-state-worker-production');
   });
 
   // PCC-3193: regression guard — sbx1 already wires this binding (the only env

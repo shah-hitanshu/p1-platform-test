@@ -19,7 +19,7 @@ terraform {
 
   # Remote backend - GCS bucket
   backend "gcs" {
-    bucket = "pantheon-css-terraform-state"
+    bucket = "p1-terraform-state-prod"
     prefix = "production"
   }
 
@@ -66,6 +66,12 @@ variable "cloudsql_authorized_networks" {
     value = string
   }))
   default = []
+}
+
+variable "kms_location" {
+  description = "Location for the broker JWT KMS key ring (a GCP region, or 'global')"
+  type        = string
+  default     = "global"
 }
 
 # -----------------------------------------------------------------------------
@@ -136,6 +142,18 @@ module "cloudflare_mcp" {
 
   environment           = local.environment
   cloudflare_account_id = var.cloudflare_account_id
+}
+
+# -----------------------------------------------------------------------------
+# KMS Module (broker JWT signing)
+# -----------------------------------------------------------------------------
+
+module "kms" {
+  source = "../../modules/kms"
+
+  environment  = local.environment
+  gcp_project  = var.gcp_project
+  kms_location = var.kms_location
 }
 
 
@@ -226,4 +244,15 @@ output "mcp_worker_name" {
 output "oauth_kv_id" {
   description = "OAUTH_KV namespace ID for workers/wrangler.jsonc"
   value       = module.cloudflare.oauth_kv_id
+}
+
+# KMS outputs (broker JWT signing)
+output "kms_key_resource" {
+  description = "Crypto key resource path for the GCP_KMS_KEY_RESOURCE secret"
+  value       = module.kms.kms_key_resource
+}
+
+output "signer_sa_email" {
+  description = "Broker signer SA email (p1-backend); create a JSON key for it and set it as MAS_GCP_SERVICE_ACCOUNT_KEY"
+  value       = module.kms.signer_sa_email
 }

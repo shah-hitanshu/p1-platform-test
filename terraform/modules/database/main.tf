@@ -282,6 +282,8 @@ resource "google_sql_user" "ci_iam" {
   instance       = google_sql_database_instance.main[0].name
   type           = "CLOUD_IAM_SERVICE_ACCOUNT"
   database_roles = ["cssuser"]
+
+  depends_on = [google_sql_user.main]
 }
 
 # -----------------------------------------------------------------------------

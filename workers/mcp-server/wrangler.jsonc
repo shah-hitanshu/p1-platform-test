@@ -93,22 +93,22 @@
       }
     },
     "production": {
-      "name": "css-mcp-server-prod",
+      "name": "css-mcp-server-production",
       "vars": {
         "ENVIRONMENT": "production",
-        "CSS_BACKEND_URL": "https://collaborative-state-worker-prod.pantheon.workers.dev",
+        "CSS_BACKEND_URL": "https://collaborative-state-worker-production.pantheon-p1-production.workers.dev",
         "MCP_SERVER_NAME": "collaborative-state-mcp",
         "MCP_SERVER_VERSION": "0.1.0"
       },
       "kv_namespaces": [
-        { "binding": "OAUTH_KV", "id": "REPLACE_WITH_PROD_MCP_OAUTH_KV_ID" }
+        { "binding": "OAUTH_KV", "id": "c84425ba98ac4f2290d8e58a92c606d1" }
       ],
       // Service binding to the API worker — keeps the agent key on
       // Cloudflare's internal worker-to-worker path. Without this, api-client
       // falls back to global fetch() and X-API-Key transits the public
       // Internet (PCC-3193, red-team Finding 6).
       "services": [
-        { "binding": "CSS_BACKEND", "service": "collaborative-state-worker-prod" }
+        { "binding": "CSS_BACKEND", "service": "collaborative-state-worker-production" }
       ],
       // PCC-3192 — Rate Limiting bindings (red-team Finding 4). Re-declared
       // per-env (see top-level ratelimits comment for rationale). Production

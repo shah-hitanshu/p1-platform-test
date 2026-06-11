@@ -776,52 +776,85 @@ Without the site ID in `siteRoles`, presence and other authorization-protected e
 
 ## Deployment
 
-### Cloudflare Workers
+The system deploys three Cloudflare Workers. OAuth and broker authentication are inlined in the API worker (`workers/src/auth/`) — there is no separate auth-server deployment.
+
+| Worker | Production name | Deploy from |
+|--------|----------------|-------------|
+| API, realtime, broker auth | `collaborative-state-worker-production` | `workers/` |
+| Frontend SPA | `collaborative-state-frontend-production` | `frontend/` |
+| Remote MCP server | `css-mcp-server-production` | `workers/mcp-server/` |
+
+### Standard deploy (existing environments)
 
 ```bash
-cd workers
-
-# Deploy to sandbox
-pnpm deploy:sbx1
-
-# Deploy to production
-pnpm deploy:production
+cd workers && pnpm deploy:production            # API worker (--env production)
+cd frontend && pnpm deploy:production           # Frontend SPA
+cd workers/mcp-server && pnpm wrangler deploy --env production
 ```
 
-### CSS Auth Server
+In CI, trigger the **Deploy Workers** GitHub Action (`workflow_dispatch`), choose the environment, and optionally enable migrations — it builds and deploys the API and frontend, running DB migrations through the Cloud SQL Auth Proxy when requested.
+
+### First-time production rollout (runbook)
+
+Standing up a fresh production Cloudflare account and GCP project. Run in order.
+
+**1. GCP foundation (one-time, local).** The CI service account does not exist yet, so bootstrap with your own GCP credentials:
 
 ```bash
-cd workers/auth-server
-
-# Deploy to sandbox
-pnpm wrangler deploy --env sbx1
-
-# Deploy to production
-pnpm wrangler deploy --env production
+cd terraform/bootstrap
+terraform init \
+  -backend-config="bucket=p1-terraform-state-prod" \
+  -backend-config="prefix=bootstrap"
+terraform apply \
+  -var="environment=production" \
+  -var="gcp_project=pantheon-content-cloud" \
+  -var="terraform_state_bucket=p1-terraform-state-prod"
 ```
 
-Before first deploy, provision the OAuth KV namespace and populate its ID into `workers/auth-server/wrangler.jsonc`:
+Record the `wif_service_account` output; the provider URL is supplied by the shared `common-gh/auth-wif` action. For production, this bootstrap also enables the Cloud KMS API and grants the CI service account `roles/cloudkms.admin` + `roles/iam.serviceAccountAdmin` so it can apply the broker KMS module.
+
+**2. GitHub `production` environment.** Create it with required reviewers, then set:
+
+- **vars:** `GCP_SERVICE_ACCOUNT`, `GCP_PROJECT_ID`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDSQL_INSTANCE_CONNECTION_NAME`, `CLOUDSQL_DB_NAME`
+- **secrets:** `CLOUDFLARE_API_TOKEN`
+
+**3. Provision infrastructure.** Run the **Deploy Infrastructure** Action → `production` / `plan`, review, then re-run with `apply`. This creates CloudSQL (HA, backups, PITR), KV ×3, Queues ×2, R2 ×2, Hyperdrive ×2, the MCP OAuth KV, and the broker KMS key ring + MAC key (granting the `p1-backend` SA signer access). `p1-backend` must already exist; create it once with `gcloud iam service-accounts create p1-backend --project=pantheon-content-cloud`. From `terraform output`, read the instance connection name and database name (backfill the step-2 vars), plus `kms_key_resource` and `signer_sa_email` (used in step 6).
+
+**4. Wire resource IDs into the wrangler configs.**
 
 ```bash
-# Create KV namespace (done by Terraform; run manually only if bypassing Terraform)
-wrangler kv:namespace create "css-auth-oauth-kv-sbx1"
-# Copy the returned ID into wrangler.jsonc → env.sbx1.kv_namespaces[OAUTH_KV].id
+make tf-sync ENV=production   # patches the REPLACE_WITH_PROD_*_ID placeholders
 ```
 
-### Required Secrets (Production)
+Then replace the remaining placeholders by hand — `REPLACE_WITH_PROD_*_ORIGIN` (custom-domain origins) in `workers/wrangler.jsonc`, `workers/mcp-server/wrangler.jsonc`, and `frontend/wrangler.jsonc`; `REPLACE_WITH_PROD_AUTH0_*` in `frontend/wrangler.jsonc`; and `REPLACE_WITH_PROD_AUTH0_CLIENT_ID` in `workers/wrangler.jsonc`.
 
-Set via Cloudflare dashboard or CLI:
+**5. Custom domains + DNS.** In the prod Cloudflare account, attach Worker custom domains for the frontend, API, and MCP workers on your zone and add the matching DNS records. Add the frontend and API origins as allowed callback/redirect URIs on the prod Auth0 application.
 
-**CSS API worker** (`css-api-<env>`)
-- `POSTGRES_CONNECTION_STRING` - CloudSQL connection string
-- `JWT_SECRET` - Production JWT signing key
-- `INTERNAL_SECRET` - Shared secret for service-to-service calls (must match auth server)
+**6. Config and secrets.** Production auth is Auth0 plus GCP-KMS-signed broker tokens.
 
-**CSS Auth Server worker** (`css-auth-server-<env>`)
-- `GOOGLE_CLIENT_ID` - Google OAuth 2.0 Client ID
-- `GOOGLE_CLIENT_SECRET` - Google OAuth 2.0 Client Secret
-- `COOKIE_SECRET` - Session cookie signing key
-- `INTERNAL_SECRET` - Shared secret for service-to-service calls (must match CSS API)
+Non-secret config (issuers, audiences, identifiers) lives in the `production` `vars` of `workers/wrangler.jsonc`: `AUTH0_ISSUER_BASE_URL`, `AUTH0_AUDIENCE`, `AUTH0_CLIENT_ID`, `GCP_KMS_KEY_RESOURCE` (from `terraform output kms_key_resource`), `CF_ACCOUNT_ID`, `R2_ACCOUNT_ID`. The Auth0 issuer/audience, KMS resource, and account IDs are filled in; supply `AUTH0_CLIENT_ID` (broker app) by replacing its `REPLACE_WITH_PROD_*` placeholder. The broker JWT issuer and audience default in code to `PUBLIC_ORIGIN` and `css-api`; set `BROKER_JWT_ISSUER`/`BROKER_JWT_AUDIENCE` only to match an external broker that mints the tokens.
+
+Genuine secrets — set each with `wrangler secret put <NAME> --env production`, run from `workers/`:
+- `INTERNAL_SECRET` — HMAC for broker/OAuth state and Durable-Object→API calls (generate once)
+- `AUTH0_CLIENT_SECRET` — broker redirect flow
+- `MAS_GCP_SERVICE_ACCOUNT_KEY` — JSON key for the `p1-backend` signer SA (see below)
+- `CF_BROWSER_API_TOKEN` — screenshot rendering
+- `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` — screenshot presigning
+
+The KMS key ring, MAC key, and IAM grant are created by Terraform (step 3). The only manual KMS step is exporting a JSON key for the `p1-backend` signer SA and storing it as `MAS_GCP_SERVICE_ACCOUNT_KEY`:
+
+```bash
+# from terraform/environments/production
+gcloud iam service-accounts keys create p1-backend.json \
+  --iam-account="$(terraform output -raw signer_sa_email)"
+wrangler secret put MAS_GCP_SERVICE_ACCOUNT_KEY --env production < p1-backend.json
+```
+
+MCP worker (`css-mcp-server-production`) reaches the API over the `CSS_BACKEND` service binding; set its agent/server secret if one is required. The frontend has no secrets. The database password is carried by Hyperdrive, not stored as a worker secret.
+
+**7. Migrations + deploy.** Run **Deploy Workers** → `production` with `run_migrations: true` and `dry_run: true` first to validate the build and bindings, then re-run with `dry_run: false`. Deploy the MCP worker manually.
+
+**8. Verify.** `GET https://<api-origin>/health`; load the frontend, complete Auth0 login, open a document and confirm a live WebSocket; trigger a screenshot and confirm the object lands in `css-screenshots-production`; watch `wrangler tail --env production` for binding or secret errors.
 
 ---
 

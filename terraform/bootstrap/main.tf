@@ -47,6 +47,35 @@ variable "terraform_state_bucket" {
 }
 
 # -----------------------------------------------------------------------------
+# CI service account roles
+#
+# All environments grant cloudsql.admin (manage the instance) and
+# cloudsql.instanceUser (IAM login for CI database migrations). Environments
+# that manage the broker KMS module (staging, production) additionally need
+# cloudkms.admin to manage the key. The p1-backend signer SA exists
+# out-of-band, so CI needs no service-account roles.
+# -----------------------------------------------------------------------------
+
+locals {
+  manages_kms = contains(["staging", "production"], var.environment)
+
+  ci_sa_roles = concat(
+    ["roles/cloudsql.admin", "roles/cloudsql.instanceUser"],
+    local.manages_kms ? ["roles/cloudkms.admin"] : [],
+  )
+}
+
+# Cloud KMS API for the broker signing key.
+resource "google_project_service" "cloudkms" {
+  count = local.manages_kms ? 1 : 0
+
+  project = var.gcp_project
+  service = "cloudkms.googleapis.com"
+
+  disable_on_destroy = false
+}
+
+# -----------------------------------------------------------------------------
 # GitHub Actions GCP Access
 # -----------------------------------------------------------------------------
 
@@ -56,6 +85,7 @@ module "github_actions_wif" {
   environment            = var.environment
   gcp_project            = var.gcp_project
   terraform_state_bucket = var.terraform_state_bucket
+  sa_roles               = local.ci_sa_roles
 }
 
 # -----------------------------------------------------------------------------

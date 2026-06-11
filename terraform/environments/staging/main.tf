@@ -124,6 +124,17 @@ module "cloudflare" {
 }
 
 # -----------------------------------------------------------------------------
+# KMS Module (broker JWT signing)
+# -----------------------------------------------------------------------------
+
+module "kms" {
+  source = "../../modules/kms"
+
+  environment = local.environment
+  gcp_project = var.gcp_project
+}
+
+# -----------------------------------------------------------------------------
 # Outputs
 # -----------------------------------------------------------------------------
 
@@ -183,4 +194,15 @@ output "hyperdrive_id" {
 output "worker_name" {
   description = "Cloudflare Worker name (API)"
   value       = module.cloudflare.worker_name
+}
+
+# KMS outputs (broker JWT signing)
+output "kms_key_resource" {
+  description = "Crypto key resource path for the GCP_KMS_KEY_RESOURCE secret"
+  value       = module.kms.kms_key_resource
+}
+
+output "signer_sa_email" {
+  description = "Broker signer SA email (p1-backend)"
+  value       = module.kms.signer_sa_email
 }
