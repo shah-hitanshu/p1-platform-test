@@ -1,7 +1,8 @@
 # Bootstrap — GCP Project Setup
 #
-# One-time setup to prepare a GCP project for CI/CD. Currently provisions
-# GitHub Actions Workload Identity Federation (WIF) for keyless auth.
+# One-time setup to prepare a GCP project for CI/CD. Provisions the GitHub
+# Actions service account and its impersonation bindings against Pantheon's
+# central WIF pool (pantheon-wif).
 #
 # Run locally with GCP credentials that have Owner/Editor access:
 #
@@ -21,7 +22,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = "~> 7.0"
     }
   }
 }
@@ -46,7 +47,7 @@ variable "terraform_state_bucket" {
 }
 
 # -----------------------------------------------------------------------------
-# WIF Module
+# GitHub Actions GCP Access
 # -----------------------------------------------------------------------------
 
 module "github_actions_wif" {
@@ -60,11 +61,6 @@ module "github_actions_wif" {
 # -----------------------------------------------------------------------------
 # Outputs
 # -----------------------------------------------------------------------------
-
-output "wif_provider" {
-  description = "Set as vars.GCP_WORKLOAD_IDENTITY_PROVIDER in the GitHub environment"
-  value       = module.github_actions_wif.workload_identity_provider
-}
 
 output "wif_service_account" {
   description = "Set as vars.GCP_SERVICE_ACCOUNT in the GitHub environment"

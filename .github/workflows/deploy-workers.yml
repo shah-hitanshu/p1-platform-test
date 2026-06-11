@@ -49,9 +49,8 @@ jobs:
 
       - name: Authenticate to GCP
         if: inputs.run_migrations
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        uses: pantheon-systems/common-gh/auth-wif@0a1dafc525b4ffa9fcfbfcf1c889dc0251c0c4e4 # main @ 2026-06
         with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Start Cloud SQL Auth Proxy
@@ -60,15 +59,23 @@ jobs:
           URL="https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.21.2"
           curl "$URL/cloud-sql-proxy.linux.amd64" -o cloud-sql-proxy
           chmod +x cloud-sql-proxy
-          ./cloud-sql-proxy --port 5432 "${{ vars.CLOUDSQL_INSTANCE_CONNECTION_NAME }}" &
-          sleep 2
+          ./cloud-sql-proxy --port 5432 --auto-iam-authn "${{ vars.CLOUDSQL_INSTANCE_CONNECTION_NAME }}" &
+          for _ in $(seq 1 30); do
+            (echo > /dev/tcp/localhost/5432) >/dev/null 2>&1 && break
+            sleep 1
+          done
 
       - name: Run migrations
         if: inputs.run_migrations
-        run: pnpm db:migrate
         working-directory: workers
         env:
-          POSTGRES_CONNECTION_STRING: postgresql://${{ secrets.CLOUDSQL_DB_USER }}:${{ secrets.CLOUDSQL_DB_PASSWORD }}@localhost:5432/${{ secrets.CLOUDSQL_DB_NAME }}
+          POSTGRES_SET_ROLE: cssuser
+        run: |
+          SA='${{ vars.GCP_SERVICE_ACCOUNT }}'
+          IAM_USER="${SA%.gserviceaccount.com}"
+          ENC_USER="${IAM_USER//@/%40}" # @ must be percent-encoded in the URI userinfo
+          export POSTGRES_CONNECTION_STRING="postgresql://${ENC_USER}@localhost:5432/${{ vars.CLOUDSQL_DB_NAME }}"
+          pnpm db:migrate
 
       - name: Deploy
         run: >

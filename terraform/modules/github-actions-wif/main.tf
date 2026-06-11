@@ -1,18 +1,17 @@
-# GitHub Actions Workload Identity Federation (WIF) Module
+# GitHub Actions GCP Access Module
 #
-# Provisions keyless authentication for GitHub Actions to GCP:
-# - Workload Identity Pool + OIDC Provider
-# - Service Account with configurable IAM roles
-# - WIF-to-SA impersonation binding scoped to the repository
+# Grants GitHub Actions keyless access to GCP through Pantheon's central
+# Workload Identity Federation pool (pantheon-wif). Provisions:
+# - A service account with configurable IAM roles
+# - Impersonation bindings (workloadIdentityUser + serviceAccountTokenCreator)
+#   for the repository's WIF principal
 #
-# Bootstrap: The first `terraform apply` must be run locally since WIF
-# does not yet exist for GitHub Actions to authenticate through.
+# Applied locally with owner/editor ADC:
 #
 #   1. gcloud auth application-default login
 #   2. terraform init && terraform plan && terraform apply
-#   3. Set outputs as GitHub environment variables:
-#      - vars.GCP_WORKLOAD_IDENTITY_PROVIDER = output.workload_identity_provider
-#      - vars.GCP_SERVICE_ACCOUNT            = output.service_account_email
+#   3. Set the service account email as vars.GCP_SERVICE_ACCOUNT in GitHub.
+#      The provider URL is supplied by the common-gh/auth-wif action.
 
 terraform {
   required_version = ">= 1.6.0"
@@ -20,7 +19,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = ">= 5.0"
+      version = ">= 7.0"
     }
   }
 }
@@ -39,12 +38,6 @@ variable "gcp_project" {
   type        = string
 }
 
-variable "github_org" {
-  description = "GitHub organization name"
-  type        = string
-  default     = "pantheon-systems"
-}
-
 variable "github_repo" {
   description = "GitHub repository name"
   type        = string
@@ -56,6 +49,7 @@ variable "sa_roles" {
   type        = list(string)
   default = [
     "roles/cloudsql.admin",
+    "roles/cloudsql.instanceUser",
   ]
 }
 
@@ -63,6 +57,18 @@ variable "terraform_state_bucket" {
   description = "GCS bucket for Terraform state. If set, grants roles/storage.objectAdmin on this bucket."
   type        = string
   default     = ""
+}
+
+variable "cloudflare_token_secret_id" {
+  description = "Secret Manager secret holding the Cloudflare API token for Terraform CI"
+  type        = string
+  default     = "P1_CF_DEPLOY_TOKEN"
+}
+
+variable "wif_pool_name" {
+  description = "Resource path of Pantheon's shared Workload Identity pool (project pantheon-wif)"
+  type        = string
+  default     = "projects/374988255856/locations/global/workloadIdentityPools/pantheon-global-pool"
 }
 
 # -----------------------------------------------------------------------------
@@ -77,35 +83,14 @@ resource "google_project_service" "iamcredentials" {
 }
 
 # -----------------------------------------------------------------------------
-# Workload Identity Pool & Provider
+# Central Pantheon WIF principal
 # -----------------------------------------------------------------------------
 
-resource "google_iam_workload_identity_pool" "github_actions" {
-  project                   = var.gcp_project
-  workload_identity_pool_id = "css-github-actions"
-  display_name              = "GitHub Actions (CSS)"
-  description               = "Workload Identity Pool for GitHub Actions CI/CD"
-
-  depends_on = [google_project_service.iamcredentials]
-}
-
-resource "google_iam_workload_identity_pool_provider" "github_actions" {
-  project                            = var.gcp_project
-  workload_identity_pool_id          = google_iam_workload_identity_pool.github_actions.workload_identity_pool_id
-  workload_identity_pool_provider_id = "css-github-oidc"
-  display_name                       = "GitHub Actions OIDC"
-
-  attribute_mapping = {
-    "google.subject"       = "assertion.sub"
-    "attribute.actor"      = "assertion.actor"
-    "attribute.repository" = "assertion.repository"
-  }
-
-  attribute_condition = "assertion.repository == '${var.github_org}/${var.github_repo}'"
-
-  oidc {
-    issuer_uri = "https://token.actions.githubusercontent.com"
-  }
+locals {
+  # pantheon-global-pool maps attribute.repository to the bare repo name, so the
+  # principal omits the pantheon-systems/ owner prefix.
+  # Ref: pantheon-systems/pantheon-skills, skills/pantheon-wif.
+  ci_principal = "principalSet://iam.googleapis.com/${var.wif_pool_name}/attribute.repository/${var.github_repo}"
 }
 
 # -----------------------------------------------------------------------------
@@ -141,21 +126,31 @@ resource "google_storage_bucket_iam_member" "state_bucket" {
   member = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# Allow GitHub Actions to impersonate the service account via WIF
+# CI reads the Cloudflare API token from Secret Manager at apply time rather than from a stored
+# GitHub secret. Scoped to this one secret; the binding is additive.
+resource "google_secret_manager_secret_iam_member" "cloudflare_token" {
+  project   = var.gcp_project
+  secret_id = var.cloudflare_token_secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+# Allow the repository's WIF principal to impersonate and mint tokens for the SA
 resource "google_service_account_iam_member" "workload_identity_user" {
   service_account_id = google_service_account.github_actions.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github_actions.name}/attribute.repository/${var.github_org}/${var.github_repo}"
+  member             = local.ci_principal
+}
+
+resource "google_service_account_iam_member" "token_creator" {
+  service_account_id = google_service_account.github_actions.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = local.ci_principal
 }
 
 # -----------------------------------------------------------------------------
 # Outputs
 # -----------------------------------------------------------------------------
-
-output "workload_identity_provider" {
-  description = "Full resource name of the WIF provider (set as vars.GCP_WORKLOAD_IDENTITY_PROVIDER in GitHub)"
-  value       = google_iam_workload_identity_pool_provider.github_actions.name
-}
 
 output "service_account_email" {
   description = "Service account email (set as vars.GCP_SERVICE_ACCOUNT in GitHub)"

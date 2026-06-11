@@ -207,6 +207,22 @@ async function resetMigrations(
 }
 
 /**
+ * Postgres objects are owned by the role that creates them. Migrations connect
+ * as the CI IAM user but the app connects as cssuser, so create objects under
+ * POSTGRES_SET_ROLE (the app role) to keep them accessible to the app.
+ */
+function roleConnectionOptions(): { connection: { options: string } } | object {
+  const role = process.env.POSTGRES_SET_ROLE;
+  if (role === undefined || role === '') {
+    return {};
+  }
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(role)) {
+    throw new Error(`Invalid POSTGRES_SET_ROLE: ${role}`);
+  }
+  return { connection: { options: `-c role=${role}` } };
+}
+
+/**
  * Main entry point for CLI usage
  */
 async function main(): Promise<void> {
@@ -217,6 +233,7 @@ async function main(): Promise<void> {
     max: 1,
     idle_timeout: 5,
     connect_timeout: 10,
+    ...roleConnectionOptions(),
   });
 
   try {

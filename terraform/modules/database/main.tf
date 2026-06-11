@@ -12,7 +12,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = ">= 5.0"
+      version = ">= 7.0"
     }
     random = {
       source  = "hashicorp/random"
@@ -125,12 +125,22 @@ variable "cloudsql_max_connections" {
   default     = 100
 }
 
+variable "ci_service_account_id" {
+  description = "Account ID of the GitHub Actions service account granted IAM database login"
+  type        = string
+  default     = "css-github-actions"
+}
+
 # -----------------------------------------------------------------------------
 # Locals
 # -----------------------------------------------------------------------------
 
 locals {
   is_local = var.environment == "local"
+
+  # Postgres truncates IAM service-account usernames to the email without the
+  # ".gserviceaccount.com" suffix; the Auth Proxy uses the same truncated name.
+  ci_sa_email = "${var.ci_service_account_id}@${var.gcp_project}.iam.gserviceaccount.com"
 
   # Cloudflare IP ranges used by Hyperdrive to connect to databases.
   # Source: https://www.cloudflare.com/ips-v4/
@@ -212,6 +222,12 @@ resource "google_sql_database_instance" "main" {
       value = tostring(var.cloudsql_max_connections)
     }
 
+    database_flags {
+      # Lets principals log in with short-lived IAM OAuth tokens instead of passwords.
+      name  = "cloudsql.iam_authentication"
+      value = "on"
+    }
+
     ip_configuration {
       ipv4_enabled = true
       ssl_mode     = "ENCRYPTED_ONLY"
@@ -251,6 +267,21 @@ resource "google_sql_user" "main" {
   project  = var.gcp_project
   instance = google_sql_database_instance.main[0].name
   password = random_password.db_password[0].result
+}
+
+# IAM database user for CI (GitHub Actions). The Auth Proxy's --auto-iam-authn
+# supplies a short-lived token for this service account, so migrations need no
+# stored password. Membership in cssuser lets migrations SET ROLE to it so
+# objects they create are owned by the app role.
+resource "google_sql_user" "ci_iam" {
+  count    = local.is_local ? 0 : 1
+  provider = google
+
+  name           = trimsuffix(local.ci_sa_email, ".gserviceaccount.com")
+  project        = var.gcp_project
+  instance       = google_sql_database_instance.main[0].name
+  type           = "CLOUD_IAM_SERVICE_ACCOUNT"
+  database_roles = ["cssuser"]
 }
 
 # -----------------------------------------------------------------------------
