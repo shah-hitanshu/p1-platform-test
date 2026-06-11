@@ -129,7 +129,7 @@ describe("createP1PageStore", () => {
       const data = await store.get("/") as Record<string, unknown>;
       expect(data).toBeDefined();
       expect((data.root as Record<string, unknown>).props).toEqual({ title: "Home" });
-      expect(mockClient.documents.getByPath).toHaveBeenCalledWith(SITE_ID, "");
+      expect(mockClient.documents.getByPath).toHaveBeenCalledWith(SITE_ID, "/");
       expect(mockClient.versions.getLatest).toHaveBeenCalledWith(SITE_ID, BRANCH_ID, "doc-1");
     });
 
@@ -198,7 +198,7 @@ describe("createP1PageStore", () => {
       const newData = { root: { props: { title: "Updated" } }, content: [] };
       await store.set("/", newData);
 
-      expect(mockClient.documents.getByPath).toHaveBeenCalledWith(SITE_ID, "");
+      expect(mockClient.documents.getByPath).toHaveBeenCalledWith(SITE_ID, "/");
       expect(mockClient.versions.create).toHaveBeenCalledWith(
         SITE_ID,
         expect.objectContaining({

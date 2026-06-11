@@ -2,7 +2,16 @@ import Link from "next/link";
 import {
   listRoutes,
   ensureInitialized,
+  getPage,
+  listRouteTemplateKeysFromDatabase,
+  resolveDataTemplates,
+  resolveStringTemplates,
+  extractReferencedDatasourceIds,
+  loadRemoteDatasourceContext,
 } from "@pantheon-systems/puck-css/server";
+import type { Metadata } from "next";
+import { REMOTE_DATASOURCE_FETCHERS } from "../lib/remote-datasource-fetchers";
+import { Client } from "./[...puckPath]/client";
 import { CollectionNav } from "./collection-nav";
 
 const initPromise = ensureInitialized({
@@ -12,17 +21,55 @@ const initPromise = ensureInitialized({
   p1BranchId: process.env.NEXT_PUBLIC_CSS_BRANCH_ID,
 });
 
-export const metadata = {
-  title: "P1 Starter Kit",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  await initPromise;
+  const pageData = await getPage("/");
+  if (!pageData) {
+    return { title: "P1 Starter Kit" };
+  }
+
+  const rawTitle = pageData.root.props?.title;
+  if (typeof rawTitle !== "string") {
+    return { title: rawTitle };
+  }
+  if (!rawTitle.includes("{{")) {
+    return { title: rawTitle };
+  }
+  const routeTemplateKeys = await listRouteTemplateKeysFromDatabase();
+  const referencedDatasourceIds = extractReferencedDatasourceIds(pageData);
+  const context = await loadRemoteDatasourceContext({
+    searchParams: {},
+    fetchImpl: fetch,
+    pagePath: "/",
+    routeTemplateKeys,
+    builtinFetchers: REMOTE_DATASOURCE_FETCHERS,
+    referencedDatasourceIds,
+  });
+  return { title: await resolveStringTemplates(rawTitle, context) };
+}
 
 export default async function HomePage() {
   await initPromise;
+  const data = await getPage("/");
+
+  if (data) {
+    const routeTemplateKeys = await listRouteTemplateKeysFromDatabase();
+    const referencedDatasourceIds = extractReferencedDatasourceIds(data);
+    const context = await loadRemoteDatasourceContext({
+      searchParams: {},
+      fetchImpl: fetch,
+      pagePath: "/",
+      routeTemplateKeys,
+      builtinFetchers: REMOTE_DATASOURCE_FETCHERS,
+      referencedDatasourceIds,
+    });
+    const resolvedData = await resolveDataTemplates(data, context);
+    return <Client data={resolvedData} />;
+  }
+
   const routes = await listRoutes();
 
-  const staticPages = routes.filter(
-    (r) => r.kind === "static" && r.path !== "/",
-  );
+  const staticPages = routes.filter((r) => r.kind === "static");
   const templates = routes.filter((r) => r.kind === "template");
 
   return (

@@ -41,6 +41,7 @@ export interface P1StoreConfig {
  * keys() is cached with a short TTL and retried on failure.
  */
 function toDocPath(path: string): string {
+  if (path === "/") return "/";
   return path.startsWith("/") ? path.slice(1) : path;
 }
 
