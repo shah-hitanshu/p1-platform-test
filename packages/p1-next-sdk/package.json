@@ -7,9 +7,6 @@
     "url": "https://github.com/pantheon-systems/puck-css-integration.git",
     "directory": "packages/p1-next-sdk"
   },
-  "publishConfig": {
-    "@pantheon-systems:registry": "https://npm.pkg.github.com"
-  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

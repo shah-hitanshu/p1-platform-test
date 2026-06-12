@@ -51,3 +51,6 @@ test-results/
 
 # Turbo
 .turbo/
+
+# Generated template (built from apps/p1-starter)
+packages/create-p1-starter-kit/template/

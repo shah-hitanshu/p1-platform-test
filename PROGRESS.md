@@ -1751,3 +1751,61 @@ puck-css-integration/
 - One preset only ("everything enabled") — not three
 - `enableMergeControl` defaults to `true` (matches existing behavior where Compare with Live is always available)
 - Feature config gating uses no-op functions / empty arrays (not `undefined`) for type safety with required P1EditorHeader props
+
+### Create P1 Starter Kit Package (2026-06-08) ✅
+
+**Branch:** `PCC-3247-package-and-publish-p-1-starter-kit-so-that-it-works-via-pnpm-create-p-1-starter-kit`
+
+Created a publishable `create-p1-starter-kit` package that scaffolds new P1 projects via `pnpm create @pantheon-systems/p1-starter-kit`.
+
+**Implementation:**
+- **Package structure** (`packages/create-p1-starter-kit/`):
+  - `package.json` with bin field pointing to `index.js` CLI entry point
+  - `lib/cli.js` - Interactive CLI with @clack/prompts for project configuration
+  - `lib/copy-template.js` - Template file copying utilities
+  - `lib/install-deps.js` - Package manager detection (pnpm/npm/yarn) and installation
+  - `lib/messages.js` - Terminal output formatting and success/error messages
+  - `template/` - Complete p1-starter app copied from `apps/p1-starter`
+
+- **Template modifications**:
+  - Replaced `workspace:*` dependencies with published npm versions:
+    - `@pantheon-systems/css-client: ^0.4.0`
+    - `@pantheon-systems/p1-next-sdk: ^0.1.0`
+    - `@pantheon-systems/puck-css: ^0.4.0`
+  - Removed `private: true` and eslint-config workspace dep
+  - Set placeholder project name (`PLACEHOLDER_PROJECT_NAME`) for CLI replacement
+  - 47 template files preserved (app/, components/, lib/, __tests__/, config files)
+
+- **CLI Features**:
+  - Project name prompt with validation
+  - Package manager selection (auto-detects based on lock files)
+  - Git initialization option (default: yes)
+  - Dependency installation option (default: yes)
+  - Install failure help message
+  - Beautiful terminal UI with spinners and colors
+
+- **Local testing verified**:
+  - Template copies correctly (47 files)
+  - Package.json name replacement works
+  - No workspace dependencies remain
+  - All file structure intact (nested routes, components, configs)
+
+**Files created:**
+- `packages/create-p1-starter-kit/package.json`
+- `packages/create-p1-starter-kit/index.js`
+- `packages/create-p1-starter-kit/lib/cli.js`
+- `packages/create-p1-starter-kit/lib/copy-template.js`
+- `packages/create-p1-starter-kit/lib/install-deps.js`
+- `packages/create-p1-starter-kit/lib/messages.js`
+- `packages/create-p1-starter-kit/README.md`
+- `packages/create-p1-starter-kit/template/*` (all p1-starter files)
+- `packages/create-p1-starter-kit/test-local.sh` (validation script)
+
+**Dependencies:**
+- `@clack/prompts: ^1.5.1` - Interactive CLI prompts
+- `picocolors: ^1.1.1` - Terminal color formatting
+
+**Testing:**
+- Validation script confirms all template files copied correctly
+- Package.json transformation verified (workspace → published versions)
+- Ready for publishing to npm with trusted publishing (OIDC provenance)

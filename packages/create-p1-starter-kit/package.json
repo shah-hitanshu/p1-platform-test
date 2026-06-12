@@ -1,0 +1,39 @@
+{
+  "name": "@pantheon-systems/create-p1-starter-kit",
+  "version": "0.1.0",
+  "description": "Scaffold a new P1 starter project",
+  "type": "module",
+  "bin": {
+    "create-p1-starter-kit": "./index.js"
+  },
+  "scripts": {
+    "build": "node scripts/build-template.js",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "index.js",
+    "lib/",
+    "template/"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pantheon-systems/puck-css-integration.git",
+    "directory": "packages/create-p1-starter-kit"
+  },
+  "keywords": [
+    "p1",
+    "puck",
+    "cms",
+    "content-publisher",
+    "starter",
+    "template"
+  ],
+  "engines": {
+    "node": ">=20.12.0"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.5.1",
+    "picocolors": "^1.1.1"
+  },
+  "license": "MIT"
+}
