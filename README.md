@@ -801,21 +801,23 @@ Standing up a fresh production Cloudflare account and GCP project. Run in order.
 **1. GCP foundation (one-time, local).** The CI service account does not exist yet, so bootstrap with your own GCP credentials:
 
 ```bash
-cd terraform/bootstrap
-terraform init \
-  -backend-config="bucket=p1-terraform-state-prod" \
-  -backend-config="prefix=bootstrap"
-terraform apply \
-  -var="environment=production" \
-  -var="gcp_project=pantheon-content-cloud" \
-  -var="terraform_state_bucket=p1-terraform-state-prod"
+cd terraform/bootstrap/production
+terraform init
+terraform apply
 ```
 
-Record the `wif_service_account` output; the provider URL is supplied by the shared `common-gh/auth-wif` action. For production, this bootstrap also enables the Cloud KMS API and grants the CI service account `roles/cloudkms.admin` + `roles/iam.serviceAccountAdmin` so it can apply the broker KMS module.
+Each environment has its own directory under `terraform/bootstrap/` with its GCS backend and target project pinned in code, so `init`/`apply` take no `-backend-config` or `-var` flags. Bootstrap provisions two CI service accounts, split by privilege: an admin **apply SA** (`wif_service_account` output) for the main-gated deploy workflows, and a read-only **plan SA** (`wif_plan_service_account` output, project `roles/viewer`) for the PR plan job. Record both outputs; the provider URL is supplied by the shared `common-gh/auth-wif` action. For production, this bootstrap also enables the Cloud KMS API and grants the apply SA `roles/cloudkms.admin` so it can apply the broker KMS module.
 
-**2. GitHub `production` environment.** Create it with required reviewers, then set:
+**2. GitHub Actions variables.**
 
-- **vars:** `GCP_SERVICE_ACCOUNT`, `GCP_PROJECT_ID`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDSQL_INSTANCE_CONNECTION_NAME`, `CLOUDSQL_DB_NAME`
+Repository variables, read by the `Terraform Plan` job. It runs on any same-repo PR with no environment, authenticating as the read-only plan SA (`css-github-actions-plan@<project>`), and reads the Cloudflare token from Secret Manager, so it needs no GitHub secrets:
+
+- `STAGING_GCP_PROJECT_ID`, `PRODUCTION_GCP_PROJECT_ID`
+- `STAGING_CLOUDFLARE_ACCOUNT_ID`, `PRODUCTION_CLOUDFLARE_ACCOUNT_ID`
+
+Protected `production` (and `staging`) environment, created with required reviewers and used by the deploy workflows as the admin apply SA. Set:
+
+- **vars:** `GCP_SERVICE_ACCOUNT` (apply SA), `GCP_PROJECT_ID`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDSQL_INSTANCE_CONNECTION_NAME`, `CLOUDSQL_DB_NAME`
 - **secrets:** `CLOUDFLARE_API_TOKEN`
 
 **3. Provision infrastructure.** Run the **Deploy Infrastructure** Action → `production` / `plan`, review, then re-run with `apply`. This creates CloudSQL (HA, backups, PITR), KV ×3, Queues ×2, R2 ×2, Hyperdrive ×2, the MCP OAuth KV, and the broker KMS key ring + MAC key (granting the `p1-backend` SA signer access). `p1-backend` must already exist; create it once with `gcloud iam service-accounts create p1-backend --project=pantheon-content-cloud`. From `terraform output`, read the instance connection name and database name (backfill the step-2 vars), plus `kms_key_resource` and `signer_sa_email` (used in step 6).

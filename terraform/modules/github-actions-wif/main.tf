@@ -38,6 +38,12 @@ variable "gcp_project" {
   type        = string
 }
 
+variable "account_id" {
+  description = "Service account ID (the local part of the SA email)"
+  type        = string
+  default     = "css-github-actions"
+}
+
 variable "github_repo" {
   description = "GitHub repository name"
   type        = string
@@ -54,9 +60,15 @@ variable "sa_roles" {
 }
 
 variable "terraform_state_bucket" {
-  description = "GCS bucket for Terraform state. If set, grants roles/storage.objectAdmin on this bucket."
+  description = "GCS bucket for Terraform state. If set, grants state_bucket_role on this bucket."
   type        = string
   default     = ""
+}
+
+variable "state_bucket_role" {
+  description = "Role granted to the service account on the Terraform state bucket."
+  type        = string
+  default     = "roles/storage.objectAdmin"
 }
 
 variable "cloudflare_token_secret_id" {
@@ -69,17 +81,6 @@ variable "wif_pool_name" {
   description = "Resource path of Pantheon's shared Workload Identity pool (project pantheon-wif)"
   type        = string
   default     = "projects/374988255856/locations/global/workloadIdentityPools/pantheon-global-pool"
-}
-
-# -----------------------------------------------------------------------------
-# API Enablement
-# -----------------------------------------------------------------------------
-
-resource "google_project_service" "iamcredentials" {
-  project = var.gcp_project
-  service = "iamcredentials.googleapis.com"
-
-  disable_on_destroy = false
 }
 
 # -----------------------------------------------------------------------------
@@ -99,8 +100,8 @@ locals {
 
 resource "google_service_account" "github_actions" {
   project      = var.gcp_project
-  account_id   = "css-github-actions"
-  display_name = "CSS GitHub Actions (${var.environment})"
+  account_id   = var.account_id
+  display_name = "CSS GitHub Actions ${var.environment} (${var.account_id})"
   description  = "Service account for Terraform execution via GitHub Actions WIF"
 }
 
@@ -122,7 +123,7 @@ resource "google_storage_bucket_iam_member" "state_bucket" {
   count = var.terraform_state_bucket != "" ? 1 : 0
 
   bucket = var.terraform_state_bucket
-  role   = "roles/storage.objectAdmin"
+  role   = var.state_bucket_role
   member = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
