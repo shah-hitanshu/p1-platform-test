@@ -26,8 +26,19 @@ export interface P1StoreClient {
   };
 }
 
+/** Minimal subset of P1ContentClient used for published-only reads. */
+export interface P1ContentClientInterface {
+  getPage(path: string): Promise<{ data: Record<string, unknown> } | null>;
+}
+
 export interface P1StoreConfig {
   client: P1StoreClient;
+  /**
+   * When provided, public reads (no auth token in context) use this client
+   * which hits the content delivery endpoint and returns only published versions.
+   * Editor reads (auth token present) always use the versions API.
+   */
+  contentClient?: P1ContentClientInterface;
   siteId: string;
   branchId: string;
   /** Factory to create a client with a specific bearer token (for user-auth writes). */
@@ -73,7 +84,7 @@ async function withRetry<T>(
 }
 
 export function createP1PageStore(config: P1StoreConfig): PageStore {
-  const { client, siteId, branchId, createAuthClient } = config;
+  const { client, contentClient, siteId, branchId, createAuthClient } = config;
 
   let _keysCache: { promise: Promise<string[]>; ts: number } | null = null;
 
@@ -91,6 +102,18 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
 
   return {
     async get(path: string): Promise<unknown | undefined> {
+      // Public rendering: no auth token in context — use content client which
+      // returns only published versions via the content delivery endpoint.
+      if (contentClient && !getRequestAuthToken()) {
+        try {
+          const result = await contentClient.getPage(toDocPath(path));
+          return result?.data ?? undefined;
+        } catch (err) {
+          console.info("[css-store] get(%s) failed:", path, (err as Error).message);
+          return undefined;
+        }
+      }
+      // Editor context (auth token present) or no content client: return latest version.
       try {
         const doc = await client.documents.getByPath(siteId, toDocPath(path));
         const version = await client.versions.getLatest(siteId, branchId, doc.id);

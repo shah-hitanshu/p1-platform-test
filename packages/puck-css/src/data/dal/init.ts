@@ -8,7 +8,7 @@
 
 import { initializeStores } from "./index";
 import type { EditorMetaStore, RemoteDatasourceDefStore } from "./types";
-import { createP1PageStore, type P1StoreClient } from "./p1-store";
+import { createP1PageStore, type P1StoreClient, type P1ContentClientInterface } from "./p1-store";
 
 export interface P1DataConfig {
   /** Base URL of the API. */
@@ -52,6 +52,7 @@ async function doInit(cfg: P1DataConfig): Promise<void> {
   // Dynamic import so @pantheon-systems/css-client is only loaded when needed.
   const p1ClientModule = await import("@pantheon-systems/css-client");
   const P1ClientCtor = p1ClientModule.P1Client as new (opts: { baseUrl: string; apiKey?: string; authProvider?: () => Promise<string> }) => P1StoreClient & { branches: { list(siteId: string): Promise<{ id: string; isMain: boolean }[]> } };
+  const P1ContentClientCtor = p1ClientModule.P1ContentClient as new (opts: { baseUrl: string; apiToken: string; siteId: string; branchId?: string }) => P1ContentClientInterface;
 
   const client = new P1ClientCtor({
     baseUrl: p1BaseUrl,
@@ -69,8 +70,18 @@ async function doInit(cfg: P1DataConfig): Promise<void> {
     branchId = main.id;
   }
 
+  // Content client for published-only reads on public pages.
+  // Use the resolved branchId (auto-detected main if not explicitly configured).
+  const contentClient = new P1ContentClientCtor({
+    baseUrl: p1BaseUrl,
+    apiToken: cfg.p1ApiKey ?? "",
+    siteId: p1SiteId,
+    branchId,
+  });
+
   const pageStore = createP1PageStore({
     client,
+    contentClient,
     siteId: p1SiteId,
     branchId,
     createAuthClient: (bearerToken: string) => {

@@ -121,6 +121,26 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     });
   }
 
+  // GET /api/sites/:siteId/content/:docPath — content delivery endpoint (published view)
+  // Path may be multi-segment so we can't use routeMatch; use prefix matching instead.
+  const contentPrefix = `/api/sites/${SITE_ID}/content/`;
+  if (pathname.startsWith(contentPrefix) && method === "GET") {
+    const docPath = pathname.slice(contentPrefix.length);
+    const doc = docs.get(docPath);
+    if (!doc) return notFound(res);
+    return json(res, 200, {
+      documentId: doc.id,
+      path: doc.path,
+      data: doc.snapshot,
+      branchId: BRANCH_ID,
+      branchName: "main",
+      isMainBranch: true,
+      versionNumber: 1,
+      versionCreatedAt: new Date().toISOString(),
+      etag: `"v-${doc.id}"`,
+    });
+  }
+
   // GET /api/sites/:siteId/branches/:branchId/documents/:docId/versions/latest
   const versionLatest = routeMatch(
     "/api/sites/:siteId/branches/:branchId/documents/:docId/versions/latest",

@@ -17,6 +17,9 @@ vi.mock('@pantheon-systems/css-client', () => ({
       create: vi.fn(),
     };
   },
+  P1ContentClient: class MockP1ContentClient {
+    getPage = vi.fn().mockResolvedValue(null);
+  },
 }));
 
 vi.mock('../../data/dal/index', () => ({

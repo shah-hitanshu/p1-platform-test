@@ -74,7 +74,8 @@ type MockP1Client = ReturnType<typeof createMockClient>;
 // Import the module under test
 // ---------------------------------------------------------------------------
 
-import { createP1PageStore, type P1StoreConfig } from "../../data/dal/p1-store";
+import { createP1PageStore, type P1StoreConfig, type P1ContentClientInterface } from "../../data/dal/p1-store";
+import { runWithAuthToken } from "../../data/dal/request-auth";
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -86,8 +87,17 @@ describe("createP1PageStore", () => {
 
   let mockClient: MockP1Client;
 
-  function makeConfig(client: MockP1Client): P1StoreConfig {
-    return { client: client as unknown as P1StoreConfig["client"], siteId: SITE_ID, branchId: BRANCH_ID };
+  function makeConfig(client: MockP1Client, contentClient?: P1ContentClientInterface): P1StoreConfig {
+    return { client: client as unknown as P1StoreConfig["client"], contentClient, siteId: SITE_ID, branchId: BRANCH_ID };
+  }
+
+  function makeContentClient(pages: Record<string, Record<string, unknown>>): P1ContentClientInterface {
+    return {
+      getPage: vi.fn().mockImplementation(async (path: string) => {
+        const data = pages[path] ?? pages["/" + path];
+        return data ? { data } : null;
+      }),
+    };
   }
 
   beforeEach(() => {
@@ -138,6 +148,64 @@ describe("createP1PageStore", () => {
       const store = createP1PageStore(makeConfig(mockClient));
 
       expect(await store.get("/nonexistent")).toBeUndefined();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // get — with content client (published-only reads for public rendering)
+  // -----------------------------------------------------------------------
+
+  describe("get — with content client", () => {
+    it("uses content client when no auth token is set (public rendering)", async () => {
+      const publishedData = { root: { props: { title: "Published" } }, content: [] };
+      const contentClient = makeContentClient({ "": publishedData });
+
+      const docs: MockDocument[] = [
+        { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
+      ];
+      const versions: Record<string, MockVersion> = {
+        "doc-1": { id: "v-latest", documentId: "doc-1", branchId: BRANCH_ID, snapshot: { root: { props: { title: "Unpublished draft" } }, content: [] } },
+      };
+      mockClient = createMockClient({ documents: docs, versions });
+      const store = createP1PageStore(makeConfig(mockClient, contentClient));
+
+      const data = await store.get("/") as Record<string, unknown>;
+      expect((data.root as Record<string, unknown>).props).toEqual({ title: "Published" });
+      expect((contentClient.getPage as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith("");
+      expect(mockClient.versions.getLatest).not.toHaveBeenCalled();
+    });
+
+    it("falls back to versions API when auth token is set (editor context)", async () => {
+      const publishedData = { root: { props: { title: "Published" } }, content: [] };
+      const contentClient = makeContentClient({ "": publishedData });
+
+      const docs: MockDocument[] = [
+        { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
+      ];
+      const versions: Record<string, MockVersion> = {
+        "doc-1": { id: "v-latest", documentId: "doc-1", branchId: BRANCH_ID, snapshot: { root: { props: { title: "Latest draft" } }, content: [] } },
+      };
+      mockClient = createMockClient({ documents: docs, versions });
+      const store = createP1PageStore(makeConfig(mockClient, contentClient));
+
+      let data: unknown;
+      await runWithAuthToken("bearer-token-xyz", async () => {
+        data = await store.get("/");
+      });
+
+      expect((data as Record<string, Record<string, unknown>>).root.props).toEqual({ title: "Latest draft" });
+      expect((contentClient.getPage as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+      expect(mockClient.versions.getLatest).toHaveBeenCalled();
+    });
+
+    it("returns undefined when content client finds no published version", async () => {
+      const contentClient = makeContentClient({});
+      mockClient = createMockClient();
+      const store = createP1PageStore(makeConfig(mockClient, contentClient));
+
+      expect(await store.get("/unpublished")).toBeUndefined();
+      expect((contentClient.getPage as ReturnType<typeof vi.fn>)).toHaveBeenCalled();
+      expect(mockClient.versions.getLatest).not.toHaveBeenCalled();
     });
   });
 
