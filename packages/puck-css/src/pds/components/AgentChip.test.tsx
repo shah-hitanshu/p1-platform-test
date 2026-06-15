@@ -146,4 +146,61 @@ describe('AgentChip', () => {
     const badge = screen.getByTestId('agent-chip-workstream-badge');
     expect(badge.textContent).toContain('feature/homepage-refresh');
   });
+
+  describe('requestedByName (human_requested sessions)', () => {
+    it('displays "Agent on behalf of [name]" when requestedByName is set', () => {
+      render(
+        <AgentChip
+          agent={{ ...mockAgent, requestedByName: 'Chris Yates' }}
+          onStop={vi.fn()}
+        />
+      );
+
+      const name = screen.getByTestId('agent-chip-name');
+      expect(name.textContent).toBe('Agent on behalf of Chris Yates');
+    });
+
+    it('displays the agent name when requestedByName is not set', () => {
+      render(<AgentChip {...defaultProps} />);
+
+      const name = screen.getByTestId('agent-chip-name');
+      expect(name.textContent).toBe('Content Writer');
+    });
+
+    it('displays the agent name when requestedByName is undefined', () => {
+      render(
+        <AgentChip
+          agent={{ ...mockAgent, requestedByName: undefined }}
+          onStop={vi.fn()}
+        />
+      );
+
+      const name = screen.getByTestId('agent-chip-name');
+      expect(name.textContent).toBe('Content Writer');
+    });
+
+    it('displays the agent name when requestedByName is empty string', () => {
+      render(
+        <AgentChip
+          agent={{ ...mockAgent, requestedByName: '' }}
+          onStop={vi.fn()}
+        />
+      );
+
+      const name = screen.getByTestId('agent-chip-name');
+      expect(name.textContent).toBe('Content Writer');
+    });
+
+    it('stop button aria-label reflects "Agent on behalf of" when requestedByName is set', () => {
+      render(
+        <AgentChip
+          agent={{ ...mockAgent, requestedByName: 'Chris Yates' }}
+          onStop={vi.fn()}
+        />
+      );
+
+      const stopBtn = screen.getByTestId('agent-chip-stop');
+      expect(stopBtn.getAttribute('aria-label')).toBe('Stop Agent on behalf of Chris Yates');
+    });
+  });
 });

@@ -564,6 +564,8 @@ function P1SubheaderBridgeInner({
     name: a.name,
     isAgent: true,
     intent: a.intent,
+    requestedById: a.requestedById,
+    requestedByName: a.requestedByName,
   }));
   const humanActors: SubheaderActor[] = humanPresenceCount > 0 && hasActiveHumans
     ? (presence?.humans ?? []).map((a) => ({ id: a.actorId, name: a.name, avatar: a.avatar }))

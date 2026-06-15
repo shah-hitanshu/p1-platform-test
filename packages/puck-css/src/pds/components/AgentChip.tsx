@@ -23,6 +23,8 @@ export interface AgentChipAgent {
   intent: string;
   progress?: string;
   workstream: string;
+  /** Display name of the human driving this agent session (human_requested sessions only) */
+  requestedByName?: string;
 }
 
 export interface AgentChipProps {
@@ -40,6 +42,10 @@ export interface AgentChipProps {
 export function AgentChip({ agent, onStop, currentWorkstream, id }: AgentChipProps): React.JSX.Element {
   const showWorkstreamBadge =
     currentWorkstream === undefined || agent.workstream !== currentWorkstream;
+
+  const displayName = agent.requestedByName
+    ? `Agent on behalf of ${agent.requestedByName}`
+    : agent.name;
 
   function handleStop(): void {
     onStop(agent.id);
@@ -60,7 +66,7 @@ export function AgentChip({ agent, onStop, currentWorkstream, id }: AgentChipPro
 
       <span className={styles.info}>
         <span data-testid="agent-chip-name" className={styles.name}>
-          {agent.name}
+          {displayName}
         </span>
         <span data-testid="agent-chip-intent" className={styles.intent}>
           {agent.intent}
@@ -83,7 +89,7 @@ export function AgentChip({ agent, onStop, currentWorkstream, id }: AgentChipPro
       <button
         data-testid="agent-chip-stop"
         className={styles.stopButton}
-        aria-label={`Stop ${agent.name}`}
+        aria-label={`Stop ${displayName}`}
         type="button"
         onClick={handleStop}
       >

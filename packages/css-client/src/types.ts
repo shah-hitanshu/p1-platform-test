@@ -278,6 +278,10 @@ export interface ActorPresence {
   state: ActorState;
   intent?: string;
   focusRegions?: string[];
+  /** ID of the human who triggered this agent session (human_requested sessions only) */
+  requestedById?: string;
+  /** Display name of the human who triggered this agent session (human_requested sessions only) */
+  requestedByName?: string;
   lastActivityAt: string;
   joinedAt: string;
 }

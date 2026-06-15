@@ -23,6 +23,9 @@ export interface SubheaderActor {
   avatar?: string;
   isAgent?: boolean;
   intent?: string;
+  /** Reserved for future use (e.g. linking to user profile). Not passed to AgentChip. */
+  requestedById?: string;
+  requestedByName?: string;
 }
 
 export interface P1EditorSubheaderProps {
@@ -135,6 +138,7 @@ export function P1EditorSubheader({
               gradient: '',
               intent: actor.intent ?? '',
               workstream: '',
+              requestedByName: actor.requestedByName,
             }}
             currentWorkstream=""
             onStop={() => onStopAgent(actor.id)}
