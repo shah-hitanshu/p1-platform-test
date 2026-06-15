@@ -95,7 +95,7 @@ const mcpApiHandler: ExportedHandler<Env> = {
       agentApiKey: env.AGENT_API_KEY,
       serverName: env.MCP_SERVER_NAME,
       serverVersion: env.MCP_SERVER_VERSION,
-      actingUser: props ? { id: props.userId, email: props.email } : undefined,
+      actingUser: props ? { id: props.userId, email: props.email, name: props.name } : undefined,
       fetcher: env.CSS_BACKEND,
       // PCC-3192 — per-tool rate limiting. Both undefined in local dev
       // (no bindings configured); the wrapper fails OPEN with a one-shot

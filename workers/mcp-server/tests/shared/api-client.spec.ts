@@ -100,6 +100,48 @@ describe('McpApiClient', () => {
       expect(options.headers['X-Acting-User-Id']).toBeUndefined();
       expect(options.headers['X-Acting-User-Email']).toBeUndefined();
     });
+
+    // Test: X-Acting-User-Name forwarded when name is present
+    it('should include X-Acting-User-Name header when actingUser.name is defined', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient({
+        ...defaultConfig,
+        actingUser: { id: 'user-123', email: 'user@example.com', name: 'Alice Smith' },
+      });
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, { sites: [], total: 0 }));
+      await client.listSites();
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers['X-Acting-User-Name']).toBe('Alice Smith');
+    });
+
+    // Test: X-Acting-User-Name omitted when name is undefined
+    it('should NOT include X-Acting-User-Name header when actingUser.name is undefined', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient({
+        ...defaultConfig,
+        actingUser: { id: 'user-123', email: 'user@example.com' },
+      });
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, { sites: [], total: 0 }));
+      await client.listSites();
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers['X-Acting-User-Name']).toBeUndefined();
+    });
+
+    // Test: X-Acting-User-Name absent when no actingUser at all
+    it('should NOT include X-Acting-User-Name header when actingUser is absent', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, { sites: [], total: 0 }));
+      await client.listSites();
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers['X-Acting-User-Name']).toBeUndefined();
+    });
   });
 
   // Test 5: listSites URL and method

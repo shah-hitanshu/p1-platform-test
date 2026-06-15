@@ -44,6 +44,10 @@ export interface RegisterPresenceOptions {
   focusRegions?: string[];
   /** Initial state for the actor (default: 'active') */
   state?: PresenceState;
+  /** ID of the human who triggered this agent session (human_requested sessions only) */
+  requestedById?: string;
+  /** Display name of the human who triggered this agent session (human_requested sessions only) */
+  requestedByName?: string;
 }
 
 /**
@@ -161,6 +165,8 @@ export class PresenceManager {
       state: options.state ?? 'active',
       intent: options.intent,
       focusRegions: options.focusRegions,
+      requestedById: options.requestedById,
+      requestedByName: options.requestedByName,
       lastActivityAt: now,
       joinedAt: now,
     };

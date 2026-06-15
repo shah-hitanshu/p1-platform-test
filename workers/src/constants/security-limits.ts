@@ -163,6 +163,13 @@ export const MAX_VALUE_DEPTH = 50;
 export const MAX_INTENT_LENGTH = 1000;
 
 /**
+ * Maximum length for acting-user name strings forwarded from MCP/agent clients.
+ * Truncated (not rejected) since the value originates from a trusted OAuth provider.
+ * Value: 256 characters (sufficient for any display name)
+ */
+export const MAX_ACTING_USER_NAME_LENGTH = 256;
+
+/**
  * Maximum length for operation type string.
  * Prevents memory issues with operation categorization.
  * Value: 100 characters (enough for any category name)

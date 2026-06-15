@@ -369,6 +369,7 @@ async function handleRequest(
   if (actingUser) {
     principal.actingUserId = actingUser.actingUserId;
     principal.actingUserEmail = actingUser.actingUserEmail;
+    principal.actingUserName = actingUser.actingUserName;
   }
 
   // Service principal scope enforcement

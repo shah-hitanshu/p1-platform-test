@@ -50,6 +50,7 @@ import {
 } from './realtime-validators';
 import { getDocumentByPath } from '../services/document-service';
 import { hasPermission } from '../auth/authorization';
+import { getAgentById } from '../services/agent-service';
 
 // Re-export for consumers
 export type { RealtimeRouteContext } from './realtime-utils';
@@ -228,10 +229,26 @@ export async function handleRealtimeRoutes(
 
     targetEndpoint = '/agent-edit-start';
 
+    // Look up agent name in Worker context — DB is available here but not inside the DO.
+    // Pass the resolved name as X-Agent-Name so the DO doesn't need its own DB lookup.
+    let resolvedAgentName = bodyResult.agentId;
+    try {
+      const agent = await getAgentById(bodyResult.agentId);
+      resolvedAgentName = agent?.name ?? bodyResult.agentId;
+    } catch (error) {
+      console.warn('Failed to look up agent name, falling back to agentId:', error);
+    }
+
+    const forwardedHeaders = new Headers(request.headers);
+    // Explicitly delete any caller-supplied X-Agent-Name before setting the
+    // Worker-resolved value — prevents external callers from spoofing the header.
+    forwardedHeaders.delete('X-Agent-Name');
+    forwardedHeaders.set('X-Agent-Name', resolvedAgentName);
+
     // Forward with validated body and original headers
     forwardedRequest = new Request(`http://internal${targetEndpoint}`, {
       method: 'POST',
-      headers: request.headers,
+      headers: forwardedHeaders,
       body: JSON.stringify(bodyResult),
     });
   } else if (params.action === 'agent-edit-complete') {

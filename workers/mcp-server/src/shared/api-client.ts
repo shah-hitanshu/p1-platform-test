@@ -296,6 +296,10 @@ export class McpApiClient {
     if (this.actingUser) {
       headers['X-Acting-User-Id'] = this.actingUser.id;
       headers['X-Acting-User-Email'] = this.actingUser.email;
+      if (this.actingUser.name !== undefined) {
+        const safeName = this.actingUser.name.replace(/[\r\n]/g, ' ').trim().slice(0, 256);
+        if (safeName) headers['X-Acting-User-Name'] = safeName;
+      }
     }
 
     return headers;

@@ -95,5 +95,52 @@ describe('Acting-User Extraction', () => {
       const result = extractActingUser(headers, principal);
       expect(result).toBeNull();
     });
+
+    // Test 54: Name header included when present
+    it('should include actingUserName when X-Acting-User-Name header is present', async () => {
+      const { extractActingUser } = await import('../../src/auth/acting-user');
+      const headers = new Headers({
+        'X-Acting-User-Id': 'user-uuid-123',
+        'X-Acting-User-Email': 'user@example.com',
+        'X-Acting-User-Name': 'Chris Yates',
+      });
+      const principal = { type: 'agent' as const, id: 'agent-1' };
+
+      const result = extractActingUser(headers, principal);
+      expect(result).toEqual({
+        actingUserId: 'user-uuid-123',
+        actingUserEmail: 'user@example.com',
+        actingUserName: 'Chris Yates',
+      });
+    });
+
+    // Test 55: Name header absent — actingUserName is undefined
+    it('should return undefined actingUserName when X-Acting-User-Name header is absent', async () => {
+      const { extractActingUser } = await import('../../src/auth/acting-user');
+      const headers = new Headers({
+        'X-Acting-User-Id': 'user-uuid-123',
+        'X-Acting-User-Email': 'user@example.com',
+      });
+      const principal = { type: 'agent' as const, id: 'agent-1' };
+
+      const result = extractActingUser(headers, principal);
+      expect(result).not.toBeNull();
+      expect(result!.actingUserName).toBeUndefined();
+    });
+
+    // Test 56: Empty name header treated as absent
+    it('should return undefined actingUserName when X-Acting-User-Name header is empty string', async () => {
+      const { extractActingUser } = await import('../../src/auth/acting-user');
+      const headers = new Headers({
+        'X-Acting-User-Id': 'user-uuid-123',
+        'X-Acting-User-Email': 'user@example.com',
+        'X-Acting-User-Name': '',
+      });
+      const principal = { type: 'agent' as const, id: 'agent-1' };
+
+      const result = extractActingUser(headers, principal);
+      expect(result).not.toBeNull();
+      expect(result!.actingUserName).toBeUndefined();
+    });
   });
 });

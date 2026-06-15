@@ -581,6 +581,119 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       expect(agentPresence).toBeDefined();
     });
 
+    it('should populate requestedByName and requestedById in presence for human_requested trigger', async () => {
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Acting-User-Id': 'user-uuid-456',
+            'X-Acting-User-Name': 'Chris Yates',
+          },
+          body: JSON.stringify({
+            agentId: 'agent-123',
+            trigger: 'human_requested',
+            intent: 'User requested layout update',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+
+      const presenceResponse = await session.fetch(
+        new Request('http://localhost/presences'),
+      );
+
+      expect(presenceResponse.status).toBe(200);
+      const body = (await presenceResponse.json());
+      const agentPresence = body.presences.find((p) => p.actorId === 'agent-123');
+      expect(agentPresence).toBeDefined();
+      expect(agentPresence.requestedById).toBe('user-uuid-456');
+      expect(agentPresence.requestedByName).toBe('Chris Yates');
+    });
+
+    it('should not populate requestedByName or requestedById for autonomous trigger', async () => {
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Acting-User-Id': 'user-uuid-456',
+            'X-Acting-User-Name': 'Chris Yates',
+          },
+          body: JSON.stringify({
+            agentId: 'agent-456',
+            trigger: 'autonomous',
+            intent: 'Autonomous layout optimization',
+            targetRegions: ['/content/1'],
+          }),
+        }),
+      );
+
+      const presenceResponse = await session.fetch(
+        new Request('http://localhost/presences'),
+      );
+
+      expect(presenceResponse.status).toBe(200);
+      const body = (await presenceResponse.json());
+      const agentPresence = body.presences.find((p) => p.actorId === 'agent-456');
+      expect(agentPresence).toBeDefined();
+      expect(agentPresence.requestedById).toBeUndefined();
+      expect(agentPresence.requestedByName).toBeUndefined();
+    });
+
+    it('should omit requestedByName when X-Acting-User-Name header is absent on human_requested trigger', async () => {
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Acting-User-Id': 'user-uuid-789',
+          },
+          body: JSON.stringify({
+            agentId: 'agent-789',
+            trigger: 'human_requested',
+            intent: 'Layout update without name header',
+            targetRegions: ['/content/2'],
+          }),
+        }),
+      );
+
+      const presenceResponse = await session.fetch(
+        new Request('http://localhost/presences'),
+      );
+
+      expect(presenceResponse.status).toBe(200);
+      const body = (await presenceResponse.json());
+      const agentPresence = body.presences.find((p) => p.actorId === 'agent-789');
+      expect(agentPresence).toBeDefined();
+      expect(agentPresence.requestedById).toBe('user-uuid-789');
+      expect(agentPresence.requestedByName).toBeUndefined();
+    });
+
     it('should deny start if not allowed', async () => {
       const { DocumentSession } = await import(
         '../../src/durable-objects/document-session'

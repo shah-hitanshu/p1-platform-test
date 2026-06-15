@@ -26,6 +26,10 @@ export interface ActorPresence {
   intent?: string;
   /** JSON paths the actor is focused on */
   focusRegions?: string[];
+  /** ID of the human who triggered this agent session (human_requested sessions only) */
+  requestedById?: string;
+  /** Display name of the human who triggered this agent session (human_requested sessions only) */
+  requestedByName?: string;
   lastActivityAt: string;
   joinedAt: string;
 }

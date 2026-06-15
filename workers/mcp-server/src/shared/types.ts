@@ -1,6 +1,7 @@
 export interface ActingUser {
   id: string;
   email: string;
+  name?: string;
 }
 
 export interface McpApiClientConfig {

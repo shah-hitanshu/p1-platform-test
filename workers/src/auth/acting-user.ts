@@ -10,6 +10,8 @@
 export interface ActingUserInfo {
   actingUserId: string;
   actingUserEmail: string;
+  /** Display name of the acting user, if provided by the MCP server */
+  actingUserName?: string;
 }
 
 /**
@@ -32,5 +34,9 @@ export function extractActingUser(
     return null;
   }
 
-  return { actingUserId: userId, actingUserEmail: userEmail };
+  const rawName = headers.get('X-Acting-User-Name');
+  const trimmedName = rawName !== null ? rawName.trim().slice(0, 256) : '';
+  const actingUserName = trimmedName !== '' ? trimmedName : undefined;
+
+  return { actingUserId: userId, actingUserEmail: userEmail, actingUserName };
 }

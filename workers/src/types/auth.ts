@@ -125,6 +125,8 @@ export interface AuthenticatedPrincipal {
   actingUserId?: string;
   /** Acting user email forwarded from MCP server (agent principals only) */
   actingUserEmail?: string;
+  /** Acting user display name forwarded from MCP server (agent principals only) */
+  actingUserName?: string;
 }
 
 /**

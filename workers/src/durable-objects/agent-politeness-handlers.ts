@@ -12,12 +12,13 @@ import type {
   ActivityDetector,
 } from '../services/activity-detection-service';
 import type { AgentEditPermissionService } from '../services/agent-edit-permission-service';
-import { getAgentById } from '../services/agent-service';
 import type { Organization } from '../types';
 import {
   MAX_INTENT_LENGTH,
   MAX_TARGET_REGIONS,
   MAX_REASON_LENGTH,
+  MAX_ACTING_USER_NAME_LENGTH,
+  MAX_ACTOR_ID_LENGTH,
 } from '../constants/security-limits';
 
 import type {
@@ -206,15 +207,10 @@ export async function handleAgentEditStart(
     });
   }
 
-  // Look up agent's display name from the registry
-  // Wrapped in try-catch because database may not be available in DO context
-  let agentName = parsed.agentId;
-  try {
-    const agent = await getAgentById(parsed.agentId);
-    agentName = agent?.name ?? parsed.agentId;
-  } catch (error) {
-    console.warn('Failed to look up agent name, using agentId:', error);
-  }
+  // Agent name is resolved by the Worker before forwarding (DB available there, not in DO).
+  // Fall back to agentId only if the header is absent. Cap length defensively.
+  const rawAgentName = request.headers.get('X-Agent-Name') ?? parsed.agentId;
+  const agentName = rawAgentName.trim().slice(0, MAX_ACTING_USER_NAME_LENGTH) || parsed.agentId;
 
   // Generate edit session ID using cryptographically secure random
   const editSessionId = `edit-${crypto.randomUUID()}`;
@@ -249,6 +245,21 @@ export async function handleAgentEditStart(
   deps.editSessions.set(editSessionId, newSession);
   await deps.persistEditSessions();
 
+  // Extract acting-user identity from headers (set by MCP server / chatbot for human_requested sessions)
+  let requestedById: string | undefined;
+  let requestedByName: string | undefined;
+  if (parsed.trigger === 'human_requested') {
+    const rawId = request.headers.get('X-Acting-User-Id');
+    if (rawId !== null && rawId.trim() !== '') {
+      requestedById = rawId.trim().slice(0, MAX_ACTOR_ID_LENGTH);
+    }
+    const rawName = request.headers.get('X-Acting-User-Name');
+    const trimmedName = rawName !== null ? rawName.trim() : '';
+    if (trimmedName !== '') {
+      requestedByName = trimmedName.slice(0, MAX_ACTING_USER_NAME_LENGTH);
+    }
+  }
+
   // Register agent presence with focus regions and editing state
   deps.presenceManager.register({
     actorId: parsed.agentId,
@@ -257,6 +268,8 @@ export async function handleAgentEditStart(
     focusRegions: targetRegions,
     intent: parsed.intent,
     state: 'editing',
+    requestedById,
+    requestedByName,
   });
 
   // Broadcast presence update to all connected clients
