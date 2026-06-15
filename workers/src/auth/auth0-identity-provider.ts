@@ -28,6 +28,19 @@ export interface Auth0IdentityProviderOptions {
 }
 
 /**
+ * Strip trailing slashes so issuer comparisons are slash-insensitive.
+ * Auth0 emits the `iss` claim with a trailing slash; configured issuer URLs
+ * may or may not include one.
+ */
+function normalizeIssuer(issuer: string): string {
+  let s = issuer;
+  while (s.endsWith('/')) {
+    s = s.slice(0, -1);
+  }
+  return s;
+}
+
+/**
  * Check if a URL string is an Auth0 issuer by parsing the hostname.
  * Returns true only if the hostname ends with '.auth0.com' or equals 'auth0.com'.
  */
@@ -52,7 +65,7 @@ export class Auth0IdentityProvider implements IdentityProvider {
   private readonly jwks: jose.JWTVerifyGetKey;
 
   constructor(options: Auth0IdentityProviderOptions) {
-    this.issuerBaseUrl = options.issuerBaseUrl;
+    this.issuerBaseUrl = normalizeIssuer(options.issuerBaseUrl);
     this.audience = options.audience;
 
     this.jwks = options.jwks ??
@@ -80,7 +93,7 @@ export class Auth0IdentityProvider implements IdentityProvider {
         return false;
       }
 
-      if (iss === this.issuerBaseUrl) {
+      if (normalizeIssuer(iss) === this.issuerBaseUrl) {
         return true;
       }
 
@@ -173,7 +186,7 @@ export class Auth0IdentityProvider implements IdentityProvider {
       return undefined;
     }
 
-    if (iss === this.issuerBaseUrl || isAuth0Issuer(iss)) {
+    if (normalizeIssuer(iss) === this.issuerBaseUrl || isAuth0Issuer(iss)) {
       return this.jwks;
     }
 

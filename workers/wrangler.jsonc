@@ -244,6 +244,7 @@
         "R2_BUNDLES_BUCKET": "ccr-bundles-staging",
         "AUTH0_ISSUER_BASE_URL": "https://auth-staging.pantheon.io",
         "AUTH0_AUDIENCE": "https://addonapi-cxog5ytt4a-uc.a.run.app",
+        "AUTH0_CLIENT_ID": "fTmdrlsHK0HJ75WMSqWTLrUgDiBR5VG4",
         "GCP_KMS_KEY_RESOURCE": "projects/pantheon-content-cloud-staging/locations/global/keyRings/p1-auth-broker/cryptoKeys/jwt-mac-signing",
         "CF_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
         "R2_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2"

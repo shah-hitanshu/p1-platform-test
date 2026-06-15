@@ -168,6 +168,28 @@ describe('Phase 3: Auth0 Identity Provider', () => {
       );
       expect(provider.canVerifyToken(token)).toBe(true);
     });
+
+    it('should match a custom issuer domain when config omits a trailing slash present in the token', async () => {
+      const provider = createProvider({
+        issuerBaseUrl: 'https://auth-staging.pantheon.io',
+      });
+      const token = await createAuth0Token(
+        { sub: 'auth0|user1' },
+        { issuer: 'https://auth-staging.pantheon.io/' },
+      );
+      expect(provider.canVerifyToken(token)).toBe(true);
+    });
+
+    it('should match a custom issuer domain when config has a trailing slash absent from the token', async () => {
+      const provider = createProvider({
+        issuerBaseUrl: 'https://auth-staging.pantheon.io/',
+      });
+      const token = await createAuth0Token(
+        { sub: 'auth0|user1' },
+        { issuer: 'https://auth-staging.pantheon.io' },
+      );
+      expect(provider.canVerifyToken(token)).toBe(true);
+    });
   });
 
   // ===========================================================================
@@ -316,6 +338,21 @@ describe('Phase 3: Auth0 Identity Provider', () => {
 
       const principal = await provider.validateToken(token);
       expect(principal).toBeNull();
+    });
+
+    it('should validate a custom-issuer token when config and token differ only by a trailing slash', async () => {
+      const provider = createProvider({
+        issuerBaseUrl: 'https://auth-staging.pantheon.io',
+      });
+      const token = await createAuth0Token(
+        { sub: 'auth0|user1', email: 'alice@example.com' },
+        { issuer: 'https://auth-staging.pantheon.io/' },
+      );
+
+      const principal = await provider.validateToken(token);
+      expect(principal).not.toBeNull();
+      expect(principal?.providerSubjectId).toBe('auth0|user1');
+      expect(principal?.authProvider).toBe('auth0');
     });
 
     // Concurrent validation
