@@ -188,7 +188,7 @@ export interface McpApiClientConfig {
   baseUrl: string;
   agentId: string;
   agentApiKey: string;
-  actingUser?: { id: string; email: string };
+  actingUser?: { id: string; email: string; name?: string };
   fetcher?: { fetch(input: RequestInfo, init?: RequestInit): Promise<Response> };
 }
 
@@ -196,7 +196,7 @@ export class McpApiClient {
   private readonly baseUrl: string;
   private readonly agentId: string;
   private readonly agentApiKey: string;
-  private readonly actingUser?: { id: string; email: string };
+  private readonly actingUser?: { id: string; email: string; name?: string };
   private readonly fetcher?: { fetch(input: RequestInfo, init?: RequestInit): Promise<Response> };
 
   constructor(config: McpApiClientConfig) {
@@ -226,6 +226,10 @@ export class McpApiClient {
     if (this.actingUser) {
       headers['X-Acting-User-Id'] = this.actingUser.id;
       headers['X-Acting-User-Email'] = this.actingUser.email;
+      if (this.actingUser.name !== undefined) {
+        const safeName = this.actingUser.name.replace(/[\r\n]/g, ' ').trim().slice(0, 256);
+        if (safeName) headers['X-Acting-User-Name'] = safeName;
+      }
     }
     return headers;
   }

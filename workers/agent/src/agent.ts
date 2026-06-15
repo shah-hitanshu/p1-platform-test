@@ -1,7 +1,7 @@
 import { Agent } from 'agents';
 import type { Connection, WSMessage } from 'agents';
 import Anthropic from '@anthropic-ai/sdk';
-import type { Env, IncomingMessage, OutgoingMessage, ChatContext } from './types.js';
+import type { Env, IncomingMessage, OutgoingMessage, ChatContext, ValidatedUser } from './types.js';
 import { McpApiClient } from './css-api.js';
 import { CSS_TOOLS, WEB_TOOLS, executeTool } from './tools.js';
 import { validateCSSToken } from './auth.js';
@@ -119,7 +119,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
     const { message, context } = parsed;
 
     // Validate the user's CSS auth token
-    let user: { id: string; email: string };
+    let user: ValidatedUser;
     try {
       user = await validateCSSToken(context.token, this.env.CSS_BACKEND_URL);
     } catch {
@@ -132,7 +132,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
       baseUrl: this.env.CSS_BACKEND_URL,
       agentId: this.env.AGENT_ID,
       agentApiKey: this.env.AGENT_API_KEY,
-      actingUser: { id: user.id, email: user.email },
+      actingUser: { id: user.id, email: user.email, name: user.name },
     });
 
     // Build Anthropic client — route via Cloudflare AI Gateway if configured, else call Anthropic directly
