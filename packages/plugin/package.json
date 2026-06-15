@@ -1,5 +1,5 @@
 {
-  "name": "@pantheon/p1-media-r2",
+  "name": "@pantheon-systems/p1-media-r2",
   "version": "0.1.0",
   "description": "Puck media library plugin backed by Cloudflare R2",
   "main": "./dist/index.js",
@@ -7,6 +7,11 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "react-server": {
+        "types": "./dist/server.d.ts",
+        "import": "./dist/server.mjs",
+        "require": "./dist/server.js"
+      },
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"

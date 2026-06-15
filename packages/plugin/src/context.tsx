@@ -5,7 +5,8 @@ import { createContext, useContext } from "react";
 export interface MediaConfig {
   workerUrl: string;
   siteId: string;
-  getAuthToken: () => string | null;
+  workstreamId: string;
+  getAuthToken: () => Promise<string | null> | string | null;
 }
 
 const MediaConfigContext = createContext<MediaConfig | null>(null);

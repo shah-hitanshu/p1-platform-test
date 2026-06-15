@@ -2,10 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { validateAuth } from '../auth';
 import { Env } from '../types';
 
+const TEST_SITE_ID = 'site-123';
+
 function createEnv(): Env {
   return {
     MEDIA_BUCKET: {} as R2Bucket,
     CSS_BASE_URL: 'https://css.example.com',
+    CDN_BASE_URL: 'https://cdn.example.com/p1',
+    IMAGES: {} as ImagesBinding,
   };
 }
 
@@ -17,145 +21,166 @@ function createRequest(authHeader?: string): Request {
   return new Request('https://worker.example.com/media', { headers });
 }
 
+function siteOkResponse(): Response {
+  return new Response(JSON.stringify({ id: TEST_SITE_ID, name: 'Test Site' }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 describe('validateAuth', () => {
   let originalFetch: typeof globalThis.fetch;
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
-    // Clear the token cache between tests by re-importing would be ideal,
-    // but since the cache is module-scoped, we use unique tokens per test instead.
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
   });
 
-  it('returns false when no Authorization header', async () => {
-    const env = createEnv();
-    const request = createRequest();
-    const result = await validateAuth(request, env);
-    expect(result).toBe(false);
+  it('returns null when no Authorization header', async () => {
+    const result = await validateAuth(createRequest(), createEnv(), TEST_SITE_ID);
+    expect(result).toBeNull();
   });
 
-  it('returns false when Authorization header does not start with "Bearer "', async () => {
-    const env = createEnv();
-    const request = createRequest('Basic abc123');
-    const result = await validateAuth(request, env);
-    expect(result).toBe(false);
+  it('returns null when Authorization header does not start with "Bearer "', async () => {
+    const result = await validateAuth(createRequest('Basic abc123'), createEnv(), TEST_SITE_ID);
+    expect(result).toBeNull();
   });
 
-  it('returns false when bearer token is empty', async () => {
-    const env = createEnv();
-    const request = createRequest('Bearer ');
-    const result = await validateAuth(request, env);
-    expect(result).toBe(false);
+  it('returns null when bearer token is empty', async () => {
+    const result = await validateAuth(createRequest('Bearer '), createEnv(), TEST_SITE_ID);
+    expect(result).toBeNull();
   });
 
-  it('returns true when CSS backend returns 200', async () => {
+  it('returns true when CSS returns 200 for the site', async () => {
     const env = createEnv();
-    const token = 'valid-token-200-' + Math.random();
-    const request = createRequest(`Bearer ${token}`);
+    const token = 'valid-token-' + Math.random();
 
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    globalThis.fetch = vi.fn().mockResolvedValue(siteOkResponse());
 
-    const result = await validateAuth(request, env);
+    const result = await validateAuth(createRequest(`Bearer ${token}`), env, TEST_SITE_ID);
     expect(result).toBe(true);
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      'https://css.example.com/api/auth/me',
+      `https://css.example.com/api/sites/${TEST_SITE_ID}`,
       expect.objectContaining({
         method: 'GET',
-        headers: expect.objectContaining({
-          Authorization: `Bearer ${token}`,
-        }),
+        headers: expect.objectContaining({ Authorization: `Bearer ${token}` }),
       }),
     );
   });
 
   it('uses service binding with real CSS_BASE_URL when CSS_SERVICE is available', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    const mockFetch = vi.fn().mockResolvedValue(siteOkResponse());
     const env: Env = {
       MEDIA_BUCKET: {} as R2Bucket,
       CSS_BASE_URL: 'https://css.example.com',
+      CDN_BASE_URL: 'https://cdn.example.com/p1',
       CSS_SERVICE: { fetch: mockFetch } as unknown as Fetcher,
+      IMAGES: {} as ImagesBinding,
     };
     const token = 'service-binding-token-' + Math.random();
-    const request = createRequest(`Bearer ${token}`);
 
-    const result = await validateAuth(request, env);
+    const result = await validateAuth(createRequest(`Bearer ${token}`), env, TEST_SITE_ID);
     expect(result).toBe(true);
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
-    // Verify the request uses the real CSS URL, not a synthetic one
     const calledRequest = mockFetch.mock.calls[0][0] as Request;
-    expect(calledRequest.url).toBe('https://css.example.com/api/auth/me');
+    expect(calledRequest.url).toBe(`https://css.example.com/api/sites/${TEST_SITE_ID}`);
     expect(calledRequest.method).toBe('GET');
     expect(calledRequest.headers.get('Authorization')).toBe(`Bearer ${token}`);
   });
 
-  it('returns false when CSS backend returns 401', async () => {
+  it('returns false when CSS returns 403 (valid token, no site access)', async () => {
     const env = createEnv();
-    const token = 'invalid-token-401-' + Math.random();
-    const request = createRequest(`Bearer ${token}`);
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 403 }));
 
+    const result = await validateAuth(createRequest(`Bearer valid-token-${Math.random()}`), env, TEST_SITE_ID);
+    expect(result).toBe(false);
+  });
+
+  it('returns false when CSS returns 404 (site not found — treated as no access)', async () => {
+    const env = createEnv();
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 404 }));
+
+    const result = await validateAuth(createRequest(`Bearer valid-token-${Math.random()}`), env, TEST_SITE_ID);
+    expect(result).toBe(false);
+  });
+
+  it('returns null when CSS returns 401 (invalid token)', async () => {
+    const env = createEnv();
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
 
-    const result = await validateAuth(request, env);
-    expect(result).toBe(false);
+    const result = await validateAuth(createRequest(`Bearer invalid-token-${Math.random()}`), env, TEST_SITE_ID);
+    expect(result).toBeNull();
   });
 
-  it('returns false when CSS backend fetch throws', async () => {
+  it('returns null when CSS fetch throws', async () => {
     const env = createEnv();
-    const token = 'error-token-throw-' + Math.random();
-    const request = createRequest(`Bearer ${token}`);
-
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
 
-    const result = await validateAuth(request, env);
-    expect(result).toBe(false);
+    const result = await validateAuth(createRequest(`Bearer token-${Math.random()}`), env, TEST_SITE_ID);
+    expect(result).toBeNull();
   });
 
-  it('caches valid tokens so second call does not hit CSS backend', async () => {
+  it('caches true results so second call does not hit CSS', async () => {
     const env = createEnv();
     const token = 'cached-token-' + Math.random();
-
-    const mockFetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    const mockFetch = vi.fn().mockResolvedValue(siteOkResponse());
     globalThis.fetch = mockFetch;
 
-    const request1 = createRequest(`Bearer ${token}`);
-    const result1 = await validateAuth(request1, env);
-    expect(result1).toBe(true);
+    const r1 = await validateAuth(createRequest(`Bearer ${token}`), env, TEST_SITE_ID);
+    expect(r1).toBe(true);
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
-    const request2 = createRequest(`Bearer ${token}`);
-    const result2 = await validateAuth(request2, env);
-    expect(result2).toBe(true);
-    // Should still be 1 call — served from cache
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const r2 = await validateAuth(createRequest(`Bearer ${token}`), env, TEST_SITE_ID);
+    expect(r2).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(1); // still 1 — served from cache
   });
 
-  it('expired cache entries re-validate against CSS backend', async () => {
+  it('caches per siteId — same token, different site does not share cache', async () => {
     const env = createEnv();
-    const token = 'expiring-token-' + Math.random();
-
-    const mockFetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    const token = 'multi-site-token-' + Math.random();
+    const mockFetch = vi.fn().mockResolvedValue(siteOkResponse());
     globalThis.fetch = mockFetch;
 
-    // First call — populates cache
-    const request1 = createRequest(`Bearer ${token}`);
-    await validateAuth(request1, env);
+    await validateAuth(createRequest(`Bearer ${token}`), env, 'site-aaa');
+    await validateAuth(createRequest(`Bearer ${token}`), env, 'site-bbb');
+
+    // Two CSS calls — one per site
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('expired cache entries re-validate against CSS', async () => {
+    const env = createEnv();
+    const token = 'expiring-token-' + Math.random();
+    const mockFetch = vi.fn().mockResolvedValue(siteOkResponse());
+    globalThis.fetch = mockFetch;
+
+    await validateAuth(createRequest(`Bearer ${token}`), env, TEST_SITE_ID);
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
-    // Fast-forward time past the 60s cache TTL
     const originalDateNow = Date.now;
     Date.now = () => originalDateNow() + 61_000;
-
     try {
-      const request2 = createRequest(`Bearer ${token}`);
-      await validateAuth(request2, env);
-      // Should have made a second fetch because cache expired
+      await validateAuth(createRequest(`Bearer ${token}`), env, TEST_SITE_ID);
       expect(mockFetch).toHaveBeenCalledTimes(2);
     } finally {
       Date.now = originalDateNow;
     }
+  });
+
+  it('does not cache false results — re-checks CSS on each request', async () => {
+    const env = createEnv();
+    const token = 'forbidden-token-' + Math.random();
+    const mockFetch = vi.fn().mockResolvedValue(new Response(null, { status: 403 }));
+    globalThis.fetch = mockFetch;
+
+    await validateAuth(createRequest(`Bearer ${token}`), env, TEST_SITE_ID);
+    await validateAuth(createRequest(`Bearer ${token}`), env, TEST_SITE_ID);
+
+    // Two CSS calls — false results are not cached
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });

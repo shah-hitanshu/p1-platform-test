@@ -47,6 +47,8 @@ function createEnv(bucket?: R2Bucket): Env {
   return {
     MEDIA_BUCKET: bucket ?? createMockR2Bucket(),
     CSS_BASE_URL: 'https://css.example.com',
+    CDN_BASE_URL: 'https://cdn.example.com/p1',
+    IMAGES: {} as ImagesBinding,
   };
 }
 
@@ -59,6 +61,30 @@ const CORS_HEADER_NAMES = [
   'Access-Control-Allow-Methods',
   'Access-Control-Allow-Headers',
 ];
+
+// CSS GET /api/sites/{siteId} returns 200 when the caller has canView access
+function authOkResponse(): Response {
+  return new Response(JSON.stringify({ id: 'site1', name: 'Test Site' }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+// CSS returns 403 when the caller has no access to the site
+function authForbiddenResponse(): Response {
+  return new Response(JSON.stringify({ error: 'Forbidden' }), {
+    status: 403,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+// CSS returns 401 when the token is invalid
+function authUnauthorizedResponse(): Response {
+  return new Response(JSON.stringify({ error: 'Authentication required' }), {
+    status: 401,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -131,7 +157,7 @@ describe('Worker router', () => {
 
   it('GET /media routes to handleList with auth', async () => {
     const bucket = createMockR2Bucket({
-      'site1/media/100-file.png': {
+      'site1/wkst1/media/100-file.png': {
         body: '',
         size: 100,
         uploaded: new Date('2025-01-01'),
@@ -139,18 +165,17 @@ describe('Worker router', () => {
     });
     const env = createEnv(bucket);
 
-    // Mock auth to succeed
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    globalThis.fetch = vi.fn().mockResolvedValue(authOkResponse());
 
     const token = 'list-token-' + Math.random();
-    const request = createRequest('https://worker.example.com/media?siteId=site1', {
+    const request = createRequest('https://worker.example.com/media?siteId=site1&workstreamId=wkst1', {
       headers: { Authorization: `Bearer ${token}` },
     });
 
     const response = await worker.fetch(request, env);
 
     expect(response.status).toBe(200);
-    const items = await response.json();
+    const items = await response.json() as any[];
     expect(Array.isArray(items)).toBe(true);
     expect(items).toHaveLength(1);
     expect(items[0].filename).toBe('file.png');
@@ -162,13 +187,13 @@ describe('Worker router', () => {
     const bucket = createMockR2Bucket();
     const env = createEnv(bucket);
 
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    globalThis.fetch = vi.fn().mockResolvedValue(authOkResponse());
 
     const formData = new FormData();
     formData.append('file', new File(['x'], 'test.png', { type: 'image/png' }));
 
     const token = 'upload-token-' + Math.random();
-    const request = createRequest('https://worker.example.com/media?siteId=site1', {
+    const request = createRequest('https://worker.example.com/media?siteId=site1&workstreamId=wkst1', {
       method: 'POST',
       body: formData,
       headers: { Authorization: `Bearer ${token}` },
@@ -186,11 +211,11 @@ describe('Worker router', () => {
     const bucket = createMockR2Bucket();
     const env = createEnv(bucket);
 
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    globalThis.fetch = vi.fn().mockResolvedValue(authOkResponse());
 
     const token = 'delete-token-' + Math.random();
     const request = createRequest(
-      'https://worker.example.com/media/site1/media/12345-photo.jpg?siteId=site1',
+      'https://worker.example.com/media/site1/wkst1/media/12345-photo.jpg?siteId=site1&workstreamId=wkst1',
       {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
@@ -200,9 +225,9 @@ describe('Worker router', () => {
     const response = await worker.fetch(request, env);
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await response.json() as Record<string, unknown>;
     expect(body).toEqual({ success: true });
-    expect(bucket.delete).toHaveBeenCalledWith('site1/media/12345-photo.jpg');
+    expect(bucket.delete).toHaveBeenCalledWith('site1/wkst1/media/12345-photo.jpg');
   });
 
   // ---- Auth-required routes return 401 ----
@@ -243,48 +268,137 @@ describe('Worker router', () => {
 
   it('missing siteId returns 400', async () => {
     const env = createEnv();
+    const authFetch = () => vi.fn().mockResolvedValue(authOkResponse());
+    const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
 
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
-
-    const token = 'siteid-token-' + Math.random();
-    const headers = { Authorization: `Bearer ${token}` };
-
-    // GET /media without siteId
+    globalThis.fetch = authFetch();
     const getResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media', { headers }),
+      createRequest('https://worker.example.com/media?workstreamId=wkst1', { headers: headers('t1') }),
       env,
     );
     expect(getResponse.status).toBe(400);
-    const getBody = await getResponse.json();
-    expect(getBody.error).toContain('siteId');
+    expect((await getResponse.json() as { error: string }).error).toContain('siteId');
 
-    // POST /media without siteId
     const formData = new FormData();
     formData.append('file', new File(['x'], 'f.png', { type: 'image/png' }));
-
-    const token2 = 'siteid-token2-' + Math.random();
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    globalThis.fetch = authFetch();
     const postResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media', {
-        method: 'POST',
-        body: formData,
-        headers: { Authorization: `Bearer ${token2}` },
+      createRequest('https://worker.example.com/media?workstreamId=wkst1', {
+        method: 'POST', body: formData, headers: headers('t2'),
       }),
       env,
     );
     expect(postResponse.status).toBe(400);
 
-    // DELETE /media/* without siteId
-    const token3 = 'siteid-token3-' + Math.random();
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    globalThis.fetch = authFetch();
     const deleteResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media/site1/media/file.jpg', {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token3}` },
+      createRequest('https://worker.example.com/media/site1/wkst1/media/file.jpg?workstreamId=wkst1', {
+        method: 'DELETE', headers: headers('t3'),
       }),
       env,
     );
     expect(deleteResponse.status).toBe(400);
+  });
+
+  it('missing workstreamId returns 400', async () => {
+    const env = createEnv();
+    const authFetch = () => vi.fn().mockResolvedValue(authOkResponse());
+    const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+    globalThis.fetch = authFetch();
+    const getResponse = await worker.fetch(
+      createRequest('https://worker.example.com/media?siteId=site1', { headers: headers('t4') }),
+      env,
+    );
+    expect(getResponse.status).toBe(400);
+    expect((await getResponse.json() as { error: string }).error).toContain('workstreamId');
+
+    const formData = new FormData();
+    formData.append('file', new File(['x'], 'f.png', { type: 'image/png' }));
+    globalThis.fetch = authFetch();
+    const postResponse = await worker.fetch(
+      createRequest('https://worker.example.com/media?siteId=site1', {
+        method: 'POST', body: formData, headers: headers('t5'),
+      }),
+      env,
+    );
+    expect(postResponse.status).toBe(400);
+
+    globalThis.fetch = authFetch();
+    const deleteResponse = await worker.fetch(
+      createRequest('https://worker.example.com/media/site1/wkst1/media/file.jpg?siteId=site1', {
+        method: 'DELETE', headers: headers('t6'),
+      }),
+      env,
+    );
+    expect(deleteResponse.status).toBe(400);
+  });
+
+  // ---- Invalid id characters ----
+
+  it('siteId or workstreamId containing / or .. returns 400', async () => {
+    const env = createEnv();
+    const authFetch = () => vi.fn().mockResolvedValue(authOkResponse());
+    const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+    globalThis.fetch = authFetch();
+    const slashResponse = await worker.fetch(
+      createRequest('https://worker.example.com/media?siteId=site1/evil&workstreamId=wkst1', {
+        headers: headers('t7'),
+      }),
+      env,
+    );
+    expect(slashResponse.status).toBe(400);
+    expect((await slashResponse.json() as { error: string }).error).toContain('Invalid');
+
+    globalThis.fetch = authFetch();
+    const dotResponse = await worker.fetch(
+      createRequest('https://worker.example.com/media?siteId=site1&workstreamId=..%2Fevil', {
+        headers: headers('t8'),
+      }),
+      env,
+    );
+    expect(dotResponse.status).toBe(400);
+  });
+
+  // ---- siteId not in user's siteRoles ----
+
+  it('auth-required routes return 403 when siteId is not in user siteRoles', async () => {
+    const env = createEnv();
+    const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+    // GET /media — valid token, but siteId not in siteRoles
+    globalThis.fetch = vi.fn().mockResolvedValue(authForbiddenResponse());
+    const getResponse = await worker.fetch(
+      createRequest('https://worker.example.com/media?siteId=site1&workstreamId=wkst1', {
+        headers: headers('t-forbidden-get-' + Math.random()),
+      }),
+      env,
+    );
+    expect(getResponse.status).toBe(403);
+    expect((await getResponse.json() as { error: string }).error).toBe('Forbidden');
+
+    // POST /media — valid token, but siteId not in siteRoles
+    const formData = new FormData();
+    formData.append('file', new File(['x'], 'f.png', { type: 'image/png' }));
+    globalThis.fetch = vi.fn().mockResolvedValue(authForbiddenResponse());
+    const postResponse = await worker.fetch(
+      createRequest('https://worker.example.com/media?siteId=site1&workstreamId=wkst1', {
+        method: 'POST', body: formData, headers: headers('t-forbidden-post-' + Math.random()),
+      }),
+      env,
+    );
+    expect(postResponse.status).toBe(403);
+
+    // DELETE /media/* — valid token, but siteId not in siteRoles
+    globalThis.fetch = vi.fn().mockResolvedValue(authForbiddenResponse());
+    const deleteResponse = await worker.fetch(
+      createRequest('https://worker.example.com/media/site1/wkst1/media/file.jpg?siteId=site1&workstreamId=wkst1', {
+        method: 'DELETE', headers: headers('t-forbidden-del-' + Math.random()),
+      }),
+      env,
+    );
+    expect(deleteResponse.status).toBe(403);
   });
 
   // ---- Unknown routes ----
@@ -298,7 +412,7 @@ describe('Worker router', () => {
     );
 
     expect(response.status).toBe(404);
-    const body = await response.json();
+    const body = await response.json() as Record<string, unknown>;
     expect(body).toEqual({ error: 'Not found' });
   });
 });

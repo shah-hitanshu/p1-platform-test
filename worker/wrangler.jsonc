@@ -1,0 +1,98 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/schemas/config.json",
+
+  "name": "p1-media-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-01-01",
+  "account_id": "b64d7635bcad811044d61491827b4040",
+
+  // Local dev — auth falls back to fetch against CSS_BASE_URL (no service binding)
+  "r2_buckets": [
+    { "binding": "MEDIA_BUCKET", "bucket_name": "p1-media-local" }
+  ],
+
+  "vars": {
+    "CSS_BASE_URL": "http://localhost:8787",
+    // Local dev: serve images via the worker's own /image/* route so uploads work without a live CDN
+    "CDN_BASE_URL": "http://localhost:8788/image",
+    // Maximum upload size in bytes. Override per environment without a code change.
+    "MAX_UPLOAD_BYTES": "10485760"
+  },
+
+  // Images binding — remote: true so local dev uses real Cloudflare Images (supports fit, gravity, etc.).
+  "images": { "binding": "IMAGES", "remote": true },
+
+  "dev": {
+    "port": 8788
+  },
+
+  // ==========================================================================
+  // Environment overrides
+  // Deploy: pnpm exec wrangler deploy --env <environment>
+  // ==========================================================================
+  "env": {
+
+    // sandbox — shared Pantheon sandbox
+    "sandbox": {
+      "name": "p1-media-worker-sandbox",
+      "account_id": "b64d7635bcad811044d61491827b4040",
+      "r2_buckets": [
+        { "binding": "MEDIA_BUCKET", "bucket_name": "p1-media-sandbox" }
+      ],
+      "images": { "binding": "IMAGES" },
+      "services": [
+        { "binding": "CSS_SERVICE", "service": "collaborative-state-worker-sandbox" }
+      ],
+      "vars": {
+        "CSS_BASE_URL": "https://sandbox.ccr.p1.pantheon.io",
+        "CDN_BASE_URL": "https://media.sandbox.p1.pantheon.io/image",
+        "MAX_UPLOAD_BYTES": "10485760"
+      },
+      "observability": {
+        "logs": { "enabled": true, "invocation_logs": true }
+      }
+    },
+
+    // staging
+    "staging": {
+      "name": "p1-media-worker-staging",
+      "account_id": "69bc76f4866aaaa3400ea7fbbd9d7da2",
+      "r2_buckets": [
+        { "binding": "MEDIA_BUCKET", "bucket_name": "p1-media-staging" }
+      ],
+      "images": { "binding": "IMAGES" },
+      "services": [
+        { "binding": "CSS_SERVICE", "service": "collaborative-state-worker-staging" }
+      ],
+      "vars": {
+        "CSS_BASE_URL": "https://staging.ccr.p1.pantheon.io",
+        "CDN_BASE_URL": "https://media.staging.p1.pantheon.io/image",
+        "MAX_UPLOAD_BYTES": "10485760"
+      },
+      "observability": {
+        "logs": { "enabled": true, "invocation_logs": true }
+      }
+    },
+
+    // production
+    "production": {
+      "name": "p1-media-worker-prod",
+      "account_id": "c7357ecc2566ef9d5d555e40fccb3071",
+      "r2_buckets": [
+        { "binding": "MEDIA_BUCKET", "bucket_name": "p1-media-prod" }
+      ],
+      "images": { "binding": "IMAGES" },
+      "services": [
+        { "binding": "CSS_SERVICE", "service": "collaborative-state-worker-prod" }
+      ],
+      "vars": {
+        "CSS_BASE_URL": "https://ccr.p1.pantheon.io",
+        "CDN_BASE_URL": "https://media.p1.pantheon.io/image",
+        "MAX_UPLOAD_BYTES": "10485760"
+      },
+      "observability": {
+        "logs": { "enabled": true, "invocation_logs": true }
+      }
+    }
+  }
+}

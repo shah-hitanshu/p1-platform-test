@@ -4,12 +4,13 @@ export async function handleList(
   request: Request,
   env: Env,
   siteId: string,
-  workerUrl: string,
+  workstreamId: string,
+  cdnBaseUrl: string,
 ): Promise<Response> {
   const url = new URL(request.url);
   const search = url.searchParams.get('search')?.toLowerCase();
 
-  const prefix = `${siteId}/media/`;
+  const prefix = `${siteId}/${workstreamId}/media/`;
   const items: MediaItem[] = [];
 
   let cursor: string | undefined;
@@ -31,7 +32,7 @@ export async function handleList(
       const encodedKey = object.key.split('/').map(encodeURIComponent).join('/');
       items.push({
         key: object.key,
-        url: `${workerUrl}/image/${encodedKey}`,
+        url: `${cdnBaseUrl}/${encodedKey}`,
         filename,
         size: object.size,
         lastModified: object.uploaded?.toISOString(),

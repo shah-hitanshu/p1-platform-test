@@ -9,8 +9,10 @@ export interface MediaPluginOptions {
   workerUrl: string;
   /** Site identifier used to scope media to a specific site */
   siteId: string;
-  /** Function that returns the current auth token, or null if unauthenticated */
-  getAuthToken: () => string | null;
+  /** Workstream (branch) identifier — scopes media to this workstream, preventing cross-branch leakage */
+  workstreamId: string;
+  /** Function that returns the current auth token, or null if unauthenticated. May be async (e.g. useP1Auth().getToken). */
+  getAuthToken: () => Promise<string | null> | string | null;
   /** Field name patterns that trigger the media picker (defaults to common image URL patterns) */
   fieldNamePatterns?: RegExp[];
 }
@@ -19,10 +21,14 @@ export interface MediaPluginOptions {
  * Creates a Puck plugin that automatically replaces text fields matching
  * image/media URL patterns with a media library picker backed by Cloudflare R2.
  *
- * Usage:
+ * The stored field value is a clean CDN URL with an optional `?smart=true` param
+ * set by the content editor. Use `buildImageUrl()` in your components to add
+ * size, format, and quality params at render time.
+ *
+ * @example
  * ```tsx
  * const mediaPlugin = createMediaPlugin({
- *   workerUrl: "https://media.example.com",
+ *   workerUrl: "https://p1-media-worker-staging.pantheon-content-publisher.workers.dev",
  *   siteId: "my-site",
  *   getAuthToken: () => localStorage.getItem("token"),
  * });
@@ -35,6 +41,7 @@ export function createMediaPlugin(options: MediaPluginOptions) {
   const config: MediaConfig = {
     workerUrl: options.workerUrl,
     siteId: options.siteId,
+    workstreamId: options.workstreamId,
     getAuthToken: options.getAuthToken,
   };
 

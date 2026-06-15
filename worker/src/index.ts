@@ -29,6 +29,20 @@ function jsonResponse(
   });
 }
 
+// Reject ids that contain path-traversal characters or whitespace.
+// siteId and workstreamId are UUIDs from CCR and must never contain these.
+function isValidId(id: string): boolean {
+  return !!id && !id.includes('/') && !id.includes('..') && !/\s/.test(id);
+}
+
+// Fast bearer-header check — no CSS call. Used to fail early before param
+// validation on routes that require auth, so missing-token returns 401
+// rather than 400 regardless of whether params are present.
+function hasBearerToken(request: Request): boolean {
+  const auth = request.headers.get('Authorization');
+  return !!auth && auth.startsWith('Bearer ');
+}
+
 export default {
   async fetch(
     request: Request,
@@ -44,7 +58,7 @@ export default {
 
     const url = new URL(request.url);
     const path = url.pathname;
-    const workerUrl = url.origin;
+    const cdnBaseUrl = env.CDN_BASE_URL;
 
     let response: Response;
 
@@ -63,92 +77,111 @@ export default {
         return addCorsHeaders(response);
       }
 
-      // GET /debug-auth — test auth validation (temporary)
-      if (request.method === 'GET' && path === '/debug-auth') {
-        const authHeader = request.headers.get('Authorization');
-        const hasService = !!env.CSS_SERVICE;
-        let cssStatus = -1;
-        let cssBody = '';
-        try {
-          let cssResp: Response;
-          if (env.CSS_SERVICE) {
-            cssResp = await env.CSS_SERVICE.fetch(
-              new Request(`${env.CSS_BASE_URL}/api/auth/me`, {
-                method: 'GET',
-                headers: authHeader ? { Authorization: authHeader } : {},
-              }),
-            );
-          } else {
-            cssResp = await fetch(`${env.CSS_BASE_URL}/api/auth/me`, {
-              method: 'GET',
-              headers: authHeader ? { Authorization: authHeader } : {},
-            });
-          }
-          cssStatus = cssResp.status;
-          cssBody = await cssResp.text();
-        } catch (e) {
-          cssBody = String(e);
-        }
-        response = jsonResponse({
-          hasService,
-          cssStatus,
-          cssBody: cssBody.substring(0, 200),
-        }, 200);
-        return addCorsHeaders(response);
-      }
-
       // GET /media — list media (auth required)
       if (request.method === 'GET' && path === '/media') {
-        if (!(await validateAuth(request, env))) {
+        if (!hasBearerToken(request)) {
           response = jsonResponse({ error: 'Unauthorized' }, 401);
           return addCorsHeaders(response);
         }
         const siteId = url.searchParams.get('siteId');
+        const workstreamId = url.searchParams.get('workstreamId');
         if (!siteId) {
           response = jsonResponse({ error: 'siteId query param required' }, 400);
           return addCorsHeaders(response);
         }
-        response = await handleList(request, env, siteId, workerUrl);
+        if (!workstreamId) {
+          response = jsonResponse({ error: 'workstreamId query param required' }, 400);
+          return addCorsHeaders(response);
+        }
+        if (!isValidId(siteId) || !isValidId(workstreamId)) {
+          response = jsonResponse({ error: 'Invalid siteId or workstreamId' }, 400);
+          return addCorsHeaders(response);
+        }
+        const authResult = await validateAuth(request, env, siteId);
+        if (authResult === null) {
+          response = jsonResponse({ error: 'Unauthorized' }, 401);
+          return addCorsHeaders(response);
+        }
+        if (authResult === false) {
+          response = jsonResponse({ error: 'Forbidden' }, 403);
+          return addCorsHeaders(response);
+        }
+        response = await handleList(request, env, siteId, workstreamId, cdnBaseUrl);
         return addCorsHeaders(response);
       }
 
       // POST /media — upload media (auth required)
       if (request.method === 'POST' && path === '/media') {
-        if (!(await validateAuth(request, env))) {
+        if (!hasBearerToken(request)) {
           response = jsonResponse({ error: 'Unauthorized' }, 401);
           return addCorsHeaders(response);
         }
         const siteId = url.searchParams.get('siteId');
+        const workstreamId = url.searchParams.get('workstreamId');
         if (!siteId) {
           response = jsonResponse({ error: 'siteId query param required' }, 400);
           return addCorsHeaders(response);
         }
-        response = await handleUpload(request, env, siteId, workerUrl);
+        if (!workstreamId) {
+          response = jsonResponse({ error: 'workstreamId query param required' }, 400);
+          return addCorsHeaders(response);
+        }
+        if (!isValidId(siteId) || !isValidId(workstreamId)) {
+          response = jsonResponse({ error: 'Invalid siteId or workstreamId' }, 400);
+          return addCorsHeaders(response);
+        }
+        const authResult = await validateAuth(request, env, siteId);
+        if (authResult === null) {
+          response = jsonResponse({ error: 'Unauthorized' }, 401);
+          return addCorsHeaders(response);
+        }
+        if (authResult === false) {
+          response = jsonResponse({ error: 'Forbidden' }, 403);
+          return addCorsHeaders(response);
+        }
+        response = await handleUpload(request, env, siteId, workstreamId, cdnBaseUrl);
         return addCorsHeaders(response);
       }
 
       // DELETE /media/* — delete media (auth required)
       if (request.method === 'DELETE' && path.startsWith('/media/')) {
-        if (!(await validateAuth(request, env))) {
+        if (!hasBearerToken(request)) {
           response = jsonResponse({ error: 'Unauthorized' }, 401);
           return addCorsHeaders(response);
         }
         const siteId = url.searchParams.get('siteId');
+        const workstreamId = url.searchParams.get('workstreamId');
         if (!siteId) {
           response = jsonResponse({ error: 'siteId query param required' }, 400);
           return addCorsHeaders(response);
         }
+        if (!workstreamId) {
+          response = jsonResponse({ error: 'workstreamId query param required' }, 400);
+          return addCorsHeaders(response);
+        }
+        if (!isValidId(siteId) || !isValidId(workstreamId)) {
+          response = jsonResponse({ error: 'Invalid siteId or workstreamId' }, 400);
+          return addCorsHeaders(response);
+        }
+        const authResult = await validateAuth(request, env, siteId);
+        if (authResult === null) {
+          response = jsonResponse({ error: 'Unauthorized' }, 401);
+          return addCorsHeaders(response);
+        }
+        if (authResult === false) {
+          response = jsonResponse({ error: 'Forbidden' }, 403);
+          return addCorsHeaders(response);
+        }
         const key = decodeURIComponent(path.slice('/media/'.length));
-        response = await handleDelete(request, env, siteId, key);
+        response = await handleDelete(request, env, siteId, workstreamId, key);
         return addCorsHeaders(response);
       }
 
       // Fallback — 404
       response = jsonResponse({ error: 'Not found' }, 404);
       return addCorsHeaders(response);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Internal server error';
-      response = jsonResponse({ error: message }, 500);
+    } catch {
+      response = jsonResponse({ error: 'Internal server error' }, 500);
       return addCorsHeaders(response);
     }
   },

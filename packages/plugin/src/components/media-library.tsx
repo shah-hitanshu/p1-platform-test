@@ -26,8 +26,8 @@ export function MediaLibrary({ isOpen, onClose, onSelect }: MediaLibraryProps) {
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const getAuthHeaders = useCallback((): HeadersInit => {
-    const token = config.getAuthToken();
+  const getAuthHeaders = useCallback(async (): Promise<HeadersInit> => {
+    const token = await config.getAuthToken();
     return token ? { Authorization: "Bearer " + token } : {};
   }, [config]);
 
@@ -35,11 +35,11 @@ export function MediaLibrary({ isOpen, onClose, onSelect }: MediaLibraryProps) {
     async (search?: string) => {
       setLoading(true);
       try {
-        const params = new URLSearchParams({ siteId: config.siteId });
+        const params = new URLSearchParams({ siteId: config.siteId, workstreamId: config.workstreamId });
         if (search) params.set("search", search);
         const response = await fetch(
           config.workerUrl + "/media?" + params.toString(),
-          { headers: getAuthHeaders() },
+          { headers: await getAuthHeaders() },
         );
         if (response.ok) {
           setMedia(await response.json());
@@ -80,12 +80,13 @@ export function MediaLibrary({ isOpen, onClose, onSelect }: MediaLibraryProps) {
   const uploadFile = async (file: File) => {
     const formData = new FormData();
     formData.append("file", file);
+    const params = new URLSearchParams({ siteId: config.siteId, workstreamId: config.workstreamId });
     const response = await fetch(
-      config.workerUrl + "/media?siteId=" + encodeURIComponent(config.siteId),
+      config.workerUrl + "/media?" + params.toString(),
       {
         method: "POST",
         body: formData,
-        headers: getAuthHeaders(),
+        headers: await getAuthHeaders(),
       },
     );
     return response.ok;
@@ -132,7 +133,7 @@ export function MediaLibrary({ isOpen, onClose, onSelect }: MediaLibraryProps) {
     );
     if (!confirmed) return;
     try {
-      const params = new URLSearchParams({ siteId: config.siteId });
+      const params = new URLSearchParams({ siteId: config.siteId, workstreamId: config.workstreamId });
       const encodedKey = item.key
         .split("/")
         .map(encodeURIComponent)
@@ -141,7 +142,7 @@ export function MediaLibrary({ isOpen, onClose, onSelect }: MediaLibraryProps) {
         config.workerUrl + "/media/" + encodedKey + "?" + params.toString(),
         {
           method: "DELETE",
-          headers: getAuthHeaders(),
+          headers: await getAuthHeaders(),
         },
       );
       if (response.ok) {

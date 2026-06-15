@@ -5,6 +5,7 @@ describe("createMediaPlugin", () => {
   const defaultOptions = {
     workerUrl: "https://media.example.com",
     siteId: "test-site",
+    workstreamId: "test-workstream",
     getAuthToken: () => "test-token",
   };
 
