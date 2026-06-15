@@ -264,16 +264,20 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     };
   }
 
-  // /api/sites/{siteId}/documents/by-path/{documentPath}
+  // /api/sites/{siteId}/documents/by-path[/{documentPath}]
   // Note: documentPath may contain encoded slashes (%2F) for nested paths like "products/rsq8"
-  const docByPathMatch = /^\/api\/sites\/([^/]+)\/documents\/by-path\/(.+)$/.exec(normalizedPath);
+  // The trailing slash and path are optional to handle root path "/"
+  // After parseRoute removes trailing slashes, "/by-path/" becomes "/by-path"
+  const docByPathMatch = /^\/api\/sites\/([^/]+)\/documents\/by-path(?:\/(.*))?$/.exec(normalizedPath);
   if (docByPathMatch) {
     try {
+      const rawPath = decodeURIComponent(docByPathMatch[2] ?? '');
+      const documentPath = rawPath === '' ? '/' : rawPath;
       return {
         handler: 'documents',
         params: {
           siteId: docByPathMatch[1],
-          documentPath: decodeURIComponent(docByPathMatch[2]),
+          documentPath,
         },
       };
     } catch {

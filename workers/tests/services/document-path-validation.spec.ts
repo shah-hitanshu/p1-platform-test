@@ -10,8 +10,8 @@ import {
 } from '../../src/services/document-types';
 
 describe('normalizePath', () => {
-  it('should normalize "/" to empty string', () => {
-    expect(normalizePath('/')).toBe('');
+  it('should keep "/" as the canonical root path', () => {
+    expect(normalizePath('/')).toBe('/');
   });
 
   it('should strip leading slash', () => {
@@ -64,17 +64,15 @@ describe('normalizePath', () => {
     expect(() => normalizePath('\t\n')).toThrow(InvalidDocumentPathError);
   });
 
-  it('should throw for path that becomes empty after normalization', () => {
-    // Path with only slashes should throw since it becomes empty after stripping
-    // Actually "/" becomes "" which is valid (root path), but "///" also becomes ""
-    // Let's allow this - it's equivalent to "/"
-    expect(normalizePath('///')).toBe('');
+  it('should throw for multi-slash-only paths', () => {
+    expect(() => normalizePath('//')).toThrow(InvalidDocumentPathError);
+    expect(() => normalizePath('///')).toThrow(InvalidDocumentPathError);
   });
 });
 
 describe('validatePath', () => {
-  it('should accept empty string (normalized root path)', () => {
-    expect(() => { validatePath(''); }).not.toThrow();
+  it('should reject empty string', () => {
+    expect(() => { validatePath(''); }).toThrow(InvalidDocumentPathError);
   });
 
   it('should accept normalized paths without slashes', () => {
@@ -127,7 +125,7 @@ describe('validatePath with normalizePath integration', () => {
   it('should validate after normalization for root path', () => {
     const normalized = normalizePath('/');
     expect(() => { validatePath(normalized); }).not.toThrow();
-    expect(normalized).toBe('');
+    expect(normalized).toBe('/');
   });
 
   it('should validate after normalization for regular paths', () => {

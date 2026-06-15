@@ -271,20 +271,29 @@ const MAX_PATH_LENGTH = 1024;
  * @throws InvalidDocumentPathError if path is empty, whitespace-only, or too long
  */
 export function normalizePath(path: string): string {
-  if (!path || path.trim() === '') {
+  let normalized = path.trim();
+
+  if (normalized === '') {
     throw new InvalidDocumentPathError('path cannot be empty');
   }
 
-  if (path.length > MAX_PATH_LENGTH) {
+  if (normalized.length > MAX_PATH_LENGTH) {
     throw new InvalidDocumentPathError(
       `path length exceeds maximum of ${String(MAX_PATH_LENGTH)} characters`,
     );
   }
 
-  let normalized = path.trim();
+  if (normalized === '/') {
+    return '/';
+  }
 
   // Convert backslashes to forward slashes for consistent path separators
   normalized = normalized.replace(/\\/g, '/');
+
+  // Reject paths that consist entirely of slashes (e.g., "//", "///")
+  if (/^\/+$/.test(normalized)) {
+    throw new InvalidDocumentPathError('path cannot contain only slashes');
+  }
 
   // Collapse multiple consecutive slashes into single slash
   normalized = normalized.replace(/\/+/g, '/');
@@ -299,13 +308,12 @@ export function normalizePath(path: string): string {
     normalized = normalized.slice(0, -1);
   }
 
-  // Empty string after normalization represents the root path
   return normalized;
 }
 
 /**
  * Validates a normalized document path.
- * - Empty string is valid (represents root path "/")
+ * - "/" is the root path and is always valid
  * - Must not contain path traversal sequences
  * - Must not contain NULL bytes or control characters
  * - Must not contain internal whitespace
@@ -316,8 +324,12 @@ export function normalizePath(path: string): string {
  * @throws InvalidDocumentPathError if path contains invalid characters or sequences
  */
 export function validatePath(normalizedPath: string): void {
-  // Empty string is valid (represents root path "/")
   if (normalizedPath === '') {
+    throw new InvalidDocumentPathError('path cannot be empty');
+  }
+
+  // Root path "/" is always valid
+  if (normalizedPath === '/') {
     return;
   }
 

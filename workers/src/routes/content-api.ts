@@ -112,7 +112,7 @@ async function handleGetContent(
   }
 
   // Get document by path
-  const document = await getDocumentByPath(siteId, documentPath ?? '');
+  const document = await getDocumentByPath(siteId, documentPath ?? '/');
   if (document === null) {
     return errorResponse('Document not found', 404);
   }
