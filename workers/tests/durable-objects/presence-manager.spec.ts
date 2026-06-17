@@ -503,7 +503,7 @@ describe('Phase 3.2: PresenceManager Durable Object', () => {
       const pm = new PresenceManager(mockState as unknown, mockEnv);
 
       // Add an actor with an old lastActivityAt
-      const oldTime = new Date(Date.now() - 200000).toISOString(); // 200s ago (> 120s threshold)
+      const oldTime = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString(); // 9h ago (> 8h threshold)
       await pm.actorJoined({
         siteId: 'site-1',
         branchId: 'branch-1',
@@ -525,7 +525,7 @@ describe('Phase 3.2: PresenceManager Durable Object', () => {
       expect(result.actors).toHaveLength(1);
 
       // Advance time past the stale threshold and fire alarm
-      await vi.advanceTimersByTimeAsync(130000); // 130 seconds > 120s stale threshold
+      await vi.advanceTimersByTimeAsync(130000); // actor is already 9h old, any advance triggers cleanup
       await pm.alarm();
 
       // Stale actor should be cleaned up

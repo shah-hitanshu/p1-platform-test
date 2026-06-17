@@ -31,8 +31,9 @@ export interface WsFocusRegionUpdateMessage {
 }
 
 /**
- * Heartbeat to keep presence alive and optionally update state.
- * Should be sent periodically (e.g., every 30s) to prevent stale detection.
+ * Heartbeat to optionally update actor state (active, idle, editing).
+ * Not required for presence tracking — the PresenceManager DO retains actors
+ * for 8 hours after last activity; normal removal is via actorLeft on disconnect.
  */
 export interface WsPresenceHeartbeatMessage {
   type: 'presence_heartbeat';

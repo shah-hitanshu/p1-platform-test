@@ -21,7 +21,7 @@ import type {
   AgentGlobalPresence,
 } from '../types';
 
-import { listDocumentsOnBranch } from './document-service';
+import { listDocumentsOnBranch, getDocumentByPath } from './document-service';
 import { listBranches, getBranch } from './branch-service';
 import { getSite } from './site-service';
 import { getSitesByOrganization } from './organization-service';
@@ -165,14 +165,15 @@ function deduplicateActors(actors: ActorPresence[]): ActorPresence[] {
  *
  * @param env - Environment with DOCUMENT_STATE binding
  * @param siteId - Site identifier
- * @param documentId - Document identifier
+ * @param documentPath - Document path (e.g. "contact-us"). Looked up to get the UUID
+ *   that keys the DocumentSession DO, matching the WebSocket connect route.
  * @param branchId - Branch identifier
  * @returns Array of actor presences (empty on failure)
  */
 export async function queryDocumentPresence(
   env: unknown,
   siteId: string,
-  documentId: string,
+  documentPath: string,
   branchId: string,
 ): Promise<ActorPresence[]> {
   try {
@@ -184,7 +185,15 @@ export async function queryDocumentPresence(
       return [];
     }
 
-    const sessionId = buildSessionId(siteId, documentId, branchId);
+    // Look up the document UUID so the DO key matches the WebSocket connect route,
+    // which also keys by UUID (via realtime-api.ts → getDocumentByPath → document.id).
+    const document = await getDocumentByPath(siteId, documentPath);
+    if (document === null) {
+      console.warn(`queryDocumentPresence: document not found for path "${documentPath}"`);
+      return [];
+    }
+
+    const sessionId = buildSessionId(siteId, document.id, branchId);
     const doId = documentState.idFromName(sessionId);
     const stub = documentState.get(doId);
 
@@ -204,7 +213,7 @@ export async function queryDocumentPresence(
     const data = rawData as PresencesResponse;
     return Array.isArray(data.presences) ? data.presences : [];
   } catch (error) {
-    console.error(`Error querying presence for document ${documentId}:`, error);
+    console.error('Error querying presence for document:', documentPath, error);
     return [];
   }
 }
@@ -286,7 +295,7 @@ async function getBranchPresenceFanOut(
   const documents = await listDocumentsOnBranch(branchId);
 
   const presencePromises = documents.map(async (doc) => {
-    const presences = await queryDocumentPresence(env, siteId, doc.id, branchId);
+    const presences = await queryDocumentPresence(env, siteId, doc.path, branchId);
     return {
       documentId: doc.id,
       documentPath: doc.path,
@@ -530,7 +539,7 @@ async function getAgentPresenceFanOut(
       const documents = await listDocumentsOnBranch(branch.id);
 
       const presencePromises = documents.map(async (doc) => {
-        const presences = await queryDocumentPresence(env, site.id, doc.id, branch.id);
+        const presences = await queryDocumentPresence(env, site.id, doc.path, branch.id);
         const agentPresence = presences.find((p) => p.actorId === agentId);
 
         if (agentPresence !== undefined) {

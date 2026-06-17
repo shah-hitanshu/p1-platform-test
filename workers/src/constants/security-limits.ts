@@ -253,11 +253,20 @@ export const CLEANUP_INTERVAL_MS = 60000;
 export const FOCUS_STALE_THRESHOLD_MS = 60000;
 
 /**
- * Maximum age for presence entries before they are considered stale.
- * Presence entries older than this are cleared by periodic cleanup.
- * Value: 120000ms (2 minutes - allows for reconnection attempts)
+ * Stale timeout for the site-level PresenceManager DO actor index.
+ * Actors are normally removed by actorLeft RPC on webSocketClose (~90s after TCP drop).
+ * This is a safety net for the rare case where that RPC fails silently.
+ * Long value avoids false eviction of idle-but-connected users from branch/site presence.
  */
-export const PRESENCE_STALE_THRESHOLD_MS = 120000;
+export const PRESENCE_DO_STALE_THRESHOLD_MS = 8 * 60 * 60 * 1000; // 8 hours
+
+/**
+ * Stale timeout for the DocumentSession DO's local per-document presenceManager.
+ * Actors are normally removed by unregisterByActorId on webSocketClose.
+ * Kept short because getPresenceList() includes local PM entries — ghost actors
+ * here would appear in document presence for the duration of the threshold.
+ */
+export const LOCAL_PRESENCE_STALE_THRESHOLD_MS = 120000; // 2 minutes
 
 /**
  * Maximum age for agent edit sessions before they are considered orphaned.

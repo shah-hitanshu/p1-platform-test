@@ -15,7 +15,7 @@ import type { DurableObjectState } from '@cloudflare/workers-types';
 import type { ActorPresence, PresenceState } from '../types';
 import {
   CLEANUP_INTERVAL_MS,
-  PRESENCE_STALE_THRESHOLD_MS,
+  PRESENCE_DO_STALE_THRESHOLD_MS,
   PERSIST_DEBOUNCE_MS,
   MAX_ACTOR_ID_LENGTH,
   MAX_SITE_ID_LENGTH,
@@ -420,7 +420,7 @@ export class PresenceManager extends DurableObject<PresenceManagerEnv> {
       for (const [documentId, actorMap] of docMap.entries()) {
         for (const [actorId, actor] of actorMap.entries()) {
           const lastActivity = new Date(actor.lastActivityAt).getTime();
-          if (now - lastActivity > PRESENCE_STALE_THRESHOLD_MS) {
+          if (now - lastActivity > PRESENCE_DO_STALE_THRESHOLD_MS) {
             actorMap.delete(actorId);
             cleaned++;
           }

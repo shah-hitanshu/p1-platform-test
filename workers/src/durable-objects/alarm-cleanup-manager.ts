@@ -17,7 +17,7 @@ import type { ActivityDetector } from '../services/activity-detection-service';
 import {
   CLEANUP_INTERVAL_MS,
   FOCUS_STALE_THRESHOLD_MS,
-  PRESENCE_STALE_THRESHOLD_MS,
+  LOCAL_PRESENCE_STALE_THRESHOLD_MS,
   MAX_EDIT_SESSION_AGE_MS,
   PERSIST_DEBOUNCE_MS,
 } from '../constants/security-limits';
@@ -165,7 +165,7 @@ export async function runCleanup(deps: AlarmCleanupDeps): Promise<{
   const now = Date.now();
 
   // Clear stale presence entries
-  const presenceCleared = deps.presenceManager.clearStale(PRESENCE_STALE_THRESHOLD_MS);
+  const presenceCleared = deps.presenceManager.clearStale(LOCAL_PRESENCE_STALE_THRESHOLD_MS);
 
   // Clear stale focus entries
   const focusCleared = deps.activityDetector.clearStaleFocus(FOCUS_STALE_THRESHOLD_MS);

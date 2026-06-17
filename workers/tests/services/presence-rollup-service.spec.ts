@@ -21,6 +21,7 @@ vi.mock('../../src/db', () => ({
 vi.mock('../../src/services/document-service', () => ({
   listDocumentsOnBranch: vi.fn(),
   getDocument: vi.fn(),
+  getDocumentByPath: vi.fn(),
 }));
 
 vi.mock('../../src/services/branch-service', () => ({
@@ -137,10 +138,10 @@ describe('Phase 8: Presence Rollup Service', () => {
       const branchService = await import('../../src/services/branch-service');
 
       const mockBranch = createMockBranch();
+      const mockDoc = createMockDocument();
       vi.mocked(branchService.getBranch).mockResolvedValue(mockBranch);
-      vi.mocked(documentService.listDocumentsOnBranch).mockResolvedValue([
-        createMockDocument(),
-      ]);
+      vi.mocked(documentService.listDocumentsOnBranch).mockResolvedValue([mockDoc]);
+      vi.mocked(documentService.getDocumentByPath).mockResolvedValue(mockDoc);
 
       // Mock DO fetch returning empty presences
       mockFetch.mockResolvedValue({
@@ -175,6 +176,7 @@ describe('Phase 8: Presence Rollup Service', () => {
 
       vi.mocked(branchService.getBranch).mockResolvedValue(mockBranch);
       vi.mocked(documentService.listDocumentsOnBranch).mockResolvedValue([mockDoc]);
+      vi.mocked(documentService.getDocumentByPath).mockResolvedValue(mockDoc);
 
       const mockPresence = createMockPresence({ actorId: 'user-1', name: 'Alice' });
       mockFetch.mockResolvedValue({
@@ -208,6 +210,9 @@ describe('Phase 8: Presence Rollup Service', () => {
 
       vi.mocked(branchService.getBranch).mockResolvedValue(mockBranch);
       vi.mocked(documentService.listDocumentsOnBranch).mockResolvedValue([mockDoc1, mockDoc2]);
+      vi.mocked(documentService.getDocumentByPath).mockImplementation((_, path) =>
+        Promise.resolve(path === 'content/home' ? mockDoc1 : mockDoc2),
+      );
 
       // Different presence for each document
       const presence1 = createMockPresence({ actorId: 'user-1', name: 'Alice' });
@@ -247,11 +252,14 @@ describe('Phase 8: Presence Rollup Service', () => {
       const branchService = await import('../../src/services/branch-service');
 
       const mockBranch = createMockBranch();
-      const mockDoc1 = createMockDocument({ id: 'doc-1' });
-      const mockDoc2 = createMockDocument({ id: 'doc-2' });
+      const mockDoc1 = createMockDocument({ id: 'doc-1', path: 'content/page-1' });
+      const mockDoc2 = createMockDocument({ id: 'doc-2', path: 'content/page-2' });
 
       vi.mocked(branchService.getBranch).mockResolvedValue(mockBranch);
       vi.mocked(documentService.listDocumentsOnBranch).mockResolvedValue([mockDoc1, mockDoc2]);
+      vi.mocked(documentService.getDocumentByPath).mockImplementation((_, path) =>
+        Promise.resolve(path === 'content/page-1' ? mockDoc1 : mockDoc2),
+      );
 
       // Same user in both documents
       const sameUser = createMockPresence({ actorId: 'user-1', name: 'Alice' });
@@ -283,6 +291,7 @@ describe('Phase 8: Presence Rollup Service', () => {
 
       vi.mocked(branchService.getBranch).mockResolvedValue(mockBranch);
       vi.mocked(documentService.listDocumentsOnBranch).mockResolvedValue([mockDoc]);
+      vi.mocked(documentService.getDocumentByPath).mockResolvedValue(mockDoc);
 
       const editingUser = createMockPresence({ actorId: 'user-1', state: 'editing' });
       const idleUser = createMockPresence({ actorId: 'user-2', state: 'idle' });
@@ -310,6 +319,7 @@ describe('Phase 8: Presence Rollup Service', () => {
 
       vi.mocked(branchService.getBranch).mockResolvedValue(mockBranch);
       vi.mocked(documentService.listDocumentsOnBranch).mockResolvedValue([mockDoc]);
+      vi.mocked(documentService.getDocumentByPath).mockResolvedValue(mockDoc);
 
       // Mock DO fetch failure
       mockFetch.mockResolvedValue({
@@ -377,7 +387,9 @@ describe('Phase 8: Presence Rollup Service', () => {
       vi.mocked(branchService.getBranch).mockImplementation((id: string) => {
         return Promise.resolve(id === 'branch-main' ? mainBranch : devBranch);
       });
-      vi.mocked(documentService.listDocumentsOnBranch).mockResolvedValue([createMockDocument()]);
+      const sharedDoc = createMockDocument();
+      vi.mocked(documentService.listDocumentsOnBranch).mockResolvedValue([sharedDoc]);
+      vi.mocked(documentService.getDocumentByPath).mockResolvedValue(sharedDoc);
 
       const humanPresence = createMockPresence({ actorId: 'user-1' });
       const agentPresence = createMockPresence({
@@ -496,6 +508,9 @@ describe('Phase 8: Presence Rollup Service', () => {
       vi.mocked(documentService.listDocumentsOnBranch).mockImplementation((branchId: string) => {
         return Promise.resolve(branchId === 'branch-1' ? [doc1] : [doc2]);
       });
+      vi.mocked(documentService.getDocumentByPath).mockImplementation((_, path) =>
+        Promise.resolve(path === doc1.path ? doc1 : doc2),
+      );
 
       // Agent present in both sites
       const agentPresence = createMockPresence({
@@ -530,30 +545,87 @@ describe('Phase 8: Presence Rollup Service', () => {
   });
 
   describe('queryDocumentPresence', () => {
+    const SITE_ID = 'site-uuid-123';
+    const BRANCH_ID = 'branch-uuid-123';
+    const DOC_PATH = 'content/home';
+    const DOC_UUID = 'actual-doc-uuid-456';
+
+    interface MockDocEnv {
+      DOCUMENT_STATE: {
+        idFromName: ReturnType<typeof vi.fn>;
+        get: ReturnType<typeof vi.fn>;
+      };
+    }
+
+    function createMockDocEnv(): MockDocEnv {
+      return {
+        DOCUMENT_STATE: {
+          idFromName: vi.fn().mockReturnValue({ name: 'mock-id' }),
+          get: vi.fn().mockReturnValue({ fetch: mockFetch }),
+        },
+      };
+    }
+
+    it('should use document UUID (not path) to key the DocumentSession DO', async () => {
+      const { queryDocumentPresence } = await import('../../src/services/presence-rollup-service');
+      const documentService = await import('../../src/services/document-service');
+
+      vi.mocked(documentService.getDocumentByPath).mockResolvedValue(
+        createMockDocument({ id: DOC_UUID, siteId: SITE_ID, path: DOC_PATH }),
+      );
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ presences: [] }),
+      });
+
+      const mockEnv = createMockDocEnv();
+      await queryDocumentPresence(mockEnv as unknown, SITE_ID, DOC_PATH, BRANCH_ID);
+
+      // The session key passed to idFromName must use the UUID, not the raw path string
+      expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalledWith(
+        `${SITE_ID}:${DOC_UUID}:${BRANCH_ID}`,
+      );
+      expect(documentService.getDocumentByPath).toHaveBeenCalledWith(SITE_ID, DOC_PATH);
+    });
+
+    it('should return [] and skip DO when document path is not found', async () => {
+      const { queryDocumentPresence } = await import('../../src/services/presence-rollup-service');
+      const documentService = await import('../../src/services/document-service');
+
+      vi.mocked(documentService.getDocumentByPath).mockResolvedValue(null);
+
+      const mockEnv = createMockDocEnv();
+      const result = await queryDocumentPresence(
+        mockEnv as unknown,
+        SITE_ID,
+        'nonexistent/path',
+        BRANCH_ID,
+      );
+
+      expect(result).toHaveLength(0);
+      expect(mockEnv.DOCUMENT_STATE.idFromName).not.toHaveBeenCalled();
+      expect(mockEnv.DOCUMENT_STATE.get).not.toHaveBeenCalled();
+    });
+
     it('should query presence from a single document DO', async () => {
       const { queryDocumentPresence } = await import('../../src/services/presence-rollup-service');
+      const documentService = await import('../../src/services/document-service');
 
+      vi.mocked(documentService.getDocumentByPath).mockResolvedValue(
+        createMockDocument({ id: DOC_UUID, siteId: SITE_ID, path: DOC_PATH }),
+      );
       const mockPresence = createMockPresence();
       mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ presences: [mockPresence] }),
       });
 
-      // Mock environment with DO binding
-      const mockEnv = {
-        DOCUMENT_STATE: {
-          idFromName: vi.fn().mockReturnValue({ name: 'site:doc:branch' }),
-          get: vi.fn().mockReturnValue({
-            fetch: mockFetch,
-          }),
-        },
-      };
-
+      const mockEnv = createMockDocEnv();
       const result = await queryDocumentPresence(
         mockEnv as unknown,
-        'site-uuid-123',
-        'doc-uuid-123',
-        'branch-uuid-123',
+        SITE_ID,
+        DOC_PATH,
+        BRANCH_ID,
       );
 
       expect(result).toHaveLength(1);
@@ -562,26 +634,22 @@ describe('Phase 8: Presence Rollup Service', () => {
 
     it('should return empty array when DO fetch fails', async () => {
       const { queryDocumentPresence } = await import('../../src/services/presence-rollup-service');
+      const documentService = await import('../../src/services/document-service');
 
+      vi.mocked(documentService.getDocumentByPath).mockResolvedValue(
+        createMockDocument({ id: DOC_UUID, siteId: SITE_ID, path: DOC_PATH }),
+      );
       mockFetch.mockResolvedValue({
         ok: false,
         status: 500,
       });
 
-      const mockEnv = {
-        DOCUMENT_STATE: {
-          idFromName: vi.fn().mockReturnValue({ name: 'site:doc:branch' }),
-          get: vi.fn().mockReturnValue({
-            fetch: mockFetch,
-          }),
-        },
-      };
-
+      const mockEnv = createMockDocEnv();
       const result = await queryDocumentPresence(
         mockEnv as unknown,
-        'site-uuid-123',
-        'doc-uuid-123',
-        'branch-uuid-123',
+        SITE_ID,
+        DOC_PATH,
+        BRANCH_ID,
       );
 
       expect(result).toHaveLength(0);

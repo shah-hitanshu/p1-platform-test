@@ -7,6 +7,33 @@ This document tracks the implementation progress of the Collaborative JSON State
 ---
 ## Completed Work
 
+### Presence DO Key Mismatch + Browser Actor Push (PCC-3209)
+
+**Status:** Complete  
+**Branch:** `fix/pcc-3209-presence-do-key-mismatch`  
+**Commits:**
+- `da79af4` - test: add failing tests for presence DO key mismatch and browser actor push
+- `f3b4e1b` - fix: resolve presence DO key mismatch and missing browser actor push
+
+#### Problem
+Two bugs caused presence APIs to always return empty even with active editors:
+
+1. **DO key mismatch**: `queryDocumentPresence` keyed the DocumentSession DO by document path string (e.g. `"contact-us"`), while the WebSocket connect route keyed the same DO by document UUID. They hit different DO instances — the REST presence API always saw an empty DO with no connections.
+
+2. **Browser actors not pushed**: `handleWebSocket` only called `actorJoined` on the PresenceManager DO when the actor was already in the local in-memory presenceManager (agents in active edit sessions only). Browser users were silently skipped, so branch/site presence always showed 0 human actors.
+
+Both bugs were confirmed live via a test script: with a WebSocket open, the server sent a `presence_update` confirming the actor was present, but the REST endpoints returned 0 actors.
+
+#### Solution
+- `queryDocumentPresence` now calls `getDocumentByPath` to resolve the path to a UUID before building the DO session key, matching the WebSocket connect route exactly. Parameter renamed `documentId` → `documentPath` to reflect this. Fan-out callers updated to pass `doc.path` consistently.
+- `handleWebSocket` unconditionally pushes `actorJoined` to the PresenceManager DO for all connecting actors, building an `ActorPresence` from verified connection metadata when the actor is not already in the local presenceManager.
+
+#### Verified
+- Document presence: 1 actor found (was 0)
+- Branch presence: `totalActors: 1, humanCount: 1` (was all zeros)
+
+---
+
 ### Path Normalization for Document Paths (PCC-3269)
 
 **Status:** Complete  

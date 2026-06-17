@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import * as Y from 'yjs';
 import type {
   WsFocusRegionUpdateMessage,
   WsPresenceHeartbeatMessage,
@@ -18,6 +19,7 @@ import type {
   WsFocusRegionAckMessage,
   WsPresenceErrorMessage,
 } from '../../src/types/websocket-messages';
+import type { ActorPresence } from '../../src/types';
 
 // Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
 vi.mock('cloudflare:workers', () => ({
@@ -470,5 +472,164 @@ describe('DocumentSession WebSocket Presence Protocol', () => {
       expect(message.focusRegions.length).toBe(100);
       // Default limit is 10 regions, so this should be rejected
     });
+  });
+});
+
+// =============================================================================
+// handleWebSocket: PresenceManager DO push on connect
+// =============================================================================
+
+describe('handleWebSocket: pushPresenceUpdate on connect', () => {
+  // Minimal WebSocketConnectionDeps factory for handleWebSocket tests
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  function createWsConnDeps(overrides: {
+    pushPresenceUpdate?: ReturnType<typeof vi.fn>;
+    presenceManagerActor?: ActorPresence | undefined;
+  } = {}) {
+    const mockServer = new MockWebSocket();
+    const mockClient = new MockWebSocket();
+
+    // Mock WebSocketPair so handleWebSocket doesn't bail out early.
+    // A constructor function returning a plain object causes `new` to use that object
+    // rather than `this`, giving us control over pair[0] and pair[1].
+    const pair = { 0: mockClient, 1: mockServer };
+    globalThis.WebSocketPair = function WsPairMock() { return pair; } as unknown as typeof WebSocketPair;
+
+    const mockState = {
+      id: { toString: (): string => 'site-1:doc-1:branch-1', name: 'site-1:doc-1:branch-1' },
+      storage: {
+        get: vi.fn().mockResolvedValue(undefined),
+        put: vi.fn().mockResolvedValue(undefined),
+        delete: vi.fn().mockResolvedValue(true),
+        list: vi.fn().mockResolvedValue(new Map()),
+        getAlarm: vi.fn().mockResolvedValue(null),
+        setAlarm: vi.fn().mockResolvedValue(undefined),
+      },
+      blockConcurrencyWhile: vi.fn(),
+      acceptWebSocket: vi.fn(),
+      getWebSockets: vi.fn().mockReturnValue([]),
+    };
+
+    return {
+      env: { ENVIRONMENT: 'test' },
+      sessionInfo: { siteId: 'site-1', documentId: 'doc-1', branchId: 'branch-1' },
+      state: mockState,
+      ydoc: new Y.Doc(),
+      setYdoc: vi.fn(),
+      initialized: true,
+      presenceManager: {
+        getByActorId: vi.fn().mockReturnValue(overrides.presenceManagerActor),
+        getAll: vi.fn().mockReturnValue([]),
+        register: vi.fn(),
+      },
+      activityDetector: { recordFocusActivity: vi.fn(), clearActorFocus: vi.fn() },
+      editSessions: new Map(),
+      messageRates: new Map(),
+      initializeCrdtIfNeeded: vi.fn().mockResolvedValue(undefined),
+      restoreSessionInfoFromStorage: vi.fn().mockResolvedValue(undefined),
+      markPersistPending: vi.fn().mockResolvedValue(undefined),
+      flushPendingPersist: vi.fn().mockResolvedValue(undefined),
+      enqueueBroadcast: vi.fn(),
+      flushPendingBroadcasts: vi.fn(),
+      persist: vi.fn().mockResolvedValue(undefined),
+      persistPresence: vi.fn().mockResolvedValue(undefined),
+      persistEditSessions: vi.fn().mockResolvedValue(undefined),
+      scheduleCleanupAlarm: vi.fn().mockResolvedValue(undefined),
+      broadcastPresenceUpdate: vi.fn(),
+      pushPresenceUpdate: overrides.pushPresenceUpdate ?? vi.fn(),
+      handlePresenceMessage: vi.fn(),
+      tryParseJson: vi.fn(),
+      handleWsPublishRequest: vi.fn(),
+      syncManager: {} as never,
+      runCleanup: vi.fn().mockResolvedValue({ sessionsRolledBack: 0, sessionsCleared: 0 }),
+      getConnectionCount: vi.fn().mockReturnValue(0),
+      PERSIST_PENDING_KEY: 'persistPending',
+      setPersistPending: vi.fn(),
+    };
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('should push actorJoined with actor built from meta when browser user is not in presenceManager', async () => {
+    const { handleWebSocket } = await import('../../src/durable-objects/websocket-connection-manager');
+    const pushPresenceUpdate = vi.fn();
+
+    // Browser user: NOT registered in local presenceManager
+    const deps = createWsConnDeps({ pushPresenceUpdate, presenceManagerActor: undefined });
+
+    const request = new Request('http://internal/connect?_verifiedActorId=user-alice&_verifiedActorType=user&_verifiedEmail=alice%40example.com&_verifiedName=Alice');
+
+    // pushPresenceUpdate is called before the 101 Response — swallow the Response error
+    try { handleWebSocket(deps as never, request); } catch { /* status 101 not supported in test env */ }
+
+    expect(pushPresenceUpdate).toHaveBeenCalledWith(
+      'join',
+      'user-alice',
+      expect.objectContaining({
+        actor: expect.objectContaining({
+          id: 'ws-user-alice',
+          actorId: 'user-alice',
+          actorType: 'user',
+          role: 'human',
+          name: 'Alice',
+        }),
+      }),
+    );
+  });
+
+  it('should use presenceManager actor when agent is already registered', async () => {
+    const { handleWebSocket } = await import('../../src/durable-objects/websocket-connection-manager');
+    const pushPresenceUpdate = vi.fn();
+
+    const existingAgentPresence: ActorPresence = {
+      id: 'session-agent-bot',
+      actorId: 'agent-bot',
+      actorType: 'agent',
+      role: 'agent',
+      name: 'Bot Agent',
+      state: 'editing',
+      lastActivityAt: new Date().toISOString(),
+      joinedAt: new Date().toISOString(),
+      intent: 'Updating hero section',
+    };
+
+    // Agent IS registered in local presenceManager (edit session active)
+    const deps = createWsConnDeps({ pushPresenceUpdate, presenceManagerActor: existingAgentPresence });
+
+    const request = new Request('http://internal/connect?_verifiedActorId=agent-bot&_verifiedActorType=agent');
+
+    try { handleWebSocket(deps as never, request); } catch { /* status 101 not supported in test env */ }
+
+    expect(pushPresenceUpdate).toHaveBeenCalledWith(
+      'join',
+      'agent-bot',
+      expect.objectContaining({
+        actor: existingAgentPresence,
+      }),
+    );
+  });
+
+  it('should fall back to email when name is absent from meta', async () => {
+    const { handleWebSocket } = await import('../../src/durable-objects/websocket-connection-manager');
+    const pushPresenceUpdate = vi.fn();
+
+    const deps = createWsConnDeps({ pushPresenceUpdate, presenceManagerActor: undefined });
+
+    // Name not provided — only email
+    const request = new Request('http://internal/connect?_verifiedActorId=user-bob&_verifiedActorType=user&_verifiedEmail=bob%40example.com');
+
+    try { handleWebSocket(deps as never, request); } catch { /* status 101 not supported in test env */ }
+
+    expect(pushPresenceUpdate).toHaveBeenCalledWith(
+      'join',
+      'user-bob',
+      expect.objectContaining({
+        actor: expect.objectContaining({
+          name: 'bob@example.com',
+        }),
+      }),
+    );
   });
 });

@@ -289,11 +289,25 @@ export function handleWebSocket(
   // Broadcast presence update to all clients (new connection joined)
   deps.broadcastPresenceUpdate();
 
-  // Phase 3.2: Push presence join to PresenceManager DO
+  // Phase 3.2: Push presence join to PresenceManager DO.
+  // For agents with an active edit session the actor is already in presenceManager;
+  // for browser users it is not, so we build one from the verified connection meta.
+  // Without this, the PresenceManager DO never learns about human editors and
+  // branch/site presence always shows 0 human actors.
   const joinedPresence = deps.presenceManager.getByActorId(actorId);
-  if (joinedPresence !== undefined) {
-    deps.pushPresenceUpdate('join', actorId, { actor: joinedPresence });
-  }
+  const now = new Date().toISOString();
+  const actorForDo: ActorPresence = joinedPresence ?? {
+    id: `ws-${actorId}`,
+    actorId,
+    actorType,
+    role: actorType === 'agent' ? 'agent' : 'human',
+    name: meta.name ?? meta.email ?? actorId,
+    avatar: meta.avatar,
+    state: 'active',
+    lastActivityAt: now,
+    joinedAt: now,
+  };
+  deps.pushPresenceUpdate('join', actorId, { actor: actorForDo });
 
   // Return the client side of the WebSocket
   return new Response(null, {
