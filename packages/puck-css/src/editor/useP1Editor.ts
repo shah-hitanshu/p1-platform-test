@@ -339,6 +339,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     onSelectionChange: handleSelectionChange,
     currentUser: user ? { id: user.id, name: user.name, email: user.email, avatar: user.picture } : undefined,
     onLogout: logout,
+    puckConfig,
     ...pluginOptions,
     onPublish: handlePublish,
     versions,

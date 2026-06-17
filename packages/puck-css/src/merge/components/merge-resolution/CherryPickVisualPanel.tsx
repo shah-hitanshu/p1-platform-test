@@ -15,9 +15,11 @@
 
 import React, { useRef, useMemo } from 'react';
 import { Render } from '@puckeditor/core';
+import type { PuckData } from '@pantheon-systems/css-client';
 import type { DocumentResolution } from '../../useMergeResolution.js';
 import type { ComponentDiffWithPosition } from '../../../core/types.js';
 import { createDiffMap, createHighlightedConfig } from '../../../versioning/utils/highlightConfig.js';
+import { namespacePuckData } from '../../utils/namespacePuckData.js';
 import { groupFieldsByComponent } from '../../utils/puckFieldClassifier.js';
 import { ScaledContent } from '../../../editor/components/merge-preview/ScaledContent.js';
 import { ComponentClickOverlay } from './ComponentClickOverlay.js';
@@ -227,17 +229,27 @@ export function CherryPickVisualPanel({
   const sourceContainerRef = useRef<HTMLDivElement>(null);
   const targetContainerRef = useRef<HTMLDivElement>(null);
 
-  // Create highlighted configs for diff visualization
+  // Create highlighted configs for diff visualization.
+  // Each panel gets a namespaced diffMap so the highlighted-config wrapper
+  // can look up diff types by the namespaced props.id it receives.
   const diffMap = useMemo(() => createDiffMap(diffs), [diffs]);
+  const sourceDiffMap = useMemo(
+    () => new Map([...diffMap].map(([k, v]) => [`s_${k}`, v])),
+    [diffMap],
+  );
+  const targetDiffMap = useMemo(
+    () => new Map([...diffMap].map(([k, v]) => [`t_${k}`, v])),
+    [diffMap],
+  );
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sourceHighlightedConfig = useMemo(
-    () => createHighlightedConfig(config as Record<string, unknown>, diffMap, 'after'),
-    [config, diffMap],
+    () => createHighlightedConfig(config as Record<string, unknown>, sourceDiffMap, 'after'),
+    [config, sourceDiffMap],
   );
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const targetHighlightedConfig = useMemo(
-    () => createHighlightedConfig(config as Record<string, unknown>, diffMap, 'before'),
-    [config, diffMap],
+    () => createHighlightedConfig(config as Record<string, unknown>, targetDiffMap, 'before'),
+    [config, targetDiffMap],
   );
 
   // Derive per-component selection state for overlay indicators
@@ -245,6 +257,20 @@ export function CherryPickVisualPanel({
     () => deriveComponentSelections(doc),
     [doc],
   );
+
+  // Namespaced selection maps for ComponentClickOverlay — the overlay reads
+  // data-component-id from the DOM, which now carries the panel namespace prefix.
+  const sourceSelections = useMemo(
+    () => Object.fromEntries(Object.entries(componentSelections).map(([k, v]) => [`s_${k}`, v])),
+    [componentSelections],
+  );
+  const targetSelections = useMemo(
+    () => Object.fromEntries(Object.entries(componentSelections).map(([k, v]) => [`t_${k}`, v])),
+    [componentSelections],
+  );
+
+  // Strip the panel namespace prefix before forwarding to business logic.
+  const stripNs = (id: string) => id.replace(/^[a-z]_/, '');
 
   // Group classified fields by component for prop-level controls
   const componentGroups = doc.classifiedFields
@@ -256,8 +282,18 @@ export function CherryPickVisualPanel({
     ? doc.classifiedFields.filter((f) => f.classification !== 'conflicting').length
     : 0;
 
-  const sourceData = doc.sourceSnapshot;
-  const targetData = doc.targetSnapshot;
+  const sourceData = useMemo(
+    () => (doc.sourceSnapshot ? namespacePuckData(doc.sourceSnapshot as PuckData, 's_') : null),
+    [doc.sourceSnapshot],
+  );
+  const targetData = useMemo(
+    () => (doc.targetSnapshot ? namespacePuckData(doc.targetSnapshot as PuckData, 't_') : null),
+    [doc.targetSnapshot],
+  );
+  const mergedData = useMemo(
+    () => (doc.mergedSnapshot ? namespacePuckData(doc.mergedSnapshot as PuckData, 'm_') : null),
+    [doc.mergedSnapshot],
+  );
 
   return (
     <div className="cherry-pick-visual-panel" style={containerStyle}>
@@ -279,15 +315,15 @@ export function CherryPickVisualPanel({
                 <ScaledContent>
                   <Render
                     config={sourceHighlightedConfig as Parameters<typeof Render>[0]['config']}
-                    data={sourceData as Parameters<typeof Render>[0]['data']}
+                    data={sourceData as unknown as Parameters<typeof Render>[0]['data']}
                   />
                 </ScaledContent>
               </div>
               <ComponentClickOverlay
                 containerRef={sourceContainerRef}
-                selections={componentSelections}
+                selections={sourceSelections}
                 onComponentClick={(componentId) =>
-                  onAcceptAllComponentProps(doc.documentId, componentId, 'source')
+                  onAcceptAllComponentProps(doc.documentId, stripNs(componentId), 'source')
                 }
                 interactive={true}
                 branchLabel={sourceBranchName}
@@ -307,15 +343,15 @@ export function CherryPickVisualPanel({
                 <ScaledContent>
                   <Render
                     config={targetHighlightedConfig as Parameters<typeof Render>[0]['config']}
-                    data={targetData as Parameters<typeof Render>[0]['data']}
+                    data={targetData as unknown as Parameters<typeof Render>[0]['data']}
                   />
                 </ScaledContent>
               </div>
               <ComponentClickOverlay
                 containerRef={targetContainerRef}
-                selections={componentSelections}
+                selections={targetSelections}
                 onComponentClick={(componentId) =>
-                  onAcceptAllComponentProps(doc.documentId, componentId, 'target')
+                  onAcceptAllComponentProps(doc.documentId, stripNs(componentId), 'target')
                 }
                 interactive={true}
                 branchLabel={targetBranchName}
@@ -403,11 +439,11 @@ export function CherryPickVisualPanel({
             className="cherry-pick-visual-panel__merged-content"
             style={mergedPreviewContentStyle}
           >
-            {doc.mergedSnapshot ? (
+            {mergedData ? (
               <ScaledContent>
                 <Render
                   config={config as Parameters<typeof Render>[0]['config']}
-                  data={doc.mergedSnapshot as Parameters<typeof Render>[0]['data']}
+                  data={mergedData as unknown as Parameters<typeof Render>[0]['data']}
                 />
               </ScaledContent>
             ) : (

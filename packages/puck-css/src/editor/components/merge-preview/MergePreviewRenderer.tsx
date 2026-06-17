@@ -13,6 +13,7 @@ import { Render } from '@puckeditor/core';
 import type { PuckData } from '@pantheon-systems/css-client';
 import type { ComponentDiffWithPosition } from '../../../core/types.js';
 import { createDiffMap, createHighlightedConfig } from '../../../versioning/utils/highlightConfig.js';
+import { namespacePuckData } from '../../../merge/utils/namespacePuckData.js';
 import { ScaledContent } from './ScaledContent.js';
 import type { ViewMode } from './ViewModeSelector.js';
 
@@ -304,13 +305,31 @@ export function MergePreviewRenderer({
   const counts = useMemo(() => countChanges(diffs), [diffs]);
   const changeSummary = useMemo(() => formatChangeSummary(counts), [counts]);
 
+  // Namespace component ids so each panel has a unique id space. Puck may
+  // key internal state by props.id; without this, shared ids across branches
+  // (CoW inheritance) cause image URLs from the source panel to bleed into
+  // the target panel.
+  const nsSourceData = useMemo(() => namespacePuckData(sourceData, 's_'), [sourceData]);
+  const nsTargetData = useMemo(() => namespacePuckData(targetData, 't_'), [targetData]);
+
+  // Build per-panel diffMaps using the same prefix so the highlighted-config
+  // wrapper (which receives namespaced props.id) can still look up diff types.
+  const sourceDiffMap = useMemo(
+    () => new Map([...diffMap].map(([k, v]) => [`s_${k}`, v])),
+    [diffMap],
+  );
+  const targetDiffMap = useMemo(
+    () => new Map([...diffMap].map(([k, v]) => [`t_${k}`, v])),
+    [diffMap],
+  );
+
   const beforeConfig = useMemo(
-    () => createHighlightedConfig(config, diffMap, 'before'),
-    [config, diffMap],
+    () => createHighlightedConfig(config, sourceDiffMap, 'before'),
+    [config, sourceDiffMap],
   );
   const afterConfig = useMemo(
-    () => createHighlightedConfig(config, diffMap, 'after'),
-    [config, diffMap],
+    () => createHighlightedConfig(config, targetDiffMap, 'after'),
+    [config, targetDiffMap],
   );
 
   const hasChanges = diffs.some((d) => d.type !== 'unchanged');
@@ -328,8 +347,8 @@ export function MergePreviewRenderer({
   //   - source/branch panel highlights "added" items (green)
   //   - target/main panel highlights "removed" items (red)
   const sideBySideProps = {
-    sourceData,
-    targetData,
+    sourceData: nsSourceData,
+    targetData: nsTargetData,
     beforeConfig: afterConfig,   // branch panel shows added + modified
     afterConfig: beforeConfig,   // main panel shows removed + modified
     sourceBranchName,
@@ -339,8 +358,8 @@ export function MergePreviewRenderer({
   // Overlay and slider modes are pure visual comparisons --
   // diff highlighting is redundant and visually noisy.
   const visualProps = {
-    sourceData,
-    targetData,
+    sourceData: nsSourceData,
+    targetData: nsTargetData,
     beforeConfig: config,
     afterConfig: config,
     sourceBranchName,
