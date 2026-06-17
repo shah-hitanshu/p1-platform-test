@@ -1,3 +1,4 @@
+import { isValidElement, type ReactNode } from "react";
 import { blockPaddingClass } from "./block-padding";
 import ReactMarkdown from "react-markdown";
 
@@ -19,7 +20,10 @@ export const paragraphBlock = {
   defaultProps: {
     text: "Add your copy here. You can use multiple lines.",
   },
-  render: ({ text }: { text?: string }) => {
+  render: ({ text }: { text?: string | ReactNode }) => {
+    if (isValidElement(text)) {
+      return <div className={blockPaddingClass}>{text}</div>;
+    }
     const markdown = asMarkdownText(text);
     return (
       <div className={blockPaddingClass}>

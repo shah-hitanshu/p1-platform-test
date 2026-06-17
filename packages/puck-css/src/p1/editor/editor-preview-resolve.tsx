@@ -6,6 +6,7 @@ import { createUsePuck } from "@puckeditor/core";
 const usePuckStore = createUsePuck();
 import {
   createContext,
+  isValidElement,
   useContext,
   useMemo,
   type ComponentType,
@@ -77,14 +78,12 @@ function mergeRootForPreview(props: Record<string, unknown>, resolved: Data | nu
   const id = typeof props.id === "string" ? props.id : "puck-root";
   const rp = getBlockPropsById(resolved, id);
   if (!rp) return shimmerUnresolvedTokens(props, loading);
-  const merged = {
-    ...props,
-    ...rp,
-    id: props.id,
-    children: props.children,
-    puck: props.puck,
-    editMode: props.editMode,
-  };
+  const merged = { ...props };
+  for (const key of Object.keys(rp)) {
+    if (key === "id" || key === "puck" || key === "editMode" || key === "children") continue;
+    if (isValidElement(props[key])) continue;
+    merged[key] = rp[key];
+  }
   return shimmerUnresolvedTokens(merged, loading);
 }
 
@@ -92,14 +91,12 @@ function mergeBlockForPreview(props: Record<string, unknown>, resolved: Data | n
   if (!resolved || typeof props.id !== "string") return shimmerUnresolvedTokens(props, loading);
   const rp = getBlockPropsById(resolved, props.id);
   if (!rp) return shimmerUnresolvedTokens(props, loading);
-  const merged = {
-    ...props,
-    ...rp,
-    id: props.id,
-    puck: props.puck,
-    editMode: props.editMode,
-    children: props.children,
-  };
+  const merged = { ...props };
+  for (const key of Object.keys(rp)) {
+    if (key === "id" || key === "puck" || key === "editMode" || key === "children") continue;
+    if (isValidElement(props[key])) continue;
+    merged[key] = rp[key];
+  }
   return shimmerUnresolvedTokens(merged, loading);
 }
 
@@ -181,3 +178,5 @@ export function createPreviewResolvePlugin(
     },
   };
 }
+
+export { mergeBlockForPreview as _mergeBlockForPreview, mergeRootForPreview as _mergeRootForPreview };

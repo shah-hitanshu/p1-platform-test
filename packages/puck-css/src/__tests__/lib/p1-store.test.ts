@@ -158,7 +158,7 @@ describe("createP1PageStore", () => {
   describe("get — with content client", () => {
     it("uses content client when no auth token is set (public rendering)", async () => {
       const publishedData = { root: { props: { title: "Published" } }, content: [] };
-      const contentClient = makeContentClient({ "": publishedData });
+      const contentClient = makeContentClient({ "/": publishedData });
 
       const docs: MockDocument[] = [
         { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
@@ -171,7 +171,7 @@ describe("createP1PageStore", () => {
 
       const data = await store.get("/") as Record<string, unknown>;
       expect((data.root as Record<string, unknown>).props).toEqual({ title: "Published" });
-      expect((contentClient.getPage as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith("");
+      expect((contentClient.getPage as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith("/");
       expect(mockClient.versions.getLatest).not.toHaveBeenCalled();
     });
 

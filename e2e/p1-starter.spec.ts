@@ -9,24 +9,10 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('P1 Starter - Home Page', () => {
-  test('displays welcome heading and navigation links', async ({ page }) => {
+  test('renders the homepage document from the database', async ({ page }) => {
     await page.goto('/');
 
-    await expect(
-      page.getByRole('heading', { name: 'Welcome to the P1 Starter Kit' })
-    ).toBeVisible();
-
-    await expect(
-      page.getByRole('link', { name: 'Open the Page Editor' })
-    ).toHaveAttribute('href', '/p1');
-  });
-
-  test('lists pages from the database', async ({ page }) => {
-    await page.goto('/');
-
-    const contactLink = page.getByRole('link', { name: '/contact-us' });
-    await expect(contactLink).toBeVisible();
-    await expect(contactLink).toHaveAttribute('href', '/contact-us');
+    await expect(page.getByText('Woah')).toBeVisible();
   });
 });
 
