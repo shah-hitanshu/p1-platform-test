@@ -34,6 +34,11 @@ vi.mock('../../src/services', () => ({
   MergeExecutionError: class extends Error {},
   InvalidCrdtStateError: class extends Error {},
   MissingCrdtStateError: class extends Error {},
+  TargetBranchNotMainError: class extends Error {},
+  InvalidMergeRequestParamsError: class extends Error {},
+  InvalidMergeRequestStatusTransitionError: class extends Error {},
+  CannotDeleteMergedRequestError: class extends Error {},
+  NoMergeBaseError: class extends Error {},
 }));
 
 // Mock the auth module to allow all permissions
