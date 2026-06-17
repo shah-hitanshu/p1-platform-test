@@ -20,9 +20,14 @@ import {
   MergeRequestNotFoundError,
   SourceBranchNotFoundError,
   TargetBranchNotFoundError,
+  TargetBranchNotMainError,
+  InvalidMergeRequestParamsError,
+  InvalidMergeRequestStatusTransitionError,
+  CannotDeleteMergedRequestError,
   MergeConflictsError,
   MergeNotAllowedError,
   MergeExecutionError,
+  NoMergeBaseError,
 } from '../services';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
 import { writeBranchInvalidation } from '../services/branch-invalidation-service';
@@ -224,7 +229,7 @@ async function handleExecuteMerge(
       targetBranchId: body.targetBranchId,
       message: body.message ?? 'Merge with resolutions',
       resolutions: body.conflictResolutions,
-      createdById: context.principal.id,
+      createdById: context.principal.dbUserId ?? context.principal.id,
       createdByType: context.principal.type as 'user' | 'agent',
     });
   } else {
@@ -233,7 +238,7 @@ async function handleExecuteMerge(
       sourceBranchId: body.sourceBranchId,
       targetBranchId: body.targetBranchId,
       message: body.message ?? 'Merge',
-      createdById: context.principal.id,
+      createdById: context.principal.dbUserId ?? context.principal.id,
       createdByType: context.principal.type as 'user' | 'agent',
     });
   }
@@ -302,7 +307,7 @@ async function handleCreateMergeRequest(
     targetBranchId: body.targetBranchId,
     title: body.title,
     description: body.description,
-    createdById: context.principal.id,
+    createdById: context.principal.dbUserId ?? context.principal.id,
     createdByType: context.principal.type as 'user' | 'agent',
   });
 
@@ -480,13 +485,13 @@ async function handleExecuteMergeRequest(
         strategy: r.strategy as 'take-source' | 'take-target' | 'manual',
         resolvedSnapshot: r.resolvedSnapshot,
       })),
-      mergedById: context.principal.id,
+      mergedById: context.principal.dbUserId ?? context.principal.id,
       mergedByType: context.principal.type as 'user' | 'agent',
     });
   } else {
     result = await executeMerge({
       mergeRequestId: context.mergeRequestId,
-      mergedById: context.principal.id,
+      mergedById: context.principal.dbUserId ?? context.principal.id,
       mergedByType: context.principal.type as 'user' | 'agent',
     });
   }
@@ -594,6 +599,21 @@ export async function handleMergeRoutes(
     }
     if (error instanceof TargetBranchNotFoundError) {
       return errorResponse('Target branch not found', 404);
+    }
+    if (error instanceof TargetBranchNotMainError) {
+      return errorResponse('Target branch must be the main branch', 400);
+    }
+    if (error instanceof InvalidMergeRequestParamsError) {
+      return errorResponse(error.message, 400);
+    }
+    if (error instanceof InvalidMergeRequestStatusTransitionError) {
+      return errorResponse(error.message, 400);
+    }
+    if (error instanceof CannotDeleteMergedRequestError) {
+      return errorResponse(error.message, 409);
+    }
+    if (error instanceof NoMergeBaseError) {
+      return errorResponse('No common merge base found between branches', 422);
     }
     if (error instanceof MergeConflictsError) {
       return errorResponse('Merge has unresolved conflicts', 409, {

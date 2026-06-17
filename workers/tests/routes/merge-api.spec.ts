@@ -44,6 +44,33 @@ vi.mock('../../src/services', () => ({
       super(`Target branch not found: ${branchId}`);
     }
   },
+  TargetBranchNotMainError: class TargetBranchNotMainError extends Error {
+    name = 'TargetBranchNotMainError';
+    constructor(public targetBranchId: string) {
+      super(`Target branch "${targetBranchId}" is not the main branch`);
+    }
+  },
+  InvalidMergeRequestParamsError: class InvalidMergeRequestParamsError extends Error {
+    name = 'InvalidMergeRequestParamsError';
+  },
+  InvalidMergeRequestStatusTransitionError: class InvalidMergeRequestStatusTransitionError extends Error {
+    name = 'InvalidMergeRequestStatusTransitionError';
+    constructor(public fromStatus: string, public toStatus: string) {
+      super(`Cannot transition from "${fromStatus}" to "${toStatus}"`);
+    }
+  },
+  CannotDeleteMergedRequestError: class CannotDeleteMergedRequestError extends Error {
+    name = 'CannotDeleteMergedRequestError';
+    constructor(public mergeRequestId: string) {
+      super(`Cannot delete merged request "${mergeRequestId}"`);
+    }
+  },
+  NoMergeBaseError: class NoMergeBaseError extends Error {
+    name = 'NoMergeBaseError';
+    constructor(public sourceBranchId: string, public targetBranchId: string) {
+      super('No merge base found');
+    }
+  },
   MergeConflictsError: class MergeConflictsError extends Error {
     name = 'MergeConflictsError';
     constructor(
@@ -403,6 +430,193 @@ describe('Phase 7.1c: Merge API Routes', () => {
       expect(response.status).toBe(201);
       const body = await response.json();
       expect(body.id).toBe('mr-1');
+    });
+
+    it('should use dbUserId instead of principal.id when creating a merge request (regression: PCC-3293)', async () => {
+      // Auth0 principals have an `id` like "google-oauth2|123" (not a UUID).
+      // The merge_requests.created_by_id column is UUID NOT NULL, so passing
+      // principal.id directly causes a PostgreSQL UUID cast error → 500.
+      // The fix uses principal.dbUserId ?? principal.id, where dbUserId is the
+      // UUID from app.users assigned during request enrichment.
+      const { handleMergeRoutes } = await import('../../src/routes/merge-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.createMergeRequest).mockResolvedValueOnce({
+        id: 'mr-2',
+        siteId: 'site-1',
+        sourceBranchId: 'feature-branch',
+        targetBranchId: 'main-branch',
+        title: 'Feature merge',
+        status: 'open',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'db-uuid-for-user',
+        createdByType: 'user',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/merge-requests',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceBranchId: 'feature-branch',
+            targetBranchId: 'main-branch',
+            title: 'Feature merge',
+          }),
+        },
+      );
+
+      await handleMergeRoutes(request, {
+        siteId: 'site-1',
+        mergeRequests: true,
+        principal: {
+          id: 'google-oauth2|107221644627712432289',
+          dbUserId: 'db-uuid-for-user',
+          type: 'user',
+        },
+      });
+
+      expect(vi.mocked(services.createMergeRequest)).toHaveBeenCalledWith(
+        expect.objectContaining({ createdById: 'db-uuid-for-user' }),
+      );
+    });
+
+    it('should return 400 when TargetBranchNotMainError is thrown', async () => {
+      const { handleMergeRoutes } = await import('../../src/routes/merge-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.createMergeRequest).mockRejectedValueOnce(
+        new services.TargetBranchNotMainError('non-main-branch'),
+      );
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/merge-requests',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourceBranchId: 'src', targetBranchId: 'non-main-branch', title: 'Test' }),
+        },
+      );
+
+      const response = await handleMergeRoutes(request, {
+        siteId: 'site-1',
+        mergeRequests: true,
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should return 400 when InvalidMergeRequestParamsError is thrown', async () => {
+      const { handleMergeRoutes } = await import('../../src/routes/merge-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.createMergeRequest).mockRejectedValueOnce(
+        new services.InvalidMergeRequestParamsError('Source and target branches must be different.'),
+      );
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/merge-requests',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourceBranchId: 'same', targetBranchId: 'same', title: 'Test' }),
+        },
+      );
+
+      const response = await handleMergeRoutes(request, {
+        siteId: 'site-1',
+        mergeRequests: true,
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe('Error handling — remaining service errors return proper status codes', () => {
+    it('should return 400 when InvalidMergeRequestStatusTransitionError is thrown', async () => {
+      const { handleMergeRoutes } = await import('../../src/routes/merge-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-id', siteId: 'site-1', name: 'main', isMain: true,
+        status: 'active', createdAt: '2026-01-01', createdById: 'u', createdByType: 'user',
+      });
+      vi.mocked(services.updateMergeRequestStatus).mockRejectedValueOnce(
+        new services.InvalidMergeRequestStatusTransitionError('open', 'merged'),
+      );
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/merge-requests/mr-1',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'merged' }),
+        },
+      );
+
+      const response = await handleMergeRoutes(request, {
+        siteId: 'site-1',
+        mergeRequests: true,
+        mergeRequestId: 'mr-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should return 409 when CannotDeleteMergedRequestError is thrown', async () => {
+      const { handleMergeRoutes } = await import('../../src/routes/merge-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-id', siteId: 'site-1', name: 'main', isMain: true,
+        status: 'active', createdAt: '2026-01-01', createdById: 'u', createdByType: 'user',
+      });
+      vi.mocked(services.deleteMergeRequest).mockRejectedValueOnce(
+        new services.CannotDeleteMergedRequestError('mr-1'),
+      );
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/merge-requests/mr-1',
+        { method: 'DELETE' },
+      );
+
+      const response = await handleMergeRoutes(request, {
+        siteId: 'site-1',
+        mergeRequests: true,
+        mergeRequestId: 'mr-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(409);
+    });
+
+    it('should return 422 when NoMergeBaseError is thrown', async () => {
+      const { handleMergeRoutes } = await import('../../src/routes/merge-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.checkMergeability).mockRejectedValueOnce(
+        new services.NoMergeBaseError('src-branch', 'target-branch'),
+      );
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/merge/check',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourceBranchId: 'src-branch', targetBranchId: 'target-branch' }),
+        },
+      );
+
+      const response = await handleMergeRoutes(request, {
+        siteId: 'site-1',
+        operation: 'check',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(422);
     });
   });
 
