@@ -20,6 +20,7 @@ const SKIP_PATTERNS = new Set([
   'test-results',
   'playwright-report',
   '.DS_Store',
+  'README.md',
 ]);
 
 function shouldSkip(name) {
