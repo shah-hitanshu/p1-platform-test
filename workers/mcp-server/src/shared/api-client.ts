@@ -174,6 +174,17 @@ export interface ApiError {
   reason?: string;
 }
 
+/**
+ * Per-document conflict resolution passed to execute_merge and
+ * execute_merge_request. `resolvedSnapshot` is required only when
+ * `strategy` is 'manual'.
+ */
+export interface ConflictResolutionInput {
+  documentId: string;
+  strategy: 'take-source' | 'take-target' | 'manual';
+  resolvedSnapshot?: Record<string, unknown>;
+}
+
 // =============================================================================
 // Presence Types
 // =============================================================================
@@ -397,6 +408,438 @@ export class McpApiClient {
       body: JSON.stringify(body),
     });
     return this.handleResponse<Branch>(response);
+  }
+
+  async getBranch(siteId: string, branchId: string): Promise<Branch> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<Branch>(response);
+  }
+
+  async updateBranch(
+    siteId: string,
+    branchId: string,
+    body: { name?: string; description?: string; status?: string },
+  ): Promise<Branch> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}`;
+    const response = await this.doFetch(url, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    return this.handleResponse<Branch>(response);
+  }
+
+  /**
+   * Archive (soft-delete) a branch. Backend returns 204 with an empty body
+   * on success.
+   */
+  async archiveBranch(siteId: string, branchId: string): Promise<void> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}`;
+    const response = await this.doFetch(url, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    if (!response.ok) {
+      const errorData = await response.json<ApiError>();
+      throw new Error(errorData.error || `API error: ${String(response.status)}`);
+    }
+  }
+
+  async restoreBranch(siteId: string, branchId: string): Promise<Branch> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/restore`;
+    const response = await this.doFetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<Branch>(response);
+  }
+
+  async checkMerge(
+    siteId: string,
+    body: { sourceBranchId: string; targetBranchId: string },
+  ): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/merge/check`;
+    const response = await this.doFetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  async previewMerge(
+    siteId: string,
+    body: {
+      sourceBranchId: string;
+      targetBranchId: string;
+      includeContent?: boolean;
+      excludePathPrefixes?: string[];
+    },
+  ): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/merge/preview`;
+    const response = await this.doFetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  async executeMerge(
+    siteId: string,
+    body: {
+      sourceBranchId: string;
+      targetBranchId: string;
+      message?: string;
+      conflictResolutions?: ConflictResolutionInput[];
+    },
+  ): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/merge/execute`;
+    const response = await this.doFetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  async createMergeRequest(
+    siteId: string,
+    body: {
+      sourceBranchId: string;
+      targetBranchId: string;
+      title: string;
+      description?: string;
+    },
+  ): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/merge-requests`;
+    const response = await this.doFetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  async listMergeRequests(
+    siteId: string,
+    options?: { status?: string },
+  ): Promise<{ mergeRequests: Record<string, unknown>[] }> {
+    const params =
+      options?.status !== undefined && options.status !== ''
+        ? `?status=${encodeURIComponent(options.status)}`
+        : '';
+    const url = `${this.baseUrl}/api/sites/${siteId}/merge-requests${params}`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<{ mergeRequests: Record<string, unknown>[] }>(response);
+  }
+
+  async getMergeRequest(
+    siteId: string,
+    mergeRequestId: string,
+  ): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/merge-requests/${mergeRequestId}`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  async updateMergeRequest(
+    siteId: string,
+    mergeRequestId: string,
+    body: { title?: string; description?: string; status?: string },
+  ): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/merge-requests/${mergeRequestId}`;
+    const response = await this.doFetch(url, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  async executeMergeRequest(
+    siteId: string,
+    mergeRequestId: string,
+    body?: { resolutions?: ConflictResolutionInput[] },
+  ): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/merge-requests/${mergeRequestId}/execute`;
+    const response = await this.doFetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body ?? {}),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  async listStructures(
+    siteId: string,
+    branchId: string,
+    options?: { structureType?: string },
+  ): Promise<{ structures: Record<string, unknown>[] }> {
+    const params =
+      options?.structureType !== undefined && options.structureType !== ''
+        ? `?type=${encodeURIComponent(options.structureType)}`
+        : '';
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/structures${params}`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<{ structures: Record<string, unknown>[] }>(response);
+  }
+
+  async getNavigation(
+    siteId: string,
+    branchId: string,
+    structureId: string,
+  ): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/structures/${structureId}/navigation`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  async createNode(
+    siteId: string,
+    branchId: string,
+    structureId: string,
+    body: {
+      name: string;
+      slug: string;
+      nodeType: string;
+      position: number;
+      parentNodeId?: string;
+      documentId?: string;
+      externalUrl?: string;
+    },
+  ): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/structures/${structureId}/nodes`;
+    const response = await this.doFetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  async updateNode(
+    siteId: string,
+    branchId: string,
+    structureId: string,
+    nodeId: string,
+    body: { name?: string; slug?: string; position?: number },
+  ): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/structures/${structureId}/nodes/${nodeId}`;
+    const response = await this.doFetch(url, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  async moveNode(
+    siteId: string,
+    branchId: string,
+    structureId: string,
+    nodeId: string,
+    body: { newParentId: string | null; newPosition?: number },
+  ): Promise<Record<string, unknown>> {
+    const base = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/structures/${structureId}`;
+    const url = `${base}/nodes/${nodeId}/move`;
+    const response = await this.doFetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  async reorderNodes(
+    siteId: string,
+    branchId: string,
+    structureId: string,
+    body: { parentNodeId: string | null; nodeOrder: string[] },
+  ): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/structures/${structureId}/nodes/reorder`;
+    const response = await this.doFetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  /**
+   * Remove a navigation node. Backend returns 204 with an empty body on success.
+   */
+  async deleteNode(
+    siteId: string,
+    branchId: string,
+    structureId: string,
+    nodeId: string,
+  ): Promise<void> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/structures/${structureId}/nodes/${nodeId}`;
+    const response = await this.doFetch(url, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    if (!response.ok) {
+      const errorData = await response.json<ApiError>();
+      throw new Error(errorData.error || `API error: ${String(response.status)}`);
+    }
+  }
+
+  async getDocumentMetadata(
+    siteId: string,
+    branchId: string,
+    structureId: string,
+    documentId: string,
+  ): Promise<Record<string, unknown>> {
+    const base = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/structures/${structureId}`;
+    const url = `${base}/documents/${documentId}/metadata`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  /**
+   * Set a document's metadata. The PUT body is the metadata object itself —
+   * the backend reads the whole request body as the metadata to store.
+   */
+  async setDocumentMetadata(
+    siteId: string,
+    branchId: string,
+    structureId: string,
+    documentId: string,
+    metadata: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const base = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/structures/${structureId}`;
+    const url = `${base}/documents/${documentId}/metadata`;
+    const response = await this.doFetch(url, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(metadata),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  async listDocumentVersions(
+    siteId: string,
+    branchId: string,
+    documentId: string,
+  ): Promise<{ versions: Record<string, unknown>[] }> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/versions`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<{ versions: Record<string, unknown>[] }>(response);
+  }
+
+  async getDocumentVersion(
+    siteId: string,
+    branchId: string,
+    documentId: string,
+    versionId: string,
+  ): Promise<Record<string, unknown> & { snapshot?: Record<string, unknown> | null }> {
+    const base = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents/${documentId}`;
+    const url = `${base}/versions/${versionId}`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<
+      Record<string, unknown> & { snapshot?: Record<string, unknown> | null }
+    >(response);
+  }
+
+  async createDocumentVersion(
+    siteId: string,
+    branchId: string,
+    documentId: string,
+    snapshot: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/versions`;
+    const response = await this.doFetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ snapshot }),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  async publishDocument(
+    siteId: string,
+    branchId: string,
+    documentId: string,
+  ): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/publish`;
+    const response = await this.doFetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  /**
+   * Archive (soft-delete) a document on a branch. Backend returns 204 with an
+   * empty body on success.
+   */
+  async archiveDocumentOnBranch(
+    siteId: string,
+    branchId: string,
+    documentId: string,
+  ): Promise<void> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents/${documentId}`;
+    const response = await this.doFetch(url, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    if (!response.ok) {
+      const errorData = await response.json<ApiError>();
+      throw new Error(errorData.error || `API error: ${String(response.status)}`);
+    }
+  }
+
+  async restoreDocument(
+    siteId: string,
+    documentId: string,
+  ): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/documents/${documentId}/restore`;
+    const response = await this.doFetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  async renameDocument(
+    siteId: string,
+    documentId: string,
+    path: string,
+  ): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/documents/${documentId}`;
+    const response = await this.doFetch(url, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ path }),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
   }
 
   async listDocuments(

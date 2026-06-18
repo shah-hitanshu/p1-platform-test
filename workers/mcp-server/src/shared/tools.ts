@@ -176,6 +176,296 @@ const CreatePageInputSchema = z.object({
   root_props: z.record(z.unknown()).optional().describe('Page-level root props'),
 });
 
+const BranchStatusEnum = z.enum(['active', 'review', 'merged', 'archived']);
+const MergeRequestStatusEnum = z.enum(['open', 'approved', 'conflicted', 'merged', 'closed']);
+const ConflictStrategyEnum = z.enum(['take-source', 'take-target', 'manual']);
+
+const ConflictResolutionSchema = z.object({
+  document_id: z.string().describe('The document ID (UUID) with the conflict'),
+  strategy: ConflictStrategyEnum.describe(
+    'take-source keeps the source branch version, take-target keeps the target version, ' +
+    'manual supplies a merged snapshot.',
+  ),
+  resolved_snapshot: z
+    .record(z.unknown())
+    .optional()
+    .describe('The merged document snapshot. Required when strategy is "manual".'),
+});
+
+const GetBranchInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+});
+
+const UpdateBranchInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches, NOT the name)'),
+  name: z.string().min(1).optional().describe('New branch name. Must be unique within the site.'),
+  description: z.string().optional().describe('New one-line description for the branch.'),
+  status: BranchStatusEnum.optional().describe(
+    'New lifecycle status: active, review, merged, or archived.',
+  ),
+});
+
+const ArchiveBranchInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID). The main branch cannot be archived.'),
+});
+
+const RestoreBranchInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID) of an archived branch'),
+});
+
+const CheckMergeInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  source_branch_id: z.string().describe('The branch ID (UUID) holding the changes to merge'),
+  target_branch_id: z.string().describe('The branch ID (UUID) to merge into (often the main branch)'),
+});
+
+const PreviewMergeInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  source_branch_id: z.string().describe('The branch ID (UUID) holding the changes to merge'),
+  target_branch_id: z.string().describe('The branch ID (UUID) to merge into'),
+  include_content: z
+    .boolean()
+    .optional()
+    .describe('Include full document snapshots and diff operations in the preview.'),
+  exclude_path_prefixes: z
+    .array(z.string())
+    .optional()
+    .describe('Skip documents whose path starts with any of these prefixes (e.g. "_registry/").'),
+});
+
+const ExecuteMergeInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  source_branch_id: z.string().describe('The branch ID (UUID) holding the changes to merge'),
+  target_branch_id: z.string().describe('The branch ID (UUID) to merge into'),
+  message: z.string().optional().describe('Merge message describing the change.'),
+  conflict_resolutions: z
+    .array(ConflictResolutionSchema)
+    .optional()
+    .describe('Per-document conflict resolutions. Run check_merge first to discover conflicts.'),
+});
+
+const CreateMergeRequestInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  source_branch_id: z.string().describe('The branch ID (UUID) holding the changes to merge'),
+  target_branch_id: z.string().describe('The branch ID (UUID) to merge into'),
+  title: z.string().min(1).describe('Title summarising the proposed change.'),
+  description: z.string().optional().describe('Longer description of the proposed change.'),
+});
+
+const ListMergeRequestsInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  status: MergeRequestStatusEnum.optional().describe(
+    'Filter by status: open, approved, conflicted, merged, or closed.',
+  ),
+});
+
+const GetMergeRequestInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  merge_request_id: z.string().describe('The merge request ID (UUID)'),
+});
+
+const UpdateMergeRequestInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  merge_request_id: z.string().describe('The merge request ID (UUID)'),
+  title: z.string().min(1).optional().describe('New title.'),
+  description: z.string().optional().describe('New description.'),
+  status: MergeRequestStatusEnum.optional().describe(
+    'New status. Set to "approved" to clear it for execution.',
+  ),
+});
+
+const ExecuteMergeRequestInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  merge_request_id: z.string().describe('The merge request ID (UUID). Must be approved or conflicted.'),
+  resolutions: z
+    .array(ConflictResolutionSchema)
+    .optional()
+    .describe('Per-document conflict resolutions when the request has conflicts.'),
+});
+
+const StructureTypeEnum = z.enum(['hierarchy', 'collection']);
+const NodeTypeEnum = z.enum(['section', 'document', 'external']);
+
+const ListStructuresInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  structure_type: StructureTypeEnum.optional().describe(
+    'Filter by type: hierarchy (nested navigation) or collection (flat list).',
+  ),
+});
+
+const GetNavigationInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  structure_id: z.string().describe('The structure ID (UUID from list_structures)'),
+});
+
+const AddNavigationItemInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  structure_id: z.string().describe('The structure ID (UUID from list_structures)'),
+  name: z.string().min(1).describe('Display label for the navigation item.'),
+  slug: z.string().min(1).describe('URL slug, unique within the parent.'),
+  node_type: NodeTypeEnum.describe(
+    'section groups other items, document links to a page, external links to a URL.',
+  ),
+  position: z.number().describe('Order among siblings (0 is first).'),
+  parent_node_id: z
+    .string()
+    .optional()
+    .describe('Parent node ID (UUID). Omit for a top-level item.'),
+  document_id: z
+    .string()
+    .uuid('Must be the document UUID from list_documents, not a path.')
+    .optional()
+    .describe('Document ID (UUID). Required when node_type is "document".'),
+  external_url: z
+    .string()
+    .optional()
+    .describe('Destination URL. Required when node_type is "external".'),
+});
+
+const UpdateNavigationItemInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  structure_id: z.string().describe('The structure ID (UUID from list_structures)'),
+  node_id: z.string().describe('The navigation node ID (UUID)'),
+  name: z.string().min(1).optional().describe('New display label.'),
+  slug: z.string().min(1).optional().describe('New slug, unique within the parent.'),
+  position: z.number().optional().describe('New order among siblings.'),
+});
+
+const MoveNavigationItemInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  structure_id: z.string().describe('The structure ID (UUID from list_structures)'),
+  node_id: z.string().describe('The navigation node ID (UUID) to move'),
+  new_parent_id: z
+    .string()
+    .optional()
+    .describe('New parent node ID (UUID). Omit to move to the top level.'),
+  new_position: z.number().optional().describe('New order under the new parent (default 0).'),
+});
+
+const ReorderNavigationItemsInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  structure_id: z.string().describe('The structure ID (UUID from list_structures)'),
+  parent_node_id: z
+    .string()
+    .optional()
+    .describe('Parent whose children to reorder. Omit for top-level items.'),
+  node_order: z.array(z.string()).describe('Node IDs (UUIDs) in the desired order.'),
+});
+
+const RemoveNavigationItemInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  structure_id: z.string().describe('The structure ID (UUID from list_structures)'),
+  node_id: z.string().describe('The navigation node ID (UUID) to remove'),
+});
+
+const GetPageMetadataInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  structure_id: z.string().describe('The structure ID (UUID from list_structures)'),
+  document_id: z
+    .string()
+    .uuid('Must be the document UUID from list_documents, not a path.')
+    .describe('The document ID (UUID from list_documents)'),
+});
+
+const SetPageMetadataInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  structure_id: z.string().describe('The structure ID (UUID from list_structures)'),
+  document_id: z
+    .string()
+    .uuid('Must be the document UUID from list_documents, not a path.')
+    .describe('The document ID (UUID from list_documents)'),
+  metadata: z
+    .record(z.unknown())
+    .describe(
+      'The full metadata object to store. Validated against the structure schema when enforcement is enabled.',
+    ),
+});
+
+// Group C — Version history & page lifecycle
+
+const ListDocumentVersionsInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  document_id: z
+    .string()
+    .uuid('Must be the document UUID from list_documents, not a path.')
+    .describe('The document ID (UUID from list_documents)'),
+});
+
+const GetDocumentVersionInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  document_id: z
+    .string()
+    .uuid('Must be the document UUID from list_documents, not a path.')
+    .describe('The document ID (UUID from list_documents)'),
+  version_id: z
+    .string()
+    .uuid('Must be the version UUID from list_document_versions.')
+    .describe('The version ID (UUID from list_document_versions)'),
+});
+
+const RestoreDocumentVersionInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  document_id: z
+    .string()
+    .uuid('Must be the document UUID from list_documents, not a path.')
+    .describe('The document ID (UUID from list_documents)'),
+  version_id: z
+    .string()
+    .uuid('Must be the version UUID from list_document_versions.')
+    .describe('The version ID (UUID) to roll the document back to'),
+});
+
+const PublishPageInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  document_id: z
+    .string()
+    .uuid('Must be the document UUID from list_documents, not a path.')
+    .describe('The document ID (UUID from list_documents)'),
+});
+
+const ArchivePageInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  document_id: z
+    .string()
+    .uuid('Must be the document UUID from list_documents, not a path.')
+    .describe('The document ID (UUID from list_documents)'),
+});
+
+const RestorePageInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  document_id: z
+    .string()
+    .uuid('Must be the document UUID, not a path.')
+    .describe('The document ID (UUID) of an archived page'),
+});
+
+const RenamePageInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  document_id: z
+    .string()
+    .uuid('Must be the document UUID from list_documents, not a path.')
+    .describe('The document ID (UUID from list_documents)'),
+  path: z.string().min(1).describe('The new document path (e.g. "plans" or "products/widget").'),
+});
+
 // =============================================================================
 // Tool Definitions
 // =============================================================================
@@ -266,6 +556,174 @@ export function getToolDefinitions(): ToolDefinition[] {
         'Create a new branch on a site. Branches are isolated workspaces — edits made on a non-main branch do not affect the live site until the branch is published to main. Use this when starting a new piece of work that should be reviewable before going live. WORKFLOW: (1) Call `list_branches` first to confirm the desired name is not already in use. (2) Choose a name that hints at the work, lowercase-kebab style (e.g. "draft-hero-rewrite"). (3) After creating the branch, all subsequent edit-session calls should reference the new `branch_id`. The branch appears in the human dashboard immediately — confirm with the user before creating a branch unless they have explicitly authorized you to start new work.',
       inputSchema: CreateBranchInputSchema,
     },
+    {
+      name: 'get_branch',
+      description:
+        'Get a single branch\'s details: name, status, description, source branch, and timestamps. Use this to check a branch\'s current state before updating, archiving, or merging it.',
+      inputSchema: GetBranchInputSchema,
+    },
+    {
+      name: 'update_branch',
+      description:
+        'Update a branch\'s name, description, or lifecycle status. Provide at least one of name, description, or status. Status moves a branch through its lifecycle (active → review → merged → archived). Renaming must keep the name unique within the site.',
+      inputSchema: UpdateBranchInputSchema,
+    },
+    {
+      name: 'archive_branch',
+      description:
+        'Archive a branch once its work is merged or abandoned. Archiving hides the branch from the active list but preserves its history; use restore_branch to bring it back. The main branch cannot be archived. Confirm with the user before archiving unless they have authorized cleanup.',
+      inputSchema: ArchiveBranchInputSchema,
+    },
+    {
+      name: 'restore_branch',
+      description:
+        'Restore a previously archived branch, returning it to the active list. Errors if the branch does not exist or is not archived.',
+      inputSchema: RestoreBranchInputSchema,
+    },
+    {
+      name: 'check_merge',
+      description:
+        'Check whether a source branch can merge cleanly into a target branch, and report any conflicting documents. Run this before execute_merge so you know whether conflict resolutions are needed. Read-only — it does not change anything.',
+      inputSchema: CheckMergeInputSchema,
+    },
+    {
+      name: 'preview_merge',
+      description:
+        'Preview which documents a merge would change, before committing to it. Pass include_content to see full snapshots and diff operations, and exclude_path_prefixes to skip paths such as "_registry/". Read-only.',
+      inputSchema: PreviewMergeInputSchema,
+    },
+    {
+      name: 'execute_merge',
+      description:
+        'Merge a source branch into a target branch. This publishes the source branch\'s changes into the target and is hard to reverse — confirm with the user before merging into the main branch. If check_merge reported conflicts, supply conflict_resolutions; otherwise the merge proceeds directly.',
+      inputSchema: ExecuteMergeInputSchema,
+    },
+    {
+      name: 'create_merge_request',
+      description:
+        'Open a merge request proposing that a source branch be merged into a target branch, for human review before it lands. Use this instead of execute_merge when the work should be approved by a person first.',
+      inputSchema: CreateMergeRequestInputSchema,
+    },
+    {
+      name: 'list_merge_requests',
+      description:
+        'List a site\'s merge requests, optionally filtered by status (open, approved, conflicted, merged, closed). Use this to find work awaiting review or to check the state of a proposal.',
+      inputSchema: ListMergeRequestsInputSchema,
+    },
+    {
+      name: 'get_merge_request',
+      description:
+        'Get a single merge request\'s details, including its source and target branches and current status.',
+      inputSchema: GetMergeRequestInputSchema,
+    },
+    {
+      name: 'update_merge_request',
+      description:
+        'Update a merge request\'s title, description, or status. Provide at least one field. Set status to "approved" to clear the request for execution. Confirm approvals with the user — approving is a human decision.',
+      inputSchema: UpdateMergeRequestInputSchema,
+    },
+    {
+      name: 'execute_merge_request',
+      description:
+        'Execute an approved (or conflicted) merge request, merging its source branch into its target. Hard to reverse — confirm with the user first. Supply resolutions when the request has conflicts.',
+      inputSchema: ExecuteMergeRequestInputSchema,
+    },
+    {
+      name: 'list_structures',
+      description:
+        'List the navigation structures on a branch. A structure is the container for a navigation tree; every navigation and metadata tool needs a structure_id, and this is how you discover one. Filter by type with structure_type. Use the structure_id UUID in subsequent calls.',
+      inputSchema: ListStructuresInputSchema,
+    },
+    {
+      name: 'get_navigation',
+      description:
+        'Get the full navigation tree for a structure — every section, page, and link, with their nesting and order. Call this before adding or moving items so you understand where things currently sit.',
+      inputSchema: GetNavigationInputSchema,
+    },
+    {
+      name: 'add_navigation_item',
+      description:
+        'Place a new item in the navigation tree: a section (a grouping), a document (a link to a page, requires document_id), or an external link (requires external_url). position sets the order among siblings; omit parent_node_id for a top-level item. The slug must be unique within the parent.',
+      inputSchema: AddNavigationItemInputSchema,
+    },
+    {
+      name: 'update_navigation_item',
+      description:
+        'Rename a navigation item, change its slug, or change its position among its siblings. Provide at least one of name, slug, or position. To reparent an item, use move_navigation_item instead.',
+      inputSchema: UpdateNavigationItemInputSchema,
+    },
+    {
+      name: 'move_navigation_item',
+      description:
+        'Move a navigation item to a new parent and/or position. Omit new_parent_id to move it to the top level. The backend rejects a move that would make an item its own ancestor.',
+      inputSchema: MoveNavigationItemInputSchema,
+    },
+    {
+      name: 'reorder_navigation_items',
+      description:
+        'Reorder all the children under one parent in a single call. node_order lists the sibling node IDs in the order you want; omit parent_node_id to reorder the top-level items. Get the current node IDs from get_navigation first.',
+      inputSchema: ReorderNavigationItemsInputSchema,
+    },
+    {
+      name: 'remove_navigation_item',
+      description:
+        'Remove an item from the navigation tree. This unlinks the item from navigation; it does not archive the underlying page (use archive_page for that). Confirm with the user before removing unless they have authorized cleanup.',
+      inputSchema: RemoveNavigationItemInputSchema,
+    },
+    {
+      name: 'get_page_metadata',
+      description:
+        'Read a page\'s metadata within a structure (e.g. title, SEO fields, publish date). Metadata is scoped to a structure, so pass the structure_id the page belongs to.',
+      inputSchema: GetPageMetadataInputSchema,
+    },
+    {
+      name: 'set_page_metadata',
+      description:
+        'Set a page\'s metadata within a structure. metadata replaces the stored object in full, so include every field you want to keep. When the structure enforces a schema, the backend rejects metadata that does not conform.',
+      inputSchema: SetPageMetadataInputSchema,
+    },
+    {
+      name: 'list_document_versions',
+      description:
+        'List a document\'s version history on a branch, newest first. Use this to find the version_id to inspect with get_document_version or roll back to with restore_document_version.',
+      inputSchema: ListDocumentVersionsInputSchema,
+    },
+    {
+      name: 'get_document_version',
+      description:
+        'Get the full snapshot of a specific document version. Use this to inspect what a page looked like at a past point before deciding whether to restore it.',
+      inputSchema: GetDocumentVersionInputSchema,
+    },
+    {
+      name: 'restore_document_version',
+      description:
+        'Roll a document back to a prior version by writing that version\'s snapshot as a new, current version. History is append-only, so the older versions are preserved and the rollback can itself be undone. Confirm with the user before overwriting current content.',
+      inputSchema: RestoreDocumentVersionInputSchema,
+    },
+    {
+      name: 'publish_page',
+      description:
+        'Publish a single page so its current version becomes the live, content-delivery version on the branch. This is the per-page counterpart to merging a whole branch. Publishing is outward-facing — confirm with the user before publishing to a live branch.',
+      inputSchema: PublishPageInputSchema,
+    },
+    {
+      name: 'archive_page',
+      description:
+        'Archive (soft-delete) a page on a branch. The page is hidden but its history is preserved; use restore_page to bring it back. Confirm with the user before archiving unless they have authorized cleanup.',
+      inputSchema: ArchivePageInputSchema,
+    },
+    {
+      name: 'restore_page',
+      description:
+        'Restore a previously archived page. This is site-scoped: it acts on the document record across the site, not on a single branch. Errors if the page does not exist or is not archived.',
+      inputSchema: RestorePageInputSchema,
+    },
+    {
+      name: 'rename_page',
+      description:
+        'Change a page\'s path. This is site-scoped: the new path applies across the site, not only on your working branch. Errors if another document already occupies the new path.',
+      inputSchema: RenamePageInputSchema,
+    },
   ];
 }
 
@@ -314,6 +772,22 @@ function formatError(error: unknown): ToolResult {
   };
 }
 
+interface ConflictResolutionInputShape {
+  document_id: string;
+  strategy: 'take-source' | 'take-target' | 'manual';
+  resolved_snapshot?: Record<string, unknown>;
+}
+
+function mapConflictResolutions(
+  resolutions: ConflictResolutionInputShape[] | undefined,
+): { documentId: string; strategy: 'take-source' | 'take-target' | 'manual'; resolvedSnapshot?: Record<string, unknown> }[] | undefined {
+  return resolutions?.map((r) => ({
+    documentId: r.document_id,
+    strategy: r.strategy,
+    ...(r.resolved_snapshot !== undefined && { resolvedSnapshot: r.resolved_snapshot }),
+  }));
+}
+
 function formatValidationError(errors: ValidationError[]): ToolResult {
   const n = errors.length;
   const summary = `Validation failed: ${String(n)} error${n === 1 ? '' : 's'}. Correct the errors below and retry.`;
@@ -340,6 +814,34 @@ type GetDocumentPresenceInput = z.infer<typeof GetDocumentPresenceInputSchema>;
 type ListComponentsInput = z.infer<typeof ListComponentsInputSchema>;
 type CreatePageInput = z.infer<typeof CreatePageInputSchema>;
 type CreateBranchInput = z.infer<typeof CreateBranchInputSchema>;
+type GetBranchInput = z.infer<typeof GetBranchInputSchema>;
+type UpdateBranchInput = z.infer<typeof UpdateBranchInputSchema>;
+type ArchiveBranchInput = z.infer<typeof ArchiveBranchInputSchema>;
+type RestoreBranchInput = z.infer<typeof RestoreBranchInputSchema>;
+type CheckMergeInput = z.infer<typeof CheckMergeInputSchema>;
+type PreviewMergeInput = z.infer<typeof PreviewMergeInputSchema>;
+type ExecuteMergeInput = z.infer<typeof ExecuteMergeInputSchema>;
+type CreateMergeRequestInput = z.infer<typeof CreateMergeRequestInputSchema>;
+type ListMergeRequestsInput = z.infer<typeof ListMergeRequestsInputSchema>;
+type GetMergeRequestInput = z.infer<typeof GetMergeRequestInputSchema>;
+type UpdateMergeRequestInput = z.infer<typeof UpdateMergeRequestInputSchema>;
+type ExecuteMergeRequestInput = z.infer<typeof ExecuteMergeRequestInputSchema>;
+type ListStructuresInput = z.infer<typeof ListStructuresInputSchema>;
+type GetNavigationInput = z.infer<typeof GetNavigationInputSchema>;
+type AddNavigationItemInput = z.infer<typeof AddNavigationItemInputSchema>;
+type UpdateNavigationItemInput = z.infer<typeof UpdateNavigationItemInputSchema>;
+type MoveNavigationItemInput = z.infer<typeof MoveNavigationItemInputSchema>;
+type ReorderNavigationItemsInput = z.infer<typeof ReorderNavigationItemsInputSchema>;
+type RemoveNavigationItemInput = z.infer<typeof RemoveNavigationItemInputSchema>;
+type GetPageMetadataInput = z.infer<typeof GetPageMetadataInputSchema>;
+type SetPageMetadataInput = z.infer<typeof SetPageMetadataInputSchema>;
+type ListDocumentVersionsInput = z.infer<typeof ListDocumentVersionsInputSchema>;
+type GetDocumentVersionInput = z.infer<typeof GetDocumentVersionInputSchema>;
+type RestoreDocumentVersionInput = z.infer<typeof RestoreDocumentVersionInputSchema>;
+type PublishPageInput = z.infer<typeof PublishPageInputSchema>;
+type ArchivePageInput = z.infer<typeof ArchivePageInputSchema>;
+type RestorePageInput = z.infer<typeof RestorePageInputSchema>;
+type RenamePageInput = z.infer<typeof RenamePageInputSchema>;
 
 export interface ToolHandlers {
   list_sites: () => Promise<ToolResult>;
@@ -356,6 +858,34 @@ export interface ToolHandlers {
   list_components: (input: ListComponentsInput) => Promise<ToolResult>;
   create_page: (input: CreatePageInput) => Promise<ToolResult>;
   create_branch: (input: CreateBranchInput) => Promise<ToolResult>;
+  get_branch: (input: GetBranchInput) => Promise<ToolResult>;
+  update_branch: (input: UpdateBranchInput) => Promise<ToolResult>;
+  archive_branch: (input: ArchiveBranchInput) => Promise<ToolResult>;
+  restore_branch: (input: RestoreBranchInput) => Promise<ToolResult>;
+  check_merge: (input: CheckMergeInput) => Promise<ToolResult>;
+  preview_merge: (input: PreviewMergeInput) => Promise<ToolResult>;
+  execute_merge: (input: ExecuteMergeInput) => Promise<ToolResult>;
+  create_merge_request: (input: CreateMergeRequestInput) => Promise<ToolResult>;
+  list_merge_requests: (input: ListMergeRequestsInput) => Promise<ToolResult>;
+  get_merge_request: (input: GetMergeRequestInput) => Promise<ToolResult>;
+  update_merge_request: (input: UpdateMergeRequestInput) => Promise<ToolResult>;
+  execute_merge_request: (input: ExecuteMergeRequestInput) => Promise<ToolResult>;
+  list_structures: (input: ListStructuresInput) => Promise<ToolResult>;
+  get_navigation: (input: GetNavigationInput) => Promise<ToolResult>;
+  add_navigation_item: (input: AddNavigationItemInput) => Promise<ToolResult>;
+  update_navigation_item: (input: UpdateNavigationItemInput) => Promise<ToolResult>;
+  move_navigation_item: (input: MoveNavigationItemInput) => Promise<ToolResult>;
+  reorder_navigation_items: (input: ReorderNavigationItemsInput) => Promise<ToolResult>;
+  remove_navigation_item: (input: RemoveNavigationItemInput) => Promise<ToolResult>;
+  get_page_metadata: (input: GetPageMetadataInput) => Promise<ToolResult>;
+  set_page_metadata: (input: SetPageMetadataInput) => Promise<ToolResult>;
+  list_document_versions: (input: ListDocumentVersionsInput) => Promise<ToolResult>;
+  get_document_version: (input: GetDocumentVersionInput) => Promise<ToolResult>;
+  restore_document_version: (input: RestoreDocumentVersionInput) => Promise<ToolResult>;
+  publish_page: (input: PublishPageInput) => Promise<ToolResult>;
+  archive_page: (input: ArchivePageInput) => Promise<ToolResult>;
+  restore_page: (input: RestorePageInput) => Promise<ToolResult>;
+  rename_page: (input: RenamePageInput) => Promise<ToolResult>;
 }
 
 // =============================================================================
@@ -834,6 +1364,484 @@ export function createToolHandlers(
         return formatError(error);
       }
     },
+
+    async get_branch(input: GetBranchInput): Promise<ToolResult> {
+      try {
+        const branch = await apiClient.getBranch(input.site_id, input.branch_id);
+        return formatResult(branch);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async update_branch(input: UpdateBranchInput): Promise<ToolResult> {
+      try {
+        if (input.name === undefined && input.description === undefined && input.status === undefined) {
+          return formatError(
+            new Error('Provide at least one of name, description, or status to update.'),
+          );
+        }
+        const body: { name?: string; description?: string; status?: string } = {};
+        if (input.name !== undefined) body.name = input.name;
+        if (input.description !== undefined) body.description = input.description;
+        if (input.status !== undefined) body.status = input.status;
+
+        const branch = await apiClient.updateBranch(input.site_id, input.branch_id, body);
+        return formatResult({ message: `Branch "${branch.name}" updated.`, ...branch });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async archive_branch(input: ArchiveBranchInput): Promise<ToolResult> {
+      try {
+        await apiClient.archiveBranch(input.site_id, input.branch_id);
+        return formatResult({
+          message: 'Branch archived. Use restore_branch to bring it back.',
+          branchId: input.branch_id,
+        });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async restore_branch(input: RestoreBranchInput): Promise<ToolResult> {
+      try {
+        const branch = await apiClient.restoreBranch(input.site_id, input.branch_id);
+        return formatResult({ message: `Branch "${branch.name}" restored.`, ...branch });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async check_merge(input: CheckMergeInput): Promise<ToolResult> {
+      try {
+        const result = await apiClient.checkMerge(input.site_id, {
+          sourceBranchId: input.source_branch_id,
+          targetBranchId: input.target_branch_id,
+        });
+        return formatResult(result);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async preview_merge(input: PreviewMergeInput): Promise<ToolResult> {
+      try {
+        const body: {
+          sourceBranchId: string;
+          targetBranchId: string;
+          includeContent?: boolean;
+          excludePathPrefixes?: string[];
+        } = {
+          sourceBranchId: input.source_branch_id,
+          targetBranchId: input.target_branch_id,
+        };
+        if (input.include_content !== undefined) body.includeContent = input.include_content;
+        if (input.exclude_path_prefixes !== undefined) {
+          body.excludePathPrefixes = input.exclude_path_prefixes;
+        }
+
+        const result = await apiClient.previewMerge(input.site_id, body);
+        return formatResult(result);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async execute_merge(input: ExecuteMergeInput): Promise<ToolResult> {
+      try {
+        const body: {
+          sourceBranchId: string;
+          targetBranchId: string;
+          message?: string;
+          conflictResolutions?: ReturnType<typeof mapConflictResolutions>;
+        } = {
+          sourceBranchId: input.source_branch_id,
+          targetBranchId: input.target_branch_id,
+        };
+        if (input.message !== undefined) body.message = input.message;
+        const resolutions = mapConflictResolutions(input.conflict_resolutions);
+        if (resolutions !== undefined) body.conflictResolutions = resolutions;
+
+        const result = await apiClient.executeMerge(input.site_id, body);
+        return formatResult(result);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async create_merge_request(input: CreateMergeRequestInput): Promise<ToolResult> {
+      try {
+        const body: {
+          sourceBranchId: string;
+          targetBranchId: string;
+          title: string;
+          description?: string;
+        } = {
+          sourceBranchId: input.source_branch_id,
+          targetBranchId: input.target_branch_id,
+          title: input.title,
+        };
+        if (input.description !== undefined) body.description = input.description;
+
+        const mergeRequest = await apiClient.createMergeRequest(input.site_id, body);
+        return formatResult({ message: 'Merge request created.', ...mergeRequest });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async list_merge_requests(input: ListMergeRequestsInput): Promise<ToolResult> {
+      try {
+        const result = await apiClient.listMergeRequests(
+          input.site_id,
+          input.status !== undefined ? { status: input.status } : undefined,
+        );
+        if (result.mergeRequests.length === 0) {
+          return formatResult('No merge requests found.');
+        }
+        return formatResult(result);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async get_merge_request(input: GetMergeRequestInput): Promise<ToolResult> {
+      try {
+        const mergeRequest = await apiClient.getMergeRequest(
+          input.site_id,
+          input.merge_request_id,
+        );
+        return formatResult(mergeRequest);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async update_merge_request(input: UpdateMergeRequestInput): Promise<ToolResult> {
+      try {
+        if (input.title === undefined && input.description === undefined && input.status === undefined) {
+          return formatError(
+            new Error('Provide at least one of title, description, or status to update.'),
+          );
+        }
+        const body: { title?: string; description?: string; status?: string } = {};
+        if (input.title !== undefined) body.title = input.title;
+        if (input.description !== undefined) body.description = input.description;
+        if (input.status !== undefined) body.status = input.status;
+
+        const mergeRequest = await apiClient.updateMergeRequest(
+          input.site_id,
+          input.merge_request_id,
+          body,
+        );
+        return formatResult({ message: 'Merge request updated.', ...mergeRequest });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async execute_merge_request(input: ExecuteMergeRequestInput): Promise<ToolResult> {
+      try {
+        const resolutions = mapConflictResolutions(input.resolutions);
+        const result = await apiClient.executeMergeRequest(
+          input.site_id,
+          input.merge_request_id,
+          resolutions !== undefined ? { resolutions } : undefined,
+        );
+        return formatResult(result);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async list_structures(input: ListStructuresInput): Promise<ToolResult> {
+      try {
+        const result = await apiClient.listStructures(
+          input.site_id,
+          input.branch_id,
+          input.structure_type !== undefined ? { structureType: input.structure_type } : undefined,
+        );
+        if (result.structures.length === 0) {
+          return formatResult('No structures found on this branch.');
+        }
+        return formatResult(result);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async get_navigation(input: GetNavigationInput): Promise<ToolResult> {
+      try {
+        const result = await apiClient.getNavigation(
+          input.site_id,
+          input.branch_id,
+          input.structure_id,
+        );
+        return formatResult(result);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async add_navigation_item(input: AddNavigationItemInput): Promise<ToolResult> {
+      try {
+        if (input.node_type === 'document' && (input.document_id === undefined || input.document_id === '')) {
+          return formatError(new Error('document_id is required when node_type is "document".'));
+        }
+        if (input.node_type === 'external' && (input.external_url === undefined || input.external_url === '')) {
+          return formatError(new Error('external_url is required when node_type is "external".'));
+        }
+        const body: {
+          name: string;
+          slug: string;
+          nodeType: string;
+          position: number;
+          parentNodeId?: string;
+          documentId?: string;
+          externalUrl?: string;
+        } = {
+          name: input.name,
+          slug: input.slug,
+          nodeType: input.node_type,
+          position: input.position,
+        };
+        if (input.parent_node_id !== undefined) body.parentNodeId = input.parent_node_id;
+        if (input.document_id !== undefined) body.documentId = input.document_id;
+        if (input.external_url !== undefined) body.externalUrl = input.external_url;
+
+        const node = await apiClient.createNode(
+          input.site_id,
+          input.branch_id,
+          input.structure_id,
+          body,
+        );
+        return formatResult({ message: 'Navigation item created.', ...node });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async update_navigation_item(input: UpdateNavigationItemInput): Promise<ToolResult> {
+      try {
+        if (input.name === undefined && input.slug === undefined && input.position === undefined) {
+          return formatError(
+            new Error('Provide at least one of name, slug, or position to update.'),
+          );
+        }
+        const body: { name?: string; slug?: string; position?: number } = {};
+        if (input.name !== undefined) body.name = input.name;
+        if (input.slug !== undefined) body.slug = input.slug;
+        if (input.position !== undefined) body.position = input.position;
+
+        const node = await apiClient.updateNode(
+          input.site_id,
+          input.branch_id,
+          input.structure_id,
+          input.node_id,
+          body,
+        );
+        return formatResult({ message: 'Navigation item updated.', ...node });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async move_navigation_item(input: MoveNavigationItemInput): Promise<ToolResult> {
+      try {
+        const body: { newParentId: string | null; newPosition?: number } = {
+          newParentId: input.new_parent_id ?? null,
+        };
+        if (input.new_position !== undefined) body.newPosition = input.new_position;
+
+        const node = await apiClient.moveNode(
+          input.site_id,
+          input.branch_id,
+          input.structure_id,
+          input.node_id,
+          body,
+        );
+        return formatResult({ message: 'Navigation item moved.', ...node });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async reorder_navigation_items(input: ReorderNavigationItemsInput): Promise<ToolResult> {
+      try {
+        const result = await apiClient.reorderNodes(
+          input.site_id,
+          input.branch_id,
+          input.structure_id,
+          {
+            parentNodeId: input.parent_node_id ?? null,
+            nodeOrder: input.node_order,
+          },
+        );
+        return formatResult(result);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async remove_navigation_item(input: RemoveNavigationItemInput): Promise<ToolResult> {
+      try {
+        await apiClient.deleteNode(
+          input.site_id,
+          input.branch_id,
+          input.structure_id,
+          input.node_id,
+        );
+        return formatResult({
+          message: 'Navigation item removed.',
+          nodeId: input.node_id,
+        });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async get_page_metadata(input: GetPageMetadataInput): Promise<ToolResult> {
+      try {
+        const result = await apiClient.getDocumentMetadata(
+          input.site_id,
+          input.branch_id,
+          input.structure_id,
+          input.document_id,
+        );
+        return formatResult(result);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async set_page_metadata(input: SetPageMetadataInput): Promise<ToolResult> {
+      try {
+        const result = await apiClient.setDocumentMetadata(
+          input.site_id,
+          input.branch_id,
+          input.structure_id,
+          input.document_id,
+          input.metadata,
+        );
+        return formatResult({ message: 'Page metadata saved.', ...result });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async list_document_versions(input: ListDocumentVersionsInput): Promise<ToolResult> {
+      try {
+        const result = await apiClient.listDocumentVersions(
+          input.site_id,
+          input.branch_id,
+          input.document_id,
+        );
+        if (result.versions.length === 0) {
+          return formatResult('No versions found for this document.');
+        }
+        return formatResult(result);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async get_document_version(input: GetDocumentVersionInput): Promise<ToolResult> {
+      try {
+        const version = await apiClient.getDocumentVersion(
+          input.site_id,
+          input.branch_id,
+          input.document_id,
+          input.version_id,
+        );
+        return formatResult(version);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async restore_document_version(input: RestoreDocumentVersionInput): Promise<ToolResult> {
+      // TODO(PCC-3294): the restored version is written as a plain edit with no
+      // marker that it is a rollback, so history cannot distinguish a restore
+      // from a normal change. Record restore provenance, ideally via the
+      // server-side restore endpoint proposed in PCC-3206.
+      try {
+        const version = await apiClient.getDocumentVersion(
+          input.site_id,
+          input.branch_id,
+          input.document_id,
+          input.version_id,
+        );
+        const snapshot = version.snapshot;
+        if (snapshot === undefined || snapshot === null) {
+          return formatError(new Error('The target version has no snapshot to restore.'));
+        }
+        const created = await apiClient.createDocumentVersion(
+          input.site_id,
+          input.branch_id,
+          input.document_id,
+          snapshot,
+        );
+        return formatResult({
+          message: `Document rolled back to the contents of version ${input.version_id}.`,
+          ...created,
+        });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async publish_page(input: PublishPageInput): Promise<ToolResult> {
+      try {
+        const result = await apiClient.publishDocument(
+          input.site_id,
+          input.branch_id,
+          input.document_id,
+        );
+        return formatResult(result);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async archive_page(input: ArchivePageInput): Promise<ToolResult> {
+      try {
+        await apiClient.archiveDocumentOnBranch(
+          input.site_id,
+          input.branch_id,
+          input.document_id,
+        );
+        return formatResult({
+          message: 'Page archived. Use restore_page to bring it back.',
+          documentId: input.document_id,
+        });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async restore_page(input: RestorePageInput): Promise<ToolResult> {
+      try {
+        const document = await apiClient.restoreDocument(input.site_id, input.document_id);
+        return formatResult({ message: 'Page restored.', ...document });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async rename_page(input: RenamePageInput): Promise<ToolResult> {
+      try {
+        const document = await apiClient.renameDocument(
+          input.site_id,
+          input.document_id,
+          input.path,
+        );
+        return formatResult({ message: `Page renamed to "${input.path}".`, ...document });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
   };
 }
 
@@ -856,4 +1864,32 @@ export const schemas = {
   list_components: ListComponentsInputSchema,
   create_page: CreatePageInputSchema,
   create_branch: CreateBranchInputSchema,
+  get_branch: GetBranchInputSchema,
+  update_branch: UpdateBranchInputSchema,
+  archive_branch: ArchiveBranchInputSchema,
+  restore_branch: RestoreBranchInputSchema,
+  check_merge: CheckMergeInputSchema,
+  preview_merge: PreviewMergeInputSchema,
+  execute_merge: ExecuteMergeInputSchema,
+  create_merge_request: CreateMergeRequestInputSchema,
+  list_merge_requests: ListMergeRequestsInputSchema,
+  get_merge_request: GetMergeRequestInputSchema,
+  update_merge_request: UpdateMergeRequestInputSchema,
+  execute_merge_request: ExecuteMergeRequestInputSchema,
+  list_structures: ListStructuresInputSchema,
+  get_navigation: GetNavigationInputSchema,
+  add_navigation_item: AddNavigationItemInputSchema,
+  update_navigation_item: UpdateNavigationItemInputSchema,
+  move_navigation_item: MoveNavigationItemInputSchema,
+  reorder_navigation_items: ReorderNavigationItemsInputSchema,
+  remove_navigation_item: RemoveNavigationItemInputSchema,
+  get_page_metadata: GetPageMetadataInputSchema,
+  set_page_metadata: SetPageMetadataInputSchema,
+  list_document_versions: ListDocumentVersionsInputSchema,
+  get_document_version: GetDocumentVersionInputSchema,
+  restore_document_version: RestoreDocumentVersionInputSchema,
+  publish_page: PublishPageInputSchema,
+  archive_page: ArchivePageInputSchema,
+  restore_page: RestorePageInputSchema,
+  rename_page: RenamePageInputSchema,
 };

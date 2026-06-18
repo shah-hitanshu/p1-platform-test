@@ -30,13 +30,6 @@ describe('Streamable HTTP Transport', () => {
     expect(typeof server.connect).toBe('function');
   });
 
-  // Test 82: Server has registered tools
-  it('should have all 14 tools available', async () => {
-    const { getToolDefinitions } = await import('../../src/shared/tools.js');
-    const defs = getToolDefinitions();
-    expect(defs).toHaveLength(14);
-  });
-
   // Test 83: Transport returns 405 for GET on /mcp
   // The MCP Streamable HTTP transport only accepts POST requests.
   // GET requests to /mcp should be rejected. We verify the transport

@@ -15,26 +15,13 @@ describe('Tool Definitions', () => {
   beforeEach(() => { vi.resetAllMocks(); });
   afterEach(() => { vi.restoreAllMocks(); });
 
-  // Test 18: 14 tool definitions
-  it('should return exactly 14 tool definitions', async () => {
-    const { getToolDefinitions } = await import('../../src/shared/tools.js');
-    const defs = getToolDefinitions();
-    expect(defs).toHaveLength(14);
-    const names = defs.map((d) => d.name);
-    expect(names).toContain('list_sites');
-    expect(names).toContain('list_branches');
-    expect(names).toContain('list_documents');
-    expect(names).toContain('get_document');
-    expect(names).toContain('check_edit_permission');
-    expect(names).toContain('start_edit_session');
-    expect(names).toContain('apply_document_edits');
-    expect(names).toContain('complete_edit_session');
-    expect(names).toContain('abort_edit_session');
-    expect(names).toContain('get_branch_presence');
-    expect(names).toContain('get_document_presence');
-    expect(names).toContain('list_components');
-    expect(names).toContain('create_page');
-    expect(names).toContain('create_branch');
+  // Every tool definition has a matching schema and vice versa, so a tool
+  // can never be advertised without a validatable input shape.
+  it('exposes a schema for every tool definition and no orphan schemas', async () => {
+    const { getToolDefinitions, schemas } = await import('../../src/shared/tools.js');
+    const defNames = getToolDefinitions().map((d) => d.name).sort();
+    const schemaNames = Object.keys(schemas).sort();
+    expect(schemaNames).toEqual(defNames);
   });
 
   // Test 19: Each tool has required fields
