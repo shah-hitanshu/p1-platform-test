@@ -7,7 +7,7 @@
 
 import { query } from '../db';
 import { setGauge, recordTiming } from '../services/metrics-service';
-import type { Env } from '../index';
+import type { Env } from '../env';
 
 /**
  * Health check response type.

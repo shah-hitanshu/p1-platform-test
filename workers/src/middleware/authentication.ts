@@ -17,7 +17,7 @@ import { AgentApiKeyProvider } from '../auth/agent-api-key-provider';
 import { MASClient } from '../services/mas-client';
 import { BrokerJwtIdentityProvider } from '../auth/broker-jwt-identity-provider';
 import { jsonResponse, errorResponse } from '../utils/http-helpers';
-import type { Env } from '../index';
+import type { Env } from '../env';
 
 /**
  * Default mock identity configuration for development.

@@ -355,7 +355,7 @@ export function SiteDetailPage() {
     return user?.email ?? userId;
   };
 
-  const getStatusTagColor = (_status: Branch['status']): 'neutral' => {
+  const getStatusTagColor = (_status: string): 'neutral' => {
     return 'neutral';
   };
 

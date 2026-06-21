@@ -11,7 +11,6 @@
  */
 
 import { DurableObject } from 'cloudflare:workers';
-import type { DurableObjectState } from '@cloudflare/workers-types';
 import type { ActorPresence, PresenceState } from '../types';
 import {
   CLEANUP_INTERVAL_MS,

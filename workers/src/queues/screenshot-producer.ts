@@ -7,7 +7,7 @@
  * enqueue errors so it can be safely called from inside transactions.
  */
 
-import type { Env } from '../index';
+import type { Env } from '../env';
 import type { ScreenshotQueueMessage } from '../types/queue-messages';
 
 export type ScreenshotRequestReason = ScreenshotQueueMessage['reason'];

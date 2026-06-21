@@ -66,7 +66,7 @@ describe('checkToolRateLimit', () => {
     read.enqueue(true); // ip-scope
 
     const result = await checkToolRateLimit(
-      { toolsRead: read.binding as unknown as RateLimit, toolsMutation: mutation.binding as unknown as RateLimit },
+      { toolsRead: read.binding, toolsMutation: mutation.binding },
       'list_sites',
       false,
       { actingUserId: 'user-123', clientIp: '203.0.113.10' },
@@ -90,7 +90,7 @@ describe('checkToolRateLimit', () => {
     // ip-scope queue value irrelevant — implementation may short-circuit
 
     const result = await checkToolRateLimit(
-      { toolsRead: read.binding as unknown as RateLimit },
+      { toolsRead: read.binding },
       'list_sites',
       false,
       { actingUserId: 'user-123', clientIp: '203.0.113.10' },
@@ -111,7 +111,7 @@ describe('checkToolRateLimit', () => {
     read.enqueue(false); // ip-scope fails
 
     const result = await checkToolRateLimit(
-      { toolsRead: read.binding as unknown as RateLimit },
+      { toolsRead: read.binding },
       'list_sites',
       false,
       { actingUserId: 'user-123', clientIp: '203.0.113.10' },
@@ -133,8 +133,8 @@ describe('checkToolRateLimit', () => {
 
     const result = await checkToolRateLimit(
       {
-        toolsRead: read.binding as unknown as RateLimit,
-        toolsMutation: mutation.binding as unknown as RateLimit,
+        toolsRead: read.binding,
+        toolsMutation: mutation.binding,
       },
       'apply_document_edits',
       true,
@@ -155,8 +155,8 @@ describe('checkToolRateLimit', () => {
 
     const result = await checkToolRateLimit(
       {
-        toolsRead: read.binding as unknown as RateLimit,
-        toolsAnon: anon.binding as unknown as RateLimit,
+        toolsRead: read.binding,
+        toolsAnon: anon.binding,
       },
       'list_sites',
       false,
@@ -241,7 +241,7 @@ describe('checkToolRateLimit', () => {
     read.enqueue(true);
 
     await checkToolRateLimit(
-      { toolsRead: read.binding as unknown as RateLimit },
+      { toolsRead: read.binding },
       'list_sites',
       false,
       { actingUserId: '1.2.3.4', clientIp: '1.2.3.4' },
@@ -292,7 +292,7 @@ describe('checkOauthRateLimit', () => {
     oauth.enqueue(true);
 
     const result = await checkOauthRateLimit(
-      oauth.binding as unknown as RateLimit,
+      oauth.binding,
       '/token',
       '203.0.113.99',
     );
@@ -309,7 +309,7 @@ describe('checkOauthRateLimit', () => {
     oauth.enqueue(false);
 
     const result = await checkOauthRateLimit(
-      oauth.binding as unknown as RateLimit,
+      oauth.binding,
       '/register',
       '203.0.113.99',
     );

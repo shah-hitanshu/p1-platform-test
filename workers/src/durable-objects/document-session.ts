@@ -9,7 +9,6 @@
 
 import * as Y from 'yjs';
 import { DurableObject } from 'cloudflare:workers';
-import type { DurableObjectState } from '@cloudflare/workers-types';
 import type { ActorPresence, Organization } from '../types';
 import { PresenceManager } from '../services/presence-service';
 import { ActivityDetector } from '../services/activity-detection-service';
@@ -37,7 +36,6 @@ import {
 } from './websocket-utils';
 import {
   persistEditSessions as persistEditSessionsFn,
-  restoreEditSessions as restoreEditSessionsFn,
 } from './edit-session-store';
 import { rollbackToAgentCheckpoint } from './agent-checkpoint-client';
 import {
@@ -363,7 +361,13 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
     const stored = await this.state.storage.get(YDOC_STORAGE_KEY);
     if (stored != null) {
-      console.log(`CRDT restore: stored type=${typeof stored}, constructor=${stored?.constructor?.name}, instanceof Uint8Array=${stored instanceof Uint8Array}, instanceof ArrayBuffer=${stored instanceof ArrayBuffer}, isView=${ArrayBuffer.isView(stored)}`);
+      console.log(
+        'CRDT restore: stored type=' + typeof stored
+        + ', constructor=' + stored.constructor.name
+        + ', instanceof Uint8Array=' + String(stored instanceof Uint8Array)
+        + ', instanceof ArrayBuffer=' + String(stored instanceof ArrayBuffer)
+        + ', isView=' + String(ArrayBuffer.isView(stored)),
+      );
     } else {
       console.log('CRDT restore: no data in DO storage');
     }
@@ -374,16 +378,21 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       ? stored
       : stored instanceof ArrayBuffer
         ? new Uint8Array(stored)
-        : (ArrayBuffer.isView(stored) ? new Uint8Array((stored as ArrayBufferView).buffer, (stored as ArrayBufferView).byteOffset, (stored as ArrayBufferView).byteLength) : null);
+        : (ArrayBuffer.isView(stored)
+          ? new Uint8Array(stored.buffer, stored.byteOffset, stored.byteLength)
+          : null);
     if (storedBytes && storedBytes.length > 0) {
       try {
-        console.log(`CRDT restore: applying ${storedBytes.length} bytes to Y.Doc`);
+        console.log('CRDT restore: applying ' + String(storedBytes.length) + ' bytes to Y.Doc');
         Y.applyUpdate(this.ydoc, storedBytes);
         this.initialized = true;
         this.syncManager.lastSyncedStateVectorHash = this.syncManager.computeStateVectorHash();
         const root = this.ydoc.getMap('root');
         const contentArr = root.get('content');
-        console.log(`CRDT restore: SUCCESS from DO storage, content items=${contentArr ? (contentArr as Y.Array<unknown>).length : 'no-content-key'}`);
+        const contentLen = contentArr != null
+          ? String((contentArr as Y.Array<unknown>).length)
+          : 'no-content-key';
+        console.log('CRDT restore: SUCCESS from DO storage, content items=' + contentLen);
       } catch (error) {
         console.warn('CRDT restore: FAILED to apply stored update:', error);
       }
@@ -508,7 +517,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
       if (expiredCount > 0) {
         console.log(
-          `Cleaned up ${String(expiredCount)} expired edit session(s) on restore (${String(rolledBackCount)} rolled back)`,
+          'Cleaned up ' + String(expiredCount)
+          + ' expired edit session(s) on restore ('
+          + String(rolledBackCount) + ' rolled back)',
         );
         // Persist the cleaned-up sessions map (expired ones removed)
         await this.persistEditSessions();
@@ -593,9 +604,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     if (this.pendingBroadcastUpdates.length === 0) return;
 
     const senders = new Set(this.pendingBroadcastSenders);
-    const mergedUpdate: Uint8Array = this.pendingBroadcastUpdates.length === 1
-      ? this.pendingBroadcastUpdates[0]!
-      : Y.mergeUpdates(this.pendingBroadcastUpdates);
+    const mergedUpdate = Y.mergeUpdates(this.pendingBroadcastUpdates);
 
     this.pendingBroadcastUpdates = [];
     this.pendingBroadcastSenders = [];
@@ -635,9 +644,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   private getCrdtEndpointDeps(): CrdtEndpointDeps {
     return {
       getYdoc: () => this.ydoc,
-      setYdoc: (doc: Y.Doc) => { this.ydoc = doc; },
+      setYdoc: (doc: Y.Doc): void => { this.ydoc = doc; },
       getInitialized: () => this.initialized,
-      setInitialized: (v: boolean) => { this.initialized = v; },
+      setInitialized: (v: boolean): void => { this.initialized = v; },
       env: this.env,
       storage: this.state.storage,
       sessionInfo: this.sessionInfo,
@@ -647,10 +656,14 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       getWebSockets: () => this.state.getWebSockets(),
       persist: () => this.persist(),
       flushPendingPersist: () => this.flushPendingPersist(),
-      broadcastUpdate: (update, sender) => broadcastUpdateFn(() => this.state.getWebSockets(), update, sender),
+      broadcastUpdate: (update, sender): void => {
+        broadcastUpdateFn(
+          () => this.state.getWebSockets(), update, sender,
+        );
+      },
       scheduleCleanupAlarm: () => scheduleCleanupAlarm(this.getAlarmCleanupDeps()),
       getLastSeenBranchVersion: () => this.lastSeenBranchVersion,
-      setLastSeenBranchVersion: (v: number) => {
+      setLastSeenBranchVersion: (v: number): void => {
         this.lastSeenBranchVersion = v;
         void this.state.storage.put(BRANCH_VERSION_STORAGE_KEY, v);
       },
@@ -671,17 +684,28 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       getPersistPending: () => this.persistPending,
       getPresencePersistPending: () => this.presencePersistPending,
       getCleanupAlarmScheduled: () => this.cleanupAlarmScheduled,
-      setCleanupAlarmScheduled: (v: boolean) => { this.cleanupAlarmScheduled = v; },
+      setCleanupAlarmScheduled: (v: boolean): void => {
+        this.cleanupAlarmScheduled = v;
+      },
       initializeCrdtIfNeeded: () => this.initializeCrdtIfNeeded(),
-      checkBranchInvalidation: () => checkBranchInvalidation(this.getCrdtEndpointDeps()),
-      restoreSessionInfoFromStorage: () => this.restoreSessionInfoFromStorage(),
+      checkBranchInvalidation: () =>
+        checkBranchInvalidation(this.getCrdtEndpointDeps()),
+      restoreSessionInfoFromStorage: () =>
+        this.restoreSessionInfoFromStorage(),
       flushPendingPersist: () => this.flushPendingPersist(),
       persistPresence: () => this.persistPresence(),
       persistEditSessions: () => this.persistEditSessions(),
-      compactCrdtState: () => compactCrdtState(this.getWebSocketConnectionDeps()),
-      broadcastPresenceUpdate: () => broadcastPresenceUpdate(this.getPresenceProtocolDeps()),
-      pushPresenceUpdate: (type, actorId, extra) => this.pushPresenceUpdate(type, actorId, extra),
-      isAlarmMetricsEnabled: () => this.env.DO_ALARM_METRICS_ENABLED === 'true',
+      compactCrdtState: (): void => {
+        compactCrdtState(this.getWebSocketConnectionDeps());
+      },
+      broadcastPresenceUpdate: (): void => {
+        broadcastPresenceUpdate(this.getPresenceProtocolDeps());
+      },
+      pushPresenceUpdate: (type, actorId, extra): void => {
+        this.pushPresenceUpdate(type, actorId, extra);
+      },
+      isAlarmMetricsEnabled: () =>
+        this.env.DO_ALARM_METRICS_ENABLED === 'true',
     };
   }
 
@@ -693,35 +717,50 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       activityDetector: this.activityDetector,
       editSessions: this.editSessions,
       getWebSockets: () => this.state.getWebSockets(),
-      getAllConnections: () => getAllConnections(() => this.state.getWebSockets()),
+      getAllConnections: () =>
+        getAllConnections(() => this.state.getWebSockets()),
       syncManager: this.syncManager,
       storage: this.state.storage,
       flushPendingPersist: () => this.flushPendingPersist(),
-      markPresencePersistPending: () => this.markPresencePersistPending(),
-      pushPresenceUpdate: (type, actorId, extra) => this.pushPresenceUpdate(type, actorId, extra),
-      scheduleCleanupAlarm: () => scheduleCleanupAlarm(this.getAlarmCleanupDeps()),
+      markPresencePersistPending: async (): Promise<void> => {
+        await this.markPresencePersistPending();
+      },
+      pushPresenceUpdate: (type, actorId, extra): void => {
+        this.pushPresenceUpdate(type, actorId, extra);
+      },
+      scheduleCleanupAlarm: () =>
+        scheduleCleanupAlarm(this.getAlarmCleanupDeps()),
     };
   }
 
   private getAgentPolitenessDeps(): AgentPolitenessDeps {
-    const self = this;
-    return {
+    const deps: AgentPolitenessDeps = {
       env: this.env,
       sessionInfo: this.sessionInfo,
       editSessions: this.editSessions,
       presenceManager: this.presenceManager,
       activityDetector: this.activityDetector,
       agentEditPermissionService: this.agentEditPermissionService,
-      get cachedOrganization() { return self.cachedOrganization; },
+      cachedOrganization: this.cachedOrganization,
       getConnectionCount: () => this.getConnectionCount(),
       persistEditSessions: () => this.persistEditSessions(),
       persistPresence: () => this.persistPresence(),
-      broadcastPresenceUpdate: () => broadcastPresenceUpdate(this.getPresenceProtocolDeps()),
-      refreshOrganizationSettings: () => this.refreshOrganizationSettings(),
-      scheduleCleanupAlarm: () => scheduleCleanupAlarm(this.getAlarmCleanupDeps()),
+      broadcastPresenceUpdate: (): void => {
+        broadcastPresenceUpdate(this.getPresenceProtocolDeps());
+      },
+      refreshOrganizationSettings: () =>
+        this.refreshOrganizationSettings(),
+      scheduleCleanupAlarm: () =>
+        scheduleCleanupAlarm(this.getAlarmCleanupDeps()),
       jsonResponse: (status, data) => jsonResponseFn(status, data),
-      errorResponse: (status, message) => errorResponseFn(status, message),
+      errorResponse: (status, message) =>
+        errorResponseFn(status, message),
     };
+    Object.defineProperty(deps, 'cachedOrganization', {
+      get: () => this.cachedOrganization,
+      enumerable: true,
+    });
+    return deps;
   }
 
   private getWebSocketConnectionDeps(): WebSocketConnectionDeps {
@@ -730,32 +769,53 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       sessionInfo: this.sessionInfo,
       state: this.state,
       ydoc: this.ydoc,
-      setYdoc: (doc: Y.Doc) => { this.ydoc = doc; },
+      setYdoc: (doc: Y.Doc): void => { this.ydoc = doc; },
       initialized: this.initialized,
       presenceManager: this.presenceManager,
       activityDetector: this.activityDetector,
       editSessions: this.editSessions,
       messageRates: this.messageRates,
       initializeCrdtIfNeeded: () => this.initializeCrdtIfNeeded(),
-      restoreSessionInfoFromStorage: () => this.restoreSessionInfoFromStorage(),
-      markPersistPending: () => this.markPersistPending(),
+      restoreSessionInfoFromStorage: () =>
+        this.restoreSessionInfoFromStorage(),
+      markPersistPending: async (): Promise<void> => {
+        await this.markPersistPending();
+      },
       flushPendingPersist: () => this.flushPendingPersist(),
-      enqueueBroadcast: (sender, update) => this.enqueueBroadcast(sender, update),
-      flushPendingBroadcasts: () => this.flushPendingBroadcasts(),
+      enqueueBroadcast: (sender, update): void => {
+        this.enqueueBroadcast(sender, update);
+      },
+      flushPendingBroadcasts: (): void => {
+        this.flushPendingBroadcasts();
+      },
       persist: () => this.persist(),
       persistPresence: () => this.persistPresence(),
       persistEditSessions: () => this.persistEditSessions(),
-      scheduleCleanupAlarm: () => scheduleCleanupAlarm(this.getAlarmCleanupDeps()),
-      broadcastPresenceUpdate: () => broadcastPresenceUpdate(this.getPresenceProtocolDeps()),
-      pushPresenceUpdate: (type, actorId, extra) => this.pushPresenceUpdate(type, actorId, extra),
-      handlePresenceMessage: (ws, meta, data) => handlePresenceMessage(this.getPresenceProtocolDeps(), ws, meta, data),
+      scheduleCleanupAlarm: () =>
+        scheduleCleanupAlarm(this.getAlarmCleanupDeps()),
+      broadcastPresenceUpdate: (): void => {
+        broadcastPresenceUpdate(this.getPresenceProtocolDeps());
+      },
+      pushPresenceUpdate: (type, actorId, extra): void => {
+        this.pushPresenceUpdate(type, actorId, extra);
+      },
+      handlePresenceMessage: (ws, meta, data): void => {
+        handlePresenceMessage(
+          this.getPresenceProtocolDeps(), ws, meta, data,
+        );
+      },
       tryParseJson: (data) => tryParseJson(data),
-      handleWsPublishRequest: (ws, meta, message) => handleWsPublishRequest(this.getPresenceProtocolDeps(), ws, meta, message),
+      handleWsPublishRequest: (ws, meta, message) =>
+        handleWsPublishRequest(
+          this.getPresenceProtocolDeps(), ws, meta, message,
+        ),
       syncManager: this.syncManager,
       runCleanup: () => runCleanup(this.getAlarmCleanupDeps()),
       getConnectionCount: () => this.getConnectionCount(),
       PERSIST_PENDING_KEY: DocumentSession.PERSIST_PENDING_KEY,
-      setPersistPending: (value: boolean) => { this.persistPending = value; },
+      setPersistPending: (value: boolean): void => {
+        this.persistPending = value;
+      },
     };
   }
 }

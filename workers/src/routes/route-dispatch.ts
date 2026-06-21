@@ -6,7 +6,7 @@
  */
 
 import type { AuthenticatedPrincipal } from '../types';
-import type { Env } from '../index';
+import type { Env } from '../env';
 import type { RouteParams } from './route-parser';
 import type { MASClient } from '../services/mas-client';
 

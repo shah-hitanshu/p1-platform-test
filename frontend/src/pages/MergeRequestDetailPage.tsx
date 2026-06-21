@@ -43,6 +43,7 @@ export function MergeRequestDetailPage() {
   const [documentDiffs, setDocumentDiffs] = useState<DocumentDiff[] | undefined>(undefined);
   const [diffsLoading, setDiffsLoading] = useState(false);
   const diffsLoadedRef = useRef(false);
+  const autoOpenedRef = useRef(false);
 
   const { data: site, isLoading: siteLoading, error: siteError, execute: fetchSite } =
     useApi<Site, [string]>(getSite);
@@ -87,9 +88,14 @@ export function MergeRequestDetailPage() {
     }
   }, [siteId, mergeRequest]);
 
-  // Auto-show resolution panel when merge request is conflicted
+  // Auto-show resolution panel once when merge request first loads as conflicted
   useEffect(() => {
-    if (mergeRequest?.status === 'conflicted' && mergeRequest.hasConflicts) {
+    if (
+      !autoOpenedRef.current &&
+      mergeRequest?.status === 'conflicted' &&
+      mergeRequest.hasConflicts
+    ) {
+      autoOpenedRef.current = true;
       setShowResolutionPanel(true);
     }
   }, [mergeRequest?.status, mergeRequest?.hasConflicts]);

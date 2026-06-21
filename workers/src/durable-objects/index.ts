@@ -7,7 +7,6 @@
  * SessionManager is a placeholder for future phases.
  */
 
-import type { DurableObjectState } from '@cloudflare/workers-types';
 
 // Re-export DocumentSession as DocumentState for wrangler.jsonc compatibility
 // The wrangler config expects class_name: "DocumentState"

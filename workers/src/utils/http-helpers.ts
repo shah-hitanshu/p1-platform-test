@@ -10,7 +10,7 @@ import {
   addCorsHeaders as sharedAddCorsHeaders,
   handlePreflight as sharedHandlePreflight,
 } from './cors';
-import type { Env } from '../index';
+import type { Env } from '../env';
 
 /**
  * JSON response helper.
