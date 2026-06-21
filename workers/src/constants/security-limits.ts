@@ -233,6 +233,19 @@ export const PERSIST_DEBOUNCE_MS = 2000;
  */
 export const BROADCAST_DEBOUNCE_MS = 50;
 
+/**
+ * Action types that trigger immediate sync to PostgreSQL, bypassing the
+ * alarm-based debounce and queue batching.
+ *
+ * These are low-volume, user-facing document lifecycle operations where
+ * the user is waiting for confirmation. Ongoing editing operations
+ * ("insert", "reorder", "set", "delete") continue to use batched sync.
+ */
+export const IMMEDIATE_SYNC_ACTION_TYPES: ReadonlySet<string> = new Set([
+  'document_create',
+  'document_delete',
+]);
+
 // =============================================================================
 // Cleanup Timer Limits
 // Used in: document-session.ts

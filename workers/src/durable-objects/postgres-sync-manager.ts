@@ -16,6 +16,7 @@ import {
 } from './document-session-types';
 import { applySnapshotToYMap } from './crdt-operations';
 import { reconstructVersionSnapshot } from '../services/document-version-service';
+import { IMMEDIATE_SYNC_ACTION_TYPES } from '../constants/security-limits';
 
 /** Storage key for sync schedule (survives hibernation) */
 export const SYNC_SCHEDULE_KEY = 'syncSchedule';
@@ -531,6 +532,28 @@ export class PostgresSyncManager {
     // Only schedule if we have internal API configured
     if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
       return;
+    }
+
+    // Immediate sync for document lifecycle operations (bypasses debounce + queue)
+    if (
+      this.pendingActionMetadata !== null
+      && IMMEDIATE_SYNC_ACTION_TYPES.has(this.pendingActionMetadata.actionType)
+    ) {
+      try {
+        await this.performDirectSync(
+          this.env.INTERNAL_API_URL,
+          this.env.INTERNAL_SECRET,
+          actorId,
+          actorType,
+        );
+        this.pendingActionMetadata = null;
+        return;
+      } catch (error) {
+        console.error(
+          `Immediate sync failed for ${this.pendingActionMetadata.actionType}, falling back to scheduled sync:`,
+          error,
+        );
+      }
     }
 
     // Store sync schedule in DO storage (survives hibernation)
