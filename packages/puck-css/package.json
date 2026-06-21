@@ -2,6 +2,11 @@
   "name": "@pantheon-systems/puck-css",
   "version": "0.4.0",
   "description": "Puck editor integration with Collaborative State System",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "provenance": false
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/pantheon-systems/puck-css-integration.git",

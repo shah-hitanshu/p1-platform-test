@@ -27,11 +27,20 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: '22'
+
+      - name: Update npm
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Set package versions
+        if: ${{ inputs.version != '' }}
+        run: |
+          for pkg in css-client puck-css p1-next-sdk create-p1-starter-kit; do
+            jq --arg v "${{ inputs.version }}" '.version = $v' "packages/$pkg/package.json" > tmp.json && mv tmp.json "packages/$pkg/package.json"
+          done
 
       - name: Build packages
         run: pnpm build
@@ -41,16 +50,16 @@ jobs:
 
       - name: Publish css-client
         working-directory: packages/css-client
-        run: pnpm publish --no-git-checks --access public --provenance
+        run: npm publish --access public
 
       - name: Publish puck-css
         working-directory: packages/puck-css
-        run: pnpm publish --no-git-checks --access public --provenance
+        run: npm publish --access public
 
       - name: Publish p1-next-sdk
         working-directory: packages/p1-next-sdk
-        run: pnpm publish --no-git-checks --access public --provenance
+        run: npm publish --access public
 
       - name: Publish create-p1-starter-kit
         working-directory: packages/create-p1-starter-kit
-        run: pnpm publish --no-git-checks --access public --provenance
+        run: npm publish --access public

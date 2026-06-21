@@ -15,6 +15,11 @@
     "lib/",
     "template/"
   ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "provenance": false
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/pantheon-systems/puck-css-integration.git",

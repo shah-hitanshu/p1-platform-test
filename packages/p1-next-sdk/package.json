@@ -2,6 +2,11 @@
   "name": "@pantheon-systems/p1-next-sdk",
   "version": "0.1.0",
   "description": "Next.js SDK for P1 editor integration",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "provenance": false
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/pantheon-systems/puck-css-integration.git",
