@@ -10,7 +10,6 @@ import {
   createOrganization,
   getOrganizationById,
   updateOrganization,
-  deleteOrganization,
   archiveOrganization,
   restoreOrganization,
   listOrganizations,

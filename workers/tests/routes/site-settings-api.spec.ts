@@ -19,11 +19,7 @@ vi.mock('../../src/services', () => ({
 
 vi.mock('../../src/auth/authorization', () => ({
   assertPermission: vi.fn(),
-  AuthorizationError: class AuthorizationError extends Error {
-    constructor(message: string) {
-      super(message);
-    }
-  },
+  AuthorizationError: class AuthorizationError extends Error {},
 }));
 
 const mockPrincipal: AuthenticatedPrincipal = {

@@ -31,6 +31,7 @@ import {
   getMainBranch,
   MainBranchProtectionError,
 } from '../../src/services/branch-service';
+import type { Branch } from '../../src/types';
 
 import { createDocument } from '../../src/services/document-service';
 
@@ -69,7 +70,7 @@ function createRealDatabaseConnection(connectionString: string): {
 }
 
 /** Create a feature branch off the site's main branch. */
-async function createFeatureBranch(siteId: string, name: string) {
+async function createFeatureBranch(siteId: string, name: string): Promise<Branch> {
   const main = await getMainBranch(siteId);
   if (!main) throw new Error(`No main branch for site ${siteId}`);
   return createBranch({
@@ -84,7 +85,7 @@ async function createFeatureBranch(siteId: string, name: string) {
 describe('PCC-3211: Soft Delete Integration Tests', () => {
   let sql: postgres.Sql;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     const { connection, sql: pgSql } = createRealDatabaseConnection(CONNECTION_STRING);
     sql = pgSql;
     setDatabaseInstance(connection);
@@ -214,7 +215,7 @@ describe('PCC-3211: Soft Delete Integration Tests', () => {
       expect(restored?.archivedAt).toBeNull();
 
       // Main branch (cascade) should be restored
-      const mainRow = await sql`SELECT archived_at FROM app.branches WHERE id = ${main!.id}`;
+      const mainRow = await sql`SELECT archived_at FROM app.branches WHERE id = ${main?.id ?? ''}`;
       expect(mainRow[0]?.archived_at).toBeNull();
 
       // Independently-archived feature branch should remain archived
@@ -265,7 +266,7 @@ describe('PCC-3211: Soft Delete Integration Tests', () => {
 
       const main = await getMainBranch(site.id);
       expect(main).not.toBeNull();
-      await expect(archiveBranch(main!.id)).rejects.toThrow(MainBranchProtectionError);
+      await expect(archiveBranch(main?.id ?? '')).rejects.toThrow(MainBranchProtectionError);
     });
 
     it("should return 'already_archived' on double-archive", async () => {

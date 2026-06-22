@@ -336,7 +336,7 @@ export async function archiveOrganization(id: string): Promise<boolean | 'alread
   // Pre-check active sites outside the transaction to surface a clean error early.
   // The UPDATE itself also guards via a NOT EXISTS subquery to prevent TOCTOU.
   const siteCheck = await query<{ count: string }>(
-    `SELECT COUNT(*) AS count FROM app.sites WHERE organization_id = $1 AND archived_at IS NULL`,
+    'SELECT COUNT(*) AS count FROM app.sites WHERE organization_id = $1 AND archived_at IS NULL',
     [id],
   );
   if (parseInt(siteCheck.rows[0]?.count ?? '0', 10) > 0) {
@@ -370,7 +370,7 @@ export async function archiveOrganization(id: string): Promise<boolean | 'alread
   // UPDATE matched 0 rows. Re-check outside the transaction to avoid ROLLBACK
   // on an already-committed transaction (PostgreSQL emits a WARNING for that).
   const recheck = await query<{ count: string }>(
-    `SELECT COUNT(*) AS count FROM app.sites WHERE organization_id = $1 AND archived_at IS NULL`,
+    'SELECT COUNT(*) AS count FROM app.sites WHERE organization_id = $1 AND archived_at IS NULL',
     [id],
   );
   if (parseInt(recheck.rows[0]?.count ?? '0', 10) > 0) {

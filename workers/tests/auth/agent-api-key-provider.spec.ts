@@ -207,7 +207,7 @@ describe('AgentApiKeyProvider', () => {
       const after = Date.now();
 
       expect(principal?.tokenExpiry).toBeDefined();
-      const expiry = new Date(principal!.tokenExpiry).getTime();
+      const expiry = new Date(principal?.tokenExpiry ?? 0).getTime();
       // Should be ~24 hours in the future
       expect(expiry).toBeGreaterThanOrEqual(before + 24 * 60 * 60 * 1000 - 1000);
       expect(expiry).toBeLessThanOrEqual(after + 24 * 60 * 60 * 1000 + 1000);

@@ -6,7 +6,7 @@
  * Tests should FAIL initially until implementation is complete.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import * as jose from 'jose';
 
 // Import types

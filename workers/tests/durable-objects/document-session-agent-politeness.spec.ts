@@ -930,7 +930,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
 
       // The last persisted presence should NOT contain the agent
       const lastPresenceState = presencePutCalls[presencePutCalls.length - 1][1];
-      const presences = (lastPresenceState as { presences: Array<{ actorId: string }> }).presences;
+      const presences = (lastPresenceState as { presences: { actorId: string }[] }).presences;
       const agentStillPresent = presences.some(
         (p) => p.actorId === 'agent-persist-test',
       );
@@ -1719,7 +1719,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       let presenceResponse = await session.fetch(
         new Request('http://localhost/presences'),
       );
-      let presenceBody = (await presenceResponse.json()) as { presences: Array<{ actorId: string }> };
+      let presenceBody: { presences: { actorId: string }[] } = await presenceResponse.json();
       expect(presenceBody.presences.find(
         (p) => p.actorId === 'agent-orphan-test',
       )).toBeDefined();
@@ -1728,7 +1728,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       let sessionsResponse = await session.fetch(
         new Request('http://localhost/edit-sessions'),
       );
-      let sessionsBody = (await sessionsResponse.json()) as { sessions: unknown[] };
+      let sessionsBody: { sessions: unknown[] } = await sessionsResponse.json();
       expect(sessionsBody.sessions.length).toBe(1);
 
       // Advance time to T+550s (session not yet expired, presence not stale)
@@ -1744,7 +1744,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
           },
           body: JSON.stringify({
             actorId: 'agent-orphan-test',
-            editSessionId: ((await startResponse.clone().json()) as { editSessionId: string }).editSessionId,
+            editSessionId: (await startResponse.clone().json()).editSessionId,
             operations: [
               { type: 'set', path: 'root.title', value: 'Still active' },
             ],
@@ -1763,7 +1763,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       sessionsResponse = await session.fetch(
         new Request('http://localhost/edit-sessions'),
       );
-      sessionsBody = (await sessionsResponse.json()) as { sessions: unknown[] };
+      sessionsBody = await sessionsResponse.json();
       expect(sessionsBody.sessions.length).toBe(0);
 
       // Verify agent presence is ALSO cleaned up even though it was "fresh"
@@ -1772,7 +1772,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       presenceResponse = await session.fetch(
         new Request('http://localhost/presences'),
       );
-      presenceBody = (await presenceResponse.json()) as { presences: Array<{ actorId: string }> };
+      presenceBody = await presenceResponse.json();
       const orphanedPresence = presenceBody.presences.find(
         (p) => p.actorId === 'agent-orphan-test',
       );
@@ -1806,7 +1806,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
           }),
         }),
       );
-      const start1Body = (await start1.json()) as { editSessionId: string };
+      const start1Body: { editSessionId: string } = await start1.json();
 
       const start2 = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
@@ -1820,13 +1820,13 @@ describe('Phase A: Orphaned Session Cleanup', () => {
           }),
         }),
       );
-      const start2Body = (await start2.json()) as { editSessionId: string };
+      const start2Body: { editSessionId: string } = await start2.json();
 
       // Verify both are present
       let presenceResponse = await session.fetch(
         new Request('http://localhost/presences'),
       );
-      let presenceBody = (await presenceResponse.json()) as { presences: Array<{ actorId: string }> };
+      let presenceBody: { presences: { actorId: string }[] } = await presenceResponse.json();
       expect(presenceBody.presences.length).toBe(2);
 
       // Advance to T+550s and make both agents active (fresh presence)
@@ -1865,7 +1865,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       presenceResponse = await session.fetch(
         new Request('http://localhost/presences'),
       );
-      presenceBody = (await presenceResponse.json()) as { presences: Array<{ actorId: string }> };
+      presenceBody = await presenceResponse.json();
       expect(presenceBody.presences.length).toBe(0);
 
       vi.useRealTimers();
@@ -1896,7 +1896,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
           }),
         }),
       );
-      const startBody = (await startResp.json()) as { editSessionId: string };
+      const startBody: { editSessionId: string } = await startResp.json();
 
       // Keep presence fresh with activity at T+550s
       vi.setSystemTime(baseTime + 550_000);
@@ -1943,9 +1943,9 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       // The session is >600s old so it won't be restored, but the presence
       // has a recent lastActivityAt (from just before the DO was evicted)
       const state = createMockState();
-      state.storage.get.mockImplementation(async (key: string) => {
+      state.storage.get.mockImplementation((key: string) => {
         if (key === 'editSessions') {
-          return JSON.stringify({
+          return Promise.resolve(JSON.stringify({
             'expired-session-1': {
               id: 'expired-session-1',
               agentId: 'agent-expired',
@@ -1954,11 +1954,11 @@ describe('Phase A: Orphaned Session Cleanup', () => {
               targetRegions: ['/content/0'],
               startedAt: now - 700_000, // 700s ago - expired
             },
-          });
+          }));
         }
         if (key === 'presenceState') {
           // Presence was recently active (30s ago) - won't be cleared by clearStale
-          return {
+          return Promise.resolve({
             presences: [
               {
                 id: 'presence-expired',
@@ -1974,9 +1974,9 @@ describe('Phase A: Orphaned Session Cleanup', () => {
             actorIdIndex: {
               'agent-expired': 'presence-expired',
             },
-          };
+          });
         }
-        return undefined;
+        return Promise.resolve(undefined);
       });
 
       const env = createMockEnv();
@@ -1989,7 +1989,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const sessionsResponse = await session.fetch(
         new Request('http://localhost/edit-sessions'),
       );
-      const sessionsBody = (await sessionsResponse.json()) as { sessions: unknown[] };
+      const sessionsBody: { sessions: unknown[] } = await sessionsResponse.json();
       expect(sessionsBody.sessions.length).toBe(0);
 
       // After alarm, the orphaned presence (has no matching session) should be cleaned
@@ -1998,7 +1998,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const postAlarmPresence = await session.fetch(
         new Request('http://localhost/presences'),
       );
-      const postAlarmBody = (await postAlarmPresence.json()) as { presences: Array<{ actorId: string }> };
+      const postAlarmBody: { presences: { actorId: string }[] } = await postAlarmPresence.json();
       const expiredPresence = postAlarmBody.presences.find(
         (p) => p.actorId === 'agent-expired',
       );
@@ -2034,7 +2034,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       );
 
       expect(startResponse.status).toBe(200);
-      const startBody = (await startResponse.json()) as { editSessionId: string; checkpointId: string };
+      const startBody: { editSessionId: string; checkpointId: string } = await startResponse.json();
       // Autonomous sessions get a checkpoint (placeholder in test env without Hyperdrive)
       expect(startBody.checkpointId).toBeDefined();
 
@@ -2060,14 +2060,14 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const sessionsResponse = await session.fetch(
         new Request('http://localhost/edit-sessions'),
       );
-      const sessionsBody = (await sessionsResponse.json()) as { sessions: unknown[] };
+      const sessionsBody: { sessions: unknown[] } = await sessionsResponse.json();
       expect(sessionsBody.sessions.length).toBe(0);
 
       // Agent presence should be cleared
       const presenceResponse = await session.fetch(
         new Request('http://localhost/presences'),
       );
-      const presenceBody = (await presenceResponse.json()) as { presences: Array<{ actorId: string }> };
+      const presenceBody: { presences: { actorId: string }[] } = await presenceResponse.json();
       expect(presenceBody.presences.find(
         (p) => p.actorId === 'agent-rollback-test',
       )).toBeUndefined();
@@ -2102,7 +2102,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       );
 
       expect(startResponse.status).toBe(200);
-      const startBody = (await startResponse.json()) as { editSessionId: string; checkpointId?: string };
+      const startBody: { editSessionId: string; checkpointId?: string } = await startResponse.json();
       // human_requested sessions should NOT have a checkpoint
       expect(startBody.checkpointId).toBeUndefined();
 
@@ -2114,7 +2114,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const sessionsResponse = await session.fetch(
         new Request('http://localhost/edit-sessions'),
       );
-      const sessionsBody = (await sessionsResponse.json()) as { sessions: unknown[] };
+      const sessionsBody: { sessions: unknown[] } = await sessionsResponse.json();
       expect(sessionsBody.sessions.length).toBe(0);
 
       vi.useRealTimers();
@@ -2163,7 +2163,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const sessionsResponse = await session.fetch(
         new Request('http://localhost/edit-sessions'),
       );
-      const sessionsBody = (await sessionsResponse.json()) as { sessions: unknown[] };
+      const sessionsBody: { sessions: unknown[] } = await sessionsResponse.json();
       expect(sessionsBody.sessions.length).toBe(0);
 
       vi.useRealTimers();
@@ -2205,7 +2205,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
         (call: unknown[]) => call[0] === 'editSessions',
       );
       expect(editSessionsPut).toBeDefined();
-      const storedSessionsJson = editSessionsPut![1] as string;
+      const storedSessionsJson = (editSessionsPut ?? [])[1] as string;
 
       // Advance time past expiration (>10 minutes)
       vi.setSystemTime(baseTime + 601_000);
@@ -2235,7 +2235,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const sessionsResponse = await session2.fetch(
         new Request('http://localhost/edit-sessions'),
       );
-      const sessionsBody = (await sessionsResponse.json()) as { sessions: unknown[] };
+      const sessionsBody: { sessions: unknown[] } = await sessionsResponse.json();
       expect(sessionsBody.sessions.length).toBe(0);
 
       // Verify the cleaned-up sessions were persisted back to storage
@@ -2280,7 +2280,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const editSessionsPut = storagePutCalls.find(
         (call: unknown[]) => call[0] === 'editSessions',
       );
-      const storedSessionsJson = editSessionsPut![1] as string;
+      const storedSessionsJson = (editSessionsPut ?? [])[1] as string;
 
       // Advance time but NOT past expiration (only 5 minutes)
       vi.setSystemTime(baseTime + 300_000);
@@ -2304,7 +2304,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const sessionsResponse = await session2.fetch(
         new Request('http://localhost/edit-sessions'),
       );
-      const sessionsBody = (await sessionsResponse.json()) as { sessions: unknown[] };
+      const sessionsBody: { sessions: unknown[] } = await sessionsResponse.json();
       expect(sessionsBody.sessions.length).toBe(1);
 
       vi.useRealTimers();

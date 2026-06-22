@@ -12,45 +12,45 @@ describe('parseRoute - document presence', () => {
     const result = parseRoute('/api/sites/site-1/branches/branch-1/documents/home/presence');
 
     expect(result).not.toBeNull();
-    expect(result!.handler).toBe('presence');
-    expect(result!.params.siteId).toBe('site-1');
-    expect(result!.params.branchId).toBe('branch-1');
-    expect(result!.params.documentPath).toBe('home');
+    expect(result?.handler).toBe('presence');
+    expect(result?.params.siteId).toBe('site-1');
+    expect(result?.params.branchId).toBe('branch-1');
+    expect(result?.params.documentPath).toBe('home');
   });
 
   it('should parse document presence route with encoded nested path', () => {
     const result = parseRoute('/api/sites/site-1/branches/branch-1/documents/products%2Fwidgets/presence');
 
     expect(result).not.toBeNull();
-    expect(result!.handler).toBe('presence');
-    expect(result!.params.documentPath).toBe('products%2Fwidgets');
+    expect(result?.handler).toBe('presence');
+    expect(result?.params.documentPath).toBe('products%2Fwidgets');
   });
 
   it('should parse document presence route with multi-segment path', () => {
     const result = parseRoute('/api/sites/site-1/branches/branch-1/documents/content/pages/about/presence');
 
     expect(result).not.toBeNull();
-    expect(result!.handler).toBe('presence');
-    expect(result!.params.documentPath).toBe('content/pages/about');
+    expect(result?.handler).toBe('presence');
+    expect(result?.params.documentPath).toBe('content/pages/about');
   });
 
   it('should still parse branch presence route correctly', () => {
     const result = parseRoute('/api/sites/site-1/branches/branch-1/presence');
 
     expect(result).not.toBeNull();
-    expect(result!.handler).toBe('presence');
-    expect(result!.params.siteId).toBe('site-1');
-    expect(result!.params.branchId).toBe('branch-1');
-    expect(result!.params.documentPath).toBeUndefined();
+    expect(result?.handler).toBe('presence');
+    expect(result?.params.siteId).toBe('site-1');
+    expect(result?.params.branchId).toBe('branch-1');
+    expect(result?.params.documentPath).toBeUndefined();
   });
 
   it('should still parse site presence route correctly', () => {
     const result = parseRoute('/api/sites/site-1/presence');
 
     expect(result).not.toBeNull();
-    expect(result!.handler).toBe('presence');
-    expect(result!.params.siteId).toBe('site-1');
-    expect(result!.params.branchId).toBeUndefined();
+    expect(result?.handler).toBe('presence');
+    expect(result?.params.siteId).toBe('site-1');
+    expect(result?.params.branchId).toBeUndefined();
   });
 
   it('should not confuse document presence with realtime actions', () => {
@@ -58,6 +58,6 @@ describe('parseRoute - document presence', () => {
     const result = parseRoute('/api/sites/site-1/branches/branch-1/documents/home/edits');
 
     expect(result).not.toBeNull();
-    expect(result!.handler).toBe('realtime');
+    expect(result?.handler).toBe('realtime');
   });
 });

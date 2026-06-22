@@ -182,7 +182,7 @@ describe('Copy-on-Write (COW) Document API Fallback', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = (await response.json()) as Record<string, unknown>;
+      const body = await response.json();
       expect(body).toHaveProperty('id', 'doc-1');
     });
 
@@ -256,7 +256,7 @@ describe('Copy-on-Write (COW) Document API Fallback', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = (await response.json()) as Record<string, unknown>;
+      const body = await response.json();
       expect(body).toHaveProperty('inherited', true);
       expect(body).toHaveProperty('id', mockMainVersion.id);
     });
@@ -301,7 +301,7 @@ describe('Copy-on-Write (COW) Document API Fallback', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = (await response.json()) as Record<string, unknown>;
+      const body = await response.json();
       expect(body).toHaveProperty('id', 'version-feature-1');
       // Should NOT have inherited: true
       expect(body).not.toHaveProperty('inherited', true);
@@ -363,7 +363,7 @@ describe('Copy-on-Write (COW) Document API Fallback', () => {
       });
 
       expect(response.status).toBe(201);
-      const body = (await response.json()) as Record<string, unknown>;
+      const body = await response.json();
       expect(body).toHaveProperty('id', 'version-feature-new');
       expect(body).toHaveProperty('branchId', 'branch-feature');
     });
@@ -418,7 +418,7 @@ describe('Copy-on-Write (COW) Document API Fallback', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = (await response.json()) as { documents: Array<{ id: string; inherited: boolean }> };
+      const body = await response.json();
       expect(body.documents).toHaveLength(2);
       expect(body.documents[0]).toHaveProperty('inherited', false);
       expect(body.documents[1]).toHaveProperty('inherited', true);

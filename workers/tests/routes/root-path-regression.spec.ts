@@ -40,17 +40,17 @@ describe('Root Path "/" Handling', () => {
 
   describe('Path Validation', () => {
     it('should accept "/" as valid', () => {
-      expect(() => validatePath('/')).not.toThrow();
+      expect(() => { validatePath('/'); }).not.toThrow();
     });
 
     it('should accept regular paths as valid', () => {
-      expect(() => validatePath('about')).not.toThrow();
-      expect(() => validatePath('products/item')).not.toThrow();
+      expect(() => { validatePath('about'); }).not.toThrow();
+      expect(() => { validatePath('products/item'); }).not.toThrow();
     });
 
     it('should reject paths with traversal sequences', () => {
-      expect(() => validatePath('../etc')).toThrow();
-      expect(() => validatePath('products/../etc')).toThrow();
+      expect(() => { validatePath('../etc'); }).toThrow();
+      expect(() => { validatePath('products/../etc'); }).toThrow();
     });
   });
 
@@ -114,7 +114,7 @@ describe('Root Path "/" Handling', () => {
       expect(normalized).toBe('/');
 
       // 3. validatePath accepts "/"
-      expect(() => validatePath(normalized)).not.toThrow();
+      expect(() => { validatePath(normalized); }).not.toThrow();
 
       // 4. Document is stored in DB with path "/"
       const storedPath = normalized;

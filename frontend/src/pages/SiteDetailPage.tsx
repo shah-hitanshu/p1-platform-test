@@ -355,6 +355,7 @@ export function SiteDetailPage() {
     return user?.email ?? userId;
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getStatusTagColor = (_status: string): 'neutral' => {
     return 'neutral';
   };

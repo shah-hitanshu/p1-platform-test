@@ -518,12 +518,17 @@ export async function checkBranchInvalidation(deps: CrdtEndpointDeps): Promise<v
     const kvTimestamp = Number(value);
     const lastSeen = deps.getLastSeenBranchVersion();
     if (Number.isNaN(kvTimestamp) || kvTimestamp <= lastSeen) {
-      console.log(`Branch invalidation: KV timestamp ${kvTimestamp} <= lastSeen ${lastSeen}, skipping reload`);
+      console.log(
+        `Branch invalidation: KV timestamp ${String(kvTimestamp)} <= lastSeen ${String(lastSeen)}, skipping reload`,
+      );
       return;
     }
 
     // KV has a newer timestamp — reload from PostgreSQL
-    console.log(`Branch invalidation: KV timestamp ${kvTimestamp} > lastSeen ${lastSeen}, reloading from Postgres`);
+    console.log(
+      `Branch invalidation: KV timestamp ${String(kvTimestamp)}` +
+        ` > lastSeen ${String(lastSeen)}, reloading from Postgres`,
+    );
     deps.setLastSeenBranchVersion(kvTimestamp);
 
     if (deps.getInitialized()) {

@@ -125,7 +125,7 @@ describe('Acting-User Extraction', () => {
 
       const result = extractActingUser(headers, principal);
       expect(result).not.toBeNull();
-      expect(result!.actingUserName).toBeUndefined();
+      expect(result?.actingUserName).toBeUndefined();
     });
 
     // Test 56: Empty name header treated as absent
@@ -140,7 +140,7 @@ describe('Acting-User Extraction', () => {
 
       const result = extractActingUser(headers, principal);
       expect(result).not.toBeNull();
-      expect(result!.actingUserName).toBeUndefined();
+      expect(result?.actingUserName).toBeUndefined();
     });
   });
 });

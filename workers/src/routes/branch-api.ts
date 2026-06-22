@@ -12,7 +12,6 @@ import {
   listBranches,
   updateBranch,
   updateBranchStatus,
-  deleteBranch,
   archiveBranch,
   restoreBranch,
   createCheckpoint,

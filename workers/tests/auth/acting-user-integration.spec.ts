@@ -14,12 +14,12 @@ describe('Acting-User Integration', () => {
       'X-Acting-User-Id': 'user-uuid-123',
       'X-Acting-User-Email': 'user@example.com',
     });
-    const principal: any = {
+    const principal: Record<string, string> & { type: string } = {
       type: 'agent',
       id: 'agent-1',
     };
 
-    const actingUser = extractActingUser(headers, principal);
+    const actingUser = extractActingUser(headers, principal as { type: string });
     if (actingUser) {
       principal.actingUserId = actingUser.actingUserId;
       principal.actingUserEmail = actingUser.actingUserEmail;
@@ -35,12 +35,12 @@ describe('Acting-User Integration', () => {
       'X-Acting-User-Id': 'spoofed-id',
       'X-Acting-User-Email': 'spoofed@example.com',
     });
-    const principal: any = {
+    const principal: Record<string, string> & { type: string } = {
       type: 'user',
       id: 'user-1',
     };
 
-    const actingUser = extractActingUser(headers, principal);
+    const actingUser = extractActingUser(headers, principal as { type: string });
     if (actingUser) {
       principal.actingUserId = actingUser.actingUserId;
       principal.actingUserEmail = actingUser.actingUserEmail;

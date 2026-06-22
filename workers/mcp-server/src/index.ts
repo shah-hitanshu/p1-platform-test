@@ -275,7 +275,7 @@ const defaultHandler: ExportedHandler<Env> = {
 
 const oauthProvider = new OAuthProvider<Env>({
   apiRoute: '/mcp',
-  apiHandler: mcpApiHandler,
+  apiHandler: mcpApiHandler as Required<Pick<typeof mcpApiHandler, 'fetch'>>,
   defaultHandler,
   authorizeEndpoint: '/authorize',
   tokenEndpoint: '/token',

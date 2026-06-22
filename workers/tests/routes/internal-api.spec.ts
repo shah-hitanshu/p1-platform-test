@@ -924,7 +924,7 @@ describe('GET /internal/site-auth-config/:siteId', () => {
     const req = makeRequest('site-123', INTERNAL_SECRET);
     const res = await handleInternalRoutes(req, { internalSecret: INTERNAL_SECRET });
     expect(res.status).toBe(200);
-    const body = await res.json() as { siteId: string; allowedOrigins: string[] };
+    const body = await res.json();
     expect(body.siteId).toBe('site-123');
     expect(body.allowedOrigins).toEqual(['https://mysite.com', '*-mysite.pantheonsite.io']);
   });
@@ -935,7 +935,7 @@ describe('GET /internal/site-auth-config/:siteId', () => {
     const req = makeRequest('site-empty', INTERNAL_SECRET);
     const res = await handleInternalRoutes(req, { internalSecret: INTERNAL_SECRET });
     expect(res.status).toBe(200);
-    const body = await res.json() as { siteId: string; allowedOrigins: string[] };
+    const body = await res.json();
     expect(body.allowedOrigins).toEqual([]);
   });
 

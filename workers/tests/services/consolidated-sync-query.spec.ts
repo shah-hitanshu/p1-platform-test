@@ -236,7 +236,7 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
           documentId: 'doc-uuid-123',
           branchId: 'branch-uuid-456',
           snapshot: { root: {} },
-  
+
           actorId: 'user-uuid-001',
           actorType: 'user',
         }),
@@ -254,7 +254,7 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
           documentId: '',
           branchId: 'branch-uuid-456',
           snapshot: { root: {} },
-  
+
           actorId: 'user-uuid-001',
           actorType: 'user',
         }),
@@ -266,7 +266,7 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
           documentId: 'doc-uuid-123',
           branchId: '',
           snapshot: { root: {} },
-  
+
           actorId: 'user-uuid-001',
           actorType: 'user',
         }),
@@ -278,7 +278,7 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
           documentId: 'doc-uuid-123',
           branchId: 'branch-uuid-456',
           snapshot: { root: {} },
-  
+
           actorId: '',
           actorType: 'user',
         }),

@@ -533,7 +533,7 @@ describe('Phase 3.1: Integration Tests - Site and Document CRUD', () => {
     beforeEach(async () => {
       const site = await createSite({
         name: 'Path Normalization Test Site',
-        pantheonSiteId: `pantheon-path-norm-${Date.now()}`,
+        pantheonSiteId: `pantheon-path-norm-${String(Date.now())}`,
       });
       testSiteId = site.id;
       createdSiteIds.push(site.id);

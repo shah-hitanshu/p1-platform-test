@@ -89,7 +89,7 @@ describe('Internal Publish API', () => {
     documentId: string;
     createdById: string;
     createdByType: string;
-  }> = {}) {
+  }> = {}): Record<string, string> {
     return {
       siteId: 'site-uuid-123',
       branchId: 'branch-uuid-456',
@@ -147,7 +147,7 @@ describe('Internal Publish API', () => {
       const response = await handleInternalRoutes(request, { internalSecret: INTERNAL_SECRET });
 
       expect(response.status).toBe(400);
-      const json = await response.json() as { error: string };
+      const json = await response.json();
       expect(json.error).toContain('siteId');
     });
 
@@ -158,7 +158,7 @@ describe('Internal Publish API', () => {
       const response = await handleInternalRoutes(request, { internalSecret: INTERNAL_SECRET });
 
       expect(response.status).toBe(400);
-      const json = await response.json() as { error: string };
+      const json = await response.json();
       expect(json.error).toContain('branchId');
     });
 
@@ -169,7 +169,7 @@ describe('Internal Publish API', () => {
       const response = await handleInternalRoutes(request, { internalSecret: INTERNAL_SECRET });
 
       expect(response.status).toBe(400);
-      const json = await response.json() as { error: string };
+      const json = await response.json();
       expect(json.error).toContain('documentId');
     });
 
@@ -180,7 +180,7 @@ describe('Internal Publish API', () => {
       const response = await handleInternalRoutes(request, { internalSecret: INTERNAL_SECRET });
 
       expect(response.status).toBe(400);
-      const json = await response.json() as { error: string };
+      const json = await response.json();
       expect(json.error).toContain('createdById');
     });
 
@@ -191,7 +191,7 @@ describe('Internal Publish API', () => {
       const response = await handleInternalRoutes(request, { internalSecret: INTERNAL_SECRET });
 
       expect(response.status).toBe(400);
-      const json = await response.json() as { error: string };
+      const json = await response.json();
       expect(json.error).toContain('createdByType');
     });
 
@@ -220,7 +220,7 @@ describe('Internal Publish API', () => {
       const response = await handleInternalRoutes(request, { internalSecret: INTERNAL_SECRET });
 
       expect(response.status).toBe(200);
-      const json = await response.json() as typeof mockResult;
+      const json = await response.json();
       expect(json.checkpoint.id).toBe('cp-1');
       expect(json.publishedVersionId).toBe('version-xyz');
       expect(json.sourceBranchName).toBe('my-feature-branch');
@@ -262,7 +262,7 @@ describe('Internal Publish API', () => {
       const response = await handleInternalRoutes(request, { internalSecret: INTERNAL_SECRET });
 
       expect(response.status).toBe(500);
-      const json = await response.json() as { error: string };
+      const json = await response.json();
       expect(json.error).toContain('Publish failed');
     });
 

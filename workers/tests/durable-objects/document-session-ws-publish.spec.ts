@@ -181,6 +181,7 @@ describe('DocumentSession WebSocket publish handler', () => {
   });
 
   // Helper: create a DO, initialize it, and set up a WebSocket
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
   async function createSessionWithWebSocket(
     sessionId = 'site-1:doc-1:branch-1',
     envOverrides: Partial<PublishEnv> = {},
@@ -230,11 +231,11 @@ describe('DocumentSession WebSocket publish handler', () => {
 
     const publishResult = responses.find(m => m.type === 'publish_result');
     expect(publishResult).toBeDefined();
-    expect(publishResult!.requestId).toBe('req-123');
-    expect(publishResult!.success).toBe(true);
-    expect(publishResult!.publishedVersionId).toBe('version-xyz');
-    expect(publishResult!.checkpoint).toBeDefined();
-    expect(publishResult!.checkpoint!.id).toBe('cp-1');
+    expect(publishResult?.requestId).toBe('req-123');
+    expect(publishResult?.success).toBe(true);
+    expect(publishResult?.publishedVersionId).toBe('version-xyz');
+    expect(publishResult?.checkpoint).toBeDefined();
+    expect(publishResult?.checkpoint?.id).toBe('cp-1');
   });
 
   it('should call /internal/publish with correct session parameters', async () => {
@@ -315,9 +316,9 @@ describe('DocumentSession WebSocket publish handler', () => {
 
     const publishResult = responses.find(m => m.type === 'publish_result');
     expect(publishResult).toBeDefined();
-    expect(publishResult!.requestId).toBe('req-pub-fail');
-    expect(publishResult!.success).toBe(false);
-    expect(publishResult!.error).toBeDefined();
+    expect(publishResult?.requestId).toBe('req-pub-fail');
+    expect(publishResult?.success).toBe(false);
+    expect(publishResult?.error).toBeDefined();
   });
 
   it('should return error when session info is unknown', async () => {
@@ -347,8 +348,8 @@ describe('DocumentSession WebSocket publish handler', () => {
 
     const publishResult = responses.find(m => m.type === 'publish_result');
     expect(publishResult).toBeDefined();
-    expect(publishResult!.success).toBe(false);
-    expect(publishResult!.error).toBeDefined();
+    expect(publishResult?.success).toBe(false);
+    expect(publishResult?.error).toBeDefined();
   });
 
   it('should flush CRDT state before calling publish', async () => {

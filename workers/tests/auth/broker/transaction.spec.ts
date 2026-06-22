@@ -6,9 +6,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 function createMockKV(): KVNamespace {
   const store = new Map<string, string>();
   return {
-    get: vi.fn(async (key: string) => store.get(key) ?? null),
-    put: vi.fn(async (key: string, value: string) => { store.set(key, value); }),
-    delete: vi.fn(async (key: string) => { store.delete(key); }),
+    get: vi.fn((key: string) => Promise.resolve(store.get(key) ?? null)),
+    put: vi.fn((key: string, value: string) => { store.set(key, value); return Promise.resolve(); }),
+    delete: vi.fn((key: string) => { store.delete(key); return Promise.resolve(); }),
     list: vi.fn(),
     getWithMetadata: vi.fn(),
   } as unknown as KVNamespace;
@@ -76,9 +76,9 @@ describe('BrokerTransaction', () => {
       const retrieved = await getTransaction(kv, created.id);
 
       expect(retrieved).not.toBeNull();
-      expect(retrieved!.id).toBe(created.id);
-      expect(retrieved!.siteId).toBe('site-123');
-      expect(retrieved!.status).toBe('pending');
+      expect(retrieved?.id).toBe(created.id);
+      expect(retrieved?.siteId).toBe('site-123');
+      expect(retrieved?.status).toBe('pending');
     });
   });
 
@@ -94,13 +94,14 @@ describe('BrokerTransaction', () => {
       });
 
       expect(approved).not.toBeNull();
-      expect(approved!.status).toBe('approved');
-      expect(approved!.userId).toBe('auth0|user-1');
-      expect(approved!.userEmail).toBe('user@example.com');
-      expect(approved!.userName).toBe('Test User');
+      expect(approved?.status).toBe('approved');
+      expect(approved?.userId).toBe('auth0|user-1');
+      expect(approved?.userEmail).toBe('user@example.com');
+      expect(approved?.userName).toBe('Test User');
 
       const stored = await getTransaction(kv, tx.id);
-      expect(stored!.status).toBe('approved');
+      expect(stored).toBeDefined();
+      expect(stored?.status).toBe('approved');
     });
 
     it('returns null for non-existent transaction', async () => {
@@ -145,9 +146,9 @@ describe('BrokerTransaction', () => {
       const redeemed = await redeemTransaction(kv, tx.id);
 
       expect(redeemed).not.toBeNull();
-      expect(redeemed!.status).toBe('redeemed');
-      expect(redeemed!.userId).toBe('auth0|user-1');
-      expect(redeemed!.siteId).toBe('site-123');
+      expect(redeemed?.status).toBe('redeemed');
+      expect(redeemed?.userId).toBe('auth0|user-1');
+      expect(redeemed?.siteId).toBe('site-123');
     });
 
     it('returns null for non-existent transaction', async () => {
@@ -203,7 +204,7 @@ describe('BrokerTransaction', () => {
 
       const retrieved = await getTransaction(kv, tx.id);
       expect(retrieved).not.toBeNull();
-      expect(retrieved!.redirectUrl).toBe('https://myapp.example.com/p1/editor');
+      expect(retrieved?.redirectUrl).toBe('https://myapp.example.com/p1/editor');
     });
 
     it('leaves redirectUrl undefined when not provided', async () => {

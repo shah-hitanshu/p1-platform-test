@@ -245,7 +245,7 @@ describe('Action Metadata Forwarding', () => {
       );
       expect(syncCall).toBeDefined();
 
-      const requestInit = syncCall![1] as RequestInit;
+      const requestInit = (syncCall ?? [])[1] as RequestInit;
       const body = JSON.parse(requestInit.body as string) as Record<string, unknown>;
       expect(body.actionType).toBe('set');
       expect(body.actionMetadata).toEqual({ path: 'title' });
@@ -402,7 +402,7 @@ describe('Action Metadata Forwarding', () => {
       );
       expect(syncScheduleCall).toBeDefined();
 
-      const schedule = syncScheduleCall![1] as Record<string, unknown>;
+      const schedule = (syncScheduleCall ?? [])[1] as Record<string, unknown>;
       expect(schedule.actionType).toBe('insert');
       expect(schedule.actionMetadata).toEqual({ componentType: 'Card' });
     });

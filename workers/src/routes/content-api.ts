@@ -169,13 +169,11 @@ async function handleGetContent(
 
   // If snapshot is null (diff-only version), reconstruct from baseline + patches
   let snapshotData = version.snapshot ?? null;
-  if (snapshotData == null) {
-    snapshotData = await reconstructVersionSnapshot(
-      document.id,
-      branch.id,
-      version.versionNumber,
-    );
-  }
+  snapshotData ??= await reconstructVersionSnapshot(
+    document.id,
+    branch.id,
+    version.versionNumber,
+  );
 
   const responseBody: Record<string, unknown> = {
     documentId: document.id,

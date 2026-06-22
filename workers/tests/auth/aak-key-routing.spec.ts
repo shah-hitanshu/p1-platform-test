@@ -154,7 +154,7 @@ vi.mock('../../src/auth/mock-identity-provider', () => {
 vi.mock('../../src/auth/identity-provider', async () => {
   const actual = await vi.importActual<
     typeof import('../../src/auth/identity-provider')
-  >('../../src/auth/identity-provider');
+      >('../../src/auth/identity-provider');
   return {
     ...actual,
     MockIdentityProviderAdapter: class MockIdentityProviderAdapter {

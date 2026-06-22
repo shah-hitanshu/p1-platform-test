@@ -13,7 +13,7 @@ import { compare, applyPatch } from 'fast-json-patch';
 // Test helpers - realistic Puck data factories
 // ---------------------------------------------------------------------------
 
-function makePuckData(overrides: Record<string, unknown> = {}) {
+function makePuckData(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     root: {
       props: {
@@ -59,7 +59,7 @@ function makePuckData(overrides: Record<string, unknown> = {}) {
 }
 
 function deepClone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj));
+  return JSON.parse(JSON.stringify(obj)) as T;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,7 +98,7 @@ describe('Version Patches - JSON Diff Storage', () => {
 
     it('should roundtrip through content array changes', () => {
       const snapshotA = makePuckData();
-      const snapshotB = deepClone(snapshotA) as ReturnType<typeof makePuckData>;
+      const snapshotB = deepClone(snapshotA);
       (snapshotB.content[0] as Record<string, unknown>).props = {
         ...(snapshotB.content[0] as Record<string, Record<string, unknown>>).props,
         heading: 'Changed Heading',
@@ -168,7 +168,7 @@ describe('Version Patches - JSON Diff Storage', () => {
       const baseline = makePuckData();
 
       // Edit 1: change title
-      const v1 = deepClone(baseline) as ReturnType<typeof makePuckData>;
+      const v1 = deepClone(baseline);
       v1.root.props.title = 'First Edit';
       const patch1 = compare(baseline, v1);
 
@@ -179,7 +179,7 @@ describe('Version Patches - JSON Diff Storage', () => {
       const patch2 = compare(v1, v2);
 
       // Edit 3: add a zone entry
-      const v3 = deepClone(v2) as ReturnType<typeof makePuckData>;
+      const v3 = deepClone(v2);
       v3.zones['footer:main'] = [
         {
           type: 'Footer',
@@ -189,7 +189,7 @@ describe('Version Patches - JSON Diff Storage', () => {
       const patch3 = compare(v2, v3);
 
       // Edit 4: change navigation link
-      const v4 = deepClone(v3) as ReturnType<typeof makePuckData>;
+      const v4 = deepClone(v3);
       (v4.zones['sidebar:left'][0] as Record<string, Record<string, unknown[]>>)
         .props.links[0] = { label: 'Dashboard', href: '/dashboard' };
       const patch4 = compare(v3, v4);
@@ -207,7 +207,7 @@ describe('Version Patches - JSON Diff Storage', () => {
     it('should handle applying patches where some are empty (no-op edits)', () => {
       const baseline = makePuckData();
 
-      const v1 = deepClone(baseline) as ReturnType<typeof makePuckData>;
+      const v1 = deepClone(baseline);
       v1.root.props.title = 'Edited';
       const patch1 = compare(baseline, v1);
 
@@ -217,7 +217,7 @@ describe('Version Patches - JSON Diff Storage', () => {
       expect(patch2).toHaveLength(0);
 
       // Another real edit
-      const v3 = deepClone(v2) as ReturnType<typeof makePuckData>;
+      const v3 = deepClone(v2);
       v3.root.props.description = 'New description';
       const patch3 = compare(v2, v3);
 
@@ -236,7 +236,7 @@ describe('Version Patches - JSON Diff Storage', () => {
   describe('realistic Puck data scenarios', () => {
     it('should produce a small patch for a single component property change', () => {
       const before = makePuckData();
-      const after = deepClone(before) as ReturnType<typeof makePuckData>;
+      const after = deepClone(before);
       (after.content[0] as Record<string, Record<string, unknown>>).props.heading =
         'New Heading';
 
@@ -254,7 +254,7 @@ describe('Version Patches - JSON Diff Storage', () => {
 
     it('should handle component reordering correctly', () => {
       const before = makePuckData();
-      const after = deepClone(before) as ReturnType<typeof makePuckData>;
+      const after = deepClone(before);
 
       // Reverse the content array order
       after.content = [after.content[1], after.content[0]];
@@ -279,7 +279,7 @@ describe('Version Patches - JSON Diff Storage', () => {
         },
       });
 
-      const after = deepClone(before) as ReturnType<typeof makePuckData>;
+      const after = deepClone(before);
       (after.zones['sidebar:left'][0] as Record<string, Record<string, unknown>>)
         .props.title = 'Updated Nav';
       (after.zones['sidebar:right'][0] as Record<string, Record<string, unknown>>)
@@ -294,7 +294,7 @@ describe('Version Patches - JSON Diff Storage', () => {
 
     it('should produce patches for root-level metadata changes', () => {
       const before = makePuckData();
-      const after = deepClone(before) as ReturnType<typeof makePuckData>;
+      const after = deepClone(before);
       after.root.props.title = 'Brand New Title';
       after.root.props.description = 'Brand new description';
 
@@ -314,7 +314,7 @@ describe('Version Patches - JSON Diff Storage', () => {
   describe('edge cases', () => {
     it('should produce a correct patch for adding a new component', () => {
       const before = makePuckData();
-      const after = deepClone(before) as ReturnType<typeof makePuckData>;
+      const after = deepClone(before);
       after.content.push({
         type: 'CallToAction',
         props: {
@@ -337,7 +337,7 @@ describe('Version Patches - JSON Diff Storage', () => {
 
     it('should produce a correct patch for removing a component', () => {
       const before = makePuckData();
-      const after = deepClone(before) as ReturnType<typeof makePuckData>;
+      const after = deepClone(before);
       after.content.splice(0, 1); // Remove the first component (Hero)
 
       const patch = compare(before, after);
@@ -353,12 +353,12 @@ describe('Version Patches - JSON Diff Storage', () => {
 
     it('should produce a correct patch for a deeply nested property change', () => {
       const before = makePuckData();
-      const after = deepClone(before) as ReturnType<typeof makePuckData>;
+      const after = deepClone(before);
 
       // Change a nested link label inside a zone component
       const navComponent = after.zones['sidebar:left'][0] as Record<
         string,
-        Record<string, Array<Record<string, string>>>
+        Record<string, Record<string, string>[]>
       >;
       navComponent.props.links[1].label = 'Contact Us';
       navComponent.props.links[1].href = '/contact';
@@ -373,7 +373,7 @@ describe('Version Patches - JSON Diff Storage', () => {
 
     it('should not mutate the original object when applying a patch to a clone', () => {
       const original = makePuckData();
-      const modified = deepClone(original) as ReturnType<typeof makePuckData>;
+      const modified = deepClone(original);
       modified.root.props.title = 'Mutated Title';
 
       const patch = compare(original, modified);
@@ -392,7 +392,7 @@ describe('Version Patches - JSON Diff Storage', () => {
 
     it('should handle adding and removing properties from a component', () => {
       const before = makePuckData();
-      const after = deepClone(before) as ReturnType<typeof makePuckData>;
+      const after = deepClone(before);
 
       // Add a new property
       (after.content[0] as Record<string, Record<string, unknown>>).props.newProp =
@@ -412,7 +412,7 @@ describe('Version Patches - JSON Diff Storage', () => {
 
     it('should handle replacing an entire content array', () => {
       const before = makePuckData();
-      const after = deepClone(before) as ReturnType<typeof makePuckData>;
+      const after = deepClone(before);
       after.content = [
         {
           type: 'FullWidthBanner',
