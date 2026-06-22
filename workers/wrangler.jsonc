@@ -295,7 +295,7 @@
       "vars": {
         "ENVIRONMENT": "production",
         "LOG_LEVEL": "warn",
-        "CORS_ORIGINS": "https://collaborative-state-frontend-production.pantheon-p1-production.workers.dev",
+        "CORS_ORIGINS": "https://content.pantheon.io,https://collaborative-state-frontend-production.pantheon-p1-production.workers.dev",
         "METRICS_ENABLED": "true",
         "PUBLIC_ORIGIN": "https://collaborative-state-worker-production.pantheon-p1-production.workers.dev",
         "INTERNAL_API_URL": "https://collaborative-state-worker-production.pantheon-p1-production.workers.dev",
