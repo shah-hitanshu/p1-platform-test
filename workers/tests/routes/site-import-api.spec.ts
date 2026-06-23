@@ -113,9 +113,10 @@ function buildMinimalZip(): Uint8Array {
   });
 }
 
-function makeFormRequest(zip: Uint8Array): Request {
+function makeFormRequest(zip: Uint8Array, bundleSignature = 'mock-signature'): Request {
   const form = new FormData();
   form.append('file', new Blob([zip], { type: 'application/zip' }), 'bundle.zip');
+  form.append('bundleSignature', bundleSignature);
   return new Request('https://example.com/api/admin/sites/site-1/import', {
     method: 'POST',
     body: form,
@@ -239,7 +240,7 @@ describe('handleSiteImportRoute', () => {
     const resp = await handleSiteImportRoute(
       makeFormRequest(buildMinimalZip()),
       { siteId: 'site-1', principal: createPrincipal() },
-      { CONFIG_KV: createMockKV() } as never,
+      createEnv() as never,
     );
     expect(resp.status).toBe(422);
     const body = JSON.parse(await resp.text()) as { error: string; details: unknown[] };
@@ -279,6 +280,22 @@ describe('handleSiteImportRoute', () => {
     );
     expect(resp.status).toBe(200);
     expect(mockAssertPermission).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when bundleSignature is missing', async () => {
+    mockGetMainBranch.mockResolvedValueOnce(MOCK_MAIN as never);
+    mockAssertPermission.mockResolvedValueOnce(undefined);
+    mockGetSite.mockResolvedValueOnce(MOCK_SITE as never);
+    const form = new FormData();
+    form.append('file', new Blob([buildMinimalZip()], { type: 'application/zip' }), 'bundle.zip');
+    const resp = await handleSiteImportRoute(
+      new Request('https://example.com/', { method: 'POST', body: form }),
+      { siteId: 'site-1', principal: createPrincipal() },
+      createEnv() as never,
+    );
+    expect(resp.status).toBe(400);
+    const body = JSON.parse(await resp.text()) as { error: string };
+    expect(body.error).toContain('bundleSignature');
   });
 
   it('returns 422 when bundleSignature is provided but invalid', async () => {
@@ -347,7 +364,7 @@ describe('handleSiteImportRoute', () => {
     const resp = await handleSiteImportRoute(
       makeFormRequest(buildMinimalZip()),
       { siteId: 'site-1', principal: createPrincipal() },
-      { CONFIG_KV: createMockKV() } as never,
+      createEnv() as never,
     );
     expect(resp.status).toBe(200);
     const body = JSON.parse(await resp.text()) as { importKey: string };
@@ -384,7 +401,7 @@ describe('handleSiteImportRoute', () => {
     const resp = await handleSiteImportRoute(
       makeFormRequest(buildMinimalZip()),
       { siteId: 'site-1', principal: createPrincipal() },
-      { CONFIG_KV: createMockKV() } as never,
+      createEnv() as never,
     );
 
     // Validation must have run (confirmed by 422)
@@ -403,10 +420,13 @@ describe('handleSiteImportRoute', () => {
     mockListDocuments.mockResolvedValueOnce([] as never);
     mockListBranches.mockResolvedValueOnce([MOCK_MAIN] as never);
 
-    // Build a request with garbage bytes instead of a valid ZIP
+    // Build a request with garbage bytes instead of a valid ZIP.
+    // A valid bundleSignature is supplied so the request passes the presence check and
+    // reaches decompression — the signature is never verified because decompression fails first.
     const garbageBytes = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05]);
     const form = new FormData();
     form.append('file', new Blob([garbageBytes], { type: 'application/zip' }), 'bundle.zip');
+    form.append('bundleSignature', 'mock-signature');
     const req = new Request('https://example.com/api/admin/sites/site-1/import', {
       method: 'POST',
       body: form,
@@ -438,8 +458,11 @@ describe('handleSiteImportRoute', () => {
       'site.json': strToU8Fn(JSON.stringify({ id: 'src-1' })),
     });
 
+    // A valid bundleSignature is supplied so the request passes the presence check and
+    // reaches the bundle.json lookup, which is what this test exercises (missing bundle.json → 422).
     const form = new FormData();
     form.append('file', new Blob([zipWithoutBundle], { type: 'application/zip' }), 'bundle.zip');
+    form.append('bundleSignature', 'mock-signature');
     const req = new Request('https://example.com/api/admin/sites/site-1/import', {
       method: 'POST',
       body: form,

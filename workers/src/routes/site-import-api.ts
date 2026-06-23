@@ -52,7 +52,7 @@ export interface SiteImportRouteContext {
 
 export interface SiteImportEnv {
   CONFIG_KV: KVNamespace;
-  INTERNAL_SECRET?: string;
+  INTERNAL_SECRET: string;
 }
 
 export async function handleSiteImportRoute(
@@ -90,6 +90,16 @@ export async function handleSiteImportRoute(
     if (!(fileField instanceof Blob)) {
       return errorResponse('Missing or invalid "file" field', 400);
     }
+
+    // Require the bundle signature before the expensive ZIP decompression below.
+    // The signature is a plain multipart form field (not inside the ZIP), so this fails
+    // fast on unsigned uploads. It is verified once bundle.json is available (further down);
+    // INTERNAL_SECRET presence is guaranteed by the route dispatcher (returns 503 if absent).
+    const providedSignature = formData.get('bundleSignature');
+    if (typeof providedSignature !== 'string' || providedSignature === '') {
+      return errorResponse('bundleSignature is required', 400);
+    }
+
     const zipBytes = new Uint8Array(await fileField.arrayBuffer());
 
     // Decompress ZIP
@@ -106,19 +116,11 @@ export async function handleSiteImportRoute(
       return errorResponse('bundle.json not found in ZIP', 422);
     }
 
-    // Verify bundle signature before processing any data. The signature covers bundle.json,
+    // Verify the signature now that bundle.json is available. The signature covers bundle.json,
     // which in turn covers all other files via SHA-256, preventing tampered bundles.
-    const providedSignature = formData.get('bundleSignature');
-    if (typeof providedSignature === 'string' && providedSignature !== '') {
-      if (env.INTERNAL_SECRET === undefined || env.INTERNAL_SECRET === '') {
-        return errorResponse('Bundle signature cannot be verified: INTERNAL_SECRET not configured', 500);
-      }
-      const valid = await verifyBundleSignature(bundleJsonBytes, providedSignature, env.INTERNAL_SECRET);
-      if (!valid) {
-        return errorResponse('Bundle signature verification failed — bundle may have been tampered with', 422);
-      }
-    } else {
-      console.warn('[bundle-import] No bundleSignature provided — bundle integrity not verified');
+    const valid = await verifyBundleSignature(bundleJsonBytes, providedSignature, env.INTERNAL_SECRET);
+    if (!valid) {
+      return errorResponse('Bundle signature verification failed — bundle may have been tampered with', 422);
     }
 
     const manifest = JSON.parse(new TextDecoder().decode(bundleJsonBytes)) as BundleManifest;

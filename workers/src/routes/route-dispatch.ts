@@ -85,10 +85,13 @@ export async function dispatchRoute(
       }, env);
 
     case 'site-import':
+      if (env.INTERNAL_SECRET === undefined || env.INTERNAL_SECRET === '') {
+        return errorResponse('Bundle signature verification is not available on this server', 503);
+      }
       return await handleSiteImportRoute(request, {
         siteId: route.params.siteId,
         principal,
-      }, { CONFIG_KV: env.CONFIG_KV });
+      }, { CONFIG_KV: env.CONFIG_KV, INTERNAL_SECRET: env.INTERNAL_SECRET });
 
     case 'site-screenshot':
       return await handleSiteScreenshotRoutes(request, {

@@ -11,9 +11,11 @@ import {
   validateBundleManifest,
   buildImportKey,
   hasCompletedPhase,
+  verifyBundleSignature,
   type BundleManifest,
   type ImportProgress,
 } from '../../src/services/bundle-import-service';
+import { signBundleJson } from '../../src/services/bundle-export-service';
 
 const mockQuery = vi.mocked(query);
 
@@ -166,5 +168,42 @@ describe('resolveCreatedByRefToId', () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never);
     const id = await resolveCreatedByRefToId({ type: 'agent', name: 'Unknown Agent' });
     expect(id).toBe(SYSTEM_UUID);
+  });
+});
+
+describe('verifyBundleSignature', () => {
+  // Exercises the REAL verifier (no mocks) against signatures produced by the real
+  // signBundleJson. These run in the Node unit runtime, which is exactly where the prior
+  // crypto.subtle.timingSafeEqual implementation threw — so they double as a regression
+  // guard that verification stays portable across the Workers and Node runtimes.
+  const SECRET = 'unit-test-internal-secret';
+  const bundleJson = new TextEncoder().encode(JSON.stringify({ bundleVersion: '1', files: {} }));
+
+  it('returns true for a signature produced by signBundleJson with the same secret', async () => {
+    const sig = await signBundleJson(bundleJson, SECRET);
+    expect(await verifyBundleSignature(bundleJson, sig, SECRET)).toBe(true);
+  });
+
+  it('returns false when the signature was produced with a different secret (wrong signature)', async () => {
+    const sig = await signBundleJson(bundleJson, 'a-different-secret');
+    expect(await verifyBundleSignature(bundleJson, sig, SECRET)).toBe(false);
+  });
+
+  it('returns false when the bundle bytes were tampered after signing (valid signature, tampered bundle)', async () => {
+    const sig = await signBundleJson(bundleJson, SECRET);
+    const tampered = new TextEncoder().encode(JSON.stringify({ bundleVersion: '1', files: { injected: 'evil' } }));
+    expect(await verifyBundleSignature(tampered, sig, SECRET)).toBe(false);
+  });
+
+  it('returns false for a malformed / wrong-length signature', async () => {
+    expect(await verifyBundleSignature(bundleJson, 'not-a-real-signature', SECRET)).toBe(false);
+  });
+
+  it('resolves (does not throw) in the Node runtime — no Workers-only crypto dependency', async () => {
+    // Regression: verifyBundleSignature used crypto.subtle.timingSafeEqual (a Workers-only
+    // extension), which is undefined in Node and threw, making the real signature path
+    // impossible to test outside the Workers runtime. It must now resolve in both.
+    const sig = await signBundleJson(bundleJson, SECRET);
+    await expect(verifyBundleSignature(bundleJson, sig, SECRET)).resolves.toBe(true);
   });
 });

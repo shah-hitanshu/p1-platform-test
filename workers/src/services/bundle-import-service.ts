@@ -130,10 +130,20 @@ export async function verifyBundleSignature(
   internalSecret: string,
 ): Promise<boolean> {
   const expected = await hmacSha256(bundleJsonBytes, internalSecret);
-  const expectedBytes = new TextEncoder().encode(expected);
-  const providedBytes = new TextEncoder().encode(providedSignature);
-  if (expectedBytes.length !== providedBytes.length) return false;
-  return crypto.subtle.timingSafeEqual(expectedBytes, providedBytes);
+  // Constant-time comparison via double-HMAC blinding: re-MAC both the expected and the
+  // provided signature under a fresh random per-call key, then compare the digests with
+  // plain equality. Because the key is unpredictable, the position of any mismatch is
+  // randomized, so the comparison leaks no timing information about the real signature.
+  // This uses only standard Web Crypto (via hmacSha256), so it behaves identically in the
+  // Workers runtime and in Node — unlike crypto.subtle.timingSafeEqual, a Workers-only
+  // extension that throws elsewhere and made this path impossible to test outside Workers.
+  const blindingKey = crypto.randomUUID();
+  const encoder = new TextEncoder();
+  const [expectedBlinded, providedBlinded] = await Promise.all([
+    hmacSha256(encoder.encode(expected), blindingKey),
+    hmacSha256(encoder.encode(providedSignature), blindingKey),
+  ]);
+  return expectedBlinded === providedBlinded;
 }
 
 // sha256Hex is imported from utils/hash and used in validateBundleManifest above.

@@ -96,6 +96,11 @@ export async function handleSiteExportRoute(
       return errorResponse('Bundle storage is not configured', 503);
     }
 
+    if (env.INTERNAL_SECRET === undefined || env.INTERNAL_SECRET === '') {
+      console.error('[site-export] INTERNAL_SECRET not configured — cannot sign bundle');
+      return errorResponse('Bundle signing is not available on this server', 503);
+    }
+
     const exportedAt = new Date().toISOString();
     const environment = env.ENVIRONMENT ?? 'local';
 
