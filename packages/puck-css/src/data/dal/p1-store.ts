@@ -40,7 +40,18 @@ export interface P1StoreConfig {
    */
   contentClient?: P1ContentClientInterface;
   siteId: string;
-  branchId: string;
+  /**
+   * Branch ID for authoring operations. When omitted, resolved lazily on the
+   * first editor request via resolveBranchId. Not required for public reads —
+   * those use contentClient which defaults to the main branch server-side.
+   */
+  branchId?: string;
+  /**
+   * Called on the first editor operation when branchId is not pre-configured.
+   * Receives the bearer token from the active request context so branch
+   * detection runs under the user's credentials, not the sat_ API key.
+   */
+  resolveBranchId?: (bearerToken: string) => Promise<string>;
   /** Factory to create a client with a specific bearer token (for user-auth writes). */
   createAuthClient?: (bearerToken: string) => P1StoreClient;
 }
@@ -84,9 +95,32 @@ async function withRetry<T>(
 }
 
 export function createP1PageStore(config: P1StoreConfig): PageStore {
-  const { client, contentClient, siteId, branchId, createAuthClient } = config;
+  const { client, contentClient, siteId, createAuthClient } = config;
 
   let _keysCache: { promise: Promise<string[]>; ts: number } | null = null;
+  let _resolvedBranchIdPromise: Promise<string> | null = null;
+
+  // Returns the branch ID, resolving it lazily on the first editor request when
+  // not pre-configured. Resolution uses the request's bearer token so it never
+  // requires sat_ token access to the branches endpoint.
+  function getBranchId(): Promise<string> {
+    if (config.branchId) return Promise.resolve(config.branchId);
+    if (!_resolvedBranchIdPromise) {
+      const token = getRequestAuthToken();
+      if (!token || !config.resolveBranchId) {
+        return Promise.reject(
+          new Error(
+            "Branch ID required for editor operations: set p1BranchId in config or use an authenticated request.",
+          ),
+        );
+      }
+      _resolvedBranchIdPromise = config.resolveBranchId(token).catch((err: unknown) => {
+        _resolvedBranchIdPromise = null;
+        throw err;
+      });
+    }
+    return _resolvedBranchIdPromise;
+  }
 
   function writeClient(): P1StoreClient {
     const token = getRequestAuthToken();
@@ -115,6 +149,7 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
       }
       // Editor context (auth token present) or no content client: return latest version.
       try {
+        const branchId = await getBranchId();
         const doc = await client.documents.getByPath(siteId, toDocPath(path));
         const version = await client.versions.getLatest(siteId, branchId, doc.id);
         return version.snapshot;
@@ -127,6 +162,7 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
     async set(path: string, value: unknown): Promise<void> {
       const wc = writeClient();
       const dp = toDocPath(path);
+      const branchId = await getBranchId();
       let docId: string;
       try {
         const existing = await client.documents.getByPath(siteId, dp);
@@ -145,6 +181,7 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
 
     async delete(path: string): Promise<void> {
       try {
+        const branchId = await getBranchId();
         const doc = await client.documents.getByPath(siteId, toDocPath(path));
         await writeClient().documents.delete(siteId, branchId, doc.id);
       } catch (err) {
@@ -168,14 +205,15 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
       if (_keysCache && now - _keysCache.ts < KEYS_CACHE_TTL_MS) {
         return _keysCache.promise;
       }
-      const promise = withRetry(
-        () => client.documents.list(siteId, branchId),
-        KEYS_MAX_RETRIES,
-        KEYS_RETRY_DELAY_MS,
-      )
+      const promise = getBranchId()
+        .then((branchId) => withRetry(
+          () => client.documents.list(siteId, branchId),
+          KEYS_MAX_RETRIES,
+          KEYS_RETRY_DELAY_MS,
+        ))
         .then((docs) => docs.map((d) => toStorePath(d.path)))
         .catch((err) => {
-          console.error("[css-store] documents.list failed after retries:", (err as Error).message);
+          console.error("[css-store] keys() failed:", (err as Error).message);
           invalidateKeysCache();
           return [] as string[];
         });

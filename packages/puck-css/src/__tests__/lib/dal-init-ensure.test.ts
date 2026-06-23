@@ -51,35 +51,17 @@ describe('ensureInitialized', () => {
     ).rejects.toThrow('p1BaseUrl and p1SiteId must be set');
   });
 
-  it('auto-detects main branch when p1BranchId is omitted', async () => {
-    mockBranchesList.mockResolvedValue([
-      { id: 'branch-dev', isMain: false },
-      { id: 'branch-main', isMain: true },
-    ]);
-
+  it('does not call branches.list at init when p1BranchId is omitted', async () => {
     await ensureInitialized({
       p1BaseUrl: 'https://api.example.com',
       p1SiteId: 'site-1',
     });
 
-    expect(mockBranchesList).toHaveBeenCalledWith('site-1');
+    // Branch detection is deferred to the first editor request so a
+    // read:published sat_ token (which cannot reach the branches endpoint)
+    // can still initialize the store for public SSR.
+    expect(mockBranchesList).not.toHaveBeenCalled();
     expect(mockInitializeStores).toHaveBeenCalledOnce();
-  });
-
-  it('throws when no main branch found', async () => {
-    mockBranchesList.mockResolvedValue([
-      { id: 'branch-dev', isMain: false },
-    ]);
-
-    // Need to reset since the previous test may have cached a promise
-    _resetInit();
-
-    await expect(
-      ensureInitialized({
-        p1BaseUrl: 'https://api.example.com',
-        p1SiteId: 'site-1',
-      }),
-    ).rejects.toThrow('No main branch found');
   });
 
   it('uses provided p1BranchId without listing branches', async () => {

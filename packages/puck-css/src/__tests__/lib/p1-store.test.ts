@@ -374,6 +374,114 @@ describe("createP1PageStore", () => {
   });
 
   // -----------------------------------------------------------------------
+  // Lazy branchId resolution
+  // -----------------------------------------------------------------------
+
+  describe("lazy branchId resolution", () => {
+    it("resolves branchId via resolveBranchId on first editor operation", async () => {
+      const resolveBranchId = vi.fn().mockResolvedValue("branch-resolved");
+      const docs: MockDocument[] = [
+        { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
+      ];
+      const versions: Record<string, MockVersion> = {
+        "doc-1": { id: "v-1", documentId: "doc-1", branchId: "branch-resolved", snapshot: { root: { props: {} }, content: [] } },
+      };
+      mockClient = createMockClient({ documents: docs, versions });
+      const store = createP1PageStore({
+        client: mockClient as unknown as P1StoreConfig["client"],
+        siteId: SITE_ID,
+        resolveBranchId,
+      });
+
+      await runWithAuthToken("user-jwt", async () => {
+        await store.get("/");
+      });
+
+      expect(resolveBranchId).toHaveBeenCalledWith("user-jwt");
+      expect(mockClient.versions.getLatest).toHaveBeenCalledWith(SITE_ID, "branch-resolved", "doc-1");
+    });
+
+    it("caches the resolved branchId across multiple editor operations", async () => {
+      const resolveBranchId = vi.fn().mockResolvedValue("branch-resolved");
+      const docs: MockDocument[] = [
+        { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
+      ];
+      const versions: Record<string, MockVersion> = {
+        "doc-1": { id: "v-1", documentId: "doc-1", branchId: "branch-resolved", snapshot: { root: {}, content: [] } },
+      };
+      mockClient = createMockClient({ documents: docs, versions });
+      const store = createP1PageStore({
+        client: mockClient as unknown as P1StoreConfig["client"],
+        siteId: SITE_ID,
+        resolveBranchId,
+      });
+
+      await runWithAuthToken("user-jwt", async () => {
+        await store.get("/");
+        await store.get("/");
+      });
+
+      expect(resolveBranchId).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries branch resolution with a fresh token after failure", async () => {
+      const resolveBranchId = vi.fn()
+        .mockRejectedValueOnce(new Error("token expired"))
+        .mockResolvedValue("branch-resolved");
+      const docs: MockDocument[] = [
+        { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
+      ];
+      const versions: Record<string, MockVersion> = {
+        "doc-1": { id: "v-1", documentId: "doc-1", branchId: "branch-resolved", snapshot: { root: {}, content: [] } },
+      };
+      mockClient = createMockClient({ documents: docs, versions });
+      const store = createP1PageStore({
+        client: mockClient as unknown as P1StoreConfig["client"],
+        siteId: SITE_ID,
+        resolveBranchId,
+      });
+
+      // First attempt fails — _resolvedBranchIdPromise is cleared by the catch handler.
+      let caught: Error | undefined;
+      try {
+        await runWithAuthToken("token-1", async () => {
+          await store.set("/", {});
+        });
+      } catch (err) {
+        caught = err as Error;
+      }
+      expect(caught?.message).toContain("token expired");
+
+      // Second attempt with a different token resolves fresh.
+      await runWithAuthToken("token-2", async () => {
+        await store.get("/");
+      });
+
+      expect(resolveBranchId).toHaveBeenCalledTimes(2);
+      expect(resolveBranchId).toHaveBeenLastCalledWith("token-2");
+    });
+
+    it("rejects editor operations when no auth token and no branchId configured", async () => {
+      mockClient = createMockClient();
+      const store = createP1PageStore({
+        client: mockClient as unknown as P1StoreConfig["client"],
+        siteId: SITE_ID,
+        resolveBranchId: vi.fn(),
+      });
+
+      // No auth token in context — getBranchId rejects; set() propagates it.
+      // Use try/catch to avoid Vitest .rejects.toThrow() compat issue.
+      let caught: Error | undefined;
+      try {
+        await store.set("/", {});
+      } catch (err) {
+        caught = err as Error;
+      }
+      expect(caught?.message).toContain("Branch ID required");
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Error resilience
   // -----------------------------------------------------------------------
 

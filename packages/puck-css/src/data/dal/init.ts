@@ -59,31 +59,33 @@ async function doInit(cfg: P1DataConfig): Promise<void> {
     apiKey: cfg.p1ApiKey,
   });
 
-  // Auto-detect main branch when no branchId provided.
-  let branchId: string = cfg.p1BranchId ?? "";
-  if (!branchId) {
-    const branches = await client.branches.list(p1SiteId);
-    const main = branches.find((b: { isMain: boolean }) => b.isMain);
-    if (!main) {
-      throw new Error("No main branch found for site " + p1SiteId);
-    }
-    branchId = main.id;
-  }
-
   // Content client for published-only reads on public pages.
-  // Use the resolved branchId (auto-detected main if not explicitly configured).
+  // No branchId: the content delivery API defaults to main, and passing
+  // ?branch= would cause a 403 for read:published tokens (mainBranchOnly enforcement).
   const contentClient = new P1ContentClientCtor({
     baseUrl: p1BaseUrl,
     apiToken: cfg.p1ApiKey ?? "",
     siteId: p1SiteId,
-    branchId,
   });
 
   const pageStore = createP1PageStore({
     client,
     contentClient,
     siteId: p1SiteId,
-    branchId,
+    branchId: cfg.p1BranchId,
+    // Branch auto-detection deferred to the first editor request so it runs
+    // under the user's bearer token. A read:published sat_ token cannot reach
+    // the branches endpoint, so detection must not happen at init time.
+    resolveBranchId: async (bearerToken: string) => {
+      const authClient = new P1ClientCtor({
+        baseUrl: p1BaseUrl,
+        authProvider: async () => `Bearer ${bearerToken}`,
+      });
+      const branches = await authClient.branches.list(p1SiteId);
+      const main = branches.find((b: { isMain: boolean }) => b.isMain);
+      if (!main) throw new Error("No main branch found for site " + p1SiteId);
+      return main.id;
+    },
     createAuthClient: (bearerToken: string) => {
       return new P1ClientCtor({
         baseUrl: p1BaseUrl,
