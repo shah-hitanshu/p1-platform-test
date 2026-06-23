@@ -64,7 +64,16 @@ export default async function HomePage() {
       referencedDatasourceIds,
     });
     const resolvedData = await resolveDataTemplates(data, context);
-    return <Client data={resolvedData} />;
+    return (
+      <Client
+        data={resolvedData}
+        pageMetadata={{
+          route: "/",
+          documentName: data.root.props?.title as string | undefined,
+          pageType: "page",
+        }}
+      />
+    );
   }
 
   const routes = await listRoutes();

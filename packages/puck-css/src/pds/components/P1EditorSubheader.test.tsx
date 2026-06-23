@@ -61,6 +61,22 @@ interface ActorPresence {
 const humanActor: ActorPresence = { id: 'user-1', name: 'Alice', isAgent: false };
 const agentActor: ActorPresence = { id: 'agent-1', name: 'Agent Smith', isAgent: true };
 
+const mainBranch = {
+  id: 'main',
+  name: 'main',
+  isMain: true,
+  siteId: 'site-1',
+  createdAt: '2024-01-01T00:00:00Z',
+};
+
+const featureBranch = {
+  id: 'feature-1',
+  name: 'feature/test',
+  isMain: false,
+  siteId: 'site-1',
+  createdAt: '2024-01-02T00:00:00Z',
+};
+
 // =============================================================================
 // Tests
 // =============================================================================
@@ -82,6 +98,11 @@ describe('P1EditorSubheader', () => {
     hasFuture: false,
     onUndo: vi.fn(),
     onRedo: vi.fn(),
+    // WorkstreamSwitcher required props
+    branches: [mainBranch, featureBranch],
+    currentBranch: featureBranch,
+    onSwitchBranch: vi.fn(),
+    onCompareWithLive: vi.fn(),
   };
 
   it('renders the subheader container with data-testid="p1-editor-subheader"', () => {
@@ -137,7 +158,9 @@ describe('P1EditorSubheader', () => {
   it('renders PublishControl', () => {
     render(<P1EditorSubheader {...defaultProps} />);
 
-    expect(screen.getByTestId('publish-control')).toBeDefined();
+    // PublishControl renders twice (desktop + mobile views)
+    const publishControls = screen.getAllByTestId('publish-control');
+    expect(publishControls.length).toBeGreaterThan(0);
   });
 
   it('undo button is disabled when hasPast is false', () => {
@@ -219,5 +242,55 @@ describe('P1EditorSubheader', () => {
 
     const chip = screen.getByTestId('agent-chip');
     expect(chip.getAttribute('data-current-workstream')).toBe('');
+  });
+
+  // ---------------------------------------------------------------------------
+  // Plugin Rail Toggle
+  // ---------------------------------------------------------------------------
+
+  it('renders plugin rail toggle button in panel toggles', () => {
+    render(<P1EditorSubheader {...defaultProps} />);
+
+    const pluginRailToggle = screen.getByLabelText('Toggle plugin rail');
+    expect(pluginRailToggle).toBeDefined();
+  });
+
+  it('renders plugin rail toggle when pluginRailVisible is false', () => {
+    render(<P1EditorSubheader {...defaultProps} pluginRailVisible={false} />);
+
+    const pluginRailToggle = screen.getByLabelText('Toggle plugin rail');
+    expect(pluginRailToggle).toBeDefined();
+  });
+
+  it('renders plugin rail toggle when pluginRailVisible is true', () => {
+    render(<P1EditorSubheader {...defaultProps} pluginRailVisible={true} />);
+
+    const pluginRailToggle = screen.getByLabelText('Toggle plugin rail');
+    expect(pluginRailToggle).toBeDefined();
+  });
+
+  it('clicking plugin rail toggle calls onTogglePluginRail', () => {
+    const onTogglePluginRail = vi.fn();
+    render(
+      <P1EditorSubheader
+        {...defaultProps}
+        onTogglePluginRail={onTogglePluginRail}
+      />
+    );
+
+    const pluginRailToggle = screen.getByLabelText('Toggle plugin rail');
+    fireEvent.click(pluginRailToggle);
+
+    expect(onTogglePluginRail).toHaveBeenCalledTimes(1);
+  });
+
+  it('plugin rail toggle is positioned in panel toggles container', () => {
+    render(<P1EditorSubheader {...defaultProps} />);
+
+    const panelToggles = screen.getByTestId('panel-toggles');
+    const pluginRailToggle = screen.getByLabelText('Toggle plugin rail');
+
+    // Verify the toggle is within the panel toggles container
+    expect(panelToggles.contains(pluginRailToggle)).toBe(true);
   });
 });

@@ -9,10 +9,8 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import type { Branch } from '@pantheon-systems/css-client';
-import { Icon, Button, Avatar, PantheonLogo } from '@pantheon-systems/pds-toolkit-react';
+import { Icon, Avatar, PantheonLogo } from '@pantheon-systems/pds-toolkit-react';
 import { getAvatarStyleOverride } from '../../collaboration/utils/avatarColor.js';
-import { WorkstreamSwitcher } from './WorkstreamSwitcher.js';
 import { PageNavigator } from './PageNavigator.js';
 import type { PageNavigatorDocument } from './PageNavigator.js';
 import styles from './P1EditorHeader.module.css';
@@ -33,36 +31,28 @@ export interface SiteMenuItem {
 }
 
 export interface P1EditorHeaderProps {
-  branches: Branch[];
-  currentBranch: Branch | null;
   documents: PageNavigatorDocument[];
   currentDocument: PageNavigatorDocument | null;
   selectedDocumentPath?: string | null;
   currentUser?: CurrentUser;
   siteName: string;
-  siteMenuItems: SiteMenuItem[];
-  onSwitchBranch: (id: string) => void;
+  siteId?: string;
+  dashboardUrl?: string;
   onSelectDocument: (doc: PageNavigatorDocument) => void;
   onCreateDocument?: (path: string) => Promise<void>;
-  onCreateBranch?: (name: string) => Promise<void>;
-  onCompareWithLive: () => void;
   onLogout: () => void;
 }
 
 export function P1EditorHeader({
-  branches,
-  currentBranch,
   documents,
   currentDocument,
   selectedDocumentPath,
   currentUser,
   siteName,
-  siteMenuItems,
-  onCreateBranch,
-  onSwitchBranch,
+  siteId,
+  dashboardUrl,
   onSelectDocument,
   onCreateDocument,
-  onCompareWithLive,
   onLogout,
 }: P1EditorHeaderProps): React.ReactElement {
   const [pageNavigatorOpen, setPageNavigatorOpen] = useState(false);
@@ -71,18 +61,12 @@ export function P1EditorHeader({
   >();
   const pageSelectorRef = useRef<HTMLButtonElement>(null);
 
-  const [siteMenuOpen, setSiteMenuOpen] = useState(false);
-  const [siteMenuStyle, setSiteMenuStyle] = useState<React.CSSProperties>({});
-  const siteMenuTriggerRef = useRef<HTMLButtonElement>(null);
-  const siteMenuDropdownRef = useRef<HTMLDivElement>(null);
-
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [userMenuStyle, setUserMenuStyle] = useState<React.CSSProperties>({});
   const userMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const handlePageSelectorClick = useCallback(() => {
-    setSiteMenuOpen(false);
     setUserMenuOpen(false);
     if (!pageNavigatorOpen && pageSelectorRef.current) {
       const rect = pageSelectorRef.current.getBoundingClientRect();
@@ -98,26 +82,8 @@ export function P1EditorHeader({
     setPageNavigatorOpen((o) => !o);
   }, [pageNavigatorOpen]);
 
-  const handleSiteMenuClick = useCallback(() => {
-    setPageNavigatorOpen(false);
-    setUserMenuOpen(false);
-    if (!siteMenuOpen && siteMenuTriggerRef.current) {
-      const rect = siteMenuTriggerRef.current.getBoundingClientRect();
-      const menuMaxW = Math.min(280, window.innerWidth - 16);
-      setSiteMenuStyle({
-        position: 'fixed',
-        top: rect.bottom + 6,
-        left: Math.min(rect.left, window.innerWidth - menuMaxW - 8),
-        maxWidth: menuMaxW,
-        zIndex: 9999,
-      });
-    }
-    setSiteMenuOpen((prev) => !prev);
-  }, [siteMenuOpen]);
-
   const handleUserMenuClick = useCallback(() => {
     setPageNavigatorOpen(false);
-    setSiteMenuOpen(false);
     if (!userMenuOpen && userMenuTriggerRef.current) {
       const rect = userMenuTriggerRef.current.getBoundingClientRect();
       setUserMenuStyle({
@@ -145,22 +111,6 @@ export function P1EditorHeader({
   }, [pageNavigatorOpen]);
 
   useEffect(() => {
-    if (!siteMenuOpen) return;
-    function handleClickOutside(e: MouseEvent) {
-      const target = e.target as Node;
-      if (
-        siteMenuTriggerRef.current?.contains(target) ||
-        siteMenuDropdownRef.current?.contains(target)
-      ) {
-        return;
-      }
-      setSiteMenuOpen(false);
-    }
-    document.addEventListener('pointerdown', handleClickOutside, { capture: true });
-    return () => document.removeEventListener('pointerdown', handleClickOutside, { capture: true });
-  }, [siteMenuOpen]);
-
-  useEffect(() => {
     if (!userMenuOpen) return;
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as Node;
@@ -173,139 +123,119 @@ export function P1EditorHeader({
     return () => document.removeEventListener('pointerdown', handleClickOutside, { capture: true });
   }, [userMenuOpen]);
 
-  const isMain = currentBranch?.isMain ?? true;
-
   function handleSelectDocument(doc: PageNavigatorDocument): void {
     onSelectDocument(doc);
     setPageNavigatorOpen(false);
   }
 
+  // Build dashboard URL if siteId is provided
+  const dashboardHref = React.useMemo(() => {
+    if (!siteId) return undefined;
+    const baseUrl = (dashboardUrl || 'https://content.pantheon.io').replace(/\/$/, '');
+    return `${baseUrl}/dashboard/sites/${siteId}`;
+  }, [siteId, dashboardUrl]);
+
   return (
     <header data-testid="p1-editor-header" className={styles.header}>
       {/* Branding */}
-      <PantheonLogo
-        data-testid="p1-logo"
-        className={styles.logo}
-        displayType="sub-brand"
-        subBrand="P1"
-        size="s"
-        linkContent={null}
-      />
+      {dashboardHref ? (
+        <a
+          href={dashboardHref}
+          className={styles.logoLink}
+          title="Go to P1 Dashboard"
+          data-testid="p1-logo-link"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <PantheonLogo
+            data-testid="p1-logo"
+            className={styles.logo}
+            displayType="sub-brand"
+            subBrand="P1"
+            size="s"
+            linkContent={null}
+          />
+        </a>
+      ) : (
+        <PantheonLogo
+          data-testid="p1-logo"
+          className={styles.logo}
+          displayType="sub-brand"
+          subBrand="P1"
+          size="s"
+          linkContent={null}
+        />
+      )}
 
-      {/* Site selector */}
-      <button
-        ref={siteMenuTriggerRef}
-        data-testid="site-selector"
-        type="button"
-        className={styles.siteSelector}
-        onClick={handleSiteMenuClick}
-        aria-haspopup="menu"
-        aria-expanded={siteMenuOpen}
+      {/* Site label */}
+      <div
+        data-testid="site-label"
+        className={styles.siteLabel}
       >
-        <Icon iconName="globe" iconSize="s" aria-hidden="true" />
         <span className={styles.labelText}>
-          {siteName}
-          <Icon iconName="angleDown" iconSize="s" aria-hidden="true" />
+          Site: {siteName}
         </span>
-      </button>
+      </div>
 
-      {siteMenuOpen &&
-        createPortal(
-          <div
-            ref={siteMenuDropdownRef}
-            data-testid="site-menu"
-            className={styles.dropdownMenu}
-            role="menu"
-            style={siteMenuStyle}
-          >
-            {siteMenuItems.map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                role="menuitem"
-                className={styles.dropdownMenuItem}
-                onClick={() => {
-                  setSiteMenuOpen(false);
-                  item.callback();
-                }}
-              >
-                {item.iconName && <Icon iconName={item.iconName} iconSize="s" aria-hidden="true" />}
-                {item.label}
-              </button>
-            ))}
-          </div>,
-          document.body
-        )}
+      {/* Page selector button group */}
+      <div className={styles.pageSelectorGroup}>
+        <button
+          ref={pageSelectorRef}
+          data-testid="page-selector"
+          className={styles.pageSelector}
+          onClick={handlePageSelectorClick}
+          type="button"
+          aria-haspopup="true"
+          aria-expanded={pageNavigatorOpen}
+        >
+          <Icon iconName="folderTree" iconSize="s" aria-hidden="true" />
+          <span className={styles.labelText}>
+            {currentDocument?.path || selectedDocumentPath || 'Select a page'}
+            <Icon iconName="angleDown" iconSize="s" aria-hidden="true" />
+          </span>
+        </button>
 
-      <div className={styles.divider} />
-
-      {/* Workstream / branch switcher */}
-      <WorkstreamSwitcher
-        branches={branches}
-        currentBranch={currentBranch}
-        onSwitch={onSwitchBranch}
-        onCreateBranch={onCreateBranch}
-        onCompareWithLive={onCompareWithLive}
-        hideCompareButton
-      />
-
-      {/* Page selector */}
-      <button
-        ref={pageSelectorRef}
-        data-testid="page-selector"
-        className={styles.pageSelector}
-        onClick={handlePageSelectorClick}
-        type="button"
-        aria-haspopup="true"
-        aria-expanded={pageNavigatorOpen}
-      >
-        <Icon iconName="folderTree" iconSize="s" aria-hidden="true" />
-        <span className={styles.labelText}>
-          {currentDocument?.path || selectedDocumentPath || 'Select a page'}
-          <Icon iconName="angleDown" iconSize="s" aria-hidden="true" />
-        </span>
-      </button>
-
-      {/* Open in new tab button — shown when editing a page with a valid path */}
-      {(() => {
-        const pagePath = currentDocument?.path || selectedDocumentPath;
-        // Show button if there's a path and it's not empty/root
-        const shouldShow = pagePath && pagePath !== '/' && pagePath !== '';
-        return shouldShow ? (
-          <a
-            href={pagePath}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.externalLinkButton}
-            title="Open page in new tab"
-            data-testid="open-external"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
+        {/* Open in new tab button — shown when editing a page with a valid path */}
+        {(() => {
+          const pagePath = currentDocument?.path || selectedDocumentPath;
+          // Show button if there's a path and it's not empty/root
+          const shouldShow = pagePath && pagePath !== '/' && pagePath !== '';
+          return shouldShow ? (
+            <a
+              href={pagePath}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.externalLinkButton}
+              title="Open page in new tab"
+              data-testid="open-external"
             >
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" x2="21" y1="14" y2="3" />
-            </svg>
-          </a>
-        ) : null;
-      })()}
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" x2="21" y1="14" y2="3" />
+              </svg>
+            </a>
+          ) : null;
+        })()}
+      </div>
 
       {/* Page navigator — portal-rendered with pre-computed position to avoid flash */}
       <PageNavigator
         open={pageNavigatorOpen}
         documents={documents}
         currentDocument={currentDocument}
-        isMainBranch={isMain}
+        isMainBranch={true}
         onSelect={handleSelectDocument}
         onCreateDocument={onCreateDocument}
         onClose={() => setPageNavigatorOpen(false)}
@@ -314,20 +244,6 @@ export function P1EditorHeader({
 
       {/* Spacer */}
       <div className={styles.spacer} />
-
-      {/* Compare with Live — only on non-main branches, hidden on mobile */}
-      {!isMain && (
-        <span className={styles.compareButton}>
-          <Button
-            data-testid="compare-with-live"
-            label="Compare with Live"
-            variant="secondary"
-            size="sm"
-            onClick={onCompareWithLive}
-            buttonType="button"
-          />
-        </span>
-      )}
 
       {/* User avatar + account menu */}
       <button

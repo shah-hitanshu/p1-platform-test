@@ -88,8 +88,8 @@
     "yjs": "^13.6.29"
   },
   "devDependencies": {
-    "@pantheon-systems/eslint-config": "workspace:*",
     "@floating-ui/react": "^0.27.19",
+    "@pantheon-systems/eslint-config": "workspace:*",
     "@pantheon-systems/pds-toolkit-react": "2.0.0-alpha.12",
     "@tanstack/react-query": "^5.99.0",
     "@testing-library/dom": "^10.4.1",

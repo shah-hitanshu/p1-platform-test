@@ -12,6 +12,39 @@
  */
 
 /* ============================================
+   Plugin Rail Toggle
+   ============================================ */
+
+/* Hide the plugin rail (left navigation with Blocks/Outline/History/etc.) */
+.p1-hide-plugin-rail [class*='_PuckLayout-nav_'] {
+  display: none;
+}
+
+/* Reclaim the space - set the side nav width to 0 so grid collapses that column */
+.p1-hide-plugin-rail [class*='_PuckLayout-inner_'] {
+  --puck-side-nav-width: 0;
+}
+
+/* ============================================
+   Sidebar Background Matching
+   ============================================ */
+
+/* Match plugin rail, blocks plugin, and sidebars background to header */
+[class*='_PuckLayout-nav_'],
+[class*='_BlocksPlugin_'],
+[class*='_Sidebar--left_'],
+[class*='_Sidebar--right_'] {
+  background: var(--pds-color-bg-default, oklch(1 0 0)) !important;
+}
+
+/* Override all nested backgrounds in right sidebar */
+[class*='_Sidebar--right_'] [class*='_SidebarSection'],
+[class*='_Sidebar--right_'] [class*='_Breadcrumbs_'],
+[class*='_Sidebar--right_'] [class*='_Heading_'] {
+  background: transparent !important;
+}
+
+/* ============================================
    CSS Variables
    ============================================ */
 :root {

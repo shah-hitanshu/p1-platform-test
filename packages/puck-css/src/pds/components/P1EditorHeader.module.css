@@ -35,6 +35,23 @@
    The PDS component defaults to 3.052rem icon height; we scale it down
    to fit the compact 52px editor header. */
 
+.logoLink {
+  flex-shrink: 0;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  transition: opacity 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.logoLink:hover {
+  opacity: 0.7;
+}
+
+.logoLink .logo {
+  cursor: pointer;
+}
+
 .logo {
   flex-shrink: 0;
   user-select: none;
@@ -52,28 +69,19 @@
   padding-inline-end: 0;
 }
 
-/* ── Site selector button ───────────────────────────────────────────── */
+/* ── Site label ───────────────────────────────────────────── */
 
-.siteSelector {
+.siteLabel {
   display: inline-flex;
   align-items: center;
-  gap: 0.41rem;
   padding: 0.41rem 0.64rem;
-  background: transparent;
-  border: 1px solid var(--pds-color-border-default, oklch(0.9401 0 0));
-  border-radius: var(--pds-border-radius-default, 0.188rem);
   font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
   font-size: var(--pds-typography-size-s, 0.875rem);
+  font-weight: var(--pds-typography-fw-medium, 500);
   color: var(--pds-color-fg-default, oklch(0.2046 0 0));
-  cursor: pointer;
   white-space: nowrap;
   line-height: 1;
   flex-shrink: 0;
-}
-
-.siteSelector:hover {
-  background: var(--pds-color-button-secondary-background-hover, oklch(0.96 0 0));
-  border-color: var(--pds-color-button-secondary-border-hover, oklch(0.75 0 0));
 }
 
 /* ── Vertical divider between site selector and workstream switcher ── */
@@ -95,6 +103,14 @@
   position: relative;
 }
 
+/* ── Page selector button group ────────────────────────────────────────────── */
+
+.pageSelectorGroup {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 /* ── Page selector button ────────────────────────────────────────────── */
 /* Mirrors the WorkstreamSwitcher trigger styling */
 
@@ -105,8 +121,8 @@
   height: 2rem;
   padding: 0.5rem 0.64rem;
   background: transparent;
-  border: 1px solid oklch(0.96 0 0); /* borderSubtle */
-  border-radius: var(--pds-border-radius-default, 0.188rem);
+  border: 1px solid var(--pds-color-border-input, oklch(0.8853 0 0));
+  border-radius: var(--pds-border-radius-button, 3.5rem);
   font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
   font-size: var(--pds-typography-size-s, 0.875rem);
   font-weight: var(--pds-typography-fw-medium, 500);
@@ -128,6 +144,12 @@
   border-color: oklch(0.75 0 0); /* borderStrong */
 }
 
+/* When external link button follows page selector, create button group */
+.pageSelector:has(+ .externalLinkButton) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
 /* ── External link button ──────────────────────────────────────────────── */
 
 .externalLinkButton {
@@ -138,8 +160,10 @@
   height: 2rem;
   padding: 0.5rem;
   background: transparent;
-  border: 1px solid oklch(0.96 0 0); /* borderSubtle */
-  border-radius: var(--pds-border-radius-default, 0.188rem);
+  border: 1px solid var(--pds-color-border-input, oklch(0.8853 0 0));
+  border-radius: var(--pds-border-radius-button, 3.5rem);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
   color: var(--pds-color-fg-default, oklch(0.2046 0 0));
   cursor: pointer;
   text-decoration: none;
@@ -147,12 +171,14 @@
     background 0.2s cubic-bezier(0.2, 0, 0, 1),
     border-color 0.2s cubic-bezier(0.2, 0, 0, 1);
   flex-shrink: 0;
-  margin-left: 0.5rem;
+  margin-left: -1px;
 }
 
 .externalLinkButton:hover {
   background: oklch(0.96 0 0); /* bgSubtle */
   border-color: oklch(0.75 0 0); /* borderStrong */
+  position: relative;
+  z-index: 1; /* Bring to front on hover so border is visible */
 }
 
 /* ── Spacer ──────────────────────────────────────────────────────────── */

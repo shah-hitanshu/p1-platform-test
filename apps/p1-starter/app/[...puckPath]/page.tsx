@@ -125,7 +125,16 @@ export default async function Page({
   });
   const resolvedData = await resolveDataTemplates(data, context);
 
-  return <Client data={resolvedData} />;
+  return (
+    <Client
+      data={resolvedData}
+      pageMetadata={{
+        route: path,
+        documentName: data.root.props?.title as string | undefined,
+        pageType: "page",
+      }}
+    />
+  );
 }
 
 export const dynamic = "force-dynamic";

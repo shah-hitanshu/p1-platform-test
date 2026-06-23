@@ -30,11 +30,6 @@ import { NavIcon } from '../../pds/components/NavIcon.js';
 import type { SiteMenuItem, CurrentUser } from '../../pds/components/P1EditorHeader.js';
 import { P1EditorSubheader } from '../../pds/components/P1EditorSubheader.js';
 
-const DEFAULT_SITE_MENU_ITEMS: SiteMenuItem[] = [
-  { label: 'Code view', iconName: 'squareCode', callback: () => {} },
-  { label: 'Site settings', iconName: 'gear', callback: () => {} },
-  { label: 'Environments', iconName: 'server', callback: () => {} },
-];
 import type { SubheaderActor } from '../../pds/components/P1EditorSubheader.js';
 import { deriveDocState } from '../../pds/utils/deriveDocState.js';
 
@@ -480,6 +475,10 @@ export interface P1PluginOptions {
   siteName?: string;
   /** Menu items shown in the site dropdown */
   siteMenuItems?: SiteMenuItem[];
+  /** Site ID for linking to the P1 dashboard */
+  siteId?: string;
+  /** Base URL for the P1 dashboard (defaults to https://content.pantheon.io) */
+  dashboardUrl?: string;
   /** Currently authenticated user */
   currentUser?: CurrentUser;
   /** Callback when user logs out */
@@ -490,6 +489,8 @@ export interface P1PluginOptions {
   onPublish?: () => Promise<void> | void;
   /** Callback for the Review & Publish action */
   onReviewAndPublish?: () => void;
+  /** Callback for the Review Workstream action (shown when on a branch) */
+  onReviewWorkstream?: () => void;
   /** Callback for the Create Workstream action */
   onCreateWorkstream?: () => void;
   /** Called when the user creates a new workstream. Receives the branch name. */
@@ -517,9 +518,11 @@ export interface PuckPlugin {
 function P1SubheaderBridgeInner({
   options,
   p1Context,
+  showMergeReviewRef,
 }: {
   options: P1PluginOptions;
   p1Context: ReturnType<typeof useP1Puck>;
+  showMergeReviewRef: { current: () => void };
 }): React.ReactElement | null {
   const { currentDocument, currentBranch, presence, publishDocument, hasActiveHumans, humanPresenceCount, siteId } = p1Context;
 
@@ -534,6 +537,22 @@ function P1SubheaderBridgeInner({
     const el = document.getElementById('p1-subheader-slot');
     setSlotEl(el);
   }, []);
+
+  // Plugin rail visibility (local state, not Puck UI state)
+  // MUST be before early return to satisfy Rules of Hooks
+  const [pluginRailVisible, setPluginRailVisible] = React.useState(false); // default hidden
+
+  // Toggle body class to hide/show plugin rail via CSS
+  React.useEffect(() => {
+    if (pluginRailVisible) {
+      document.body.classList.remove('p1-hide-plugin-rail');
+    } else {
+      document.body.classList.add('p1-hide-plugin-rail');
+    }
+    return () => {
+      document.body.classList.remove('p1-hide-plugin-rail');
+    };
+  }, [pluginRailVisible]);
 
   // Persist sidebar visibility to localStorage on every user toggle.
   // Initial state is set via the `ui` prop passed to <Puck> (see useP1Editor.ts),
@@ -564,8 +583,8 @@ function P1SubheaderBridgeInner({
     name: a.name,
     isAgent: true,
     intent: a.intent,
-    requestedById: a.requestedById,
-    requestedByName: a.requestedByName,
+    requestedById: (a as any).requestedById,
+    requestedByName: (a as any).requestedByName,
   }));
   const humanActors: SubheaderActor[] = humanPresenceCount > 0 && hasActiveHumans
     ? (presence?.humans ?? []).map((a) => ({ id: a.actorId, name: a.name, avatar: a.avatar }))
@@ -585,10 +604,15 @@ function P1SubheaderBridgeInner({
 
 
   // Panel toggle state and handlers
+  // Note: leftSideBarVisible controls the left panel (_BlocksPlugin)
   const leftPanelVisible = puckUi?.leftSideBarVisible ?? true;
   const rightPanelVisible = puckUi?.rightSideBarVisible ?? true;
+
   const handleToggleLeftPanel = () => {
     puckDispatch?.({ type: 'setUi', ui: { leftSideBarVisible: !leftPanelVisible } });
+  };
+  const handleTogglePluginRail = () => {
+    setPluginRailVisible(prev => !prev);
   };
   const handleToggleRightPanel = () => {
     puckDispatch?.({ type: 'setUi', ui: { rightSideBarVisible: !rightPanelVisible } });
@@ -609,6 +633,11 @@ function P1SubheaderBridgeInner({
     ? async () => { await options.onDocumentDelete?.(currentDocument.id, currentDocument.path); }
     : undefined;
 
+  // Compare with Live handler - uses custom callback if provided, otherwise triggers built-in merge review
+  const handleCompareWithLive = options.onCompareWithLive ?? (() => {
+    showMergeReviewRef.current();
+  });
+
   return (
     <>
       {createPortal(
@@ -622,6 +651,9 @@ function P1SubheaderBridgeInner({
           onStopAgent={handleStopAgent}
           onPublish={handlePublish}
           onReviewAndPublish={options.onReviewAndPublish}
+          onReviewWorkstream={options.onReviewWorkstream ?? options.onReviewAndPublish ?? (() => {
+            showMergeReviewRef.current();
+          })}
           onCreateWorkstream={options.onCreateWorkstream}
           onDeleteDocument={handleDeleteDocument}
           hasPast={hasPast}
@@ -630,8 +662,15 @@ function P1SubheaderBridgeInner({
           onRedo={forward}
           leftPanelVisible={leftPanelVisible}
           rightPanelVisible={rightPanelVisible}
+          pluginRailVisible={pluginRailVisible}
           onToggleLeftPanel={handleToggleLeftPanel}
           onToggleRightPanel={handleToggleRightPanel}
+          onTogglePluginRail={handleTogglePluginRail}
+          branches={options.branches ?? []}
+          currentBranch={options.currentBranch ?? null}
+          onSwitchBranch={options.onBranchSwitch ?? (() => {})}
+          onCompareWithLive={handleCompareWithLive ?? (() => {})}
+          onCreateBranch={options.onCreateBranch}
         />,
         slotEl,
       )}
@@ -651,11 +690,17 @@ function P1SubheaderBridgeInner({
  * Uses an error-boundary-like try/catch at the outer level to safely handle
  * cases where P1PuckContext isn't available.
  */
-function P1SubheaderBridge({ options }: { options: P1PluginOptions }): React.ReactElement | null {
+function P1SubheaderBridge({
+  options,
+  showMergeReviewRef,
+}: {
+  options: P1PluginOptions;
+  showMergeReviewRef: { current: () => void };
+}): React.ReactElement | null {
   const p1Context = useP1PuckOptional();
   if (!p1Context) return null;
 
-  return <P1SubheaderBridgeInner options={options} p1Context={p1Context} />;
+  return <P1SubheaderBridgeInner options={options} p1Context={p1Context} showMergeReviewRef={showMergeReviewRef} />;
 }
 
 /**
@@ -704,6 +749,9 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
     },
   });
 
+  // Shared ref for merge review toggle - allows P1SubheaderBridgeInner to trigger
+  // the merge review overlay that's owned by HeaderOverride
+  const showMergeReviewRef = { current: () => {} };
 
   /**
    * Header override component — renders P1EditorHeader plus the subheader slot anchor.
@@ -711,6 +759,11 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
    */
   function HeaderOverride(): React.ReactElement {
     const [showMergeReview, setShowMergeReview] = useState(false);
+
+    // Expose setShowMergeReview to the shared ref
+    useEffect(() => {
+      showMergeReviewRef.current = () => setShowMergeReview(true);
+    }, []);
     const css = useP1Puck();
     const auth = useOptionalP1Auth();
 
@@ -738,31 +791,20 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
     const currentDocMapped = currentDoc ? { id: currentDoc.id, path: currentDoc.path, archived: currentDoc.archived ?? false } : null;
 
     const fc = css.featureConfig ?? {} as Record<string, boolean>;
-    const handleCompareWithLive = (fc.enableMergeControl ?? true)
-      ? (stableOptions.onCompareWithLive ?? (() => setShowMergeReview(true)))
-      : undefined;
-    const handleCreateBranch = (fc.enableBranchSelector ?? true)
-      ? (stableOptions.onCreateBranch ?? (async (name: string) => { await css.createBranch(name); }))
-      : undefined;
 
     return (
       <>
         <P1EditorHeader
-          branches={(fc.enableBranchSelector ?? true) ? (stableOptions.branches ?? []) : []}
-          currentBranch={(fc.enableBranchSelector ?? true) ? (stableOptions.currentBranch ?? null) : null}
           documents={(fc.enableDocumentBrowser ?? true) ? mappedDocs : []}
           currentDocument={(fc.enableDocumentBrowser ?? true) ? currentDocMapped : null}
           selectedDocumentPath={(fc.enableDocumentBrowser ?? true) ? stableOptions.selectedDocumentPath : null}
           siteName={stableOptions.siteName ?? css.siteName ?? ''}
-          siteMenuItems={stableOptions.siteMenuItems ?? DEFAULT_SITE_MENU_ITEMS}
+          siteId={stableOptions.siteId}
+          dashboardUrl={stableOptions.dashboardUrl}
           currentUser={currentUser}
-          onCreateBranch={handleCreateBranch}
-          onSwitchBranch={(fc.enableBranchSelector ?? true)
-            ? (stableOptions.onBranchSwitch ?? (() => {})) : () => {}}
           onSelectDocument={(fc.enableDocumentBrowser ?? true)
             ? (doc) => stableOptions.onDocumentSelect?.(doc.path) : () => {}}
           onCreateDocument={(fc.enableDocumentBrowser ?? true) ? stableOptions.onDocumentCreate : undefined}
-          onCompareWithLive={handleCompareWithLive ?? (() => {})}
           onLogout={stableOptions.onLogout ?? (() => {})}
         />
         <div id="p1-subheader-slot" />
@@ -826,7 +868,7 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
         )}
         {/* Nav tooltips are handled by PuckEditorTheme.css — labels are repositioned as hover tooltips */}
         {/* Subheader bridge — portals P1EditorSubheader into the slot placed by header override */}
-        <P1SubheaderBridge options={stableOptions} />
+        <P1SubheaderBridge options={stableOptions} showMergeReviewRef={showMergeReviewRef} />
         <P1PluginPanel
           versions={options.versions}
           versionsLoading={options.versionsLoading}

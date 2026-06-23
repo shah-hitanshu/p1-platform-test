@@ -62,21 +62,9 @@ describe('PublishControl — badge always present', () => {
 // ---------------------------------------------------------------------------
 
 describe('PublishControl — primary button label', () => {
-  it('shows "Publish to live" for modified without drift', () => {
-    render(<PublishControl docState="modified" context="branch" onPublish={vi.fn()} />);
+  it('shows "Publish to live" for modified without drift on main', () => {
+    render(<PublishControl docState="modified" context="main" onPublish={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Publish to live' })).toBeTruthy();
-  });
-
-  it('shows "Review & publish" for modified with drift', () => {
-    render(
-      <PublishControl
-        docState="modified"
-        hasDrift={true}
-        context="branch"
-        onReviewAndPublish={vi.fn()}
-      />,
-    );
-    expect(screen.getByRole('button', { name: 'Review & publish' })).toBeTruthy();
   });
 
   it('shows "Publish" for unpublished on main', () => {
@@ -125,23 +113,9 @@ describe('PublishControl — primary button label', () => {
 describe('PublishControl — primary button callbacks', () => {
   it('does not call onPublish immediately when "Publish to live" is clicked (toast confirmation required)', () => {
     const onPublish = vi.fn();
-    render(<PublishControl docState="modified" context="branch" onPublish={onPublish} />);
+    render(<PublishControl docState="modified" context="main" onPublish={onPublish} />);
     fireEvent.click(screen.getByRole('button', { name: 'Publish to live' }));
     expect(onPublish).not.toHaveBeenCalled();
-  });
-
-  it('calls onReviewAndPublish directly when "Review & publish" is clicked (no confirmation)', () => {
-    const onReviewAndPublish = vi.fn();
-    render(
-      <PublishControl
-        docState="modified"
-        hasDrift={true}
-        context="branch"
-        onReviewAndPublish={onReviewAndPublish}
-      />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Review & publish' }));
-    expect(onReviewAndPublish).toHaveBeenCalledTimes(1);
   });
 
   it('does not call onPublish immediately when "Publish" is clicked for unpublished on main', () => {
@@ -158,7 +132,7 @@ describe('PublishControl — primary button callbacks', () => {
 
 describe('PublishControl — confirmation toast', () => {
   it('triggers a warning toast when "Publish to live" is clicked', () => {
-    render(<PublishControl docState="modified" context="branch" onPublish={vi.fn()} />);
+    render(<PublishControl docState="modified" context="main" onPublish={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Publish to live' }));
     expect(__toastCalls).toHaveLength(1);
     expect(__toastCalls[0].type).toBe('warning');
@@ -172,7 +146,7 @@ describe('PublishControl — confirmation toast', () => {
   });
 
   it('toast content includes "Publish directly to live site?" text', () => {
-    render(<PublishControl docState="modified" context="branch" onPublish={vi.fn()} />);
+    render(<PublishControl docState="modified" context="main" onPublish={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Publish to live' }));
     const { getByText } = render(__toastCalls[0].content as React.ReactElement);
     expect(getByText('Publish directly to live site?')).toBeTruthy();
@@ -180,7 +154,7 @@ describe('PublishControl — confirmation toast', () => {
 
   it('toast content Confirm button calls onPublish', async () => {
     const onPublish = vi.fn().mockResolvedValue(undefined);
-    render(<PublishControl docState="modified" context="branch" onPublish={onPublish} />);
+    render(<PublishControl docState="modified" context="main" onPublish={onPublish} />);
     fireEvent.click(screen.getByRole('button', { name: 'Publish to live' }));
     const { getByRole } = render(__toastCalls[0].content as React.ReactElement);
     fireEvent.click(getByRole('button', { name: 'Confirm' }));
@@ -188,22 +162,9 @@ describe('PublishControl — confirmation toast', () => {
   });
 
   it('SplitButton remains visible after publish is requested (toast is separate)', () => {
-    render(<PublishControl docState="modified" context="branch" onPublish={vi.fn()} />);
+    render(<PublishControl docState="modified" context="main" onPublish={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Publish to live' }));
     expect(screen.getByRole('button', { name: 'Publish to live' })).toBeTruthy();
-  });
-
-  it('does not trigger a toast for "Review & publish"', () => {
-    render(
-      <PublishControl
-        docState="modified"
-        hasDrift={true}
-        context="branch"
-        onReviewAndPublish={vi.fn()}
-      />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Review & publish' }));
-    expect(__toastCalls).toHaveLength(0);
   });
 });
 
@@ -211,14 +172,14 @@ describe('PublishControl — confirmation toast', () => {
 // Dropdown menu — modified on branch
 // ---------------------------------------------------------------------------
 
-describe('PublishControl — dropdown: modified on branch', () => {
-  it('renders the SplitButton more-actions trigger for modified on branch', () => {
-    render(<PublishControl docState="modified" context="branch" onPublish={vi.fn()} />);
+describe('PublishControl — dropdown: modified on main', () => {
+  it('renders the SplitButton more-actions trigger for modified on main', () => {
+    render(<PublishControl docState="modified" context="main" onPublish={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'More actions' })).toBeTruthy();
   });
 
   it('shows "Schedule publish" (disabled) in the dropdown', async () => {
-    render(<PublishControl docState="modified" context="branch" onPublish={vi.fn()} />);
+    render(<PublishControl docState="modified" context="main" onPublish={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
     await waitFor(() => {
       const item = screen.getByText('Schedule publish');
@@ -227,8 +188,8 @@ describe('PublishControl — dropdown: modified on branch', () => {
     });
   });
 
-  it('does not show "Create a new workstream" for modified on branch', async () => {
-    render(<PublishControl docState="modified" context="branch" onPublish={vi.fn()} />);
+  it('does not show "Create a new workstream" for modified on main', async () => {
+    render(<PublishControl docState="modified" context="main" onPublish={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
     await waitFor(() => {
       expect(screen.queryByText('Create a new workstream')).toBeNull();
@@ -333,9 +294,125 @@ describe('PublishControl — drift forwarded to badge', () => {
 
   it('does not render drift warning in badge when modified without drift', () => {
     render(
-      <PublishControl docState="modified" context="branch" onPublish={vi.fn()} />,
+      <PublishControl docState="modified" context="main" onPublish={vi.fn()} />,
     );
     expect(screen.queryByTestId('drift-warning')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch context behavior
+// ---------------------------------------------------------------------------
+
+describe('PublishControl — branch context behavior', () => {
+  it('shows "Review" as primary button for modified on branch (no drift)', () => {
+    const onReviewWorkstream = vi.fn();
+    render(
+      <PublishControl
+        docState="modified"
+        context="branch"
+        onReviewWorkstream={onReviewWorkstream}
+        onPublish={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Review' })).toBeTruthy();
+  });
+
+  it('shows "Review" as primary button for modified on branch (with drift)', () => {
+    const onReviewWorkstream = vi.fn();
+    render(
+      <PublishControl
+        docState="modified"
+        hasDrift={true}
+        context="branch"
+        onReviewWorkstream={onReviewWorkstream}
+        onPublish={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Review' })).toBeTruthy();
+    // Should NOT show "Review & publish" anymore
+    expect(screen.queryByText('Review & publish')).toBeNull();
+  });
+
+  it('shows "Publish this page to Live" in dropdown for modified on branch', async () => {
+    const onReviewWorkstream = vi.fn();
+    const onPublish = vi.fn();
+    render(
+      <PublishControl
+        docState="modified"
+        context="branch"
+        onReviewWorkstream={onReviewWorkstream}
+        onPublish={onPublish}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await waitFor(() => {
+      expect(screen.getByText('Publish this page to Live')).toBeTruthy();
+    });
+  });
+
+  it('calls onReviewWorkstream when "Review" is clicked', () => {
+    const onReviewWorkstream = vi.fn();
+    render(
+      <PublishControl
+        docState="modified"
+        context="branch"
+        onReviewWorkstream={onReviewWorkstream}
+        onPublish={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Review' }));
+    expect(onReviewWorkstream).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps "Publish to live" for modified on main (not branch)', () => {
+    render(
+      <PublishControl
+        docState="modified"
+        context="main"
+        onPublish={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Publish to live' })).toBeTruthy();
+    expect(screen.queryByText('Review')).toBeNull();
+  });
+
+  it('shows drift warning in "Publish this page to Live" dropdown item when hasDrift is true', async () => {
+    const onReviewWorkstream = vi.fn();
+    const onPublish = vi.fn();
+    render(
+      <PublishControl
+        docState="modified"
+        hasDrift={true}
+        context="branch"
+        onReviewWorkstream={onReviewWorkstream}
+        onPublish={onPublish}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await waitFor(() => {
+      const publishItem = screen.getByText(/Publish this page to Live/);
+      expect(publishItem.textContent).toContain('⚠️ Page changed since you edited');
+    });
+  });
+
+  it('does NOT show drift warning when hasDrift is false', async () => {
+    const onReviewWorkstream = vi.fn();
+    const onPublish = vi.fn();
+    render(
+      <PublishControl
+        docState="modified"
+        hasDrift={false}
+        context="branch"
+        onReviewWorkstream={onReviewWorkstream}
+        onPublish={onPublish}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await waitFor(() => {
+      const publishItem = screen.getByText('Publish this page to Live');
+      expect(publishItem.textContent).not.toContain('⚠️');
+    });
   });
 });
 
@@ -352,7 +429,7 @@ describe('PublishControl — compound component structure', () => {
   });
 
   it('badge and SplitButton coexist inside the container for modified', () => {
-    render(<PublishControl docState="modified" context="branch" onPublish={vi.fn()} />);
+    render(<PublishControl docState="modified" context="main" onPublish={vi.fn()} />);
     const container = screen.getByTestId('publish-control');
     expect(container.querySelector('.pds-status-indicator')).toBeTruthy();
     expect(container.querySelector('.pds-split-button')).toBeTruthy();

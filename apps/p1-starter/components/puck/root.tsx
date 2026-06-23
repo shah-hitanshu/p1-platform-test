@@ -9,10 +9,9 @@ export const puckRoot = {
     title: "My Puck Editor",
   },
   render: (props: { children?: ReactNode; title?: string }) => {
-    const { children, title } = props;
+    const { children } = props;
     return (
       <div className="font-sans antialiased">
-        <h1>{title}</h1>
         {children}
       </div>
     );

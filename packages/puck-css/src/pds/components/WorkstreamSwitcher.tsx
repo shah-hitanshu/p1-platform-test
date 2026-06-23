@@ -11,7 +11,7 @@
  * header container or sidebar panels).
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import type { Branch } from '@pantheon-systems/css-client';
 import { Icon, Button, StatusIndicator } from '@pantheon-systems/pds-toolkit-react';
@@ -44,6 +44,9 @@ export function WorkstreamSwitcher({
   const [createError, setCreateError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Use transition to keep old UI visible while switching branches
+  const [isPending, startTransition] = useTransition();
 
   const triggerLabel = currentBranch?.isMain ? 'Live' : (currentBranch?.name ?? 'Select branch');
   const isOnMain = currentBranch?.isMain ?? false;
@@ -102,7 +105,12 @@ export function WorkstreamSwitcher({
 
   function handleBranchClick(branch: Branch): void {
     if (currentBranch && branch.id === currentBranch.id) return;
-    onSwitch(branch.id);
+
+    // Wrap the branch switch in a transition to keep old UI visible
+    startTransition(() => {
+      onSwitch(branch.id);
+    });
+
     closeDropdown();
   }
 
@@ -161,15 +169,20 @@ export function WorkstreamSwitcher({
         ref={triggerRef}
         type="button"
         data-testid="workstream-trigger"
-        className={`${styles.trigger}${open ? ` ${styles.triggerOpen}` : ''}`}
+        className={`${styles.trigger}${open ? ` ${styles.triggerOpen}` : ''}${isPending ? ` ${styles.triggerLoading}` : ''}`}
         onClick={handleTrigger}
         aria-haspopup="listbox"
         aria-expanded={open}
+        disabled={isPending}
       >
         <Icon iconName="codeBranch" iconSize="s" aria-hidden="true" />
         <span className={styles.labelText}>
-          {triggerLabel}
-          <Icon iconName="angleDown" iconSize="s" aria-hidden="true" />
+          {isPending ? 'Switching...' : triggerLabel}
+          {isPending ? (
+            <Icon iconName="spinner" iconSize="s" aria-hidden="true" />
+          ) : (
+            <Icon iconName="angleDown" iconSize="s" aria-hidden="true" />
+          )}
         </span>
       </button>
 

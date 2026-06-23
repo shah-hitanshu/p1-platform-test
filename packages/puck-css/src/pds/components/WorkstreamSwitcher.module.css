@@ -27,8 +27,8 @@
   height: 2rem;
   padding: 0.5rem 0.64rem;
   background: transparent;
-  border: 1px solid oklch(0.96 0 0); /* borderSubtle */
-  border-radius: var(--pds-border-radius-default, 0.188rem);
+  border: 1px solid var(--pds-color-border-input, oklch(0.8853 0 0));
+  border-radius: var(--pds-border-radius-button, 3.5rem);
   font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
   font-size: var(--pds-typography-size-s, 0.875rem);
   font-weight: var(--pds-typography-fw-medium, 500);
@@ -49,6 +49,16 @@
 .triggerOpen {
   background: oklch(0.96 0 0); /* bgSubtle */
   border-color: oklch(0.75 0 0); /* borderStrong */
+}
+
+.triggerLoading {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.triggerLoading:hover {
+  background: transparent;
+  border-color: oklch(0.96 0 0);
 }
 
 /* ------------------------------------------------------------------
