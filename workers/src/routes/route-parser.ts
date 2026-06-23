@@ -84,11 +84,14 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
   }
 
   // Content delivery route (documentPath may contain slashes)
-  const contentMatch = /^\/api\/sites\/([^/]+)\/content\/(.+)$/.exec(normalizedPath);
+  // The trailing slash and path are optional to handle root path "/"
+  const contentMatch = /^\/api\/sites\/([^/]+)\/content(?:\/(.*))?$/.exec(normalizedPath);
   if (contentMatch) {
+    const rawPath = contentMatch[2] ?? '';
+    const documentPath = rawPath === '' ? '/' : rawPath;
     return {
       handler: 'content',
-      params: { siteId: contentMatch[1], documentPath: contentMatch[2], action: 'content' },
+      params: { siteId: contentMatch[1], documentPath, action: 'content' },
     };
   }
 

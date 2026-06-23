@@ -255,6 +255,36 @@ describe('Content Delivery API Routes', () => {
       const body = await response.json();
       expect(body.isMainBranch).toBe(true);
     });
+
+    it('should serve published homepage when documentPath is "/"', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      const homepageDoc: Document = { ...mockDocument, path: '/' };
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(homepageDoc);
+      vi.mocked(services.getLatestPublishedDocumentVersion).mockResolvedValue(mockPublishedVersion);
+      setupSettingsMocks(settingsService, 120);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: '/',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      expect(services.getDocumentByPath).toHaveBeenCalledWith('site-uuid-123', '/');
+      const body = await response.json();
+      expect(body.path).toBe('/');
+      expect(body.data).toEqual(mockPublishedVersion.snapshot);
+    });
   });
 
   // ===========================================================================
@@ -819,6 +849,55 @@ describe('Content Delivery API Routes', () => {
       expect(response.status).toBe(200);
       expect(services.getMainBranch).toHaveBeenCalledWith('site-uuid-123');
       expect(services.getBranch).not.toHaveBeenCalled();
+    });
+
+    it('should list root-path homepage with path "/" so listing agrees with delivery', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      const mockDocuments: Document[] = [
+        { id: 'doc-uuid-root', siteId: 'site-uuid-123', path: '/', createdAt: '2026-01-05T12:00:00.000Z' },
+        { id: 'doc-uuid-about', siteId: 'site-uuid-123', path: 'about', createdAt: '2026-01-06T12:00:00.000Z' },
+      ];
+
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.listDocumentsOnBranch).mockResolvedValue(mockDocuments);
+      vi.mocked(services.getLatestPublishedDocumentVersion)
+        .mockResolvedValueOnce({
+          ...mockPublishedVersion,
+          documentId: 'doc-uuid-root',
+          createdAt: '2026-03-07T18:00:00.000Z',
+        })
+        .mockResolvedValueOnce({
+          ...mockPublishedVersion,
+          id: 'version-uuid-about',
+          documentId: 'doc-uuid-about',
+          createdAt: '2026-03-06T12:00:00.000Z',
+        });
+      setupSettingsMocks(settingsService);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content-pages',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        action: 'content-pages',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.pages).toHaveLength(2);
+
+      const homePage = body.pages.find((p: { path: string }) => p.path === '/');
+      expect(homePage).toBeDefined();
+      expect(homePage.documentId).toBe('doc-uuid-root');
+
+      const aboutPage = body.pages.find((p: { path: string }) => p.path === 'about');
+      expect(aboutPage).toBeDefined();
     });
   });
 

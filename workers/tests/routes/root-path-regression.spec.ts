@@ -104,6 +104,51 @@ describe('Root Path "/" Handling', () => {
     });
   });
 
+  describe('Route Parsing - content delivery endpoint', () => {
+    const siteId = '550e8400-e29b-41d4-a716-446655440000';
+
+    it('should parse /content/ (trailing slash) as root path "/"', () => {
+      const route = parseRoute(`/api/sites/${siteId}/content/`);
+      expect(route).not.toBeNull();
+      expect(route?.handler).toBe('content');
+      expect(route?.params.siteId).toBe(siteId);
+      expect(route?.params.documentPath).toBe('/');
+      expect(route?.params.action).toBe('content');
+    });
+
+    it('should parse /content (no trailing slash, no path) as root path "/"', () => {
+      const route = parseRoute(`/api/sites/${siteId}/content`);
+      expect(route).not.toBeNull();
+      expect(route?.handler).toBe('content');
+      expect(route?.params.documentPath).toBe('/');
+      expect(route?.params.action).toBe('content');
+    });
+
+    it('should parse /content/about as "about"', () => {
+      const route = parseRoute(`/api/sites/${siteId}/content/about`);
+      expect(route).not.toBeNull();
+      expect(route?.handler).toBe('content');
+      expect(route?.params.documentPath).toBe('about');
+      expect(route?.params.action).toBe('content');
+    });
+
+    it('should parse /content/products/landing as nested path', () => {
+      const route = parseRoute(`/api/sites/${siteId}/content/products/landing`);
+      expect(route).not.toBeNull();
+      expect(route?.handler).toBe('content');
+      expect(route?.params.documentPath).toBe('products/landing');
+      expect(route?.params.action).toBe('content');
+    });
+
+    it('should NOT intercept /content-pages (route ordering guard)', () => {
+      const route = parseRoute(`/api/sites/${siteId}/content-pages`);
+      expect(route).not.toBeNull();
+      expect(route?.handler).toBe('content');
+      expect(route?.params.action).toBe('content-pages');
+      expect(route?.params.documentPath).toBeUndefined();
+    });
+  });
+
   describe('End-to-End Path Flow', () => {
     it('should handle full create-and-fetch flow for root path', () => {
       // 1. User sends {"path": "/"}
@@ -130,6 +175,22 @@ describe('Root Path "/" Handling', () => {
 
       // 7. Query matches: WHERE path = '/'
       expect(storedPath).toBe(fetchNormalized);
+    });
+
+    it('should handle create-and-delivery flow for root path via content API', () => {
+      const userPath = '/';
+      const normalized = normalizePath(userPath);
+      expect(normalized).toBe('/');
+
+      const storedPath = normalized;
+
+      // Client fetches via GET /content/ (content delivery API)
+      const deliveryRoute = parseRoute(`/api/sites/${siteId}/content/`);
+      expect(deliveryRoute?.handler).toBe('content');
+      expect(deliveryRoute?.params.documentPath).toBe('/');
+
+      // The stored path and the delivery path must agree
+      expect(storedPath).toBe(deliveryRoute?.params.documentPath);
     });
 
     it('should handle full create-and-fetch flow for regular path', () => {
