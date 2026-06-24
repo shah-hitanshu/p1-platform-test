@@ -50,16 +50,20 @@ jobs:
 
       - name: Publish css-client
         working-directory: packages/css-client
-        run: npm publish --access public
+        # --no-git-checks: CI steps dirty the working tree (version/README mutations)
+        run: pnpm publish --access public --no-git-checks
 
       - name: Publish puck-css
         working-directory: packages/puck-css
-        run: npm publish --access public
+        # --no-git-checks: CI steps dirty the working tree (version/README mutations)
+        run: pnpm publish --access public --no-git-checks
 
       - name: Publish p1-next-sdk
         working-directory: packages/p1-next-sdk
-        run: npm publish --access public
+        # --no-git-checks: CI steps dirty the working tree (version/README mutations)
+        run: pnpm publish --access public --no-git-checks
 
       - name: Publish create-p1-starter-kit
         working-directory: packages/create-p1-starter-kit
-        run: npm publish --access public
+        # --no-git-checks: CI steps dirty the working tree (version/README mutations)
+        run: pnpm publish --access public --no-git-checks

@@ -1,6 +1,6 @@
 {
   "name": "@pantheon-systems/create-p1-starter-kit",
-  "version": "0.1.0",
+  "version": "0.4.2",
   "description": "Scaffold a new P1 starter project",
   "type": "module",
   "bin": {
@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "node scripts/build-template.js",
+    "test": "vitest run",
     "prepublishOnly": "npm run build"
   },
   "files": [
@@ -35,6 +36,9 @@
   ],
   "engines": {
     "node": ">=20.12.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.5"
   },
   "dependencies": {
     "@clack/prompts": "^1.5.1",

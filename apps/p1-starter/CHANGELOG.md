@@ -1,0 +1,11 @@
+# @pantheon-systems/p1-starter
+
+## 1.0.1
+
+### Patch Changes
+
+- Updated dependencies [6650602]
+- Updated dependencies [dc7cfd7]
+  - @pantheon-systems/puck-css@0.4.2
+  - @pantheon-systems/css-client@0.4.2
+  - @pantheon-systems/p1-next-sdk@0.4.2
