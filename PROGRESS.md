@@ -5,6 +5,41 @@
 This document tracks the implementation progress of the Collaborative JSON State Versioning System as defined in `collaborative-state-system-architecture-v2.3.md`.
 
 ---
+
+## PCC-3191: MCP Server Auth Migration (per-caller credential forwarding)
+
+**Status:** Complete
+**Branch:** `pcc-3191-mcp-auth-migration`
+**Date:** 2026-05-16
+
+### Summary
+
+The MCP server no longer holds a shared credential. Each request is attributed to the caller who made it: a person signs in through Auth0 and the backend verifies their token, while an autonomous agent presents its own `aak_` key that the backend resolves to that specific agent. The previous model (a single shared `AGENT_API_KEY` plus trusted `X-Acting-User-*` headers) is removed, closing the surface where one credential could act as any user.
+
+### What the server does
+
+- **Human path:** The OAuth flow signs the user in through Auth0. The user's Auth0 access token is forwarded to the backend as `Authorization: Bearer`, which `Auth0IdentityProvider` verifies into a `user` principal. The token is scoped through the Auth0 `audience` parameter, and the flow refuses to start when no audience is configured, since an audience-less token cannot be verified downstream. The OAuth state parameter is HMAC-signed and bound to the id token via a one-time nonce.
+- **Agent path:** An autonomous agent connecting to `/mcp` with its own `aak_` key has that key forwarded as `X-API-Key`. `AgentApiKeyProvider` resolves it to that agent's principal. Agents are attributed from the verified key even when they send no `X-Agent-Id`.
+- **Session longevity:** The server requests `offline_access`, stores the Auth0 refresh token, and re-fetches the upstream access token on each MCP token refresh, so a human session survives past the Auth0 access-token expiry instead of failing after roughly an hour.
+
+### Per-caller correctness (2026-06-19)
+
+A review of the delivered branch found the human path still fabricated an agent identity, so the advertised authoring round-trip failed:
+
+- The human path forwarded `X-Actor-Id: mcp-server` and `X-Actor-Type: agent` alongside the user's bearer token. The backend cross-checks the actor id against the verified principal, so every path-based document read and the edit endpoints returned 403. The human path now marks the actor type `user` and sends no actor id.
+- The `edits` route required the client to send an actor id matching the principal, which a pass-through caller cannot know. It now defaults the actor to the verified principal when the body omits one and cross-validates only an explicitly supplied id. This also fixed the agent apply path, which had been sending no usable actor id and failing with 400.
+- The edit-session lease tools (`check_edit_permission`, `start_edit_session`, `apply_document_edits`, `complete_edit_session`, `abort_edit_session`) resolve a registered agent on the backend, so they are registered only for agent callers. A human signed in through Auth0 gets reads, presence, and page creation.
+
+### Removed
+
+- The Google OAuth handler, the shared `AGENT_API_KEY` / `AGENT_ID` configuration, and the `X-Acting-User-*` assertion path.
+
+### Follow-up
+
+- **PCC-3297:** Stop accepting `X-Agent-Id` as an identity input. Identity already derives from the verified agent key; the self-reported header should not be able to override or contradict it.
+- **PCC-3308:** Let a human-owned edit session use the leasing infrastructure, so human callers regain the full authoring round-trip (region reservation, rollback checkpoint) under their own identity.
+
+---
 ## Completed Work
 
 ### Presence DO Key Mismatch + Browser Actor Push (PCC-3209)

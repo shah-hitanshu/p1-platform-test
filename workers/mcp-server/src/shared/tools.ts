@@ -1253,7 +1253,9 @@ export function createToolHandlers(
 
     async create_page(input: CreatePageInput): Promise<ToolResult> {
       try {
-        if (input.document_path.startsWith('_registry/')) {
+        // The _registry/ prefix is reserved whether or not the caller writes a
+        // leading slash, so compare against the path with any leading slash removed.
+        if (input.document_path.replace(/^\//, '').startsWith('_registry/')) {
           return formatError(
             new Error(
               'Cannot create pages at the _registry/ path prefix — this is reserved for system use.',

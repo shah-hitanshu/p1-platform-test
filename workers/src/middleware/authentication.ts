@@ -126,9 +126,15 @@ export function getIdentityProvider(env: Env): MultiProviderIdentityProvider {
     env.AUTH0_AUDIENCE !== undefined &&
     env.AUTH0_AUDIENCE !== ''
   ) {
+    // AUTH0_AUDIENCE is a comma-separated accept-list: a token validates if its
+    // `aud` matches any entry, so more than one trusted API audience can be served.
+    const audience = env.AUTH0_AUDIENCE
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value !== '');
     providers.push(new Auth0IdentityProvider({
       issuerBaseUrl: env.AUTH0_ISSUER_BASE_URL,
-      audience: env.AUTH0_AUDIENCE,
+      audience,
     }));
   }
 

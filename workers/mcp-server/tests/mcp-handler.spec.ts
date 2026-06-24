@@ -60,4 +60,55 @@ describe('MCP Handler', () => {
     expect(options.headers['X-Acting-User-Id']).toBe('u1');
     expect(options.headers['X-Acting-User-Email']).toBe('u@ex.com');
   });
+
+  const EDIT_SESSION_TOOLS = [
+    'check_edit_permission',
+    'start_edit_session',
+    'apply_document_edits',
+    'complete_edit_session',
+    'abort_edit_session',
+  ];
+
+  // The edit-session lease tools resolve a registered agent on the backend, so a
+  // human (user-principal) caller cannot use them; only reads and document
+  // creation are exposed on that path.
+  it('omits the edit-session tools for a human caller', async () => {
+    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const registerSpy = vi.spyOn(McpServer.prototype, 'registerTool');
+
+    const { createMcpServer } = await import('../src/mcp-handler.js');
+    createMcpServer({
+      baseUrl: 'http://localhost:8787',
+      accessToken: 'auth0-access-token',
+      actingUser: { id: 'u1', email: 'u@ex.com' },
+      serverName: 'test-mcp',
+      serverVersion: '0.1.0',
+    });
+
+    const registered = registerSpy.mock.calls.map((c) => c[0]);
+    for (const tool of EDIT_SESSION_TOOLS) {
+      expect(registered).not.toContain(tool);
+    }
+    expect(registered).toContain('get_document');
+    expect(registered).toContain('list_sites');
+    expect(registered).toContain('create_page');
+  });
+
+  it('registers the edit-session tools for an agent caller', async () => {
+    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const registerSpy = vi.spyOn(McpServer.prototype, 'registerTool');
+
+    const { createMcpServer } = await import('../src/mcp-handler.js');
+    createMcpServer({
+      baseUrl: 'http://localhost:8787',
+      agentApiKey: 'aak_test',
+      serverName: 'test-mcp',
+      serverVersion: '0.1.0',
+    });
+
+    const registered = registerSpy.mock.calls.map((c) => c[0]);
+    for (const tool of EDIT_SESSION_TOOLS) {
+      expect(registered).toContain(tool);
+    }
+  });
 });

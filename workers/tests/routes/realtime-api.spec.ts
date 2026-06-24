@@ -467,6 +467,55 @@ describe('Phase 4.2: Real-Time API Routes', () => {
       expect(new URL(fetchedRequest.url).pathname).toBe('/apply');
     });
 
+    it('defaults the edits actorId to the authenticated principal when the body omits it', async () => {
+      const { handleRealtimeRoutes } = await import(
+        '../../src/routes/realtime-api'
+      );
+
+      const userContext: RealtimeRouteContext = {
+        principal: { ...defaultPrincipal, id: 'user-123' },
+      };
+      const request = new Request(
+        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/edits',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ operations: [{ type: 'set', path: 'title', value: 'Hi' }] }),
+        },
+      );
+
+      await handleRealtimeRoutes(request, mockEnv, userContext);
+
+      expect(mockStub.fetch).toHaveBeenCalled();
+      const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
+      expect(new URL(fetchedRequest.url).pathname).toBe('/apply');
+      const forwardedBody = (await fetchedRequest.json()) as { actorId?: string };
+      expect(forwardedBody.actorId).toBe('user-123');
+    });
+
+    it('rejects an edits actorId that does not match the authenticated principal', async () => {
+      const { handleRealtimeRoutes } = await import(
+        '../../src/routes/realtime-api'
+      );
+
+      const userContext: RealtimeRouteContext = {
+        principal: { ...defaultPrincipal, id: 'user-123' },
+      };
+      const request = new Request(
+        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/edits',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ operations: [], actorId: 'someone-else' }),
+        },
+      );
+
+      const result = await handleRealtimeRoutes(request, mockEnv, userContext);
+
+      expect(assertNotNull(result).status).toBe(403);
+      expect(mockStub.fetch).not.toHaveBeenCalled();
+    });
+
     it('should forward actor headers to Durable Object', async () => {
       const { handleRealtimeRoutes } = await import(
         '../../src/routes/realtime-api'

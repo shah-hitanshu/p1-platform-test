@@ -33,7 +33,6 @@ describe('McpApiClient', () => {
     } as Response;
   }
 
-  // Test 1: Constructor requires baseUrl, agentId, agentApiKey
   describe('constructor', () => {
     it('should create client with required config', async () => {
       const { McpApiClient } = await import('../../src/shared/api-client.js');
@@ -46,14 +45,21 @@ describe('McpApiClient', () => {
       expect(() => new McpApiClient({ ...defaultConfig, baseUrl: '' })).toThrow();
     });
 
-    it('should throw if agentId is missing', async () => {
+    it('should throw if neither agentApiKey nor accessToken is provided', async () => {
       const { McpApiClient } = await import('../../src/shared/api-client.js');
-      expect(() => new McpApiClient({ ...defaultConfig, agentId: '' })).toThrow();
+      expect(() => new McpApiClient({
+        baseUrl: 'http://localhost:8787',
+        agentId: 'agent-uuid-1',
+      })).toThrow('either agentApiKey or accessToken');
     });
 
-    it('should throw if agentApiKey is missing', async () => {
+    it('should NOT throw if only accessToken is provided', async () => {
       const { McpApiClient } = await import('../../src/shared/api-client.js');
-      expect(() => new McpApiClient({ ...defaultConfig, agentApiKey: '' })).toThrow();
+      expect(() => new McpApiClient({
+        baseUrl: 'http://localhost:8787',
+        agentId: 'agent-uuid-1',
+        accessToken: 'auth0-token-xyz',
+      })).not.toThrow();
     });
   });
 
@@ -70,6 +76,25 @@ describe('McpApiClient', () => {
       expect(options.headers['X-API-Key']).toBe('aak_test-key');
       expect(options.headers['X-Actor-Type']).toBe('agent');
       expect(options.headers['X-Actor-Id']).toBe('agent-uuid-1');
+    });
+
+    // Agent pass-through: the caller's key is forwarded and no actor id is
+    // fabricated; the backend derives the agent identity from the key.
+    it('forwards the caller key with no fabricated actor id when agentId is absent', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient({
+        baseUrl: 'http://localhost:8787',
+        agentApiKey: 'aak_caller',
+      });
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, { sites: [], total: 0 }));
+      await client.listSites();
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers['X-API-Key']).toBe('aak_caller');
+      expect(options.headers['X-Actor-Type']).toBe('agent');
+      expect(options.headers['X-Actor-Id']).toBeUndefined();
+      expect(options.headers.Authorization).toBeUndefined();
     });
 
     // Test 3: Acting-user headers when actingUser is set
@@ -101,7 +126,80 @@ describe('McpApiClient', () => {
       expect(options.headers['X-Acting-User-Email']).toBeUndefined();
     });
 
-    // Test: X-Acting-User-Name forwarded when name is present
+    // PCC-3191: Bearer token tests
+    it('should send Authorization: Bearer when accessToken is provided', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient({
+        baseUrl: 'http://localhost:8787',
+        agentId: 'agent-uuid-1',
+        accessToken: 'auth0-access-token-xyz',
+      });
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, { sites: [], total: 0 }));
+      await client.listSites();
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers.Authorization).toBe('Bearer auth0-access-token-xyz');
+      expect(options.headers['X-API-Key']).toBeUndefined();
+    });
+
+    // The human (OAuth) path authenticates as a user: the actor type is 'user'
+    // and no agent actor id is fabricated, so the backend resolves the signed-in
+    // user from the bearer token alone.
+    it('signals X-Actor-Type: user and sends no X-Actor-Id on the human path', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient({
+        baseUrl: 'http://localhost:8787',
+        accessToken: 'auth0-access-token-xyz',
+        actingUser: { id: 'user-123', email: 'user@example.com' },
+      });
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, { sites: [], total: 0 }));
+      await client.listSites();
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers['X-Actor-Type']).toBe('user');
+      expect(options.headers['X-Actor-Id']).toBeUndefined();
+      expect(options.headers.Authorization).toBe('Bearer auth0-access-token-xyz');
+    });
+
+    it('should not send X-Acting-User-Id/Email headers when using accessToken auth', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient({
+        baseUrl: 'http://localhost:8787',
+        agentId: 'agent-uuid-1',
+        accessToken: 'auth0-access-token-xyz',
+        actingUser: { id: 'user-123', email: 'user@example.com' },
+      });
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, { sites: [], total: 0 }));
+      await client.listSites();
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers['X-Acting-User-Id']).toBeUndefined();
+      expect(options.headers['X-Acting-User-Email']).toBeUndefined();
+    });
+
+    it('agentApiKey path still sends X-API-Key and X-Acting-User-* (legacy local dev)', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient({
+        baseUrl: 'http://localhost:8787',
+        agentId: 'agent-uuid-1',
+        agentApiKey: 'aak_test-key',
+        actingUser: { id: 'user-123', email: 'user@example.com' },
+      });
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, { sites: [], total: 0 }));
+      await client.listSites();
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers['X-API-Key']).toBe('aak_test-key');
+      expect(options.headers['X-Acting-User-Id']).toBe('user-123');
+      expect(options.headers['X-Acting-User-Email']).toBe('user@example.com');
+      expect(options.headers.Authorization).toBeUndefined();
+    });
+
+    // PCC-3200: X-Acting-User-Name tests (forwarded on BOTH auth paths)
     it('should include X-Acting-User-Name header when actingUser.name is defined', async () => {
       const { McpApiClient } = await import('../../src/shared/api-client.js');
       const client = new McpApiClient({
@@ -116,7 +214,23 @@ describe('McpApiClient', () => {
       expect(options.headers['X-Acting-User-Name']).toBe('Alice Smith');
     });
 
-    // Test: X-Acting-User-Name omitted when name is undefined
+    it('should include X-Acting-User-Name on Bearer path when name is defined', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient({
+        baseUrl: 'http://localhost:8787',
+        agentId: 'agent-uuid-1',
+        accessToken: 'auth0-access-token-xyz',
+        actingUser: { id: 'user-123', email: 'user@example.com', name: 'Alice Smith' },
+      });
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, { sites: [], total: 0 }));
+      await client.listSites();
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers['X-Acting-User-Name']).toBe('Alice Smith');
+      expect(options.headers.Authorization).toBe('Bearer auth0-access-token-xyz');
+    });
+
     it('should NOT include X-Acting-User-Name header when actingUser.name is undefined', async () => {
       const { McpApiClient } = await import('../../src/shared/api-client.js');
       const client = new McpApiClient({
@@ -131,7 +245,6 @@ describe('McpApiClient', () => {
       expect(options.headers['X-Acting-User-Name']).toBeUndefined();
     });
 
-    // Test: X-Acting-User-Name absent when no actingUser at all
     it('should NOT include X-Acting-User-Name header when actingUser is absent', async () => {
       const { McpApiClient } = await import('../../src/shared/api-client.js');
       const client = new McpApiClient(defaultConfig);
@@ -276,6 +389,26 @@ describe('McpApiClient', () => {
       const body = JSON.parse(options.body);
       expect(body.editSessionId).toBe('sess-1');
       expect(body.operations).toHaveLength(1);
+    });
+
+    // The backend resolves the actor from the verified principal, so the client
+    // forwards no actor id of its own.
+    it('does not send a fabricated actorId in the apply body', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, { success: true, version: 2 }));
+      await client.applyEdits({
+        siteId: 's1',
+        branchId: 'b1',
+        documentPath: '/home',
+        editSessionId: 'sess-1',
+        operations: [{ type: 'replace', path: '/content/body', content: 'x' }],
+      });
+
+      const [, options] = mockFetch.mock.calls[0];
+      const body = JSON.parse(options.body);
+      expect(body.actorId).toBeUndefined();
     });
   });
 

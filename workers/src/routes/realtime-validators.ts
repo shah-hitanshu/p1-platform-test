@@ -31,7 +31,7 @@ export async function validateEditsBody(
   request: Request,
   origin: string | null,
   patterns: CorsPattern[],
-): Promise<{ operations: unknown[]; actorId: string; editSessionId?: string } | Response> {
+): Promise<{ operations: unknown[]; actorId?: string; editSessionId?: string } | Response> {
   // Check Content-Type
   const contentType = request.headers.get('Content-Type');
   const isJsonContentType = contentType?.includes('application/json') === true;
@@ -63,16 +63,15 @@ export async function validateEditsBody(
     return errorResponse(400, 'operations must be an array', origin, patterns);
   }
 
-  // Validate actorId field
-  if (!('actorId' in bodyObj) || typeof bodyObj.actorId !== 'string' || bodyObj.actorId === '') {
-    return errorResponse(400, 'Missing required field: actorId', origin, patterns);
-  }
-
-  // Pass through editSessionId if present (required for agents)
-  const result: { operations: unknown[]; actorId: string; editSessionId?: string } = {
+  // actorId is optional: the route defaults it to the authenticated principal
+  // when absent and cross-validates it only when the client supplies one.
+  const result: { operations: unknown[]; actorId?: string; editSessionId?: string } = {
     operations: bodyObj.operations,
-    actorId: bodyObj.actorId,
   };
+
+  if (typeof bodyObj.actorId === 'string' && bodyObj.actorId !== '') {
+    result.actorId = bodyObj.actorId;
+  }
 
   if ('editSessionId' in bodyObj && typeof bodyObj.editSessionId === 'string') {
     result.editSessionId = bodyObj.editSessionId;
@@ -105,6 +104,7 @@ export async function validateAgentEditBody(
   request: Request,
   origin: string | null,
   patterns: CorsPattern[],
+  fallbackAgentId?: string,
 ): Promise<AgentEditRequestBody | Response> {
   // Check Content-Type
   const contentType = request.headers.get('Content-Type');
@@ -131,10 +131,12 @@ export async function validateAgentEditBody(
   // Phase 7.3: Parse X-Agent-* headers
   const headerContext: AgentContext | null = parseAgentContext(request.headers);
 
-  // Merge headers with body params (body takes precedence)
-  const agentId = typeof bodyObj.agentId === 'string' && bodyObj.agentId.length > 0
+  // Merge identity sources by precedence: body param, X-Agent-Id header, then the
+  // authenticated agent key. The fallback lets a key-authenticated agent omit the
+  // header entirely and still be attributed.
+  const agentId = (typeof bodyObj.agentId === 'string' && bodyObj.agentId.length > 0
     ? bodyObj.agentId
-    : headerContext?.agentId;
+    : headerContext?.agentId) ?? fallbackAgentId;
 
   const trigger = typeof bodyObj.trigger === 'string' && bodyObj.trigger.length > 0
     ? bodyObj.trigger

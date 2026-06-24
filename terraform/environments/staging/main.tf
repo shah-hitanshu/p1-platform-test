@@ -135,6 +135,17 @@ module "kms" {
 }
 
 # -----------------------------------------------------------------------------
+# MCP Server Module (OAuth KV)
+# -----------------------------------------------------------------------------
+
+module "cloudflare_mcp" {
+  source = "../../modules/cloudflare-mcp"
+
+  environment           = local.environment
+  cloudflare_account_id = var.cloudflare_account_id
+}
+
+# -----------------------------------------------------------------------------
 # Outputs
 # -----------------------------------------------------------------------------
 
@@ -205,4 +216,15 @@ output "kms_key_resource" {
 output "signer_sa_email" {
   description = "Broker signer SA email (p1-backend)"
   value       = module.kms.signer_sa_email
+}
+
+# MCP Server outputs
+output "mcp_oauth_kv_id" {
+  description = "MCP OAuth KV namespace ID for wrangler.jsonc"
+  value       = module.cloudflare_mcp.mcp_oauth_kv_id
+}
+
+output "mcp_worker_name" {
+  description = "MCP Worker name"
+  value       = module.cloudflare_mcp.mcp_worker_name
 }

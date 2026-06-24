@@ -396,4 +396,39 @@ describe('Phase 3: Auth0 Identity Provider', () => {
       expect(result).toBeNull();
     });
   });
+
+  // ===========================================================================
+  // Multi-audience validation
+  // ===========================================================================
+
+  describe('multi-audience validation', () => {
+    const FIRST_AUDIENCE = 'https://first-api.example.com';
+    const SECOND_AUDIENCE = 'https://second-api.example.com';
+
+    function multiAudienceProvider(): Auth0IdentityProvider {
+      return new Auth0IdentityProvider({
+        issuerBaseUrl: TEST_ISSUER,
+        audience: [FIRST_AUDIENCE, SECOND_AUDIENCE],
+        jwks: localJwks,
+      });
+    }
+
+    it('accepts a token for the first configured audience', async () => {
+      const token = await createAuth0Token({ sub: 'auth0|user1' }, { audience: FIRST_AUDIENCE });
+      const principal = await multiAudienceProvider().validateToken(token);
+      expect(principal).not.toBeNull();
+    });
+
+    it('accepts a token for a second configured audience', async () => {
+      const token = await createAuth0Token({ sub: 'auth0|user1' }, { audience: SECOND_AUDIENCE });
+      const principal = await multiAudienceProvider().validateToken(token);
+      expect(principal).not.toBeNull();
+    });
+
+    it('rejects a token whose audience is not configured', async () => {
+      const token = await createAuth0Token({ sub: 'auth0|user1' }, { audience: 'https://unlisted.example.com' });
+      const principal = await multiAudienceProvider().validateToken(token);
+      expect(principal).toBeNull();
+    });
+  });
 });

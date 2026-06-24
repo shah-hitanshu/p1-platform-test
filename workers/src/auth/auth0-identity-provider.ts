@@ -21,8 +21,8 @@ const AUTH0_CLAIMS_NAMESPACE = 'http://oidc.panth.io/pantheon';
 export interface Auth0IdentityProviderOptions {
   /** Auth0 issuer base URL (e.g. https://example.auth0.com) */
   issuerBaseUrl: string;
-  /** Expected audience for token validation */
-  audience: string;
+  /** Expected audience(s); a token validates if its `aud` contains any listed value. */
+  audience: string | string[];
   /** Optional injected JWKS for testing (defaults to remote JWKS) */
   jwks?: jose.JWTVerifyGetKey;
 }
@@ -61,7 +61,7 @@ export class Auth0IdentityProvider implements IdentityProvider {
   readonly name: AuthProvider = 'auth0';
 
   private readonly issuerBaseUrl: string;
-  private readonly audience: string;
+  private readonly audience: string | string[];
   private readonly jwks: jose.JWTVerifyGetKey;
 
   constructor(options: Auth0IdentityProviderOptions) {

@@ -25,7 +25,7 @@
   // OAuth bucket for that same IP, and a runaway agent in prod would
   // poison the sbx1 bucket. Disjoint per-env series prevents that:
   //   31923xx → top level (wrangler dev)
-  //   31921xx → sbx1
+  //   31924xx → staging
   //   31922xx → production
   // The `'env-stanzas use disjoint namespace_id sets'` test guards this.
   // period must be 10 or 60 (Cloudflare API); standardised on 60.
@@ -36,12 +36,21 @@
     { "name": "RL_TOOLS_ANON",     "namespace_id": "3192340", "simple": { "limit": 60,  "period": 60 } }
   ],
 
+  // ============================================================================
+  // Auth secrets (set via `wrangler secret put --env <env>`, never committed):
+  //   AUTH0_CLIENT_SECRET      - fetched from GCP Secret Manager and set by deploy workflow
+  //   MCP_STATE_SIGNING_SECRET - HMAC key for OAuth state signing (local to this worker)
+  // Non-secret Auth0 vars (AUTH0_CLIENT_ID, AUTH0_ISSUER_BASE_URL, AUTH0_AUDIENCE)
+  // are set per-environment in the vars blocks below, matching the main CSS worker.
+  // ============================================================================
+
   // Non-secret environment variables
   "vars": {
     "ENVIRONMENT": "local",
     "CSS_BACKEND_URL": "http://localhost:8787",
     "MCP_SERVER_NAME": "collaborative-state-mcp",
-    "MCP_SERVER_VERSION": "0.1.0"
+    "MCP_SERVER_VERSION": "0.1.0",
+    "PUBLIC_ORIGIN": "http://localhost:8788"
   },
 
   // Local development
@@ -53,38 +62,66 @@
 
   // Environment overrides
   "env": {
-    "sbx1": {
-      "name": "css-mcp-server-sbx1",
+    "sandbox": {
+      "name": "css-mcp-server-sandbox",
       "vars": {
-        "ENVIRONMENT": "sbx1",
-        "CSS_BACKEND_URL": "https://collaborative-state-worker-sbx1.chris-801.workers.dev",
+        "ENVIRONMENT": "sandbox",
+        "CSS_BACKEND_URL": "REPLACE_WITH_SANDBOX_WORKER_URL",
         "MCP_SERVER_NAME": "collaborative-state-mcp",
-        "MCP_SERVER_VERSION": "0.1.0"
+        "MCP_SERVER_VERSION": "0.1.0",
+        "PUBLIC_ORIGIN": "REPLACE_WITH_SANDBOX_MCP_WORKER_URL",
+        "AUTH0_CLIENT_ID": "fTmdrlsHK0HJ75WMSqWTLrUgDiBR5VG4",
+        "AUTH0_ISSUER_BASE_URL": "https://auth-staging.pantheon.io",
+        "AUTH0_AUDIENCE": "https://addonapi-cxog5ytt4a-uc.a.run.app"
       },
       "kv_namespaces": [
-        { "binding": "OAUTH_KV", "id": "57760de9030e441bad5e205e4a8ec82d" }
+        { "binding": "OAUTH_KV", "id": "REPLACE_WITH_SANDBOX_OAUTH_KV_ID" }
       ],
-      // Service binding to the API worker — avoids worker-to-worker fetch 1042 errors
       "services": [
-        { "binding": "CSS_BACKEND", "service": "collaborative-state-worker-sbx1" }
+        { "binding": "CSS_BACKEND", "service": "collaborative-state-worker-sandbox" }
       ],
-      // PCC-3192 — Rate Limiting bindings (red-team Finding 4). Re-declared
-      // per-env because wrangler env stanzas don't inherit `ratelimits` from
-      // the top level. sbx1 uses the 31921xx namespace series; production
-      // uses 31922xx; local dev (top-level) uses 31923xx. Namespaces are
-      // account-scoped, so disjoint series keep CI / sbx1 / prod buckets
-      // separate. See top-level ratelimits comment for the rationale.
+      // PCC-3192 — Rate Limiting bindings. sandbox uses the 31921xx namespace series.
       "ratelimits": [
         { "name": "RL_TOOLS_READ",     "namespace_id": "3192110", "simple": { "limit": 120, "period": 60 } },
         { "name": "RL_TOOLS_MUTATION", "namespace_id": "3192120", "simple": { "limit": 30,  "period": 60 } },
         { "name": "RL_OAUTH",          "namespace_id": "3192130", "simple": { "limit": 20,  "period": 60 } },
         { "name": "RL_TOOLS_ANON",     "namespace_id": "3192140", "simple": { "limit": 60,  "period": 60 } }
       ],
-      // Workers Logs — required for the binding-mode cold-start warn to be
-      // queryable. Without this the defense-in-depth log only surfaces under
-      // reactive `wrangler tail` (PCC-3193). invocation_logs intentionally
-      // off: structured console.warn calls still get ingested without the
-      // per-request envelope log, keeping the log budget bounded.
+      "observability": {
+        "logs": {
+          "enabled": true,
+          "invocation_logs": false
+        }
+      }
+    },
+
+    "staging": {
+      "name": "css-mcp-server-staging",
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "CSS_BACKEND_URL": "https://collaborative-state-worker-staging.pantheon-content-publisher.workers.dev",
+        "MCP_SERVER_NAME": "collaborative-state-mcp",
+        "MCP_SERVER_VERSION": "0.1.0",
+        "PUBLIC_ORIGIN": "https://staging.mcp.p1.pantheon.io",
+        "AUTH0_CLIENT_ID": "e6DAsYOze1bqstICo1JYYU40JGSjPU7k",
+        "AUTH0_ISSUER_BASE_URL": "https://auth-staging.pantheon.io",
+        "AUTH0_AUDIENCE": "https://staging.mcp.p1.pantheon.io"
+      },
+      "kv_namespaces": [
+        { "binding": "OAUTH_KV", "id": "5bdb2949f1fe453085509ecb89e0d124" }
+      ],
+      "services": [
+        { "binding": "CSS_BACKEND", "service": "collaborative-state-worker-staging" }
+      ],
+      // PCC-3192 — Rate Limiting bindings. staging uses the 31924xx namespace
+      // series — disjoint from production (31922xx) and local dev (31923xx)
+      // so staging / prod buckets stay separate.
+      "ratelimits": [
+        { "name": "RL_TOOLS_READ",     "namespace_id": "3192410", "simple": { "limit": 120, "period": 60 } },
+        { "name": "RL_TOOLS_MUTATION", "namespace_id": "3192420", "simple": { "limit": 30,  "period": 60 } },
+        { "name": "RL_OAUTH",          "namespace_id": "3192430", "simple": { "limit": 20,  "period": 60 } },
+        { "name": "RL_TOOLS_ANON",     "namespace_id": "3192440", "simple": { "limit": 60,  "period": 60 } }
+      ],
       "observability": {
         "logs": {
           "enabled": true,
@@ -98,7 +135,14 @@
         "ENVIRONMENT": "production",
         "CSS_BACKEND_URL": "https://collaborative-state-worker-production.pantheon-p1-production.workers.dev",
         "MCP_SERVER_NAME": "collaborative-state-mcp",
-        "MCP_SERVER_VERSION": "0.1.0"
+        "MCP_SERVER_VERSION": "0.1.0",
+        "PUBLIC_ORIGIN": "https://mcp.p1.pantheon.io",
+        // TODO(PCC-3302): once the dedicated CCR Auth0 apps are provisioned in prod
+        // (pantheon-systems/user-authentication-service#106), switch to the ccr_mcp
+        // prod client ID and AUTH0_AUDIENCE "https://mcp.p1.pantheon.io".
+        "AUTH0_CLIENT_ID": "rRRQ1hldtsVmjiVSKxLfTodZ1hx9y99o",
+        "AUTH0_ISSUER_BASE_URL": "https://pantheon.auth0.com",
+        "AUTH0_AUDIENCE": "https://addonapi-gfttxsojwq-uc.a.run.app"
       },
       "kv_namespaces": [
         { "binding": "OAUTH_KV", "id": "c84425ba98ac4f2290d8e58a92c606d1" }

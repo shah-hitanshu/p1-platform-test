@@ -29,6 +29,7 @@ export interface Env {
 
   // Auth providers
   AUTH0_ISSUER_BASE_URL?: string;
+  /** Comma-separated accept-list of token audiences the backend will verify. */
   AUTH0_AUDIENCE?: string;
   AUTH0_CLIENT_ID?: string;
   AUTH0_CLIENT_SECRET?: string;

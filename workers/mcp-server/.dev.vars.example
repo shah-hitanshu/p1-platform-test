@@ -1,13 +1,11 @@
 # MCP Server Development Secrets
 # Copy to .dev.vars and fill in values
 
-# Agent credentials (for authenticating to CSS backend)
-AGENT_API_KEY=aak_your-agent-key-here
-AGENT_ID=your-agent-uuid-here
+# Auth0 application credentials for the upstream sign-in flow.
+AUTH0_CLIENT_ID=your-auth0-client-id
+AUTH0_CLIENT_SECRET=your-auth0-client-secret
+AUTH0_ISSUER_BASE_URL=https://your-tenant.auth0.com
+AUTH0_AUDIENCE=https://your-api-audience
 
-# Google OAuth (for user authentication)
-GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-
-# Cookie encryption key (for OAuth flow)
-COOKIE_ENCRYPTION_KEY=generate-a-random-32-byte-hex-string
+# HMAC key for signing the OAuth state parameter. Any high-entropy random string.
+MCP_STATE_SIGNING_SECRET=generate-a-random-32-byte-hex-string

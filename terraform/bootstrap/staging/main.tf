@@ -85,6 +85,22 @@ module "github_actions_plan" {
   state_bucket_role      = "roles/storage.objectViewer"
 }
 
+# CCR-owned secrets the deploy workflow reads and pushes as per-worker Wrangler
+# secrets; values are added out of band.
+module "secrets" {
+  source = "../../modules/secrets"
+
+  gcp_project = local.gcp_project
+  secret_ids = [
+    "CCR_MCP_AUTH0_CLIENT_SECRET",
+    "CCR_MCP_STATE_SIGNING_SECRET",
+    "CCR_BACKEND_AUTH0_CLIENT_SECRET",
+  ]
+  accessor_members = [
+    "serviceAccount:${module.github_actions_wif.service_account_email}",
+  ]
+}
+
 output "wif_service_account" {
   description = "Apply SA. Set as vars.GCP_SERVICE_ACCOUNT in the protected GitHub environment."
   value       = module.github_actions_wif.service_account_email
@@ -93,4 +109,9 @@ output "wif_service_account" {
 output "wif_plan_service_account" {
   description = "Plan SA email, used by the Terraform Plan workflow."
   value       = module.github_actions_plan.service_account_email
+}
+
+output "ccr_secret_ids" {
+  description = "CCR-owned Secret Manager secret IDs."
+  value       = module.secrets.secret_ids
 }

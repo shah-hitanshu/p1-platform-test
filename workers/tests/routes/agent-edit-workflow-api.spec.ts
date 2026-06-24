@@ -417,32 +417,6 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
     });
 
     describe('Validation', () => {
-      it('should require agentId in request body', async () => {
-        const { handleRealtimeRoutes } = await import(
-          '../../src/routes/realtime-api'
-        );
-
-        const request = new Request(
-          'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              trigger: 'autonomous',
-              intent: 'Test',
-              targetRegions: [],
-            }),
-          },
-        );
-
-        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
-
-        const response = assertNotNull(result);
-        expect(response.status).toBe(400);
-        const body = await response.json();
-        expect(body.error).toContain('agentId');
-      });
-
       it('should require trigger in request body', async () => {
         const { handleRealtimeRoutes } = await import(
           '../../src/routes/realtime-api'
@@ -776,30 +750,6 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
     });
 
     describe('Validation', () => {
-      it('should require agentId in request body', async () => {
-        const { handleRealtimeRoutes } = await import(
-          '../../src/routes/realtime-api'
-        );
-
-        const request = new Request(
-          'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-start',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              trigger: 'autonomous',
-              intent: 'Test',
-              targetRegions: [],
-            }),
-          },
-        );
-
-        const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
-
-        const response = assertNotNull(result);
-        expect(response.status).toBe(400);
-      });
-
       it('should require trigger in request body', async () => {
         const { handleRealtimeRoutes } = await import(
           '../../src/routes/realtime-api'

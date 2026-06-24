@@ -241,8 +241,9 @@ const REGISTRY_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 export class McpApiClient {
   private readonly baseUrl: string;
-  private readonly agentId: string;
-  private readonly agentApiKey: string;
+  private readonly agentId?: string;
+  private readonly agentApiKey?: string;
+  private readonly accessToken?: string;
   private readonly actingUser?: ActingUser;
   private readonly fetcher?: Fetcher;
   readonly validationEnabled: boolean;
@@ -251,16 +252,15 @@ export class McpApiClient {
     if (!config.baseUrl) {
       throw new Error('baseUrl is required');
     }
-    if (!config.agentId) {
-      throw new Error('agentId is required');
-    }
-    if (!config.agentApiKey) {
-      throw new Error('agentApiKey is required');
+    if ((config.agentApiKey === undefined || config.agentApiKey === '') &&
+        (config.accessToken === undefined || config.accessToken === '')) {
+      throw new Error('McpApiClient requires either agentApiKey or accessToken');
     }
 
     this.baseUrl = config.baseUrl.replace(/\/$/, '');
     this.agentId = config.agentId;
     this.agentApiKey = config.agentApiKey;
+    this.accessToken = config.accessToken;
     this.actingUser = config.actingUser;
     this.fetcher = config.fetcher;
     this.validationEnabled = config.enableValidation ?? false;
@@ -289,31 +289,51 @@ export class McpApiClient {
     // (handleResponse → formatError) which turns Error instances into
     // LLM-facing text. Re-throwing as a plain Error here would discard
     // both the discriminator type and the `retryAfterMs` field, blocking
-    // any future programmatic backoff path. Caught in pre-merge review.
+    // any future programmatic backoff path.
   }
 
   /**
-   * Build common headers for API requests.
-   * Includes acting-user headers when actingUser is set.
+   * Build common request headers.
+   *
+   * A user request carries the Auth0 access token as Authorization: Bearer.
+   * An agent request carries the agent API key as X-API-Key; the backend
+   * resolves the agent from the key, so no actor id is fabricated when absent.
    */
   private getHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'X-API-Key': this.agentApiKey,
-      'X-Actor-Type': 'agent',
-      'X-Actor-Id': this.agentId,
+      'X-Actor-Type':
+        this.accessToken !== undefined && this.accessToken !== '' ? 'user' : 'agent',
     };
 
-    if (this.actingUser) {
-      headers['X-Acting-User-Id'] = this.actingUser.id;
-      headers['X-Acting-User-Email'] = this.actingUser.email;
-      if (this.actingUser.name !== undefined) {
-        const safeName = this.actingUser.name.replace(/[\r\n]/g, ' ').trim().slice(0, 256);
-        if (safeName) headers['X-Acting-User-Name'] = safeName;
+    if (this.agentId !== undefined && this.agentId !== '') {
+      headers['X-Actor-Id'] = this.agentId;
+    }
+
+    if (this.accessToken !== undefined && this.accessToken !== '') {
+      headers.Authorization = `Bearer ${this.accessToken}`;
+    } else if (this.agentApiKey !== undefined && this.agentApiKey !== '') {
+      headers['X-API-Key'] = this.agentApiKey;
+      if (this.actingUser) {
+        headers['X-Acting-User-Id'] = this.actingUser.id;
+        headers['X-Acting-User-Email'] = this.actingUser.email;
       }
     }
 
+    // X-Acting-User-Name feeds presence display and is independent of authentication.
+    if (this.actingUser?.name !== undefined) {
+      const safeName = this.actingUser.name.replace(/[\r\n]/g, ' ').trim().slice(0, 256);
+      if (safeName) headers['X-Acting-User-Name'] = safeName;
+    }
+
     return headers;
+  }
+
+  /** X-Agent-Id header for an agent with a local id; empty when the backend derives it from the key. */
+  private agentIdHeader(): Record<string, string> {
+    return this.agentId !== undefined && this.agentId !== ''
+      ? { 'X-Agent-Id': this.agentId }
+      : {};
   }
 
   /**
@@ -328,7 +348,7 @@ export class McpApiClient {
   ): Record<string, string> {
     const headers: Record<string, string> = {
       ...this.getHeaders(),
-      'X-Agent-Id': this.agentId,
+      ...this.agentIdHeader(),
       'X-Agent-Trigger': trigger,
       'X-Agent-Intent': intent,
       'X-Agent-Target-Regions': targetRegions.join(', '),
@@ -1008,7 +1028,6 @@ export class McpApiClient {
       headers: this.getHeaders(),
       body: JSON.stringify({
         operations: request.operations,
-        actorId: this.agentId,
         editSessionId: request.editSessionId,
       }),
     });
@@ -1028,7 +1047,7 @@ export class McpApiClient {
       method: 'POST',
       headers: {
         ...this.getHeaders(),
-        'X-Agent-Id': this.agentId,
+        ...this.agentIdHeader(),
       },
       body: JSON.stringify({ editSessionId: request.editSessionId }),
     });
@@ -1050,7 +1069,7 @@ export class McpApiClient {
       method: 'POST',
       headers: {
         ...this.getHeaders(),
-        'X-Agent-Id': this.agentId,
+        ...this.agentIdHeader(),
       },
       body: JSON.stringify(body),
     });

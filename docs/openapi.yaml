@@ -45,7 +45,7 @@ info:
     url: https://pantheon.io/terms
 
 servers:
-  - url: https://css.pantheon.io
+  - url: https://ccr.p1.pantheon.io
     description: Production
   - url: http://localhost:8787
     description: Local Development

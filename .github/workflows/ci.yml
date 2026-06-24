@@ -97,6 +97,14 @@ jobs:
         run: pnpm test
         working-directory: workers
 
+      - name: Build p1-content-validator
+        run: pnpm build
+        working-directory: packages/p1-content-validator
+
+      - name: Unit tests (mcp-server)
+        run: pnpm test
+        working-directory: workers/mcp-server
+
   check-migrations:
     name: Check migration numbering
     runs-on: ubuntu-latest

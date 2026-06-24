@@ -63,8 +63,20 @@ import type { Env } from './env';
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-    const path = url.pathname;
-    const origin = request.headers.get('Origin');
+
+    // Collapse runs of "/" in the path so routing tolerates malformed
+    // base-URL joins like "host//broker/login". A leading "//" matches no
+    // route prefix and would otherwise fall through to a 404. Document paths
+    // travel URL-encoded (%2F), so no legitimate route has an empty segment.
+    const normalizedPathname = url.pathname.replace(/\/{2,}/g, '/');
+    let req = request;
+    if (normalizedPathname !== url.pathname) {
+      url.pathname = normalizedPathname;
+      req = new Request(url.toString(), request);
+    }
+
+    const path = normalizedPathname;
+    const origin = req.headers.get('Origin');
     const requestStart = Date.now();
 
     // Initialize metrics for this request
@@ -77,8 +89,8 @@ export default {
     });
 
     // Handle CORS preflight (no database needed, no metrics)
-    if (request.method === 'OPTIONS') {
-      return handlePreflight(request, env);
+    if (req.method === 'OPTIONS') {
+      return handlePreflight(req, env);
     }
 
     // Determine connection string and options
@@ -113,7 +125,7 @@ export default {
         connectionString,
         { isHyperdrive },
         async () => {
-          const resp = await handleRequest(request, env, path, origin, ctx);
+          const resp = await handleRequest(req, env, path, origin, ctx);
 
           // Record successful request metrics
           const durationMs = Date.now() - requestStart;
@@ -121,12 +133,12 @@ export default {
           const statusClass = getStatusClass(resp.status);
 
           incrementCounter('css_http_request_total', {
-            method: request.method,
+            method: req.method,
             path_pattern: pathPattern,
             status_class: statusClass,
           });
           recordTiming('css_http_request_duration_ms', durationMs, {
-            method: request.method,
+            method: req.method,
             path_pattern: pathPattern,
             status_class: statusClass,
           });

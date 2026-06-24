@@ -407,58 +407,92 @@ pnpm typecheck
 
 ---
 
-## Agent Registration and MCP Server
+## MCP Server
 
-The system supports AI agents that authenticate with API keys and follow the Agent Politeness protocol to safely edit documents alongside human users.
+The Collaborative State System ships a remote MCP server that lets Claude Desktop and other MCP clients read and edit content using your Pantheon identity. Authentication is handled via OAuth 2.0 — no API keys to manage.
 
-### Registering an Agent
+### Environments
 
-1. **Navigate to the Agents page** at http://localhost:5173/agents
-2. **Click "+ Register agent"** and provide a name and description
-3. **Generate an API key** by expanding the agent row and clicking "Generate key"
-4. **Copy the key immediately** -- it starts with `aak_` and is shown only once
-5. **Grant site access** on the site's detail page under "Agent Access" (roles: viewer, editor, or admin)
+| Environment | MCP Server URL |
+|-------------|---------------|
+| Staging | `https://staging.mcp.p1.pantheon.io/mcp` |
+| Production | `https://mcp.p1.pantheon.io/mcp` |
+| Local dev | `http://localhost:8788/mcp` |
 
-### Connecting the MCP Server
+### Connecting via Claude Desktop
 
-The MCP server in `examples/collaborative-state-mcp/` enables Claude Desktop or Claude Code to use the agent's credentials to read and edit documents.
+In **Settings → Connectors → Add custom connector**, give it a name (e.g. `pantheon-p1-staging`) and paste the MCP server URL:
 
-```bash
-cd examples/collaborative-state-mcp
-pnpm install && pnpm build
-cp .env.example .env
-# Edit .env with your AGENT_ID and AGENT_API_KEY
+```
+https://staging.mcp.p1.pantheon.io/mcp
 ```
 
-**Claude Code:**
+On first connection, a browser window opens for Auth0 login. Sign in with your Pantheon account; the session persists for up to a year.
+
+### Connecting via Claude Code
+
 ```bash
-claude mcp add collaborative-state \
-  node /path/to/examples/collaborative-state-mcp/dist/index.js \
-  -e WORKER_API_URL=http://localhost:8787 \
-  -e AGENT_ID=<your-agent-id> \
-  -e AGENT_API_KEY=<your-aak_key>
+claude mcp add --transport http pantheon-p1-staging \
+  https://staging.mcp.p1.pantheon.io/mcp
 ```
 
-**Claude Desktop:** Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+### Tools
+
+The core authoring round-trip uses these tools:
+
+| Tool | Description |
+|------|-------------|
+| `list_sites` | List all sites you have access to. Start here. |
+| `list_branches` | List branches for a site. Every site has a `main` branch. |
+| `list_documents` | List documents in a branch (paths and IDs). |
+| `get_document` | Fetch full document content. **Call before editing.** |
+| `check_edit_permission` | Verify no conflicts before starting an edit. |
+| `start_edit_session` | Reserve document regions and create a rollback checkpoint. |
+| `apply_document_edits` | Apply edits within an active session. |
+| `complete_edit_session` | Save changes and close the session. |
+| `abort_edit_session` | Roll back all changes and close the session. |
+| `get_branch_presence` | See who is viewing/editing across a branch. |
+| `get_document_presence` | See who is viewing/editing a specific document. |
+| `list_components` | List available Puck components for a site. |
+| `create_page` | Create a new page with Puck components. |
+| `create_branch` | Create a new branch for isolated work. |
+
+The server also exposes tools for branch management, merges and merge requests, navigation, page metadata, page lifecycle (publish, archive, rename), and document version history. Your MCP client lists the full set on connection.
+
+### Typical Editing Workflow
+
+```
+list_sites → list_branches → list_documents → get_document
+  → check_edit_permission → start_edit_session
+  → apply_document_edits (one or more)
+  → complete_edit_session
+```
+
+### Local Development
+
+For local development the MCP server runs alongside the backend worker:
+
+```bash
+cd workers/mcp-server
+cp .dev.vars.example .dev.vars
+# Fill in AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET, AUTH0_ISSUER_BASE_URL, AUTH0_AUDIENCE
+pnpm dev  # starts on http://localhost:8788
+```
+
+The local server runs over plain HTTP, so bridge it with [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) to connect a desktop client. Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
 ```json
 {
   "mcpServers": {
-    "collaborative-state": {
-      "command": "node",
-      "args": ["/path/to/examples/collaborative-state-mcp/dist/index.js"],
-      "env": {
-        "WORKER_API_URL": "http://localhost:8787",
-        "AGENT_ID": "<your-agent-id>",
-        "AGENT_API_KEY": "<your-aak_key>"
-      }
+    "pantheon-p1-local": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://localhost:8788/mcp"]
     }
   }
 }
 ```
 
-**Local dev shortcut:** The backend ships with a mock agent (`test-agent-key-zappy`) that works without registration. See `.env.example` for pre-configured values.
-
-For the full guide including curl-based registration, role mapping, troubleshooting, and the edit workflow, see [`examples/collaborative-state-mcp/README.md`](examples/collaborative-state-mcp/README.md).
+> **Legacy local stdio server:** `examples/collaborative-state-mcp/` contains the original agent-key-based stdio MCP server. It is retained for local development reference but is superseded by the remote server for all deployed environments.
 
 ---
 
@@ -838,10 +872,11 @@ Non-secret config (issuers, audiences, identifiers) lives in the `production` `v
 
 Genuine secrets — set each with `wrangler secret put <NAME> --env production`, run from `workers/`:
 - `INTERNAL_SECRET` — HMAC for broker/OAuth state and Durable-Object→API calls (generate once)
-- `AUTH0_CLIENT_SECRET` — broker redirect flow
 - `MAS_GCP_SERVICE_ACCOUNT_KEY` — JSON key for the `p1-backend` signer SA (see below)
 - `CF_BROWSER_API_TOKEN` — screenshot rendering
 - `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` — screenshot presigning
+
+The backend and MCP Auth0 client secrets are Secret Manager containers created by the bootstrap Terraform (`CCR_BACKEND_AUTH0_CLIENT_SECRET`, `CCR_MCP_AUTH0_CLIENT_SECRET`). Add each value once with `gcloud secrets versions add <ID> --data-file=-`; the deploy workflow reads them and sets each worker's `AUTH0_CLIENT_SECRET`.
 
 The KMS key ring, MAC key, and IAM grant are created by Terraform (step 3). The only manual KMS step is exporting a JSON key for the `p1-backend` signer SA and storing it as `MAS_GCP_SERVICE_ACCOUNT_KEY`:
 

@@ -159,8 +159,11 @@ export async function handleRealtimeRoutes(
       return bodyResult;
     }
 
-    // Auth Phase 4: Cross-validate body actorId against principal
-    if (
+    // Default the actor to the authenticated principal when the client omits it;
+    // cross-validate only an explicitly supplied actor id.
+    if (bodyResult.actorId === undefined || bodyResult.actorId === '') {
+      bodyResult.actorId = context.principal.id;
+    } else if (
       bodyResult.actorId !== context.principal.id
       && bodyResult.actorId !== context.principal.providerSubjectId
     ) {
@@ -182,9 +185,17 @@ export async function handleRealtimeRoutes(
     }
 
     // Validate request body
-    const bodyResult = await validateAgentEditBody(request, origin, patterns);
+    const authedAgentId = context.principal.type === 'agent' ? context.principal.id : undefined;
+    const bodyResult = await validateAgentEditBody(request, origin, patterns, authedAgentId);
     if (bodyResult instanceof Response) {
       return bodyResult;
+    }
+
+    // For an agent principal the key is authoritative: a body or X-Agent-Id that
+    // resolves to a different agent would attribute the session to someone else.
+    // TODO(PCC-3297): superseded when X-Agent-Id is dropped as an identity input.
+    if (authedAgentId !== undefined && bodyResult.agentId !== authedAgentId) {
+      return errorResponse(403, 'Agent ID does not match authenticated identity', origin, patterns);
     }
 
     // Phase 7.4: Validate agent status before forwarding to DO
@@ -212,9 +223,17 @@ export async function handleRealtimeRoutes(
     }
 
     // Validate request body
-    const bodyResult = await validateAgentEditBody(request, origin, patterns);
+    const authedAgentId = context.principal.type === 'agent' ? context.principal.id : undefined;
+    const bodyResult = await validateAgentEditBody(request, origin, patterns, authedAgentId);
     if (bodyResult instanceof Response) {
       return bodyResult;
+    }
+
+    // For an agent principal the key is authoritative: a body or X-Agent-Id that
+    // resolves to a different agent would attribute the session to someone else.
+    // TODO(PCC-3297): superseded when X-Agent-Id is dropped as an identity input.
+    if (authedAgentId !== undefined && bodyResult.agentId !== authedAgentId) {
+      return errorResponse(403, 'Agent ID does not match authenticated identity', origin, patterns);
     }
 
     // Phase 7.4: Validate agent status before forwarding to DO

@@ -699,4 +699,96 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
       expect(fetchedRequest.headers.get('X-Agent-Requested-By')).toBe('user-123');
     });
   });
+
+  describe('Agent id derived from the authenticated key', () => {
+    const agentKeyContext: RealtimeRouteContext = {
+      principal: {
+        id: 'agent-from-key',
+        type: 'agent',
+        pantheonSiteRoles: { 'site-1': 'admin' },
+        tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
+        authProvider: 'agent_key',
+      },
+    };
+
+    const editBody = {
+      trigger: 'autonomous',
+      intent: 'Autonomous edit',
+      targetRegions: ['/content'],
+    };
+
+    it('uses the authenticated agent id for agent-edit-start when no X-Agent-Id is sent', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-start',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(editBody),
+        },
+      );
+
+      await handleRealtimeRoutes(request, mockEnv, agentKeyContext);
+
+      const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
+      const body = await fetchedRequest.json();
+      expect(body.agentId).toBe('agent-from-key');
+    });
+
+    it('uses the authenticated agent id for can-agent-edit when no X-Agent-Id is sent', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(editBody),
+        },
+      );
+
+      await handleRealtimeRoutes(request, mockEnv, agentKeyContext);
+
+      const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
+      const body = await fetchedRequest.json();
+      expect(body.agentId).toBe('agent-from-key');
+    });
+
+    // TODO(PCC-3297): interim. Once X-Agent-Id is no longer read as an identity
+    // input, a mismatched header is ignored rather than 403'd — remove this test.
+    it('rejects an X-Agent-Id that conflicts with the authenticated agent', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-start',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Agent-Id': 'agent-explicit' },
+          body: JSON.stringify(editBody),
+        },
+      );
+
+      const result = await handleRealtimeRoutes(request, mockEnv, agentKeyContext);
+      const response = assertNotNull(result);
+      expect(response.status).toBe(403);
+    });
+
+    it('does not derive an agent id for a non-agent principal', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-start',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(editBody),
+        },
+      );
+
+      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const response = assertNotNull(result);
+      expect(response.status).toBe(400);
+    });
+  });
 });
