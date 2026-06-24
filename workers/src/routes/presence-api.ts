@@ -24,7 +24,7 @@ import {
   SiteNotFoundError,
   AgentNotFoundError,
 } from '../services/presence-rollup-service';
-import { getMainBranch } from '../services/branch-service';
+import { getBranch, getMainBranch } from '../services/branch-service';
 import { hasPermission } from '../auth/authorization';
 
 // =============================================================================
@@ -196,6 +196,12 @@ async function handleGetBranchPresence(
     return errorResponse('Site ID and Branch ID are required', 400);
   }
 
+  // Verify branch exists and belongs to the correct site
+  const branch = await getBranch(context.branchId);
+  if (branch?.siteId !== context.siteId) {
+    return errorResponse('Branch not found', 404);
+  }
+
   // Authorization check
   const hasAccess = await canViewBranch(context, context.siteId, context.branchId);
   if (!hasAccess) {
@@ -263,6 +269,12 @@ async function handleGetDocumentPresence(
 ): Promise<Response> {
   if (context.siteId === undefined || context.branchId === undefined || context.documentPath === undefined) {
     return errorResponse('Site ID, Branch ID, and Document Path are required', 400);
+  }
+
+  // Verify branch exists and belongs to the correct site
+  const docBranch = await getBranch(context.branchId);
+  if (docBranch?.siteId !== context.siteId) {
+    return errorResponse('Branch not found', 404);
   }
 
   // Authorization check (same as branch-level — if you can view the branch, you can see document presence)

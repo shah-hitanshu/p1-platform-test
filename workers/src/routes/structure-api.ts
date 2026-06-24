@@ -7,6 +7,7 @@
 
 import {
   createStructure,
+  getBranch,
   getBranchStructure,
   listBranchStructures,
   updateBranchStructure,
@@ -300,6 +301,12 @@ export async function handleStructureRoutes(
     // All remaining routes require branchId
     if (context.branchId === undefined) {
       return errorResponse('Branch ID is required', 400);
+    }
+
+    // Verify branch exists and belongs to the correct site
+    const branch = await getBranch(context.branchId);
+    if (branch?.siteId !== context.siteId) {
+      return errorResponse('Branch not found', 404);
     }
 
     // Routes with structureId (single structure operations)

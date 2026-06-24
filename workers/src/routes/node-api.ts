@@ -15,6 +15,7 @@ import {
   moveNode,
   reorderNodes,
   buildNavigationTree,
+  getBranch,
   getBranchStructure,
   StructureNotFoundError,
   NodeNotFoundError,
@@ -310,6 +311,12 @@ export async function handleNodeRoutes(
   const method = request.method;
 
   try {
+    // Verify branch exists and belongs to the correct site
+    const branch = await getBranch(context.branchId);
+    if (branch?.siteId !== context.siteId) {
+      return errorResponse('Branch not found', 404);
+    }
+
     // Handle special actions
     if (context.action === 'move') {
       if (method !== 'POST') {

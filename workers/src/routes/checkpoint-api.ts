@@ -92,12 +92,6 @@ async function handleCreateCheckpoint(
     return errorResponse('Branch ID is required', 400);
   }
 
-  // Verify branch exists
-  const branch = await getBranch(context.branchId);
-  if (branch === null) {
-    return errorResponse('Branch not found', 404);
-  }
-
   const body = await parseJsonBody<CreateCheckpointBody>(request);
 
   const trimmedName = body.name?.trim();
@@ -267,6 +261,12 @@ export async function handleCheckpointRoutes(
 
     // Handle branch checkpoint operations
     if (context.branchId !== undefined) {
+      // Verify branch exists and belongs to the correct site
+      const branch = await getBranch(context.branchId);
+      if (branch?.siteId !== context.siteId) {
+        return errorResponse('Branch not found', 404);
+      }
+
       switch (method) {
         case 'GET':
           await assertPermission(context.principal, context.siteId, context.branchId, 'canView');

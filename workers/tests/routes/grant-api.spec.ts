@@ -12,7 +12,7 @@ vi.mock('../../src/services', () => ({
   getGrant: vi.fn(),
   listGrants: vi.fn(),
   deleteGrant: vi.fn(),
-  getBranch: vi.fn(),
+  getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
   GrantNotFoundError: class GrantNotFoundError extends Error {
     name = 'GrantNotFoundError';
     constructor(public grantId: string) {
@@ -507,6 +507,80 @@ describe('Phase 7.1d: Grant API Routes', () => {
       });
 
       expect(response.status).toBe(403);
+    });
+  });
+
+  // ===========================================================================
+  // Cross-tenant IDOR protection
+  // ===========================================================================
+
+  describe('Cross-tenant IDOR protection', () => {
+    it('rejects grant creation when branch belongs to a different site', async () => {
+      const { handleGrantRoutes } = await import('../../src/routes/grant-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1',
+        siteId: 'site-OTHER',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/grants',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            actorId: 'user-2',
+            actorType: 'user',
+            role: 'EDITOR',
+          }),
+        },
+      );
+
+      const response = await handleGrantRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(404);
+      expect(services.createGrant).not.toHaveBeenCalled();
+    });
+
+    it('rejects grant listing when branch belongs to a different site', async () => {
+      const { handleGrantRoutes } = await import('../../src/routes/grant-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1',
+        siteId: 'site-OTHER',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/grants',
+        { method: 'GET' },
+      );
+
+      const response = await handleGrantRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(404);
+      expect(services.listGrants).not.toHaveBeenCalled();
     });
   });
 });

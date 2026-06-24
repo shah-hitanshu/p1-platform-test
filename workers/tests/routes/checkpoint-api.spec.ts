@@ -16,7 +16,7 @@ vi.mock('../../src/services', () => ({
   revertToCheckpoint: vi.fn(),
   deleteCheckpoint: vi.fn(),
   getLatestCheckpoint: vi.fn(),
-  getBranch: vi.fn(),
+  getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
   CheckpointNotFoundError: class CheckpointNotFoundError extends Error {
     name = 'CheckpointNotFoundError';
     constructor(public checkpointId: string) {
@@ -673,6 +673,80 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       });
 
       expect(response.status).toBe(403);
+    });
+  });
+
+  // ===========================================================================
+  // Cross-tenant IDOR protection
+  // ===========================================================================
+
+  describe('Cross-tenant IDOR protection', () => {
+    it('rejects checkpoint creation when branch belongs to a different site', async () => {
+      const { handleCheckpointRoutes } = await import(
+        '../../src/routes/checkpoint-api'
+      );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1',
+        siteId: 'site-OTHER',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/checkpoints',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'v1.0' }),
+        },
+      );
+
+      const response = await handleCheckpointRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(404);
+      expect(services.createCheckpoint).not.toHaveBeenCalled();
+    });
+
+    it('rejects checkpoint listing when branch belongs to a different site', async () => {
+      const { handleCheckpointRoutes } = await import(
+        '../../src/routes/checkpoint-api'
+      );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1',
+        siteId: 'site-OTHER',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/checkpoints',
+        { method: 'GET' },
+      );
+
+      const response = await handleCheckpointRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(404);
+      expect(services.listCheckpoints).not.toHaveBeenCalled();
     });
   });
 });

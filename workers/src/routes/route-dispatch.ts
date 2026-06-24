@@ -36,6 +36,7 @@ import { handleSiteExportRoute } from './site-export-api';
 import { handleSiteImportRoute } from './site-import-api';
 import { getMainBranch } from '../services/branch-service';
 import { errorResponse } from '../utils/http-helpers';
+import { resolveBranchRef } from '../utils/branch-ref';
 
 /**
  * Dispatch a parsed route to the appropriate handler.
@@ -49,6 +50,17 @@ export async function dispatchRoute(
   env: Env,
   masClient: MASClient | undefined,
 ): Promise<Response> {
+  // Resolve branch name → UUID before dispatching to handlers.
+  // Content handler manages its own resolution via query param.
+  if (route.params.branchId !== undefined && route.handler !== 'content') {
+    const siteId = route.params.siteId ?? '';
+    const result = await resolveBranchRef(siteId, route.params.branchId);
+    if (!result.resolved) {
+      return errorResponse(result.error, 404);
+    }
+    route.params.branchId = result.branchId;
+  }
+
   switch (route.handler) {
     case 'site-settings':
       return await handleSiteSettingsRoutes(request, {

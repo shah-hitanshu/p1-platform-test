@@ -17,6 +17,7 @@ vi.mock('../../src/services', () => ({
   moveNode: vi.fn(),
   reorderNodes: vi.fn(),
   buildNavigationTree: vi.fn(),
+  getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
   getBranchStructure: vi.fn(),
   StructureNotFoundError: class StructureNotFoundError extends Error {
     override name = 'StructureNotFoundError';
@@ -930,6 +931,103 @@ describe('Phase 7.1.1b: Node API Routes', () => {
       });
 
       expect(response.status).toBe(403);
+    });
+  });
+
+  // ===========================================================================
+  // Cross-tenant IDOR protection
+  // ===========================================================================
+
+  describe('Cross-tenant IDOR protection', () => {
+    it('rejects node listing when branch belongs to a different site', async () => {
+      const { handleNodeRoutes } = await import('../../src/routes/node-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1',
+        siteId: 'site-OTHER',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      vi.mocked(services.getBranchStructure).mockResolvedValueOnce({
+        id: 'struct-1',
+        branchId: 'branch-1',
+        siteId: 'site-OTHER',
+        name: 'Navigation',
+        slug: 'navigation',
+        structureType: 'hierarchy',
+        createdAt: '2026-01-24T10:00:00.000Z',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/structures/struct-1/nodes',
+        { method: 'GET' },
+      );
+
+      const response = await handleNodeRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        structureId: 'struct-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(404);
+      expect(services.listNodes).not.toHaveBeenCalled();
+    });
+
+    it('rejects node creation when branch belongs to a different site', async () => {
+      const { handleNodeRoutes } = await import('../../src/routes/node-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1',
+        siteId: 'site-OTHER',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      vi.mocked(services.getBranchStructure).mockResolvedValueOnce({
+        id: 'struct-1',
+        branchId: 'branch-1',
+        siteId: 'site-OTHER',
+        name: 'Navigation',
+        slug: 'navigation',
+        structureType: 'hierarchy',
+        createdAt: '2026-01-24T10:00:00.000Z',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/structures/struct-1/nodes',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Home',
+            slug: 'home',
+            nodeType: 'page',
+            position: 0,
+          }),
+        },
+      );
+
+      const response = await handleNodeRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        structureId: 'struct-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(404);
+      expect(services.createNode).not.toHaveBeenCalled();
     });
   });
 });

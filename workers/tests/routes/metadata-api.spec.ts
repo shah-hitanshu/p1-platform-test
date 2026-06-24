@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock the services
 vi.mock('../../src/services', () => ({
+  getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
   getBranchStructureState: vi.fn(),
   updateBranchStructureState: vi.fn(),
   getDocumentMetadata: vi.fn(),
@@ -737,6 +738,84 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
       });
 
       expect(response.status).toBe(403);
+    });
+  });
+
+  // ===========================================================================
+  // Cross-tenant IDOR protection
+  // ===========================================================================
+
+  describe('Cross-tenant IDOR protection', () => {
+    it('rejects structure state read when branch belongs to a different site', async () => {
+      const { handleMetadataRoutes } = await import(
+        '../../src/routes/metadata-api'
+      );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-from-other-site',
+        siteId: 'site-OTHER',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-from-other-site/structures/struct-1/metadata/state',
+        { method: 'GET' },
+      );
+
+      const response = await handleMetadataRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-from-other-site',
+        structureId: 'struct-1',
+        action: 'state',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(404);
+      expect(services.getBranchStructureState).not.toHaveBeenCalled();
+    });
+
+    it('rejects metadata write when branch belongs to a different site', async () => {
+      const { handleMetadataRoutes } = await import(
+        '../../src/routes/metadata-api'
+      );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-from-other-site',
+        siteId: 'site-OTHER',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-from-other-site/structures/struct-1/metadata/doc-1',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: 'Stolen Data' }),
+        },
+      );
+
+      const response = await handleMetadataRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-from-other-site',
+        structureId: 'struct-1',
+        documentId: 'doc-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(404);
+      expect(services.setDocumentMetadata).not.toHaveBeenCalled();
     });
   });
 });

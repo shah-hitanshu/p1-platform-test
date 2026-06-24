@@ -16,6 +16,7 @@ import type { AuthenticatedPrincipal, Branch, Document, DocumentVersion } from '
 vi.mock('../../src/services', () => ({
   getMainBranch: vi.fn(),
   getBranch: vi.fn(),
+  getBranchByName: vi.fn(),
   getDocumentByPath: vi.fn(),
   getLatestDocumentVersion: vi.fn(),
   getLatestPublishedDocumentVersion: vi.fn(),
@@ -303,7 +304,7 @@ describe('Content Delivery API Routes', () => {
       setupSettingsMocks(settingsService, 5);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=branch-feature-uuid',
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=b2a4c6d8-e0f2-4a6b-8c0e-2a4b6c8d0e2f',
         { method: 'GET' },
       );
 
@@ -334,7 +335,7 @@ describe('Content Delivery API Routes', () => {
       vi.mocked(services.getLatestDocumentVersion).mockResolvedValue(null);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=branch-feature-uuid',
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=b2a4c6d8-e0f2-4a6b-8c0e-2a4b6c8d0e2f',
         { method: 'GET' },
       );
 
@@ -363,7 +364,7 @@ describe('Content Delivery API Routes', () => {
       setupSettingsMocks(settingsService, 5);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=branch-feature-uuid',
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=b2a4c6d8-e0f2-4a6b-8c0e-2a4b6c8d0e2f',
         { method: 'GET' },
       );
 
@@ -398,7 +399,7 @@ describe('Content Delivery API Routes', () => {
       setupSettingsMocks(settingsService, 5);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=branch-feature-uuid',
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=b2a4c6d8-e0f2-4a6b-8c0e-2a4b6c8d0e2f',
         { method: 'GET' },
       );
 
@@ -429,7 +430,7 @@ describe('Content Delivery API Routes', () => {
       setupSettingsMocks(settingsService, 5);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=branch-feature-uuid',
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=b2a4c6d8-e0f2-4a6b-8c0e-2a4b6c8d0e2f',
         { method: 'GET' },
       );
 
@@ -456,7 +457,7 @@ describe('Content Delivery API Routes', () => {
       vi.mocked(services.getLatestDocumentVersionWithFallback).mockResolvedValue(null);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=branch-feature-uuid',
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=b2a4c6d8-e0f2-4a6b-8c0e-2a4b6c8d0e2f',
         { method: 'GET' },
       );
 
@@ -632,7 +633,7 @@ describe('Content Delivery API Routes', () => {
       setupSettingsMocks(settingsService, 5);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=branch-feature-uuid',
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=b2a4c6d8-e0f2-4a6b-8c0e-2a4b6c8d0e2f',
         { method: 'GET' },
       );
 
@@ -747,7 +748,262 @@ describe('Content Delivery API Routes', () => {
       vi.mocked(services.getBranch).mockResolvedValue(null);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=nonexistent-branch',
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=00000000-0000-0000-0000-000000000000',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  // ===========================================================================
+  // Branch resolution by name
+  // ===========================================================================
+
+  describe('branch resolution by name', () => {
+    it('should resolve a branch by name when ?branch is not a UUID', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      vi.mocked(services.getBranchByName).mockResolvedValue(mockFeatureBranch);
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestDocumentVersionWithFallback).mockResolvedValue({
+        version: mockDraftVersion,
+        inherited: false,
+      });
+      setupSettingsMocks(settingsService, 5);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=feature-redesign',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      expect(services.getBranchByName).toHaveBeenCalledWith('site-uuid-123', 'feature-redesign');
+      expect(services.getBranch).not.toHaveBeenCalled();
+      const body = await response.json();
+      expect(body.branchName).toBe('feature-redesign');
+      expect(body.isMainBranch).toBe(false);
+    });
+
+    it('should resolve "main" branch name to published content', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      vi.mocked(services.getBranchByName).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestPublishedDocumentVersion).mockResolvedValue(mockPublishedVersion);
+      setupSettingsMocks(settingsService, 120);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=main',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      expect(services.getBranchByName).toHaveBeenCalledWith('site-uuid-123', 'main');
+      expect(services.getBranch).not.toHaveBeenCalled();
+      const body = await response.json();
+      expect(body.isMainBranch).toBe(true);
+    });
+
+    it('should return 404 when branch name does not match any branch', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranchByName).mockResolvedValue(null);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=nonexistent-name',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(404);
+      expect(services.getBranchByName).toHaveBeenCalledWith('site-uuid-123', 'nonexistent-name');
+      expect(services.getBranch).not.toHaveBeenCalled();
+    });
+
+    it('should still resolve branches by UUID when ?branch is a valid UUID', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      vi.mocked(services.getBranch).mockResolvedValue(mockFeatureBranch);
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestDocumentVersionWithFallback).mockResolvedValue({
+        version: mockDraftVersion,
+        inherited: false,
+      });
+      setupSettingsMocks(settingsService, 5);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      expect(services.getBranch).toHaveBeenCalledWith('a1b2c3d4-e5f6-7890-abcd-ef1234567890');
+      expect(services.getBranchByName).not.toHaveBeenCalled();
+    });
+
+    it('should resolve branch name for content-pages endpoint', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      vi.mocked(services.getBranchByName).mockResolvedValue(mockFeatureBranch);
+      vi.mocked(services.listDocumentsOnBranch).mockResolvedValue([]);
+      setupSettingsMocks(settingsService, 5);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content-pages?branch=feature-redesign',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        action: 'content-pages',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      expect(services.getBranchByName).toHaveBeenCalledWith('site-uuid-123', 'feature-redesign');
+      expect(services.getBranch).not.toHaveBeenCalled();
+    });
+
+    it('should default to main branch when ?branch= is empty string', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestPublishedDocumentVersion).mockResolvedValue(mockPublishedVersion);
+      setupSettingsMocks(settingsService, 120);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      expect(services.getMainBranch).toHaveBeenCalledWith('site-uuid-123');
+      expect(services.getBranch).not.toHaveBeenCalled();
+      expect(services.getBranchByName).not.toHaveBeenCalled();
+    });
+
+    it('should resolve uppercase UUIDs via getBranch', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      vi.mocked(services.getBranch).mockResolvedValue(mockFeatureBranch);
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestDocumentVersionWithFallback).mockResolvedValue({
+        version: mockDraftVersion,
+        inherited: false,
+      });
+      setupSettingsMocks(settingsService, 5);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=B2A4C6D8-E0F2-4A6B-8C0E-2A4B6C8D0E2F',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      expect(services.getBranch).toHaveBeenCalledWith('B2A4C6D8-E0F2-4A6B-8C0E-2A4B6C8D0E2F');
+      expect(services.getBranchByName).not.toHaveBeenCalled();
+    });
+
+    it('should treat truncated UUID-like strings as branch names', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranchByName).mockResolvedValue(null);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=b2a4c6d8-e0f2',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(404);
+      expect(services.getBranchByName).toHaveBeenCalledWith('site-uuid-123', 'b2a4c6d8-e0f2');
+      expect(services.getBranch).not.toHaveBeenCalled();
+    });
+
+    it('should return 404 when UUID belongs to a branch on a different site', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+
+      const otherSiteBranch: Branch = {
+        ...mockFeatureBranch,
+        siteId: 'other-site-uuid',
+      };
+      vi.mocked(services.getBranch).mockResolvedValue(otherSiteBranch);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=b2a4c6d8-e0f2-4a6b-8c0e-2a4b6c8d0e2f',
         { method: 'GET' },
       );
 
@@ -933,7 +1189,7 @@ describe('Content Delivery API Routes', () => {
       setupSettingsMocks(settingsService, 5);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/content-pages?branch=branch-feature-uuid',
+        'https://api.example.com/api/sites/site-uuid-123/content-pages?branch=b2a4c6d8-e0f2-4a6b-8c0e-2a4b6c8d0e2f',
         { method: 'GET' },
       );
 
@@ -974,7 +1230,7 @@ describe('Content Delivery API Routes', () => {
       setupSettingsMocks(settingsService, 5);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/content-pages?branch=branch-feature-uuid',
+        'https://api.example.com/api/sites/site-uuid-123/content-pages?branch=b2a4c6d8-e0f2-4a6b-8c0e-2a4b6c8d0e2f',
         { method: 'GET' },
       );
 
@@ -1010,7 +1266,7 @@ describe('Content Delivery API Routes', () => {
       setupSettingsMocks(settingsService, 5);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/content-pages?branch=branch-feature-uuid',
+        'https://api.example.com/api/sites/site-uuid-123/content-pages?branch=b2a4c6d8-e0f2-4a6b-8c0e-2a4b6c8d0e2f',
         { method: 'GET' },
       );
 
@@ -1065,7 +1321,7 @@ describe('Content Delivery API Routes', () => {
       vi.mocked(services.getBranch).mockResolvedValue(null);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/content-pages?branch=nonexistent-branch',
+        'https://api.example.com/api/sites/site-uuid-123/content-pages?branch=00000000-0000-0000-0000-000000000000',
         { method: 'GET' },
       );
 
@@ -1104,6 +1360,77 @@ describe('Content Delivery API Routes', () => {
       });
 
       expect(response.status).toBe(405);
+    });
+  });
+
+  // ===========================================================================
+  // Cross-tenant IDOR protection
+  // ===========================================================================
+
+  describe('Cross-tenant IDOR protection', () => {
+    it('rejects a branch UUID belonging to a different site', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-other-uuid',
+        siteId: 'site-OTHER',
+        name: 'feature',
+        isMain: false,
+        status: 'active',
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      } as never);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=branch-other-uuid',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(404);
+      expect(services.getDocumentByPath).not.toHaveBeenCalled();
+    });
+
+    it('rejects a branch name belonging to a different site', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranchByName).mockResolvedValueOnce({
+        id: 'branch-other-uuid',
+        siteId: 'site-OTHER',
+        name: 'feature',
+        isMain: false,
+        status: 'active',
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      } as never);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home?branch=feature',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(404);
+      expect(services.getDocumentByPath).not.toHaveBeenCalled();
     });
   });
 });

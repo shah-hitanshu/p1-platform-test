@@ -7,6 +7,7 @@
 
 import type { AuthenticatedPrincipal } from '../types';
 import {
+  getBranch,
   getBranchStructureState,
   updateBranchStructureState,
   getDocumentMetadata,
@@ -252,6 +253,12 @@ export async function handleMetadataRoutes(
   const method = request.method;
 
   try {
+    // Verify branch exists and belongs to the correct site
+    const branch = await getBranch(context.branchId);
+    if (branch?.siteId !== context.siteId) {
+      return errorResponse('Branch not found', 404);
+    }
+
     // Handle action-based routes
     switch (context.action) {
       case 'state':

@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock the services
 vi.mock('../../src/services', () => ({
   createStructure: vi.fn(),
+  getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
   getBranchStructure: vi.fn(),
   getBranchStructureBySlug: vi.fn(),
   listBranchStructures: vi.fn(),
@@ -724,6 +725,80 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       });
 
       expect(response.status).toBe(403);
+    });
+  });
+
+  // ===========================================================================
+  // Cross-tenant IDOR protection
+  // ===========================================================================
+
+  describe('Cross-tenant IDOR protection', () => {
+    it('rejects structure creation when branch belongs to a different site', async () => {
+      const { handleStructureRoutes } = await import(
+        '../../src/routes/structure-api'
+      );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-from-other-site',
+        siteId: 'site-OTHER',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-from-other-site/structures',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Navigation', slug: 'nav' }),
+        },
+      );
+
+      const response = await handleStructureRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-from-other-site',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(404);
+      expect(services.createStructure).not.toHaveBeenCalled();
+    });
+
+    it('rejects structure listing when branch belongs to a different site', async () => {
+      const { handleStructureRoutes } = await import(
+        '../../src/routes/structure-api'
+      );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-from-other-site',
+        siteId: 'site-OTHER',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-from-other-site/structures',
+        { method: 'GET' },
+      );
+
+      const response = await handleStructureRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-from-other-site',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(404);
+      expect(services.listBranchStructures).not.toHaveBeenCalled();
     });
   });
 });

@@ -20,6 +20,15 @@ vi.mock('cloudflare:workers', () => ({
   },
 }));
 
+// Mock branch-ref resolution to pass through any branchId as-is (router
+// tests verify wiring, not branch resolution — that's tested in branch-ref.spec.ts)
+vi.mock('../../src/utils/branch-ref', () => ({
+  UUID_RE: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  resolveBranchRef: vi.fn().mockImplementation((_siteId: string, branchRef: string) =>
+    Promise.resolve({ resolved: true, branchId: branchRef }),
+  ),
+}));
+
 // Mock the database
 vi.mock('../../src/db', () => ({
   initializeDatabaseFromConnectionString: vi.fn(),

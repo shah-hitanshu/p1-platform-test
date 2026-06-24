@@ -13,6 +13,7 @@ import type { AuthenticatedPrincipal } from '../types';
 import {
   getMainBranch,
   getBranch,
+  getBranchByName,
   getDocumentByPath,
   getLatestDocumentVersion,
   getLatestPublishedDocumentVersion,
@@ -50,18 +51,23 @@ function errorResponse(error: string, status: number): Response {
   return jsonResponse({ error }, status);
 }
 
+import { UUID_RE } from '../utils/branch-ref';
+
 /**
  * Resolve the branch from query param or default to main branch.
+ * Accepts either a branch UUID or a branch name.
  */
 async function resolveBranch(
   request: Request,
   siteId: string,
 ): Promise<{ id: string; name: string; isMain: boolean } | null> {
   const url = new URL(request.url);
-  const branchId = url.searchParams.get('branch');
+  const branchRef = url.searchParams.get('branch');
 
-  if (branchId !== null && branchId !== '') {
-    const branch = await getBranch(branchId);
+  if (branchRef !== null && branchRef !== '') {
+    const branch = UUID_RE.test(branchRef)
+      ? await getBranch(branchRef)
+      : await getBranchByName(siteId, branchRef);
     if (branch?.siteId !== siteId) return null;
     return { id: branch.id, name: branch.name, isMain: branch.isMain };
   }

@@ -40,6 +40,11 @@ vi.mock('../../src/services/presence-rollup-service', () => ({
 
 // Mock the branch service for authorization checks
 vi.mock('../../src/services/branch-service', () => ({
+  getBranch: vi.fn().mockImplementation((branchId: string) => {
+    if (branchId === 'branch-uuid-123') return Promise.resolve({ id: 'branch-uuid-123', siteId: 'site-uuid-123', name: 'main', isMain: true });
+    if (branchId === 'branch-1') return Promise.resolve({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true });
+    return Promise.resolve(null);
+  }),
   getMainBranch: vi.fn(),
 }));
 
@@ -783,6 +788,51 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       expect(response.status).toBe(200);
+    });
+  });
+
+  // ===========================================================================
+  // Cross-tenant IDOR protection
+  // ===========================================================================
+
+  describe('Cross-tenant IDOR protection', () => {
+    it('rejects branch presence read when branch belongs to a different site', async () => {
+      const { handlePresenceRoutes } = await import('../../src/routes/presence-api');
+      const presenceService = await import('../../src/services/presence-rollup-service');
+      const branchService = await import('../../src/services/branch-service');
+
+      vi.mocked(branchService.getBranch).mockResolvedValueOnce({
+        id: 'branch-from-other-site',
+        siteId: 'site-OTHER',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      } as never);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-from-other-site/presence',
+        { method: 'GET' },
+      );
+
+      const response = await handlePresenceRoutes(
+        request,
+        {
+          siteId: 'site-1',
+          branchId: 'branch-from-other-site',
+          principal: {
+            id: 'user-1',
+            type: 'user',
+            pantheonSiteRoles: { 'site-1': 'developer' },
+          },
+        },
+        {} as unknown,
+      );
+
+      expect(response.status).toBe(404);
+      expect(presenceService.getBranchPresence).not.toHaveBeenCalled();
     });
   });
 });
