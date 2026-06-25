@@ -91,6 +91,50 @@ describe('ensureInitialized', () => {
     expect(mockInitializeStores).toHaveBeenCalledOnce();
   });
 
+  it('retries after a transient failure instead of caching the rejection', async () => {
+    let callCount = 0;
+    mockInitializeStores.mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        throw new Error('backend down');
+      }
+    });
+
+    const config = {
+      p1BaseUrl: 'https://api.example.com',
+      p1SiteId: 'site-1',
+    };
+
+    await expect(ensureInitialized(config)).rejects.toThrow('backend down');
+
+    _resetInit();
+
+    await expect(ensureInitialized(config)).resolves.toBeUndefined();
+    expect(mockInitializeStores).toHaveBeenCalledTimes(2);
+  });
+
+  it('auto-clears cached promise on failure so next call retries', async () => {
+    let callCount = 0;
+    mockInitializeStores.mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        throw new Error('transient');
+      }
+    });
+
+    const config = {
+      p1BaseUrl: 'https://api.example.com',
+      p1SiteId: 'site-1',
+    };
+
+    await expect(ensureInitialized(config)).rejects.toThrow('transient');
+
+    // Without _resetInit — the .catch handler in ensureInitialized should
+    // have cleared _initPromise automatically so the next call retries.
+    await expect(ensureInitialized(config)).resolves.toBeUndefined();
+    expect(mockInitializeStores).toHaveBeenCalledTimes(2);
+  });
+
   it('re-initializes after _resetInit()', async () => {
     mockBranchesList.mockResolvedValue([{ id: 'branch-main', isMain: true }]);
 

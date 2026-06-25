@@ -35,7 +35,11 @@ let _initPromise: Promise<void> | null = null;
  */
 export function ensureInitialized(dataConfig: P1DataConfig): Promise<void> {
   if (!_initPromise) {
-    _initPromise = doInit(dataConfig);
+    _initPromise = doInit(dataConfig).catch((err) => {
+      console.error("[puck-css] initialization failed:", (err as Error).message);
+      _initPromise = null;
+      throw err;
+    });
   }
   return _initPromise;
 }
