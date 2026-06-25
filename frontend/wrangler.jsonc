@@ -58,11 +58,8 @@
         "FRONTEND_API_BASE_URL": "https://collaborative-state-worker-production.pantheon-p1-production.workers.dev",
         "FRONTEND_GOOGLE_CLIENT_ID": "", // Google sign-in disabled in production; Auth0 only.
         "FRONTEND_AUTH0_DOMAIN": "https://pantheon.auth0.com",
-        // TODO(PCC-3302): once the dedicated CCR Auth0 apps are provisioned in prod
-        // (pantheon-systems/user-authentication-service#106), switch to the ccr_frontend
-        // prod client ID and FRONTEND_AUTH0_AUDIENCE "https://mcp.p1.pantheon.io".
-        "FRONTEND_AUTH0_CLIENT_ID": "rRRQ1hldtsVmjiVSKxLfTodZ1hx9y99o",
-        "FRONTEND_AUTH0_AUDIENCE": "https://addonapi-gfttxsojwq-uc.a.run.app",
+        "FRONTEND_AUTH0_CLIENT_ID": "6wDFEzZdZ8kASQJxFXOIxdl4jzjCAZ0m",
+        "FRONTEND_AUTH0_AUDIENCE": "https://mcp.p1.pantheon.io",
         "FRONTEND_ENABLE_MOCK_LOGIN": "false",
       },
     },

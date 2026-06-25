@@ -320,12 +320,8 @@
         "R2_SCREENSHOTS_BUCKET": "css-screenshots-production",
         "R2_BUNDLES_BUCKET": "ccr-bundles-production",
         "AUTH0_ISSUER_BASE_URL": "https://pantheon.auth0.com",
-        // TODO(PCC-3302): once the dedicated CCR Auth0 apps are provisioned in prod
-        // (pantheon-systems/user-authentication-service#106), switch to the ccr_backend
-        // prod client ID and set AUTH0_AUDIENCE to the comma-separated accept-list
-        // "https://mcp.p1.pantheon.io,https://addonapi-gfttxsojwq-uc.a.run.app".
-        "AUTH0_AUDIENCE": "https://addonapi-gfttxsojwq-uc.a.run.app",
-        "AUTH0_CLIENT_ID": "rRRQ1hldtsVmjiVSKxLfTodZ1hx9y99o",
+        "AUTH0_AUDIENCE": "https://mcp.p1.pantheon.io,https://addonapi-gfttxsojwq-uc.a.run.app",
+        "AUTH0_CLIENT_ID": "yNxUUz4hWpUgUJXvxmNg0tyqfxZrBo5E",
         "GCP_KMS_KEY_RESOURCE": "projects/pantheon-content-cloud/locations/global/keyRings/p1-auth-broker/cryptoKeys/jwt-mac-signing",
         "CF_ACCOUNT_ID": "c7357ecc2566ef9d5d555e40fccb3071",
         "R2_ACCOUNT_ID": "c7357ecc2566ef9d5d555e40fccb3071"
