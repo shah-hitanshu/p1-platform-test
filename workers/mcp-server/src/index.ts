@@ -186,6 +186,23 @@ function getOAuthHelpers(env: Env): OAuthHelpers | undefined {
   return (env as Env & { OAUTH_PROVIDER?: OAuthHelpers }).OAUTH_PROVIDER;
 }
 
+/**
+ * The worker's public-facing origin. Behind the content load balancer the inbound
+ * Host is the workers.dev name, so request.url is not the public origin; PUBLIC_ORIGIN
+ * pins it. Falls back to the request origin for local dev where it is unset.
+ */
+function getPublicOrigin(request: Request, env: Env): string {
+  const configured: string | undefined = env.PUBLIC_ORIGIN;
+  if (configured) {
+    let origin = configured;
+    while (origin.endsWith('/')) {
+      origin = origin.slice(0, -1);
+    }
+    return origin;
+  }
+  return new URL(request.url).origin;
+}
+
 export const defaultHandler: ExportedHandler<Env> = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -275,7 +292,7 @@ export const defaultHandler: ExportedHandler<Env> = {
       );
 
       // Build the callback URL for Auth0 to redirect to
-      const callbackUrl = `${url.origin}/callback`;
+      const callbackUrl = `${getPublicOrigin(request, env)}/callback`;
 
       // Note: RFC 8707 `resource` parameter omitted — Auth0 requires the resource
       // to be registered as an API in the tenant before accepting it. Use `audience`
@@ -339,7 +356,7 @@ export const defaultHandler: ExportedHandler<Env> = {
 
       // Exchange the Auth0 auth code for tokens.
       // exchangeAuth0Code throws on network errors or non-ok Auth0 responses.
-      const callbackUrl = `${url.origin}/callback`;
+      const callbackUrl = `${getPublicOrigin(request, env)}/callback`;
       let auth0Result: Awaited<ReturnType<typeof exchangeAuth0Code>>;
       try {
         auth0Result = await exchangeAuth0Code({
