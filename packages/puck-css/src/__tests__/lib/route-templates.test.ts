@@ -28,6 +28,11 @@ describe('editorPathHref', () => {
     expect(editorPathHref('/contact-us')).toBe('/p1/contact-us');
     expect(editorPathHref('/jedi/:id')).toBe('/p1/jedi/:id');
   });
+
+  it('inserts the /p1/ separator for slash-less stored paths (CCR canonical form)', () => {
+    expect(editorPathHref('contact-us')).toBe('/p1/contact-us');
+    expect(editorPathHref('blog/my-post')).toBe('/p1/blog/my-post');
+  });
 });
 
 describe('publicPagePathHref', () => {

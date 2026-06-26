@@ -24,7 +24,7 @@ export function editorPathHref(routePath: string): string {
   if (n === "/") {
     return "/p1/edit";
   }
-  return `/p1${n}`;
+  return `/p1${n.startsWith("/") ? n : `/${n}`}`;
 }
 
 /**

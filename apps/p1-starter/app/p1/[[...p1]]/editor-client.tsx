@@ -10,6 +10,7 @@ import {
   useP1Plugins,
   wrapConfigForEditorPreview,
   P1QueryProvider,
+  editorPathHref,
 } from "@pantheon-systems/puck-css";
 import { P1NextRouterProvider } from "@pantheon-systems/p1-next-sdk";
 import type { Checkpoint } from "@pantheon-systems/puck-css";
@@ -129,7 +130,7 @@ function EditorContent({
 
   const handleDocumentSelect = useCallback(
     (docPath: string) => {
-      router.push(`/p1/${docPath}`);
+      router.push(editorPathHref(docPath));
     },
     [router],
   );
