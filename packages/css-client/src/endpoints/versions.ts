@@ -63,11 +63,15 @@ export class VersionsEndpoint {
    * Create a new version of a document.
    */
   async create(siteId: string, params: CreateDocumentVersionParams): Promise<DocumentVersion> {
+    const body: Record<string, unknown> = { snapshot: params.snapshot };
+    if (params.puckActions && params.puckActions.length > 0) {
+      body.puckActions = params.puckActions;
+    }
     return this.base.request<DocumentVersion>(
       `/api/sites/${siteId}/branches/${params.branchId}/documents/${params.documentId}/versions`,
       {
         method: 'POST',
-        body: JSON.stringify({ snapshot: params.snapshot }),
+        body: JSON.stringify(body),
       }
     );
   }

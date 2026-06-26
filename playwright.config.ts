@@ -40,7 +40,7 @@ export default defineConfig({
       env: {
         NEXT_PUBLIC_CSS_BASE_URL: 'http://localhost:4444',
         NEXT_PUBLIC_CSS_SITE_ID: 'test-site',
-        P1_CSS_API_KEY: 'test-api-key',
+        CSS_API_KEY: 'test-api-key',
       },
     },
   ],

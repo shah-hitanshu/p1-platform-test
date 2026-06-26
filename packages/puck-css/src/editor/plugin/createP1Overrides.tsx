@@ -6,6 +6,7 @@
  */
 
 import React from 'react';
+import { ActionBar } from '@puckeditor/core';
 import type { Checkpoint, DocumentVersion, PuckData, ActorPresence } from '@pantheon-systems/css-client';
 import type { SaveStatus } from '../../core/types.js';
 import { SaveIndicator } from '../components/SaveIndicator.js';
@@ -13,6 +14,7 @@ import { HistoricalVersionBanner } from '../../versioning/components/HistoricalV
 import { CollaboratorAvatars } from '../../collaboration/components/CollaboratorAvatars.js';
 import { AgentActivityBanner } from '../../collaboration/components/AgentActivityBanner.js';
 import { PublishedStatusBadge } from '../components/PublishedStatusBadge.js';
+import { ActionBarPinButton } from '../../features/content-type-templates/ui/ActionBarPinButton.js';
 // NOTE: PuckDataSynchronizer is NOT imported here - it's used in P1Plugin instead
 // because headerActions renders outside Puck's context where usePuck() doesn't work.
 
@@ -213,6 +215,12 @@ export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
       };
 
   return {
+    actionBar: ({ label, children }: { label?: string; children: React.ReactNode }) => (
+      <ActionBar label={label}>
+        {children}
+        <ActionBarPinButton />
+      </ActionBar>
+    ),
     headerActions: ({ children }) => {
       // Read presence/agent values lazily from options (Proxy) each render
       // so they reflect the latest state from useP1Overrides' optionsRef.

@@ -23,6 +23,9 @@ When creating code, you MUST follow these guidelines:
 
 5. Ensure that you're designing systems in such a way that they interface with the infrastructure we have defined in the README.md file. 
 
+# Build after changes
+Always run `pnpm build` after making code changes and verify a clean build (no errors) before reporting work as complete.
+
 # Ask me for help and do not expand scope without permission
 Do not expand the scope of the architecture. If you see gaps or opportunities as we develop, prepare a reasoned summary for my review before proceeding. 
 

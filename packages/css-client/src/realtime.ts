@@ -122,6 +122,13 @@ export interface RealtimeClientConfig {
   onRateLimited?: () => void;
 
   /**
+   * Callback when the server sends close code 4001 (server-initiated reload).
+   * Called after the local Y.Doc is cleared, before automatic reconnection.
+   * Use this to notify users that the document is being refreshed.
+   */
+  onServerReload?: () => void;
+
+  /**
    * Optional token refresher for dynamic WebSocket authentication.
    * Called when the WebSocket connection closes unexpectedly (non-intentionally).
    * Should return a fresh token string, or null if the session cannot be refreshed.
@@ -233,7 +240,7 @@ export class RealtimeClient {
   private static readonly PUBLISH_TIMEOUT_MS = 30000;
 
   // Action metadata state — best-effort metadata sent alongside CRDT updates
-  private pendingActionMetadata: { actionType: string; actionMetadata: Record<string, unknown> } | null = null;
+  private pendingActionMetadata: Array<{ type: string; [key: string]: unknown }> | null = null;
 
   constructor(config: RealtimeClientConfig) {
     this.config = config;
@@ -251,6 +258,7 @@ export class RealtimeClient {
         // no-op full-rebuild echo. Don't send it — it would overwrite newer
         // data on the DO if another client has edited since.
         if (currentSnapshot === this.lastSentSnapshot) {
+          this.sendPendingActionMetadata();
           return;
         }
 
@@ -404,8 +412,23 @@ export class RealtimeClient {
     this.ws.addEventListener('close', (event) => {
       this.connected = false;
 
-      // Check for authorization failure close codes (4401 Unauthorized, 4403 Forbidden)
       const closeEvent = event as CloseEvent;
+
+      // Server-initiated reload (e.g. after migration) — clear the local
+      // Y.Doc so the reconnect receives fresh state from the server instead
+      // of sending stale data back and overwriting the migration.
+      if (closeEvent.code === 4001) {
+        const root = this.ydoc.getMap('root');
+        this.ydoc.transact(() => {
+          root.clear();
+        });
+        this.lastSentSnapshot = null;
+        this.config.onServerReload?.();
+        // PartySocket will reconnect automatically; the open handler
+        // skips sending state when root.size === 0
+      }
+
+      // Check for authorization failure close codes (4401 Unauthorized, 4403 Forbidden)
       if (closeEvent.code === 4401 || closeEvent.code === 4403) {
         // Authorization failure - do not attempt to reconnect
         this.intentionalDisconnect = true;
@@ -581,8 +604,8 @@ export class RealtimeClient {
    *
    * @param meta - Action type and metadata from Puck's onAction callback
    */
-  setActionMetadata(meta: { actionType: string; actionMetadata: Record<string, unknown> } | null): void {
-    this.pendingActionMetadata = meta;
+  setActionMetadata(actions: Array<{ type: string; [key: string]: unknown }> | null): void {
+    this.pendingActionMetadata = actions;
   }
 
   /**
@@ -591,14 +614,15 @@ export class RealtimeClient {
    * the most recent edit.
    */
   sendPendingActionMetadata(): void {
-    if (this.pendingActionMetadata && this.ws && this.ws.readyState === WebSocket.OPEN) {
+    if (this.pendingActionMetadata && this.pendingActionMetadata.length > 0 && this.ws && this.ws.readyState === WebSocket.OPEN) {
       try {
-        this.ws.send(JSON.stringify({
+        const msg = JSON.stringify({
           type: 'action_metadata',
-          ...this.pendingActionMetadata,
-        }));
-      } catch {
-        // Best-effort — don't break the CRDT sync if metadata send fails
+          puckActions: this.pendingActionMetadata,
+        });
+        this.ws.send(msg);
+      } catch (err) {
+        console.error('[RealtimeClient] Failed to send action_metadata:', err);
       }
       this.pendingActionMetadata = null;
     }

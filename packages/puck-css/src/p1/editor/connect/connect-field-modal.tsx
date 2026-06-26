@@ -58,6 +58,7 @@ export function ConnectFieldModal({
   loadPageMutationRef.current = loadPageMutation;
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
   const [selectedComponentType, setSelectedComponentType] = useState<string | null>(null);
+  const [pageFilter, setPageFilter] = useState("");
 
   const reset = useCallback(() => {
     setStep("pages");
@@ -66,6 +67,7 @@ export function ConnectFieldModal({
     loadPageMutationRef.current.reset();
     setSelectedComponentId(null);
     setSelectedComponentType(null);
+    setPageFilter("");
   }, []);
 
   useEffect(() => {
@@ -153,6 +155,44 @@ export function ConnectFieldModal({
                 </a>
                 ). Then pick a component and prop.
               </p>
+              <div
+                style={{
+                  position: "relative",
+                  marginBottom: 12,
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    color: "#9ca3af",
+                    fontSize: 14,
+                    pointerEvents: "none",
+                  }}
+                  aria-hidden="true"
+                >
+                  ⌕
+                </span>
+                <input
+                  type="text"
+                  placeholder="Search pages by path or kind..."
+                  value={pageFilter}
+                  onChange={(e) => setPageFilter(e.target.value)}
+                  autoFocus
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "8px 12px 8px 30px",
+                    border: "1px solid var(--puck-color-grey-09, #e5e7eb)",
+                    borderRadius: 6,
+                    fontSize: 13,
+                    outline: "none",
+                    background: "#f9fafb",
+                  }}
+                />
+              </div>
               <div style={{ overflow: "auto", maxHeight: "min(52vh, 420px)" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
@@ -162,7 +202,9 @@ export function ConnectFieldModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {routes.map((row) => (
+                    {routes.filter((row) =>
+                      !pageFilter || row.path.toLowerCase().includes(pageFilter.toLowerCase()) || kindLabel(row.kind).toLowerCase().includes(pageFilter.toLowerCase())
+                    ).map((row) => (
                       <tr key={row.path} style={{ borderBottom: "1px solid #f3f4f6" }}>
                         <td style={{ padding: "8px 6px", ...mono, fontSize: 12 }}>
                           <button

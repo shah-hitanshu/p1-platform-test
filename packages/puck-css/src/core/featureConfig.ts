@@ -46,6 +46,8 @@ export interface P1FeatureConfig {
   enableAgentBanner?: boolean;
   /** Enable focus region highlighting (default: follows presenceEnabled) */
   enableFocusHighlighting?: boolean;
+  /** Enable content type templates (default: true) */
+  enableContentTypeTemplates?: boolean;
 }
 
 /**
@@ -59,6 +61,7 @@ export const P1_PRESETS: Record<'basic' | 'collaborative' | 'full', P1FeatureCon
   basic: {
     enableAutoSave: true,
     enablePublishButton: true,
+    enableContentTypeTemplates: true,
   },
 
   /**
@@ -72,6 +75,7 @@ export const P1_PRESETS: Record<'basic' | 'collaborative' | 'full', P1FeatureCon
     enablePublishButton: true,
     enableCollaboratorAvatars: true,
     enableFocusHighlighting: true,
+    enableContentTypeTemplates: true,
   },
 
   /**
@@ -91,6 +95,7 @@ export const P1_PRESETS: Record<'basic' | 'collaborative' | 'full', P1FeatureCon
     enableCollaboratorAvatars: true,
     enableAgentBanner: true,
     enableFocusHighlighting: true,
+    enableContentTypeTemplates: true,
   },
 };
 
@@ -119,5 +124,6 @@ export function resolveFeatureConfig(config: P1FeatureConfig): Required<P1Featur
     enableCollaboratorAvatars: config.enableCollaboratorAvatars ?? config.presenceEnabled ?? false,
     enableAgentBanner: config.enableAgentBanner ?? config.agentModeEnabled ?? false,
     enableFocusHighlighting: config.enableFocusHighlighting ?? config.presenceEnabled ?? false,
+    enableContentTypeTemplates: config.enableContentTypeTemplates ?? true,
   };
 }

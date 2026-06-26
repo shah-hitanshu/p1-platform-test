@@ -9,7 +9,7 @@
         "NEXT_PUBLIC_CSS_BASE_URL",
         "NEXT_PUBLIC_CSS_SITE_ID",
         "NEXT_PUBLIC_CSS_BRANCH_ID",
-        "P1_CSS_API_KEY"
+        "CSS_API_KEY"
       ],
       "outputs": ["dist/**", ".next/**"]
     },

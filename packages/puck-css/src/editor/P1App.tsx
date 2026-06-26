@@ -83,6 +83,7 @@ function AuthenticatedShell({
       branchId={config.branchId}
       userId={user.id}
       userName={user.name}
+      userRole={config.userRole}
       autoSaveDelay={config.autoSaveDelay}
       maxRetries={config.maxRetries}
       enableRealtime={config.enableRealtime}

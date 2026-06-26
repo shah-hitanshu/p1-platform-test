@@ -46,7 +46,7 @@ After scaffolding your project:
    # - PCC_TOKEN: API token for your site
    # - NEXT_PUBLIC_CSS_BASE_URL: CSS API base URL
    # - NEXT_PUBLIC_CSS_SITE_ID: Site identifier (UUID)
-   # - P1_CSS_API_KEY: Server-side API key
+   # - CSS_API_KEY: Server-side API key
    ```
 
 2. **Start the dev server:**

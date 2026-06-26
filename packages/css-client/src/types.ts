@@ -71,6 +71,10 @@ export interface Document {
   publishedAt?: string | null;
   /** Whether this document is inherited from the parent branch (COW) vs locally edited */
   inherited?: boolean;
+  /** Template this document is bound to (nullable for blank pages) */
+  templateId?: string | null;
+  /** Version of the template this document was created from or migrated to */
+  templateVersion?: number | null;
 }
 
 /**
@@ -94,6 +98,10 @@ export interface DocumentVersion {
   createdAt: string;
   /** Whether this version has been published (exists in a checkpoint) */
   isPublished?: boolean;
+  /** Classification of this version: 'structural' or null (prop-only) */
+  actionType?: string;
+  /** Action metadata including puckActions array when structural */
+  actionMetadata?: Record<string, unknown>;
 }
 
 /**
@@ -149,6 +157,15 @@ export interface CheckpointDocument {
   versionId: string;
   versionNumber: number;
   snapshot: Record<string, unknown>;
+}
+
+/**
+ * A Puck editor action forwarded from the frontend.
+ * Uses the proposal's flat format: { type, sourceIndex, ... }
+ */
+export interface PuckAction {
+  type: string;
+  [key: string]: unknown;
 }
 
 // =============================================================================
@@ -216,6 +233,10 @@ export interface CreateDocumentParams {
   siteId: string;
   branchId: string;
   path: string;
+  /** Optional template ID to bind this document to */
+  templateId?: string;
+  /** Optional template version (defaults to template's current version if not provided) */
+  templateVersion?: number;
 }
 
 /**
@@ -225,6 +246,7 @@ export interface CreateDocumentVersionParams {
   documentId: string;
   branchId: string;
   snapshot: Record<string, unknown>;
+  puckActions?: PuckAction[];
 }
 
 /**
@@ -811,4 +833,124 @@ export interface ExecuteMergeRequestOptions {
     strategy: ConflictResolutionStrategy;
     resolvedSnapshot?: Record<string, unknown>;
   }[];
+}
+
+// =============================================================================
+// Content Type Templates
+// =============================================================================
+
+/**
+ * A component in a template skeleton.
+ */
+export interface TemplateComponent {
+  /** Component type */
+  type: string;
+  /** Whether this component is pinned (locked position) */
+  pinned: boolean;
+  /** Default props for this component */
+  defaultProps: Record<string, unknown>;
+}
+
+/**
+ * A content type template.
+ */
+export interface Template {
+  /** Unique template ID */
+  id: string;
+  /** Template name (kebab-case identifier) */
+  name: string;
+  /** Human-readable label */
+  label: string;
+  /** Optional description */
+  description?: string;
+  /** Optional default URL pattern */
+  defaultUrlPattern?: string;
+  /** Template version number */
+  version: number;
+  /** Whether this template is deprecated (soft-disabled for new documents) */
+  deprecated?: boolean;
+  /** Component skeleton */
+  components: TemplateComponent[];
+  /** Creation timestamp (not returned by list/get endpoints) */
+  createdAt?: string;
+  /** Last update timestamp */
+  updatedAt: string;
+}
+
+/**
+ * Parameters for creating a template.
+ */
+export interface CreateTemplateParams {
+  /** Template name (kebab-case identifier) */
+  name: string;
+  /** Human-readable label */
+  label: string;
+  /** Optional description */
+  description?: string;
+  /** Optional default URL pattern */
+  defaultUrlPattern?: string;
+  /** Initial component skeleton */
+  components: TemplateComponent[];
+}
+
+/**
+ * Parameters for updating a template.
+ */
+export interface UpdateTemplateParams {
+  /** Updated label */
+  label?: string;
+  /** Updated description */
+  description?: string;
+  /** Updated default URL pattern */
+  defaultUrlPattern?: string;
+  /** Updated component skeleton */
+  components?: TemplateComponent[];
+  /** Whether to deprecate or reactivate */
+  deprecated?: boolean;
+}
+
+// =============================================================================
+// Migration Types (PROPOSAL-010)
+// =============================================================================
+
+export interface MigrationJob {
+  id: string;
+  siteId: string;
+  branchId: string;
+  templateId: string;
+  fromVersion: number;
+  toVersion: number;
+  status: 'pending' | 'in_progress' | 'completed' | 'completed_with_conflicts' | 'failed';
+  totalDocuments: number;
+  processedDocuments: number;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface MigrationConflict {
+  id: string;
+  migrationJobId: string;
+  documentId: string;
+  documentPath: string;
+  templateDelta: unknown;
+  documentActions: unknown;
+  resolution: 'apply' | 'skip' | 'manual' | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface MigrationPreview {
+  totalDocuments: number;
+  cleanDocuments: number;
+  conflictedDocuments: number;
+  conflicts: Array<{
+    documentId: string;
+    documentPath: string;
+    conflictType: string;
+  }>;
+}
+
+export interface TriggerMigrationParams {
+  fromVersion: number;
+  toVersion: number;
 }

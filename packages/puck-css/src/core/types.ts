@@ -16,6 +16,7 @@ import type { ConflictNotification } from '../merge/components/conflict-notifica
 import type { UseAgentEditReturn } from '../agent/useAgentEdit.js';
 import type { UseAgentTriggerReturn } from '../agent/useAgentTrigger.js';
 import type { P1FeatureConfig } from './featureConfig.js';
+import type { Template } from '../features/content-type-templates/types.js';
 
 /**
  * Save status for auto-save functionality.
@@ -165,6 +166,20 @@ export interface P1PuckConfig {
    * Callback when an agent conflict occurs.
    */
   onAgentConflict?: (conflict: ConflictNotification) => void;
+
+  // =========================================================================
+  // Content Type Templates (PROPOSAL-010)
+  // =========================================================================
+
+  /**
+   * User's content role for template permission enforcement.
+   * Consumers should resolve this via `useResolveContentRole` or their own auth layer.
+   * - admin: Full access, can create/edit templates
+   * - editor: Pinned components locked, can add/remove non-pinned
+   * - junior-editor: Props only, no structural changes
+   * @default 'editor'
+   */
+  userRole?: 'admin' | 'editor' | 'junior-editor';
 }
 
 /**
@@ -354,6 +369,15 @@ export interface P1PuckContextValue {
    */
   handleAction: (action: Record<string, unknown>) => void;
 
+  /**
+   * Get pending actions buffered since last save.
+   * Used for forwarding action metadata to backend for version history.
+   */
+  getPendingActions: () => Array<{
+    type: string;
+    [key: string]: unknown;
+  }>;
+
   // =========================================================================
   // Stable Getters (avoid stale closures, referentially stable)
   // =========================================================================
@@ -414,7 +438,7 @@ export interface P1PuckContextValue {
    * Create a new document on the current branch.
    * Creates the document and an initial empty version, then refreshes the document list.
    */
-  createDocument: (path: string) => Promise<void>;
+  createDocument: (path: string, template?: Template | null) => Promise<void>;
 
   /**
    * Delete a document on the current branch.
@@ -512,6 +536,54 @@ export interface P1PuckContextValue {
    * @internal
    */
   _onRealtimeDataCapture: ((data: PuckData) => void) | null;
+
+  // =========================================================================
+  // Content Type Templates (PROPOSAL-010)
+  // =========================================================================
+
+  /**
+   * Current user's content role for permission enforcement.
+   * Defaults to 'editor' if not specified.
+   */
+  userRole: 'admin' | 'editor' | 'junior-editor';
+
+  /**
+   * Available templates on the current branch.
+   */
+  templates: Template[];
+
+  /**
+   * Whether templates are loading.
+   */
+  templatesLoading: boolean;
+
+  /**
+   * Error from the most recent template list fetch, if any.
+   */
+  templatesError: Error | null;
+
+  /**
+   * Refresh the template list.
+   */
+  refreshTemplates: () => Promise<void>;
+
+  /**
+   * Template that the current document is bound to.
+   * Null for blank pages or when no document is loaded.
+   */
+  currentTemplate: Template | null;
+
+  /**
+   * Puck permissions resolver function based on template and user role.
+   * Pass this to <Puck resolvePermissions={...} /> to enforce template restrictions.
+   */
+  resolvePermissions?: (item: { type: string }, appState: any) => {
+    edit: boolean;
+    drag: boolean;
+    delete: boolean;
+    insert: boolean;
+    duplicate: boolean;
+  };
 }
 
 /**

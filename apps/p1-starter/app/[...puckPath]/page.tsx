@@ -18,7 +18,7 @@ import { REMOTE_DATASOURCE_FETCHERS } from "../../lib/remote-datasource-fetchers
 
 const initPromise = ensureInitialized({
   p1BaseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL,
-  p1ApiKey: process.env.P1_CSS_API_KEY,
+  p1ApiKey: process.env.CSS_API_KEY,
   p1SiteId: process.env.NEXT_PUBLIC_CSS_SITE_ID,
   p1BranchId: process.env.NEXT_PUBLIC_CSS_BRANCH_ID,
 });
@@ -33,6 +33,10 @@ export async function generateMetadata({
   await initPromise;
   const { puckPath = [] } = await params;
   const path = pagePathFromCatchAllSegments(puckPath);
+
+  if (path.startsWith("/_registry/") || path === "/_registry") {
+    return { title: "Not Found" };
+  }
 
   const [pageData, sp, routeTemplateKeys] = await Promise.all([
     getPage(path),
@@ -69,6 +73,11 @@ export default async function Page({
   await initPromise;
   const { puckPath = [] } = await params;
   const path = pagePathFromCatchAllSegments(puckPath);
+
+  if (path.startsWith("/_registry/") || path === "/_registry") {
+    const { notFound } = await import("next/navigation");
+    notFound();
+  }
 
   const [data, searchParamData, routeTemplateKeys] = await Promise.all([
     getPage(path),

@@ -10,19 +10,36 @@ import {
 
 type StructureKind = "page" | "template" | "override";
 
-const structureCreators: Record<StructureKind, (path: string) => Promise<{ ok: true; path: string } | { ok: false; error: string }>> = {
-  page: createStaticPage,
-  template: createCollectionTemplate,
-  override: createCollectionOverride,
+type StructureCreator = (
+  path: string,
+  options?: { initialData?: unknown; templateId?: string; templateVersion?: number },
+) => Promise<{ ok: true; path: string } | { ok: false; error: string }>;
+
+const structureCreators: Record<StructureKind, StructureCreator> = {
+  page: createStaticPage as StructureCreator,
+  template: createCollectionTemplate as StructureCreator,
+  override: createCollectionOverride as StructureCreator,
 };
 
 export async function postStructure(request: Request, kind: StructureKind) {
-  const body = (await request.json()) as { path?: string };
+  const body = (await request.json()) as {
+    path?: string;
+    initialData?: unknown;
+    templateId?: string;
+    templateVersion?: number;
+  };
   const path = typeof body.path === "string" ? body.path.trim() : "";
   if (!path) {
     return NextResponse.json({ ok: false, error: "Missing path" }, { status: 400 });
   }
-  const result = await structureCreators[kind](path);
+  const creator = structureCreators[kind];
+  const options: { initialData?: unknown; templateId?: string; templateVersion?: number } = {};
+  if (body.initialData) options.initialData = body.initialData;
+  if (body.templateId) options.templateId = body.templateId;
+  if (body.templateVersion !== undefined) options.templateVersion = body.templateVersion;
+  const result = Object.keys(options).length > 0
+    ? await creator(path, options)
+    : await creator(path);
   if (result.ok === false) {
     return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
   }

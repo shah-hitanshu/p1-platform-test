@@ -28,7 +28,6 @@ export function createFieldConnectPlugin(opts: {
 
   function ConnectableScalarField(props: ScalarFieldProps) {
     const [open, setOpen] = useState(false);
-    const [hover, setHover] = useState(false);
     const { children, readOnly, onChange, value } = props;
     const linked = isCrossPageRefTemplateString(value);
 
@@ -40,8 +39,6 @@ export function createFieldConnectPlugin(opts: {
       >
         <div
           style={{ position: "relative", paddingBottom: 2 }}
-          onMouseEnter={() => setHover(true)}
-          onMouseLeave={() => setHover(false)}
         >
           {children}
           {!readOnly && (
@@ -65,13 +62,10 @@ export function createFieldConnectPlugin(opts: {
                 borderRadius: 4,
                 padding: "2px 6px",
                 cursor: "pointer",
-                opacity: hover ? 1 : 0,
-                pointerEvents: hover ? "auto" : "none",
-                transition: "opacity 0.12s ease",
                 zIndex: 3,
               }}
             >
-              {linked ? "Connected" : "Connect"}
+              {linked ? "Bound" : "Bind"}
             </button>
             <ConnectFieldModal
               open={open}

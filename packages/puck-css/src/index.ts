@@ -470,3 +470,37 @@ export {
   useCreateStructure,
   useDeleteStructurePage,
 } from './p1/pages/index.js';
+
+// Content Type Templates (PROPOSAL-010)
+export type {
+  ContentRole,
+  TemplateMetadata,
+  TemplateComponent,
+  Template,
+  TemplateBinding,
+  CreateTemplateParams,
+  UpdateTemplateParams,
+  TemplateDocument,
+  TemplateStore,
+  ComponentPermissions,
+  UseContentRoleReturn,
+} from './features/content-type-templates/index.js';
+
+export {
+  createInMemoryTemplateStore,
+  createApiTemplateStore,
+  getPermissionsForRole,
+  canPerformStructuralAction,
+  canEditProps,
+  canOverrideUrl,
+  mergePermissions,
+  useContentRole,
+  useResolveContentRole,
+  mapCssRoleToContentRole,
+} from './features/content-type-templates/index.js';
+
+export { scaffoldFromTemplate } from './features/content-type-templates/editor/useTemplateScaffold.js';
+export { useTemplateEditor } from './features/content-type-templates/editor/useTemplateEditor.js';
+export { useTemplatePermissions } from './features/content-type-templates/editor/useTemplatePermissions.js';
+export { validateStructure } from './features/content-type-templates/validation/structural-validation.js';
+export type { ValidationError, ValidationResult } from './features/content-type-templates/validation/structural-validation.js';

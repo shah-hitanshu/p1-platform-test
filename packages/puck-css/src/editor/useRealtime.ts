@@ -81,6 +81,12 @@ export interface UseRealtimeParams {
    * Should return a fresh token or null if the session cannot be refreshed.
    */
   tokenRefresher?: () => Promise<string | null>;
+
+  /**
+   * Callback when the server sends close code 4001 (server-initiated reload).
+   * Called after the local Y.Doc is cleared, before automatic reconnection.
+   */
+  onServerReload?: () => void;
 }
 
 /**
@@ -91,7 +97,7 @@ export interface UseRealtimeReturn {
   connected: boolean;
 
   /** Apply a local change (will be synced to other clients) */
-  applyLocalChange: (data: PuckData, actionMeta?: { actionType: string; actionMetadata: Record<string, unknown> }) => void;
+  applyLocalChange: (data: PuckData, puckActions?: Array<{ type: string; [key: string]: unknown }>) => void;
 
   /** Get the current snapshot from the Yjs document. Returns null if not connected. */
   getSnapshot: () => PuckData | null;
@@ -188,6 +194,7 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
     onRemoteUpdate,
     onPresenceUpdate,
     onFocusRegionBroadcast,
+    onServerReload,
   } = params;
 
   const [connected, setConnected] = useState(false);
@@ -206,6 +213,7 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
   const onRemoteUpdateRef = useRef(onRemoteUpdate);
   const onPresenceUpdateRef = useRef(onPresenceUpdate);
   const onFocusRegionBroadcastRef = useRef(onFocusRegionBroadcast);
+  const onServerReloadRef = useRef(onServerReload);
   // Keep tokenRefresher in a ref so the RealtimeClient always calls the
   // latest version without needing to be recreated on reference changes.
   const tokenRefresherRef = useRef(tokenRefresher);
@@ -228,6 +236,10 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
   useEffect(() => {
     onFocusRegionBroadcastRef.current = onFocusRegionBroadcast;
   }, [onFocusRegionBroadcast]);
+
+  useEffect(() => {
+    onServerReloadRef.current = onServerReload;
+  }, [onServerReload]);
 
   // Eagerly clean up binding and client refs when dependencies change.
   // useLayoutEffect cleanup runs BEFORE regular useEffect callbacks (including
@@ -303,6 +315,9 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
       onFocusRegionBroadcast: (actorId, focusRegions) => {
         onFocusRegionBroadcastRef.current?.(actorId, focusRegions);
       },
+      onServerReload: () => {
+        onServerReloadRef.current?.();
+      },
     });
 
     clientRef.current = client;
@@ -350,12 +365,10 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
   }, [baseUrl, apiKey, siteId, branchId, documentPath, actorId, actorType, sessionId, enabled]);
 
   // Apply local change function
-  const applyLocalChange = useCallback((data: PuckData, actionMeta?: { actionType: string; actionMetadata: Record<string, unknown> }) => {
+  const applyLocalChange = useCallback((data: PuckData, puckActions?: Array<{ type: string; [key: string]: unknown }>) => {
     if (bindingRef.current) {
-      // Set action metadata on the RealtimeClient before applying the change.
-      // The client's ydoc 'update' handler will send it after the CRDT update.
-      if (actionMeta && clientRef.current) {
-        clientRef.current.setActionMetadata(actionMeta);
+      if (puckActions && puckActions.length > 0 && clientRef.current) {
+        clientRef.current.setActionMetadata(puckActions);
       }
       bindingRef.current.applyLocalChange(data as unknown as BindingPuckData);
     }

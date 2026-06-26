@@ -81,6 +81,16 @@ export interface PuckProps {
   overrides: PuckOverrides;
   /** Permissions (locked down for historical versions) */
   permissions?: Record<string, boolean>;
+  /** Dynamic permission resolver for template-based restrictions */
+  resolvePermissions?: (item: { type: string }, appState: any) => {
+    edit: boolean;
+    drag: boolean;
+    delete: boolean;
+    insert: boolean;
+    duplicate: boolean;
+  };
+  /** Puck onAction callback — captures structural actions for template migration conflict detection */
+  onAction?: (action: Record<string, unknown>) => void;
   /** Initial UI state (sidebar visibility etc.) — read from localStorage on each key-based remount */
   ui?: Partial<UiState>;
 }
@@ -450,9 +460,13 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // Assemble puckProps
   // =========================================================================
 
-  // Key that forces Puck to remount on document switch, ensuring clean
-  // undo history, sidebar state, and no false onChange echo from setData.
-  const puckKey = `css-${css.currentDocument?.id ?? documentPath}`;
+  // Key that forces Puck to remount on document switch or role change,
+  // ensuring clean undo history, sidebar state, and fresh permission cache.
+  // Puck caches resolvePermissions results per component instance — the
+  // cache is only invalidated when component data changes, not when the
+  // resolver function changes. Including userRole in the key forces a
+  // clean remount with an empty cache when roles switch.
+  const puckKey = `css-${css.currentDocument?.id ?? documentPath}-${css.userRole}`;
 
   // Read persisted sidebar visibility from localStorage each time the Puck instance
   // changes (puckKey changes on document/branch switch). The value is passed as the
@@ -474,17 +488,55 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // Focus highlighting is handled via direct DOM manipulation in
   // PresenceFocusBridge (P1App.tsx) — no config wrapping needed.
 
+  // Inject per-component resolvePermissions into the Puck config.
+  // Puck doesn't have a top-level resolvePermissions prop — permissions
+  // must be resolved per-component via config[type].resolvePermissions.
+  const resolvePermsRef = useRef(css.resolvePermissions);
+  resolvePermsRef.current = css.resolvePermissions;
+
+  const configWithPermissions = useMemo(() => {
+    if (!css.resolvePermissions) return puckConfig;
+
+    const cfg = puckConfig as Record<string, unknown>;
+    const components = (cfg.components ?? {}) as Record<string, Record<string, unknown>>;
+    const wrapped: Record<string, unknown> = {};
+    for (const [name, comp] of Object.entries(components)) {
+      wrapped[name] = {
+        ...comp,
+        resolvePermissions: (
+          data: { props?: { id?: string } },
+          params: { permissions: Record<string, boolean>; appState: { data: { root: { props: Record<string, unknown> } } } }
+        ) => {
+          const resolver = resolvePermsRef.current;
+          if (!resolver) return params.permissions;
+          const basePerms = resolver({ type: name }, {});
+
+          const pinMap = (params.appState?.data?.root?.props?._pinMap ?? {}) as Record<string, boolean>;
+          const compId = data?.props?.id;
+
+          if (compId && pinMap[compId]) {
+            return { ...basePerms, drag: false, delete: false };
+          }
+
+          return basePerms;
+        },
+      };
+    }
+    return { ...cfg, components: wrapped };
+  }, [puckConfig, !!css.resolvePermissions]);
+
   const puckProps: PuckProps = useMemo(
     () => ({
-      config: puckConfig,
+      config: configWithPermissions,
       data: css.safeData,
       onChange,
       plugins,
       overrides: mergedOverrides,
       ...(Object.keys(initialSidebarUi).length > 0 ? { ui: initialSidebarUi } : {}),
       ...(permissions ? { permissions } : {}),
+      onAction: css.handleAction,
     }),
-    [puckConfig, css.safeData, onChange, plugins, mergedOverrides, initialSidebarUi, permissions]
+    [configWithPermissions, css.safeData, onChange, plugins, mergedOverrides, initialSidebarUi, permissions, css.handleAction]
   );
 
   return {

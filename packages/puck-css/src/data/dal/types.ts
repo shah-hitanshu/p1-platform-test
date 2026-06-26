@@ -10,13 +10,27 @@ export interface StoreCapabilities {
   merge: boolean;
 }
 
+/** Minimal document metadata returned by listDocuments. */
+export interface DocumentMeta {
+  path: string;
+  templateId?: string | null;
+}
+
+/** Optional metadata when creating/updating a page. */
+export interface PageSetOptions {
+  templateId?: string;
+  templateVersion?: number;
+}
+
 /** Page data store — keyed by route path (e.g. "/", "/about", "/jedi/:id"). */
 export interface PageStore {
   get(path: string): Promise<unknown | undefined>;
-  set(path: string, value: unknown): Promise<void>;
+  set(path: string, value: unknown, options?: PageSetOptions): Promise<void>;
   delete(path: string): Promise<void>;
   has(path: string): Promise<boolean>;
   keys(): Promise<string[]>;
+  /** List documents with metadata. Falls back to keys() when not available. */
+  listDocuments?(): Promise<DocumentMeta[]>;
 }
 
 /** Editor metadata store — keyed by route path. */

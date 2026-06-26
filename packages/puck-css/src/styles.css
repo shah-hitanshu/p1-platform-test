@@ -2397,3 +2397,334 @@ svg.lucide-layers {
 
 /* 5. Nav tooltips are handled purely by PuckEditorTheme.css — Puck's own
       _NavItem-linkLabel_ spans are restyled as hover tooltips. */
+
+/* ============================================
+   Template Selector
+   ============================================ */
+
+.template-selector {
+  width: 100%;
+}
+
+.template-selector__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  padding: 16px 0;
+}
+
+.template-selector__option {
+  /* Extend PDS button styles */
+  min-height: 100px;
+  text-align: left;
+  padding: 16px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  border: 2px solid var(--puck-css-border);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.template-selector__option:hover {
+  border-color: var(--puck-css-primary);
+  background-color: var(--puck-css-bg-secondary);
+}
+
+.template-selector__option[aria-pressed="true"] {
+  border-color: var(--puck-css-primary);
+  background-color: var(--puck-css-primary);
+  color: white;
+}
+
+.template-selector__option[aria-pressed="true"] .template-selector__option-description {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.template-selector__option-content {
+  width: 100%;
+}
+
+.template-selector__option-label {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.template-selector__option-description {
+  font-size: 14px;
+  color: var(--puck-css-text-secondary);
+  line-height: 1.4;
+}
+
+.template-selector--loading,
+.template-selector--error {
+  padding: 32px;
+  text-align: center;
+}
+
+.template-selector__loading-message {
+  font-size: 16px;
+  color: var(--puck-css-text-secondary);
+}
+
+.template-selector__error-message {
+  color: var(--puck-css-diff-removed);
+}
+
+.template-selector__error-message strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+.template-selector__error-message p {
+  font-size: 14px;
+  margin: 0;
+}
+
+/* ── Template Manager Overlay ─────────────────────────────────────────── */
+
+.template-manager-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: var(--pds-color-bg-default, #fff);
+  display: flex;
+  flex-direction: column;
+}
+
+.template-manager-overlay__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--pds-color-border-default, #e5e7eb);
+  flex-shrink: 0;
+}
+
+.template-manager-overlay__title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.template-manager-overlay__close {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+  padding: 0.25rem 0.5rem;
+}
+
+.template-manager-overlay__close:hover {
+  color: var(--pds-color-fg-default, #1f2937);
+}
+
+.template-manager-overlay__error {
+  padding: 0.5rem 1.5rem;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.875rem;
+}
+
+.template-manager-overlay__list {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.template-manager-overlay__loading,
+.template-manager-overlay__empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+  font-size: 0.875rem;
+}
+
+.template-manager-overlay__template-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.template-manager-overlay__template-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--pds-color-border-default, #e5e7eb);
+  border-radius: 0.375rem;
+}
+
+.template-manager-overlay__template-item:hover {
+  background: var(--pds-color-bg-default-secondary, #f9fafb);
+}
+
+.template-manager-overlay__template-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.template-manager-overlay__template-label {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.template-manager-overlay__template-meta {
+  font-size: 0.75rem;
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+}
+
+.template-manager-overlay__template-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ── Template Editor (create/edit mode) ───────────────────────────────── */
+
+.template-manager-overlay__editor {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  flex: 1;
+  overflow: hidden;
+}
+
+.template-manager-overlay__editor-sidebar {
+  border-right: 1px solid var(--pds-color-border-default, #e5e7eb);
+  padding: 1rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.template-manager-overlay__editor-canvas {
+  overflow: hidden;
+}
+
+.template-manager-overlay__metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.template-manager-overlay__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.template-manager-overlay__field-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.template-manager-overlay__input,
+.template-manager-overlay__textarea {
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--pds-color-border-default, #e5e7eb);
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.template-manager-overlay__input:focus,
+.template-manager-overlay__textarea:focus {
+  outline: none;
+  border-color: var(--pds-color-interactive-focus, #3b82f6);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.template-manager-overlay__input:disabled {
+  background: var(--pds-color-bg-default-secondary, #f9fafb);
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+}
+
+.template-manager-overlay__save-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--pds-color-border-default, #e5e7eb);
+}
+
+.template-manager-overlay__puck-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+}
+
+/* ── Template Pin Panel ───────────────────────────────────────────────── */
+
+.template-pin-panel {
+  border: 1px solid var(--pds-color-border-default, #e5e7eb);
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+}
+
+.template-pin-panel--empty {
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+  font-size: 0.8125rem;
+  font-style: italic;
+}
+
+.template-pin-panel__header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+.template-pin-panel__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.template-pin-panel__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.8125rem;
+}
+
+.template-pin-panel__item:hover {
+  background: var(--pds-color-bg-default-secondary, #f9fafb);
+}
+
+.template-pin-panel__type {
+  font-weight: 500;
+}
+
+.template-pin-panel__pin-label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+  cursor: pointer;
+}

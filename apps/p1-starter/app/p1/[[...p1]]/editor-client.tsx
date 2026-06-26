@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Puck } from "@puckeditor/core";
 import {
@@ -13,6 +13,7 @@ import {
 } from "@pantheon-systems/puck-css";
 import { P1NextRouterProvider } from "@pantheon-systems/p1-next-sdk";
 import type { Checkpoint } from "@pantheon-systems/puck-css";
+import type { ContentRole } from "@pantheon-systems/puck-css";
 
 import "@pantheon-systems/puck-css/styles.css";
 import "@pantheon-systems/puck-css/pds/styles.css";
@@ -30,8 +31,10 @@ try {
 
 const editorConfig = wrapConfigForEditorPreview(config);
 
+const ROLES: ContentRole[] = ['admin', 'editor', 'junior-editor'];
+
 export function EditorClientWrapper({ path }: { path: string }) {
-  // Keep ref at this level - EditorClientWrapper doesn't unmount on branch switch
+  const [userRole, setUserRole] = useState<ContentRole>('editor');
   const lastGoodStateRef = React.useRef<{ puckKey: string; puckProps: any } | null>(null);
 
   if (!p1Config) {
@@ -53,13 +56,64 @@ export function EditorClientWrapper({ path }: { path: string }) {
     <P1QueryProvider>
       <P1NextRouterProvider>
         <P1App
-          config={p1Config}
+          config={{ ...p1Config, userRole }}
           loginPageProps={{ title: "P1 Starter", subtitle: "Sign in to edit" }}
         >
           <EditorContent path={path} lastGoodStateRef={lastGoodStateRef} />
         </P1App>
+        <RoleSwitcher currentRole={userRole} onRoleChange={setUserRole} />
       </P1NextRouterProvider>
     </P1QueryProvider>
+  );
+}
+
+function RoleSwitcher({
+  currentRole,
+  onRoleChange,
+}: {
+  currentRole: ContentRole;
+  onRoleChange: (role: ContentRole) => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 16,
+        right: 16,
+        zIndex: 99999,
+        background: "rgba(0,0,0,0.85)",
+        color: "#fff",
+        borderRadius: 8,
+        padding: "8px 12px",
+        fontFamily: "system-ui",
+        fontSize: 12,
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+      }}
+    >
+      <span style={{ opacity: 0.7 }}>Role:</span>
+      <select
+        value={currentRole}
+        onChange={(e) => onRoleChange(e.target.value as ContentRole)}
+        style={{
+          background: "rgba(255,255,255,0.15)",
+          color: "#fff",
+          border: "1px solid rgba(255,255,255,0.3)",
+          borderRadius: 4,
+          padding: "2px 6px",
+          fontSize: 12,
+          cursor: "pointer",
+        }}
+      >
+        {ROLES.map((role) => (
+          <option key={role} value={role}>
+            {role}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 

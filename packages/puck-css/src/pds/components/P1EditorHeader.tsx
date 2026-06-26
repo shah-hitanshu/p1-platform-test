@@ -13,6 +13,7 @@ import { Icon, Avatar, PantheonLogo } from '@pantheon-systems/pds-toolkit-react'
 import { getAvatarStyleOverride } from '../../collaboration/utils/avatarColor.js';
 import { PageNavigator } from './PageNavigator.js';
 import type { PageNavigatorDocument } from './PageNavigator.js';
+import type { Template } from '../../features/content-type-templates/types.js';
 import styles from './P1EditorHeader.module.css';
 
 export type { PageNavigatorDocument };
@@ -39,8 +40,11 @@ export interface P1EditorHeaderProps {
   siteId?: string;
   dashboardUrl?: string;
   onSelectDocument: (doc: PageNavigatorDocument) => void;
-  onCreateDocument?: (path: string) => Promise<void>;
+  onCreateDocument?: (path: string, template?: Template | null) => Promise<void>;
   onLogout: () => void;
+  templates?: Template[];
+  templatesLoading?: boolean;
+  onManageTemplates?: () => void;
 }
 
 export function P1EditorHeader({
@@ -54,6 +58,9 @@ export function P1EditorHeader({
   onSelectDocument,
   onCreateDocument,
   onLogout,
+  templates,
+  templatesLoading,
+  onManageTemplates,
 }: P1EditorHeaderProps): React.ReactElement {
   const [pageNavigatorOpen, setPageNavigatorOpen] = useState(false);
   const [navigatorPortalStyle, setNavigatorPortalStyle] = useState<
@@ -238,6 +245,8 @@ export function P1EditorHeader({
         isMainBranch={true}
         onSelect={handleSelectDocument}
         onCreateDocument={onCreateDocument}
+        templates={templates}
+        templatesLoading={templatesLoading}
         onClose={() => setPageNavigatorOpen(false)}
         portalStyle={navigatorPortalStyle}
       />
@@ -291,6 +300,20 @@ export function P1EditorHeader({
               <div className={styles.dropdownUserInfo} role="presentation">
                 {currentUser.name}
               </div>
+            )}
+            {onManageTemplates && (
+              <button
+                type="button"
+                role="menuitem"
+                className={styles.dropdownMenuItem}
+                onClick={() => {
+                  setUserMenuOpen(false);
+                  onManageTemplates();
+                }}
+              >
+                <Icon iconName="grid" iconSize="s" aria-hidden="true" />
+                Manage Templates
+              </button>
             )}
             <button
               type="button"

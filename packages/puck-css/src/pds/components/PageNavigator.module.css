@@ -253,6 +253,76 @@
   background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
 }
 
+/* ── Template selector ─────────────────────────────────────────────────── */
+
+.templateSelector {
+  width: 100%;
+}
+
+.templateSelectorHeader {
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  margin-bottom: 0.512rem;
+}
+
+.templateSelectorGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.512rem;
+}
+
+.templateSelectorLoading {
+  padding: 0.64rem;
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  color: var(--pds-color-fg-default-secondary, oklch(0.5103 0 0));
+  font-style: italic;
+}
+
+.templateOption {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+  padding: 0.5rem 0.64rem;
+  background: var(--pds-color-bg-default, oklch(1.0000 0 0));
+  border: 1px solid var(--pds-color-border-input, oklch(0.8853 0 0));
+  border-radius: var(--pds-border-radius-default, 0.188rem);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+}
+
+.templateOption:hover {
+  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+  border-color: var(--pds-color-interactive-focus, oklch(0.5558 0.2372 267.79));
+}
+
+.templateOptionLabel {
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+}
+
+.templateOptionDesc {
+  font-size: var(--pds-typography-size-xs, 0.75rem);
+  color: var(--pds-color-fg-default-secondary, oklch(0.5103 0 0));
+}
+
+.selectedTemplateBadge {
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-xs, 0.75rem);
+  color: var(--pds-color-interactive-link-default, oklch(0.5558 0.2372 267.79));
+  background: var(--pds-color-status-info-background, oklch(0.9683 0.0161 245.08));
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--pds-border-radius-default, 0.188rem);
+  margin-bottom: 0.25rem;
+}
+
 /* ── Mobile: full-width dropdown with horizontal scroll for long paths ── */
 
 @media (max-width: 767px) {

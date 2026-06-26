@@ -145,28 +145,18 @@ function BranchConsumer() {
 // ---------------------------------------------------------------------------
 
 describe('Branch persistence via sessionStorage', () => {
-  let getItemSpy: ReturnType<typeof vi.spyOn>;
-  let setItemSpy: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
     sessionStorage.clear();
-    getItemSpy = vi.spyOn(Storage.prototype, 'getItem');
-    setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
   });
 
   afterEach(() => {
     cleanup();
-    getItemSpy.mockRestore();
-    setItemSpy.mockRestore();
     vi.clearAllMocks();
   });
 
   it('initializes with persisted branch from sessionStorage when no initialBranchId prop', async () => {
     // Pre-populate sessionStorage with feature branch
     sessionStorage.setItem(STORAGE_KEY, featureBranch.id);
-    // Clear spy call counts after setup
-    getItemSpy.mockClear();
-    setItemSpy.mockClear();
 
     const client = createMockClient();
 
@@ -187,8 +177,8 @@ describe('Branch persistence via sessionStorage', () => {
 
     expect(screen.getByTestId('branch-name').textContent).toBe('feature');
 
-    // sessionStorage should have been read during initialization
-    expect(getItemSpy).toHaveBeenCalledWith(STORAGE_KEY);
+    // sessionStorage should still hold the persisted value
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBe(featureBranch.id);
   });
 
   it('persists new branch ID to sessionStorage when switchBranch is called', async () => {
@@ -209,16 +199,13 @@ describe('Branch persistence via sessionStorage', () => {
       expect(screen.getByTestId('branch-id').textContent).toBe(mainBranch.id);
     });
 
-    // Clear spies after initial setup
-    setItemSpy.mockClear();
-
     // Switch to feature branch
     await act(async () => {
       screen.getByTestId('switch-to-feature').click();
     });
 
     expect(screen.getByTestId('branch-id').textContent).toBe(featureBranch.id);
-    expect(setItemSpy).toHaveBeenCalledWith(STORAGE_KEY, featureBranch.id);
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBe(featureBranch.id);
   });
 
   it('restores branch from sessionStorage on remount', async () => {

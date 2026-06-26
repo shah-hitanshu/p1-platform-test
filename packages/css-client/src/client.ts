@@ -17,6 +17,8 @@ import {
   AgentRegistryEndpoint,
   AgentEditEndpoint,
   MergeEndpoint,
+  TemplatesEndpoint,
+  MigrationConflictsEndpoint,
 } from './endpoints/index.js';
 
 /**
@@ -137,6 +139,16 @@ export class P1Client {
    */
   public readonly merge: MergeEndpoint;
 
+  /**
+   * Content type template operations.
+   */
+  public readonly templates: TemplatesEndpoint;
+
+  /**
+   * Migration conflict operations.
+   */
+  public readonly migrationConflicts: MigrationConflictsEndpoint;
+
   constructor(config: P1ClientConfig | InternalConfig) {
     // Check if this is an internal config (has baseEndpoint)
     if ('baseEndpoint' in config) {
@@ -169,6 +181,10 @@ export class P1Client {
 
     // Merge endpoints
     this.merge = new MergeEndpoint(this.baseEndpoint);
+
+    // Template endpoints
+    this.templates = new TemplatesEndpoint(this.baseEndpoint);
+    this.migrationConflicts = new MigrationConflictsEndpoint(this.baseEndpoint);
   }
 
   /**

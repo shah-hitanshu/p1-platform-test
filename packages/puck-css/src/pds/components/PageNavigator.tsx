@@ -13,6 +13,7 @@
 import React, { useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import styles from './PageNavigator.module.css';
+import type { Template } from '../../features/content-type-templates/types.js';
 
 export interface PageNavigatorDocument {
   id: string;
@@ -31,7 +32,11 @@ export interface PageNavigatorProps {
   /** Whether the current branch is main/live. Inherited docs are dimmed when false. */
   isMainBranch?: boolean;
   /** Called when the user creates a new page. If omitted, the "+ New page" button has no effect. */
-  onCreateDocument?: (path: string) => Promise<void>;
+  onCreateDocument?: (path: string, template?: Template | null) => Promise<void>;
+  /** Available templates for document creation. When non-empty, a template selector step is shown. */
+  templates?: Template[];
+  /** Whether templates are still loading. */
+  templatesLoading?: boolean;
   /**
    * Pre-computed fixed positioning style. Caller must compute this
    * synchronously (e.g. in the trigger's onClick) so it is available on the
@@ -39,6 +44,8 @@ export interface PageNavigatorProps {
    */
   portalStyle?: React.CSSProperties;
 }
+
+type CreationStep = 'idle' | 'template' | 'path';
 
 export function PageNavigator({
   documents,
@@ -48,12 +55,30 @@ export function PageNavigator({
   open,
   isMainBranch,
   onCreateDocument,
+  templates,
+  templatesLoading,
   portalStyle,
 }: PageNavigatorProps): React.JSX.Element | null {
   const [query, setQuery] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
+  const [creationStep, setCreationStep] = useState<CreationStep>('idle');
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [newPath, setNewPath] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
+
+  const hasTemplates = templates && templates.length > 0;
+
+  const handleNewPageClick = useCallback(() => {
+    if (hasTemplates) {
+      setCreationStep('template');
+    } else {
+      setCreationStep('path');
+    }
+  }, [hasTemplates]);
+
+  const handleTemplateSelect = useCallback((template: Template | null) => {
+    setSelectedTemplate(template);
+    setCreationStep('path');
+  }, []);
 
   const handleCreate = useCallback(
     async (e: React.FormEvent) => {
@@ -63,9 +88,10 @@ export function PageNavigator({
       const normalizedPath = path.startsWith('/') ? path : `/${path}`;
       setCreateError(null);
       try {
-        await onCreateDocument(path);
+        await onCreateDocument(path, selectedTemplate);
         setNewPath('');
-        setIsCreating(false);
+        setCreationStep('idle');
+        setSelectedTemplate(null);
         // Navigate to the newly created page
         onSelect({ id: normalizedPath, path: normalizedPath, archived: false });
         onClose();
@@ -73,8 +99,15 @@ export function PageNavigator({
         setCreateError(err instanceof Error ? err.message : 'Failed to create page');
       }
     },
-    [newPath, onCreateDocument, onSelect, onClose],
+    [newPath, onCreateDocument, selectedTemplate, onSelect, onClose],
   );
+
+  const handleCancel = useCallback(() => {
+    setCreationStep('idle');
+    setNewPath('');
+    setCreateError(null);
+    setSelectedTemplate(null);
+  }, []);
 
   if (!open) return null;
 
@@ -145,12 +178,59 @@ export function PageNavigator({
       </ul>
 
       <div className={styles.footer}>
-        {isCreating ? (
+        {creationStep === 'template' ? (
+          <div data-testid="template-selector" className={styles.templateSelector}>
+            {templatesLoading ? (
+              <div data-testid="template-selector-loading" className={styles.templateSelectorLoading}>
+                Loading templates...
+              </div>
+            ) : (
+              <>
+                <div className={styles.templateSelectorHeader}>Choose a template</div>
+                <div className={styles.templateSelectorGrid}>
+                  <button
+                    type="button"
+                    className={styles.templateOption}
+                    onClick={() => handleTemplateSelect(null)}
+                  >
+                    <span className={styles.templateOptionLabel}>Blank Page</span>
+                    <span className={styles.templateOptionDesc}>Start from scratch</span>
+                  </button>
+                  {(templates ?? []).map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className={styles.templateOption}
+                      onClick={() => handleTemplateSelect(t)}
+                    >
+                      <span className={styles.templateOptionLabel}>{t.label || t.name}</span>
+                      {t.description && (
+                        <span className={styles.templateOptionDesc}>{t.description}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className={styles.createCancel}
+                  onClick={handleCancel}
+                >
+                  Cancel
+                </button>
+              </>
+            )}
+          </div>
+        ) : creationStep === 'path' ? (
           <form
             data-testid="page-navigator-create-form"
             className={styles.createForm}
             onSubmit={handleCreate}
           >
+            {selectedTemplate && (
+              <div className={styles.selectedTemplateBadge}>
+                Template: {selectedTemplate.label || selectedTemplate.name}
+              </div>
+            )}
             <input
               autoFocus
               type="text"
@@ -168,7 +248,7 @@ export function PageNavigator({
                 type="button"
                 data-testid="page-navigator-create-cancel"
                 className={styles.createCancel}
-                onClick={() => { setIsCreating(false); setNewPath(''); setCreateError(null); }}
+                onClick={handleCancel}
               >
                 Cancel
               </button>
@@ -184,7 +264,7 @@ export function PageNavigator({
             type="button"
             data-testid="page-navigator-new"
             className={styles.newButton}
-            onClick={onCreateDocument ? () => setIsCreating(true) : undefined}
+            onClick={onCreateDocument ? handleNewPageClick : undefined}
           >
             + New page
           </button>

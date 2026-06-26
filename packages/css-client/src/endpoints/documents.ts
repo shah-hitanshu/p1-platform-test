@@ -60,11 +60,26 @@ export class DocumentsEndpoint {
    * Create a new document on a branch.
    */
   async create(params: CreateDocumentParams): Promise<Document> {
+    const body: {
+      path: string;
+      templateId?: string;
+      templateVersion?: number;
+    } = {
+      path: params.path,
+    };
+
+    if (params.templateId !== undefined) {
+      body.templateId = params.templateId;
+    }
+    if (params.templateVersion !== undefined) {
+      body.templateVersion = params.templateVersion;
+    }
+
     const response = await this.base.request<{ document: Document }>(
       `/api/sites/${params.siteId}/branches/${params.branchId}/documents`,
       {
         method: 'POST',
-        body: JSON.stringify({ path: params.path }),
+        body: JSON.stringify(body),
       }
     );
 

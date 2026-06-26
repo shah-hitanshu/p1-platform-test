@@ -33,7 +33,7 @@ interface UseDocumentsReturn {
   /**
    * Create a new document.
    */
-  create: (path: string, initialData?: PuckData) => Promise<Document>;
+  create: (path: string, initialData?: PuckData, options?: { templateId?: string; templateVersion?: number }) => Promise<Document>;
 
   /**
    * Delete a document.
@@ -129,12 +129,15 @@ export function useDocuments({
 
   // Create a new document
   const create = useCallback(
-    async (path: string, initialData?: PuckData): Promise<Document> => {
-      // Create the document
+    async (path: string, initialData?: PuckData, options?: { templateId?: string; templateVersion?: number }): Promise<Document> => {
       const doc = await client.documents.create({
         siteId,
         branchId,
         path,
+        ...(options?.templateId ? {
+          templateId: options.templateId,
+          templateVersion: options.templateVersion ?? 1,
+        } : {}),
       });
 
       // Create initial version with default or provided data

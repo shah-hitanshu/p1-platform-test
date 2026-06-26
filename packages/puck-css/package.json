@@ -74,7 +74,7 @@
   ],
   "scripts": {
     "dev": "vite --config vite.config.preview.ts",
-    "build": "tsc && find src -name '*.module.css' | while read f; do dest=\"dist/${f#src/}\"; mkdir -p \"$(dirname \"$dest\")\"; cp \"$f\" \"$dest\"; done && (cp node_modules/@pantheon-systems/pds-toolkit-react/dist/css/pds-core.css src/pds/theme/pds-core.css && node scripts/generate-pds-content.cjs) || true",
+    "build": "tsc; find src -name '*.module.css' | while read f; do dest=\"dist/${f#src/}\"; mkdir -p \"$(dirname \"$dest\")\"; cp \"$f\" \"$dest\"; done; (cp node_modules/@pantheon-systems/pds-toolkit-react/dist/css/pds-core.css src/pds/theme/pds-core.css && node scripts/generate-pds-content.cjs) || true",
     "clean": "rm -rf dist *.tsbuildinfo",
     "lint": "eslint src",
     "test": "vitest run",

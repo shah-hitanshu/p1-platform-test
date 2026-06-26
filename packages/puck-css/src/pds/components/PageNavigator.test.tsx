@@ -222,7 +222,7 @@ describe('PageNavigator', () => {
       });
       fireEvent.submit(screen.getByTestId('page-navigator-create-form'));
 
-      expect(onCreateDocument).toHaveBeenCalledWith('my-new-page');
+      expect(onCreateDocument).toHaveBeenCalledWith('my-new-page', null);
     });
 
     it('strips a leading slash from the path before calling onCreateDocument', async () => {
@@ -235,7 +235,7 @@ describe('PageNavigator', () => {
       });
       fireEvent.submit(screen.getByTestId('page-navigator-create-form'));
 
-      expect(onCreateDocument).toHaveBeenCalledWith('my-new-page');
+      expect(onCreateDocument).toHaveBeenCalledWith('my-new-page', null);
     });
 
     it('hides the create form after successful creation', async () => {

@@ -30,6 +30,9 @@ import type { P1FeatureConfig } from '../core/featureConfig.js';
 import { resolveFeatureConfig } from '../core/featureConfig.js';
 import { resolveActivePlugins, composeProviders } from './composePlugins.js';
 import { DEFAULT_CSS_FEATURE_PLUGINS } from './defaultPlugins.js';
+import type { Template } from '../features/content-type-templates/types.js';
+import { createPuckPermissions } from '../features/content-type-templates/permissions/createPuckPermissions.js';
+import { useTemplateList } from '../features/content-type-templates/hooks/useTemplateList.js';
 
 export interface P1PuckProviderProps extends P1PuckConfig {
   children: React.ReactNode;
@@ -130,6 +133,9 @@ function P1PuckProviderInner({
   // Plugin system props (B.4)
   featurePlugins,
   featureConfig,
+  // Content Type Templates (PROPOSAL-010)
+  // Consumers should resolve the role via useResolveContentRole and pass it here.
+  userRole = 'editor',
   children,
 }: P1PuckProviderProps): React.ReactElement {
   // Access notification context
@@ -189,6 +195,9 @@ function P1PuckProviderInner({
   const [currentDocument, setCurrentDocument] = useState<Document | null>(null);
   const [currentData, setCurrentData] = useState<PuckData | null>(null);
 
+  // Template state (PROPOSAL-010)
+  const [currentTemplate, setCurrentTemplate] = useState<Template | null>(null);
+
   // Save state
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -200,9 +209,10 @@ function P1PuckProviderInner({
   const initializedRef = useRef(false);
 
   // Track the latest Puck action metadata for inclusion in sync payloads.
-  // Set by handleAction (Puck's onAction callback), consumed by saveData
-  // when sending changes via realtime, then cleared.
-  const lastActionRef = useRef<{ actionType: string; actionMetadata: Record<string, unknown> } | null>(null);
+  // Buffered actions captured by handleAction (Puck's onAction callback)
+  // Array accumulates all structural actions during an edit session.
+  // Forwarded to backend on save for version history, then cleared.
+  const pendingActionsRef = useRef<Array<{ type: string; [key: string]: unknown }>>([]);
 
   // Tracks the document path that the current data in state belongs to.
   // Set alongside every setCurrentData call to record the data's origin.
@@ -294,6 +304,9 @@ function P1PuckProviderInner({
     actorType: 'user',
     enabled: enableRealtime && !!wsBaseUrl,
     initialData: currentData,
+    onServerReload: () => {
+      notificationContext.addInfo('Document is being refreshed by the server. Reconnecting...');
+    },
     // WebSocket presence callbacks - receive instant presence updates
     onPresenceUpdate: (actors) => {
       // Mark WebSocket presence as active (first update received)
@@ -310,19 +323,7 @@ function P1PuckProviderInner({
       );
     },
     onRemoteUpdate: (data) => {
-      const componentCount = data.content?.length ?? 0;
-      const zoneCount = data.zones ? Object.keys(data.zones).length : 0;
-      console.log(
-        '[P1PuckProvider] onRemoteUpdate received:',
-        `components=${componentCount}, zones=${zoneCount},`,
-        `pendingRemoteUpdates=${pendingRemoteUpdatesRef.current},`,
-        `viewingVersion=${viewingVersionRef.current !== null}`
-      );
-
-      // Don't apply remote updates while viewing a historical version
-      // The user is viewing read-only historical data and shouldn't see live changes
       if (viewingVersionRef.current !== null) {
-        console.log('[P1PuckProvider] onRemoteUpdate SKIPPED: viewing historical version');
         return;
       }
 
@@ -336,7 +337,6 @@ function P1PuckProviderInner({
         (!rootProps || Object.keys(rootProps).length === 0) &&
         !data.zones
       ) {
-        console.log('[P1PuckProvider] onRemoteUpdate SKIPPED: empty data rejected');
         return;
       }
 
@@ -361,13 +361,6 @@ function P1PuckProviderInner({
 
         const dataToSync = pendingRemoteDataRef.current;
         if (dataToSync) {
-          const syncComponentCount = dataToSync.content?.length ?? 0;
-          console.log(
-            '[P1PuckProvider] onRemoteUpdate APPLYING:',
-            `components=${syncComponentCount},`,
-            `pendingRemoteUpdates will be=${pendingRemoteUpdatesRef.current + 1}`
-          );
-
           // Increment counter to skip the onChange echo(es) that will fire
           // when Puck processes the setCurrentData call below.
           // The content-based guards in puckDataToYMap and RealtimeClient
@@ -456,7 +449,6 @@ function P1PuckProviderInner({
       const dataOriginPath = currentDataDocumentPathRef.current;
       if (dataOriginPath !== currentPath) return;
 
-      console.log('[P1PuckProvider] PuckDataCapture catch-up: sending missed data,', `components=${currentData.content?.length ?? 0}`);
       realtimeRef.current.applyLocalChange(currentData);
       lastSentDataRef.current = dataJson;
     }, 800);
@@ -497,19 +489,40 @@ function P1PuckProviderInner({
     remove: removeDocumentRaw,
   } = useDocuments({ client: userClient, siteId, branchId });
 
+  // Template list for current branch
+  const {
+    templates: branchTemplates,
+    loading: templatesLoading,
+    error: templatesError,
+    refresh: refreshTemplates,
+  } = useTemplateList(userClient, siteId, branchId);
+
   // Stable document create/delete callbacks
   const branchIdRef = useRef(branchId);
   branchIdRef.current = branchId;
   const createDocumentRawRef = useRef(createDocumentRaw);
   createDocumentRawRef.current = createDocumentRaw;
   const stableCreateDocument = useCallback(
-    async (path: string): Promise<void> => {
+    async (path: string, template?: Template | null): Promise<void> => {
       if (!branchIdRef.current) {
         throw new Error('Cannot create document: no branch selected');
       }
-      await createDocumentRawRef.current(path);
+      if (template) {
+        // Fetch the full template — the list endpoint may omit the components array
+        const fullTemplate = await userClient.templates.get(
+          siteId, branchIdRef.current, template.id
+        );
+        const { scaffoldFromTemplate } = await import('../features/content-type-templates/editor/useTemplateScaffold.js');
+        const initialData = scaffoldFromTemplate(fullTemplate) as unknown as PuckData;
+        await createDocumentRawRef.current(path, initialData, {
+          templateId: fullTemplate.id,
+          templateVersion: fullTemplate.version,
+        });
+      } else {
+        await createDocumentRawRef.current(path);
+      }
     },
-    []
+    [userClient, siteId]
   );
 
   const removeDocumentRawRef = useRef(removeDocumentRaw);
@@ -531,38 +544,33 @@ function P1PuckProviderInner({
       const branchList = await userClient.branches.list(siteId);
       setBranches(branchList);
 
-      // Update current branch from current branchId state
-      setBranchId((currentBranchId) => {
-        let effectiveBranchId = currentBranchId;
+      let effectiveBranchId = branchIdRef.current;
 
-        // If no branchId set, try persisted branch, then default to main
-        if (!effectiveBranchId) {
-          const persisted = getPersistedBranchId();
-          if (persisted && branchList.some((b) => b.id === persisted)) {
-            effectiveBranchId = persisted;
-          }
+      // If no branchId set, try persisted branch, then default to main
+      if (!effectiveBranchId) {
+        const persisted = getPersistedBranchId();
+        if (persisted && branchList.some((b) => b.id === persisted)) {
+          effectiveBranchId = persisted;
         }
+      }
 
-        // Validate that the branch exists in the list; fall back to main if not
-        if (effectiveBranchId && !branchList.some((b) => b.id === effectiveBranchId)) {
-          const mainBranch = branchList.find((b) => b.isMain);
-          effectiveBranchId = mainBranch?.id ?? effectiveBranchId;
+      // Validate that the branch exists in the list; fall back to main if not
+      if (effectiveBranchId && !branchList.some((b) => b.id === effectiveBranchId)) {
+        const mainBranch = branchList.find((b) => b.isMain);
+        effectiveBranchId = mainBranch?.id ?? effectiveBranchId;
+      }
+
+      // Default to main if still empty
+      if (!effectiveBranchId) {
+        const mainBranch = branchList.find((b) => b.isMain);
+        if (mainBranch) {
+          effectiveBranchId = mainBranch.id;
         }
+      }
 
-        // Default to main if still empty
-        if (!effectiveBranchId) {
-          const mainBranch = branchList.find((b) => b.isMain);
-          if (mainBranch) {
-            effectiveBranchId = mainBranch.id;
-          }
-        }
-
-        persistBranchId(effectiveBranchId);
-        const current = branchList.find((b) => b.id === effectiveBranchId);
-        setCurrentBranch(current ?? null);
-
-        return effectiveBranchId;
-      });
+      persistBranchId(effectiveBranchId);
+      setBranchId(effectiveBranchId);
+      setCurrentBranch(branchList.find((b) => b.id === effectiveBranchId) ?? null);
     } catch (error) {
       console.error('Failed to load branches:', error);
     } finally {
@@ -620,11 +628,16 @@ function P1PuckProviderInner({
     try {
       await withRetry(
         async () => {
+          const actionsToSend = pendingActionsRef.current.length > 0
+            ? [...pendingActionsRef.current]
+            : undefined;
           await userClient.versions.create(siteId, {
             documentId: doc.id,
             branchId,
             snapshot: dataToSave as unknown as Record<string, unknown>,
+            puckActions: actionsToSend,
           });
+          pendingActionsRef.current = [];
         },
         { maxAttempts: maxRetries }
       );
@@ -684,18 +697,23 @@ function P1PuckProviderInner({
   // This captures the action type and relevant metadata fields so they
   // can be included in the sync payload for backend version storage.
   const handleAction = useCallback((action: Record<string, unknown>) => {
-    const actionMetadata: Record<string, unknown> = {};
-
-    if (action.componentType) actionMetadata.componentType = action.componentType;
-    if (action.componentId) actionMetadata.componentId = action.componentId;
-    if (action.zone) actionMetadata.zone = action.zone;
-    if (action.sourceIndex !== undefined) actionMetadata.sourceIndex = action.sourceIndex;
-    if (action.destinationIndex !== undefined) actionMetadata.destinationIndex = action.destinationIndex;
-
-    lastActionRef.current = {
-      actionType: (action.type as string) || 'unknown',
-      actionMetadata,
+    const puckAction: Record<string, unknown> = {
+      type: (action.type as string) || 'unknown',
     };
+
+    if (action.componentType) puckAction.componentType = action.componentType;
+    if (action.componentId) puckAction.componentId = action.componentId;
+    if (action.zone) puckAction.zone = action.zone;
+    if (action.sourceIndex !== undefined) puckAction.sourceIndex = action.sourceIndex;
+    if (action.destinationIndex !== undefined) puckAction.destinationIndex = action.destinationIndex;
+    if (action.sourceZone) puckAction.sourceZone = action.sourceZone;
+    if (action.destinationZone) puckAction.destinationZone = action.destinationZone;
+
+    const buffer = pendingActionsRef.current;
+    buffer.push(puckAction as { type: string; [key: string]: unknown });
+    if (buffer.length > 1000) {
+      pendingActionsRef.current = buffer.slice(-500);
+    }
   }, []);
 
   // Public save function (triggers debounce)
@@ -703,11 +721,7 @@ function P1PuckProviderInner({
   // Sends changes via WebSocket when realtime is enabled (but not for remote updates)
   const saveData = useCallback(
     (data: PuckData) => {
-      const componentCount = data.content?.length ?? 0;
-
-      // Suppress the onChange echo from PuckDataSynchronizer after loadDocument.
       if (suppressNextSaveRef.current) {
-        console.log(`[P1PuckProvider] saveData SKIPPED: suppressNextSave (components=${componentCount})`);
         suppressNextSaveRef.current = false;
         return;
       }
@@ -719,13 +733,9 @@ function P1PuckProviderInner({
       // getHasUnsavedChanges() will incorrectly report unsaved changes.
       if (enableRealtime && realtime.connected) {
         if (pendingRemoteUpdatesRef.current > 0) {
-          // Counter indicates this onChange is from a remote update or data load
-          console.log(`[P1PuckProvider] saveData SKIPPED: pendingRemoteUpdates=${pendingRemoteUpdatesRef.current} (components=${componentCount})`);
           pendingRemoteUpdatesRef.current -= 1;
           return;
         } else if (viewingVersionRef.current !== null) {
-          // User is viewing historical version - don't broadcast or save
-          console.log(`[P1PuckProvider] saveData SKIPPED: viewing historical version (components=${componentCount})`);
           return;
         } else {
           const currentPath = currentDocumentRef.current?.path ?? null;
@@ -739,7 +749,6 @@ function P1PuckProviderInner({
             console.warn(
               '[P1PuckProvider] saveData SKIPPED: data origin mismatch.',
               'dataOrigin:', dataOriginPath, 'currentDoc:', currentPath,
-              `components=${componentCount}`,
             );
             return;
           }
@@ -751,7 +760,6 @@ function P1PuckProviderInner({
             console.warn(
               '[P1PuckProvider] saveData SKIPPED: connection identity mismatch.',
               'currentDoc:', currentPath, 'connectedDoc:', connectedPath,
-              `components=${componentCount}`,
             );
             return;
           }
@@ -760,10 +768,14 @@ function P1PuckProviderInner({
           // Echo prevention is handled at lower layers:
           // - puckDataToYMap no-ops when Y.Doc already has identical data
           // - RealtimeClient.lastSentSnapshot drops sends matching last sent/received
-          console.log(`[P1PuckProvider] saveData SENDING via realtime: components=${componentCount}, path=${currentPath}`);
-          realtime.applyLocalChange(data);
+          const actions = pendingActionsRef.current;
+          if (actions.length > 0) {
+            realtime.applyLocalChange(data, actions);
+          } else {
+            realtime.applyLocalChange(data);
+          }
           trackSentData(data);
-          lastActionRef.current = null;
+          pendingActionsRef.current = [];
           // Data sent via WebSocket — DO handles persistence.
           // Update save status directly (skip debouncedSave/performSave chain).
           setSaveStatus('saved');
@@ -772,8 +784,6 @@ function P1PuckProviderInner({
         }
       }
 
-      // Non-realtime path: mark data as pending and trigger debounced REST save
-      console.log(`[P1PuckProvider] saveData via REST (debounced): components=${componentCount}, realtimeEnabled=${enableRealtime}, connected=${realtime.connected}`);
       pendingDataRef.current = data;
 
       if (debouncedSave.isPaused()) {
@@ -850,6 +860,22 @@ function P1PuckProviderInner({
         currentDataDocumentPathRef.current = null;
         setCurrentData(null);
         setCurrentDocument(doc);
+
+        // Fetch template if document is bound to one (PROPOSAL-010)
+        if (doc.templateId) {
+          try {
+            if (!userClient.templates) {
+              throw new Error('Templates endpoint not available on client');
+            }
+            const template = await userClient.templates.get(siteId, branchId, doc.templateId);
+            setCurrentTemplate(template);
+          } catch (templateError) {
+            console.warn('[P1PuckProvider] Failed to fetch template:', templateError);
+            setCurrentTemplate(null);
+          }
+        } else {
+          setCurrentTemplate(null);
+        }
 
         // Get latest version
         const version = await userClient.versions.getLatest(siteId, branchId, doc.id);
@@ -1021,6 +1047,60 @@ function P1PuckProviderInner({
 
   // Computed property for whether viewing historical version
   const isViewingHistoricalVersion = viewingVersion !== null;
+
+  // =========================================================================
+  // Content Type Templates: Permission Resolution (PROPOSAL-010)
+  // =========================================================================
+
+  // Resolve template: either from document binding or registry path
+  const resolvedTemplate = useMemo(() => {
+    if (currentTemplate) return currentTemplate;
+    const path = currentDocument?.path;
+    if (!path) return null;
+    const match = path.match(/^_registry\/templates\/(.+)$/);
+    if (!match) return null;
+    return branchTemplates.find((t) => t.name === match[1]) ?? null;
+  }, [currentTemplate, currentDocument?.path, branchTemplates]);
+
+  // Create Puck permissions resolver based on current template and user role
+  const resolvePermissions = useMemo(
+    () => createPuckPermissions(resolvedTemplate, userRole, isViewingHistoricalVersion),
+    [resolvedTemplate, userRole, isViewingHistoricalVersion]
+  );
+
+  // Show notification when template list fails to load
+  useEffect(() => {
+    if (templatesError && showErrorNotifications && notificationContext?.addError) {
+      notificationContext.addError(
+        `Failed to load templates: ${templatesError.message}`,
+        () => void refreshTemplates(),
+      );
+    }
+  }, [templatesError]);
+
+  // =========================================================================
+  // Content Type Templates: Re-fetch template on tab focus (CUJ-15a)
+  // =========================================================================
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handler = async () => {
+      if (document.visibilityState !== 'visible') return;
+      const doc = currentDocumentRef.current;
+      if (!doc?.templateId || !userClient.templates) return;
+      try {
+        const freshTemplate = await userClient.templates.get(siteId, branchId, doc.templateId);
+        setCurrentTemplate((prev) => {
+          if (prev && prev.version === freshTemplate.version) return prev;
+          return freshTemplate;
+        });
+      } catch {
+        // Silently ignore — stale template is better than no template
+      }
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, [siteId, userClient]);
 
   // =========================================================================
   // Phase 9: Presence & Agent Mode State
@@ -1584,6 +1664,11 @@ function P1PuckProviderInner({
     []
   );
 
+  // Get pending actions for forwarding to backend
+  const getPendingActions = useCallback(() => {
+    return [...pendingActionsRef.current]; // Return copy to prevent external mutation
+  }, []);
+
   const loadDocumentRef = useRef(loadDocument);
   loadDocumentRef.current = loadDocument;
   const stableLoadDocument = useCallback(
@@ -1760,6 +1845,8 @@ function P1PuckProviderInner({
       sendFocusRegions: realtime.sendFocusRegions,
       // Puck action metadata capture - pass as onAction to <Puck>
       handleAction,
+      // Get pending actions for backend forwarding (PROPOSAL-010)
+      getPendingActions,
       // Phase 9: Presence & Agent values
       // Use getter to avoid context recreation on every focus-region update.
       // Expose humanPresenceCount/hasActiveHumans/hasActiveAgents directly so every
@@ -1778,6 +1865,14 @@ function P1PuckProviderInner({
       // Internal: realtime data capture for catch-up (sends missed keystrokes)
       _realtimeDataCaptureRef: enableRealtime ? realtimeDataCaptureRef : null,
       _onRealtimeDataCapture: enableRealtime ? handleRealtimeDataCapture : null,
+      // Content Type Templates (PROPOSAL-010)
+      userRole,
+      templates: branchTemplates,
+      templatesLoading,
+      templatesError,
+      refreshTemplates,
+      currentTemplate,
+      resolvePermissions,
     }),
     [
       userClient,
@@ -1824,6 +1919,7 @@ function P1PuckProviderInner({
       remoteSyncKey,
       realtime.sendFocusRegions,
       handleAction,
+      getPendingActions,
       handleRealtimeDataCapture,
       // Phase 9 dependencies (full presenceState excluded — accessed via getter/ref,
       // but humanPresenceCount/hasActiveHumans/hasActiveAgents are direct values so every
@@ -1838,6 +1934,14 @@ function P1PuckProviderInner({
       dismissConflict,
       enableRealtime,
       resolvedFeatureConfig,
+      // Content Type Templates
+      userRole,
+      branchTemplates,
+      templatesLoading,
+      templatesError,
+      refreshTemplates,
+      currentTemplate,
+      resolvePermissions,
     ]
   );
 

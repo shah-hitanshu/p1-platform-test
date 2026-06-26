@@ -601,6 +601,45 @@ describe('useP1Editor', () => {
   });
 
   // =========================================================================
+  // onAction wiring (CUJ-4a)
+  // =========================================================================
+
+  it('puckProps should include onAction callback for Puck action capture', async () => {
+    const wrapper = createProviderWrapper(client);
+    const { result } = renderHook(
+      () => useP1Editor({
+        documentPath: '/pages/home',
+        puckConfig: mockPuckConfig,
+      }),
+      { wrapper }
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+
+    expect(result.current.puckProps.onAction).toBeDefined();
+    expect(typeof result.current.puckProps.onAction).toBe('function');
+  });
+
+  it('puckProps.onAction should be the same as css.handleAction', async () => {
+    const wrapper = createProviderWrapper(client);
+    const { result } = renderHook(
+      () => useP1Editor({
+        documentPath: '/pages/home',
+        puckConfig: mockPuckConfig,
+      }),
+      { wrapper }
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+
+    expect(result.current.puckProps.onAction).toBe(result.current.css.handleAction);
+  });
+
+  // =========================================================================
   // Should throw outside provider
   // =========================================================================
 

@@ -5,7 +5,7 @@
  * Provides branch selection, document management, and other P1-specific controls.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Toaster } from '@pantheon-systems/pds-toolkit-react';
 import { VersionBannerOverride } from '../components/VersionBannerOverride.js';
 import { createPortal } from 'react-dom';
@@ -32,9 +32,43 @@ import { P1EditorSubheader } from '../../pds/components/P1EditorSubheader.js';
 
 import type { SubheaderActor } from '../../pds/components/P1EditorSubheader.js';
 import { deriveDocState } from '../../pds/utils/deriveDocState.js';
+import { TemplateManagerOverlay } from '../../features/content-type-templates/ui/TemplateManagerOverlay.js';
 
 // Module-level usePuck hook for reading history state inside the plugin render tree
 const usePluginPuckHistory = createUsePuck();
+
+// Module-level usePuck hook for accessing refreshPermissions
+const usePluginPuckPermissions = createUsePuck();
+
+/**
+ * Watches for changes to permission-affecting state (user role, template,
+ * historical version) and forces Puck to re-resolve all component permissions.
+ *
+ * Puck caches resolvePermissions results per component instance and only
+ * re-resolves when the component's own data changes. Changes to the
+ * resolver function (from role/template switches) don't invalidate the cache.
+ * This component bridges that gap by calling refreshPermissions(force=true)
+ * whenever the P1 permission resolver reference changes.
+ */
+export function PermissionRefresher(): React.ReactElement | null {
+  const css = useP1PuckOptional();
+  const refreshPerms = usePluginPuckPermissions(
+    (s) => (s as unknown as { refreshPermissions: () => Promise<void> }).refreshPermissions
+  );
+
+  const resolvePermsRef = useRef(css?.resolvePermissions);
+
+  useEffect(() => {
+    if (!css?.resolvePermissions || !refreshPerms) return;
+
+    if (css.resolvePermissions !== resolvePermsRef.current) {
+      resolvePermsRef.current = css.resolvePermissions;
+      void refreshPerms();
+    }
+  }, [css?.resolvePermissions, refreshPerms]);
+
+  return null;
+}
 
 interface PuckHistoryState {
   hasPast: boolean;
@@ -390,7 +424,7 @@ export interface P1PluginOptions {
   /** Callback when a document is selected */
   onDocumentSelect?: (path: string) => void;
   /** Callback to create a new document */
-  onDocumentCreate?: (path: string) => Promise<void>;
+  onDocumentCreate?: (path: string, template?: import('../../features/content-type-templates/types.js').Template | null) => Promise<void>;
   /** Callback to delete a document */
   onDocumentDelete?: (documentId: string, path: string) => Promise<void>;
   /** Whether documents are loading */
@@ -495,6 +529,10 @@ export interface P1PluginOptions {
   onCreateWorkstream?: () => void;
   /** Called when the user creates a new workstream. Receives the branch name. */
   onCreateBranch?: (name: string) => Promise<void>;
+  /** Available templates for document creation */
+  templates?: import('../../features/content-type-templates/types.js').Template[];
+  /** Whether templates are loading */
+  templatesLoading?: boolean;
 }
 
 /**
@@ -759,6 +797,7 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
    */
   function HeaderOverride(): React.ReactElement {
     const [showMergeReview, setShowMergeReview] = useState(false);
+    const [showTemplateManager, setShowTemplateManager] = useState(false);
 
     // Expose setShowMergeReview to the shared ref
     useEffect(() => {
@@ -805,7 +844,10 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
           onSelectDocument={(fc.enableDocumentBrowser ?? true)
             ? (doc) => stableOptions.onDocumentSelect?.(doc.path) : () => {}}
           onCreateDocument={(fc.enableDocumentBrowser ?? true) ? stableOptions.onDocumentCreate : undefined}
+          templates={stableOptions.templates}
+          templatesLoading={stableOptions.templatesLoading}
           onLogout={stableOptions.onLogout ?? (() => {})}
+          onManageTemplates={css.userRole === 'admin' ? () => setShowTemplateManager(true) : undefined}
         />
         <div id="p1-subheader-slot" />
         {(fc.enableMergeControl ?? true) && showMergeReview && (() => {
@@ -838,6 +880,18 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
             document.body,
           );
         })()}
+        {showTemplateManager && (
+          <TemplateManagerOverlay
+            client={css.client}
+            siteId={css.siteId}
+            branchId={css.branchId}
+            puckConfig={stableOptions.puckConfig}
+            onClose={() => {
+              setShowTemplateManager(false);
+              void css.refreshTemplates();
+            }}
+          />
+        )}
       </>
     );
   }
@@ -862,6 +916,8 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
         )}
         {/* Capture true Puck data for realtime correction pass */}
         {useContextSync && <RealtimeDataCaptureBridge />}
+        {/* Force-refresh Puck permission cache on role/template changes */}
+        <PermissionRefresher />
         {/* Track selection changes for focus region reporting */}
         {options.onSelectionChange && (
           <PuckSelectionTracker onSelectionChange={options.onSelectionChange} />

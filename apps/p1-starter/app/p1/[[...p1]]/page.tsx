@@ -7,7 +7,7 @@ import { RenderClientWrapper } from "./render-client";
 const pages = createP1Pages({
   config,
   p1BaseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL,
-  p1ApiKey: process.env.P1_CSS_API_KEY,
+  p1ApiKey: process.env.CSS_API_KEY,
   p1SiteId: process.env.NEXT_PUBLIC_CSS_SITE_ID,
   p1BranchId: process.env.NEXT_PUBLIC_CSS_BRANCH_ID,
   EditorClient: EditorClientWrapper,

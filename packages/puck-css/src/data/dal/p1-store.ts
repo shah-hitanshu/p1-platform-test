@@ -5,7 +5,7 @@
  * No data is cached in memory — the backend is the source of truth.
  */
 
-import type { PageStore } from "./types";
+import type { PageStore, PageSetOptions, DocumentMeta } from "./types";
 import { getRequestAuthToken } from "./request-auth";
 
 /**
@@ -15,9 +15,9 @@ import { getRequestAuthToken } from "./request-auth";
  */
 export interface P1StoreClient {
   documents: {
-    list(siteId: string, branchId: string): Promise<{ id: string; path: string }[]>;
+    list(siteId: string, branchId: string): Promise<{ id: string; path: string; templateId?: string | null }[]>;
     getByPath(siteId: string, path: string): Promise<{ id: string; path: string }>;
-    create(params: { siteId: string; branchId: string; path: string }): Promise<{ id: string; path: string }>;
+    create(params: { siteId: string; branchId: string; path: string; templateId?: string; templateVersion?: number }): Promise<{ id: string; path: string }>;
     delete(siteId: string, branchId: string, documentId: string): Promise<void>;
   };
   versions: {
@@ -159,7 +159,7 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
       }
     },
 
-    async set(path: string, value: unknown): Promise<void> {
+    async set(path: string, value: unknown, options?: PageSetOptions): Promise<void> {
       const wc = writeClient();
       const dp = toDocPath(path);
       const branchId = await getBranchId();
@@ -168,7 +168,16 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
         const existing = await client.documents.getByPath(siteId, dp);
         docId = existing.id;
       } catch {
-        const created = await wc.documents.create({ siteId, branchId, path: dp });
+        const createParams: { siteId: string; branchId: string; path: string; templateId?: string; templateVersion?: number } = {
+          siteId, branchId, path: dp,
+        };
+        if (options?.templateId) {
+          createParams.templateId = options.templateId;
+        }
+        if (options?.templateVersion != null) {
+          createParams.templateVersion = options.templateVersion;
+        }
+        const created = await wc.documents.create(createParams);
         docId = created.id;
       }
       await wc.versions.create(siteId, {
@@ -219,6 +228,24 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
         });
       _keysCache = { promise, ts: now };
       return promise;
+    },
+
+    async listDocuments(): Promise<DocumentMeta[]> {
+      try {
+        const resolvedBranchId = await getBranchId();
+        const docs = await withRetry(
+          () => client.documents.list(siteId, resolvedBranchId),
+          KEYS_MAX_RETRIES,
+          KEYS_RETRY_DELAY_MS,
+        );
+        return docs.map((d) => ({
+          path: toStorePath(d.path),
+          templateId: d.templateId ?? undefined,
+        }));
+      } catch (err) {
+        console.error("[css-store] listDocuments failed:", (err as Error).message);
+        return [];
+      }
     },
   };
 }

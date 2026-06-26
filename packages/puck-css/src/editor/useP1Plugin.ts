@@ -36,7 +36,7 @@ export interface UseP1PluginOptions {
   /** Override selected document path (e.g., from URL params). Defaults to context currentDocument path. */
   selectedDocumentPath?: string | null;
   /** Callback to create a new document */
-  onDocumentCreate?: (path: string) => Promise<void>;
+  onDocumentCreate?: (path: string, template?: import('../features/content-type-templates/types.js').Template | null) => Promise<void>;
   /** Callback to delete a document */
   onDocumentDelete?: (documentId: string, path: string) => Promise<void>;
   /** Whether to show presence indicator */
@@ -133,6 +133,8 @@ export function useP1Plugin(options: UseP1PluginOptions = {}): PuckPlugin {
       ? (options.onDocumentSelect ?? css.loadDocument) : undefined,
     onDocumentCreate: fc.enableDocumentBrowser
       ? (options.onDocumentCreate ?? css.createDocument) : undefined,
+    templates: css.templates,
+    templatesLoading: css.templatesLoading,
     onDocumentDelete: fc.enableDocumentBrowser
       ? (options.onDocumentDelete ?? css.deleteDocument) : undefined,
     documentsLoading: css.documentsLoading,

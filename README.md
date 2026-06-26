@@ -169,7 +169,7 @@ Everything else has sensible defaults and can be omitted.
 | `NEXT_PUBLIC_CSS_ENABLE_REALTIME` | `true` | Real-time collaborative editing via WebSocket/Yjs CRDT |
 | `NEXT_PUBLIC_CSS_ENABLE_PRESENCE` | `true` | Presence awareness (collaborator avatars, focus highlighting) |
 
-**Authentication** — defaults to broker auth (proxied server-side via `P1_CSS_API_KEY`):
+**Authentication** — defaults to broker auth (proxied server-side via `CSS_API_KEY`):
 
 > **Advanced:** Set `NEXT_PUBLIC_CSS_AUTH_MODE=mock` to use demo users for local development without a real auth backend. Do not set this in production.
 

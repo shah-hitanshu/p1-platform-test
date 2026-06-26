@@ -81,6 +81,16 @@ export type {
   UpdateMergeRequestParams,
   ListMergeRequestsOptions,
   ExecuteMergeRequestOptions,
+  // Template types
+  Template,
+  TemplateComponent,
+  CreateTemplateParams,
+  UpdateTemplateParams,
+  // Migration types
+  MigrationJob,
+  MigrationConflict,
+  MigrationPreview,
+  TriggerMigrationParams,
 } from './types.js';
 
 // Auth utilities

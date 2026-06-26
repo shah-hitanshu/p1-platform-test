@@ -43,6 +43,7 @@ export type RouteRow = {
   kind: RouteKind;
   basePath?: string;
   patchOperations: number;
+  contentTypeTemplateId?: string;
 };
 
 export { flattenStructureRoutes, type FlatStructureRow } from "./page-structure";
@@ -85,9 +86,13 @@ export function isOverrideEntry(value: unknown): value is OverridePageEntry {
 
 /**
  * Create a new full-document page (not a collection override). Use createCollectionOverride for instance paths.
+ *
+ * @param path - Page path (e.g. "/contact-us")
+ * @param options.initialData - Optional Puck data to initialize the page with (e.g. scaffolded from a content type template)
  */
 export async function createStaticPage(
-  path: string
+  path: string,
+  options?: { initialData?: Data; templateId?: string; templateVersion?: number },
 ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
 
   const store = getPageStore();
@@ -121,15 +126,25 @@ export async function createStaticPage(
     return { ok: false, error: "Invalid path." };
   }
 
-  await store.set(normalized, deepClone(EMPTY_STATIC_PAGE) as unknown as Data);
+  const pageData = options?.initialData
+    ? deepClone(options.initialData) as unknown as Data
+    : deepClone(EMPTY_STATIC_PAGE) as unknown as Data;
+  const setOptions = options?.templateId
+    ? { templateId: options.templateId, templateVersion: options.templateVersion }
+    : undefined;
+  await store.set(normalized, pageData, setOptions);
   return { ok: true, path: normalized };
 }
 
 /**
  * Create a new collection template page (e.g. `/posts/:slug`).
+ *
+ * @param path - Route template path with at least one :param segment
+ * @param options.initialData - Optional Puck data to initialize with (e.g. scaffolded from a content type template)
  */
 export async function createCollectionTemplate(
-  path: string
+  path: string,
+  options?: { initialData?: Data; templateId?: string; templateVersion?: number },
 ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
 
   const store = getPageStore();
@@ -151,7 +166,13 @@ export async function createCollectionTemplate(
     return { ok: false, error: "Invalid path." };
   }
 
-  await store.set(normalized, deepClone(EMPTY_STATIC_PAGE) as unknown as Data);
+  const pageData = options?.initialData
+    ? deepClone(options.initialData) as unknown as Data
+    : deepClone(EMPTY_STATIC_PAGE) as unknown as Data;
+  const setOptions = options?.templateId
+    ? { templateId: options.templateId, templateVersion: options.templateVersion }
+    : undefined;
+  await store.set(normalized, pageData, setOptions);
   return { ok: true, path: normalized };
 }
 
@@ -319,8 +340,22 @@ export async function persistPublishedPage(path: string, data: Data): Promise<vo
 export async function listRoutes(): Promise<RouteRow[]> {
 
   const store = getPageStore();
-  const allKeys = await store.keys();
+
+  // Prefer listDocuments (includes template_id from backend) over plain keys
+  const docMetas = store.listDocuments ? await store.listDocuments() : null;
+  const allKeys = (docMetas ? docMetas.map((d) => d.path) : await store.keys()).filter((k) => {
+    const normalized = k.startsWith('/') ? k.slice(1) : k;
+    return !normalized.startsWith('_');
+  });
   const templateKeys = listRouteTemplateKeys(allKeys);
+
+  // Build a path→template_id map from document metadata
+  const templateIdByPath = new Map<string, string>();
+  if (docMetas) {
+    for (const doc of docMetas) {
+      if (doc.templateId) templateIdByPath.set(doc.path, doc.templateId);
+    }
+  }
 
   const entries = await Promise.all(
     allKeys.map(async (path) => [path, await store.get(path)] as const),
@@ -328,12 +363,14 @@ export async function listRoutes(): Promise<RouteRow[]> {
 
   const rows: RouteRow[] = [];
   for (const [path, entry] of entries) {
+    const ctTemplateId = templateIdByPath.get(path);
     if (isSemanticPatchEntry(entry)) {
       rows.push({
         path,
         kind: "override",
         basePath: entry.basePath,
         patchOperations: entry.ops.length,
+        ...(ctTemplateId ? { contentTypeTemplateId: ctTemplateId } : {}),
       });
     } else if (isPuckData(entry)) {
       const kind = routeKindForPath(path, entry, templateKeys);
@@ -346,6 +383,14 @@ export async function listRoutes(): Promise<RouteRow[]> {
         kind,
         basePath: parent,
         patchOperations: 0,
+        ...(ctTemplateId ? { contentTypeTemplateId: ctTemplateId } : {}),
+      });
+    } else if (entry === null || entry === undefined) {
+      rows.push({
+        path,
+        kind: "static",
+        patchOperations: 0,
+        ...(ctTemplateId ? { contentTypeTemplateId: ctTemplateId } : {}),
       });
     }
   }

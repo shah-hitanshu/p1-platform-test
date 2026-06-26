@@ -1,3 +1,19 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+
+allowBuilds:
+  esbuild: true
+  sharp: true
+
+overrides:
+  esbuild: '>=0.25.0'
+  minimatch: '>=10.2.5'
+  markdown-it: '>=14.1.1'
+  rollup: '>=4.59.0'
+  flatted: '>=3.4.2'
+  postcss: '>=8.5.10'
+  uuid: '>=14.0.0'
+  happy-dom: '>=20.8.9'
+  lodash: '>=4.18.0'
+  ajv: '>=6.14.0'

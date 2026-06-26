@@ -11,14 +11,22 @@ export function useCreateStructure(kind: StructureKind) {
   const { getToken } = useP1Auth();
 
   return useMutation({
-    mutationFn: async (path: string) => {
+    mutationFn: async (params: string | { path: string; initialData?: unknown; templateId?: string; templateVersion?: number }) => {
+      const path = typeof params === "string" ? params : params.path;
+      const initialData = typeof params === "string" ? undefined : params.initialData;
+      const templateId = typeof params === "string" ? undefined : params.templateId;
+      const templateVersion = typeof params === "string" ? undefined : params.templateVersion;
       const token = await getToken();
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers["Authorization"] = `Bearer ${token}`;
+      const body: Record<string, unknown> = { path };
+      if (initialData) body.initialData = initialData;
+      if (templateId) body.templateId = templateId;
+      if (templateVersion !== undefined) body.templateVersion = templateVersion;
       const res = await fetch(`/p1/api/structure/${kind}`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ path }),
+        body: JSON.stringify(body),
       });
       const data = (await res.json()) as {
         ok?: boolean;

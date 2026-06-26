@@ -17,3 +17,7 @@ export { AgentEditEndpoint } from './agent-edit.js';
 
 // Merge endpoints
 export { MergeEndpoint } from './merge.js';
+
+// Content Type Templates endpoints
+export { TemplatesEndpoint } from './templates.js';
+export { MigrationConflictsEndpoint } from './migration-conflicts.js';
