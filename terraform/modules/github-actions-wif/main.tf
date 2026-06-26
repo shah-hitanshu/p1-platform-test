@@ -4,7 +4,7 @@
 # Workload Identity Federation pool (pantheon-wif). Provisions:
 # - A service account with configurable IAM roles
 # - Impersonation bindings (workloadIdentityUser + serviceAccountTokenCreator)
-#   for the repository's WIF principal
+#   for the owning repository and any additional authorized repositories
 #
 # Applied locally with owner/editor ADC:
 #
@@ -45,9 +45,15 @@ variable "account_id" {
 }
 
 variable "github_repo" {
-  description = "GitHub repository name"
+  description = "GitHub repository that owns this CI identity"
   type        = string
   default     = "collaborative-state-system"
+}
+
+variable "additional_repos" {
+  description = "Other repositories authorized to impersonate this service account: satellite services that deploy into the same project"
+  type        = list(string)
+  default     = ["p1-media-r2"]
 }
 
 variable "sa_roles" {
@@ -92,6 +98,11 @@ locals {
   # principal omits the pantheon-systems/ owner prefix.
   # Ref: pantheon-systems/pantheon-skills, skills/pantheon-wif.
   ci_principal = "principalSet://iam.googleapis.com/${var.wif_pool_name}/attribute.repository/${var.github_repo}"
+
+  additional_principals = {
+    for repo in var.additional_repos :
+    repo => "principalSet://iam.googleapis.com/${var.wif_pool_name}/attribute.repository/${repo}"
+  }
 }
 
 # -----------------------------------------------------------------------------
@@ -147,6 +158,22 @@ resource "google_service_account_iam_member" "token_creator" {
   service_account_id = google_service_account.github_actions.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = local.ci_principal
+}
+
+resource "google_service_account_iam_member" "additional_workload_identity_user" {
+  for_each = local.additional_principals
+
+  service_account_id = google_service_account.github_actions.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = each.value
+}
+
+resource "google_service_account_iam_member" "additional_token_creator" {
+  for_each = local.additional_principals
+
+  service_account_id = google_service_account.github_actions.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = each.value
 }
 
 # -----------------------------------------------------------------------------
