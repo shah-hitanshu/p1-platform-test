@@ -7,7 +7,7 @@
 // High-level API
 export { P1App } from './editor/P1App.js';
 export type { P1AppProps } from './editor/P1App.js';
-export { createP1Config, createNextConfig, createNextContentClient } from './core/config.js';
+export { createP1Config, createNextConfig, createNextContentClient, PRODUCTION_BASE_URL } from './core/config.js';
 export type { P1Config } from './core/config.js';
 export { toP1Path } from './editor/utils/path.js';
 

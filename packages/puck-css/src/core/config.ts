@@ -16,6 +16,8 @@ export interface P1Config {
   userRole?: ContentRole;
 }
 
+export const PRODUCTION_BASE_URL = 'https://ccr.p1.pantheon';
+
 const VALID_AUTH_MODES: AuthMode[] = ['mock', 'broker'];
 const DEFAULT_AUTH_MODE: AuthMode = 'broker';
 
@@ -50,13 +52,9 @@ export function createP1Config(
     return isNaN(num) ? undefined : num;
   }
 
-  const baseUrl = overrides.baseUrl ?? env('CSS_BASE_URL');
+  const baseUrl = overrides.baseUrl ?? env('CSS_BASE_URL') ?? PRODUCTION_BASE_URL;
   const siteId = overrides.siteId ?? env('CSS_SITE_ID');
   const authModeRaw = overrides.authMode ?? env('CSS_AUTH_MODE') ?? DEFAULT_AUTH_MODE;
-
-  if (!baseUrl) {
-    throw new Error('Missing required config: CSS_BASE_URL');
-  }
   if (!siteId) {
     throw new Error('Missing required config: CSS_SITE_ID');
   }
@@ -82,7 +80,7 @@ export function createP1Config(
 export function createNextConfig(overrides?: Partial<P1Config>): P1Config {
   return createP1Config({}, {
     overrides: {
-      baseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL,
+      baseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL ?? PRODUCTION_BASE_URL,
       siteId: process.env.NEXT_PUBLIC_CSS_SITE_ID,
       authMode: process.env.NEXT_PUBLIC_CSS_AUTH_MODE as AuthMode | undefined,
       branchId: process.env.NEXT_PUBLIC_CSS_BRANCH_ID,
@@ -104,7 +102,7 @@ export function createNextContentClient(overrides?: {
   siteId?: string;
   branchId?: string;
 }): P1ContentClient | null {
-  const baseUrl = overrides?.baseUrl ?? process.env.NEXT_PUBLIC_CSS_BASE_URL;
+  const baseUrl = overrides?.baseUrl ?? process.env.NEXT_PUBLIC_CSS_BASE_URL ?? PRODUCTION_BASE_URL;
   const apiToken = overrides?.apiToken ?? process.env.CSS_API_KEY;
   const siteId = overrides?.siteId ?? process.env.NEXT_PUBLIC_CSS_SITE_ID;
   const branchId = overrides?.branchId ?? process.env.NEXT_PUBLIC_CSS_BRANCH_ID;

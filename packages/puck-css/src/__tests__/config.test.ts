@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createP1Config, createNextConfig, createNextContentClient } from '../core/config.js';
+import { createP1Config, createNextConfig, createNextContentClient, PRODUCTION_BASE_URL } from '../core/config.js';
 
 vi.mock('@pantheon-systems/css-client', () => {
   const MockP1ContentClient = vi.fn();
@@ -52,11 +52,24 @@ describe('createNextConfig', () => {
     expect(config.authMode).toBe('broker');
   });
 
-  it('throws when required env vars are missing', () => {
-    expect(() => createNextConfig()).toThrow('Missing required config: CSS_BASE_URL');
-
+  it('throws when CSS_SITE_ID is missing', () => {
     process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
     expect(() => createNextConfig()).toThrow('Missing required config: CSS_SITE_ID');
+  });
+
+  it('uses production base URL when NEXT_PUBLIC_CSS_BASE_URL is not set', () => {
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+
+    const config = createNextConfig();
+    expect(config.baseUrl).toBe(PRODUCTION_BASE_URL);
+  });
+
+  it('overrides production default when NEXT_PUBLIC_CSS_BASE_URL is set', () => {
+    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://staging.example.com';
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+
+    const config = createNextConfig();
+    expect(config.baseUrl).toBe('https://staging.example.com');
   });
 
   it('defaults authMode to broker when not set', () => {
@@ -195,6 +208,34 @@ describe('createP1Config', () => {
     expect(config.authMode).toBe('broker');
   });
 
+  it('uses production base URL when no baseUrl override or env var is provided', () => {
+    const config = createP1Config(
+      { CSS_SITE_ID: 'site-123' },
+      {},
+    );
+    expect(config.baseUrl).toBe(PRODUCTION_BASE_URL);
+  });
+
+  it('overrides production default when baseUrl is provided via env', () => {
+    const config = createP1Config(
+      { CSS_BASE_URL: 'https://staging.example.com', CSS_SITE_ID: 'site-123' },
+      {},
+    );
+    expect(config.baseUrl).toBe('https://staging.example.com');
+  });
+
+  it('overrides production default when baseUrl is provided via overrides', () => {
+    const config = createP1Config(
+      { CSS_SITE_ID: 'site-123' },
+      {
+        overrides: {
+          baseUrl: 'https://local.example.com',
+        },
+      },
+    );
+    expect(config.baseUrl).toBe('https://local.example.com');
+  });
+
   it('rejects invalid auth modes', () => {
     expect(() =>
       createP1Config(
@@ -234,14 +275,19 @@ describe('createNextContentClient', () => {
     expect(client).not.toBeNull();
   });
 
-  it('returns null when required env vars are missing', () => {
-    expect(createNextContentClient()).toBeNull();
-
-    process.env.NEXT_PUBLIC_CSS_BASE_URL = 'https://css.example.com';
+  it('returns null when apiToken or siteId is missing', () => {
     expect(createNextContentClient()).toBeNull();
 
     process.env.CSS_API_KEY = 'api-token-123';
     expect(createNextContentClient()).toBeNull();
+  });
+
+  it('uses production base URL when NEXT_PUBLIC_CSS_BASE_URL is not set', () => {
+    process.env.CSS_API_KEY = 'api-token-123';
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+
+    const client = createNextContentClient();
+    expect(client).not.toBeNull();
   });
 
   it('allows overrides to take precedence over env vars', async () => {
