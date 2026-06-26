@@ -105,6 +105,8 @@ describe('Tool Handlers', () => {
 
     // getDocument prefetch (for validation)
     mockFetch.mockResolvedValueOnce(createMockResponse(true, { snapshot: {} }));
+    // lookupDocumentByPath (template metadata)
+    mockFetch.mockResolvedValueOnce(createMockResponse(true, {}));
     // applyEdits
     mockFetch.mockResolvedValueOnce(createMockResponse(true, { success: true, version: 2 }));
 
@@ -116,7 +118,7 @@ describe('Tool Handlers', () => {
       operations: [{ type: 'replace', path: '/content/0/props/title', content: 'New' }],
     });
 
-    const [, options] = mockFetch.mock.calls[1];
+    const [, options] = mockFetch.mock.calls[2];
     const body = JSON.parse(options.body);
     expect(body.operations[0].path).toBe('content.0.props.title');
   });
