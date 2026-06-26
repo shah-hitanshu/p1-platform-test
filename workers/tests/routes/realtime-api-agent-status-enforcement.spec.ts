@@ -710,7 +710,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
-      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:3000');
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
     });
 
     it('should include CORS headers on 404 not found response', async () => {
@@ -740,7 +740,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
       const response = assertNotNull(result);
 
       expect(response.status).toBe(404);
-      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:3000');
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
     });
 
     it('should include CORS headers on 500 error response', async () => {
@@ -770,7 +770,7 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
       const response = assertNotNull(result);
 
       expect(response.status).toBe(500);
-      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:3000');
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
     });
   });
 

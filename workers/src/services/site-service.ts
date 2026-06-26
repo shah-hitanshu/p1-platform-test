@@ -701,3 +701,30 @@ export async function getSiteAllowedOrigins(
   }
   return result.rows[0].allowed_origins ?? [];
 }
+
+// Module-scope cache: Worker isolates are reused across requests so this
+// persists within a single isolate, eliminating repeated DB queries for
+// the same site. Entries expire after 5 minutes; a site that updates its
+// allowed_origins will see the change reflected within that window.
+const _allowedOriginsCache = new Map<string, { origins: string[]; expiresAt: number }>();
+const ALLOWED_ORIGINS_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Cached variant of getSiteAllowedOrigins.
+ * Use this on hot request paths (CORS enforcement) to avoid a DB round-trip
+ * on every API call. Falls through to the DB on a cache miss or expiry.
+ */
+export async function getCachedSiteAllowedOrigins(
+  siteId: string,
+): Promise<string[] | null> {
+  const now = Date.now();
+  const cached = _allowedOriginsCache.get(siteId);
+  if (cached !== undefined && cached.expiresAt > now) {
+    return cached.origins;
+  }
+  const origins = await getSiteAllowedOrigins(siteId);
+  if (origins !== null) {
+    _allowedOriginsCache.set(siteId, { origins, expiresAt: now + ALLOWED_ORIGINS_TTL_MS });
+  }
+  return origins;
+}

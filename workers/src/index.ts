@@ -35,6 +35,7 @@ import {
 // Route handlers (still needed for auth/internal routes handled in handleRequest)
 import { handleInternalRoutes } from './routes/internal-api';
 import { handleBrokerRoutes } from './routes/broker-routes';
+import { getCachedSiteAllowedOrigins } from './services/site-service';
 
 // Queue consumer (Phase 5.1)
 import { handleSyncQueue } from './queues/sync-consumer';
@@ -88,11 +89,6 @@ export default {
       version: env.APP_VERSION ?? 'dev',
     });
 
-    // Handle CORS preflight (no database needed, no metrics)
-    if (req.method === 'OPTIONS') {
-      return handlePreflight(req, env);
-    }
-
     // Determine connection string and options
     // Prefer Hyperdrive (production) over direct connection (local dev)
     // Admin routes use HYPERDRIVE_NOCACHE for immediate read-after-write consistency
@@ -125,6 +121,24 @@ export default {
         connectionString,
         { isHyperdrive },
         async () => {
+          // OPTIONS preflight runs inside runWithConnection so we can look up
+          // per-site allowed_origins for site-scoped paths (e.g. /api/sites/{id}).
+          if (req.method === 'OPTIONS') {
+            const siteId = /^\/api\/sites\/([^/]+)/.exec(path)?.[1];
+            let siteOrigins: string[] = [];
+            if (siteId !== undefined) {
+              try {
+                siteOrigins = (await getCachedSiteAllowedOrigins(siteId)) ?? [];
+              } catch (err) {
+                // Fail open: system defaults still apply so Pantheon-hosted
+                // sites keep working; per-site custom domains are blocked
+                // until the DB recovers.
+                console.warn('[cors] failed to load site origins for preflight:', err);
+              }
+            }
+            return handlePreflight(req, env, siteOrigins);
+          }
+
           const resp = await handleRequest(req, env, path, origin, ctx);
 
           // Record successful request metrics
@@ -196,44 +210,55 @@ async function handleRequest(
   origin: string | null,
   ctx: ExecutionContext,
 ): Promise<Response> {
+  // Resolve per-site allowed_origins once for this request.
+  // Used to build per-site CORS patterns merged with system defaults and env origins.
+  // Only runs for site-scoped paths (e.g. /api/sites/{id}); falls back to [] otherwise.
+  let siteOrigins: string[] = [];
+  const siteIdFromPath = /^\/api\/sites\/([^/]+)/.exec(path)?.[1];
+  if (siteIdFromPath !== undefined) {
+    try {
+      siteOrigins = (await getCachedSiteAllowedOrigins(siteIdFromPath)) ?? [];
+    } catch (err) {
+      // Fail open: system defaults still apply so Pantheon-hosted sites keep
+      // working; per-site custom domains are blocked until the DB recovers.
+      console.warn('[cors] failed to load site origins:', err);
+    }
+  }
+
+  // Scoped helper so every addCorsHeaders call in this function gets
+  // the merged (system + env + per-site) pattern set without threading siteOrigins manually.
+  const cors = (resp: Response): Response => addCorsHeaders(resp, origin, env, siteOrigins);
+
   // Health endpoint (no auth required)
   if (path === '/health' || path === '/health/') {
     const response = await handleHealth(env);
-    return addCorsHeaders(response, origin, env);
+    return cors(response);
   }
 
   // API documentation (no auth required so the surface is publicly browseable)
   if (path === '/docs' || path === '/docs/') {
-    return addCorsHeaders(handleDocsRoute(request), origin, env);
+    return cors(handleDocsRoute(request));
   }
   if (path === '/docs/openapi.yaml') {
-    return addCorsHeaders(handleDocsSpecRoute(request), origin, env);
+    return cors(handleDocsSpecRoute(request));
   }
 
   // GET /api/auth/me - Return authenticated principal info (requires auth)
   if (path === '/api/auth/me' && request.method === 'GET') {
     const principal = await authenticate(request, env);
     if (!principal) {
-      return addCorsHeaders(
-        errorResponse('Authentication required', 401),
-        origin,
-        env,
-      );
+      return cors(errorResponse('Authentication required', 401));
     }
-    return addCorsHeaders(
-      jsonResponse({
-        id: principal.id,
-        type: principal.type,
-        email: principal.email,
-        name: principal.name,
-        avatarUrl: principal.avatarUrl,
-        authProvider: principal.authProvider,
-        tokenExpiry: principal.tokenExpiry,
-        providerSubjectId: principal.providerSubjectId,
-      }),
-      origin,
-      env,
-    );
+    return cors(jsonResponse({
+      id: principal.id,
+      type: principal.type,
+      email: principal.email,
+      name: principal.name,
+      avatarUrl: principal.avatarUrl,
+      authProvider: principal.authProvider,
+      tokenExpiry: principal.tokenExpiry,
+      providerSubjectId: principal.providerSubjectId,
+    }));
   }
 
   // Mock auth endpoints (local development only)
@@ -244,17 +269,17 @@ async function handleRequest(
     if (env.ENVIRONMENT === 'local') {
       const response = await handleAuthRoutes(request, path, env);
       if (response) {
-        return addCorsHeaders(response, origin, env);
+        return cors(response);
       }
     }
-    return addCorsHeaders(errorResponse('Not found', 404), origin, env);
+    return cors(errorResponse('Not found', 404));
   }
 
   // Internal API endpoints (uses X-Internal-Secret auth, not user/agent tokens)
   if (path.startsWith('/internal/')) {
     const internalSecret = env.INTERNAL_SECRET ?? 'development-internal-secret';
     const response = await handleInternalRoutes(request, { internalSecret });
-    return addCorsHeaders(response, origin, env);
+    return cors(response);
   }
 
   // Broker routes (/broker/*) — brokered auth flow for third-party panels.
@@ -262,38 +287,30 @@ async function handleRequest(
   if (path.startsWith('/broker/') || path === '/auth/callback') {
     const response = await handleBrokerRoutes(request, env as unknown as Record<string, unknown>, path);
     if (response !== null) {
-      return addCorsHeaders(response, origin, env);
+      return cors(response);
     }
   }
 
   // Parse route
   const route = parseRoute(path);
   if (!route) {
-    return addCorsHeaders(
-      jsonResponse(
-        {
-          error: 'Not Found',
-          message: `No handler for ${request.method} ${path}`,
-          availableEndpoints: [
-            '/health', '/api/sites', '/api/admin/users', '/api/auth/me',
-            ...(env.ENVIRONMENT === 'local' ? ['/api/auth/users', '/api/auth/token'] : []),
-          ],
-        },
-        404,
-      ),
-      origin,
-      env,
-    );
+    return cors(jsonResponse(
+      {
+        error: 'Not Found',
+        message: `No handler for ${request.method} ${path}`,
+        availableEndpoints: [
+          '/health', '/api/sites', '/api/admin/users', '/api/auth/me',
+          ...(env.ENVIRONMENT === 'local' ? ['/api/auth/users', '/api/auth/token'] : []),
+        ],
+      },
+      404,
+    ));
   }
 
   // Authenticate request for API routes
   const principal = await authenticate(request, env);
   if (!principal) {
-    return addCorsHeaders(
-      errorResponse('Authentication required', 401),
-      origin,
-      env,
-    );
+    return cors(errorResponse('Authentication required', 401));
   }
 
   // Extract acting-user identity from agent requests (MCP server forwarding)
@@ -308,11 +325,7 @@ async function handleRequest(
   if (principal.type === 'service') {
     // Service principals must always target a specific site
     if (route.params.siteId === undefined) {
-      return addCorsHeaders(
-        errorResponse('Service principals can only access site-scoped routes', 403),
-        origin,
-        env,
-      );
+      return cors(errorResponse('Service principals can only access site-scoped routes', 403));
     }
     // Determine if the request targets the main branch for scope enforcement.
     // If ?branch= is present, assume non-main (conservative for read:published).
@@ -324,11 +337,7 @@ async function handleRequest(
       principal, route.params.siteId, request.method, route.handler, branchIsMain,
     );
     if (!scopeCheck.allowed) {
-      return addCorsHeaders(
-        errorResponse(scopeCheck.reason ?? 'Access denied', 403),
-        origin,
-        env,
-      );
+      return cors(errorResponse(scopeCheck.reason ?? 'Access denied', 403));
     }
   }
 
@@ -350,7 +359,7 @@ async function handleRequest(
   if (!isMockOnly && principal.type !== 'service' && subjectEmail !== undefined) {
     const allowlistResult = await checkUserAllowlist(principal, subjectEmail);
     if (allowlistResult !== null) {
-      return addCorsHeaders(allowlistResult, origin, env);
+      return cors(allowlistResult);
     }
   }
 
@@ -359,17 +368,13 @@ async function handleRequest(
 
   try {
     const response = await dispatchRoute(request, route, principal, env, masClient, ctx);
-    return addCorsHeaders(response, origin, env);
+    return cors(response);
   } catch (error) {
     if (error instanceof AuthorizationError) {
-      return addCorsHeaders(errorResponse(error.message, 403), origin, env);
+      return cors(errorResponse(error.message, 403));
     }
     console.error('Request handler error:', error);
-    return addCorsHeaders(
-      errorResponse('Internal server error', 500),
-      origin,
-      env,
-    );
+    return cors(errorResponse('Internal server error', 500));
   }
 }
 

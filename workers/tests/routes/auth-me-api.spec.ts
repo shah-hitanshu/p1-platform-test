@@ -275,6 +275,6 @@ describe('GET /api/auth/me', () => {
     const response = await module.default.fetch(request, mockEnv, mockContext);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
   });
 });

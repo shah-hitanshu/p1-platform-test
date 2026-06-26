@@ -31,7 +31,6 @@ import {
   type RealtimeEnv,
   type RealtimeRouteContext,
   parseRoute,
-  parseCorsPatterns,
   validateParamLengths,
   generateSessionId,
   errorResponse,
@@ -51,6 +50,8 @@ import {
 import { getDocumentByPath } from '../services/document-service';
 import { hasPermission } from '../auth/authorization';
 import { getAgentById } from '../services/agent-service';
+import { getCachedSiteAllowedOrigins } from '../services/site-service';
+import { buildCorsPatterns } from '../utils/cors';
 
 // Re-export for consumers
 export type { RealtimeRouteContext } from './realtime-utils';
@@ -71,26 +72,39 @@ export async function handleRealtimeRoutes(
   const url = new URL(request.url);
   const pathname = url.pathname;
 
-  // Parse CORS configuration
-  const origin = request.headers.get('Origin');
-  const patterns = parseCorsPatterns(env.CORS_ORIGINS);
-
-  // Parse route parameters
+  // Parse route parameters first; bail early if path doesn't match
   const params = parseRoute(pathname);
   if (params === null) {
-    // Route doesn't match - let other handlers try
     return null;
   }
+
+  const origin = request.headers.get('Origin');
+
+  // Validate parameter lengths before any DB lookup — the length guard must
+  // run pre-auth so an unauthenticated caller cannot force arbitrary-length
+  // strings into getSiteAllowedOrigins via the URL path.
+  const paramError = validateParamLengths(params);
+  if (paramError !== null) {
+    // Use global + system patterns only: param is invalid so per-site lookup
+    // would be wasted work (and potentially unsafe if siteId is oversized).
+    return errorResponse(400, paramError, origin, buildCorsPatterns(env.CORS_ORIGINS));
+  }
+
+  // Fetch per-site allowed_origins and merge with system/env patterns.
+  // Runs after length validation so siteId is guaranteed within bounds.
+  let siteOrigins: string[] = [];
+  try {
+    siteOrigins = (await getCachedSiteAllowedOrigins(params.siteId)) ?? [];
+  } catch (err) {
+    // Fail open: system defaults still apply; per-site custom domains blocked
+    // until DB recovers.
+    console.warn('[cors] failed to load site origins for realtime route:', err);
+  }
+  const patterns = buildCorsPatterns(env.CORS_ORIGINS, siteOrigins);
 
   // Handle CORS preflight
   if (request.method === 'OPTIONS') {
     return handleOptions(origin, patterns);
-  }
-
-  // Validate parameter lengths (security: prevent oversized inputs)
-  const paramError = validateParamLengths(params);
-  if (paramError !== null) {
-    return errorResponse(400, paramError, origin, patterns);
   }
 
   // Validate WebSocket origin for connect endpoint

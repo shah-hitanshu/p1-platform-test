@@ -85,7 +85,23 @@ export function parseOriginPatterns(corsOrigins: string): CorsPattern[] {
 }
 
 /**
+ * Returns true for any localhost or 127.0.0.1 origin, regardless of port or protocol.
+ * Localhost is always allowed as a system default for local development.
+ */
+function isLocalhostOrigin(origin: string): boolean {
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === 'localhost' || hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Check whether an origin is allowed by the parsed patterns.
+ *
+ * localhost and 127.0.0.1 (any port, any protocol) are always allowed as a
+ * system default so local development works without any configuration.
  *
  * @param origin - The request Origin header value (may be null)
  * @param patterns - Parsed CORS patterns
@@ -96,6 +112,7 @@ export function isOriginAllowed(
   patterns: CorsPattern[],
 ): boolean {
   if (origin === null || origin === '') return false;
+  if (isLocalhostOrigin(origin)) return true;
 
   for (const p of patterns) {
     switch (p.type) {
@@ -116,6 +133,16 @@ export function isOriginAllowed(
 /**
  * Build CORS response headers for a given origin.
  *
+ * When the pattern set is a blanket wildcard (default-open mode), emits the
+ * literal `*` value and omits `Access-Control-Allow-Credentials`. Browsers
+ * reject reflected-origin + credentials responses from wildcard-intended APIs,
+ * and omitting credentials prevents authenticated cross-origin reads even when
+ * the auth flow uses bearer tokens rather than cookies.
+ *
+ * When the pattern set is an explicit list (opted-in restriction mode), reflects
+ * the specific origin with `Allow-Credentials: true` so credentialed requests
+ * from configured origins work correctly.
+ *
  * Returns headers with an empty Allow-Origin when origin is not allowed,
  * so callers can always spread the result without branching.
  *
@@ -128,6 +155,17 @@ export function getCorsHeaders(
   patterns: CorsPattern[],
   allowedHeaders?: string,
 ): Record<string, string> {
+  const isWildcardAll = patterns.some((p) => p.type === 'wildcard-all');
+
+  if (isWildcardAll) {
+    return {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': allowedHeaders ?? DEFAULT_ALLOWED_HEADERS,
+      'Access-Control-Max-Age': '86400',
+    };
+  }
+
   const allowed = isOriginAllowed(origin, patterns);
   const effectiveOrigin = allowed && origin !== null ? origin : '';
 
@@ -203,4 +241,34 @@ export function handlePreflight(
     status: 204,
     headers: getCorsHeaders(origin, patterns, allowedHeaders),
   });
+}
+
+/**
+ * Build the CORS pattern set for a request.
+ *
+ * Default behaviour (no allowed_origins configured): wildcard — all origins
+ * are permitted. This keeps existing sites working without any configuration.
+ *
+ * Opted-in behaviour (allowed_origins is non-empty): the wildcard is replaced
+ * by the explicit list. Only configured origins (plus the global CORS_ORIGINS
+ * env and localhost, which isOriginAllowed always permits) are accepted.
+ *
+ * @param envCorsOrigins - Value of the CORS_ORIGINS environment variable
+ * @param siteAllowedOrigins - Per-site origins from app.sites.allowed_origins;
+ *   null or empty means "not configured" → use wildcard default.
+ */
+export function buildCorsPatterns(
+  envCorsOrigins: string | undefined,
+  siteAllowedOrigins?: string[] | null,
+): CorsPattern[] {
+  if (siteAllowedOrigins == null || siteAllowedOrigins.length === 0) {
+    // Default open: wildcard allows all origins. Per-request enforcement only
+    // activates when a site has explicitly configured allowed_origins.
+    return [{ type: 'wildcard-all' }];
+  }
+  // Opted-in to restriction: configured origins replace the wildcard.
+  // localhost is always allowed via isLocalhostOrigin() in isOriginAllowed().
+  const site = parseOriginPatterns(siteAllowedOrigins.join(','));
+  const global = parseOriginPatterns(envCorsOrigins ?? '');
+  return [...site, ...global].slice(0, MAX_PATTERNS);
 }

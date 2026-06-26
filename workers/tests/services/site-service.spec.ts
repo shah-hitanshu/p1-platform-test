@@ -1354,6 +1354,52 @@ describe('Phase 3.1: Site Service', () => {
     });
   });
 
+  describe('getCachedSiteAllowedOrigins (PCC-3334)', () => {
+    it('should return origins from DB on first call', async () => {
+      const { getCachedSiteAllowedOrigins } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ allowed_origins: ['https://custom.example.com'] }],
+      });
+
+      const result = await getCachedSiteAllowedOrigins('site-123');
+      expect(result).toEqual(['https://custom.example.com']);
+      expect(db.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return cached result on second call without querying DB again', async () => {
+      const { getCachedSiteAllowedOrigins } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ allowed_origins: ['https://cached.example.com'] }],
+      });
+
+      // First call — hits DB
+      await getCachedSiteAllowedOrigins('site-cache-test');
+      // Second call — should use cache, not DB
+      const result = await getCachedSiteAllowedOrigins('site-cache-test');
+
+      expect(result).toEqual(['https://cached.example.com']);
+      expect(db.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return null for unknown site and not cache it', async () => {
+      const { getCachedSiteAllowedOrigins } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      const result = await getCachedSiteAllowedOrigins('nonexistent-site');
+      expect(result).toBeNull();
+
+      // Second call should also hit DB since null is not cached
+      await getCachedSiteAllowedOrigins('nonexistent-site');
+      expect(db.query).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('listSites — archived filter (PCC-3211)', () => {
     it('should exclude archived sites by default', async () => {
       const { listSites } = await import('../../src/services/site-service');

@@ -13,6 +13,7 @@ import {
   getCorsHeaders,
   addCorsHeaders,
   handlePreflight,
+  buildCorsPatterns,
 } from '../../src/utils/cors';
 
 // =============================================================================
@@ -196,6 +197,22 @@ describe('getCorsHeaders', () => {
 
     expect(headers['Access-Control-Allow-Origin']).toBe('');
   });
+
+  it('should emit literal * and omit Allow-Credentials when pattern set is wildcard-all', () => {
+    const patterns = parseOriginPatterns('*');
+    const headers = getCorsHeaders('https://any-origin.com', patterns);
+
+    expect(headers['Access-Control-Allow-Origin']).toBe('*');
+    expect(headers['Access-Control-Allow-Credentials']).toBeUndefined();
+  });
+
+  it('should reflect specific origin with Allow-Credentials when pattern set is explicit', () => {
+    const patterns = parseOriginPatterns('https://allowed.com');
+    const headers = getCorsHeaders('https://allowed.com', patterns);
+
+    expect(headers['Access-Control-Allow-Origin']).toBe('https://allowed.com');
+    expect(headers['Access-Control-Allow-Credentials']).toBe('true');
+  });
 });
 
 // =============================================================================
@@ -316,5 +333,94 @@ describe('handlePreflight', () => {
 
     expect(response.status).toBe(204);
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://mysite.app.io');
+  });
+});
+
+// =============================================================================
+// localhost system default
+// =============================================================================
+
+describe('localhost system default (isOriginAllowed)', () => {
+  it('should allow http://localhost on any port', () => {
+    expect(isOriginAllowed('http://localhost:3000', [])).toBe(true);
+    expect(isOriginAllowed('http://localhost:8080', [])).toBe(true);
+    expect(isOriginAllowed('http://localhost:8787', [])).toBe(true);
+    expect(isOriginAllowed('http://localhost', [])).toBe(true);
+  });
+
+  it('should allow https://localhost on any port', () => {
+    expect(isOriginAllowed('https://localhost:3000', [])).toBe(true);
+    expect(isOriginAllowed('https://localhost', [])).toBe(true);
+  });
+
+  it('should allow 127.0.0.1 on any port', () => {
+    expect(isOriginAllowed('http://127.0.0.1:5173', [])).toBe(true);
+    expect(isOriginAllowed('http://127.0.0.1:3000', [])).toBe(true);
+    expect(isOriginAllowed('https://127.0.0.1:3000', [])).toBe(true);
+  });
+
+  it('should not treat localhost-prefixed domains as localhost', () => {
+    expect(isOriginAllowed('https://localhost.evil.com', [])).toBe(false);
+    expect(isOriginAllowed('https://not-localhost.com', [])).toBe(false);
+  });
+});
+
+// =============================================================================
+// buildCorsPatterns
+// =============================================================================
+
+describe('buildCorsPatterns', () => {
+  describe('default open (no allowed_origins configured)', () => {
+    it('should return wildcard when site origins are null', () => {
+      const patterns = buildCorsPatterns(undefined, null);
+      expect(isOriginAllowed('https://anything.com', patterns)).toBe(true);
+      expect(isOriginAllowed('https://evil.com', patterns)).toBe(true);
+    });
+
+    it('should return wildcard when site origins are empty array', () => {
+      const patterns = buildCorsPatterns('https://dashboard.example.com', []);
+      expect(isOriginAllowed('https://anything.com', patterns)).toBe(true);
+    });
+
+    it('should return wildcard when site origins are undefined', () => {
+      const patterns = buildCorsPatterns(undefined, undefined);
+      expect(isOriginAllowed('https://anything.com', patterns)).toBe(true);
+      // localhost always works
+      expect(isOriginAllowed('http://localhost:3000', patterns)).toBe(true);
+    });
+  });
+
+  describe('opted-in restriction (allowed_origins configured)', () => {
+    it('should allow configured per-site origin and block others', () => {
+      const patterns = buildCorsPatterns(undefined, ['https://custom-domain.com']);
+      expect(isOriginAllowed('https://custom-domain.com', patterns)).toBe(true);
+      expect(isOriginAllowed('https://evil.com', patterns)).toBe(false);
+    });
+
+    it('should include global env origins alongside per-site origins', () => {
+      const patterns = buildCorsPatterns('https://dashboard.example.com', ['https://site.com']);
+      expect(isOriginAllowed('https://site.com', patterns)).toBe(true);
+      expect(isOriginAllowed('https://dashboard.example.com', patterns)).toBe(true);
+      expect(isOriginAllowed('https://evil.com', patterns)).toBe(false);
+    });
+
+    it('should NOT allow arbitrary domains not in the configured list', () => {
+      const patterns = buildCorsPatterns(undefined, ['https://allowed.com']);
+      expect(isOriginAllowed('https://rko2026.pantheon.io', patterns)).toBe(false);
+      expect(isOriginAllowed('https://mysite.pantheonsite.io', patterns)).toBe(false);
+    });
+
+    it('should support wildcard patterns in per-site origins', () => {
+      const patterns = buildCorsPatterns(undefined, ['https://*.custom-domain.com']);
+      expect(isOriginAllowed('https://app.custom-domain.com', patterns)).toBe(true);
+      expect(isOriginAllowed('https://other.custom-domain.com', patterns)).toBe(true);
+      expect(isOriginAllowed('https://evil.com', patterns)).toBe(false);
+    });
+
+    it('localhost is always allowed even when opted-in to restriction', () => {
+      const patterns = buildCorsPatterns(undefined, ['https://custom-domain.com']);
+      expect(isOriginAllowed('http://localhost:3000', patterns)).toBe(true);
+      expect(isOriginAllowed('https://localhost', patterns)).toBe(true);
+    });
   });
 });

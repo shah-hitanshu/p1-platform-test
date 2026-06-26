@@ -253,7 +253,7 @@ describe('Phase 0: Router and Middleware', () => {
   // ===========================================================================
 
   describe('CORS Middleware', () => {
-    it('should add CORS headers to responses for allowed origins', async () => {
+    it('should add wildcard CORS header in default-open mode', async () => {
       const module = await import('../../src/index');
 
       const request = new Request('https://api.example.com/api/sites', {
@@ -266,11 +266,12 @@ describe('Phase 0: Router and Middleware', () => {
 
       const response = await module.default.fetch(request, mockEnv, mockContext);
 
-      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
-      expect(response.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+      // Default-open mode emits * and omits Allow-Credentials
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+      expect(response.headers.get('Access-Control-Allow-Credentials')).toBeNull();
     });
 
-    it('should handle OPTIONS preflight requests', async () => {
+    it('should handle OPTIONS preflight with wildcard in default-open mode', async () => {
       const module = await import('../../src/index');
 
       const request = new Request('https://api.example.com/api/sites', {
@@ -285,26 +286,28 @@ describe('Phase 0: Router and Middleware', () => {
       const response = await module.default.fetch(request, mockEnv, mockContext);
 
       expect(response.status).toBe(204);
-      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
       expect(response.headers.get('Access-Control-Allow-Methods')).toContain('GET');
       expect(response.headers.get('Access-Control-Allow-Methods')).toContain('POST');
       expect(response.headers.get('Access-Control-Allow-Headers')).toContain('Authorization');
     });
 
-    it('should not add CORS headers for disallowed origins', async () => {
+    it('should allow all origins by default when no allowed_origins configured (wildcard open)', async () => {
       const module = await import('../../src/index');
 
       const request = new Request('https://api.example.com/api/sites', {
         method: 'GET',
         headers: {
-          'Origin': 'https://malicious.com',
+          'Origin': 'https://any-origin.com',
           'Authorization': 'Bearer mock-jwt-token',
         },
       });
 
       const response = await module.default.fetch(request, mockEnv, mockContext);
 
-      expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
+      // Default behaviour is wildcard-open; restriction only activates when
+      // a site has explicitly configured allowed_origins via the API.
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
     });
   });
 

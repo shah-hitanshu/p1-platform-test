@@ -42,6 +42,37 @@ A review of the delivered branch found the human path still fabricated an agent 
 ---
 ## Completed Work
 
+### Per-site CORS enforcement via allowed_origins (PCC-3334)
+
+**Status:** Complete — awaiting PR review  
+**Branch:** `pcc-3334-per-site-cors`  
+**Commits:**
+- `d2eead1` - test: add red-state tests for per-site CORS enforcement
+- `4675a05` - feat: wire per-site allowed_origins into CORS enforcement
+
+#### Problem
+Every P1 client site running on its own domain (e.g. `rko2026.pantheon.io`) was unable to make browser-initiated requests to `ccr.p1.pantheon.io` in production and staging. The `CORS_ORIGINS` env var was locked to a short list (the CSS dashboard and internal worker URLs) with no mechanism to accommodate per-site origins. sbx1 was unaffected because it still uses `CORS_ORIGINS: "*"`.
+
+The `allowed_origins` column existed on `app.sites` (migration 031) and `getSiteAllowedOrigins()` existed in `site-service.ts`, but were never wired into the CORS decision — they were only used in the now-removed CSS Auth Server OAuth redirect URI validator.
+
+#### Solution
+Three-layer CORS merge at request time:
+1. **System defaults** (always allowed, hardcoded): `localhost`/`127.0.0.1` any port/protocol, `https://*.pantheonsite.io`, `https://*.pantheon.io`
+2. **Global env** (`CORS_ORIGINS`): dashboard and other non-site origins
+3. **Per-site** (`allowed_origins` from `app.sites`): custom domains added by site owner via `PATCH /api/sites/:siteId`
+
+Key implementation decisions:
+- OPTIONS preflight moved inside `runWithConnection` so the DB is available for the per-site lookup (browser caches preflights for 86400s so the extra DB hit is infrequent)
+- Scoped `cors()` helper in `handleRequest` avoids threading `siteOrigins` through ~15 call sites
+- Graceful fallback: DB errors or missing sites fall back to system defaults only (custom domain blocked, Pantheon domains still work)
+- `realtime-api.ts`: `parseRoute` null-guard moved before the CORS lookup to avoid unnecessary DB queries on non-matching paths
+
+#### Tests added
+- 13 new unit tests in `cors.spec.ts`: localhost system default, `SYSTEM_CORS_ORIGINS`, `buildCorsPatterns` three-layer merge
+- 14 new integration tests in `cors-per-site.spec.ts`: system defaults via preflight and GET, per-site custom domains, DB-throw fallback behavior
+
+---
+
 ### Presence DO Key Mismatch + Browser Actor Push (PCC-3209)
 
 **Status:** Complete  

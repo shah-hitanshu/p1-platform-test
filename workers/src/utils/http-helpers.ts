@@ -6,7 +6,7 @@
  */
 
 import {
-  parseOriginPatterns,
+  buildCorsPatterns,
   addCorsHeaders as sharedAddCorsHeaders,
   handlePreflight as sharedHandlePreflight,
 } from './cors';
@@ -46,23 +46,28 @@ export const MAIN_ALLOWED_HEADERS =
 
 /**
  * Add CORS headers to response based on request origin.
- * Delegates to shared CORS utility with wildcard pattern support.
+ * Merges system defaults, global env origins, and optional per-site origins.
  */
 export function addCorsHeaders(
   response: Response,
   origin: string | null,
   env: Env,
+  siteAllowedOrigins?: string[] | null,
 ): Response {
-  const patterns = parseOriginPatterns(env.CORS_ORIGINS);
+  const patterns = buildCorsPatterns(env.CORS_ORIGINS, siteAllowedOrigins);
   return sharedAddCorsHeaders(response, origin, patterns, MAIN_ALLOWED_HEADERS);
 }
 
 /**
  * Handle CORS preflight requests.
- * Delegates to shared CORS utility with wildcard pattern support.
+ * Merges system defaults, global env origins, and optional per-site origins.
  */
-export function handlePreflight(request: Request, env: Env): Response {
+export function handlePreflight(
+  request: Request,
+  env: Env,
+  siteAllowedOrigins?: string[] | null,
+): Response {
   const origin = request.headers.get('Origin');
-  const patterns = parseOriginPatterns(env.CORS_ORIGINS);
+  const patterns = buildCorsPatterns(env.CORS_ORIGINS, siteAllowedOrigins);
   return sharedHandlePreflight(origin, patterns, MAIN_ALLOWED_HEADERS);
 }
