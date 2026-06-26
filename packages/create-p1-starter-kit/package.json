@@ -1,6 +1,6 @@
 {
   "name": "@pantheon-systems/create-p1-starter-kit",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Scaffold a new P1 starter project",
   "type": "module",
   "bin": {

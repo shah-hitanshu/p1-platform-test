@@ -1,5 +1,13 @@
 # @pantheon-systems/puck-css
 
+## 0.4.3
+
+### Patch Changes
+
+- Bug fixes and improvements: deferred branch detection for read:published tokens, init promise retry, production backend URL handling, editor top menu UI improvements.
+- Updated dependencies
+  - @pantheon-systems/css-client@0.4.3
+
 ## 0.4.2
 
 ### Patch Changes
