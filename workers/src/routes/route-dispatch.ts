@@ -16,6 +16,8 @@ import { handleSiteScreenshotRoutes } from './site-screenshot-api';
 import { handleBranchRoutes } from './branch-api';
 import { handleDocumentRoutes } from './document-api';
 import { handleCheckpointRoutes } from './checkpoint-api';
+import { handleTemplateRequest } from './template-api';
+import { handleMigrationRoutes } from './migration-api';
 import { handleMergeRoutes } from './merge-api';
 import { handleGrantRoutes } from './grant-api';
 import { handleCollaboratorRoutes } from './collaborator-api';
@@ -49,6 +51,7 @@ export async function dispatchRoute(
   principal: AuthenticatedPrincipal,
   env: Env,
   masClient: MASClient | undefined,
+  ctx?: ExecutionContext,
 ): Promise<Response> {
   // Resolve branch name → UUID before dispatching to handlers.
   // Content handler manages its own resolution via query param.
@@ -156,6 +159,27 @@ export async function dispatchRoute(
       }
       return response;
     }
+
+    case 'migrations':
+      return await handleMigrationRoutes(request, {
+        siteId: route.params.siteId ?? '',
+        branchId: route.params.branchId,
+        jobId: route.params.migrationJobId,
+        conflictId: route.params.conflictId,
+        action: route.params.action as 'conflicts' | 'resolve' | undefined,
+        principal,
+      });
+
+    case 'templates':
+      return await handleTemplateRequest(request, {
+        siteId: route.params.siteId ?? '',
+        branchId: route.params.branchId,
+        templateId: route.params.templateId,
+        action: route.params.action as 'migrate' | 'rollback' | undefined,
+        principal,
+        ctx,
+        env,
+      });
 
     case 'checkpoints':
       return await handleCheckpointRoutes(request, {

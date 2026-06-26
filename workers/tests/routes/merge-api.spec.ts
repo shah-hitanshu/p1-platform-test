@@ -432,7 +432,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
       expect(body.id).toBe('mr-1');
     });
 
-    it('should use dbUserId instead of principal.id when creating a merge request (regression: PCC-3293)', async () => {
+    it('should use dbUserId instead of principal.id when creating a merge request', async () => {
       // Auth0 principals have an `id` like "google-oauth2|123" (not a UUID).
       // The merge_requests.created_by_id column is UUID NOT NULL, so passing
       // principal.id directly causes a PostgreSQL UUID cast error → 500.

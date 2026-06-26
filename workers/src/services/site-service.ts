@@ -262,7 +262,7 @@ export async function createSite(
     // Create the main branch for the site
     await createMainBranch({
       siteId: site.id,
-      createdById: params.creatorId ?? 'system',
+      createdById: params.creatorId ?? '00000000-0000-0000-0000-000000000001',
       createdByType: params.createdByType ?? 'user',
     });
 

@@ -30,6 +30,9 @@ export interface RouteParams {
   keyId?: string;
   subResource?: string;
   roleId?: string;
+  templateId?: string;
+  migrationJobId?: string;
+  conflictId?: string;
 }
 
 /**
@@ -297,6 +300,148 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
       params: {
         siteId: docMatch[1],
         documentId: docMatch[2],
+      },
+    };
+  }
+
+  // Migration conflict resolve route
+  // /api/sites/{siteId}/branches/{branchId}/migrations/{jobId}/conflicts/{conflictId}/resolve
+  // eslint-disable-next-line max-len
+  const migrationConflictResolveRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/migrations\/([^/]+)\/conflicts\/([^/]+)\/resolve$/;
+  const migrationConflictResolveMatch = migrationConflictResolveRe.exec(normalizedPath);
+  if (migrationConflictResolveMatch) {
+    return {
+      handler: 'migrations',
+      params: {
+        siteId: migrationConflictResolveMatch[1],
+        branchId: migrationConflictResolveMatch[2],
+        migrationJobId: migrationConflictResolveMatch[3],
+        conflictId: migrationConflictResolveMatch[4],
+        action: 'resolve',
+      },
+    };
+  }
+
+  // Migration conflicts list route
+  // /api/sites/{siteId}/branches/{branchId}/migrations/{jobId}/conflicts
+  const migrationConflictsRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/migrations\/([^/]+)\/conflicts$/;
+  const migrationConflictsMatch = migrationConflictsRe.exec(normalizedPath);
+  if (migrationConflictsMatch) {
+    return {
+      handler: 'migrations',
+      params: {
+        siteId: migrationConflictsMatch[1],
+        branchId: migrationConflictsMatch[2],
+        migrationJobId: migrationConflictsMatch[3],
+        action: 'conflicts',
+      },
+    };
+  }
+
+  // Migration job route
+  // /api/sites/{siteId}/branches/{branchId}/migrations/{jobId}
+  const migrationJobRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/migrations\/([^/]+)$/;
+  const migrationJobMatch = migrationJobRe.exec(normalizedPath);
+  if (migrationJobMatch) {
+    return {
+      handler: 'migrations',
+      params: {
+        siteId: migrationJobMatch[1],
+        branchId: migrationJobMatch[2],
+        migrationJobId: migrationJobMatch[3],
+      },
+    };
+  }
+
+  // Template routes
+  // /api/sites/{siteId}/branches/{branchId}/templates/{templateId}/migration-status
+  const templateMigrationStatusRe =
+    /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/templates\/([^/]+)\/migration-status$/;
+  const templateMigrationStatusMatch = templateMigrationStatusRe.exec(normalizedPath);
+  if (templateMigrationStatusMatch) {
+    return {
+      handler: 'templates',
+      params: {
+        siteId: templateMigrationStatusMatch[1],
+        branchId: templateMigrationStatusMatch[2],
+        templateId: templateMigrationStatusMatch[3],
+        action: 'migration-status',
+      },
+    };
+  }
+
+  // /api/sites/{siteId}/branches/{branchId}/templates/{templateId}/migrate/preview
+  // Must come before /migrate to avoid the shorter pattern matching first
+  const templateMigratePreviewRe =
+    /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/templates\/([^/]+)\/migrate\/preview$/;
+  const templateMigratePreviewMatch = templateMigratePreviewRe.exec(normalizedPath);
+  if (templateMigratePreviewMatch) {
+    return {
+      handler: 'templates',
+      params: {
+        siteId: templateMigratePreviewMatch[1],
+        branchId: templateMigratePreviewMatch[2],
+        templateId: templateMigratePreviewMatch[3],
+        action: 'migrate-preview',
+      },
+    };
+  }
+
+  // /api/sites/{siteId}/branches/{branchId}/templates/{templateId}/migrate
+  const templateMigrateRe =
+    /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/templates\/([^/]+)\/migrate$/;
+  const templateMigrateMatch = templateMigrateRe.exec(normalizedPath);
+  if (templateMigrateMatch) {
+    return {
+      handler: 'templates',
+      params: {
+        siteId: templateMigrateMatch[1],
+        branchId: templateMigrateMatch[2],
+        templateId: templateMigrateMatch[3],
+        action: 'migrate',
+      },
+    };
+  }
+
+  // /api/sites/{siteId}/branches/{branchId}/templates/{templateId}/rollback
+  const templateRollbackRe =
+    /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/templates\/([^/]+)\/rollback$/;
+  const templateRollbackMatch = templateRollbackRe.exec(normalizedPath);
+  if (templateRollbackMatch) {
+    return {
+      handler: 'templates',
+      params: {
+        siteId: templateRollbackMatch[1],
+        branchId: templateRollbackMatch[2],
+        templateId: templateRollbackMatch[3],
+        action: 'rollback',
+      },
+    };
+  }
+
+  // /api/sites/{siteId}/branches/{branchId}/templates/{templateId}
+  const templateByIdRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/templates\/([^/]+)$/;
+  const templateByIdMatch = templateByIdRe.exec(normalizedPath);
+  if (templateByIdMatch) {
+    return {
+      handler: 'templates',
+      params: {
+        siteId: templateByIdMatch[1],
+        branchId: templateByIdMatch[2],
+        templateId: templateByIdMatch[3],
+      },
+    };
+  }
+
+  // /api/sites/{siteId}/branches/{branchId}/templates
+  const templatesListRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/templates$/;
+  const templatesListMatch = templatesListRe.exec(normalizedPath);
+  if (templatesListMatch) {
+    return {
+      handler: 'templates',
+      params: {
+        siteId: templatesListMatch[1],
+        branchId: templatesListMatch[2],
       },
     };
   }

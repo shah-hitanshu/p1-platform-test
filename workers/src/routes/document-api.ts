@@ -36,7 +36,8 @@ import {
   InvalidDocumentVersionParamsError,
   publishDocument,
 } from '../services';
-import { assertPermission, AuthorizationError } from '../auth/authorization';
+import { normalizePath } from '../services/document-types';
+import { assertPermission, AuthorizationError, getEffectiveRole } from '../auth/authorization';
 import { validatePagination } from './validation';
 
 /**
@@ -68,6 +69,8 @@ async function parseJsonBody<T>(request: Request): Promise<T> {
 interface CreateDocumentBody {
   path?: string;
   snapshot?: Record<string, unknown>;
+  templateId?: string;
+  templateVersion?: number;
 }
 
 /**
@@ -292,11 +295,44 @@ async function handleCreateDocumentOnBranch(
     return errorResponse('path is required', 400);
   }
 
+  // Normalize path using the canonical normalizePath which handles backslashes,
+  // multiple slashes, and leading/trailing slash stripping consistently
+  const normalizedPath = normalizePath(body.path);
+
+  // Prevent non-admins from creating documents at _registry/templates/* via document API
+  if (normalizedPath.startsWith('_registry/templates/')) {
+    const { roleName } = await getEffectiveRole(principal, siteId, branchId);
+    if (roleName !== 'ADMIN') {
+      return errorResponse(
+        'Templates must be created via template API (admin only)',
+        403,
+      );
+    }
+  }
+
+  // Check if template is deprecated before creating a document from it,
+  // and default template_version to current version when not provided.
+  let resolvedTemplateVersion = body.templateVersion;
+  if (body.templateId !== undefined && body.templateId !== '') {
+    const latestTemplateVersion = await getLatestDocumentVersion(body.templateId, branchId);
+    if (latestTemplateVersion?.snapshot !== undefined) {
+      const templateSnapshot = latestTemplateVersion.snapshot;
+      if (templateSnapshot.deprecated === true) {
+        return errorResponse('Cannot create document from deprecated template', 400);
+      }
+    }
+    if (resolvedTemplateVersion === undefined && latestTemplateVersion) {
+      resolvedTemplateVersion = latestTemplateVersion.versionNumber;
+    }
+  }
+
   const result = await createDocumentOnBranch({
     siteId,
     branchId,
     path: body.path,
     snapshot: body.snapshot,
+    templateId: body.templateId,
+    templateVersion: resolvedTemplateVersion,
     createdById: principal.dbUserId ?? principal.id,
     createdByType: principal.type as 'user' | 'agent',
   });
@@ -371,6 +407,7 @@ async function handleDeleteDocumentOnBranch(
  */
 interface CreateVersionBody {
   snapshot?: Record<string, unknown> | null;
+  puckActions?: { type: string; [key: string]: unknown }[];
 }
 
 /**
@@ -456,8 +493,21 @@ async function handleCreateDocumentVersion(
   request: Request,
   documentId: string,
   branchId: string,
+  siteId: string,
   principal: AuthenticatedPrincipal,
 ): Promise<Response> {
+  // Prevent non-admins from writing versions to template documents via document API
+  const document = await getDocument(documentId);
+  if (document?.path.startsWith('_registry/templates/') === true) {
+    const { roleName } = await getEffectiveRole(principal, siteId, branchId);
+    if (roleName !== 'ADMIN') {
+      return errorResponse(
+        'Template versions must be created via template API (admin only)',
+        403,
+      );
+    }
+  }
+
   const body = await parseJsonBody<CreateVersionBody>(request);
 
   // Validate snapshot is present and is an object
@@ -477,6 +527,7 @@ async function handleCreateDocumentVersion(
     source: 'edit',
     createdById: principal.dbUserId ?? principal.id,
     createdByType: principal.type as 'user' | 'agent',
+    ...(body.puckActions ? { puckActions: body.puckActions } : {}),
   });
 
   return jsonResponse(version, 201);
@@ -545,7 +596,7 @@ async function handleDocumentVersionRoutes(
     case 'GET':
       return await handleListDocumentVersions(documentId, branchId);
     case 'POST':
-      return await handleCreateDocumentVersion(request, documentId, branchId, context.principal);
+      return await handleCreateDocumentVersion(request, documentId, branchId, context.siteId, context.principal);
     default:
       return errorResponse('Method not allowed', 405);
   }
@@ -580,6 +631,17 @@ async function handleBranchScopedDocumentRoutes(
     const exists = await documentExistsOnBranch(context.documentId, branchId);
     if (!exists) {
       return errorResponse('Document not found on this branch', 404);
+    }
+    // Prevent non-admins from publishing template documents via document API
+    const document = await getDocument(context.documentId);
+    if (document?.path.startsWith('_registry/templates/') === true) {
+      const { roleName } = await getEffectiveRole(context.principal, context.siteId, branchId);
+      if (roleName !== 'ADMIN') {
+        return errorResponse(
+          'Templates must be published via template API (admin only)',
+          403,
+        );
+      }
     }
     const result = await publishDocument({
       siteId: context.siteId,

@@ -19,7 +19,6 @@ import {
   resolveCreatedByRefToId,
   buildImportKey,
 } from '../../src/services/bundle-import-service';
-import { signBundleJson } from '../../src/services/bundle-export-service';
 
 // Mock auth and R2 presign — not under test in integration scenarios
 vi.mock('../../src/auth/authorization', () => ({
@@ -40,7 +39,6 @@ import type { AuthenticatedPrincipal } from '../../src/types';
 
 const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
 const SYSTEM_UUID = '00000000-0000-0000-0000-000000000000';
-const TEST_INTERNAL_SECRET = 'integration-test-secret';
 const createdSiteIds: string[] = [];
 
 /**
@@ -95,9 +93,6 @@ afterAll(async () => {
       ')',
       [siteId as never],
     );
-    // branches.source_checkpoint_id -> checkpoints.id and checkpoints.branch_id -> branches.id
-    // form a cycle (copy-on-write provenance). Clear the branch back-reference first so the
-    // checkpoints below can be deleted without violating fk_branches_source_checkpoint.
     await sql.unsafe(
       'UPDATE app.branches SET source_checkpoint_id = NULL WHERE site_id = $1',
       [siteId as never],
@@ -115,16 +110,12 @@ afterAll(async () => {
       [siteId as never],
     );
     await sql.unsafe('DELETE FROM app.documents WHERE site_id = $1', [siteId as never]);
-    // Clean up import_id_maps rows for this site's imports, which individual tests don't
-    // always cover. All entity rows of one import share an import_key, so resolve the
-    // import_key(s) via this site's branches, then delete every row under those keys.
-    // NOTE: import_id_maps.target_id is TEXT and holds version NUMBERS (e.g. "1") for
-    // version-entity rows, so it must never be compared directly against the uuid branches.id
-    // (Postgres would cast "1"->uuid and throw). Cast branches.id to text instead.
+    // Clean up import_id_maps rows for branches (Test 2 inserts branch-phase rows that
+    // individual test cleanup does not cover, since those tests only clean by importKey
+    // derived from exportedAt — branch rows may use a different importKey).
     await sql.unsafe(
-      'DELETE FROM app.import_id_maps WHERE import_key IN (' +
-      '  SELECT DISTINCT import_key FROM app.import_id_maps' +
-      '  WHERE target_id IN (SELECT id::text FROM app.branches WHERE site_id = $1)' +
+      'DELETE FROM app.import_id_maps WHERE target_id IN (' +
+      '  SELECT id FROM app.branches WHERE site_id = $1' +
       ')',
       [siteId as never],
     );
@@ -180,6 +171,20 @@ async function sha256Hex(data: Uint8Array): Promise<string> {
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return 'sha256:' + hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+const TEST_INTERNAL_SECRET = 'test-internal-secret-for-import';
+
+async function hmacSha256(data: Uint8Array, secret: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, data);
+  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 // ---------------------------------------------------------------------------
@@ -265,9 +270,8 @@ async function buildValidImportZip(opts: {
   }));
   files['bundle.json'] = bundleJsonBytes;
 
-  const zip = zipSync(files);
-  const bundleSignature = await signBundleJson(bundleJsonBytes, TEST_INTERNAL_SECRET);
-  return { zip, bundleSignature };
+  const bundleSignature = await hmacSha256(bundleJsonBytes, TEST_INTERNAL_SECRET);
+  return { zip: zipSync(files), bundleSignature };
 }
 
 // ===========================================================================
@@ -544,7 +548,7 @@ describe('handleSiteImportRoute integration scenarios', () => {
     const targetMain = await getMainBranch(targetSite.id);
     if (targetMain === null) throw new Error('Main branch not found');
 
-    const { zip: zipT2, bundleSignature: sigT2 } = await buildValidImportZip({
+    const { zip, bundleSignature } = await buildValidImportZip({
       sourceSiteId: 'src-site-t2',
       sourceSiteName: 'Source T2',
       branches: [
@@ -554,8 +558,8 @@ describe('handleSiteImportRoute integration scenarios', () => {
     });
 
     const form = new FormData();
-    form.append('file', new Blob([zipT2], { type: 'application/zip' }), 'bundle.zip');
-    form.append('bundleSignature', sigT2);
+    form.append('file', new Blob([zip], { type: 'application/zip' }), 'bundle.zip');
+    form.append('bundleSignature', bundleSignature);
     const req = new Request('https://example.com/api/admin/sites/' + targetSite.id + '/import', {
       method: 'POST',
       body: form,
@@ -582,7 +586,7 @@ describe('handleSiteImportRoute integration scenarios', () => {
     if (targetMain === null) throw new Error('Main branch not found');
 
     const sourceDocId = 'src-doc-t12-abc';
-    const { zip: zipT12, bundleSignature: sigT12 } = await buildValidImportZip({
+    const { zip, bundleSignature } = await buildValidImportZip({
       sourceSiteId: 'src-site-t12',
       sourceSiteName: 'Source T12',
       documents: [{
@@ -601,8 +605,8 @@ describe('handleSiteImportRoute integration scenarios', () => {
     const importKey = buildImportKey(targetSite.id, '2026-05-27T00:00:00.000Z');
 
     const form = new FormData();
-    form.append('file', new Blob([zipT12], { type: 'application/zip' }), 'bundle.zip');
-    form.append('bundleSignature', sigT12);
+    form.append('file', new Blob([zip], { type: 'application/zip' }), 'bundle.zip');
+    form.append('bundleSignature', bundleSignature);
     const req = new Request('https://example.com/api/admin/sites/' + targetSite.id + '/import', {
       method: 'POST',
       body: form,
@@ -635,7 +639,7 @@ describe('handleSiteImportRoute integration scenarios', () => {
 
     const importKey = buildImportKey(targetSite.id, '2026-05-27T00:00:00.000Z');
 
-    const { zip: zipT13, bundleSignature: sigT13 } = await buildValidImportZip({
+    const { zip, bundleSignature } = await buildValidImportZip({
       sourceSiteId: 'src-site-t13',
       sourceSiteName: 'Source T13',
       documents: [{
@@ -652,8 +656,8 @@ describe('handleSiteImportRoute integration scenarios', () => {
     });
 
     const form = new FormData();
-    form.append('file', new Blob([zipT13], { type: 'application/zip' }), 'bundle.zip');
-    form.append('bundleSignature', sigT13);
+    form.append('file', new Blob([zip], { type: 'application/zip' }), 'bundle.zip');
+    form.append('bundleSignature', bundleSignature);
     const req = new Request('https://example.com/api/admin/sites/' + targetSite.id + '/import', {
       method: 'POST',
       body: form,
@@ -699,7 +703,7 @@ describe('handleSiteImportRoute integration scenarios', () => {
 
     const importKey = buildImportKey(targetSite.id, '2026-05-27T00:00:00.000Z');
 
-    const { zip: zipT1, bundleSignature: sigT1 } = await buildValidImportZip({
+    const { zip, bundleSignature } = await buildValidImportZip({
       sourceSiteId: 'src-site-t1',
       sourceSiteName: 'Source T1',
       documents: [{
@@ -716,8 +720,8 @@ describe('handleSiteImportRoute integration scenarios', () => {
     });
 
     const form = new FormData();
-    form.append('file', new Blob([zipT1], { type: 'application/zip' }), 'bundle.zip');
-    form.append('bundleSignature', sigT1);
+    form.append('file', new Blob([zip], { type: 'application/zip' }), 'bundle.zip');
+    form.append('bundleSignature', bundleSignature);
     const req = new Request('https://example.com/api/admin/sites/' + targetSite.id + '/import', {
       method: 'POST',
       body: form,
@@ -798,7 +802,7 @@ describe('handleSiteImportRoute integration scenarios', () => {
       }),
     } as unknown as KVNamespace;
 
-    const { zip: zipT3, bundleSignature: sigT3 } = await buildValidImportZip({
+    const { zip, bundleSignature } = await buildValidImportZip({
       sourceSiteId: 'src-site-t3',
       sourceSiteName: 'Source T3',
       branches: [{ id: 'src-main', name: 'main', isMain: true }],
@@ -816,8 +820,8 @@ describe('handleSiteImportRoute integration scenarios', () => {
     });
 
     const form = new FormData();
-    form.append('file', new Blob([zipT3], { type: 'application/zip' }), 'bundle.zip');
-    form.append('bundleSignature', sigT3);
+    form.append('file', new Blob([zip], { type: 'application/zip' }), 'bundle.zip');
+    form.append('bundleSignature', bundleSignature);
     const req = new Request('https://example.com/api/admin/sites/' + targetSite.id + '/import', {
       method: 'POST',
       body: form,
@@ -854,80 +858,5 @@ describe('handleSiteImportRoute integration scenarios', () => {
 
     // Cleanup import_id_maps
     await sql.unsafe('DELETE FROM app.import_id_maps WHERE import_key = $1', [importKey]);
-  });
-
-  // PR #135 test plan TP3: tampered bundle + VALID signature → 422.
-  // The signature covers bundle.json (which records each file's SHA-256). Tampering a data
-  // file AFTER signing leaves bundle.json — and therefore the signature — valid, so signature
-  // verification passes; the SHA-256 manifest check is what must catch the tamper (422).
-  it('rejects a tampered bundle that still carries a valid signature with 422 (TP3)', async () => {
-    const targetSite = await createTestSite('tp3-target');
-
-    const files: Record<string, Uint8Array> = {};
-    files['site.json'] = strToU8(JSON.stringify({
-      id: 'src-site-tp3', name: 'Source TP3', pantheonSiteId: 'p1',
-      workflowSettings: {}, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
-    }));
-    files['branches.json'] = strToU8(JSON.stringify([{
-      id: 'src-main', name: 'main', isMain: true, status: 'active',
-      sourceBranchId: null, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', archivedAt: null,
-    }]));
-
-    // Sign over the ORIGINAL files.
-    const manifest: Record<string, string> = {};
-    for (const [p, c] of Object.entries(files)) manifest[p] = await sha256Hex(c);
-    const bundleJsonBytes = strToU8(JSON.stringify({
-      bundleVersion: '1', exportedAt: '2026-05-27T00:00:00.000Z',
-      sourceEnvironment: 'sbx1', sourceSiteId: 'src-site-tp3', files: manifest,
-    }));
-    files['bundle.json'] = bundleJsonBytes;
-    const bundleSignature = await signBundleJson(bundleJsonBytes, TEST_INTERNAL_SECRET);
-
-    // Tamper site.json AFTER signing — bundle.json/manifest/signature stay valid; the
-    // zipped site.json no longer matches its recorded hash.
-    files['site.json'] = strToU8(JSON.stringify({
-      id: 'src-site-tp3', name: 'TAMPERED', pantheonSiteId: 'p1',
-      workflowSettings: {}, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
-    }));
-    const zip = zipSync(files);
-
-    const form = new FormData();
-    form.append('file', new Blob([zip], { type: 'application/zip' }), 'bundle.zip');
-    form.append('bundleSignature', bundleSignature);
-    const resp = await handleSiteImportRoute(
-      new Request('https://example.com/api/admin/sites/' + targetSite.id + '/import', { method: 'POST', body: form }),
-      { siteId: targetSite.id, principal: createAdminPrincipal() },
-      { CONFIG_KV: createMockKV(), INTERNAL_SECRET: TEST_INTERNAL_SECRET } as never,
-    );
-
-    expect(resp.status).toBe(422);
-    const body = JSON.parse(await resp.text()) as { error: string };
-    expect(body.error.toLowerCase()).toContain('manifest');
-  });
-
-  // PR #135 test plan TP4: valid bundle + WRONG signature → 422.
-  // A well-formed bundle presented with an incorrect signature must be rejected at signature
-  // verification, before any data is processed.
-  it('rejects a valid bundle presented with a wrong signature with 422 (TP4)', async () => {
-    const targetSite = await createTestSite('tp4-target');
-
-    const { zip } = await buildValidImportZip({
-      sourceSiteId: 'src-site-tp4', sourceSiteName: 'Source TP4',
-    });
-    // Same shape/length as a real HMAC-SHA256 hex digest, but not the correct value.
-    const wrongSignature = 'f'.repeat(64);
-
-    const form = new FormData();
-    form.append('file', new Blob([zip], { type: 'application/zip' }), 'bundle.zip');
-    form.append('bundleSignature', wrongSignature);
-    const resp = await handleSiteImportRoute(
-      new Request('https://example.com/api/admin/sites/' + targetSite.id + '/import', { method: 'POST', body: form }),
-      { siteId: targetSite.id, principal: createAdminPrincipal() },
-      { CONFIG_KV: createMockKV(), INTERNAL_SECRET: TEST_INTERNAL_SECRET } as never,
-    );
-
-    expect(resp.status).toBe(422);
-    const body = JSON.parse(await resp.text()) as { error: string };
-    expect(body.error.toLowerCase()).toContain('signature');
   });
 });

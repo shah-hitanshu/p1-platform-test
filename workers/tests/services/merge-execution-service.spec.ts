@@ -61,6 +61,11 @@ vi.mock('../../src/services/merge-publish', () => ({
   publishMergedVersions: vi.fn(),
 }));
 
+vi.mock('../../src/services/migration-service', () => ({
+  triggerMigration: vi.fn(),
+  processMigration: vi.fn(),
+}));
+
 describe('Phase 5.3: Merge Execution Service', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
@@ -1261,6 +1266,353 @@ describe('Phase 5.3: Merge Execution Service', () => {
       expect(error.name).toBe('MergeExecutionError');
       expect(error.mergeRequestId).toBe('mr-1');
       expect(error.message).toContain('Failed to copy documents');
+    });
+  });
+
+  // =========================================================================
+  // triggerPostMergeTemplateMigrations (via executeMerge)
+  // =========================================================================
+
+  describe('post-merge template migration', () => {
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    async function setupSuccessfulMergeWithTemplateChange(
+      templateDocId = 'tmpl-doc-1',
+      staleCount = 3,
+    ) {
+      const { executeMerge } = await import('../../src/services/merge-execution-service');
+      const conflictDetection = await import('../../src/services/conflict-detection-service');
+      const mergeRequestService = await import('../../src/services/merge-request-service');
+      const checkpointService = await import('../../src/services/checkpoint-service');
+      const docVersionService = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+      const migrationService = await import('../../src/services/migration-service');
+
+      // Mock merge request
+      vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
+        id: 'mr-tmpl',
+        siteId: 'site-1',
+        sourceBranchId: 'feature-branch',
+        targetBranchId: 'main-branch',
+        title: 'Template update merge',
+        status: 'approved',
+        hasConflicts: false,
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: '2026-06-18T10:00:00.000Z',
+        updatedAt: '2026-06-18T10:00:00.000Z',
+      });
+
+      // Conflict detection returns a template document in sourceChanges
+      vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
+        hasConflicts: false,
+        conflicts: { documentConflicts: [], structureConflicts: [] },
+        mergeBase: {
+          checkpointId: 'cp-base',
+          branchId: 'main-branch',
+          createdAt: '2026-06-17T10:00:00.000Z',
+        },
+        sourceChanges: [
+          {
+            documentId: templateDocId,
+            documentPath: '_registry/templates/blog-post',
+            latestVersionId: 'tv-2',
+            latestVersionNumber: 2,
+            baseVersionId: 'tv-1',
+            baseVersionNumber: 1,
+          },
+        ],
+        targetChanges: [],
+      });
+
+      // getDocumentVersion for copying source version to target
+      vi.mocked(docVersionService.getDocumentVersion).mockResolvedValueOnce({
+        id: 'tv-2',
+        documentId: templateDocId,
+        branchId: 'feature-branch',
+        versionNumber: 2,
+        snapshot: {
+          name: 'blog-post',
+          components: [{ type: 'Hero' }, { type: 'CTA' }],
+        },
+        createdAt: '2026-06-18T09:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+        source: 'edit',
+      });
+
+      // createDocumentVersion for the merge copy
+      vi.mocked(docVersionService.createDocumentVersion).mockResolvedValueOnce({
+        id: 'tv-2-target',
+        documentId: templateDocId,
+        branchId: 'main-branch',
+        versionNumber: 2,
+        snapshot: {
+          name: 'blog-post',
+          components: [{ type: 'Hero' }, { type: 'CTA' }],
+        },
+        createdAt: '2026-06-18T11:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+        source: 'merge',
+      });
+
+      // Checkpoint creation
+      vi.mocked(checkpointService.createCheckpoint).mockResolvedValueOnce({
+        checkpoint: {
+          id: 'cp-merged',
+          branchId: 'main-branch',
+          name: 'Post-merge',
+          checkpointType: 'post_merge',
+          createdAt: '2026-06-18T11:00:00.000Z',
+          createdById: 'user-1',
+          createdByType: 'user',
+        },
+        documentCount: 1,
+      });
+
+      // updateMergeRequestStatus
+      vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
+        id: 'mr-tmpl',
+        siteId: 'site-1',
+        sourceBranchId: 'feature-branch',
+        targetBranchId: 'main-branch',
+        title: 'Template update merge',
+        status: 'merged',
+        hasConflicts: false,
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: '2026-06-18T10:00:00.000Z',
+        updatedAt: '2026-06-18T11:00:00.000Z',
+        mergedAt: '2026-06-18T11:00:00.000Z',
+        mergedById: 'user-1',
+        mergedByType: 'user',
+      });
+
+      // getLatestDocumentVersion — called first during source-change copy
+      // (line 711 of merge-execution-service.ts) to detect no-op merges.
+      // Return null to indicate no pre-existing version on target.
+      vi.mocked(docVersionService.getLatestDocumentVersion).mockResolvedValueOnce(null);
+
+      // getLatestDocumentVersion — called second by triggerPostMergeTemplateMigrations
+      // (line 839) to get the template's latest version on the target branch.
+      vi.mocked(docVersionService.getLatestDocumentVersion).mockResolvedValueOnce({
+        id: 'tv-2-target',
+        documentId: templateDocId,
+        branchId: 'main-branch',
+        versionNumber: 2,
+        snapshot: {
+          name: 'blog-post',
+          components: [{ type: 'Hero' }, { type: 'CTA' }],
+        },
+        createdAt: '2026-06-18T11:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+        source: 'merge',
+      });
+
+      // Stale document count query
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ count: String(staleCount) }],
+        rowCount: 1,
+      });
+
+      // triggerMigration mock
+      vi.mocked(migrationService.triggerMigration).mockResolvedValueOnce({
+        id: 'job-post-merge',
+        siteId: 'site-1',
+        branchId: 'main-branch',
+        templateId: templateDocId,
+        fromVersion: 1,
+        toVersion: 2,
+        checkpointId: null,
+        status: 'pending',
+        totalDocuments: staleCount,
+        processedDocuments: 0,
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: new Date('2026-06-18T11:00:00.000Z'),
+        completedAt: null,
+      });
+
+      // processMigration mock
+      vi.mocked(migrationService.processMigration).mockResolvedValueOnce({
+        processedDocuments: staleCount,
+        conflictedDocuments: 0,
+        conflicts: [],
+      });
+
+      return {
+        executeMerge,
+        migrationService,
+        docVersionService,
+        db,
+      };
+    }
+
+    it('should trigger migration when template documents are merged', async () => {
+      const { executeMerge, migrationService } = await setupSuccessfulMergeWithTemplateChange();
+
+      const result = await executeMerge({
+        mergeRequestId: 'mr-tmpl',
+        mergedById: 'user-1',
+        mergedByType: 'user',
+      });
+
+      expect(result.success).toBe(true);
+      expect(migrationService.triggerMigration).toHaveBeenCalledWith(
+        'site-1',
+        'main-branch',
+        'tmpl-doc-1',
+        1,
+        2,
+        { id: 'user-1', type: 'user' },
+      );
+      expect(migrationService.processMigration).toHaveBeenCalledWith(
+        'job-post-merge',
+      );
+    });
+
+    it('should skip migration when no stale documents exist', async () => {
+      const { executeMerge, migrationService } =
+        await setupSuccessfulMergeWithTemplateChange('tmpl-doc-2', 0);
+
+      const result = await executeMerge({
+        mergeRequestId: 'mr-tmpl',
+        mergedById: 'user-1',
+        mergedByType: 'user',
+      });
+
+      expect(result.success).toBe(true);
+      expect(migrationService.triggerMigration).not.toHaveBeenCalled();
+      expect(migrationService.processMigration).not.toHaveBeenCalled();
+    });
+
+    it('should not fail the merge when migration throws', async () => {
+      const { executeMerge } = await setupSuccessfulMergeWithTemplateChange();
+      const migrationService = await import('../../src/services/migration-service');
+
+      // Override triggerMigration to throw
+      vi.mocked(migrationService.triggerMigration).mockReset();
+      vi.mocked(migrationService.triggerMigration).mockRejectedValueOnce(
+        new Error('Migration failed'),
+      );
+
+      // Should not throw — post-merge migration is best-effort
+      const result = await executeMerge({
+        mergeRequestId: 'mr-tmpl',
+        mergedById: 'user-1',
+        mergedByType: 'user',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should skip migration for non-template source changes', async () => {
+      const { executeMerge } = await import('../../src/services/merge-execution-service');
+      const conflictDetection = await import('../../src/services/conflict-detection-service');
+      const mergeRequestService = await import('../../src/services/merge-request-service');
+      const checkpointService = await import('../../src/services/checkpoint-service');
+      const docVersionService = await import('../../src/services/document-version-service');
+      const migrationService = await import('../../src/services/migration-service');
+
+      vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
+        id: 'mr-page',
+        siteId: 'site-1',
+        sourceBranchId: 'feature-branch',
+        targetBranchId: 'main-branch',
+        title: 'Page update merge',
+        status: 'approved',
+        hasConflicts: false,
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: '2026-06-18T10:00:00.000Z',
+        updatedAt: '2026-06-18T10:00:00.000Z',
+      });
+
+      // Only regular page documents, no templates
+      vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
+        hasConflicts: false,
+        conflicts: { documentConflicts: [], structureConflicts: [] },
+        mergeBase: {
+          checkpointId: 'cp-base',
+          branchId: 'main-branch',
+          createdAt: '2026-06-17T10:00:00.000Z',
+        },
+        sourceChanges: [
+          {
+            documentId: 'page-doc-1',
+            documentPath: 'pages/about',
+            latestVersionId: 'pv-1',
+            latestVersionNumber: 1,
+            baseVersionId: null,
+            baseVersionNumber: null,
+          },
+        ],
+        targetChanges: [],
+      });
+
+      vi.mocked(docVersionService.getDocumentVersion).mockResolvedValueOnce({
+        id: 'pv-1',
+        documentId: 'page-doc-1',
+        branchId: 'feature-branch',
+        versionNumber: 1,
+        snapshot: { content: [{ type: 'Hero' }] },
+        createdAt: '2026-06-18T09:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+        source: 'edit',
+      });
+
+      vi.mocked(docVersionService.createDocumentVersion).mockResolvedValueOnce({
+        id: 'pv-1-target',
+        documentId: 'page-doc-1',
+        branchId: 'main-branch',
+        versionNumber: 1,
+        snapshot: { content: [{ type: 'Hero' }] },
+        createdAt: '2026-06-18T11:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+        source: 'merge',
+      });
+
+      vi.mocked(checkpointService.createCheckpoint).mockResolvedValueOnce({
+        checkpoint: {
+          id: 'cp-merged',
+          branchId: 'main-branch',
+          name: 'Post-merge',
+          checkpointType: 'post_merge',
+          createdAt: '2026-06-18T11:00:00.000Z',
+          createdById: 'user-1',
+          createdByType: 'user',
+        },
+        documentCount: 1,
+      });
+
+      vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
+        id: 'mr-page',
+        siteId: 'site-1',
+        sourceBranchId: 'feature-branch',
+        targetBranchId: 'main-branch',
+        title: 'Page update merge',
+        status: 'merged',
+        hasConflicts: false,
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: '2026-06-18T10:00:00.000Z',
+        updatedAt: '2026-06-18T11:00:00.000Z',
+        mergedAt: '2026-06-18T11:00:00.000Z',
+        mergedById: 'user-1',
+        mergedByType: 'user',
+      });
+
+      const result = await executeMerge({
+        mergeRequestId: 'mr-page',
+        mergedById: 'user-1',
+        mergedByType: 'user',
+      });
+
+      expect(result.success).toBe(true);
+      expect(migrationService.triggerMigration).not.toHaveBeenCalled();
     });
   });
 });

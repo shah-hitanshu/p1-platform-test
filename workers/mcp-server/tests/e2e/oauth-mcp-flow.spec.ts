@@ -87,6 +87,7 @@ describe('OAuth + MCP Flow', () => {
         expiresAt: '2026-01-01T00:00:00Z',
         reservedRegions: ['content.0'],
       }))
+      .mockResolvedValueOnce(createMockResponse(true, { snapshot: {} }))
       .mockResolvedValueOnce(createMockResponse(true, { success: true, version: 2 }))
       .mockResolvedValueOnce(createMockResponse(true, { success: true, checkpointId: 'cp-2' }));
 
@@ -103,14 +104,14 @@ describe('OAuth + MCP Flow', () => {
       site_id: 's1', branch_id: 'b1', document_path: '/home', edit_session_id: 'sess-1',
     });
 
-    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(mockFetch).toHaveBeenCalledTimes(4);
 
     const [, startOptions] = mockFetch.mock.calls[0];
     expect(startOptions.headers['X-API-Key']).toBe('aak_agent');
     expect(startOptions.headers['X-Actor-Type']).toBe('agent');
     expect(startOptions.headers['X-Actor-Id']).toBeUndefined();
 
-    const [, applyOptions] = mockFetch.mock.calls[1];
+    const [, applyOptions] = mockFetch.mock.calls[2];
     const applyBody = JSON.parse(applyOptions.body);
     expect(applyBody.editSessionId).toBe('sess-1');
     expect(applyBody.actorId).toBeUndefined();

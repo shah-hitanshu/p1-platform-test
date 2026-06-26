@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/schemas/config.json",
-  
+
   // Worker identity - follows Pantheon naming convention
   "name": "collaborative-state-worker",
   "main": "src/index.ts",

@@ -194,7 +194,7 @@ async function handleRequest(
   env: Env,
   path: string,
   origin: string | null,
-  _ctx: ExecutionContext,
+  ctx: ExecutionContext,
 ): Promise<Response> {
   // Health endpoint (no auth required)
   if (path === '/health' || path === '/health/') {
@@ -358,7 +358,7 @@ async function handleRequest(
   const masClient = getMASClient(env);
 
   try {
-    const response = await dispatchRoute(request, route, principal, env, masClient);
+    const response = await dispatchRoute(request, route, principal, env, masClient, ctx);
     return addCorsHeaders(response, origin, env);
   } catch (error) {
     if (error instanceof AuthorizationError) {

@@ -75,6 +75,27 @@ export async function runWithConnection<T>(
   const connection = createDatabaseConnection(connectionString, options);
   try {
     return await connectionStorage.run(connection, fn);
+  } catch (error: unknown) {
+    const connErrPattern =
+      /connection (refused|terminated|reset|ended|closed)/i;
+    const sysErrPattern =
+      /ECONNREFUSED|ECONNRESET|ETIMEDOUT|socket hang up|57P01/;
+    const isConnectionError =
+      error instanceof Error &&
+      (connErrPattern.test(error.message) ||
+        sysErrPattern.test(error.message));
+
+    if (!isConnectionError) throw error;
+
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    connection.close().catch(() => {});
+    const retryConnection = createDatabaseConnection(connectionString, options);
+    try {
+      return await connectionStorage.run(retryConnection, fn);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      retryConnection.close().catch(() => {});
+    }
   } finally {
     // Fire-and-forget: do not await connection close. Awaiting sql.end() can
     // block for up to 5 seconds (its timeout) when Hyperdrive is slow to

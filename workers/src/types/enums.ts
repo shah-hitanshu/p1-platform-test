@@ -43,13 +43,14 @@ export type BranchStatus = 'active' | 'review' | 'merged' | 'archived';
  * - publish: Created when content is published to main (drives branch inheritance)
  * - agent_pre_edit: Created before an agent starts editing (for rollback)
  * - agent_post_edit: Created after an agent completes editing (for audit)
+ * - pre_migration: Created before a template migration operation (for rollback)
  */
-export type CheckpointType = 'manual' | 'auto' | 'pre_merge' | 'post_merge' | 'publish' | 'agent_pre_edit' | 'agent_post_edit';
+export type CheckpointType = 'manual' | 'auto' | 'pre_merge' | 'post_merge' | 'publish' | 'agent_pre_edit' | 'agent_post_edit' | 'pre_migration';
 
 /**
  * Source of a document version creation.
  */
-export type DocumentVersionSource = 'edit' | 'merge' | 'revert' | 'checkpoint' | 'realtime' | 'publish';
+export type DocumentVersionSource = 'edit' | 'merge' | 'revert' | 'checkpoint' | 'realtime' | 'publish' | 'migration';
 
 /**
  * Merge request workflow states.
@@ -146,3 +147,24 @@ export type DocumentConflictType = 'both-modified' | 'deleted-in-source' | 'dele
  * Types of structure-level conflicts during merge.
  */
 export type StructureConflictType = 'node-move' | 'node-delete' | 'schema-change' | 'metadata-change';
+
+// =============================================================================
+// Template Migration System - Union Types
+// =============================================================================
+
+/**
+ * Migration job status.
+ * - pending: Job created, not yet started
+ * - in_progress: Currently processing documents
+ * - completed: All documents processed successfully
+ * - failed: Job failed with error
+ */
+export type MigrationJobStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
+
+/**
+ * Migration conflict resolution strategy.
+ * - apply: Apply template changes (overwrite document)
+ * - skip: Keep document as-is (ignore template changes)
+ * - manual: Manually resolved by user
+ */
+export type MigrationResolution = 'apply' | 'skip' | 'manual';

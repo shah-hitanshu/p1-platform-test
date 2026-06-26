@@ -20,6 +20,7 @@ import {
   exchangeAuth0Code,
 } from '../auth/oauth/auth0-handler.js';
 import { signState, verifyAndParseState } from '../auth/oauth/state-signing.js';
+import { providerSubToUuid } from '../auth/uuid-v5.js';
 
 function generateNonce(): string {
   const bytes = new Uint8Array(16);
@@ -173,8 +174,11 @@ export async function handleBrokerRoutes(
       return errorResponse('Nonce mismatch', 400);
     }
 
+    // Convert Auth0 subject to UUIDv5 (matches how Auth0IdentityProvider does it)
+    const principalId = await providerSubToUuid('auth0', user.sub);
+
     const approved = await approveTransaction(kv, stateData.txId, {
-      userId: user.sub,
+      userId: principalId,
       userEmail: user.email,
       userName: user.name,
     });

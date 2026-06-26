@@ -17,6 +17,7 @@
     "deploy:production": "wrangler deploy --env production",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:db": "vitest run --config vitest.db.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:all": "vitest run && vitest run --config vitest.integration.config.ts",
     "test:coverage": "vitest run --coverage",
@@ -36,6 +37,7 @@
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.3.0",
+    "@pantheon-systems/p1-content-validator": "workspace:*",
     "ajv": "^8.18.0",
     "aws4fetch": "^1.0.20",
     "fast-json-patch": "^3.1.1",
@@ -45,13 +47,6 @@
     "p-limit": "^7.3.0",
     "postgres": "^3.4.8",
     "yjs": "^13.6.29"
-  },
-  "pnpm": {
-    "overrides": {
-      "esbuild": ">=0.25.0",
-      "undici": ">=6.23.0",
-      "minimatch": ">=10.2.1"
-    }
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260515.1",
@@ -70,8 +65,6 @@
     "wrangler": "^4.92.0"
   },
   "engines": {
-    "node": ">=20.0.0",
-    "pnpm": ">=8.0.0"
-  },
-  "packageManager": "pnpm@9.14.4"
+    "node": ">=20.0.0"
+  }
 }

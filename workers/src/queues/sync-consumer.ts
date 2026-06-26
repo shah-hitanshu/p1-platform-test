@@ -61,6 +61,7 @@ export async function handleSyncQueue(
       actorType: msg.actorType,
       actionType: msg.actionType,
       actionMetadata: msg.actionMetadata,
+      puckActions: msg.puckActions,
     }));
 
     // Open single connection per batch and persist
@@ -95,7 +96,31 @@ function deduplicateMessages(
     const existing = latest.get(key);
 
     if (existing === undefined || msg.body.timestamp > existing.timestamp) {
-      latest.set(key, msg.body);
+      // Merge puckActions from the earlier message so structural actions aren't lost
+      const mergedPuckActions = existing?.puckActions && msg.body.puckActions
+        ? [...existing.puckActions, ...msg.body.puckActions]
+        : msg.body.puckActions ?? existing?.puckActions;
+
+      const merged: SyncQueueMessage = { ...msg.body };
+      if (mergedPuckActions && mergedPuckActions.length > 0) {
+        merged.puckActions = mergedPuckActions;
+      }
+      // Preserve structural actionType if an earlier message was structural
+      if (existing?.actionType === 'structural' && merged.actionType !== 'structural') {
+        merged.actionType = 'structural';
+      }
+      latest.set(key, merged);
+    } else if (existing !== undefined) {
+      // Earlier message wins on snapshot, but merge its puckActions into the kept message
+      if (msg.body.puckActions && msg.body.puckActions.length > 0) {
+        existing.puckActions = [
+          ...msg.body.puckActions,
+          ...(existing.puckActions ?? []),
+        ];
+      }
+      if (msg.body.actionType === 'structural' && existing.actionType !== 'structural') {
+        existing.actionType = 'structural';
+      }
     }
   }
 

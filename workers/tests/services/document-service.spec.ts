@@ -92,15 +92,19 @@ describe('Phase 3.1: Document Service', () => {
       ).rejects.toThrow(DuplicateDocumentPathError);
     });
 
-    it('should throw InvalidDocumentPathError for empty path', async () => {
-      const { createDocument, InvalidDocumentPathError } = await import('../../src/services/document-service');
+    it('should normalize empty path to root path', async () => {
+      const { createDocument } = await import('../../src/services/document-service');
+      const db = await import('../../src/db');
 
-      await expect(
-        createDocument({
-          siteId: 'site-1',
-          path: '',
-        }),
-      ).rejects.toThrow(InvalidDocumentPathError);
+      const mockRow = createMockDocumentRow({ path: '/' });
+      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+
+      const result = await createDocument({
+        siteId: 'site-1',
+        path: '',
+      });
+
+      expect(result.path).toBe('/');
     });
 
     it('should normalize path with leading slash', async () => {

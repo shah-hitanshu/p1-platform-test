@@ -293,6 +293,22 @@ export const MAX_EDIT_SESSION_AGE_MS = 600000;
 // Used in: document-session.ts
 // =============================================================================
 
+/**
+ * Maximum pending puck actions accumulated between syncs.
+ * Prevents memory exhaustion if a client sends many rapid edits
+ * before a sync flushes the queue.
+ * Value: 500 (allows burst editing without unbounded growth)
+ */
+export const MAX_PENDING_PUCK_ACTIONS = 500;
+
+/**
+ * Maximum total byte size of pending puck actions.
+ * Each action is count-capped by MAX_PENDING_PUCK_ACTIONS, but actions
+ * carry arbitrary extra keys so total memory is unbounded without a size cap.
+ * Value: 512KB (generous for 500 actions, prevents memory abuse)
+ */
+export const MAX_PENDING_PUCK_ACTIONS_BYTES = 512 * 1024;
+
 /** Maximum WebSocket messages per second per actor */
 export const MAX_MESSAGES_PER_SECOND = 50;
 

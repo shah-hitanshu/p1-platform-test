@@ -214,10 +214,10 @@ export async function createDocumentOnBranch(
     await query('SAVEPOINT insert_doc');
     try {
       const docResult = await query<DocumentRow>(
-        `INSERT INTO app.documents (site_id, path)
-         VALUES ($1, $2)
+        `INSERT INTO app.documents (site_id, path, template_id, template_version)
+         VALUES ($1, $2, $3, $4)
          RETURNING *`,
-        [params.siteId, normalizedPath],
+        [params.siteId, normalizedPath, params.templateId ?? null, params.templateVersion ?? null],
       );
       await query('RELEASE SAVEPOINT insert_doc');
       document = mapRowToDocument(docResult.rows[0]);

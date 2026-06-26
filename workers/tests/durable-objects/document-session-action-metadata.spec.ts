@@ -197,7 +197,7 @@ describe('Action Metadata Forwarding', () => {
       await vi.advanceTimersByTimeAsync(6000);
       await session.alarm();
 
-      // Step 4: Verify queue message includes action metadata
+      // Step 4: Verify queue message includes puckActions (legacy format converted to array)
       expect(mockQueue.send).toHaveBeenCalledTimes(1);
       const sentMessage = mockQueue.send.mock.calls[0][0] as Record<string, unknown>;
       expect(sentMessage).toMatchObject({
@@ -206,8 +206,7 @@ describe('Action Metadata Forwarding', () => {
         branchId: 'branch-1',
         actorId: 'user-1',
         actorType: 'user',
-        actionType: 'insert',
-        actionMetadata: { componentType: 'Hero', destinationZone: 'root:content' },
+        puckActions: [{ type: 'insert', componentType: 'Hero', destinationZone: 'root:content' }],
       });
     });
 
@@ -247,11 +246,11 @@ describe('Action Metadata Forwarding', () => {
 
       const requestInit = (syncCall ?? [])[1] as RequestInit;
       const body = JSON.parse(requestInit.body as string) as Record<string, unknown>;
-      expect(body.actionType).toBe('set');
-      expect(body.actionMetadata).toEqual({ path: 'title' });
+      // Legacy format is converted to puckActions array
+      expect(body.puckActions).toEqual([{ type: 'set', path: 'title' }]);
     });
 
-    it('should use the latest action_metadata when multiple are sent before sync', async () => {
+    it('should accumulate action_metadata when multiple are sent before sync', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const session = new DocumentSession(mockState as unknown, mockEnv);
 
@@ -267,7 +266,7 @@ describe('Action Metadata Forwarding', () => {
         actionMetadata: { componentType: 'Hero' },
       }));
 
-      // Send second action_metadata (should override the first)
+      // Send second action_metadata (should accumulate with the first)
       await session.webSocketMessage(sender, JSON.stringify({
         type: 'action_metadata',
         actionType: 'reorder',
@@ -285,8 +284,11 @@ describe('Action Metadata Forwarding', () => {
 
       expect(mockQueue.send).toHaveBeenCalledTimes(1);
       const sentMessage = mockQueue.send.mock.calls[0][0] as Record<string, unknown>;
-      expect(sentMessage.actionType).toBe('reorder');
-      expect(sentMessage.actionMetadata).toEqual({ fromIndex: 0, toIndex: 2 });
+      // Both actions accumulated
+      expect(sentMessage.puckActions).toEqual([
+        { type: 'insert', componentType: 'Hero' },
+        { type: 'reorder', fromIndex: 0, toIndex: 2 },
+      ]);
     });
 
     it('should not include action metadata fields when no action_metadata message was sent', async () => {
@@ -309,8 +311,7 @@ describe('Action Metadata Forwarding', () => {
 
       expect(mockQueue.send).toHaveBeenCalledTimes(1);
       const sentMessage = mockQueue.send.mock.calls[0][0] as Record<string, unknown>;
-      expect(sentMessage.actionType).toBeUndefined();
-      expect(sentMessage.actionMetadata).toBeUndefined();
+      expect(sentMessage.puckActions).toBeUndefined();
     });
 
     it('should handle action_metadata without data field', async () => {
@@ -338,9 +339,8 @@ describe('Action Metadata Forwarding', () => {
 
       expect(mockQueue.send).toHaveBeenCalledTimes(1);
       const sentMessage = mockQueue.send.mock.calls[0][0] as Record<string, unknown>;
-      expect(sentMessage.actionType).toBe('delete');
-      // data is undefined, so actionMetadata should not be present
-      expect(sentMessage.actionMetadata).toBeUndefined();
+      // Legacy format converted to puckActions — undefined actionMetadata is spread as empty
+      expect(sentMessage.puckActions).toEqual([{ type: 'delete' }]);
     });
 
     it('should not route action_metadata messages to presence handler', async () => {
@@ -403,8 +403,7 @@ describe('Action Metadata Forwarding', () => {
       expect(syncScheduleCall).toBeDefined();
 
       const schedule = (syncScheduleCall ?? [])[1] as Record<string, unknown>;
-      expect(schedule.actionType).toBe('insert');
-      expect(schedule.actionMetadata).toEqual({ componentType: 'Card' });
+      expect(schedule.puckActions).toEqual([{ type: 'insert', componentType: 'Card' }]);
     });
   });
 });

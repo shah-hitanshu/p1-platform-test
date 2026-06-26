@@ -31,6 +31,11 @@ import {
 import { createCheckpoint } from './checkpoint-service';
 import { getMainBranch } from './branch-service';
 import { publishMergedVersions } from './merge-publish';
+import { query } from '../db';
+import {
+  triggerMigration,
+  processMigration,
+} from './migration-service';
 
 // =============================================================================
 // System-managed path exclusion
@@ -47,14 +52,24 @@ import { publishMergedVersions } from './merge-publish';
  * NOTE: This intentionally does NOT include other underscore-prefixed paths
  * such as `_translations/` or `_structure/` — those are user content and
  * must continue to merge normally.
+ *
+ * EXCEPTION: `_registry/templates/` documents are user-authored content types
+ * and must merge normally to support cross-branch template propagation
+ * (PROPOSAL-010, CUJ-13).
  */
 const SYSTEM_MANAGED_PATH_PREFIXES: readonly string[] = ['_registry/'];
 
 /**
  * True when `path` is owned by Pantheon core code and must be excluded
  * from any merge-related operation.
+ *
+ * Exception: `_registry/templates/` paths are user-authored content type
+ * definitions and are allowed through merges.
  */
 function isSystemManagedPath(path: string): boolean {
+  if (path.startsWith('_registry/templates/')) {
+    return false;
+  }
   return SYSTEM_MANAGED_PATH_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
@@ -332,6 +347,17 @@ export async function executeMerge(
     mergedByType,
   );
 
+  // 9. Post-merge template migration: if template documents were merged,
+  // trigger migration for affected documents on the target branch.
+  // Best-effort: each template is individually try/caught inside the helper,
+  // so failures are logged but never roll back the merge.
+  await triggerPostMergeTemplateMigrations(
+    mergeRequest,
+    detectionResult,
+    mergedById,
+    mergedByType,
+  );
+
   return {
     success: true,
     mergeRequestId,
@@ -537,6 +563,14 @@ export async function executeMergeWithResolution(
   const publishOutcome = await autoPublishIfTargetIsMain(
     mergeRequest,
     mergedDocVersions,
+    mergedById,
+    mergedByType,
+  );
+
+  // 9. Post-merge template migration (best-effort, same as above)
+  await triggerPostMergeTemplateMigrations(
+    mergeRequest,
+    detectionResult,
     mergedById,
     mergedByType,
   );
@@ -778,6 +812,81 @@ async function autoPublishIfTargetIsMain(
       error,
     );
     return { documentIds, error: `Auto-publish failed: ${message}` };
+  }
+}
+
+/**
+ * After a merge, detect if any template documents were merged and trigger
+ * migration for documents on the target branch that reference those templates
+ * with a stale template_version.
+ *
+ * Best-effort: failures are logged but do not roll back the merge.
+ */
+const POST_MERGE_MIGRATION_TIMEOUT_MS = 10_000;
+
+async function triggerPostMergeTemplateMigrations(
+  mergeRequest: MergeRequest,
+  detectionResult: ConflictDetectionResult,
+  mergedById: string,
+  mergedByType: 'user' | 'agent',
+): Promise<void> {
+  const mergedTemplates = detectionResult.sourceChanges.filter(
+    (c) => c.documentPath.startsWith('_registry/templates/'),
+  );
+
+  if (mergedTemplates.length === 0) {
+    return;
+  }
+
+  for (const templateChange of mergedTemplates) {
+    try {
+      const latestVersion = await getLatestDocumentVersion(
+        templateChange.documentId,
+        mergeRequest.targetBranchId,
+      );
+      if (latestVersion === null) {
+        continue;
+      }
+
+      const staleDocsResult = await query<{ count: string }>(
+        `SELECT COUNT(*) as count FROM app.documents
+         WHERE template_id = $1 AND template_version < $2 AND archived_at IS NULL`,
+        [templateChange.documentId, latestVersion.versionNumber],
+      );
+      const staleCount = parseInt(staleDocsResult.rows[0].count, 10);
+      if (staleCount === 0) {
+        continue;
+      }
+
+      const fromVersion = Math.max(latestVersion.versionNumber - 1, 0);
+      const job = await triggerMigration(
+        mergeRequest.siteId,
+        mergeRequest.targetBranchId,
+        templateChange.documentId,
+        fromVersion,
+        latestVersion.versionNumber,
+        { id: mergedById, type: mergedByType },
+      );
+
+      // Time-box migration so a large stale set doesn't block the merge response.
+      // If it times out, the job stays in 'in_progress' and can be retried.
+      await Promise.race([
+        processMigration(job.id),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => { reject(new Error('Post-merge migration timed out')); }, POST_MERGE_MIGRATION_TIMEOUT_MS);
+        }),
+      ]);
+
+      console.log(
+        'Post-merge template migration completed for template ' +
+        templateChange.documentId + ': ' + String(staleCount) + ' documents processed',
+      );
+    } catch (error) {
+      console.error(
+        'Post-merge template migration failed for template ' + templateChange.documentId + ':',
+        error,
+      );
+    }
   }
 }
 

@@ -56,3 +56,33 @@ export interface ValidateInput {
     warnOnZonesUsage?: boolean;
   };
 }
+
+// ---------------------------------------------------------------------------
+// Structure Validator Types (PROPOSAL-010)
+// ---------------------------------------------------------------------------
+
+export interface TemplateComponent {
+  type: string;
+  pinned: boolean;
+  defaultProps: Record<string, unknown>;
+}
+
+export interface TemplateSnapshot {
+  components: TemplateComponent[];
+}
+
+export interface StructuralConformanceError {
+  code:
+    | 'missing_pinned_component'
+    | 'pinned_component_out_of_order'
+    | 'unexpected_component_at_pinned_slot';
+  message: string;
+  componentType: string;
+  expectedIndex?: number;
+  actualIndex?: number;
+}
+
+export interface ValidateStructureInput {
+  documentSnapshot: Record<string, unknown>;
+  templateSnapshot: TemplateSnapshot;
+}

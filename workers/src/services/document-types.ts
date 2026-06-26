@@ -39,6 +39,8 @@ export interface DocumentRow {
   path: string;
   created_at: string;
   archived_at: string | null;
+  template_id?: string | null;
+  template_version?: number | null;
 }
 
 /**
@@ -83,8 +85,10 @@ export interface CreateDocumentOnBranchParams {
   branchId: string;
   path: string;
   snapshot?: Record<string, unknown>;
+  templateId?: string;
+  templateVersion?: number;
   createdById: string;
-  createdByType: 'user' | 'agent';
+  createdByType: 'user' | 'agent' | 'service';
 }
 
 /**
@@ -102,7 +106,7 @@ export interface DeleteDocumentOnBranchParams {
   documentId: string;
   branchId: string;
   deletedById: string;
-  deletedByType: 'user' | 'agent';
+  deletedByType: 'user' | 'agent' | 'service';
 }
 
 /**
@@ -116,7 +120,7 @@ export interface DocumentVersion {
   snapshot: Record<string, unknown>;
   source: string;
   createdById: string;
-  createdByType: 'user' | 'agent' | 'system';
+  createdByType: 'user' | 'agent' | 'system' | 'service';
   createdAt: string;
 }
 
@@ -131,7 +135,7 @@ export interface DocumentVersionRow {
   snapshot: Record<string, unknown>;
   source: string;
   created_by_id: string;
-  created_by_type: 'user' | 'agent' | 'system';
+  created_by_type: 'user' | 'agent' | 'system' | 'service';
   created_at: string;
   is_tombstone?: boolean;
 }
@@ -240,6 +244,12 @@ export function mapRowToDocument(row: DocumentRow): DocumentWithArchive {
     path: row.path,
     createdAt: row.created_at,
   };
+  if (row.template_id !== null && row.template_id !== undefined) {
+    doc.templateId = row.template_id;
+  }
+  if (row.template_version !== null && row.template_version !== undefined) {
+    doc.templateVersion = row.template_version;
+  }
   if (row.archived_at !== null) {
     doc.archivedAt = row.archived_at;
   }
@@ -271,11 +281,19 @@ const MAX_PATH_LENGTH = 1024;
  * @throws InvalidDocumentPathError if path is empty, whitespace-only, or too long
  */
 export function normalizePath(path: string): string {
-  let normalized = path.trim();
-
-  if (normalized === '') {
+  // Check for null/undefined
+  if (path === null || path === undefined) {
     throw new InvalidDocumentPathError('path cannot be empty');
   }
+
+  // Trim whitespace
+  let normalized = path.trim();
+
+  // Empty string represents root path "/"
+  if (normalized === '') {
+    return '/';
+  }
+
 
   if (normalized.length > MAX_PATH_LENGTH) {
     throw new InvalidDocumentPathError(
@@ -290,13 +308,13 @@ export function normalizePath(path: string): string {
   // Convert backslashes to forward slashes for consistent path separators
   normalized = normalized.replace(/\\/g, '/');
 
-  // Reject paths that consist entirely of slashes (e.g., "//", "///")
-  if (/^\/+$/.test(normalized)) {
-    throw new InvalidDocumentPathError('path cannot contain only slashes');
-  }
-
   // Collapse multiple consecutive slashes into single slash
   normalized = normalized.replace(/\/+/g, '/');
+
+  // If the path is just "/" (root path), return it as-is
+  if (normalized === '/') {
+    return '/';
+  }
 
   // Remove leading slashes
   while (normalized.startsWith('/')) {
@@ -327,6 +345,7 @@ export function validatePath(normalizedPath: string): void {
   if (normalizedPath === '') {
     throw new InvalidDocumentPathError('path cannot be empty');
   }
+
 
   // Root path "/" is always valid
   if (normalizedPath === '/') {

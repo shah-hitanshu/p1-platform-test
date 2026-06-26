@@ -1,5 +1,6 @@
 {
   "name": "collaborative-state-system",
   "version": "0.0.0",
-  "private": true
+  "private": true,
+  "packageManager": "pnpm@11.5.1"
 }

@@ -18,16 +18,19 @@ describe('Root Path "/" Handling', () => {
       expect(normalized).toBe('/');
     });
 
-    it('should throw for empty string', () => {
-      expect(() => normalizePath('')).toThrow();
+    it('should normalize empty string to "/"', () => {
+      const normalized = normalizePath('');
+      expect(normalized).toBe('/');
     });
 
-    it('should throw for "//"', () => {
-      expect(() => normalizePath('//')).toThrow();
+    it('should normalize "//" to "/"', () => {
+      const normalized = normalizePath('//');
+      expect(normalized).toBe('/');
     });
 
-    it('should throw for "///"', () => {
-      expect(() => normalizePath('///')).toThrow();
+    it('should normalize "///" to "/"', () => {
+      const normalized = normalizePath('///');
+      expect(normalized).toBe('/');
     });
 
     it('should normalize regular paths correctly', () => {

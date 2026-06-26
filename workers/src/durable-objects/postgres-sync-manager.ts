@@ -37,8 +37,11 @@ export class PostgresSyncManager {
   /** Flag indicating if a cleanup alarm has been scheduled */
   cleanupAlarmScheduled = false;
 
-  /** Pending action metadata from the most recent client edit */
+  /** Pending action metadata from the most recent client edit (for immediate sync) */
   pendingActionMetadata: PendingActionMetadata | null = null;
+
+  /** Accumulated puck actions from client edits since the last sync */
+  pendingPuckActions: { type: string; [key: string]: unknown }[] = [];
 
   constructor(
     private readonly env: DocumentSessionEnv,
@@ -261,28 +264,24 @@ export class PostgresSyncManager {
     // Read sync schedule from storage if no actor info provided
     let syncActorId = actorId;
     let syncActorType = actorType ?? 'user' as const;
-    let syncActionType: string | undefined;
-    let syncActionMetadata: Record<string, unknown> | undefined;
+    let syncPuckActions: { type: string; [key: string]: unknown }[] | undefined;
     if (syncActorId === undefined) {
       const schedule = await this.storage.get<{
         dueAt: number;
         actorId: string;
         actorType: 'user' | 'agent';
-        actionType?: string;
-        actionMetadata?: Record<string, unknown>;
+        puckActions?: { type: string; [key: string]: unknown }[];
       }>(SYNC_SCHEDULE_KEY);
       if (schedule !== undefined) {
         syncActorId = schedule.actorId;
         syncActorType = schedule.actorType;
-        syncActionType = schedule.actionType;
-        syncActionMetadata = schedule.actionMetadata;
+        syncPuckActions = schedule.puckActions;
       }
     }
 
-    // Use in-memory pending metadata if not read from schedule
-    if (syncActionType === undefined && this.pendingActionMetadata !== null) {
-      syncActionType = this.pendingActionMetadata.actionType;
-      syncActionMetadata = this.pendingActionMetadata.actionMetadata;
+    // Use in-memory accumulated actions if not read from schedule
+    if (syncPuckActions === undefined && this.pendingPuckActions.length > 0) {
+      syncPuckActions = this.pendingPuckActions;
     }
 
     if (syncActorId === undefined) {
@@ -300,7 +299,7 @@ export class PostgresSyncManager {
 
     // Set the lock before starting the sync
     this.syncInProgress = this.performSync(
-      internalApiUrl, internalSecret, syncActorId, syncActorType, syncActionType, syncActionMetadata,
+      internalApiUrl, internalSecret, syncActorId, syncActorType, syncPuckActions,
     );
 
     try {
@@ -317,16 +316,14 @@ export class PostgresSyncManager {
    * @param internalSecret - The internal secret (pre-validated)
    * @param actorId - Actor ID for sync attribution
    * @param actorType - Actor type for sync attribution
-   * @param actionType - Optional Puck action type
-   * @param actionMetadata - Optional action metadata
+   * @param puckActions - Optional array of Puck actions
    */
   private async performSync(
     internalApiUrl: string,
     internalSecret: string,
     actorId: string,
     actorType: 'user' | 'agent',
-    actionType?: string,
-    actionMetadata?: Record<string, unknown>,
+    puckActions?: { type: string; [key: string]: unknown }[],
   ): Promise<void> {
     try {
       const root = this.getYdoc().getMap('root');
@@ -344,13 +341,12 @@ export class PostgresSyncManager {
           actorId,
           actorType,
           timestamp: Date.now(),
-          ...(actionType !== undefined ? { actionType } : {}),
-          ...(actionMetadata !== undefined ? { actionMetadata } : {}),
+          ...(puckActions !== undefined ? { puckActions } : {}),
         });
         this.lastSyncedStateVectorHash = this.computeStateVectorHash();
-        this.pendingActionMetadata = null;
+        this.pendingPuckActions = [];
         await this.storage.delete(SYNC_SCHEDULE_KEY);
-        console.log(`Queued sync for document ${this.sessionInfo.documentId}`);
+        console.log(`Queued sync for document ${this.sessionInfo.documentId}, puckActions: ${puckActions ? String(puckActions.length) : 'none'}`);
         return;
       }
 
@@ -370,8 +366,7 @@ export class PostgresSyncManager {
           snapshot,
           actorId,
           actorType,
-          ...(actionType !== undefined ? { actionType } : {}),
-          ...(actionMetadata !== undefined ? { actionMetadata } : {}),
+          ...(puckActions !== undefined ? { puckActions } : {}),
         }),
       });
 
@@ -382,7 +377,7 @@ export class PostgresSyncManager {
         console.log(`Synced document ${this.sessionInfo.documentId} to PostgreSQL`);
         // Update the state vector hash and clear sync schedule after successful sync
         this.lastSyncedStateVectorHash = this.computeStateVectorHash();
-        this.pendingActionMetadata = null;
+        this.pendingPuckActions = [];
         await this.storage.delete(SYNC_SCHEDULE_KEY);
       }
     } catch (error) {
@@ -515,16 +510,12 @@ export class PostgresSyncManager {
   async scheduleSync(
     actorId: string,
     actorType: 'user' | 'agent',
-    actionMetadata?: PendingActionMetadata | null,
   ): Promise<void> {
-    // Capture action metadata if provided (latest wins on debounce)
-    if (actionMetadata !== undefined && actionMetadata !== null) {
-      this.pendingActionMetadata = actionMetadata;
-    }
-
-    // Check if the document has actually changed by comparing state vectors
+    // Check if the document has actually changed by comparing state vectors.
+    // Still schedule when pendingPuckActions exist — the actions need to be
+    // recorded on the version even if the snapshot is unchanged.
     const currentHash = this.computeStateVectorHash();
-    if (currentHash === this.lastSyncedStateVectorHash) {
+    if (currentHash === this.lastSyncedStateVectorHash && this.pendingPuckActions.length === 0) {
       console.log('Sync skipped: state vector unchanged (no actual content changes)');
       return;
     }
@@ -562,9 +553,8 @@ export class PostgresSyncManager {
       dueAt,
       actorId,
       actorType,
-      ...(this.pendingActionMetadata !== null ? {
-        actionType: this.pendingActionMetadata.actionType,
-        actionMetadata: this.pendingActionMetadata.actionMetadata,
+      ...(this.pendingPuckActions.length > 0 ? {
+        puckActions: this.pendingPuckActions,
       } : {}),
     });
 

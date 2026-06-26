@@ -240,7 +240,9 @@ describe('BrokerRoutes', () => {
         expect.anything(),
         'tx-abc-123',
         expect.objectContaining({
-          userId: 'auth0|user-1',
+          userId: expect.stringMatching(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+          ) as string,
           userEmail: 'user@example.com',
           userName: 'Test User',
         }),

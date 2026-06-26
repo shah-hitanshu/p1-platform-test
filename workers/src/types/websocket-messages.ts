@@ -78,12 +78,14 @@ export interface WsPublishRequestMessage {
  */
 export interface WsActionMetadataMessage {
   type: 'action_metadata';
-  /** Puck action type (e.g., "insert", "reorder", "set", "delete") */
-  actionType: string;
-  /** Additional context about the action (component type, path, etc.) */
+  /** Array of Puck actions from the frontend's onAction callback */
+  puckActions: Array<{ type: string; [key: string]: unknown }>;
+  /** @deprecated Use puckActions instead */
+  actionType?: string;
+  /** @deprecated Use puckActions instead */
   actionMetadata?: Record<string, unknown>;
   /** Client timestamp for latency measurement */
-  timestamp: number;
+  timestamp?: number;
 }
 
 /**
@@ -223,7 +225,10 @@ export function isWsActionMetadata(msg: unknown): msg is WsActionMetadataMessage
   const m = msg as Record<string, unknown>;
   return (
     m.type === 'action_metadata' &&
-    typeof m.actionType === 'string'
+    (
+      Array.isArray(m.puckActions) ||
+      typeof m.actionType === 'string'
+    )
   );
 }
 

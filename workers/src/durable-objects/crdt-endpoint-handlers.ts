@@ -348,7 +348,7 @@ export async function handleFlush(
   }
 
   // Get actor info from sync schedule (or default)
-  let actorId = 'system';
+  let actorId = '00000000-0000-0000-0000-000000000001';
   let actorType: 'user' | 'agent' = 'user';
   const schedule = await deps.storage.get<{ dueAt: number; actorId: string; actorType: 'user' | 'agent' }>(SYNC_SCHEDULE_KEY);
   if (schedule !== undefined) {
@@ -433,7 +433,23 @@ export async function handleInitialize(
  *
  * @returns The reloaded snapshot as a plain object
  */
-export async function reloadFromPostgres(deps: CrdtEndpointDeps): Promise<Record<string, unknown>> {
+/**
+ * Reload Y.Doc from PostgreSQL and notify WebSocket clients.
+ *
+ * IMPORTANT: This replaces the Y.Doc instance via setYdoc(). All code that
+ * accesses the Y.Doc after this call must use getYdoc(), not a captured ref.
+ *
+ * @param forceDisconnect - When true, close all WebSocket connections so
+ *   clients must reconnect with fresh state. Used for migration reloads
+ *   where the Puck data model changed structurally. When false (default),
+ *   broadcast the CRDT diff — sufficient for routine merge invalidation
+ *   where the client can apply the update incrementally.
+ * @returns The reloaded snapshot as a plain object
+ */
+export async function reloadFromPostgres(
+  deps: CrdtEndpointDeps,
+  forceDisconnect = false,
+): Promise<Record<string, unknown>> {
   // Capture the old state vector before reload
   const oldStateVector = Y.encodeStateVector(deps.getYdoc());
 
@@ -449,14 +465,34 @@ export async function reloadFromPostgres(deps: CrdtEndpointDeps): Promise<Record
   const currentDoc = deps.getYdoc();
   const diff = Y.encodeStateAsUpdate(currentDoc, oldStateVector);
 
-  // Broadcast diff to all connected WebSocket clients
-  if (diff.length > 0) {
-    deps.broadcastUpdate(diff);
-  }
-
-  // Persist the reloaded state
+  // Persist the reloaded state before touching WebSocket clients
   await deps.persist();
   deps.syncManager.lastSyncedStateVectorHash = deps.syncManager.computeStateVectorHash();
+
+  // Cancel any pending sync schedule — the reloaded state matches Postgres,
+  // so a stale scheduled sync would overwrite the migration with old data.
+  await deps.storage.delete('syncSchedule');
+  deps.syncManager.pendingPuckActions = [];
+
+  if (forceDisconnect) {
+    // Disconnect all WebSocket clients so they reconnect with fresh state.
+    // Used for migration reloads where the Puck data model changed
+    // structurally — broadcasting a diff doesn't work reliably because the
+    // client's Puck data state is stale and its onChange fires with old data
+    // before the diff is applied, overwriting the migration.
+    const sockets = deps.getWebSockets();
+    for (const ws of sockets) {
+      try {
+        ws.close(4001, 'Document state reloaded — please reconnect');
+      } catch {
+        // Socket may already be closed
+      }
+    }
+  } else {
+    // Broadcast the CRDT diff to connected clients. Sufficient for routine
+    // merge invalidation where the document structure hasn't changed.
+    deps.broadcastUpdate(diff);
+  }
 
   const root = currentDoc.getMap('root');
   return root.toJSON();
@@ -475,7 +511,9 @@ export async function handleReload(
   }
 
   try {
-    const snapshot = await reloadFromPostgres(deps);
+    // /reload is called by migration DO reloader — force-disconnect so
+    // clients reconnect with the structurally updated document.
+    const snapshot = await reloadFromPostgres(deps, true);
     return new Response(
       JSON.stringify({
         success: true,

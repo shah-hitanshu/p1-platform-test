@@ -24,6 +24,8 @@ import {
   MAX_MESSAGES_PER_SECOND,
   RATE_LIMIT_WINDOW_MS,
   RATE_LIMIT_CLOSE_THRESHOLD,
+  MAX_PENDING_PUCK_ACTIONS,
+  MAX_PENDING_PUCK_ACTIONS_BYTES,
 } from '../constants/security-limits';
 import type {
   AgentEditSession,
@@ -380,10 +382,31 @@ export async function handleWebSocketMessage(
       // Capture action metadata from Puck client — store on syncManager
       // so the next scheduleSync includes it in the sync payload
       if (parsed !== null && isWsActionMetadata(parsed)) {
-        deps.syncManager.pendingActionMetadata = {
-          actionType: parsed.actionType,
-          actionMetadata: parsed.actionMetadata,
-        };
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- legacy actionType/actionMetadata fallback
+        const legacyType = parsed.actionType;
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
+        const legacyMeta = parsed.actionMetadata;
+        const puckActions: { type: string; [key: string]: unknown }[] =
+          Array.isArray(parsed.puckActions) ? parsed.puckActions
+            : (typeof legacyType === 'string' ? [{ type: legacyType, ...legacyMeta }] : []);
+        const validated = puckActions.filter(
+          (a: unknown) => typeof a === 'object' && a !== null && typeof (a as Record<string, unknown>).type === 'string',
+        );
+        if (deps.syncManager.pendingPuckActions.length < MAX_PENDING_PUCK_ACTIONS) {
+          const remaining = MAX_PENDING_PUCK_ACTIONS - deps.syncManager.pendingPuckActions.length;
+          const toAdd = validated.slice(0, remaining);
+          const currentSize = JSON.stringify(deps.syncManager.pendingPuckActions).length;
+          const addSize = JSON.stringify(toAdd).length;
+          if (currentSize + addSize <= MAX_PENDING_PUCK_ACTIONS_BYTES) {
+            deps.syncManager.pendingPuckActions.push(...toAdd);
+          }
+        }
+        if (typeof legacyType === 'string') {
+          deps.syncManager.pendingActionMetadata = {
+            actionType: legacyType,
+            actionMetadata: legacyMeta,
+          };
+        }
         return;
       }
       deps.handlePresenceMessage(ws, meta, message);
@@ -410,9 +433,8 @@ export async function handleWebSocketMessage(
     // Phase 1.1: Debounced persistence — mark pending instead of persisting directly
     await deps.markPersistPending();
 
-    // Schedule sync to PostgreSQL after idle timeout, passing any pending action metadata
-    const pendingMeta = deps.syncManager.pendingActionMetadata;
-    await deps.syncManager.scheduleSync(meta.actorId, meta.actorType, pendingMeta);
+    // Schedule sync to PostgreSQL after idle timeout
+    await deps.syncManager.scheduleSync(meta.actorId, meta.actorType);
   } catch (error) {
     console.error('Error handling WebSocket message:', error);
   }

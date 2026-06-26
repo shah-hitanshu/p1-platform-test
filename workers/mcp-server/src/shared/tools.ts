@@ -10,8 +10,25 @@
 import { z } from 'zod';
 import type { McpApiClient } from './api-client.js';
 import type { ActingUser } from './types.js';
-import { validateOps } from '@pantheon-systems/p1-content-validator';
-import type { ValidationError } from '@pantheon-systems/p1-content-validator';
+import {
+  validateOps as _validateOps,
+  validateDocumentStructure as _validateDocumentStructure,
+} from '@pantheon-systems/p1-content-validator';
+import type { ValidationError, StructuralConformanceError } from '@pantheon-systems/p1-content-validator';
+
+// Type-safe wrappers to satisfy ESLint
+const validateOps = _validateOps as (input: {
+  operations: unknown[];
+  registry: Record<string, unknown>;
+  currentSnapshot?: Record<string, unknown>;
+}) => { errors: ValidationError[] };
+
+const validateDocumentStructure = _validateDocumentStructure as (input: {
+  documentSnapshot: Record<string, unknown>;
+  templateSnapshot: {
+    components: { type: string; pinned: boolean; defaultProps: Record<string, unknown> }[];
+  };
+}) => { errors: StructuralConformanceError[] };
 
 // =============================================================================
 // ULID generator (inline — no external dependency required in Workers)
@@ -163,10 +180,16 @@ const CreateBranchInputSchema = z.object({
   ),
 });
 
+const ListTemplatesInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+});
+
 const CreatePageInputSchema = z.object({
   site_id: z.string().describe('The site ID (UUID from list_sites)'),
   branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
   document_path: z.string().describe('Path for the new page (e.g. "about" or "products/widget"). Must not start with _registry/.'),
+  template_id: z.string().optional().describe('Optional template ID to create page from (get ID from list_templates)'),
   components: z.array(z.object({
     type: z.string().describe('Component type name (from list_components)'),
     props: z.record(z.unknown()).describe('Component props matching the registered fields'),
@@ -545,9 +568,15 @@ export function getToolDefinitions(): ToolDefinition[] {
       inputSchema: ListComponentsInputSchema,
     },
     {
+      name: 'list_templates',
+      description:
+        'List available templates on a branch. Returns template metadata including id, name, label, description, and component structure with pinned flags. Use this to discover available templates before calling create_page with template_id.',
+      inputSchema: ListTemplatesInputSchema,
+    },
+    {
       name: 'create_page',
       description:
-        'Create a new page with a structured set of Puck components. Use list_components first to discover available component types and their field schemas. Each component is given a unique ID automatically. Returns the new document path and ID.',
+        'Create a new page with a structured set of Puck components. Use list_components first to discover available component types and their field schemas. Optionally specify template_id (from list_templates) to create a page from a template. Each component is given a unique ID automatically. Returns the new document path and ID.',
       inputSchema: CreatePageInputSchema,
     },
     {
@@ -797,6 +826,15 @@ function formatValidationError(errors: ValidationError[]): ToolResult {
   };
 }
 
+function formatStructuralError(errors: StructuralConformanceError[]): ToolResult {
+  const n = errors.length;
+  const summary = `Structural validation failed: ${String(n)} error${n === 1 ? '' : 's'}. The document does not conform to its template structure.`;
+  return {
+    content: [{ type: 'text', text: `${summary}\n${JSON.stringify(errors, null, 2)}` }],
+    isError: true,
+  };
+}
+
 // =============================================================================
 // Tool Handler Types
 // =============================================================================
@@ -812,6 +850,7 @@ type AbortEditSessionInput = z.infer<typeof AbortEditSessionInputSchema>;
 type GetBranchPresenceInput = z.infer<typeof GetBranchPresenceInputSchema>;
 type GetDocumentPresenceInput = z.infer<typeof GetDocumentPresenceInputSchema>;
 type ListComponentsInput = z.infer<typeof ListComponentsInputSchema>;
+type ListTemplatesInput = z.infer<typeof ListTemplatesInputSchema>;
 type CreatePageInput = z.infer<typeof CreatePageInputSchema>;
 type CreateBranchInput = z.infer<typeof CreateBranchInputSchema>;
 type GetBranchInput = z.infer<typeof GetBranchInputSchema>;
@@ -856,6 +895,7 @@ export interface ToolHandlers {
   get_branch_presence: (input: GetBranchPresenceInput) => Promise<ToolResult>;
   get_document_presence: (input: GetDocumentPresenceInput) => Promise<ToolResult>;
   list_components: (input: ListComponentsInput) => Promise<ToolResult>;
+  list_templates: (input: ListTemplatesInput) => Promise<ToolResult>;
   create_page: (input: CreatePageInput) => Promise<ToolResult>;
   create_branch: (input: CreateBranchInput) => Promise<ToolResult>;
   get_branch: (input: GetBranchInput) => Promise<ToolResult>;
@@ -1041,6 +1081,36 @@ export function createToolHandlers(
           path: normalizePath(op.path),
         }));
 
+        // Fetch the current document snapshot for validation.
+        // Used by both validateOps (component schema) and validateDocumentStructure (template conformance).
+        let currentSnapshot: Record<string, unknown> | undefined;
+        let documentTemplateId: string | undefined;
+        try {
+          const doc = await apiClient.getDocument(
+            input.site_id,
+            input.branch_id,
+            input.document_path,
+          );
+          currentSnapshot = doc.snapshot;
+        } catch {
+          // Proceed without snapshot — component validation still runs if enabled
+        }
+
+        // Look up document metadata to get templateId for structural validation.
+        // The snapshot endpoint (realtime handler) doesn't return document metadata,
+        // so we use the by-path endpoint which returns the Document record.
+        try {
+          const docInfo = await apiClient.lookupDocumentByPath(
+            input.site_id,
+            input.document_path,
+          );
+          if (docInfo !== null) {
+            documentTemplateId = docInfo.templateId;
+          }
+        } catch {
+          // Proceed without template validation
+        }
+
         // Validate ops against the component registry before sending to CSS.
         // Only runs when enableValidation is set on the client config (production).
         // If the registry fetch fails for any reason, proceed without validation
@@ -1049,35 +1119,25 @@ export function createToolHandlers(
           try {
             const registry = await apiClient.fetchRegistrySchemas(input.site_id, input.branch_id);
 
-            // Fetch the current document snapshot so validateOps can resolve component
-            // types for targeted prop writes (e.g. content.2.props.background = "steve").
-            // Without the snapshot those ops look like primitive-content replacements
-            // and slip past content-shape validation.
-            let currentSnapshot: Record<string, unknown> | undefined;
-            try {
-              const doc = await apiClient.getDocument(
-                input.site_id,
-                input.branch_id,
-                input.document_path,
-              );
-              currentSnapshot = doc.snapshot;
-            } catch {
-              // Proceed without snapshot — content-shape ops still validate
-            }
-
-            const { errors } = validateOps({
+            const result = validateOps({
               operations: normalizedOperations,
               registry,
               currentSnapshot,
             });
-            if (errors.length > 0) {
-              return formatValidationError(errors);
+            if (result.errors.length > 0) {
+              return formatValidationError(result.errors);
             }
-          } catch {
+          } catch (error: unknown) {
             // Registry fetch failed — proceed without validation
+            void error;
           }
+
+          // Structure validation: if document has templateId, validate conformance
+          // AFTER applying to the backend (not before, as we don't have full JSON Patch simulation).
+          // This is acceptable since the edit session can be aborted if validation fails.
         }
 
+        // Apply edits to the backend
         const result = await apiClient.applyEdits({
           siteId: input.site_id,
           branchId: input.branch_id,
@@ -1085,6 +1145,47 @@ export function createToolHandlers(
           editSessionId: input.edit_session_id,
           operations: normalizedOperations,
         });
+
+        // Structure validation: if document has templateId, validate conformance AFTER applying.
+        // Only runs when enableValidation is set on the client config (production).
+        // NOTE: Validation happens post-edit because we need the backend to apply operations.
+        // If validation fails, the agent should call abort_edit_session to rollback.
+        if (apiClient.validationEnabled && documentTemplateId !== undefined) {
+          try {
+            // Fetch the updated document snapshot after edits
+            const updatedDoc = await apiClient.getDocument(
+              input.site_id,
+              input.branch_id,
+              input.document_path,
+            );
+
+            // Fetch the template (returns flat fields, not wrapped in .snapshot)
+            const template = await apiClient.getTemplate(
+              input.site_id,
+              input.branch_id,
+              documentTemplateId,
+            );
+
+            // Validate structure conformance
+            const validationResult = validateDocumentStructure({
+              documentSnapshot: updatedDoc.snapshot,
+              templateSnapshot: {
+                components: Array.isArray(template.components) ? template.components : [],
+              },
+            });
+
+            if (validationResult.errors.length > 0) {
+              // Structure validation failed. Return error with guidance to abort the session.
+              const errorResult = formatStructuralError(validationResult.errors);
+              errorResult.content[0].text += '\n\nThe edits were applied but violate template structure. Call abort_edit_session to rollback these changes.';
+              return errorResult;
+            }
+          } catch (error: unknown) {
+            // Template fetch or validation failed — proceed without structure validation
+            void error;
+          }
+        }
+
         return formatResult({
           success: result.success,
           version: result.version,
@@ -1251,6 +1352,44 @@ export function createToolHandlers(
       }
     },
 
+    async list_templates(input: ListTemplatesInput): Promise<ToolResult> {
+      try {
+        const templates = await apiClient.listTemplates(input.site_id, input.branch_id);
+
+        if (templates.length === 0) {
+          return formatResult('No templates found on this branch.');
+        }
+
+        const templateLines = templates.map((template) => {
+          const components = template.components as { type: string; pinned: boolean }[] | undefined;
+          const componentCount = Array.isArray(components) ? components.length : 0;
+          const pinnedCount = Array.isArray(components)
+            ? components.filter((c) => c.pinned).length
+            : 0;
+
+          const label = typeof template.label === 'string'
+            ? template.label
+            : template.name;
+          const description = typeof template.description === 'string'
+            ? template.description
+            : '';
+
+          const isDeprecated = template.deprecated === true;
+          const deprecatedNote = isDeprecated ? ' [DEPRECATED]' : '';
+          const descriptionNote = description !== '' ? ` — ${description}` : '';
+          const componentNote = componentCount > 0
+            ? ` (${String(componentCount)} component${componentCount === 1 ? '' : 's'}, ${String(pinnedCount)} pinned)`
+            : '';
+
+          return `- ${template.name} (${label})${deprecatedNote}${componentNote}${descriptionNote}\n  template_id: ${template.id}`;
+        });
+
+        return formatResult(`Templates available on this branch (${String(templates.length)} total):\n${templateLines.join('\n')}`);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
     async create_page(input: CreatePageInput): Promise<ToolResult> {
       try {
         // The _registry/ prefix is reserved whether or not the caller writes a
@@ -1277,12 +1416,16 @@ export function createToolHandlers(
                 props: { id: generateULID(), ...component.props },
               },
             }));
-            const { errors } = validateOps({ operations: syntheticOps, registry });
-            if (errors.length > 0) {
-              return formatValidationError(errors);
+            const validationResult = validateOps({
+              operations: syntheticOps,
+              registry,
+            });
+            if (validationResult.errors.length > 0) {
+              return formatValidationError(validationResult.errors);
             }
-          } catch {
+          } catch (error: unknown) {
             // Registry fetch failed — proceed without validation
+            void error;
           }
         }
 
@@ -1318,6 +1461,7 @@ export function createToolHandlers(
           input.branch_id,
           input.document_path,
           puckData,
+          input.template_id,
         );
 
         return formatResult({
@@ -1864,6 +2008,7 @@ export const schemas = {
   get_branch_presence: GetBranchPresenceInputSchema,
   get_document_presence: GetDocumentPresenceInputSchema,
   list_components: ListComponentsInputSchema,
+  list_templates: ListTemplatesInputSchema,
   create_page: CreatePageInputSchema,
   create_branch: CreateBranchInputSchema,
   get_branch: GetBranchInputSchema,

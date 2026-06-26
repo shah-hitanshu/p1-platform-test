@@ -170,6 +170,10 @@ export interface Document {
   siteId: string;
   path: string;
   createdAt: string;
+  /** Reference to template document (if created from template) */
+  templateId?: string;
+  /** Version of template this document was created from or last migrated to */
+  templateVersion?: number;
 }
 
 /**
@@ -299,4 +303,50 @@ export interface MergeRequest {
   mergedAt?: string;
   mergedById?: string;
   mergedByType?: string;
+}
+
+// =============================================================================
+// Template Migration System
+// =============================================================================
+
+/**
+ * Tracks a template migration job that updates documents to a new template version.
+ */
+export interface MigrationJob {
+  id: string;
+  siteId: string;
+  branchId: string;
+  templateId: string;
+  fromVersion: number;
+  toVersion: number;
+  /** Optional pre-migration checkpoint for rollback */
+  checkpointId?: string;
+  status: import('./enums').MigrationJobStatus;
+  totalDocuments: number;
+  processedDocuments: number;
+  createdById: string;
+  createdByType: 'user' | 'agent' | 'system';
+  createdAt: string;
+  completedAt?: string;
+}
+
+/**
+ * Records a migration conflict requiring manual resolution.
+ */
+export interface MigrationConflict {
+  id: string;
+  migrationJobId: string;
+  documentId: string;
+  branchId: string;
+  templateId: string;
+  fromVersion: number;
+  toVersion: number;
+  /** Template's structural changes (extracted from action_metadata) */
+  templateDelta: Record<string, unknown>;
+  /** Document's own structural changes since last template version */
+  documentActions: Record<string, unknown>;
+  /** How conflict was resolved */
+  resolution?: import('./enums').MigrationResolution;
+  createdAt: string;
+  resolvedAt?: string;
 }

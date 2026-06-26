@@ -880,7 +880,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       }
     });
 
-    it('should persist presence to storage after unregistering agent (regression: stale presence on DO wake)', async () => {
+    it('should persist presence to storage after unregistering agent', async () => {
       const { DocumentSession } = await import(
         '../../src/durable-objects/document-session'
       );

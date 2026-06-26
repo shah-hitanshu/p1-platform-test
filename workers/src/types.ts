@@ -32,6 +32,8 @@ export type {
   AuthProvider,
   DocumentConflictType,
   StructureConflictType,
+  MigrationJobStatus,
+  MigrationResolution,
 } from './types/enums';
 
 export type {
@@ -52,6 +54,8 @@ export type {
   StructureMergeConflict,
   ConflictDetails,
   MergeRequest,
+  MigrationJob,
+  MigrationConflict,
 } from './types/domain';
 
 export type {

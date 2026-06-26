@@ -1,7 +1,13 @@
 packages:
   - 'packages/*'
+  - 'workers'
   - 'workers/mcp-server'
   - 'frontend'
+confirmModulesPurge: false
+overrides:
+  esbuild: '>=0.25.0'
+  undici: '>=6.23.0'
+  minimatch: '>=10.2.1'
 allowBuilds:
   browser-tabs-lock: true
   esbuild: true

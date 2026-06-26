@@ -54,19 +54,18 @@ describe('normalizePath', () => {
     expect(normalizePath(' pages/home ')).toBe('pages/home');
   });
 
-  it('should throw for empty path', () => {
-    expect(() => normalizePath('')).toThrow(InvalidDocumentPathError);
-    expect(() => normalizePath('')).toThrow('path cannot be empty');
+  it('should return root path for empty path', () => {
+    expect(normalizePath('')).toBe('/');
   });
 
-  it('should throw for whitespace-only path', () => {
-    expect(() => normalizePath('  ')).toThrow(InvalidDocumentPathError);
-    expect(() => normalizePath('\t\n')).toThrow(InvalidDocumentPathError);
+  it('should return root path for whitespace-only path', () => {
+    expect(normalizePath('  ')).toBe('/');
+    expect(normalizePath('\t\n')).toBe('/');
   });
 
-  it('should throw for multi-slash-only paths', () => {
-    expect(() => normalizePath('//')).toThrow(InvalidDocumentPathError);
-    expect(() => normalizePath('///')).toThrow(InvalidDocumentPathError);
+  it('should return root path for multi-slash-only paths', () => {
+    expect(normalizePath('//')).toBe('/');
+    expect(normalizePath('///')).toBe('/');
   });
 });
 

@@ -76,7 +76,7 @@ function createMockKV(branchVersions: Record<string, string> = {}): KVNamespace 
     delete: vi.fn().mockResolvedValue(undefined),
     list: vi.fn().mockResolvedValue({ keys: [], list_complete: true }),
     getWithMetadata: vi.fn().mockResolvedValue({ value: null, metadata: null }),
-  } as unknown as KVNamespace;
+  };
 }
 
 interface MockEnv {
@@ -126,7 +126,7 @@ describe('DocumentSession pull-based KV invalidation', () => {
   it('should not reload when CONFIG_KV is not bound', async () => {
     const mockEnv = createMockEnv(undefined); // no KV
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
-    const session = new DocumentSession(mockState as unknown, mockEnv);
+    const session = new DocumentSession(mockState, mockEnv);
 
     const response = await session.fetch(new Request('http://localhost/snapshot'));
     expect(response.status).toBe(200);
@@ -136,7 +136,7 @@ describe('DocumentSession pull-based KV invalidation', () => {
     const mockKV = createMockKV({}); // empty KV
     const mockEnv = createMockEnv(mockKV);
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
-    const session = new DocumentSession(mockState as unknown, mockEnv);
+    const session = new DocumentSession(mockState, mockEnv);
 
     // First request initializes the DO
     await session.fetch(new Request('http://localhost/snapshot'));
@@ -157,7 +157,7 @@ describe('DocumentSession pull-based KV invalidation', () => {
     const mockKV = createMockKV(kvStore);
     const mockEnv = createMockEnv(mockKV);
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
-    const session = new DocumentSession(mockState as unknown, mockEnv);
+    const session = new DocumentSession(mockState, mockEnv);
 
     // Initialize the DO
     await session.fetch(new Request('http://localhost/snapshot'));
@@ -194,7 +194,7 @@ describe('DocumentSession pull-based KV invalidation', () => {
     const mockKV = createMockKV({ 'branch-version:branch-1': mergeTimestamp });
     const mockEnv = createMockEnv(mockKV);
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
-    const session = new DocumentSession(mockState as unknown, mockEnv);
+    const session = new DocumentSession(mockState, mockEnv);
 
     // First request: init + check KV + reload
     await session.fetch(new Request('http://localhost/snapshot'));
@@ -214,24 +214,24 @@ describe('DocumentSession pull-based KV invalidation', () => {
     (mockKV.get as Mock).mockRejectedValue(new Error('KV read failed'));
     const mockEnv = createMockEnv(mockKV);
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
-    const session = new DocumentSession(mockState as unknown, mockEnv);
+    const session = new DocumentSession(mockState, mockEnv);
 
     // Should still serve the request normally despite KV error
     const response = await session.fetch(new Request('http://localhost/snapshot'));
     expect(response.status).toBe(200);
   });
 
-  it('should broadcast diff to WebSocket clients after invalidation-triggered reload', async () => {
+  it('should broadcast CRDT diff to WebSocket clients after invalidation-triggered reload', async () => {
     const mockKV = createMockKV({});
     const mockEnv = createMockEnv(mockKV);
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
-    const session = new DocumentSession(mockState as unknown, mockEnv);
+    const session = new DocumentSession(mockState, mockEnv);
 
     // Initialize with initial content
     await session.fetch(new Request('http://localhost/snapshot'));
 
     // Set up a mock WebSocket connection
-    const mockWs = { readyState: WebSocket.OPEN, send: vi.fn() };
+    const mockWs = { readyState: WebSocket.OPEN, send: vi.fn(), close: vi.fn() };
     mockState.getWebSockets.mockReturnValue([mockWs]);
 
     // Simulate merge: set KV timestamp
@@ -254,18 +254,22 @@ describe('DocumentSession pull-based KV invalidation', () => {
       ),
     );
 
-    // Trigger fetch — should detect staleness, reload, and broadcast
+    // Trigger fetch — should detect staleness, reload, and broadcast diff
+    // (not disconnect — routine merge invalidation uses broadcastUpdate)
     await session.fetch(new Request('http://localhost/snapshot'));
 
-    // The WebSocket should have received the diff
+    // WebSocket should receive the diff broadcast, not be disconnected
+
     expect(mockWs.send).toHaveBeenCalled();
+
+    expect(mockWs.close).not.toHaveBeenCalled();
   });
 
   it('should detect merge via alarm() and reload (idle DO path)', async () => {
     const mockKV = createMockKV({});
     const mockEnv = createMockEnv(mockKV);
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
-    const session = new DocumentSession(mockState as unknown, mockEnv);
+    const session = new DocumentSession(mockState, mockEnv);
 
     // Initialize the DO via fetch first
     await session.fetch(new Request('http://localhost/snapshot'));
@@ -304,7 +308,7 @@ describe('DocumentSession pull-based KV invalidation', () => {
     const mockKV = createMockKV({ 'branch-version:branch-1': mergeTimestamp });
     const mockEnv = createMockEnv(mockKV);
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
-    const session = new DocumentSession(mockState as unknown, mockEnv);
+    const session = new DocumentSession(mockState, mockEnv);
 
     // Initialize the DO
     await session.fetch(new Request('http://localhost/snapshot'));

@@ -103,6 +103,9 @@ describe('Tool Handlers', () => {
     const client = new McpApiClient(defaultConfig);
     const handlers = createToolHandlers(client);
 
+    // getDocument prefetch (for validation)
+    mockFetch.mockResolvedValueOnce(createMockResponse(true, { snapshot: {} }));
+    // applyEdits
     mockFetch.mockResolvedValueOnce(createMockResponse(true, { success: true, version: 2 }));
 
     await handlers.apply_document_edits({
@@ -113,7 +116,7 @@ describe('Tool Handlers', () => {
       operations: [{ type: 'replace', path: '/content/0/props/title', content: 'New' }],
     });
 
-    const [, options] = mockFetch.mock.calls[0];
+    const [, options] = mockFetch.mock.calls[1];
     const body = JSON.parse(options.body);
     expect(body.operations[0].path).toBe('content.0.props.title');
   });

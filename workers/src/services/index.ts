@@ -516,3 +516,29 @@ export type {
   SiteSettings,
   EnvDefaults,
 } from './site-settings-service';
+
+// Migration Service (PROPOSAL-010 Phase 5)
+export {
+  triggerMigration,
+  findAffectedDocuments,
+  detectDocumentConflicts,
+  applyDeltaToDocument,
+  rollbackMigration,
+  processMigration,
+  extractTemplateDelta,
+  getMigrationJob,
+  listMigrationConflicts,
+  resolveMigrationConflict,
+  TemplateNotFoundError,
+  MigrationJobNotFoundError,
+  InvalidVersionRangeError,
+} from './migration-service';
+
+export type {
+  MigrationPrincipal,
+  MigrationJob,
+  MigrationConflict,
+  PuckAction,
+  DocumentWithSnapshot,
+  ConflictResult,
+} from './migration-service';

@@ -262,7 +262,9 @@ describe('Phase 3.1: Integration Tests - Site and Document CRUD', () => {
     });
 
     it('should list sites with pagination', async () => {
-      // Create additional sites for pagination test
+      const testUserId = '00000000-0000-0000-0000-000000000099';
+
+      // Create additional sites for pagination test and grant roles via SQL
       const site2 = await createSite({
         pantheonSiteId: `test-pagination-${String(Date.now())}-1`,
         name: 'Pagination Test Site 1',
@@ -275,13 +277,22 @@ describe('Phase 3.1: Integration Tests - Site and Document CRUD', () => {
       });
       createdSiteIds.push(site3.id);
 
-      const allSites = await listSites();
+      // Grant roles so listSites finds them
+      for (const siteId of createdSiteIds) {
+        await sql`
+          INSERT INTO app.user_site_roles (user_id, site_id, role)
+          VALUES (${testUserId}, ${siteId}, 'owner')
+          ON CONFLICT DO NOTHING
+        `;
+      }
+
+      const allSites = await listSites({ principalId: testUserId });
       expect(allSites.length).toBeGreaterThanOrEqual(3);
 
-      const limitedSites = await listSites({ limit: 2 });
+      const limitedSites = await listSites({ principalId: testUserId, limit: 2 });
       expect(limitedSites.length).toBe(2);
 
-      const offsetSites = await listSites({ limit: 2, offset: 1 });
+      const offsetSites = await listSites({ principalId: testUserId, limit: 2, offset: 1 });
       expect(offsetSites.length).toBe(2);
       // First result should be different from non-offset query
       expect(getFirst(offsetSites).id).not.toBe(getFirst(limitedSites).id);
@@ -395,26 +406,28 @@ describe('Phase 3.1: Integration Tests - Site and Document CRUD', () => {
     });
 
     it('should throw InvalidDocumentPathError for invalid paths', async () => {
-      await expect(
-        createDocument({
-          siteId: testSiteId,
-          path: '/leading/slash',
-        }),
-      ).rejects.toThrow(InvalidDocumentPathError);
+      // Leading/trailing slashes are now normalized (stripped), not rejected
+      const docLeading = await createDocument({
+        siteId: testSiteId,
+        path: '/leading/slash',
+      });
+      expect(docLeading.path).toBe('leading/slash');
+      createdDocumentIds.push(docLeading.id);
 
-      await expect(
-        createDocument({
-          siteId: testSiteId,
-          path: 'trailing/slash/',
-        }),
-      ).rejects.toThrow(InvalidDocumentPathError);
+      const docTrailing = await createDocument({
+        siteId: testSiteId,
+        path: 'trailing/slash/',
+      });
+      expect(docTrailing.path).toBe('trailing/slash');
+      createdDocumentIds.push(docTrailing.id);
 
-      await expect(
-        createDocument({
-          siteId: testSiteId,
-          path: '',
-        }),
-      ).rejects.toThrow(InvalidDocumentPathError);
+      // Empty path normalizes to '/' (root)
+      const docRoot = await createDocument({
+        siteId: testSiteId,
+        path: '',
+      });
+      expect(docRoot.path).toBe('/');
+      createdDocumentIds.push(docRoot.id);
     });
 
     it('should list documents with filtering', async () => {
@@ -539,19 +552,19 @@ describe('Phase 3.1: Integration Tests - Site and Document CRUD', () => {
       createdSiteIds.push(site.id);
     });
 
-    it('should create document at root path "/" and store as empty string', async () => {
+    it('should create document at root path "/"', async () => {
       const doc = await createDocument({
         siteId: testSiteId,
         path: '/',
       });
 
-      expect(doc.path).toBe(''); // Normalized to empty string
+      expect(doc.path).toBe('/');
       expect(doc.siteId).toBe(testSiteId);
       createdDocumentIds.push(doc.id);
 
       // Verify we can retrieve it
       const retrieved = await getDocument(doc.id);
-      expect(retrieved?.path).toBe('');
+      expect(retrieved?.path).toBe('/');
     });
 
     it('should normalize leading slashes', async () => {
@@ -644,14 +657,14 @@ describe('Phase 3.1: Integration Tests - Site and Document CRUD', () => {
       });
       createdDocumentIds.push(regular.id);
 
-      expect(root.path).toBe('');
+      expect(root.path).toBe('/');
       expect(regular.path).toBe('pages/home');
 
       // Both should be retrievable
       const rootRetrieved = await getDocument(root.id);
       const regularRetrieved = await getDocument(regular.id);
 
-      expect(rootRetrieved?.path).toBe('');
+      expect(rootRetrieved?.path).toBe('/');
       expect(regularRetrieved?.path).toBe('pages/home');
     });
   });

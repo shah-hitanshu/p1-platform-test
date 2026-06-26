@@ -10,6 +10,8 @@
 import type { DocumentVersion, DocumentVersionSource } from '../types';
 import { query } from '../db';
 import { compare as jsonPatchCompare, applyPatch } from 'fast-json-patch';
+import { classifyChange } from './action-classification';
+import type { PuckAction } from './action-classification';
 
 // =============================================================================
 // Types
@@ -28,6 +30,7 @@ export interface CreateDocumentVersionParams {
   createdByType: 'user' | 'agent' | 'system';
   actionType?: string; // Puck action type (e.g., "insert", "reorder", "set")
   actionMetadata?: Record<string, unknown>; // Additional Puck action context
+  puckActions?: PuckAction[]; // Puck actions forwarded from the frontend
   /**
    * Skip duplicate snapshot check and always create a new version.
    * Use for reverts or explicit version creation where duplicates are intentional.
@@ -241,6 +244,23 @@ export async function createDocumentVersion(
       params.branchId,
     );
     if (latestVersion?.snapshot && deepEqual(latestVersion.snapshot, params.snapshot)) {
+      // Snapshot unchanged — but if puckActions are provided, record them
+      // on the existing version so the migration system can see them.
+      if (params.puckActions && params.puckActions.length > 0) {
+        const { actionType: computedType, actionMetadata: computedMeta } =
+          classifyChange(undefined, params.puckActions);
+        if (computedType) {
+          await query(
+            `UPDATE app.document_versions SET action_type = $1, action_metadata = $2
+             WHERE id = $3 AND (action_type IS NULL OR action_type != 'structural')`,
+            [computedType, computedMeta, latestVersion.id],
+          );
+          console.log(
+            `Updated action_metadata on existing version ${latestVersion.id} (snapshot unchanged)`,
+          );
+          return { ...latestVersion, actionType: computedType, actionMetadata: computedMeta ?? undefined };
+        }
+      }
       console.log(
         `Version creation skipped for document ${params.documentId}: snapshot unchanged`,
       );
@@ -276,6 +296,14 @@ export async function createDocumentVersion(
     }
   }
 
+  // Classify the change as structural or prop-only
+  // Use explicit params if provided, otherwise compute from patch and puckActions
+  const { actionType: computedActionType, actionMetadata: computedActionMetadata } =
+    classifyChange(forwardPatch ?? params.patch ?? undefined, params.puckActions);
+
+  const finalActionType = params.actionType ?? computedActionType;
+  const finalActionMetadata = params.actionMetadata ?? computedActionMetadata;
+
   try {
     // Use a CTE to atomically:
     // 1. Null previous version's snapshot (convert to diff-only) — skip v1 (permanent baseline)
@@ -310,8 +338,8 @@ export async function createDocumentVersion(
         params.branchId,
         params.snapshot,
         forwardPatch ? JSON.stringify(forwardPatch) : (params.patch ? JSON.stringify(params.patch) : null),
-        params.actionType ?? null,
-        params.actionMetadata ? JSON.stringify(params.actionMetadata) : null,
+        finalActionType,
+        finalActionMetadata ?? null,
         params.source,
         params.createdById,
         params.createdByType,
@@ -630,6 +658,7 @@ export interface BatchSyncPayload {
   patch?: unknown[]; // RFC 6902 JSON Patch operations
   actionType?: string; // Puck action type
   actionMetadata?: Record<string, unknown>; // Puck action context
+  puckActions?: PuckAction[]; // Puck actions forwarded from the frontend
 }
 
 /**
@@ -716,7 +745,7 @@ export async function batchSyncToPostgres(
   const actorIds: string[] = [];
   const actorTypes: string[] = [];
   const actionTypes: (string | null)[] = [];
-  const actionMetadatas: (string | null)[] = [];
+  const actionMetadatas: (Record<string, unknown> | null)[] = [];
 
   for (const payload of payloads) {
     documentIds.push(payload.documentId);
@@ -724,8 +753,16 @@ export async function batchSyncToPostgres(
     snapshots.push(payload.snapshot);
     actorIds.push(payload.actorId);
     actorTypes.push(payload.actorType);
-    actionTypes.push(payload.actionType ?? null);
-    actionMetadatas.push(payload.actionMetadata ? JSON.stringify(payload.actionMetadata) : null);
+
+    // Classify change using puckActions if available, fallback to explicit values
+    if (payload.puckActions && payload.puckActions.length > 0) {
+      const classified = classifyChange(undefined, payload.puckActions);
+      actionTypes.push(classified.actionType ?? null);
+      actionMetadatas.push(classified.actionMetadata ?? null);
+    } else {
+      actionTypes.push(payload.actionType ?? null);
+      actionMetadatas.push(payload.actionMetadata ?? null);
+    }
   }
 
   // Use a CTE-based approach: for each input row, check if the latest snapshot

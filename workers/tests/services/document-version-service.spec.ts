@@ -31,6 +31,9 @@ describe('Phase 3.3: Document Version Service', () => {
     created_by_id: string;
     created_by_type: 'user' | 'agent' | 'system';
     created_at: string;
+    patch?: unknown[] | null;
+    action_type?: string | null;
+    action_metadata?: Record<string, unknown> | null;
   }
 
   // Helper to create a mock document version row
@@ -184,6 +187,73 @@ describe('Phase 3.3: Document Version Service', () => {
       // Should return existing version without creating new one
       expect(result.versionNumber).toBe(5);
       // query should only be called once (for getLatestDocumentVersion)
+      expect(db.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('should update action_metadata on existing version when snapshot unchanged but puckActions provided', async () => {
+      const { createDocumentVersion } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      const existingSnapshot = { title: 'Same', content: [{ type: 'A', props: { id: 'a1' } }] };
+      const mockExistingVersion = createMockVersionRow({
+        version_number: 5,
+        snapshot: existingSnapshot,
+        action_type: null,
+        action_metadata: null,
+      });
+
+      // First call: getLatestDocumentVersion returns existing version with same snapshot
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockExistingVersion] });
+      // Second call: UPDATE action_type/action_metadata on existing version
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+      const result = await createDocumentVersion({
+        documentId: 'doc-uuid-456',
+        branchId: 'branch-uuid-789',
+        snapshot: existingSnapshot,
+        source: 'edit',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+        puckActions: [{ type: 'reorder', sourceIndex: 0, destinationIndex: 1 }],
+      });
+
+      // Should return existing version (no new version created)
+      expect(result.versionNumber).toBe(5);
+      // Should have called UPDATE to set action_metadata
+      expect(db.query).toHaveBeenCalledTimes(2);
+      const updateCall = vi.mocked(db.query).mock.calls[1];
+      const updateSql = updateCall[0] as string;
+      expect(updateSql).toContain('UPDATE');
+      expect(updateSql).toContain('action_type');
+      expect(updateSql).toContain('action_metadata');
+      // Should return with actionType set
+      expect(result.actionType).toBe('structural');
+    });
+
+    it('should NOT update action_metadata when snapshot unchanged and no puckActions', async () => {
+      const { createDocumentVersion } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      const existingSnapshot = { title: 'Same', content: [] };
+      const mockExistingVersion = createMockVersionRow({
+        version_number: 5,
+        snapshot: existingSnapshot,
+      });
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockExistingVersion] });
+
+      const result = await createDocumentVersion({
+        documentId: 'doc-uuid-456',
+        branchId: 'branch-uuid-789',
+        snapshot: existingSnapshot,
+        source: 'edit',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+        // No puckActions — should skip entirely
+      });
+
+      expect(result.versionNumber).toBe(5);
+      // Only one query (getLatestDocumentVersion), no UPDATE
       expect(db.query).toHaveBeenCalledTimes(1);
     });
 

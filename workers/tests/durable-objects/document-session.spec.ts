@@ -1232,7 +1232,7 @@ describe('Phase 1.3b: DocumentSession Automatic Sync Triggers', () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
 
       // Provide stored data to skip PostgreSQL initialization
-      mockState.storage.get.mockResolvedValue(new Uint8Array([0]));
+      mockState.storage.get.mockResolvedValue(new Uint8Array([0, 0]));
 
       // Use real timers since fake timers interfere with async initialization
       vi.useRealTimers();
@@ -1266,7 +1266,7 @@ describe('Phase 1.3b: DocumentSession Automatic Sync Triggers', () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
 
       // Provide stored data to skip PostgreSQL initialization
-      mockState.storage.get.mockResolvedValue(new Uint8Array([0]));
+      mockState.storage.get.mockResolvedValue(new Uint8Array([0, 0]));
 
       // Use real timers since fake timers interfere with async initialization
       vi.useRealTimers();
@@ -1312,7 +1312,7 @@ describe('Phase 1.3b: DocumentSession Automatic Sync Triggers', () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
 
       // Provide stored data to skip PostgreSQL initialization
-      mockState.storage.get.mockResolvedValue(new Uint8Array([0]));
+      mockState.storage.get.mockResolvedValue(new Uint8Array([0, 0]));
 
       // Use real timers since fake timers interfere with async initialization
       vi.useRealTimers();

@@ -187,23 +187,19 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
 
   describe('Main Branch Operations', () => {
     it('should create main branch for a site', async () => {
-      const mainBranch = await createMainBranch({
-        siteId: testSiteId,
-        createdById: TEST_USER_ID,
-        createdByType: 'user',
-      });
+      // createSite() already creates the main branch, so verify it exists
+      const mainBranch = await getMainBranch(testSiteId);
 
-      createdBranchIds.push(mainBranch.id);
+      expect(mainBranch).not.toBeNull();
+      expect(mainBranch!.id).toBeDefined();
+      expect(mainBranch!.name).toBe('main');
+      expect(mainBranch!.isMain).toBe(true);
+      expect(mainBranch!.status).toBe('active');
+      expect(mainBranch!.siteId).toBe(testSiteId);
+      expect(mainBranch!.createdAt).toBeDefined();
 
-      expect(mainBranch.id).toBeDefined();
-      expect(mainBranch.name).toBe('main');
-      expect(mainBranch.isMain).toBe(true);
-      expect(mainBranch.status).toBe('active');
-      expect(mainBranch.siteId).toBe(testSiteId);
-      expect(mainBranch.sourceBranchId).toBeUndefined();
-      expect(mainBranch.createdAt).toBeDefined();
-
-      console.log(`Created main branch: ${mainBranch.id}`);
+      createdBranchIds.push(mainBranch!.id);
+      console.log(`Main branch exists: ${mainBranch!.id}`);
     });
 
     it('should retrieve main branch by site ID', async () => {
@@ -563,12 +559,9 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
       });
       createdSiteIds.push(site2.id);
 
-      // Create main branch for site2
-      const mainBranch2 = await createMainBranch({
-        siteId: site2.id,
-        createdById: TEST_USER_ID,
-        createdByType: 'user',
-      });
+      // Main branch is auto-created by createSite
+      const mainBranch2 = await getMainBranch(site2.id);
+      if (mainBranch2 === null) throw new Error('Main branch not found for site2');
       createdBranchIds.push(mainBranch2.id);
 
       // Create feature-login in site2 (should succeed even though it exists in testSite)

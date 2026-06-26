@@ -80,9 +80,17 @@ export interface CreateDocumentResult {
   versionId: string;
 }
 
+export interface CreateDocumentParams {
+  path: string;
+  snapshot: unknown;
+  templateId?: string;
+  templateVersion?: number;
+}
+
 export interface DocumentSnapshot {
   snapshot: Record<string, unknown>;
   version?: number;
+  templateId?: string;
 }
 
 export interface CanAgentEditRequest {
@@ -915,12 +923,21 @@ export class McpApiClient {
     branchId: string,
     path: string,
     snapshot: unknown,
+    templateId?: string,
+    templateVersion?: number,
   ): Promise<CreateDocumentResult> {
     const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents`;
+    const body: Record<string, unknown> = { path, snapshot };
+    if (templateId !== undefined) {
+      body.templateId = templateId;
+    }
+    if (templateVersion !== undefined) {
+      body.templateVersion = templateVersion;
+    }
     const response = await this.doFetch(url, {
       method: 'POST',
       headers: this.getHeaders(),
-      body: JSON.stringify({ path, snapshot }),
+      body: JSON.stringify(body),
     });
     const result = await this.handleResponse<{
       document: { id: string; path: string };
@@ -934,6 +951,23 @@ export class McpApiClient {
     };
   }
 
+  async lookupDocumentByPath(
+    siteId: string,
+    documentPath: string,
+  ): Promise<DocumentInfo & { templateId?: string; templateVersion?: number } | null> {
+    const encodedPath = encodeURIComponent(documentPath);
+    const url = `${this.baseUrl}/api/sites/${siteId}/documents/by-path/${encodedPath}`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    type DocumentInfoWithTemplate = DocumentInfo & {
+      templateId?: string;
+      templateVersion?: number;
+    };
+    return this.handleResponse<DocumentInfoWithTemplate>(response);
+  }
+
   async getDocument(
     siteId: string,
     branchId: string,
@@ -945,6 +979,54 @@ export class McpApiClient {
       headers: this.getHeaders(),
     });
     return this.handleResponse<DocumentSnapshot>(response);
+  }
+
+  /**
+   * Get a template document by its ID.
+   *
+   * Templates are stored at _registry/templates/{templateId}.
+   * This method fetches the template's latest snapshot for validation.
+   *
+   * @param siteId - Site ID
+   * @param branchId - Branch ID
+   * @param templateId - Template document ID
+   * @returns Template document snapshot
+   */
+  async getTemplate(
+    siteId: string,
+    branchId: string,
+    templateId: string,
+  ): Promise<{ id: string; name: string; components?: { type: string; pinned: boolean; defaultProps: Record<string, unknown> }[]; [key: string]: unknown }> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/templates/${templateId}`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<{ id: string; name: string; components?: { type: string; pinned: boolean; defaultProps: Record<string, unknown> }[]; [key: string]: unknown }>(response);
+  }
+
+  /**
+   * List all templates available on a branch.
+   *
+   * Templates are stored at _registry/templates/ and define reusable page structures.
+   * This method fetches template metadata including id, name, label, description,
+   * and component structure with pinned flags.
+   *
+   * @param siteId - Site ID
+   * @param branchId - Branch ID
+   * @returns Array of template documents with metadata
+   */
+  async listTemplates(
+    siteId: string,
+    branchId: string,
+  ): Promise<{ id: string; name: string; [key: string]: unknown }[]> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/templates`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    const result = await this.handleResponse<{ templates: { id: string; name: string; [key: string]: unknown }[] }>(response);
+    return result.templates;
   }
 
   async canAgentEdit(request: CanAgentEditRequest): Promise<CanAgentEditResponse> {
@@ -1141,6 +1223,7 @@ export class McpApiClient {
         const name = doc.path.slice('_registry/components/'.length);
         try {
           const version = await this.getDocumentLatestVersion(siteId, branchId, doc.id);
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
           schemas[name] = snapshotToComponentSchema(name, version.snapshot);
         } catch {
           // Skip components that fail to fetch — don't block other schemas
