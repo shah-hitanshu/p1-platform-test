@@ -1,6 +1,6 @@
 {
   "name": "@pantheon-systems/css-client",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "TypeScript API client for Collaborative State System",
   "publishConfig": {
     "access": "public",

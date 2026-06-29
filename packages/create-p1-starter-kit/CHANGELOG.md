@@ -1,5 +1,11 @@
 # @pantheon-systems/create-p1-starter-kit
 
+## 0.4.4
+
+### Patch Changes
+
+- Fix editing the root "/" homepage from the editor page switcher: selecting the homepage now opens the editor instead of navigating to the dashboard, and all pages route through a single `/p1/` separator via `editorPathHref` (also fixing non-root page links).
+
 ## 0.4.3
 
 ### Patch Changes
