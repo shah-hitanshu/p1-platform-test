@@ -55,7 +55,7 @@ import {
 } from './services/metrics-service';
 
 // Export Durable Objects for wrangler
-export { DocumentState, PresenceManager, SessionManager } from './durable-objects';
+export { DocumentState, PresenceManager, SessionManager, BrokerTransaction } from './durable-objects';
 
 // Re-export Env from dedicated module (avoids circular dependency)
 export type { Env } from './env';

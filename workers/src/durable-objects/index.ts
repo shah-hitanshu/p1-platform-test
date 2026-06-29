@@ -16,6 +16,9 @@ export { DocumentSession as DocumentState } from './document-session';
 // Phase 3.2: Real PresenceManager DO implementation
 export { PresenceManager } from './presence-manager';
 
+// Broker authentication transactions
+export { BrokerTransaction } from './broker-transaction';
+
 /**
  * SessionManager - Manages user sessions and authentication.
  * Placeholder implementation for infrastructure validation.

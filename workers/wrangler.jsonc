@@ -27,7 +27,9 @@
       // User presence tracking (cursors, online status)
       { "name": "PRESENCE", "class_name": "PresenceManager" },
       // Session/auth management
-      { "name": "SESSION", "class_name": "SessionManager" }
+      { "name": "SESSION", "class_name": "SessionManager" },
+      // Broker OAuth transactions (strongly consistent)
+      { "name": "BROKER_TX", "class_name": "BrokerTransaction" }
     ]
   },
   
@@ -49,6 +51,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["DocumentState", "PresenceManager", "SessionManager"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["BrokerTransaction"]
     }
   ],
   
@@ -59,8 +65,7 @@
   // ==========================================================================
   "kv_namespaces": [
     { "binding": "CONFIG_KV", "id": "local-config-kv", "preview_id": "local-config-kv-preview" },
-    { "binding": "SESSION_KV", "id": "local-session-kv", "preview_id": "local-session-kv-preview" },
-    { "binding": "BROKER_KV", "id": "local-oauth-kv", "preview_id": "local-oauth-kv-preview" }
+    { "binding": "SESSION_KV", "id": "local-session-kv", "preview_id": "local-session-kv-preview" }
   ],
   
   // ==========================================================================
@@ -160,19 +165,23 @@
         "bindings": [
           { "name": "DOCUMENT_STATE", "class_name": "DocumentState" },
           { "name": "PRESENCE", "class_name": "PresenceManager" },
-          { "name": "SESSION", "class_name": "SessionManager" }
+          { "name": "SESSION", "class_name": "SessionManager" },
+          { "name": "BROKER_TX", "class_name": "BrokerTransaction" }
         ]
       },
       "migrations": [
         {
           "tag": "v1",
           "new_sqlite_classes": ["DocumentState", "PresenceManager", "SessionManager"]
+        },
+        {
+          "tag": "v2",
+          "new_sqlite_classes": ["BrokerTransaction"]
         }
       ],
       "kv_namespaces": [
         { "binding": "CONFIG_KV", "id": "d7c8df3b12f04817a210c002b577b8ba" },
         { "binding": "SESSION_KV", "id": "47e9398983d34b6a8838fda023099a48" },
-        { "binding": "BROKER_KV", "id": "dfd4e7d8ee274eb59fbc33988556a2f5" }
       ],
       "queues": {
         "producers": [
@@ -253,7 +262,8 @@
         "bindings": [
           { "name": "DOCUMENT_STATE", "class_name": "DocumentState" },
           { "name": "PRESENCE", "class_name": "PresenceManager" },
-          { "name": "SESSION", "class_name": "SessionManager" }
+          { "name": "SESSION", "class_name": "SessionManager" },
+          { "name": "BROKER_TX", "class_name": "BrokerTransaction" }
         ]
       },
       "migrations": [
@@ -268,12 +278,15 @@
         {
           "tag": "v3",
           "deleted_classes": ["BrokerTransaction"]
+        },
+        {
+          "tag": "v4",
+          "new_sqlite_classes": ["BrokerTransaction"]
         }
       ],
       "kv_namespaces": [
         { "binding": "CONFIG_KV", "id": "5c7138f8939e408e992d04355fb59429" },
         { "binding": "SESSION_KV", "id": "222a92acfbca49beb6475b43d8092039" },
-        { "binding": "BROKER_KV", "id": "f8735ca646ba4c70a74b7d22c6f199a2" }
       ],
       "queues": {
         "producers": [
@@ -333,19 +346,23 @@
         "bindings": [
           { "name": "DOCUMENT_STATE", "class_name": "DocumentState" },
           { "name": "PRESENCE", "class_name": "PresenceManager" },
-          { "name": "SESSION", "class_name": "SessionManager" }
+          { "name": "SESSION", "class_name": "SessionManager" },
+          { "name": "BROKER_TX", "class_name": "BrokerTransaction" }
         ]
       },
       "migrations": [
         {
           "tag": "v1",
           "new_sqlite_classes": ["DocumentState", "PresenceManager", "SessionManager"]
+        },
+        {
+          "tag": "v2",
+          "new_sqlite_classes": ["BrokerTransaction"]
         }
       ],
       "kv_namespaces": [
         { "binding": "CONFIG_KV", "id": "a4c2726d648449f68de3437b78d0f580" },
         { "binding": "SESSION_KV", "id": "abf50514ea5140ce8e083d01c1fd3546" },
-        { "binding": "BROKER_KV", "id": "f9975b9116594fdba77f0b595ac9daf5" }
       ],
       "queues": {
         "producers": [

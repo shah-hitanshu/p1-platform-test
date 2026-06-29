@@ -7,20 +7,12 @@
  * and the broker issues its own HS256 JWTs signed via KMS MAC.
  */
 
-import { authenticate } from '../middleware/authentication.js';
-import {
-  createTransaction,
-  getTransaction,
-  approveTransaction,
-  redeemTransaction,
-} from '../auth/broker/transaction.js';
 import { issueBrokerJwt } from '../auth/broker/jwt-issuer.js';
-import {
-  getAuth0AuthorizationUrl,
-  exchangeAuth0Code,
-} from '../auth/oauth/auth0-handler.js';
+import { exchangeAuth0Code, getAuth0AuthorizationUrl } from '../auth/oauth/auth0-handler.js';
 import { signState, verifyAndParseState } from '../auth/oauth/state-signing.js';
-import { providerSubToUuid } from '../auth/uuid-v5.js';
+import type { LoginTransaction } from '../durable-objects/broker-transaction.js';
+import type { Env } from '../index.js';
+import { authenticate } from '../middleware/authentication.js';
 
 function generateNonce(): string {
   const bytes = new Uint8Array(16);
@@ -39,8 +31,8 @@ function errorResponse(error: string, status: number): Response {
   return jsonResponse({ error }, status);
 }
 
-function getPublicOrigin(request: Request, env: Record<string, unknown>): string {
-  const configured = env.PUBLIC_ORIGIN as string | undefined;
+function getPublicOrigin(request: Request, env: Env): string {
+  const configured = env.PUBLIC_ORIGIN;
   if (configured !== undefined && configured !== '') {
     let origin = configured;
     while (origin.endsWith('/')) {
@@ -51,16 +43,28 @@ function getPublicOrigin(request: Request, env: Record<string, unknown>): string
   return new URL(request.url).origin;
 }
 
+/**
+ * Helper to handle Durable Object responses with consistent error handling.
+ * Checks response.ok and throws if the DO returned an error.
+ */
+async function handleDoResponse<T>(response: Response, fallbackError: string): Promise<T> {
+  if (!response.ok) {
+    const error = (await response.json()) as { error?: string };
+    throw new Error(error.error ?? fallbackError);
+  }
+  return (await response.json()) as T;
+}
+
 export async function handleBrokerRoutes(
   request: Request,
-  env: Record<string, unknown>,
+  env: Env,
   path: string,
 ): Promise<Response | null> {
   if (!path.startsWith('/broker/') && path !== '/auth/callback') {
     return null;
   }
 
-  const kv = env.BROKER_KV as KVNamespace;
+  const brokerTx = env.BROKER_TX;
   const internalSecret = env.INTERNAL_SECRET as string;
 
   // POST /broker/login — create a login transaction (requires sat_ token)
@@ -92,7 +96,29 @@ export async function handleBrokerRoutes(
       }
     }
 
-    const tx = await createTransaction(kv, principal.siteId, principal.id, { redirectUrl, prompt });
+    // Create a new transaction using Durable Object
+    const txId = crypto.randomUUID();
+    const stub = brokerTx.get(brokerTx.idFromName(txId));
+    const response = await stub.fetch('http://do/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        txId,
+        siteId: principal.siteId,
+        siteApiTokenId: principal.id,
+        options: { redirectUrl, prompt },
+      }),
+    });
+
+    let tx: LoginTransaction;
+    try {
+      tx = await handleDoResponse<LoginTransaction>(response, 'Failed to create transaction');
+    } catch (err) {
+      return errorResponse(
+        err instanceof Error ? err.message : 'Failed to create transaction',
+        response.status,
+      );
+    }
 
     const origin = getPublicOrigin(request, env);
     const loginUrl = `${origin}/broker/login/${tx.id}`;
@@ -104,7 +130,21 @@ export async function handleBrokerRoutes(
   const loginMatch = /^\/broker\/login\/([^/]+)$/.exec(path);
   if (loginMatch !== null && request.method === 'GET') {
     const txId = loginMatch[1] ?? '';
-    const tx = await getTransaction(kv, txId);
+    const stub = brokerTx.get(brokerTx.idFromName(txId));
+    const response = await stub.fetch('http://do/get');
+
+    let tx: LoginTransaction | null;
+    try {
+      tx = await handleDoResponse<LoginTransaction | null>(
+        response,
+        'Failed to retrieve transaction',
+      );
+    } catch (err) {
+      return errorResponse(
+        err instanceof Error ? err.message : 'Failed to retrieve transaction',
+        response.status,
+      );
+    }
 
     if (tx?.status !== 'pending') {
       return errorResponse('Transaction not found', 404);
@@ -156,7 +196,10 @@ export async function handleBrokerRoutes(
       return errorResponse('Missing code or state', 400);
     }
 
-    const stateData = await verifyAndParseState<{ txId: string; nonce?: string }>(stateParam, internalSecret);
+    const stateData = await verifyAndParseState<{
+      txId: string;
+      nonce?: string;
+    }>(stateParam, internalSecret);
     if (stateData === null) {
       return errorResponse('Invalid state', 400);
     }
@@ -174,14 +217,29 @@ export async function handleBrokerRoutes(
       return errorResponse('Nonce mismatch', 400);
     }
 
-    // Convert Auth0 subject to UUIDv5 (matches how Auth0IdentityProvider does it)
-    const principalId = await providerSubToUuid('auth0', user.sub);
-
-    const approved = await approveTransaction(kv, stateData.txId, {
-      userId: principalId,
-      userEmail: user.email,
-      userName: user.name,
+    const stub = brokerTx.get(brokerTx.idFromName(stateData.txId));
+    const response = await stub.fetch('http://do/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: user.sub,
+        userEmail: user.email,
+        userName: user.name,
+      }),
     });
+
+    let approved: LoginTransaction | null;
+    try {
+      approved = await handleDoResponse<LoginTransaction | null>(
+        response,
+        'Transaction approval failed',
+      );
+    } catch (err) {
+      return new Response(
+        `<html><body><h1>Login failed</h1><p>${err instanceof Error ? err.message : 'Transaction approval failed'}</p></body></html>`,
+        { status: response.status, headers: { 'Content-Type': 'text/html' } },
+      );
+    }
 
     if (approved === null) {
       return new Response(
@@ -229,7 +287,23 @@ export async function handleBrokerRoutes(
       return errorResponse('transactionId is required', 400);
     }
 
-    const tx = await redeemTransaction(kv, body.transactionId);
+    // Redeem transaction via Durable Object (strongly consistent, no retry needed)
+    const stub = brokerTx.get(brokerTx.idFromName(body.transactionId));
+    const response = await stub.fetch('http://do/redeem', { method: 'POST' });
+
+    let tx: LoginTransaction | null;
+    try {
+      tx = await handleDoResponse<LoginTransaction | null>(
+        response,
+        'Failed to redeem transaction',
+      );
+    } catch (err) {
+      return errorResponse(
+        err instanceof Error ? err.message : 'Failed to redeem transaction',
+        response.status,
+      );
+    }
+
     if (tx === null) {
       return errorResponse('Transaction not found or not approved', 404);
     }
@@ -256,7 +330,10 @@ export async function handleBrokerRoutes(
 
       return jsonResponse({ token });
     } catch (err) {
-      console.error('[broker/redeem] JWT issuance failed:', err instanceof Error ? err.message : String(err));
+      console.error(
+        '[broker/redeem] JWT issuance failed:',
+        err instanceof Error ? err.message : String(err),
+      );
       return errorResponse('Failed to issue token', 502);
     }
   }

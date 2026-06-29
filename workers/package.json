@@ -57,6 +57,7 @@
     "eslint": "^9.39.3",
     "fast-check": "^3.22.0",
     "globals": "^15.15.0",
+    "prettier": "^3.4.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1",
