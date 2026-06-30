@@ -32,7 +32,9 @@ import { P1EditorSubheader } from '../../pds/components/P1EditorSubheader.js';
 
 import type { SubheaderActor } from '../../pds/components/P1EditorSubheader.js';
 import { deriveDocState } from '../../pds/utils/deriveDocState.js';
-import { TemplateManagerOverlay } from '../../features/content-type-templates/ui/TemplateManagerOverlay.js';
+import { deriveLiveDocState } from '../../pds/utils/deriveLiveDocState.js';
+import type { Template } from '../../features/content-type-templates/types.js';
+import { useEditorContext } from '../../p1/editor/hooks.js';
 
 // Module-level usePuck hook for reading history state inside the plugin render tree
 const usePluginPuckHistory = createUsePuck();
@@ -424,7 +426,7 @@ export interface P1PluginOptions {
   /** Callback when a document is selected */
   onDocumentSelect?: (path: string) => void;
   /** Callback to create a new document */
-  onDocumentCreate?: (path: string, template?: import('../../features/content-type-templates/types.js').Template | null) => Promise<void>;
+  onDocumentCreate?: (path: string, template?: import('../../features/content-type-templates/types.js').Template | null, title?: string) => Promise<void>;
   /** Callback to delete a document */
   onDocumentDelete?: (documentId: string, path: string) => Promise<void>;
   /** Whether documents are loading */
@@ -433,6 +435,8 @@ export interface P1PluginOptions {
   versions?: DocumentVersion[];
   /** Whether versions are loading */
   versionsLoading?: boolean;
+  /** Published status for the doc-state badge. Drives the Live-only publish badge. */
+  publishedStatus?: 'published' | 'unpublished-changes' | 'draft';
   /** Currently selected version ID for comparison */
   selectedVersionId?: string;
   /** Callback when a version is selected */
@@ -533,6 +537,13 @@ export interface P1PluginOptions {
   templates?: import('../../features/content-type-templates/types.js').Template[];
   /** Whether templates are loading */
   templatesLoading?: boolean;
+  /** Create a new template (Create Page modal's "New template" flow). */
+  onCreateTemplate?: (params: {
+    name: string;
+    label: string;
+    description?: string;
+    defaultUrlPattern?: string;
+  }) => Promise<Template>;
 }
 
 /**
@@ -608,9 +619,14 @@ function P1SubheaderBridgeInner({
 
   if (!slotEl) return null;
 
-  // Derive document state
+  // Derive document state. `docState` drives the publish button/actions and
+  // keeps its existing behavior (incl. branch Review/Publish actions).
   const isOnMain = currentBranch?.isMain ?? true;
   const docState = deriveDocState(currentDocument, isOnMain);
+  // The publish *badge* is shown ONLY on the Live (main) branch and reflects the
+  // real published state; off-main (or while the status is unknown) it's
+  // undefined → hidden. We never show a guessed state.
+  const badgeDocState = deriveLiveDocState(options.publishedStatus, isOnMain);
 
   // Map presence to subheader actor lists.
   // humanPresenceCount and hasActiveHumans are read here so this component
@@ -682,6 +698,7 @@ function P1SubheaderBridgeInner({
         <P1EditorSubheader
           puckActions={<></>}
           docState={docState}
+          badgeDocState={badgeDocState}
           hasDrift={false}
           context={isOnMain ? 'main' : 'branch'}
           agents={agentActors}
@@ -797,7 +814,6 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
    */
   function HeaderOverride(): React.ReactElement {
     const [showMergeReview, setShowMergeReview] = useState(false);
-    const [showTemplateManager, setShowTemplateManager] = useState(false);
 
     // Expose setShowMergeReview to the shared ref
     useEffect(() => {
@@ -817,6 +833,29 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
           avatar: auth.user.picture ?? baseCurrentUser?.avatar,
         }
       : baseCurrentUser;
+
+    // Data sources (built-in + user) for the create-page collection builder.
+    // Reuses the cached editor-context query, so no extra fetch.
+    const { data: editorCtx } = useEditorContext(
+      stableOptions.selectedDocumentPath ?? '/',
+    );
+    // MOCK: datasources don't yet declare their required inputs (prototype — the
+    // real version derives/declares them, see PROGRESS data-source notes). Attach
+    // a small id→inputs map and ensure the demo sources are present.
+    const MOCK_DATASOURCE_INPUTS: Record<string, string[]> = {
+      swapi: ['id'],
+      swapi_list: [],
+      pokemon: ['monster'],
+    };
+    const datasources: { id: string; label: string; inputs?: string[] }[] = (
+      editorCtx?.remoteDatasourceRegistry ?? []
+    ).map((d) => ({ id: d.id, label: d.label, inputs: MOCK_DATASOURCE_INPUTS[d.id] }));
+    for (const demo of [
+      { id: 'swapi', label: 'Star Wars API', inputs: ['id'] },
+      { id: 'pokemon', label: 'Pokémon API', inputs: ['monster'] },
+    ]) {
+      if (!datasources.some((d) => d.id === demo.id)) datasources.push(demo);
+    }
 
     // Map documents to PageNavigatorDocument shape (filter archived first)
     const rawDocs = stableOptions.documents ?? [];
@@ -846,8 +885,9 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
           onCreateDocument={(fc.enableDocumentBrowser ?? true) ? stableOptions.onDocumentCreate : undefined}
           templates={stableOptions.templates}
           templatesLoading={stableOptions.templatesLoading}
+          onCreateTemplate={stableOptions.onCreateTemplate}
+          datasources={datasources}
           onLogout={stableOptions.onLogout ?? (() => {})}
-          onManageTemplates={css.userRole === 'admin' ? () => setShowTemplateManager(true) : undefined}
         />
         <div id="p1-subheader-slot" />
         {(fc.enableMergeControl ?? true) && showMergeReview && (() => {
@@ -880,18 +920,6 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
             document.body,
           );
         })()}
-        {showTemplateManager && (
-          <TemplateManagerOverlay
-            client={css.client}
-            siteId={css.siteId}
-            branchId={css.branchId}
-            puckConfig={stableOptions.puckConfig}
-            onClose={() => {
-              setShowTemplateManager(false);
-              void css.refreshTemplates();
-            }}
-          />
-        )}
       </>
     );
   }

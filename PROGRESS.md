@@ -18,6 +18,137 @@ puck-css-integration/
 
 ## Completed Work
 
+### Create Page Modal — rev2 integration onto content-type templates (2026-06-26) 🚧
+
+**Branch:** `create-page-modal-rev2` (based on `origin/main`, which now includes
+Kevin Stubbs' PCC-3225 content-type template system).
+
+**Why a new branch (not a rebase):** the original `feat/create-page-modal` modal was
+built against an older `main` and used a *mocked* `CONTENT_TYPES` list. PCC-3225 landed a
+real template system (`useTemplateList`, `scaffoldFromTemplate`, css-client `templates`
+endpoint, `template_id`/`template_version` bindings, role permissions). Rebasing would have
+forced repeated conflict resolution across the shared creation chain on every feature commit.
+Instead we branched fresh from `main` and re-apply the work once, against main's final code.
+`feat/create-page-modal` is preserved untouched as reference.
+
+**Decision:** the modal is the future end-user entry point, but Kevin's inline PageNavigator
+template-step and `/structure` flow are kept during development for easy side-by-side testing,
+behind a clearly-temporary trigger. Both the temp trigger and the inline step are removed once
+the modal becomes the sole "+ New page" entry point.
+
+**Component #1 — Mount CreatePageModal behind a temporary trigger ✅**
+- Ported the 3 self-contained modal files from `feat/create-page-modal` (clean — they don't
+  exist on main). 45 modal tests pass as-is.
+- Added a temporary `＋ New page (modal)` trigger (`data-testid=create-page-modal-trigger-temp`)
+  to `P1EditorHeader`, opening `CreatePageModal` alongside the untouched inline step.
+- `onCreateDocument` forwards path-only for now; title + template binding deferred to #2.
+- 60 tests pass; 0 lint errors; clean typecheck. Commits: tests `02e0b19`, impl `ddd193b`.
+
+**Component #2 — Thread page title through the create chain ✅**
+- Added `title?` as an optional 3rd arg `(path, template?, title?)` across
+  `P1EditorHeader → P1Plugin → useP1Plugin → P1PuckProvider → useDocuments`, leaving main's
+  existing `(path, template)` callers (PageNavigator inline step) untouched.
+- `useDocuments.create` seeds `root.props.title` into the initial version snapshot, merged onto
+  whatever `initialData` was passed (default *or* template-scaffolded) — composes with, does not
+  replace, template binding.
+- Verified manually on localhost (blank page persists its title). 89 tests pass (incl. Kevin's
+  template-create suite, no regression); 0 lint errors; clean build. Commits: tests `3e613d1`,
+  impl `9c60043`.
+
+**Component #3 — Feed real templates into the modal (drop the fake list) ✅**
+- Removed the hardcoded `CONTENT_TYPES` mock entirely. `CreatePageModal` now takes a `templates`
+  prop (minimal local `CreatePageModalTemplate` shape — decoupled from the feature `Template`
+  type) and renders real content-type templates keyed by `id`; the selected template's
+  `defaultUrlPattern` drives the route inputs.
+- **Zero templates is a normal customer state** → shows "No Page type template configured."
+  The "New template" action is always present. (The old mock-dependent tests were wrong — they
+  assumed built-in templates always exist; rewritten to drive behavior via a real fixture.)
+- `P1EditorHeader` passes its `templates` list straight through (`Template[]` is a structural
+  superset of the modal's shape).
+- 61 tests pass; 0 lint errors; clean build. Commits: tests `34425c3`, impl `fe0b5d3`.
+- Verified manually: modal shows the empty state when the backend has no templates.
+
+**Session 2026-06-27/28 — templates editable end-to-end ✅** (all verified manually + tests)
+- **#3b done — Create template from the modal** (`2807504`): the "New template" screen really
+  creates via `P1PuckProvider.createTemplate` (→ `client.templates.create`, empty components), then
+  opens the new template's editor at `_registry/templates/<name>`. Threaded
+  provider→useP1Plugin→P1Plugin→P1EditorHeader→modal.
+- **Template-mode right sidebar** (`19bb204`): editing `_registry/templates/<name>` shows a
+  "Template" panel (`TemplateDetailsPanel`) — Name (read-only) / Label / Description / URL pattern,
+  saved via `P1PuckProvider.updateTemplate` → `client.templates.update`. Root header relabeled
+  "Page"→"Template" via `config.root.label` in `useP1Editor` (Puck has no override for that heading).
+  PDS secondary Button + `--puck-space-px` gutter.
+- **Pages | Templates tabs** (`f6ba15a`) in the page dropdown (`PageNavigator`): browse templates,
+  click to open in template mode. Shown when templates exist; v1 = no admin gating, browse+edit only.
+- **Bug fix** (`8e00603`): `/p1/structure` listed zero routes — `p1BranchId` was undefined (unset
+  `NEXT_PUBLIC_CSS_BRANCH_ID`) → `listDocuments` threw "Branch ID required". Defaulted to `'main'` at
+  all starter init sites (`app/page.tsx`, `app/[...puckPath]/page.tsx`, `app/p1/[[...p1]]/page.tsx`).
+
+**Plug-external-data guided flow (2026-06-28) — in progress:**
+- "Plug external data" is the 4th starting tile. Its flow is now a progressive Q&A built on a
+  reusable `WizardQuestion` primitive (`764db62`): Q1 *Where's your data coming from?*
+  (configured / new) → reveals matching pane (`adbad18`); Q2 *How should the pages be structured?*
+  (index + detail / everything on one page); title + routes appear AFTER the structure choice;
+  collection shows separate **Index page** / **Detail page** routes sharing one slug; inline
+  loader + recap card (no separate screen); list-source **guard** blocks a paramless collection
+  (`4250a62`). datasources restored to the modal via P1Plugin (`c3818f7`).
+- **NEXT here:** Q3 *Choose your data fields* (needs threading source `fields` → modal; data exists
+  on `RemoteDatasourceDefinition.fields` but P1Plugin drops it today); starter **index components**
+  (tile grid / list rows) for the index page; real "everything on one page" list rendering (today
+  it just creates one blank page at `/slug`).
+
+**DEFERRED DESIGN — datasource contract for list + detail (food for thought, discussed 2026-06-28):**
+The `swapi` / `swapi_list` split is the symptom of a missing contract. Target: one *logical*
+collection datasource declaring two **roles**, hiding endpoint count:
+`{ id, label, fields, itemKey, list(): Item[], getItem(key): Item|null }`.
+- `itemKey` = the identifying field == the detail route `:param` (replaces today's mock inputs map).
+- Two-endpoint (swapi): `list`→`/people`, `getItem`→`/people/:id`. One-endpoint (GSheet/full array):
+  `list`→fetch array, `getItem`→`list().find(itemKey===key)` (no 2nd call).
+- Capabilities derive from the contract: `canList` (index + single page), `canDetail` (needs itemKey
+  + getItem) → the guard becomes a real capability check. Collapse swapi+swapi_list into one source.
+- Lives: contract + capability + list→getItem helper in puck-css; sites declare per-source
+  itemKey/list/getItem/fields; user HTTP-JSON sources derive from urlTemplate.
+- NOTE: starter `swapi_list` returns thin `{id,name,url}` per person; full fields only from the item
+  `swapi` (`/people/:id`) — so "fields per role" (thin list vs full item) is part of this design.
+- Open forks: (1) collapse to one source? (2) derive getItem from list vs require an item endpoint?
+  (3) model thinner list fields vs one field set per source?
+
+**STILL OPEN / NEXT:**
+- **#4 — Create a *page from* a selected template** (not done): on the modal's "Page type template"
+  path, scaffold via `scaffoldFromTemplate` + bind `templateId`/`templateVersion`; enable Create.
+  Chain already accepts `(path, template?, title?)`; header adapter still passes `template = undefined`.
+- **Template-mode polish backlog:** pin control is a tiny unlabeled lock; page-selector shows the raw
+  `_registry/...` path; no top "TEMPLATE" banner; page-only actions (publish/URL) not hidden; the
+  redundant `TemplateManagerOverlay` (avatar → Manage Templates) still coexists with template mode.
+- **Cleanup:** remove the temporary `＋ New page (modal)` trigger + Kevin's inline PageNavigator
+  template-step once the modal is the sole entry point.
+- **Role resolution** still deferred (findings below); use the dev `RoleSwitcher` to simulate admin.
+
+**ROLE RESOLUTION — findings (investigated 2026-06-27, then DEFERRED):**
+The overlay (#3b handoff target) is admin-gated, so we looked at how the real user role is
+determined. Findings, captured before reverting the throwaway probe:
+- The user's role is **NOT in the JWT** (claims are only `iss, sub, aud, iat, exp, jti, site_id,
+  email, provider, name`) and **NOT in the parsed `AuthUser`** (`{id,name,email,picture}` only).
+  `.env.local` holds only **site/service** credentials (`CSS_API_KEY` etc.) — no per-user role.
+- `/api/auth/me` returns identity only (no role) and isn't site-scoped.
+- ⇒ Role must come from a **backend per-site membership lookup** (endpoint unknown / not in
+  css-client). User says real roles are **Admin / Member**, but Kevin's `mapCssRoleToContentRole`
+  expects `ADMIN/EDITOR/VIEWER/NO_ACCESS` (mismatch), and `useResolveContentRole` (guesses
+  `/api/sites/{site}/branches/{branch}/auth/role`) is **not wired** into the starter.
+- Architecture intent (P1PuckProvider comment): the **consumer/app resolves the role via
+  `useResolveContentRole` and passes `userRole`** into the provider (default `'editor'`).
+- **DECISION: deferred.** Not a blocker for the modal — the dev `RoleSwitcher` (bottom-right,
+  `editor-client.tsx`) simulates `admin` for testing #3b/#4. Real role wiring is its own task
+  (belongs with PCC-3225 permissions); needs the backend membership endpoint contract first
+  (ask backend/Kevin). All temp role-debug instrumentation was reverted.
+
+**How to resume:** branch `create-page-modal-rev2`; dev server `cd apps/p1-starter && pnpm dev`
+(note: it serves the BUILT `puck-css` dist — run `pnpm --filter @pantheon-systems/css-client build`
+then `pnpm --filter @pantheon-systems/puck-css build` after puck-css changes, and restart dev).
+TDD per CLAUDE.md: write failing test → commit test → implement → lint/build → commit impl →
+update this file. The temporary `＋ New page (modal)` trigger in `P1EditorHeader` and Kevin's
+inline PageNavigator step both remain on purpose until the modal is the sole entry point.
+
 ### Phase 1: Repository Setup ✅
 - Created monorepo with pnpm workspaces
 - Set up TypeScript, ESLint, Vitest for all packages
@@ -300,6 +431,42 @@ puck-css-integration/
   - NotificationContext (13 tests) - adding, removing, auto-dismiss behavior
   - Toast component (16 tests) - rendering, actions, accessibility
   - NotificationContainer (9 tests) - positioning, multiple notifications
+
+---
+
+### Create Page Modal rev2 — template binding, publish badge, autosave, overlay removal (2026-06-29) ✅
+
+Continuation of the rev2 work, all on `create-page-modal-rev2`. Verified in-app; TDD with clean typecheck / lint (0 errors) / build throughout.
+
+**Structure-form template binding — root cause & fix (`1132c9f`)**
+- Pages created from the `/p1/structure` form came out unbound (no `templateId`) and blank, while the modal worked.
+- Root cause: a **stale `p1-next-sdk` dist** — `dist/routes/structure.js` called `createStaticPage(path)` with no options, dropping `{templateId, templateVersion, initialData}`, even though the source forwarded them. Fix = **rebuild `p1-next-sdk`** (no source change). The modal was unaffected because it creates via the client `css-client` documents API directly (browser → CSS API with the user JWT; service `CSS_API_KEY` is server-only).
+- LESSON: any `p1-next-sdk` *source* change needs a rebuild, or the app runs yesterday's dist — keep it in the dev build chain (css-client → puck-css → **p1-next-sdk** → app).
+- Regression tests added: `create-page-form-template-binding.test.tsx`, `p1-store-template-binding.test.ts`.
+
+**Create a page from a content-type template + modal polish (`9510888`)**
+- #4 create-from-template: scaffold from the chosen template and bind `templateId`/`templateVersion` via `onCreateDocument`.
+- Tile relabelled "From page template"; build the path from the template's URL pattern (`:slug` + params) or the slug; require a title with a red hint when missing; modal list label resolves as `label || name`.
+
+**Publish badge — Live-only, accurate state (`ab076c3`)**
+- The badge read `currentDocument.isPublished` (from the site-level `getByPath`, which never includes that field) → permanently "Unpublished" on Live.
+- Now derived from the validated `publishedStatus`; shown **only on the Live (main) branch** (hidden on other branches and while loading — never a guessed state); unpublished relabelled **"Changes pending publishing"**; versions refresh after save so it flips after an edit. The publish button keeps its existing `docState`/behaviour.
+- New pure helper `deriveLiveDocState` + tests.
+
+**Template details autosave — complete-template save (`d934dfb`)**
+- Editing template metadata ("Save details") wiped its components: backend `templates.update` is **full-replace**, and `templates.get` does **not** return `components` (only `content`), so the client can't re-fetch them to preserve.
+- Fix: derive the component skeleton from the **live canvas** (`content` + `_pinMap`) via `dataToUpdateParams` and send it alongside the metadata → components preserved and kept in sync with the canvas at save time.
+- Replaced the confusing "Save details" button with a **debounced autosave** (Saving/Saved status). Autosave keys off field **values only** — depending on the unstable `onSave`/`save` identities caused a save→refetch→re-render→save loop (the create-page modal flickered old/new every few seconds).
+- `updateTemplate` now accepts/forwards `components`. Tests: `dataToUpdateParams` units, components forwarding, autosave + no-loop regression.
+
+**Removed the unintentional "Manage Templates" overlay (`c5ddb59`)**
+- `TemplateManagerOverlay` (top-right user menu) was unintentional (confirmed by Kevin). Deleted it + `TemplatePinPanel` + `dataToCreateParams` + the overlay spec; unwired `P1Plugin` and `P1EditorHeader`. All its capabilities exist elsewhere (create via modal, edit details/canvas/pin in template mode, list/delete/migrate in `/p1/structure`). Kept `dataToUpdateParams` (used by the autosave).
+
+**Parked / next**
+- **Canvas-edit → record autosync:** today the record's components sync on details-save / pin; syncing on *every* canvas edit is deferred (revisit — ties to template-version churn).
+- **Template migration content-propagation:** migration doesn't reliably propagate template *content* edits to existing pages. Likely the scaffolder mints fresh component ids (`useTemplateScaffold`), breaking the migration engine's id-based matching. The migration transform is **backend** — awaiting Kevin's answer on the component-identity matching key.
+- **Backend bug for Kevin (PCC-3225):** `templates.update` is full-replace and wipes omitted `components`, AND `templates.get` doesn't return `components` — so clients can't round-trip them. Fix = PATCH/merge update, or GET returns components.
+- **Pre-existing test failures (21):** `P1AuthProvider.avatar`, `token-refresh-auth`, `p1-editor-header-wiring` fail with a QueryClient/provider test-env issue; predate this work and were not addressed here.
 
 ---
 

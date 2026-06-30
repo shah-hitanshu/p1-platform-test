@@ -27,6 +27,8 @@ export interface UseP1PluginOptions {
   versions?: DocumentVersion[];
   /** Whether versions are loading */
   versionsLoading?: boolean;
+  /** Published status for the Live-only publish badge */
+  publishedStatus?: 'published' | 'unpublished-changes' | 'draft';
   /** Currently selected version ID */
   selectedVersionId?: string;
   /** Callback when a version is selected */
@@ -36,7 +38,7 @@ export interface UseP1PluginOptions {
   /** Override selected document path (e.g., from URL params). Defaults to context currentDocument path. */
   selectedDocumentPath?: string | null;
   /** Callback to create a new document */
-  onDocumentCreate?: (path: string, template?: import('../features/content-type-templates/types.js').Template | null) => Promise<void>;
+  onDocumentCreate?: (path: string, template?: import('../features/content-type-templates/types.js').Template | null, title?: string) => Promise<void>;
   /** Callback to delete a document */
   onDocumentDelete?: (documentId: string, path: string) => Promise<void>;
   /** Whether to show presence indicator */
@@ -135,11 +137,13 @@ export function useP1Plugin(options: UseP1PluginOptions = {}): PuckPlugin {
       ? (options.onDocumentCreate ?? css.createDocument) : undefined,
     templates: css.templates,
     templatesLoading: css.templatesLoading,
+    onCreateTemplate: css.createTemplate,
     onDocumentDelete: fc.enableDocumentBrowser
       ? (options.onDocumentDelete ?? css.deleteDocument) : undefined,
     documentsLoading: css.documentsLoading,
     versions: fc.enableVersionHistory ? options.versions : undefined,
     versionsLoading: fc.enableVersionHistory ? options.versionsLoading : false,
+    publishedStatus: options.publishedStatus,
     selectedVersionId: fc.enableVersionHistory ? options.selectedVersionId : undefined,
     onVersionSelect: fc.enableVersionHistory ? options.onVersionSelect : undefined,
     // Context-based sync is the default — no need for getter or legacy sync

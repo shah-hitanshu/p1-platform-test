@@ -32,9 +32,9 @@ describe('DocStateBadge — label text', () => {
     expect(screen.getByText('Modified')).toBeTruthy();
   });
 
-  it('renders "Unpublished" for the unpublished state', () => {
+  it('renders "Changes pending publishing" for the unpublished state', () => {
     render(<DocStateBadge docState="unpublished" />);
-    expect(screen.getByText('Unpublished')).toBeTruthy();
+    expect(screen.getByText('Changes pending publishing')).toBeTruthy();
   });
 
   it('renders "Live" for the live state', () => {

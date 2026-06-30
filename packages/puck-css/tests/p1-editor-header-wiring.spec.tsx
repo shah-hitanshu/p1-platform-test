@@ -8,6 +8,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
 import React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+// The header override calls useEditorContext (useQuery) to derive datasources,
+// so renders must be wrapped in a QueryClient — the editor provides one in the
+// app. The query stays empty here (no fetch), so datasources fall back to [].
+const testQueryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
 // ---------------------------------------------------------------------------
 // Dependency mocks — must be hoisted before any imports that use them
@@ -306,7 +312,9 @@ function renderHeader(plugin: ReturnType<typeof createP1Plugin>) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const headerFn = (plugin.overrides as any)?.header as (() => React.ReactElement) | undefined;
   if (!headerFn) throw new Error('plugin.overrides.header not defined');
-  return render(headerFn());
+  return render(
+    <QueryClientProvider client={testQueryClient}>{headerFn()}</QueryClientProvider>,
+  );
 }
 
 function renderPlugin(plugin: ReturnType<typeof createP1Plugin>) {

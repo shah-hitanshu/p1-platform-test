@@ -22,8 +22,12 @@ vi.mock('./WorkstreamSwitcher.js', () => ({
 }));
 
 vi.mock('./PageNavigator.js', () => ({
-  PageNavigator: () => (
-    <div data-testid="page-navigator" />
+  PageNavigator: ({ onCreatePage }: { onCreatePage?: () => void }) => (
+    <div data-testid="page-navigator">
+      <button data-testid="mock-new-page" type="button" onClick={onCreatePage}>
+        New page
+      </button>
+    </div>
   ),
 }));
 
@@ -125,6 +129,43 @@ describe('P1EditorHeader', () => {
     const pageSelector = screen.getByTestId('page-selector');
     expect(pageSelector).toBeDefined();
     expect(pageSelector.textContent).toContain('/home');
+  });
+
+  // The Create Page modal opens from the page navigator's "+ New page".
+  it('does not render the CreatePageModal until "+ New page" is clicked', () => {
+    render(<P1EditorHeader {...defaultProps} />);
+
+    expect(screen.queryByTestId('create-page-modal')).toBeNull();
+  });
+
+  it('opens the CreatePageModal from the page navigator’s "+ New page"', () => {
+    render(<P1EditorHeader {...defaultProps} />);
+
+    fireEvent.click(screen.getByTestId('mock-new-page'));
+
+    expect(screen.getByTestId('create-page-modal')).toBeDefined();
+    expect(screen.getByTestId('create-page-modal-title').textContent).toContain(
+      'Create a new page',
+    );
+  });
+
+  it('forwards datasources into the modal collection builder', () => {
+    render(
+      <P1EditorHeader
+        {...defaultProps}
+        datasources={[{ id: 'swapi', label: 'Star Wars API', inputs: ['id'] }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('mock-new-page'));
+    // Select the "Plug external data" tile → choose a configured source.
+    fireEvent.click(screen.getByTestId('create-page-option-plug-external-data'));
+    fireEvent.click(screen.getByTestId('wizard-option-configured'));
+
+    // The configured source (swapi) shows up in the data-source picker.
+    expect(screen.getByTestId('create-page-source-select').textContent).toContain(
+      'Star Wars API',
+    );
   });
 
   it('renders the user menu trigger with a PDS Avatar', () => {

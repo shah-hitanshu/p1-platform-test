@@ -78,6 +78,82 @@ describe('PageNavigator', () => {
     open: true,
   };
 
+  const templatesFixture = [
+    { id: 't1', name: 'blog-post', label: 'Blog Post', version: 1, components: [], updatedAt: '' },
+    { id: 't2', name: 'event', label: 'Event', version: 1, components: [], updatedAt: '' },
+  ];
+
+  // Pages | Templates tabs: browse templates and open them for editing.
+  it('does not show the Templates tab when there are no templates', () => {
+    render(<PageNavigator {...defaultProps} />);
+    expect(screen.queryByTestId('page-navigator-tab-templates')).toBeNull();
+  });
+
+  it('shows Pages and Templates tabs when templates exist', () => {
+    render(<PageNavigator {...defaultProps} templates={templatesFixture} />);
+    expect(screen.getByTestId('page-navigator-tab-pages')).toBeDefined();
+    expect(screen.getByTestId('page-navigator-tab-templates')).toBeDefined();
+  });
+
+  it('defaults to the Pages tab (documents listed, no template rows)', () => {
+    render(<PageNavigator {...defaultProps} templates={templatesFixture} />);
+    expect(screen.getAllByTestId('page-navigator-item').length).toBeGreaterThan(0);
+    expect(screen.queryByTestId('page-navigator-template-item')).toBeNull();
+  });
+
+  it('lists templates on the Templates tab', () => {
+    render(<PageNavigator {...defaultProps} templates={templatesFixture} />);
+    fireEvent.click(screen.getByTestId('page-navigator-tab-templates'));
+
+    const items = screen.getAllByTestId('page-navigator-template-item');
+    expect(items.length).toBe(2);
+    expect(items[0].textContent).toContain('Blog Post');
+    // Page rows are hidden while on the Templates tab.
+    expect(screen.queryByTestId('page-navigator-item')).toBeNull();
+  });
+
+  it('selects a template by its _registry path for editing', () => {
+    const onSelect = vi.fn();
+    render(
+      <PageNavigator {...defaultProps} onSelect={onSelect} templates={templatesFixture} />,
+    );
+    fireEvent.click(screen.getByTestId('page-navigator-tab-templates'));
+    fireEvent.click(screen.getAllByTestId('page-navigator-template-item')[0]);
+
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ path: '_registry/templates/blog-post' }),
+    );
+  });
+
+  it('shows a "+ New template" button on the Templates tab and calls onCreateTemplate', () => {
+    const onCreateTemplate = vi.fn();
+    render(
+      <PageNavigator
+        {...defaultProps}
+        templates={templatesFixture}
+        onCreateTemplate={onCreateTemplate}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('page-navigator-tab-templates'));
+
+    const btn = screen.getByTestId('page-navigator-new-template');
+    expect(btn).toBeDefined();
+    fireEvent.click(btn);
+    expect(onCreateTemplate).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not show the "+ New template" button on the Pages tab', () => {
+    render(
+      <PageNavigator
+        {...defaultProps}
+        templates={templatesFixture}
+        onCreateTemplate={vi.fn()}
+      />,
+    );
+    // Default tab is Pages.
+    expect(screen.queryByTestId('page-navigator-new-template')).toBeNull();
+  });
+
   it('renders nothing when open is false', () => {
     const { container } = render(
       <PageNavigator {...defaultProps} open={false} />
@@ -196,6 +272,23 @@ describe('PageNavigator', () => {
   });
 
   describe('"New page" create flow', () => {
+    it('clicking "+ New page" calls onCreatePage (modal entry) instead of the inline form', () => {
+      const onCreatePage = vi.fn();
+      render(
+        <PageNavigator
+          {...defaultProps}
+          onCreatePage={onCreatePage}
+          onCreateDocument={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('page-navigator-new'));
+
+      expect(onCreatePage).toHaveBeenCalledTimes(1);
+      // The old inline create form is not used when onCreatePage is provided.
+      expect(screen.queryByTestId('page-navigator-create-input')).toBeNull();
+    });
+
     it('clicking "+ New page" shows the create form when onCreateDocument is provided', () => {
       render(<PageNavigator {...defaultProps} onCreateDocument={vi.fn()} />);
 

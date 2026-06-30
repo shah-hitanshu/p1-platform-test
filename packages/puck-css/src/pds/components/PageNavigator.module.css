@@ -103,6 +103,35 @@
 /* ── List item button ──────────────────────────────────────────────────── */
 /* Prototype: fontSize t.sizeS = 0.875rem, border-radius default */
 
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0 var(--pds-spacing-xs, 0.625rem);
+  border-bottom: 1px solid oklch(0.96 0 0);
+  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+}
+.tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 0.5rem 0.5rem;
+  cursor: pointer;
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  color: var(--pds-color-fg-default-secondary, oklch(0.45 0 0));
+  line-height: 1.5;
+}
+.tab:hover {
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+}
+.tabActive {
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  font-weight: 600;
+  border-bottom-color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+}
+
 .item {
   display: block;
   width: 100%;

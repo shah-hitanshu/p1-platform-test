@@ -18,7 +18,9 @@ const initPromise = ensureInitialized({
   p1BaseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL,
   p1ApiKey: process.env.CSS_API_KEY,
   p1SiteId: process.env.NEXT_PUBLIC_CSS_SITE_ID,
-  p1BranchId: process.env.NEXT_PUBLIC_CSS_BRANCH_ID,
+  // Default to "main" when unset: server components (no user token) need a
+  // branch to list/read documents (e.g. the /structure routes table).
+  p1BranchId: process.env.NEXT_PUBLIC_CSS_BRANCH_ID ?? "main",
 });
 
 export async function generateMetadata(): Promise<Metadata> {

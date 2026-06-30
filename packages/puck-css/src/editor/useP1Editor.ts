@@ -264,6 +264,13 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     if (css.currentDocument?.id) void refreshVersions();
   }, [css.currentDocument?.id, refreshVersions]);
 
+  // Refresh versions after a successful save so the publish badge reflects the
+  // new unpublished draft (publishedStatus flips 'published' → 'unpublished-changes').
+  // Without this the badge would keep reading "Live" after an edit on the Live branch.
+  useEffect(() => {
+    if (css.saveStatus === 'saved') void refreshVersions();
+  }, [css.saveStatus, refreshVersions]);
+
   // Select a version — latest returns to live editing, others load historical
   const handleVersionSelect = useCallback((version: DocumentVersion) => {
     const latestVersion = versions[0];
@@ -300,6 +307,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
           : hasPublishedVersion
             ? 'unpublished-changes'
             : 'draft';
+
 
   // =========================================================================
   // Focus Region Reporting (outgoing — report local selection to server)
@@ -354,6 +362,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     onPublish: handlePublish,
     versions,
     versionsLoading,
+    publishedStatus,
     selectedVersionId: css.viewingVersion?.id ?? undefined,
     onVersionSelect: handleVersionSelect,
   });
@@ -494,36 +503,49 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   const resolvePermsRef = useRef(css.resolvePermissions);
   resolvePermsRef.current = css.resolvePermissions;
 
+  // Template mode: editing a template document (path `_registry/templates/<name>`).
+  const isTemplateMode = /^_registry\/templates\//.test(css.currentDocument?.path ?? '');
+
   const configWithPermissions = useMemo(() => {
-    if (!css.resolvePermissions) return puckConfig;
+    let cfg = puckConfig as Record<string, unknown>;
 
-    const cfg = puckConfig as Record<string, unknown>;
-    const components = (cfg.components ?? {}) as Record<string, Record<string, unknown>>;
-    const wrapped: Record<string, unknown> = {};
-    for (const [name, comp] of Object.entries(components)) {
-      wrapped[name] = {
-        ...comp,
-        resolvePermissions: (
-          data: { props?: { id?: string } },
-          params: { permissions: Record<string, boolean>; appState: { data: { root: { props: Record<string, unknown> } } } }
-        ) => {
-          const resolver = resolvePermsRef.current;
-          if (!resolver) return params.permissions;
-          const basePerms = resolver({ type: name }, {});
+    if (css.resolvePermissions) {
+      const components = (cfg.components ?? {}) as Record<string, Record<string, unknown>>;
+      const wrapped: Record<string, unknown> = {};
+      for (const [name, comp] of Object.entries(components)) {
+        wrapped[name] = {
+          ...comp,
+          resolvePermissions: (
+            data: { props?: { id?: string } },
+            params: { permissions: Record<string, boolean>; appState: { data: { root: { props: Record<string, unknown> } } } }
+          ) => {
+            const resolver = resolvePermsRef.current;
+            if (!resolver) return params.permissions;
+            const basePerms = resolver({ type: name }, {});
 
-          const pinMap = (params.appState?.data?.root?.props?._pinMap ?? {}) as Record<string, boolean>;
-          const compId = data?.props?.id;
+            const pinMap = (params.appState?.data?.root?.props?._pinMap ?? {}) as Record<string, boolean>;
+            const compId = data?.props?.id;
 
-          if (compId && pinMap[compId]) {
-            return { ...basePerms, drag: false, delete: false };
-          }
+            if (compId && pinMap[compId]) {
+              return { ...basePerms, drag: false, delete: false };
+            }
 
-          return basePerms;
-        },
-      };
+            return basePerms;
+          },
+        };
+      }
+      cfg = { ...cfg, components: wrapped };
     }
-    return { ...cfg, components: wrapped };
-  }, [puckConfig, !!css.resolvePermissions]);
+
+    // In template mode, relabel the right-sidebar root header "Page" -> "Template".
+    // Puck derives that heading from `config.root.label` (no override hook exists).
+    if (isTemplateMode) {
+      const root = (cfg.root ?? {}) as Record<string, unknown>;
+      cfg = { ...cfg, root: { ...root, label: 'Template' } };
+    }
+
+    return cfg;
+  }, [puckConfig, !!css.resolvePermissions, isTemplateMode]);
 
   const puckProps: PuckProps = useMemo(
     () => ({

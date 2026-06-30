@@ -2,7 +2,7 @@
  * Convert Puck data + pin map to template creation/update params.
  */
 
-import type { CreateTemplateParams, UpdateTemplateParams, TemplateComponent } from '../types.js';
+import type { UpdateTemplateParams, TemplateComponent } from '../types.js';
 
 interface PuckComponent {
   type: string;
@@ -20,29 +20,6 @@ export interface TemplateMetadataInput {
   label: string;
   description?: string;
   defaultUrlPattern?: string;
-}
-
-export function dataToCreateParams(
-  data: PuckDataShape,
-  pinMap: Map<string, boolean>,
-  metadata: TemplateMetadataInput,
-): CreateTemplateParams {
-  const components: TemplateComponent[] = data.content.map((comp) => {
-    const { id: _id, ...defaultProps } = comp.props;
-    return {
-      type: comp.type,
-      pinned: pinMap.get(comp.props.id as string) ?? false,
-      defaultProps,
-    };
-  });
-
-  return {
-    name: metadata.name,
-    label: metadata.label,
-    description: metadata.description,
-    defaultUrlPattern: metadata.defaultUrlPattern,
-    components,
-  };
 }
 
 export function dataToUpdateParams(

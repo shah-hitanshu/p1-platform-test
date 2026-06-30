@@ -14,6 +14,7 @@ import { getAvatarStyleOverride } from '../../collaboration/utils/avatarColor.js
 import { PageNavigator } from './PageNavigator.js';
 import type { PageNavigatorDocument } from './PageNavigator.js';
 import type { Template } from '../../features/content-type-templates/types.js';
+import { CreatePageModal } from './CreatePageModal.js';
 import styles from './P1EditorHeader.module.css';
 
 export type { PageNavigatorDocument };
@@ -40,11 +41,19 @@ export interface P1EditorHeaderProps {
   siteId?: string;
   dashboardUrl?: string;
   onSelectDocument: (doc: PageNavigatorDocument) => void;
-  onCreateDocument?: (path: string, template?: Template | null) => Promise<void>;
+  onCreateDocument?: (path: string, template?: Template | null, title?: string) => Promise<void>;
   onLogout: () => void;
   templates?: Template[];
   templatesLoading?: boolean;
-  onManageTemplates?: () => void;
+  /** Data sources (built-in + user) for the modal's collection builder. */
+  datasources?: { id: string; label: string; inputs?: string[] }[];
+  /** Create a new template from the modal's "New template" flow. */
+  onCreateTemplate?: (params: {
+    name: string;
+    label: string;
+    description?: string;
+    defaultUrlPattern?: string;
+  }) => Promise<Template>;
 }
 
 export function P1EditorHeader({
@@ -60,9 +69,14 @@ export function P1EditorHeader({
   onLogout,
   templates,
   templatesLoading,
-  onManageTemplates,
+  onCreateTemplate,
+  datasources,
 }: P1EditorHeaderProps): React.ReactElement {
   const [pageNavigatorOpen, setPageNavigatorOpen] = useState(false);
+  // The Create Page modal, opened from the page navigator's "+ New page" /
+  // "+ New template". `createModalMode` selects which screen it opens on.
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createModalMode, setCreateModalMode] = useState<'page' | 'new-template'>('page');
   const [navigatorPortalStyle, setNavigatorPortalStyle] = useState<
     React.CSSProperties | undefined
   >();
@@ -134,6 +148,22 @@ export function P1EditorHeader({
     onSelectDocument(doc);
     setPageNavigatorOpen(false);
   }
+
+  // CreatePageModal emits a bare path + title (+ a content-type template id when
+  // creating from a "Page type template"). Normalize to a leading slash and
+  // resolve the template id to the full Template so the provider scaffolds the
+  // template's components and binds templateId/version.
+  const handleModalCreateDocument = useCallback(
+    async (path: string, title: string, templateId?: string): Promise<void> => {
+      if (!onCreateDocument) return;
+      const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+      const template = templateId
+        ? (templates?.find((t) => t.id === templateId) ?? null)
+        : undefined;
+      await onCreateDocument(normalizedPath, template, title);
+    },
+    [onCreateDocument, templates],
+  );
 
   // Build dashboard URL if siteId is provided
   const dashboardHref = React.useMemo(() => {
@@ -237,7 +267,8 @@ export function P1EditorHeader({
         })()}
       </div>
 
-      {/* Page navigator — portal-rendered with pre-computed position to avoid flash */}
+      {/* Page navigator — portal-rendered with pre-computed position to avoid flash.
+          Its "+ New page" opens the Create Page modal. */}
       <PageNavigator
         open={pageNavigatorOpen}
         documents={documents}
@@ -245,10 +276,35 @@ export function P1EditorHeader({
         isMainBranch={true}
         onSelect={handleSelectDocument}
         onCreateDocument={onCreateDocument}
+        onCreatePage={() => {
+          setPageNavigatorOpen(false);
+          setCreateModalMode('page');
+          setCreateModalOpen(true);
+        }}
+        onCreateTemplate={() => {
+          setPageNavigatorOpen(false);
+          setCreateModalMode('new-template');
+          setCreateModalOpen(true);
+        }}
         templates={templates}
         templatesLoading={templatesLoading}
         onClose={() => setPageNavigatorOpen(false)}
         portalStyle={navigatorPortalStyle}
+      />
+
+      {/* Create page modal — opened from the temporary trigger above. */}
+      <CreatePageModal
+        open={createModalOpen}
+        initialMode={createModalMode}
+        onClose={() => setCreateModalOpen(false)}
+        onCreateDocument={handleModalCreateDocument}
+        templates={templates}
+        onCreateTemplate={onCreateTemplate}
+        datasources={datasources}
+        onNavigate={(path) => {
+          const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+          onSelectDocument({ id: normalizedPath, path: normalizedPath, archived: false });
+        }}
       />
 
       {/* Spacer */}
@@ -300,20 +356,6 @@ export function P1EditorHeader({
               <div className={styles.dropdownUserInfo} role="presentation">
                 {currentUser.name}
               </div>
-            )}
-            {onManageTemplates && (
-              <button
-                type="button"
-                role="menuitem"
-                className={styles.dropdownMenuItem}
-                onClick={() => {
-                  setUserMenuOpen(false);
-                  onManageTemplates();
-                }}
-              >
-                <Icon iconName="grid" iconSize="s" aria-hidden="true" />
-                Manage Templates
-              </button>
             )}
             <button
               type="button"

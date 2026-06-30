@@ -503,7 +503,7 @@ function P1PuckProviderInner({
   const createDocumentRawRef = useRef(createDocumentRaw);
   createDocumentRawRef.current = createDocumentRaw;
   const stableCreateDocument = useCallback(
-    async (path: string, template?: Template | null): Promise<void> => {
+    async (path: string, template?: Template | null, title?: string): Promise<void> => {
       if (!branchIdRef.current) {
         throw new Error('Cannot create document: no branch selected');
       }
@@ -517,12 +517,68 @@ function P1PuckProviderInner({
         await createDocumentRawRef.current(path, initialData, {
           templateId: fullTemplate.id,
           templateVersion: fullTemplate.version,
+          title,
         });
       } else {
-        await createDocumentRawRef.current(path);
+        await createDocumentRawRef.current(path, undefined, title ? { title } : undefined);
       }
     },
     [userClient, siteId]
+  );
+
+  // Stable update-template callback (template metadata: label/description/URL
+  // pattern). Used by the editor's template-mode right sidebar to persist details
+  // to the Template record, then refresh the list so the changes propagate.
+  const refreshTemplatesRef = useRef(refreshTemplates);
+  refreshTemplatesRef.current = refreshTemplates;
+  // Create a new template (empty component skeleton — the layout is built in the
+  // template editor afterwards). Returns the created Template so callers can
+  // navigate to its editor. Used by the Create Page modal's "New template" flow.
+  const stableCreateTemplate = useCallback(
+    async (params: {
+      name: string;
+      label: string;
+      description?: string;
+      defaultUrlPattern?: string;
+    }): Promise<Template> => {
+      if (!branchIdRef.current) {
+        throw new Error('Cannot create template: no branch selected');
+      }
+      const created = await userClient.templates.create(siteId, branchIdRef.current, {
+        ...params,
+        components: [],
+      });
+      await refreshTemplatesRef.current();
+      return created;
+    },
+    [userClient, siteId],
+  );
+  const stableUpdateTemplate = useCallback(
+    async (
+      templateId: string,
+      params: {
+        label?: string;
+        description?: string;
+        defaultUrlPattern?: string;
+        // Component skeleton from the live canvas — sent so the backend's
+        // full-replace update can't wipe components on a metadata save.
+        components?: { type: string; pinned: boolean; defaultProps: Record<string, unknown> }[];
+      },
+    ): Promise<void> => {
+      if (!branchIdRef.current) {
+        throw new Error('Cannot update template: no branch selected');
+      }
+      const updated = await userClient.templates.update(
+        siteId,
+        branchIdRef.current,
+        templateId,
+        params,
+      );
+      // Keep the in-editor template in sync if it's the one being edited.
+      setCurrentTemplate((prev) => (prev && prev.id === updated.id ? updated : prev));
+      await refreshTemplatesRef.current();
+    },
+    [userClient, siteId],
   );
 
   const removeDocumentRawRef = useRef(removeDocumentRaw);
@@ -1825,6 +1881,8 @@ function P1PuckProviderInner({
       documentsLoading,
       createDocument: stableCreateDocument,
       deleteDocument: stableDeleteDocument,
+      createTemplate: stableCreateTemplate,
+      updateTemplate: stableUpdateTemplate,
       branches,
       currentBranch,
       refreshBranches,
@@ -1902,6 +1960,8 @@ function P1PuckProviderInner({
       documentsLoading,
       stableCreateDocument,
       stableDeleteDocument,
+      stableCreateTemplate,
+      stableUpdateTemplate,
       branches,
       currentBranch,
       refreshBranches,

@@ -33,7 +33,11 @@ interface UseDocumentsReturn {
   /**
    * Create a new document.
    */
-  create: (path: string, initialData?: PuckData, options?: { templateId?: string; templateVersion?: number }) => Promise<Document>;
+  create: (
+    path: string,
+    initialData?: PuckData,
+    options?: { templateId?: string; templateVersion?: number; title?: string },
+  ) => Promise<Document>;
 
   /**
    * Delete a document.
@@ -129,7 +133,11 @@ export function useDocuments({
 
   // Create a new document
   const create = useCallback(
-    async (path: string, initialData?: PuckData, options?: { templateId?: string; templateVersion?: number }): Promise<Document> => {
+    async (
+      path: string,
+      initialData?: PuckData,
+      options?: { templateId?: string; templateVersion?: number; title?: string },
+    ): Promise<Document> => {
       const doc = await client.documents.create({
         siteId,
         branchId,
@@ -140,8 +148,21 @@ export function useDocuments({
         } : {}),
       });
 
-      // Create initial version with default or provided data
-      const data = initialData ?? DEFAULT_PUCK_DATA;
+      // Create initial version with default or provided data. When a title is
+      // given, seed it into the Puck root props (root.props.title) — the same
+      // field Puck's root "title" input reads/writes — so it persists in the
+      // initial snapshot. This composes with template scaffolding: the title is
+      // merged into whatever initialData was passed (default or scaffolded).
+      const baseData = initialData ?? DEFAULT_PUCK_DATA;
+      const data: PuckData = options?.title
+        ? {
+            ...baseData,
+            root: {
+              ...baseData.root,
+              props: { ...(baseData.root?.props ?? {}), title: options.title },
+            },
+          }
+        : baseData;
       await client.versions.create(siteId, {
         documentId: doc.id,
         branchId,

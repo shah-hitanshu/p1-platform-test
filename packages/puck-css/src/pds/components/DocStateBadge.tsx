@@ -15,7 +15,7 @@ const STATUS_TYPE: Record<DocState, 'warning' | 'success' | 'info'> = {
 
 const LABEL_TEXT: Record<DocState, string> = {
   modified: 'Modified',
-  unpublished: 'Unpublished',
+  unpublished: 'Changes pending publishing',
   live: 'Live',
   liveOnly: 'Live only',
 };

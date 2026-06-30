@@ -33,6 +33,12 @@ export interface SubheaderActor {
 export interface P1EditorSubheaderProps {
   puckActions: React.ReactNode;
   docState: DocState;
+  /**
+   * State for the publish *badge*. When undefined the badge is hidden (e.g. off
+   * the Live branch, or while the published status is unknown). Distinct from
+   * `docState`, which always drives the publish button/actions.
+   */
+  badgeDocState?: DocState;
   hasDrift?: boolean;
   context: 'branch' | 'main';
   agents: SubheaderActor[];
@@ -64,6 +70,7 @@ export interface P1EditorSubheaderProps {
 export function P1EditorSubheader({
   puckActions,
   docState,
+  badgeDocState,
   hasDrift,
   context,
   agents,
@@ -192,18 +199,21 @@ export function P1EditorSubheader({
         )}
       </div>
 
-      {/* Doc state badge */}
-      <PublishControl
-        docState={docState}
-        hasDrift={hasDrift}
-        context={context}
-        onPublish={onPublish}
-        onReviewAndPublish={onReviewAndPublish}
-        onReviewWorkstream={onReviewWorkstream}
-        onCreateWorkstream={onCreateWorkstream}
-        onDeleteDocument={onDeleteDocument}
-        renderBadgeOnly
-      />
+      {/* Doc state badge — shown only when a badge state is provided
+          (Live branch, status known); otherwise hidden. */}
+      {badgeDocState && (
+        <PublishControl
+          docState={badgeDocState}
+          hasDrift={hasDrift}
+          context={context}
+          onPublish={onPublish}
+          onReviewAndPublish={onReviewAndPublish}
+          onReviewWorkstream={onReviewWorkstream}
+          onCreateWorkstream={onCreateWorkstream}
+          onDeleteDocument={onDeleteDocument}
+          renderBadgeOnly
+        />
+      )}
 
       {/* Workstream selector + Publish button group */}
       <div className={styles.workstreamPublishGroup}>

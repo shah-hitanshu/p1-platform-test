@@ -437,8 +437,44 @@ export interface P1PuckContextValue {
   /**
    * Create a new document on the current branch.
    * Creates the document and an initial empty version, then refreshes the document list.
+   * An optional title is seeded into the initial snapshot at root.props.title.
    */
-  createDocument: (path: string, template?: Template | null) => Promise<void>;
+  createDocument: (
+    path: string,
+    template?: Template | null,
+    title?: string,
+  ) => Promise<void>;
+
+  /**
+   * Create a new template (empty component skeleton) on the current branch, then
+   * refresh the template list. Returns the created template so callers can open
+   * its editor. Used by the Create Page modal's "New template" flow.
+   */
+  createTemplate: (params: {
+    name: string;
+    label: string;
+    description?: string;
+    defaultUrlPattern?: string;
+  }) => Promise<Template>;
+
+  /**
+   * Update a template's metadata (label / description / default URL pattern) on
+   * the current branch, then refresh the template list. Used by the editor's
+   * template-mode right sidebar.
+   */
+  updateTemplate: (
+    templateId: string,
+    params: {
+      label?: string;
+      description?: string;
+      defaultUrlPattern?: string;
+      /**
+       * Component skeleton derived from the live canvas. Sent so the backend's
+       * full-replace update doesn't wipe components on a metadata-only save.
+       */
+      components?: { type: string; pinned: boolean; defaultProps: Record<string, unknown> }[];
+    },
+  ) => Promise<void>;
 
   /**
    * Delete a document on the current branch.

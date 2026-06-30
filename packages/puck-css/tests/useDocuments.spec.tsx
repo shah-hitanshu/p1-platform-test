@@ -170,6 +170,95 @@ describe('useDocuments', () => {
       expect(result.current.documents).toEqual(updatedDocs);
     });
 
+    // Component #2: the Create Page modal collects a page title. On create it
+    // must be persisted into the new page's INITIAL version snapshot at
+    // root.props.title (the same field Puck's root "title" input reads/writes),
+    // and must compose with template scaffolding (options.templateId) rather
+    // than replace it.
+    it('seeds root.props.title into the initial version snapshot when a title is provided', async () => {
+      (mockClient.documents.list as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (mockClient.documents.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'doc2',
+        path: '/about',
+      });
+      (mockClient.versions.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+      const { result } = renderHook(() =>
+        useDocuments({ client: mockClient, siteId: 'site1', branchId: 'branch1' })
+      );
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.create('/about', undefined, { title: 'My New Page' });
+      });
+
+      const snapshot = (mockClient.versions.create as ReturnType<typeof vi.fn>).mock
+        .calls[0][1].snapshot;
+      expect(snapshot.root.props.title).toBe('My New Page');
+    });
+
+    it('does not set a title when none is provided', async () => {
+      (mockClient.documents.list as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (mockClient.documents.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'doc2',
+        path: '/about',
+      });
+      (mockClient.versions.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+      const { result } = renderHook(() =>
+        useDocuments({ client: mockClient, siteId: 'site1', branchId: 'branch1' })
+      );
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.create('/about');
+      });
+
+      const snapshot = (mockClient.versions.create as ReturnType<typeof vi.fn>).mock
+        .calls[0][1].snapshot;
+      expect(snapshot.root.props.title).toBeUndefined();
+    });
+
+    it('merges the title into provided initialData (template scaffold) without dropping content', async () => {
+      const scaffold = {
+        content: [{ type: 'Heading', props: { id: 'h1' } }],
+        root: { props: { foo: 'bar' } },
+      };
+      (mockClient.documents.list as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (mockClient.documents.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'doc2',
+        path: '/about',
+      });
+      (mockClient.versions.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+      const { result } = renderHook(() =>
+        useDocuments({ client: mockClient, siteId: 'site1', branchId: 'branch1' })
+      );
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.create('/about', scaffold as never, {
+          title: 'Blog Post',
+          templateId: 't1',
+          templateVersion: 2,
+        });
+      });
+
+      // Template binding still flows through to documents.create.
+      expect(mockClient.documents.create).toHaveBeenCalledWith({
+        siteId: 'site1',
+        branchId: 'branch1',
+        path: '/about',
+        templateId: 't1',
+        templateVersion: 2,
+      });
+
+      const snapshot = (mockClient.versions.create as ReturnType<typeof vi.fn>).mock
+        .calls[0][1].snapshot;
+      expect(snapshot.content).toEqual(scaffold.content);
+      expect(snapshot.root.props).toEqual({ foo: 'bar', title: 'Blog Post' });
+    });
+
     it('should remove a document and refresh the list', async () => {
       const initialDocs = [
         { id: 'doc1', path: 'page1' },

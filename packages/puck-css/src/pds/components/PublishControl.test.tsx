@@ -38,7 +38,7 @@ describe('PublishControl — badge always present', () => {
 
   it('renders DocStateBadge for unpublished state', () => {
     render(<PublishControl docState="unpublished" context="main" />);
-    expect(screen.getByText('Unpublished')).toBeTruthy();
+    expect(screen.getByText('Changes pending publishing')).toBeTruthy();
   });
 
   it('renders DocStateBadge for live state on main', () => {
