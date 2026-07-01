@@ -83,7 +83,7 @@
       ],
       "images": { "binding": "IMAGES" },
       "services": [
-        { "binding": "CSS_SERVICE", "service": "collaborative-state-worker-prod" }
+        { "binding": "CSS_SERVICE", "service": "collaborative-state-worker-production" }
       ],
       "vars": {
         "CSS_BASE_URL": "https://ccr.p1.pantheon.io",
