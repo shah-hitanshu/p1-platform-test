@@ -2,6 +2,17 @@
   "name": "@pantheon-systems/p1-media-r2",
   "version": "0.1.0",
   "description": "Puck media library plugin backed by Cloudflare R2",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pantheon-systems/p1-media-r2.git",
+    "directory": "packages/plugin"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "provenance": false
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",

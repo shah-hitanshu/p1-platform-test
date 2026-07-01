@@ -6,5 +6,5 @@
     "lint": "pnpm -r lint",
     "dev:worker": "pnpm --filter worker dev"
   },
-  "packageManager": "pnpm@9.15.0"
+  "packageManager": "pnpm@11.7.0"
 }
