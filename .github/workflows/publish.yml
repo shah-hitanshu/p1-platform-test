@@ -46,5 +46,4 @@ jobs:
 
       - name: Publish
         working-directory: packages/plugin
-        # --no-git-checks: the version-set step can dirty the working tree
-        run: pnpm publish --access public --no-git-checks
+        run: npm publish --access public
