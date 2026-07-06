@@ -2,6 +2,29 @@
 
 This guide covers upgrading to `@pantheon/puck-css@0.3.x` which reduces the required environment variables from 6 to 2.
 
+## Breaking: `P1_CSS_API_KEY` renamed to `CSS_API_KEY`
+
+The starter app's server-side API key variable is now `CSS_API_KEY` (previously `P1_CSS_API_KEY`). A single `CSS_API_KEY` is used for all server-side calls, including:
+
+- **Broker authentication** — proxied server-side to authenticate the *site* to the CSS backend (passed as `p1ApiKey` by the app routes and handlers).
+- **Server-side content delivery** — read by `createNextContentClient()` when rendering published pages.
+- **Template/structure lookups** — sent as an `X-API-Key` header to the CSS backend.
+
+The value is unchanged — it is the same Pantheon site API token (`sat_…` prefix). Only the variable name changed.
+
+> **This is a silent breaking change.** If your environment or deployment secrets still define `P1_CSS_API_KEY` and not `CSS_API_KEY`, `p1ApiKey` resolves to `undefined`, the broker never receives the site token, and editor auth fails — with no build-time error.
+
+### Action required
+
+Rename the variable everywhere it is set — `.env` / `.env.local`, deployment secrets (e.g. Pantheon `web`-scope secrets), and CI configuration:
+
+```diff
+-P1_CSS_API_KEY=sat_...
++CSS_API_KEY=sat_...
+```
+
+> Note: `CSS_API_KEY` is server-side only. It authenticates the *site*; individual editors still sign in through Auth0 via the broker.
+
 ## What Changed
 
 | Variable | Before | After |
@@ -132,7 +155,7 @@ NEXT_PUBLIC_CSS_BASE_URL=https://css.example.com
 
 ### 5. Remove `CSS_AUTH_MODE` from env files (if using the default)
 
-`p1` is now the default. Only set `NEXT_PUBLIC_CSS_AUTH_MODE` if you need a different auth mode:
+`broker` is now the default. Only set `NEXT_PUBLIC_CSS_AUTH_MODE` if you need a different auth mode:
 
 ```
 # Only needed for non-default auth:

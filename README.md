@@ -186,6 +186,8 @@ Everything else has sensible defaults and can be omitted.
 |----------|-------------|
 | `CSS_API_KEY` | API key for `createNextContentClient()`. Returns `null` if not set. |
 
+**Note:** `CSS_API_KEY` is a Pantheon site API token (`sat_…`), server-side only. A single value backs every server-side use — broker authentication (above), content delivery, and template lookups. It authenticates the *site*; editors still sign in through Auth0.
+
 **Note:** For Vite apps, use the `VITE_` prefix instead of `NEXT_PUBLIC_` (e.g. `VITE_CSS_BASE_URL`).
 
 ## Server-Side Content Delivery
