@@ -4,6 +4,7 @@ export async function postBrokerLogin(
   request: Request,
   apiKey: string | undefined,
   baseUrl: string | undefined,
+  siteUrl?: string,
   redirectUrl?: string,
   prompt?: string,
 ) {
@@ -24,7 +25,20 @@ export async function postBrokerLogin(
 
   const requestUrl = new URL(request.url);
   const basePath = requestUrl.pathname.replace(/\/auth\/.*$/, '') || '/';
-  const effectiveRedirectUrl = redirectUrl ?? requestUrl.origin + basePath;
+
+  if (!siteUrl && process.env.NODE_ENV === 'production') {
+    console.warn(
+      "[P1AuthHandler] p1SiteUrl is not set. Redirect URLs may be incorrect behind a reverse proxy. " +
+      "Set p1SiteUrl in your P1AuthHandlerConfig (e.g. process.env.P1_SITE_URL). " +
+      "This will be required in a future major version.",
+    );
+  }
+
+  const actualOrigin = siteUrl
+    ? new URL(siteUrl).origin
+    : requestUrl.origin;
+
+  const effectiveRedirectUrl = redirectUrl ?? actualOrigin + basePath;
   headers["Content-Type"] = "application/json";
   fetchInit.body = JSON.stringify({
     redirectUrl: effectiveRedirectUrl,

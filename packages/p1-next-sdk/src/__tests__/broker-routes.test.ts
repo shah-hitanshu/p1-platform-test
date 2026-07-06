@@ -90,6 +90,7 @@ describe("postBrokerLogin", () => {
       makeRequest(),
       "test-api-key",
       "https://css.example.com",
+      undefined,
       "https://myapp.example.com/p1/editor",
     );
 
@@ -111,6 +112,67 @@ describe("postBrokerLogin", () => {
     const [, opts] = fetchSpy.mock.calls[0];
     const body = JSON.parse(opts.body);
     expect(body.redirectUrl).toBe("http://localhost/p1");
+  });
+
+  it("uses p1SiteUrl origin for redirectUrl when provided", async () => {
+    const upstream = { transactionId: "tx-3", loginUrl: "https://auth0.example.com/login" };
+    fetchSpy.mockResolvedValueOnce(okResponse(upstream));
+
+    await postBrokerLogin(
+      makeRequest(),
+      "key",
+      "https://css.example.com",
+      "https://mysite.pantheonsite.io",
+    );
+
+    const [, opts] = fetchSpy.mock.calls[0];
+    const body = JSON.parse(opts.body);
+    expect(body.redirectUrl).toBe("https://mysite.pantheonsite.io/p1");
+  });
+
+  it("falls back to request.url origin when p1SiteUrl is not provided", async () => {
+    const upstream = { transactionId: "tx-4", loginUrl: "https://auth0.example.com/login" };
+    fetchSpy.mockResolvedValueOnce(okResponse(upstream));
+
+    await postBrokerLogin(makeRequest(), "key", "https://css.example.com", undefined);
+
+    const [, opts] = fetchSpy.mock.calls[0];
+    const body = JSON.parse(opts.body);
+    expect(body.redirectUrl).toBe("http://localhost/p1");
+  });
+
+  it("warns in production when p1SiteUrl is not set", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    fetchSpy.mockResolvedValueOnce(okResponse({ transactionId: "tx-5" }));
+    await postBrokerLogin(makeRequest(), "key", "https://css.example.com");
+
+    expect(warnSpy).toHaveBeenCalledOnce();
+    expect(warnSpy.mock.calls[0][0]).toContain("p1SiteUrl");
+
+    warnSpy.mockRestore();
+    process.env.NODE_ENV = originalEnv;
+  });
+
+  it("does not warn when p1SiteUrl is provided in production", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    fetchSpy.mockResolvedValueOnce(okResponse({ transactionId: "tx-6" }));
+    await postBrokerLogin(
+      makeRequest(),
+      "key",
+      "https://css.example.com",
+      "https://mysite.pantheonsite.io",
+    );
+
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+    process.env.NODE_ENV = originalEnv;
   });
 });
 
