@@ -1,11 +1,12 @@
 {
   "name": "p1-chatbot",
   "private": true,
+  "packageManager": "pnpm@11.5.0",
   "workspaces": [
     "workers/*",
     "packages/*"
   ],
   "devDependencies": {
-    "ws": "^8.20.0"
+    "ws": "^8.21.0"
   }
 }
