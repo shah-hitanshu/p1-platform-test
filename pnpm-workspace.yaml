@@ -6,6 +6,10 @@ allowBuilds:
   esbuild: true
   sharp: true
 
+ignoredOptionalDependencies:
+  - '@fortawesome/free-brands-svg-icons'
+  - '@fortawesome/fontawesome-common-types'
+
 overrides:
   esbuild: '>=0.25.0'
   minimatch: '>=10.2.5'
