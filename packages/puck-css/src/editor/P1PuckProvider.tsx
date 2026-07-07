@@ -487,6 +487,7 @@ function P1PuckProviderInner({
     loading: documentsLoading,
     create: createDocumentRaw,
     remove: removeDocumentRaw,
+    refresh: refreshDocuments,
   } = useDocuments({ client: userClient, siteId, branchId });
 
   // Template list for current branch
@@ -1879,6 +1880,7 @@ function P1PuckProviderInner({
       // Documents (Item 8)
       documents: branchDocuments,
       documentsLoading,
+      refreshDocuments,
       createDocument: stableCreateDocument,
       deleteDocument: stableDeleteDocument,
       createTemplate: stableCreateTemplate,

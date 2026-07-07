@@ -10,6 +10,7 @@ import { paragraphBlock } from "./components/puck/paragraph-block";
 import { quoteBlock } from "./components/puck/quote-block";
 import { puckRoot } from "./components/puck/root";
 import { spacerBlock } from "./components/puck/spacer-block";
+import { welcomeBlock } from "./components/puck/welcome-block";
 
 export const config = {
   categories: {
@@ -33,6 +34,10 @@ export const config = {
       title: "Actions",
       components: ["ButtonBlock"],
     },
+    pages: {
+      title: "Page Sections",
+      components: ["P1WelcomeBlock"],
+    },
   },
   root: puckRoot,
   components: {
@@ -45,6 +50,7 @@ export const config = {
     DividerBlock: dividerBlock,
     SpacerBlock: spacerBlock,
     ButtonBlock: buttonBlock,
+    P1WelcomeBlock: welcomeBlock,
   },
 } as Config;
 

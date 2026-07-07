@@ -6,6 +6,7 @@ dist/
 *.tsbuildinfo
 
 # Environment
+.envrc
 .env
 .env.local
 .env.*.local

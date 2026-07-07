@@ -17,6 +17,7 @@ export {
   useP1Auth,
   DEMO_USERS,
   P1LoginPage,
+  P1_LOGGED_IN_KEY,
 } from './auth/index.js';
 export type {
   AuthMode,

@@ -112,7 +112,7 @@ export default async function Page({
               Open the Page Editor
             </a>
             <a
-              href="https://staging.content.pantheon.io/dashboard/sites"
+              href={`${process.env.NEXT_PUBLIC_P1_ADMIN_DASHBOARD_URL || "https://content.pantheon.io"}/dashboard/sites`}
               target="_blank"
               rel="noopener noreferrer"
               className="rounded-lg border border-gray-300 px-5 py-3 text-sm font-medium text-gray-900 hover:bg-gray-100"

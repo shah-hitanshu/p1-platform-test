@@ -38,7 +38,8 @@ export type P1PagesConfig = P1DataConfig & {
 };
 
 function parsePath(path: string[]): { mode: string; pagePath: string } {
-  if (path.length === 0) return { mode: "dashboard", pagePath: "/" };
+  // /p1 (no segments) -> editor for root page "/"
+  if (path.length === 0) return { mode: "editor", pagePath: "/" };
   const command = path[0];
 
   // /p1/api/... is handled by the route handler, not the page

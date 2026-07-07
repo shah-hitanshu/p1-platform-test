@@ -8,17 +8,40 @@ vi.mock('@pantheon-systems/css-client', () => ({
     branches = { list: mockBranchesList };
     documents = {
       list: vi.fn().mockResolvedValue([]),
-      getByPath: vi.fn().mockRejectedValue(new Error('not found')),
-      create: vi.fn().mockResolvedValue({ id: 'doc-1', path: 'test' }),
+      getByPath: vi.fn().mockImplementation(({ path }: { path: string }) => {
+        if (mockPages.has(path)) {
+          return Promise.resolve({ id: `doc-${path}`, path });
+        }
+        const error: any = new Error('not found');
+        error.statusCode = 404;
+        throw error;
+      }),
+      create: vi.fn().mockImplementation(({ path }: { path: string }) => {
+        const doc = { id: `doc-${path}`, path };
+        return Promise.resolve(doc);
+      }),
       delete: vi.fn(),
     };
     versions = {
-      getLatest: vi.fn().mockResolvedValue({ snapshot: {} }),
-      create: vi.fn(),
+      getLatest: vi.fn().mockImplementation(({ documentId }: { documentId: string }) => {
+        const path = documentId.replace('doc-', '');
+        const data = mockPages.get(path);
+        if (data) {
+          return Promise.resolve({ snapshot: data });
+        }
+        return Promise.resolve({ snapshot: {} });
+      }),
+      create: vi.fn().mockImplementation(({ documentId, snapshot }: { documentId: string; snapshot: Data }) => {
+        const path = documentId.replace('doc-', '');
+        mockPages.set(path, snapshot);
+        return Promise.resolve({ id: 'version-1', snapshot });
+      }),
     };
   },
   P1ContentClient: class MockP1ContentClient {
-    getPage = vi.fn().mockResolvedValue(null);
+    getPage = vi.fn().mockImplementation((path: string) => {
+      return Promise.resolve(mockPages.get(path) || null);
+    });
   },
 }));
 
@@ -27,12 +50,17 @@ vi.mock('../../data/dal/index', () => ({
 }));
 
 import { ensureInitialized, _resetInit } from '../../data/dal/init';
+import type { Data } from '@puckeditor/core';
+
+// Track pages created during initialization for testing
+const mockPages = new Map<string, Data>();
 
 describe('ensureInitialized', () => {
   beforeEach(() => {
     _resetInit();
     mockBranchesList.mockReset();
     mockInitializeStores.mockReset();
+    mockPages.clear();
   });
 
   afterEach(() => {
@@ -181,4 +209,5 @@ describe('ensureInitialized', () => {
       }),
     );
   });
+
 });

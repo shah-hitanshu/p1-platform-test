@@ -61,6 +61,8 @@ export const DEMO_USERS = [
 
 const DEFAULT_TOKEN_KEY = 'p1_auth_token';
 
+export const P1_LOGGED_IN_KEY = 'p1_logged_in';
+
 export interface P1AuthProviderProps {
   /** Auth mode: 'mock' for demo users, 'broker' for auth broker. */
   authMode: AuthMode;
@@ -125,6 +127,13 @@ export function P1AuthProvider(props: P1AuthProviderProps): React.ReactElement {
   }, [authMode, brokerSession, storageKey]);
 
   const isAuthenticated = user !== null && token !== null;
+
+  useEffect(() => {
+    if (typeof localStorage === 'undefined') return;
+    if (isAuthenticated) {
+      localStorage.setItem(P1_LOGGED_IN_KEY, '1');
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     let cancelled = false;
@@ -273,6 +282,7 @@ export function P1AuthProvider(props: P1AuthProviderProps): React.ReactElement {
       await brokerSession.logout();
     }
 
+    localStorage.removeItem(P1_LOGGED_IN_KEY);
     setToken(null);
     setUser(null);
     setError(null);

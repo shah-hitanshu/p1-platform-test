@@ -435,6 +435,11 @@ export interface P1PuckContextValue {
   documentsLoading: boolean;
 
   /**
+   * Re-fetch the document list for the current branch.
+   */
+  refreshDocuments: () => Promise<void>;
+
+  /**
    * Create a new document on the current branch.
    * Creates the document and an initial empty version, then refreshes the document list.
    * An optional title is seeded into the initial snapshot at root.props.title.

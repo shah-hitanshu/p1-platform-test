@@ -13,6 +13,7 @@ export {
   useP1Auth,
   useOptionalP1Auth,
   DEMO_USERS,
+  P1_LOGGED_IN_KEY,
 } from './P1AuthProvider.js';
 export type {
   AuthMode,

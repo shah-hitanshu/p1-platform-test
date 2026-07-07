@@ -331,6 +331,19 @@ describe('PageNavigator', () => {
       expect(onCreateDocument).toHaveBeenCalledWith('my-new-page', null);
     });
 
+    it('allows creating a homepage with "/" path', async () => {
+      const onCreateDocument = vi.fn().mockResolvedValue(undefined);
+      render(<PageNavigator {...defaultProps} onCreateDocument={onCreateDocument} />);
+
+      fireEvent.click(screen.getByTestId('page-navigator-new'));
+      fireEvent.change(screen.getByTestId('page-navigator-create-input'), {
+        target: { value: '/' },
+      });
+      fireEvent.submit(screen.getByTestId('page-navigator-create-form'));
+
+      expect(onCreateDocument).toHaveBeenCalledWith('/', null);
+    });
+
     it('hides the create form after successful creation', async () => {
       const onCreateDocument = vi.fn().mockResolvedValue(undefined);
       render(<PageNavigator {...defaultProps} onCreateDocument={onCreateDocument} />);

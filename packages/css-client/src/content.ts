@@ -66,8 +66,10 @@ export class P1ContentClient {
   }
 
   async getPage(documentPath: string): Promise<PageContent | null> {
-    const cleanPath = trimLeadingSlashes(documentPath);
-    let url = `${this.baseUrl}/api/sites/${this.siteId}/content/${cleanPath}`;
+    // Special case: "/" is the root page - don't include it in the URL path
+    const cleanPath = documentPath === '/' ? '' : trimLeadingSlashes(documentPath);
+    const pathSegment = cleanPath ? `/${cleanPath}` : '';
+    let url = `${this.baseUrl}/api/sites/${this.siteId}/content${pathSegment}`;
     if (this.branchId) {
       url += `?branch=${this.branchId}`;
     }
@@ -81,7 +83,7 @@ export class P1ContentClient {
       const body = await response.json().catch(() => ({ error: 'Unknown error' }));
       throw new P1ApiError(
         (body as { error?: string }).error || `HTTP ${response.status}`,
-        response.status,
+        response.status
       );
     }
     return response.json() as Promise<PageContent>;
@@ -99,7 +101,7 @@ export class P1ContentClient {
       const body = await response.json().catch(() => ({ error: 'Unknown error' }));
       throw new P1ApiError(
         (body as { error?: string }).error || `HTTP ${response.status}`,
-        response.status,
+        response.status
       );
     }
     return response.json() as Promise<PageListResult>;

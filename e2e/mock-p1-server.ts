@@ -123,9 +123,10 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
 
   // GET /api/sites/:siteId/content/:docPath — content delivery endpoint (published view)
   // Path may be multi-segment so we can't use routeMatch; use prefix matching instead.
-  const contentPrefix = `/api/sites/${SITE_ID}/content/`;
-  if (pathname.startsWith(contentPrefix) && method === "GET") {
-    const docPath = pathname.slice(contentPrefix.length);
+  // Root page requests arrive as /api/sites/SITE/content (no trailing slash).
+  const contentBase = `/api/sites/${SITE_ID}/content`;
+  if ((pathname === contentBase || pathname.startsWith(contentBase + "/")) && method === "GET") {
+    const docPath = pathname === contentBase ? "" : pathname.slice(contentBase.length + 1);
     const doc = docs.get(docPath);
     if (!doc) return notFound(res);
     return json(res, 200, {

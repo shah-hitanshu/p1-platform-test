@@ -97,8 +97,13 @@ export function PageNavigator({
   const handleCreate = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!newPath.trim() || !onCreateDocument) return;
-      const path = newPath.startsWith('/') ? newPath.slice(1) : newPath;
+      if (!onCreateDocument) return;
+
+      const trimmedPath = newPath.trim();
+      if (!trimmedPath) return;
+
+      // Special case: "/" is a valid path for the homepage
+      const path = trimmedPath === '/' ? '/' : (trimmedPath.startsWith('/') ? trimmedPath.slice(1) : trimmedPath);
       const normalizedPath = path.startsWith('/') ? path : `/${path}`;
       setCreateError(null);
       try {

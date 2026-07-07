@@ -213,6 +213,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
                 loadedPathRef.current = documentPath;
                 setNeedsRedirect(false);
                 setLoading(false);
+                void css.refreshDocuments();
               }
               return;
             }

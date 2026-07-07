@@ -1,13 +1,36 @@
 {
   "/": {
-    "root": { "props": { "title": "My Puck Editor" } },
+    "root": { "props": { "title": "Welcome to P1" } },
     "content": [
       {
         "type": "HeadingBlock",
         "props": {
-          "title": "Woah",
+          "title": "Welcome to P1 Starter Kit",
           "level": "h1",
-          "id": "HeadingBlock-99002c8b-42d0-4886-ab5e-b7ebc7c0a742"
+          "id": "HeadingBlock-welcome"
+        }
+      },
+      {
+        "type": "ParagraphBlock",
+        "props": {
+          "text": "Build and manage pages with the visual editor. Get started by editing this page or creating new ones from the dashboard.",
+          "id": "ParagraphBlock-welcome-desc"
+        }
+      },
+      {
+        "type": "SpacerBlock",
+        "props": {
+          "size": "medium",
+          "id": "SpacerBlock-welcome"
+        }
+      },
+      {
+        "type": "ButtonBlock",
+        "props": {
+          "label": "Open Page Editor",
+          "href": "/p1",
+          "openInNewTab": false,
+          "id": "ButtonBlock-welcome-cta"
         }
       }
     ],
