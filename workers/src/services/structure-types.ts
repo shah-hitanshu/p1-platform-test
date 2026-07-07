@@ -121,8 +121,40 @@ export interface NavigationTreeNode {
 }
 
 // =============================================================================
+// Slug Normalization
+// =============================================================================
+
+export function normalizeSlug(slug: string): string {
+  if (!slug || slug.trim() === '') {
+    throw new InvalidSlugError('slug cannot be empty');
+  }
+
+  const normalized = slug.trim().toLowerCase();
+
+  if (!/^[a-z0-9._-]+$/.test(normalized)) {
+    throw new InvalidSlugError(
+      `slug "${slug}" contains invalid characters; only letters, numbers, hyphens, underscores, and dots are allowed`,
+    );
+  }
+
+  return normalized;
+}
+
+// =============================================================================
 // Error Classes
 // =============================================================================
+
+/**
+ * Error thrown when a slug format is invalid.
+ */
+export class InvalidSlugError extends Error {
+  public readonly name = 'InvalidSlugError';
+
+  constructor(message: string) {
+    super(message);
+    Object.setPrototypeOf(this, InvalidSlugError.prototype);
+  }
+}
 
 /**
  * Error thrown when a site is not found.

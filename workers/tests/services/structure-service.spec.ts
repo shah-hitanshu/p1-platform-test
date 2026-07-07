@@ -153,6 +153,43 @@ describe('Phase 6.1: Structure Service', () => {
         }),
       ).rejects.toThrow(SiteNotFoundError);
     });
+
+    it('should normalize slug to lowercase on creation', async () => {
+      const { createStructure } = await import('../../src/services/structure-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'struct-1', site_id: 'site-1', created_at: '2026-01-24T10:00:00.000Z' }],
+        })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              branch_id: 'branch-1',
+              structure_id: 'struct-1',
+              name: 'Main Navigation',
+              slug: 'main-nav',
+              structure_type: 'hierarchy',
+              structure_tree: [],
+              metadata_schema: {},
+              schema_enforcement: 'warn',
+            },
+          ],
+        });
+
+      const structure = await createStructure({
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        name: 'Main Navigation',
+        slug: 'Main-Nav',
+        structureType: 'hierarchy',
+      });
+
+      // Verify the INSERT used the normalized (lowercase) slug
+      const insertCall = vi.mocked(db.query).mock.calls[1];
+      expect(insertCall[1]).toContain('main-nav');
+      expect(structure.slug).toBe('main-nav');
+    });
   });
 
   describe('getBranchStructure', () => {
@@ -225,6 +262,38 @@ describe('Phase 6.1: Structure Service', () => {
       expect(structure).not.toBeNull();
       expect(structure?.slug).toBe('main-nav');
       expect(structure?.branchId).toBe('branch-1');
+    });
+
+    it('should find structure with case-insensitive slug lookup', async () => {
+      const { getBranchStructureBySlug } = await import('../../src/services/structure-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            structure_id: 'struct-1',
+            site_id: 'site-1',
+            branch_id: 'branch-1',
+            name: 'Main Navigation',
+            slug: 'main-nav',
+            structure_type: 'hierarchy',
+            structure_tree: [],
+            metadata_schema: {},
+            schema_enforcement: 'warn',
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
+
+      const structure = await getBranchStructureBySlug('branch-1', 'Main-Nav');
+
+      expect(structure).not.toBeNull();
+      expect(structure?.slug).toBe('main-nav');
+      // Verify the query used the normalized lowercase slug
+      expect(vi.mocked(db.query)).toHaveBeenCalledWith(
+        expect.any(String),
+        ['branch-1', 'main-nav'],
+      );
     });
   });
 
@@ -537,6 +606,41 @@ describe('Phase 6.1: Structure Service', () => {
           position: 0,
         }),
       ).rejects.toThrow(DuplicateNodeSlugError);
+    });
+
+    it('should normalize node slug to lowercase on creation', async () => {
+      const { createNode } = await import('../../src/services/structure-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'node-1',
+            structure_id: 'struct-1',
+            parent_node_id: null,
+            position: 0,
+            name: 'Products',
+            slug: 'products',
+            node_type: 'section',
+            document_id: null,
+            external_url: null,
+            created_at: '2026-01-24T10:00:00.000Z',
+          },
+        ],
+      });
+
+      const node = await createNode({
+        structureId: 'struct-1',
+        name: 'Products',
+        slug: 'Products',
+        nodeType: 'section',
+        position: 0,
+      });
+
+      // Verify the INSERT used the normalized (lowercase) slug
+      const insertCall = vi.mocked(db.query).mock.calls[0];
+      expect(insertCall[1]).toContain('products');
+      expect(node.slug).toBe('products');
     });
   });
 

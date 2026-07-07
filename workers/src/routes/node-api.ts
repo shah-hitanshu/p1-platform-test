@@ -21,6 +21,7 @@ import {
   NodeNotFoundError,
   DuplicateNodeSlugError,
   CircularReferenceError,
+  InvalidSlugError,
 } from '../services';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
 
@@ -386,6 +387,9 @@ export async function handleNodeRoutes(
     }
     if (error instanceof CircularReferenceError) {
       return errorResponse('Move would create circular reference', 400);
+    }
+    if (error instanceof InvalidSlugError) {
+      return errorResponse(error.message, 400);
     }
 
     // Log and return generic error for unknown errors

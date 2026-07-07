@@ -305,6 +305,9 @@ export function normalizePath(path: string): string {
     return '/';
   }
 
+  // Convert to lowercase for case-insensitive matching
+  normalized = normalized.toLowerCase();
+
   // Convert backslashes to forward slashes for consistent path separators
   normalized = normalized.replace(/\\/g, '/');
 

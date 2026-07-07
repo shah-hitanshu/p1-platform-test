@@ -42,6 +42,9 @@ vi.mock('../../src/services', () => ({
       super(`Checkpoint not found: ${checkpointId}`);
     }
   },
+  InvalidSlugError: class InvalidSlugError extends Error {
+    override name = 'InvalidSlugError';
+  },
 }));
 
 // Mock authorization
@@ -169,6 +172,39 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       });
 
       expect(response.status).toBe(409);
+    });
+
+    it('should return 400 for invalid slug on create', async () => {
+      const { handleStructureRoutes } = await import(
+        '../../src/routes/structure-api'
+      );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.createStructure).mockRejectedValueOnce(
+        new services.InvalidSlugError('slug "my section" contains invalid characters; only letters, numbers, hyphens, underscores, and dots are allowed'),
+      );
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/structures',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'My Section',
+            slug: 'my section',
+          }),
+        },
+      );
+
+      const response = await handleStructureRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(400);
+      const body = await response.json();
+      expect(body.error).toContain('invalid characters');
     });
   });
 
@@ -417,6 +453,39 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       });
 
       expect(response.status).toBe(409);
+    });
+
+    it('should return 400 for invalid slug on update', async () => {
+      const { handleStructureRoutes } = await import(
+        '../../src/routes/structure-api'
+      );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.updateBranchStructure).mockRejectedValueOnce(
+        new services.InvalidSlugError('slug "a/b" contains invalid characters; only letters, numbers, hyphens, underscores, and dots are allowed'),
+      );
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/structures/struct-1',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            slug: 'a/b',
+          }),
+        },
+      );
+
+      const response = await handleStructureRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        structureId: 'struct-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(400);
+      const body = await response.json();
+      expect(body.error).toContain('invalid characters');
     });
   });
 

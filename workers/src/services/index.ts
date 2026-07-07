@@ -283,6 +283,8 @@ export {
   DuplicateStructureSlugError,
   DuplicateNodeSlugError,
   CircularReferenceError,
+  InvalidSlugError,
+  normalizeSlug,
 } from './structure-service';
 
 export type {

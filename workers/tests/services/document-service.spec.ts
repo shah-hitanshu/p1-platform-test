@@ -315,7 +315,7 @@ describe('Phase 3.1: Document Service', () => {
       expect(result).toBeNull();
     });
 
-    it('should be case-sensitive for paths', async () => {
+    it('should normalize paths to lowercase for case-insensitive lookup', async () => {
       const { getDocumentByPath } = await import('../../src/services/document-service');
       const db = await import('../../src/db');
 
@@ -323,10 +323,10 @@ describe('Phase 3.1: Document Service', () => {
 
       await getDocumentByPath('site-1', 'Pages/Home');
 
-      // Should query with exact case
+      // Should query with lowercase path
       expect(db.query).toHaveBeenCalledWith(
         expect.any(String),
-        expect.arrayContaining(['site-1', 'Pages/Home']),
+        expect.arrayContaining(['site-1', 'pages/home']),
       );
     });
 

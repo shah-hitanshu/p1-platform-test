@@ -21,6 +21,7 @@ import {
   DuplicateNodeSlugError,
   CircularReferenceError,
   mapNodeRow,
+  normalizeSlug,
 } from './structure-types';
 
 // =============================================================================
@@ -31,8 +32,9 @@ import {
  * Create a new structure node.
  */
 export async function createNode(params: CreateNodeParams): Promise<StructureNode> {
-  const { structureId, parentNodeId, name, slug, nodeType, documentId, externalUrl, position } =
+  const { structureId, parentNodeId, name, nodeType, documentId, externalUrl, position } =
     params;
+  const slug = normalizeSlug(params.slug);
 
   try {
     const result = await query<NodeRow>(
@@ -125,8 +127,9 @@ export async function updateNode(
   }
 
   if (updates.slug !== undefined) {
+    const normalizedSlug = normalizeSlug(updates.slug);
     setClauses.push(`slug = $${String(paramIndex)}`);
-    params.push(updates.slug);
+    params.push(normalizedSlug);
     paramIndex++;
   }
 

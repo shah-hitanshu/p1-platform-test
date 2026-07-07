@@ -63,6 +63,21 @@ describe('normalizePath', () => {
     expect(normalizePath('\t\n')).toBe('/');
   });
 
+  it('should convert path to lowercase', () => {
+    expect(normalizePath('/Pages/Home')).toBe('pages/home');
+    expect(normalizePath('EXAMPLE')).toBe('example');
+    expect(normalizePath('MixedCase/Path')).toBe('mixedcase/path');
+  });
+
+  it('should handle already lowercase paths', () => {
+    expect(normalizePath('pages/home')).toBe('pages/home');
+  });
+
+  it('should combine case normalization with other transformations', () => {
+    expect(normalizePath('/Pages/Home/')).toBe('pages/home');
+    expect(normalizePath('  /Blog/Posts  ')).toBe('blog/posts');
+  });
+
   it('should return root path for multi-slash-only paths', () => {
     expect(normalizePath('//')).toBe('/');
     expect(normalizePath('///')).toBe('/');

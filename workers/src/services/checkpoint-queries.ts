@@ -23,6 +23,7 @@ import {
   mapRowToCheckpointDocumentVersion,
   mapRowToCheckpointStructure,
 } from './checkpoint-mappers';
+import { normalizePath } from './document-types';
 
 /**
  * Retrieves a checkpoint by its ID.
@@ -117,13 +118,14 @@ export async function getDocumentAtCheckpoint(
   checkpointId: string,
   documentPath: string,
 ): Promise<CheckpointDocumentVersion | null> {
+  const normalizedPath = normalizePath(documentPath);
   const result = await query<VersionWithDocumentRow>(
     `SELECT dv.*, d.path as document_path
      FROM app.checkpoint_documents cd
      JOIN app.document_versions dv ON cd.document_version_id = dv.id
      JOIN app.documents d ON cd.document_id = d.id
      WHERE cd.checkpoint_id = $1 AND d.path = $2`,
-    [checkpointId, documentPath],
+    [checkpointId, normalizedPath],
   );
 
   if (result.rows.length === 0) {

@@ -18,6 +18,7 @@ import {
   StructureNotFoundError,
   DuplicateStructureSlugError,
   CheckpointNotFoundError,
+  InvalidSlugError,
 } from '../services';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
 import type { AuthenticatedPrincipal } from '../types';
@@ -350,6 +351,9 @@ export async function handleStructureRoutes(
     }
     if (error instanceof DuplicateStructureSlugError) {
       return errorResponse('Structure with this slug already exists', 409);
+    }
+    if (error instanceof InvalidSlugError) {
+      return errorResponse(error.message, 400);
     }
     if (error instanceof CheckpointNotFoundError) {
       return errorResponse('Checkpoint not found', 404);

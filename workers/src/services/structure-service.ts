@@ -29,6 +29,7 @@ import {
   StructureNotFoundError,
   DuplicateStructureSlugError,
   mapBranchStructureRow,
+  normalizeSlug,
 } from './structure-types';
 
 // =============================================================================
@@ -55,6 +56,8 @@ export {
   DuplicateStructureSlugError,
   DuplicateNodeSlugError,
   CircularReferenceError,
+  InvalidSlugError,
+  normalizeSlug,
   mapBranchStructureRow,
   mapNodeRow,
 } from './structure-types';
@@ -79,7 +82,8 @@ export {
  * Creates both the site_structures definition and branch_structure_state entry.
  */
 export async function createStructure(params: CreateStructureParams): Promise<BranchStructure> {
-  const { siteId, branchId, name, slug, description, structureType } = params;
+  const { siteId, branchId, name, description, structureType } = params;
+  const slug = normalizeSlug(params.slug);
 
   try {
     // Step 1: Create the structure definition (minimal - just ID and site)
@@ -185,6 +189,7 @@ export async function getBranchStructureBySlug(
   branchId: string,
   slug: string,
 ): Promise<BranchStructure | null> {
+  const normalizedSlug = normalizeSlug(slug);
   const result = await query<BranchStructureRow>(
     `SELECT
        bss.structure_id,
@@ -201,7 +206,7 @@ export async function getBranchStructureBySlug(
      FROM app.branch_structure_state bss
      JOIN app.site_structures ss ON ss.id = bss.structure_id
      WHERE bss.branch_id = $1 AND bss.slug = $2`,
-    [branchId, slug],
+    [branchId, normalizedSlug],
   );
 
   if (result.rows.length === 0) {
@@ -267,8 +272,9 @@ export async function updateBranchStructure(
   }
 
   if (updates.slug !== undefined) {
+    const normalizedSlug = normalizeSlug(updates.slug);
     setClauses.push(`slug = $${String(paramIndex)}`);
-    params.push(updates.slug);
+    params.push(normalizedSlug);
     paramIndex++;
   }
 
