@@ -2,7 +2,14 @@
   "$schema": "https://unpkg.com/@changesets/config@3.1.4/schema.json",
   "changelog": "@changesets/cli/changelog",
   "commit": false,
-  "fixed": [],
+  "fixed": [
+    [
+      "@pantheon-systems/css-client",
+      "@pantheon-systems/puck-css",
+      "@pantheon-systems/p1-next-sdk",
+      "@pantheon-systems/create-p1-starter-kit"
+    ]
+  ],
   "linked": [],
   "access": "public",
   "baseBranch": "main",

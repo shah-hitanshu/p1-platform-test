@@ -51,12 +51,14 @@ export function useTemplateList(
   const [error, setError] = useState<Error | null>(null);
 
   const fetchTemplates = useCallback(async (signal?: AbortSignal) => {
+    if (!client.templates) {
+      setTemplates([]);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
-      if (!client.templates) {
-        throw new Error('Templates endpoint not available on client');
-      }
       const result = await client.templates.list(siteId, branchId);
       if (!signal?.aborted) {
         setTemplates(result);

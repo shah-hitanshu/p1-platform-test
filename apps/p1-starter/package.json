@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@pantheon-systems/cpub-react-sdk": "^5.2.1",
-    "@pantheon-systems/css-client": "workspace:*",
     "@pantheon-systems/p1-next-sdk": "workspace:*",
     "@pantheon-systems/puck-css": "workspace:*",
     "@puckeditor/core": "^0.21.1",

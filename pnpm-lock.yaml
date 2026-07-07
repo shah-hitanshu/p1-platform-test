@@ -56,9 +56,6 @@ importers:
       '@pantheon-systems/cpub-react-sdk':
         specifier: ^5.2.1
         version: 5.2.1(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(graphql-ws@5.16.2(graphql@16.13.2))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@pantheon-systems/css-client':
-        specifier: workspace:*
-        version: link:../../packages/css-client
       '@pantheon-systems/p1-next-sdk':
         specifier: workspace:*
         version: link:../../packages/p1-next-sdk
@@ -182,6 +179,9 @@ importers:
 
   packages/p1-next-sdk:
     dependencies:
+      '@pantheon-systems/css-client':
+        specifier: workspace:*
+        version: link:../css-client
       '@pantheon-systems/puck-css':
         specifier: workspace:*
         version: link:../puck-css
