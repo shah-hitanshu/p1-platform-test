@@ -737,16 +737,19 @@ describe('handleSiteImportRoute integration scenarios', () => {
     const body = JSON.parse(await resp.text()) as { importKey: string; documentCount: number };
     expect(body.documentCount).toBe(1);
 
-    // Verify document was created
+    // Verify document was created.
+    // createSite auto-seeds a root page at "/", so we expect 2 documents:
+    // the seeded root page + the imported "home" document.
     const docResult = await sql.unsafe<{ id: string; path: string }[]>(
       'SELECT id, path FROM app.documents WHERE site_id = $1',
       [targetSite.id as never],
     );
-    expect(docResult).toHaveLength(1);
-    expect(docResult[0]?.path).toBe('home');
+    expect(docResult).toHaveLength(2);
+    const homeDoc = docResult.find((d) => d.path === 'home');
+    expect(homeDoc).toBeDefined();
 
     // Verify document version was created
-    const firstDoc = docResult[0];
+    const firstDoc = homeDoc;
     if (firstDoc === undefined) throw new Error('Expected document to exist');
     const versionResult = await sql.unsafe<{ id: string; version_number: number }[]>(
       `SELECT dv.id, dv.version_number
@@ -839,12 +842,14 @@ describe('handleSiteImportRoute integration scenarios', () => {
     const mainBranches = branches.filter((b) => b.isMain);
     expect(mainBranches).toHaveLength(1);
 
-    // Verify the document was created (document phase ran)
+    // Verify the document was created (document phase ran).
+    // createSite auto-seeds a root page at "/", so we expect 2 documents:
+    // the seeded root page + the imported "home" document.
     const docs = await sql.unsafe<{ id: string }[]>(
       'SELECT id FROM app.documents WHERE site_id = $1',
       [targetSite.id as never],
     );
-    expect(docs).toHaveLength(1);
+    expect(docs).toHaveLength(2);
 
     // Verify updateSite was NOT called: site name must still be the original test name,
     // not the bundle source name 'Source T3'. If the site phase ran, it would rename

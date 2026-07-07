@@ -99,7 +99,7 @@ async function handleCreateCheckpoint(
     branchId: context.branchId,
     name: trimmedName !== undefined && trimmedName !== '' ? trimmedName : undefined,
     checkpointType: body.type ?? 'manual',
-    createdById: context.principal.id,
+    createdById: context.principal.dbUserId ?? context.principal.id,
     createdByType: context.principal.type as 'user' | 'agent',
   });
 
@@ -168,9 +168,8 @@ async function handleRevertToCheckpoint(
 
   const result = await revertToCheckpoint({
     checkpointId: context.checkpointId,
-    branchId: context.branchId,
-    name: body.name ?? 'Reverted to checkpoint',
-    createdById: context.principal.id,
+    message: body.name ?? 'Reverted to checkpoint',
+    createdById: context.principal.dbUserId ?? context.principal.id,
     createdByType: context.principal.type as 'user' | 'agent',
   });
 

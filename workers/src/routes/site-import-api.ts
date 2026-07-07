@@ -144,7 +144,8 @@ export async function handleSiteImportRoute(
       listBranches(siteId),
     ]);
     if (progress === null) {
-      const hasNonRegistryDocs = existingDocs.some((d) => !d.path.startsWith(REGISTRY_PREFIX));
+      // Exclude the auto-seeded root page ('/') from the emptiness check
+      const hasNonRegistryDocs = existingDocs.some((d) => !d.path.startsWith(REGISTRY_PREFIX) && d.path !== '/');
       const hasNonMainBranches = existingBranches.some((b) => !b.isMain);
       if (hasNonRegistryDocs || hasNonMainBranches) {
         return errorResponse(

@@ -20,6 +20,15 @@ vi.mock('../../src/queues/screenshot-producer', () => ({
   requestSiteScreenshot: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Mock the branch-document-service and checkpoint-publish so root-page seeding
+// inside createSite does not add unexpected query() calls to the mock.
+vi.mock('../../src/services/branch-document-service', () => ({
+  createDocumentOnBranch: vi.fn().mockResolvedValue({ document: { id: 'seeded-doc' }, version: { id: 'v1' } }),
+}));
+vi.mock('../../src/services/checkpoint-publish', () => ({
+  publishDocument: vi.fn().mockResolvedValue({ checkpoint: { id: 'cp1' } }),
+}));
+
 describe('Phase 3.1: Site Service', () => {
   beforeEach(() => {
     vi.resetAllMocks();

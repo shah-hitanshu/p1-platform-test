@@ -421,13 +421,11 @@ describe('Phase 3.1: Integration Tests - Site and Document CRUD', () => {
       expect(docTrailing.path).toBe('trailing/slash');
       createdDocumentIds.push(docTrailing.id);
 
-      // Empty path normalizes to '/' (root)
-      const docRoot = await createDocument({
-        siteId: testSiteId,
-        path: '',
-      });
-      expect(docRoot.path).toBe('/');
-      createdDocumentIds.push(docRoot.id);
+      // Empty path normalizes to '/' (root) — createSite auto-seeds a root page,
+      // so creating another at '/' should throw DuplicateDocumentPathError.
+      await expect(
+        createDocument({ siteId: testSiteId, path: '' }),
+      ).rejects.toThrow(DuplicateDocumentPathError);
     });
 
     it('should list documents with filtering', async () => {
@@ -553,17 +551,14 @@ describe('Phase 3.1: Integration Tests - Site and Document CRUD', () => {
     });
 
     it('should create document at root path "/"', async () => {
-      const doc = await createDocument({
-        siteId: testSiteId,
-        path: '/',
-      });
+      // createSite auto-seeds a root page at "/", so it already exists.
+      const doc = await getDocumentByPath(testSiteId, '/');
+      expect(doc).not.toBeNull();
+      expect(doc!.path).toBe('/');
+      expect(doc!.siteId).toBe(testSiteId);
 
-      expect(doc.path).toBe('/');
-      expect(doc.siteId).toBe(testSiteId);
-      createdDocumentIds.push(doc.id);
-
-      // Verify we can retrieve it
-      const retrieved = await getDocument(doc.id);
+      // Verify we can retrieve it by ID
+      const retrieved = await getDocument(doc!.id);
       expect(retrieved?.path).toBe('/');
     });
 
@@ -645,11 +640,9 @@ describe('Phase 3.1: Integration Tests - Site and Document CRUD', () => {
     });
 
     it('should allow root path and regular paths to coexist', async () => {
-      const root = await createDocument({
-        siteId: testSiteId,
-        path: '/',
-      });
-      createdDocumentIds.push(root.id);
+      // createSite auto-seeds a root page at "/"
+      const root = await getDocumentByPath(testSiteId, '/');
+      expect(root).not.toBeNull();
 
       const regular = await createDocument({
         siteId: testSiteId,
@@ -657,11 +650,11 @@ describe('Phase 3.1: Integration Tests - Site and Document CRUD', () => {
       });
       createdDocumentIds.push(regular.id);
 
-      expect(root.path).toBe('/');
+      expect(root!.path).toBe('/');
       expect(regular.path).toBe('pages/home');
 
       // Both should be retrievable
-      const rootRetrieved = await getDocument(root.id);
+      const rootRetrieved = await getDocument(root!.id);
       const regularRetrieved = await getDocument(regular.id);
 
       expect(rootRetrieved?.path).toBe('/');

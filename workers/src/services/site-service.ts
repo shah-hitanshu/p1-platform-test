@@ -10,6 +10,8 @@
 import type { Site, WorkflowSettings } from '../types';
 import { query } from '../db';
 import { createMainBranch } from './branch-service';
+import { createDocumentOnBranch } from './branch-document-service';
+import { publishDocument } from './checkpoint-publish';
 import { grantRole as grantAgentRole } from './agent-site-role-service';
 import { grantRole as grantUserRole } from './user-site-role-service';
 import { getFirstRow } from '../db/helpers';
@@ -191,6 +193,37 @@ function isUniqueConstraintViolation(error: unknown): boolean {
   );
 }
 
+const DEFAULT_SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000001';
+
+// =============================================================================
+// Default root page content (Puck editor data)
+// =============================================================================
+
+const DEFAULT_ROOT_PAGE_SNAPSHOT: Record<string, unknown> = {
+  root: { props: { title: 'Welcome to your new Pantheon P1 Site' } },
+  content: [
+    {
+      type: 'P1WelcomeBlock',
+      props: {
+        id: 'seed-welcome',
+        heading: 'Welcome to your new Pantheon P1 Site.',
+        description: 'You just created this new site from Pantheon P1 starter kit, congrats! You\'ll need a Pantheon P1 user account to edit it and create new pages.',
+        ctaLabel: 'Sign-in to P1',
+        ctaHref: '/p1',
+        footnote: 'Visit [P1 documentation](https://docs.pantheon.io) for more information.',
+        loggedInHeading: 'Welcome to your new Pantheon P1 Site.',
+        loggedInDescription: 'You just created this new site from Pantheon P1 starter kit, congrats! Start editing this page or visit the P1 dashboard to manage your site.',
+        loggedInCtaLabel: 'Edit this page with P1 Visual Editor',
+        loggedInCtaHref: '/p1',
+        loggedInSecondaryLabel: 'Go to P1 Dashboard',
+        loggedInFootnote: 'Visit [P1 documentation](https://docs.pantheon.io) for more information.',
+        showLogo: true,
+      },
+    },
+  ],
+  zones: {},
+};
+
 // =============================================================================
 // Service Functions
 // =============================================================================
@@ -260,13 +293,41 @@ export async function createSite(
     }
 
     // Create the main branch for the site
-    await createMainBranch({
+    const mainBranch = await createMainBranch({
       siteId: site.id,
-      createdById: params.creatorId ?? '00000000-0000-0000-0000-000000000001',
+      createdById: params.creatorId ?? DEFAULT_SYSTEM_USER_ID,
       createdByType: params.createdByType ?? 'user',
     });
 
     await query('COMMIT');
+
+    // Seed a default root page so the site has content immediately.
+    // Runs after commit — failure here does not roll back site creation.
+    try {
+      const createdById = params.creatorId ?? DEFAULT_SYSTEM_USER_ID;
+      const createdByType = params.createdByType ?? 'user';
+      const { document: rootDoc } = await createDocumentOnBranch({
+        siteId: site.id,
+        branchId: mainBranch.id,
+        path: '/',
+        snapshot: DEFAULT_ROOT_PAGE_SNAPSHOT,
+        createdById,
+        createdByType,
+      });
+      await publishDocument({
+        siteId: site.id,
+        branchId: mainBranch.id,
+        documentId: rootDoc.id,
+        createdById,
+        createdByType: createdByType === 'agent' ? 'agent' : 'user',
+      });
+    } catch (seedErr) {
+      console.warn(
+        '[site-service] Failed to seed root page for site %s: %s',
+        site.id,
+        seedErr instanceof Error ? seedErr.message : String(seedErr),
+      );
+    }
 
     if (env !== undefined && site.url !== undefined && site.url !== '') {
       await requestSiteScreenshot(env, site, 'url_changed');

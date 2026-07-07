@@ -132,7 +132,7 @@ async function handleCreateBranch(
     branchId: sourceBranch.id,
     name: 'Auto-created for branching',
     checkpointType: 'auto',
-    createdById: context.principal.id,
+    createdById: context.principal.dbUserId ?? context.principal.id,
     createdByType: context.principal.type as 'user' | 'agent',
   });
 
@@ -142,7 +142,7 @@ async function handleCreateBranch(
     description: body.description,
     sourceBranchId: sourceBranch.id,
     sourceCheckpointId: checkpoint.id,
-    createdById: context.principal.id,
+    createdById: context.principal.dbUserId ?? context.principal.id,
     createdByType: context.principal.type as 'user' | 'agent',
   });
 
