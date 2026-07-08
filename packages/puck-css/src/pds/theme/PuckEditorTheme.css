@@ -44,7 +44,9 @@
   --puck-color-grey-01: var(--pds-color-fg-default);
   /* grey-02/04: required by tests — map to near-dark fallbacks */
   --puck-color-grey-02: oklch(0.96 0 0);
-  --puck-color-grey-03: var(--pds-color-border-default);
+  /* grey-03: outline sidebar item text (unselected). Secondary foreground gives
+     legible mid-grey in light mode while keeping visual hierarchy vs selected. */
+  --puck-color-grey-03: var(--pds-color-fg-default-secondary);
   --puck-color-grey-04: oklch(0.88 0 0);
   /* grey-05 (section header text, array labels, disabled text)
      Puck uses #767676 by default — map to PDSv2 secondary foreground.
