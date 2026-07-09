@@ -19,7 +19,7 @@ export {
 export { buildRemoteDatasourceRegistry } from "./data/remote-datasources/remote-datasource-registry.js";
 export type { RemoteDatasourceDefinition, RemoteDatasourceFieldDoc } from "./data/remote-datasources/remote-datasource-registry.js";
 export type { RouteRow, RouteKind } from "./data/page-store.js";
-export { flattenStructureRoutes, isSemanticPatchEntry, isOverrideEntry } from "./data/page-store.js";
+export { isSemanticPatchEntry, isOverrideEntry } from "./data/page-store.js";
 export type { RemoteDatasourceScope } from "./data/remote-datasources/user-remote-datasource-types.js";
 
 // --- Server-only lib exports ---
@@ -103,6 +103,3 @@ export {
   listRemoteDatasourcesForPage,
   idConflictsForRemoteDatasourceScope,
 } from "./data/remote-datasources/user-remote-datasource-store.js";
-
-// --- Server page component exports ---
-export { default as StructurePage } from "./p1/pages/structure-page.js";

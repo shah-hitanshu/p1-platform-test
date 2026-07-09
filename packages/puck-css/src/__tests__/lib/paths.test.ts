@@ -88,13 +88,13 @@ describe('isReservedPath', () => {
     expect(isReservedPath('/p1')).toBe(true);
     expect(isReservedPath('/p1/edit')).toBe(true);
     expect(isReservedPath('/puck')).toBe(true);
-    expect(isReservedPath('/structure')).toBe(true);
     expect(isReservedPath('/_next')).toBe(true);
   });
 
   it('allows non-reserved paths', () => {
     expect(isReservedPath('/about')).toBe(false);
     expect(isReservedPath('/contact')).toBe(false);
+    expect(isReservedPath('/structure')).toBe(false);
   });
 });
 

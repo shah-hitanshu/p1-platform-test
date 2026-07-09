@@ -22,13 +22,12 @@ import {
   getRemoteDatasources,
   getEditorContext,
   getDatasourceContext,
+  getRoutes,
   postPublish,
   postResolvePreview,
   postPreviewMeta,
   postRemoteDatasources,
-  postStructure,
   deleteRemoteDatasources,
-  deleteStructurePage,
 } from "./handler-actions";
 
 /** Extract the sub-path segments from the catch-all `p1` param under `/p1/api/`. */
@@ -79,6 +78,7 @@ export function createP1Handler(opts: P1HandlerConfig) {
       return getDatasourceContext(request, {
         builtinFetchers: opts.builtinFetchers,
       });
+    if (action === "routes") return getRoutes(request);
 
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
@@ -89,14 +89,12 @@ export function createP1Handler(opts: P1HandlerConfig) {
   ) {
     await initPromise;
     const { p1 = [] } = await params;
-    const { action, rest } = parseP1Segments(p1);
+    const { action } = parseP1Segments(p1);
 
     if (action === "publish") return withAuth(request, () => postPublish(request));
     if (action === "resolve-preview") return postResolvePreview(request);
     if (action === "preview-meta") return postPreviewMeta(request);
     if (action === "datasources") return withAuth(request, () => postRemoteDatasources(request));
-    if (action === "structure" && (rest[0] === "page" || rest[0] === "template" || rest[0] === "override"))
-      return withAuth(request, () => postStructure(request, rest[0] as "page" | "template" | "override"));
 
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
@@ -107,11 +105,9 @@ export function createP1Handler(opts: P1HandlerConfig) {
   ) {
     await initPromise;
     const { p1 = [] } = await params;
-    const { action, rest } = parseP1Segments(p1);
+    const { action } = parseP1Segments(p1);
 
     if (action === "datasources") return withAuth(request, () => deleteRemoteDatasources(request));
-    if (action === "structure" && rest[0] === "page")
-      return withAuth(request, () => deleteStructurePage(request));
 
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }

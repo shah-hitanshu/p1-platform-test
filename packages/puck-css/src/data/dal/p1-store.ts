@@ -54,6 +54,8 @@ export interface P1StoreConfig {
   resolveBranchId?: (bearerToken: string) => Promise<string>;
   /** Factory to create a client with a specific bearer token (for user-auth writes). */
   createAuthClient?: (bearerToken: string) => P1StoreClient;
+  /** When true, read operations also use the per-request auth client instead of the shared API-key client. */
+  authenticatedReads?: boolean;
 }
 
 /**
@@ -95,7 +97,7 @@ async function withRetry<T>(
 }
 
 export function createP1PageStore(config: P1StoreConfig): PageStore {
-  const { client, contentClient, siteId, createAuthClient } = config;
+  const { client, contentClient, siteId, createAuthClient, authenticatedReads } = config;
 
   let _keysCache: { promise: Promise<string[]>; ts: number } | null = null;
   let _resolvedBranchIdPromise: Promise<string> | null = null;
@@ -122,12 +124,16 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
     return _resolvedBranchIdPromise;
   }
 
-  function writeClient(): P1StoreClient {
+  function requestClient(): P1StoreClient {
     const token = getRequestAuthToken();
     if (token && createAuthClient) {
       return createAuthClient(token);
     }
     return client;
+  }
+
+  function readClient(): P1StoreClient {
+    return authenticatedReads ? requestClient() : client;
   }
 
   function invalidateKeysCache(): void {
@@ -150,8 +156,9 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
       // Editor context (auth token present) or no content client: return latest version.
       try {
         const branchId = await getBranchId();
-        const doc = await client.documents.getByPath(siteId, toDocPath(path));
-        const version = await client.versions.getLatest(siteId, branchId, doc.id);
+        const rc = readClient();
+        const doc = await rc.documents.getByPath(siteId, toDocPath(path));
+        const version = await rc.versions.getLatest(siteId, branchId, doc.id);
         return version.snapshot;
       } catch (err) {
         console.info("[css-store] get(%s) failed:", path, (err as Error).message);
@@ -160,12 +167,12 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
     },
 
     async set(path: string, value: unknown, options?: PageSetOptions): Promise<void> {
-      const wc = writeClient();
+      const wc = requestClient();
       const dp = toDocPath(path);
       const branchId = await getBranchId();
       let docId: string;
       try {
-        const existing = await client.documents.getByPath(siteId, dp);
+        const existing = await readClient().documents.getByPath(siteId, dp);
         docId = existing.id;
       } catch {
         const createParams: { siteId: string; branchId: string; path: string; templateId?: string; templateVersion?: number } = {
@@ -191,8 +198,8 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
     async delete(path: string): Promise<void> {
       try {
         const branchId = await getBranchId();
-        const doc = await client.documents.getByPath(siteId, toDocPath(path));
-        await writeClient().documents.delete(siteId, branchId, doc.id);
+        const doc = await readClient().documents.getByPath(siteId, toDocPath(path));
+        await requestClient().documents.delete(siteId, branchId, doc.id);
       } catch (err) {
         console.info("[css-store] delete(%s) — not found or failed:", path, (err as Error).message);
       }
@@ -201,7 +208,7 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
 
     async has(path: string): Promise<boolean> {
       try {
-        await client.documents.getByPath(siteId, toDocPath(path));
+        await readClient().documents.getByPath(siteId, toDocPath(path));
         return true;
       } catch (err) {
         console.info("[css-store] has(%s) — not found or failed:", path, (err as Error).message);
@@ -216,7 +223,7 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
       }
       const promise = getBranchId()
         .then((branchId) => withRetry(
-          () => client.documents.list(siteId, branchId),
+          () => readClient().documents.list(siteId, branchId),
           KEYS_MAX_RETRIES,
           KEYS_RETRY_DELAY_MS,
         ))

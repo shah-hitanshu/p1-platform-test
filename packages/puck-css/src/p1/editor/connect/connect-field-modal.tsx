@@ -149,11 +149,7 @@ export function ConnectFieldModal({
           {step === "pages" && (
             <>
               <p style={{ ...muted, margin: "0 0 12px" }}>
-                Choose a page (same routes as{" "}
-                <a href="/p1/structure" target="_blank" rel="noreferrer">
-                  Structure
-                </a>
-                ). Then pick a component and prop.
+                Choose a page, then pick a component and prop.
               </p>
               <div
                 style={{

@@ -464,12 +464,6 @@ export {
 // P1 Client SDK — Pages
 export {
   RenderClient,
-  CreatePageForm,
-  CreateTemplateForm,
-  AddOverrideForTemplate,
-  DeleteStructureRowButton,
-  useCreateStructure,
-  useDeleteStructurePage,
 } from './p1/pages/index.js';
 
 // Content Type Templates (PROPOSAL-010)
@@ -501,7 +495,6 @@ export {
 } from './features/content-type-templates/index.js';
 
 export { scaffoldFromTemplate } from './features/content-type-templates/editor/useTemplateScaffold.js';
-export { useTemplateEditor } from './features/content-type-templates/editor/useTemplateEditor.js';
 export { useTemplatePermissions } from './features/content-type-templates/editor/useTemplatePermissions.js';
 export { validateStructure } from './features/content-type-templates/validation/structural-validation.js';
 export type { ValidationError, ValidationResult } from './features/content-type-templates/validation/structural-validation.js';

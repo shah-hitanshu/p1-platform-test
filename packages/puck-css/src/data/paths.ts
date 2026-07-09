@@ -17,7 +17,7 @@ export function stripTrailingSlash(path: string): string {
 
 export const PATH_REGEX = /^\/[a-zA-Z0-9/_\-:.]+$/;
 
-const RESERVED_PATH_PREFIXES = ["/p1", "/puck", "/structure", "/_next"];
+const RESERVED_PATH_PREFIXES = ["/p1", "/puck", "/_next"];
 
 export function isReservedPath(normalized: string): boolean {
   return RESERVED_PATH_PREFIXES.some((prefix) => normalized.startsWith(prefix));

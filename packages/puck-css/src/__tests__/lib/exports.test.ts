@@ -52,12 +52,6 @@ describe('puck-css client exports', () => {
   it('exports pages components', async () => {
     const mod = await import('../../p1/pages/index');
     expect(mod.RenderClient).toBeDefined();
-    expect(mod.CreatePageForm).toBeDefined();
-    expect(mod.CreateTemplateForm).toBeDefined();
-    expect(mod.AddOverrideForTemplate).toBeDefined();
-    expect(mod.DeleteStructureRowButton).toBeDefined();
-    expect(mod.useCreateStructure).toBeDefined();
-    expect(mod.useDeleteStructurePage).toBeDefined();
   });
 });
 

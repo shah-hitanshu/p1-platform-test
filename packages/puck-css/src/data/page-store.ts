@@ -2,6 +2,7 @@ import type { Data } from "@puckeditor/core";
 import { deepClone } from "fast-json-patch";
 
 import { getPageStore } from "./dal";
+import type { PageStore } from "./dal/types";
 import { removePageEditorMetaPath } from "./page-editor-meta";
 import {
   isRouteTemplatePath,
@@ -182,13 +183,14 @@ export async function createCollectionTemplate(
  * and full-document instances that belong to that template.
  */
 export async function deletePageAtPath(
-  path: string
+  path: string,
+  overrideStore?: PageStore,
 ): Promise<
   | { ok: true; deletedPaths: string[] }
   | { ok: false; error: string }
 > {
 
-  const store = getPageStore();
+  const store = overrideStore ?? getPageStore();
   const normalized = stripTrailingSlash(path.trim());
   if (!normalized.startsWith("/") || normalized.includes("..")) {
     return { ok: false, error: "Invalid path." };
@@ -337,9 +339,9 @@ export async function persistPublishedPage(path: string, data: Data): Promise<vo
 // Queries
 // ---------------------------------------------------------------------------
 
-export async function listRoutes(): Promise<RouteRow[]> {
+export async function listRoutes(overrideStore?: PageStore): Promise<RouteRow[]> {
 
-  const store = getPageStore();
+  const store = overrideStore ?? getPageStore();
 
   // Prefer listDocuments (includes template_id from backend) over plain keys
   const docMetas = store.listDocuments ? await store.listDocuments() : null;
@@ -406,10 +408,11 @@ export async function listRouteTemplateKeysFromDatabase(): Promise<string[]> {
 }
 
 export async function createCollectionOverride(
-  instancePath: string
+  instancePath: string,
+  overrideStore?: PageStore,
 ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
 
-  const store = getPageStore();
+  const store = overrideStore ?? getPageStore();
   const normalized = stripTrailingSlash(instancePath);
   const allKeys = await store.keys();
   const templateKeys = listRouteTemplateKeys(allKeys);

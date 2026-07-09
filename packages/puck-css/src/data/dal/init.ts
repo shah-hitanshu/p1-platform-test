@@ -7,7 +7,7 @@
  */
 
 import { initializeStores } from "./index";
-import type { EditorMetaStore, RemoteDatasourceDefStore } from "./types";
+import type { PageStore, EditorMetaStore, RemoteDatasourceDefStore } from "./types";
 import { createP1PageStore, type P1StoreClient, type P1ContentClientInterface } from "./p1-store";
 
 export interface P1DataConfig {
@@ -27,6 +27,10 @@ export interface P1DataConfig {
 }
 
 let _initPromise: Promise<void> | null = null;
+
+let _sharedClient: P1StoreClient | null = null;
+let _sharedSiteId: string | null = null;
+let _sharedCreateAuthClient: ((bearerToken: string) => P1StoreClient) | null = null;
 
 /**
  * Ensures data stores are initialized. Safe to call from multiple
@@ -71,6 +75,17 @@ async function doInit(cfg: P1DataConfig): Promise<void> {
     apiToken: cfg.p1ApiKey ?? "",
     siteId: p1SiteId,
   });
+
+  const createAuthClient = (bearerToken: string) => {
+    return new P1ClientCtor({
+      baseUrl: p1BaseUrl,
+      authProvider: async () => `Bearer ${bearerToken}`,
+    }) as unknown as P1StoreClient;
+  };
+
+  _sharedClient = client as unknown as P1StoreClient;
+  _sharedSiteId = p1SiteId;
+  _sharedCreateAuthClient = createAuthClient;
 
   const pageStore = createP1PageStore({
     client,
@@ -118,7 +133,28 @@ async function doInit(cfg: P1DataConfig): Promise<void> {
   initializeStores({ pageStore, editorMetaStore, remoteDatasourceDefStore });
 }
 
+/**
+ * Creates a PageStore scoped to a specific branch, reusing the
+ * shared P1Client and siteId from the initial ensureInitialized() call.
+ * Useful for the structure page to read/write routes on non-default branches.
+ */
+export function createPageStoreForBranch(branchId: string): PageStore {
+  if (!_sharedClient || !_sharedSiteId) {
+    throw new Error("Stores not initialized. Call ensureInitialized() first.");
+  }
+  return createP1PageStore({
+    client: _sharedClient,
+    siteId: _sharedSiteId,
+    branchId,
+    createAuthClient: _sharedCreateAuthClient ?? undefined,
+    authenticatedReads: true,
+  });
+}
+
 /** Reset for testing. */
 export function _resetInit(): void {
   _initPromise = null;
+  _sharedClient = null;
+  _sharedSiteId = null;
+  _sharedCreateAuthClient = null;
 }

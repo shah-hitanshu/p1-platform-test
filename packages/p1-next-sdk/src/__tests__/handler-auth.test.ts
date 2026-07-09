@@ -23,9 +23,7 @@ vi.mock("../handler-actions", () => ({
   postResolvePreview: vi.fn(() => ({ __body: { ok: true }, status: 200 })),
   postPreviewMeta: vi.fn(() => ({ __body: { ok: true }, status: 200 })),
   postRemoteDatasources: vi.fn(() => ({ __body: { ok: true }, status: 200 })),
-  postStructure: vi.fn(() => ({ __body: { ok: true }, status: 200 })),
   deleteRemoteDatasources: vi.fn(() => ({ __body: { ok: true }, status: 200 })),
-  deleteStructurePage: vi.fn(() => ({ __body: { ok: true }, status: 200 })),
 }));
 
 import { createP1Handler } from "../handler";
@@ -51,12 +49,7 @@ describe("withAuth 401 enforcement", () => {
       expect(resp.status).toBe(401);
     });
 
-    it("returns 401 for POST /structure/page without Authorization header", async () => {
-      const req = new Request("http://localhost/p1/api/structure/page", { method: "POST" });
-      const resp = await handler.POST(req, makeParams("structure", "page")) as { status: number };
-      expect(resp.status).toBe(401);
-    });
-  });
+});
 
   describe("DELETE routes require auth", () => {
     it("returns 401 for DELETE /datasources without Authorization header", async () => {
@@ -65,12 +58,7 @@ describe("withAuth 401 enforcement", () => {
       expect(resp.status).toBe(401);
     });
 
-    it("returns 401 for DELETE /structure/page without Authorization header", async () => {
-      const req = new Request("http://localhost/p1/api/structure/page", { method: "DELETE" });
-      const resp = await handler.DELETE(req, makeParams("structure", "page")) as { status: number };
-      expect(resp.status).toBe(401);
-    });
-  });
+});
 
   describe("authenticated requests succeed", () => {
     it("allows POST /publish with a valid Bearer token", async () => {
@@ -82,15 +70,7 @@ describe("withAuth 401 enforcement", () => {
       expect(resp.status).toBe(200);
     });
 
-    it("allows DELETE /structure/page with a valid Bearer token", async () => {
-      const req = new Request("http://localhost/p1/api/structure/page", {
-        method: "DELETE",
-        headers: { Authorization: "Bearer valid-token-123" },
-      });
-      const resp = await handler.DELETE(req, makeParams("structure", "page")) as { status: number };
-      expect(resp.status).toBe(200);
-    });
-  });
+});
 
   describe("GET routes remain open", () => {
     it("allows GET /page-data without Authorization header", async () => {

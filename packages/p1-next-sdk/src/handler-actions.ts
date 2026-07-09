@@ -11,5 +11,5 @@ export { getRemoteDatasources, postRemoteDatasources, deleteRemoteDatasources } 
 export { postPublish } from "./routes/publish";
 export { postResolvePreview } from "./routes/resolve-preview";
 export { postPreviewMeta } from "./routes/preview-meta";
-export { postStructure, deleteStructurePage } from "./routes/structure";
+export { getRoutes } from "./routes/routes-api";
 export { postBrokerLogin, postBrokerRedeem } from "./routes/broker";
