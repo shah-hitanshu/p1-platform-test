@@ -45,6 +45,25 @@
       "migrations": [
         { "tag": "v1", "new_sqlite_classes": ["ChatAgent"] }
       ]
+    },
+    "staging": {
+      "account_id": "69bc76f4866aaaa3400ea7fbbd9d7da2",
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "CSS_BACKEND_URL": "https://collaborative-state-worker-staging.pantheon-content-publisher.workers.dev",
+        "AI_GATEWAY_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
+        "AI_GATEWAY_NAME": "p1-chatbot",
+        "AGENT_MODEL": "workers-ai/@cf/moonshotai/kimi-k2.7-code",
+        "MEDIA_WORKER_URL": "https://p1-media-worker-staging.pantheon-content-publisher.workers.dev"
+      },
+      "durable_objects": {
+        "bindings": [
+          { "name": "CHAT_AGENT", "class_name": "ChatAgent" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["ChatAgent"] }
+      ]
     }
   }
 }
