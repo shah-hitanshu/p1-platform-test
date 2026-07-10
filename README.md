@@ -6,37 +6,39 @@ An AI-powered page-building assistant for Puck editor sites connected to the Col
 
 ```
 Puck Editor (your site)
-  └── @p1/plugin-ai-chat  ← sidebar plugin
+  └── @pantheon-systems/p1-ai-chat  ← sidebar plugin
         │ WebSocket
         ▼
 workers/agent             ← Cloudflare Agent Worker (Durable Object)
   ├── Validates CSS auth token
-  ├── Calls Claude via Cloudflare AI Gateway
-  └── Executes CSS operations (13 tools)
+  ├── Calls the model via Cloudflare AI Gateway (OpenAI-compatible endpoint)
+  └── Executes CSS operations (12 tools)
         │ REST API
         ▼
 CSS Backend               ← collaborative-state-system
 ```
 
-The plugin sends user intent to the Agent Worker over WebSocket. The Worker calls Claude with access to 13 CSS tools (create pages, edit content, check presence, manage edit sessions). Claude's responses stream back token-by-token to the plugin sidebar.
+The plugin sends user intent to the Agent Worker over WebSocket. The Worker calls the configured model — a native Cloudflare Workers AI model by default, or a partner model such as Claude — with access to 12 tools (create pages, edit content, check presence, manage edit sessions, read media/web pages). The model's responses stream back to the plugin sidebar.
+
+All model calls go through **Cloudflare AI Gateway's OpenAI-compatible endpoint**, so the model is just a string (`AGENT_MODEL`) — switching providers is a config change, not a code change.
 
 ---
 
 ## Prerequisites
 
-- [Cloudflare account](https://dash.cloudflare.com/sign-up)
+- [Cloudflare account](https://dash.cloudflare.com/sign-up) with access to the target account (e.g. the P1 Staging account for staging)
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/): `npm install -g wrangler`
 - A deployed CSS backend (`collaborative-state-system`) with an agent registered
-- An Anthropic API key
+- A **Cloudflare AI Gateway** and a gateway token (`CF_AIG_TOKEN`) — see step 1
 - Node.js 18+
+
+> **No Anthropic API key is needed.** Native `workers-ai/@cf/...` models are billed through Workers AI; partner models (`anthropic/...`) are billed through the gateway's Unified Billing. Either way the Worker authenticates with the gateway token, not a provider key.
 
 ---
 
-## 1. Set up Cloudflare AI Gateway (optional)
+## 1. Set up Cloudflare AI Gateway (required)
 
-AI Gateway is a standard Cloudflare product — not something you build. It's optional: leaving `AI_GATEWAY_ACCOUNT_ID` and `AI_GATEWAY_NAME` blank in `wrangler.jsonc` makes the Worker call Anthropic directly.
-
-**Why use it:** request logging, caching (speeds up repeated `list_components` calls), rate limiting, and cost tracking — all visible in the Cloudflare dashboard.
+Every model call routes through an AI Gateway, so a gateway must exist and the Worker must have a token for it.
 
 ### Create a Gateway (takes ~30 seconds)
 
@@ -45,14 +47,23 @@ AI Gateway is a standard Cloudflare product — not something you build. It's op
 3. Note your **Account ID** (visible in the dashboard URL or under Account Home → Overview)
 4. Note the **Gateway Name** you chose
 
-Then set both values in `wrangler.jsonc`:
+Set both values in the appropriate env block in `wrangler.jsonc`:
 
 ```jsonc
 "AI_GATEWAY_ACCOUNT_ID": "your-cloudflare-account-id",
 "AI_GATEWAY_NAME": "p1-chatbot"
 ```
 
-No provider-specific configuration is needed — the Anthropic API key is passed through automatically. If either var is empty, the Worker falls back to calling Anthropic directly.
+### Create a gateway token
+
+Create a Cloudflare **AI Gateway authentication token** (Account → AI Gateway → Run) and provide it to the Worker as the `CF_AIG_TOKEN` secret (see step 3). The Worker rejects a chat request if `AI_GATEWAY_ACCOUNT_ID`, `AI_GATEWAY_NAME`, or `CF_AIG_TOKEN` is missing.
+
+### Choose the model
+
+`AGENT_MODEL` selects the model in `provider/model` notation:
+
+- `workers-ai/@cf/moonshotai/kimi-k2.7-code` — native Cloudflare model (default), billed via Workers AI, no gateway credits needed
+- `anthropic/claude-haiku-4-5` (or another `anthropic/...` model) — requires the gateway to hold an Anthropic credential (Unified Billing credits or a stored key)
 
 ---
 
@@ -93,59 +104,50 @@ Save both values — they become `AGENT_ID` and `AGENT_API_KEY`.
 
 ```bash
 cd workers/agent
-npm install
+pnpm install
 ```
 
 ### Configure secrets
 
-Set these via Wrangler (never commit them):
+Set these via Wrangler for the environment you're deploying (`--env sbx1`, `--env staging`, etc.). Never commit them:
 
 ```bash
-wrangler secret put ANTHROPIC_API_KEY
-# paste your Anthropic API key
+wrangler secret put CF_AIG_TOKEN --env sbx1
+# paste your AI Gateway token
 
-wrangler secret put AGENT_API_KEY
+wrangler secret put AGENT_ID --env sbx1
+# paste the agent UUID from step 2
+
+wrangler secret put AGENT_API_KEY --env sbx1
 # paste the agent API key from step 2
+```
+
+For local development, put the same keys in `workers/agent/.env` (gitignored) instead — `wrangler dev` loads them automatically:
+
+```env
+CF_AIG_TOKEN=...
+AGENT_ID=...
+AGENT_API_KEY=...
 ```
 
 ### Configure environment variables
 
-Edit `wrangler.jsonc` and fill in your values:
-
-```jsonc
-{
-  "vars": {
-    "CSS_BACKEND_URL": "https://your-css-backend.workers.dev",
-    "AI_GATEWAY_ACCOUNT_ID": "your-cloudflare-account-id",
-    "AI_GATEWAY_NAME": "p1-chatbot"
-  }
-}
-```
-
-For the `sbx1` environment, update its `vars` block the same way.
-
-Also set the `AGENT_ID` (not secret, but environment-specific):
-
-```bash
-# Add to wrangler.jsonc vars, or set as a secret if preferred
-wrangler secret put AGENT_ID
-# paste the agent UUID from step 2
-```
+Each environment's `vars` block in `wrangler.jsonc` already carries `CSS_BACKEND_URL`, `AI_GATEWAY_ACCOUNT_ID`, `AI_GATEWAY_NAME`, `AGENT_MODEL`, and `MEDIA_WORKER_URL`. Update them for your account/backends as needed.
 
 ### Deploy
 
 ```bash
 # Local development
-npm run dev
-
-# Deploy to production
-npm run deploy
+pnpm dev
 
 # Deploy to sbx1 sandbox
-npm run deploy:sbx1
+pnpm deploy:sbx1
+
+# Deploy to staging
+pnpm deploy:staging
 ```
 
-After deploying, note the Worker URL — e.g. `https://p1-chatbot-agent.your-subdomain.workers.dev`.
+After deploying, note the Worker URL — e.g. `https://p1-chatbot-agent-staging.pantheon-content-publisher.workers.dev`.
 
 ---
 
@@ -154,72 +156,40 @@ After deploying, note the Worker URL — e.g. `https://p1-chatbot-agent.your-sub
 ### In your Puck application
 
 ```bash
-npm install @p1/plugin-ai-chat
+pnpm add @pantheon-systems/p1-ai-chat
 ```
 
-> Until published to npm, link it locally:
-> ```bash
-> cd /path/to/p1-chatbot/packages/plugin-ai-chat && npm run build
-> # In your Puck app:
-> npm install /path/to/p1-chatbot/packages/plugin-ai-chat
-> ```
+The plugin declares `@pantheon-systems/puck-css`, `@pantheon-systems/pds-toolkit-react`, `@puckeditor/core`, and `react` as peer dependencies — your editor app already provides these.
 
 ### Wire it up
 
-In your Puck editor component (e.g. `PuckEditorClient.tsx`):
+`createAIChatPlugin({ agentUrl })` returns a Puck plugin. It sources the current site/branch/document and the CSS auth token from the `@pantheon-systems/puck-css` hooks (`useP1Puck`/`useP1Auth`) internally, so the only required option is the Worker URL:
 
 ```tsx
-import { createAIChatPlugin } from '@p1/plugin-ai-chat';
-import { useCSSAuth } from '@pantheon/puck-css'; // or however you access auth
+import { createAIChatPlugin } from '@pantheon-systems/p1-ai-chat';
 
-function MyEditor({ siteId, branchId, documentPath, config, data }) {
-  const { token } = useCSSAuth();
+// Inside the editor component, add it to the plugin list.
+const aiPlugin = React.useMemo(
+  () =>
+    process.env.NEXT_PUBLIC_AGENT_URL
+      ? createAIChatPlugin({ agentUrl: process.env.NEXT_PUBLIC_AGENT_URL })
+      : null,
+  [],
+);
 
-  const aiPlugin = createAIChatPlugin({
-    agentUrl: process.env.NEXT_PUBLIC_AGENT_URL, // your Worker URL
-    getAuthToken: () => token,
-    getSiteId: () => siteId,
-    getBranchId: () => branchId,
-    getDocumentPath: () => documentPath,
-  });
-
-  return (
-    <Puck
-      config={config}
-      data={data}
-      plugins={[aiPlugin]}
-    />
-  );
-}
+const { puckProps } = useP1Editor({
+  additionalPlugins: aiPlugin ? [...p1Plugins, aiPlugin] : p1Plugins,
+  // ...
+});
 ```
 
 Add `NEXT_PUBLIC_AGENT_URL` to your `.env.local`:
 
 ```env
-NEXT_PUBLIC_AGENT_URL=https://p1-chatbot-agent.your-subdomain.workers.dev
+NEXT_PUBLIC_AGENT_URL=https://p1-chatbot-agent-staging.pantheon-content-publisher.workers.dev
 ```
 
-### Airbus ccapture integration
-
-In `PuckEditorClient.tsx`, pass `aiPlugin` via the `additionalPlugins` prop on `useCSSEditor`:
-
-```tsx
-const aiPlugin = useMemo(
-  () => createAIChatPlugin({
-    agentUrl: process.env.NEXT_PUBLIC_AGENT_URL!,
-    getAuthToken: () => token,
-    getSiteId: () => cssConfig.siteId,       // from your CSS config
-    getBranchId: () => activeBranchId,        // from your branch context
-    getDocumentPath: () => cssPath,           // the current document path
-  }),
-  [token, activeBranchId, cssPath],
-);
-
-const { puckProps } = useCSSEditor({
-  additionalPlugins: [aiPlugin, ...otherPlugins],
-  // ...
-});
-```
+When `NEXT_PUBLIC_AGENT_URL` is unset the plugin is simply not added, so the editor renders unchanged.
 
 ---
 
@@ -230,10 +200,12 @@ const { puckProps } = useCSSEditor({
 | Variable | Type | Description |
 |---|---|---|
 | `CSS_BACKEND_URL` | var | CSS backend base URL |
-| `AI_GATEWAY_ACCOUNT_ID` | var | Cloudflare account ID |
+| `AI_GATEWAY_ACCOUNT_ID` | var | Cloudflare account ID that hosts the gateway |
 | `AI_GATEWAY_NAME` | var | AI Gateway name (e.g. `p1-chatbot`) |
-| `ENVIRONMENT` | var | `local`, `sbx1`, or `production` |
-| `ANTHROPIC_API_KEY` | secret | Anthropic API key |
+| `AGENT_MODEL` | var | Model in `provider/model` notation (defaults to `workers-ai/@cf/moonshotai/kimi-k2.7-code`) |
+| `MEDIA_WORKER_URL` | var | Media worker base URL |
+| `ENVIRONMENT` | var | `local`, `sbx1`, or `staging` |
+| `CF_AIG_TOKEN` | secret | Cloudflare AI Gateway token |
 | `AGENT_ID` | secret | CSS registered agent UUID |
 | `AGENT_API_KEY` | secret | CSS agent API key (`sat_...`) |
 
@@ -249,21 +221,18 @@ const { puckProps } = useCSSEditor({
 
 ### Plugin sidebar
 
-The `@p1/plugin-ai-chat` plugin adds an **AI Builder** panel to Puck's left sidebar. The user types an intent in natural language:
+The `@pantheon-systems/p1-ai-chat` plugin adds an **AI Builder** panel to Puck's left sidebar. The user types an intent in natural language:
 
 > "Build me a page about the world's fastest helicopters"
 
-The plugin sends this message to the Agent Worker over WebSocket, along with:
-- The current site ID, branch ID, and document path (from plugin options)
-- The current Puck document state (from `usePuck()`)
-- The user's CSS auth token
+The plugin sends this message to the Agent Worker over WebSocket, along with the current site ID, branch ID, and document path, and the user's CSS auth token.
 
 ### Agent Worker
 
-The Worker validates the auth token against the CSS backend (`GET /api/auth/me`), then starts an agentic loop with Claude:
+The Worker validates the auth token against the CSS backend (`GET /api/auth/me`), then runs an agentic loop with the model:
 
-1. **Claude receives** the user's intent plus the editor context
-2. **Claude calls tools** to fulfill the intent:
+1. **The model receives** the user's intent plus the editor context
+2. **The model calls tools** to fulfill the intent:
    - `list_components` → discover available Puck components
    - `create_page` → build a new page document
    - `get_document` → read existing page structure
@@ -271,13 +240,13 @@ The Worker validates the auth token against the CSS backend (`GET /api/auth/me`)
    - `start_edit_session` → reserve regions
    - `apply_document_edits` → apply changes
    - `complete_edit_session` → finalize
-3. **Tokens stream back** to the plugin as Claude explains what it's doing
+3. **The reply streams back** to the plugin as the model explains what it's doing
 
 Tool calls are executed against the CSS backend using the registered agent credentials, with the authenticated user's identity passed via `X-Acting-User-Id` / `X-Acting-User-Email` headers.
 
 ### Edit session safety
 
-If the agent loop fails unexpectedly (network error, Claude error, etc.) and an edit session is open, the Worker automatically calls `abort_edit_session` before surfacing the error. This prevents documents from being left in a locked state.
+If the agent loop fails unexpectedly (network error, model error, etc.) and an edit session is open, the Worker automatically calls `abort_edit_session` before surfacing the error. This prevents documents from being left in a locked state.
 
 ---
 
@@ -287,7 +256,7 @@ If the agent loop fails unexpectedly (network error, Claude error, etc.) and an 
 
 ```bash
 cd workers/agent
-npm run dev
+pnpm dev
 # Listens on http://localhost:8787
 ```
 
@@ -298,27 +267,22 @@ NEXT_PUBLIC_AGENT_URL=http://localhost:8787
 
 The local Worker connects to whatever `CSS_BACKEND_URL` is set to in `wrangler.jsonc` (defaults to `http://localhost:8787` — update if your CSS backend runs on a different port).
 
-### Type checking
+### Type checking and tests
 
 ```bash
-# Agent Worker
-cd workers/agent && npx tsc --noEmit
-
-# Plugin
-cd packages/plugin-ai-chat && npx tsc --noEmit
+cd workers/agent
+pnpm type-check
+pnpm test
 ```
 
 ---
 
-## 8. Available CSS tools
+## 8. Available tools
 
-The agent has access to 13 tools covering the full CSS workflow:
+The agent is offered 12 tools (`list_sites`/`list_branches`/`list_documents` are intentionally **not** exposed — the site, branch, and document always come from the editor context):
 
 | Tool | Purpose |
 |---|---|
-| `list_sites` | List accessible sites |
-| `list_branches` | List branches for a site |
-| `list_documents` | List documents on a branch |
 | `list_components` | Discover available Puck components |
 | `get_document` | Read current page structure |
 | `check_edit_permission` | Verify edit access (pre-flight) |
@@ -329,3 +293,5 @@ The agent has access to 13 tools covering the full CSS workflow:
 | `get_branch_presence` | See all active users/agents on a branch |
 | `get_document_presence` | See who's editing a specific document |
 | `create_page` | Create a new page with Puck components |
+| `list_media` | List media files in the site's media library |
+| `fetch_page` | Fetch a public web page and extract its content |

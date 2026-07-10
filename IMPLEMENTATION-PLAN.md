@@ -1,5 +1,7 @@
 # Implementation Plan: History Scoping + Tool Result Trimming
 
+> **Status (historical):** Tool-result trimming is implemented; DO scoping is handled via the agent id the plugin sends. The code snippets below predate the migration to Cloudflare AI Gateway + Workers AI — the Worker no longer calls the Anthropic SDK directly (`anthropic.messages.create` / `Anthropic.*` types are illustrative only). See `README.md` for the current setup.
+
 ## Problems Being Solved
 
 1. **Shared history**: All users share a single Durable Object (`agentId = 'default'`). Fix: scope the DO to `userId + siteId + branchId + documentPath`.
