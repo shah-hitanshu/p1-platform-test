@@ -1,22 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import type Anthropic from '@anthropic-ai/sdk';
+import type OpenAI from 'openai';
 import { trimHistory, sanitizeHistory, trimForHistory } from './history.js';
 import { injectPuckIds } from './tools.js';
 
-const user = (content: string): Anthropic.MessageParam => ({ role: 'user', content });
-const assistant = (content: string): Anthropic.MessageParam => ({ role: 'assistant', content });
-const toolUse = (id: string): Anthropic.ContentBlock => ({ type: 'tool_use', id, name: 'some_tool', input: {} });
-const toolResult = (id: string): Anthropic.ToolResultBlockParam => ({ type: 'tool_result', tool_use_id: id, content: 'ok' });
+type Msg = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
-const assistantWithTool = (id: string): Anthropic.MessageParam => ({
+const user = (content: string): Msg => ({ role: 'user', content });
+const assistant = (content: string): Msg => ({ role: 'assistant', content });
+// Assistant turn that requests a tool call (OpenAI shape).
+const assistantWithTool = (id: string): Msg => ({
   role: 'assistant',
-  content: [toolUse(id)],
+  content: '',
+  tool_calls: [{ id, type: 'function', function: { name: 'some_tool', arguments: '{}' } }],
 });
-
-const userWithToolResult = (id: string): Anthropic.MessageParam => ({
-  role: 'user',
-  content: [toolResult(id)],
-});
+// A tool result message. Orphaned when it has no preceding assistant tool_call.
+const toolResult = (id: string): Msg => ({ role: 'tool', tool_call_id: id, content: 'ok' });
 
 describe('trimHistory', () => {
   it('returns history unchanged when under the limit', () => {
@@ -37,19 +35,18 @@ describe('trimHistory', () => {
     expect(typeof result[0].content).toBe('string');
   });
 
-  // Regression test: slice(-N) cutting into a tool turn would leave orphaned
-  // tool_result blocks at the start of history, causing the Anthropic API to
-  // reject the request with "unexpected tool_use_id found in tool_result blocks".
-  it('skips leading tool_result-only user messages after trimming', () => {
-    // Build 22-message history where messages 2-3 are a tool turn pair
-    const h: Anthropic.MessageParam[] = [
+  // Regression test: slice(-N) cutting into a tool turn would leave an orphaned
+  // tool message (a tool result with no preceding assistant tool_call) at the start
+  // of history, which the model API rejects.
+  it('skips leading orphaned tool messages after trimming', () => {
+    const h: Msg[] = [
       user('first'),             // 0
       assistantWithTool('t1'),   // 1
-      userWithToolResult('t1'),  // 2  ← tool_result-only
+      toolResult('t1'),          // 2  ← orphaned once 0-1 are cut
       assistant('done with t1'), // 3
       user('second'),            // 4
       assistantWithTool('t2'),   // 5
-      userWithToolResult('t2'),  // 6  ← tool_result-only
+      toolResult('t2'),          // 6
       assistant('done with t2'), // 7
       user('third'),             // 8
       assistant('reply'),        // 9
@@ -59,31 +56,26 @@ describe('trimHistory', () => {
 
     const result = trimHistory(h, 20);
 
-    // Result must never start with a tool_result-only user message
-    const first = result[0];
-    expect(first.role).toBe('user');
-    if (Array.isArray(first.content)) {
-      expect(first.content.some(b => (b as { type: string }).type !== 'tool_result')).toBe(true);
-    }
+    // Result must never start with an orphaned tool message
+    expect(result[0].role).toBe('user');
   });
 
   it('returns empty array when no clean user message exists in the trimmed window', () => {
-    // Degenerate case: entire maxLength window is tool-result-only user turns
-    const h: Anthropic.MessageParam[] = [
+    // Degenerate case: the trimmed window holds only assistant/tool turns
+    const h: Msg[] = [
       user('real start'),         // 0 — gets cut off
       assistantWithTool('t1'),    // 1
-      userWithToolResult('t1'),   // 2  ← tool_result-only
+      toolResult('t1'),           // 2
       assistantWithTool('t2'),    // 3
-      userWithToolResult('t2'),   // 4  ← tool_result-only
+      toolResult('t2'),           // 4
     ];
-    // maxLength=2 cuts to [userWithToolResult('t2'), assistant(...)]  — no clean user msg
-    // The function must return [] rather than bad history
+    // maxLength=2 cuts to [assistantWithTool('t2'), toolResult('t2')] — no clean user msg
     const result = trimHistory(h, 2);
     expect(result).toEqual([]);
   });
 
   it('does not trim when the slice already starts on a clean user message', () => {
-    const h: Anthropic.MessageParam[] = [
+    const h: Msg[] = [
       user('clean start'),
       assistant('reply'),
       user('second'),
@@ -97,7 +89,7 @@ describe('trimHistory', () => {
 
   it('sanitizes even when history is under the limit', () => {
     const h = [
-      userWithToolResult('orphan'),  // bad leading entry, but length=3 < maxLength=20
+      toolResult('orphan'),  // bad leading entry, but length=3 < maxLength=20
       assistant('reply'),
       user('clean message'),
     ];
@@ -113,22 +105,22 @@ describe('sanitizeHistory', () => {
     expect(sanitizeHistory(h)).toEqual(h);
   });
 
-  it('strips a leading tool_result-only user message', () => {
+  it('strips a leading orphaned tool message', () => {
     const h = [
-      userWithToolResult('t1'),   // orphan — stripped up to first clean user message
+      toolResult('t1'),   // orphan — stripped up to first clean user message
       assistant('reply'),
       user('normal message'),
     ];
     const result = sanitizeHistory(h);
-    // sanitizeHistory slices from the first clean user message (index 2)
+    // sanitizeHistory slices from the first user message (index 2)
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual(user('normal message'));
   });
 
-  it('strips multiple leading orphaned entries before the first clean user message', () => {
+  it('strips multiple leading orphaned entries before the first user message', () => {
     const h = [
       assistantWithTool('t1'),    // leading assistant (no prior user)
-      userWithToolResult('t1'),   // tool_result-only
+      toolResult('t1'),           // orphaned tool result
       assistant('done'),
       user('real message'),
       assistant('response'),
@@ -138,13 +130,22 @@ describe('sanitizeHistory', () => {
     expect(result).toHaveLength(2);
   });
 
-  it('returns empty array when there is no clean user message at all', () => {
-    const h = [assistantWithTool('t1'), userWithToolResult('t1')];
+  it('returns empty array when there is no user message at all', () => {
+    const h = [assistantWithTool('t1'), toolResult('t1')];
     expect(sanitizeHistory(h)).toEqual([]);
   });
 
   it('handles empty input', () => {
     expect(sanitizeHistory([])).toEqual([]);
+  });
+
+  // Legacy Durable Object state from the Anthropic era stored array-shaped content.
+  // Those entries are invalid under the OpenAI shape and must be dropped so old
+  // sessions self-heal rather than crash.
+  it('drops legacy Anthropic-shaped (array-content) messages', () => {
+    const legacyUser = { role: 'user', content: [{ type: 'text', text: 'hi' }] } as unknown as Msg;
+    const h = [legacyUser, assistant('reply'), user('clean')];
+    expect(sanitizeHistory(h)).toEqual([user('clean')]);
   });
 });
 

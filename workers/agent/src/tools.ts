@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type OpenAI from 'openai';
 import type { McpApiClient } from './css-api.js';
 import { validateOps } from '@pantheon-systems/p1-content-validator';
 import type { ComponentSchema } from '@pantheon-systems/p1-content-validator';
@@ -67,10 +67,16 @@ function buildRegistry(components: unknown[]): Record<string, ComponentSchema> {
   return registry;
 }
 
-// Anthropic tool definitions for CSS capabilities.
+// Tool definitions for CSS capabilities, kept in a provider-neutral shape and
+// converted to the OpenAI function-calling format at export (see toOpenAiTools below).
 // list_sites / list_branches / list_documents are intentionally excluded — the
 // site, branch, and document are always provided in the editor context.
-export const CSS_TOOLS: Anthropic.Tool[] = [
+interface RawTool {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+const RAW_CSS_TOOLS: RawTool[] = [
   {
     name: 'list_components',
     description: 'List P1 components available for building a new page. Only needed when creating a new page — do not call when editing an existing page.',
@@ -251,7 +257,7 @@ export const CSS_TOOLS: Anthropic.Tool[] = [
 ];
 
 // Tool definitions for web/media capabilities
-export const WEB_TOOLS: Anthropic.Tool[] = [
+const RAW_WEB_TOOLS: RawTool[] = [
   {
     name: 'list_media',
     description: 'List media files available in the site media library. Optionally filter by filename substring.',
@@ -277,8 +283,20 @@ export const WEB_TOOLS: Anthropic.Tool[] = [
   },
 ];
 
-// Tool name union for type safety
-type ToolName = (typeof CSS_TOOLS)[number]['name'] | (typeof WEB_TOOLS)[number]['name'];
+// Convert the provider-neutral specs to OpenAI function-calling tools. The JSON
+// Schema in input_schema maps directly onto the function `parameters` field.
+function toOpenAiTools(raw: RawTool[]): OpenAI.Chat.Completions.ChatCompletionFunctionTool[] {
+  return raw.map(t => ({
+    type: 'function',
+    function: { name: t.name, description: t.description, parameters: t.input_schema },
+  }));
+}
+
+export const CSS_TOOLS = toOpenAiTools(RAW_CSS_TOOLS);
+export const WEB_TOOLS = toOpenAiTools(RAW_WEB_TOOLS);
+
+// Tool names are validated at runtime in executeTool's switch (with a default).
+type ToolName = string;
 
 // Validate that a URL is safe to fetch (public http/https only)
 export function validatePublicUrl(raw: string): URL {

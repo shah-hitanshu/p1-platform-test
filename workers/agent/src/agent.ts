@@ -1,14 +1,21 @@
 import { Agent } from 'agents';
 import type { Connection, WSMessage } from 'agents';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import type { Env, IncomingMessage, OutgoingMessage, ChatContext, ValidatedUser } from './types.js';
 import { McpApiClient } from './css-api.js';
 import { CSS_TOOLS, WEB_TOOLS, executeTool } from './tools.js';
 import { validateCSSToken } from './auth.js';
 import { trimHistory, sanitizeHistory, trimForHistory } from './history.js';
 
+// Model reached through the AI Gateway compat endpoint, in provider/model notation
+// (workers-ai/@cf/... for native Cloudflare models, anthropic/... for Claude).
+// Override per environment via AGENT_MODEL.
+const DEFAULT_MODEL = 'workers-ai/@cf/moonshotai/kimi-k2.7-code';
+
+type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
+
 interface AgentState {
-  conversationHistory: Anthropic.MessageParam[];
+  conversationHistory: ChatMessage[];
 }
 
 const SYSTEM_PROMPT = `You are an AI assistant integrated into a P1 page editor.
@@ -100,70 +107,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
       return;
     }
 
-    let parsed: IncomingMessage;
-    try {
-      parsed = JSON.parse(rawMessage) as IncomingMessage;
-    } catch {
-      this.send(connection, { type: 'error', error: 'Invalid message format' });
-      return;
-    }
-
-    if (parsed.type === 'clear') {
-      await this.setState({ conversationHistory: [] });
-      this.send(connection, { type: 'cleared' });
-      return;
-    }
-
-    if (parsed.type !== 'chat') return;
-
-    const { message, context } = parsed;
-
-    // Validate the user's CSS auth token
-    let user: ValidatedUser;
-    try {
-      user = await validateCSSToken(context.token, this.env.CSS_BACKEND_URL);
-    } catch {
-      this.send(connection, { type: 'error', error: 'Authentication failed' });
-      return;
-    }
-
-    // Build CSS API client acting on behalf of the validated user
-    const cssApi = new McpApiClient({
-      baseUrl: this.env.CSS_BACKEND_URL,
-      agentId: this.env.AGENT_ID,
-      agentApiKey: this.env.AGENT_API_KEY,
-      actingUser: { id: user.id, email: user.email, name: user.name },
-    });
-
-    // Build Anthropic client — route via Cloudflare AI Gateway if configured, else call Anthropic directly
-    const gatewayBaseURL =
-      this.env.AI_GATEWAY_ACCOUNT_ID && this.env.AI_GATEWAY_NAME
-        ? `https://gateway.ai.cloudflare.com/v1/${this.env.AI_GATEWAY_ACCOUNT_ID}/${this.env.AI_GATEWAY_NAME}/anthropic`
-        : undefined;
-    const anthropic = new Anthropic({
-      apiKey: this.env.ANTHROPIC_API_KEY,
-      ...(gatewayBaseURL ? { baseURL: gatewayBaseURL } : {}),
-      ...(gatewayBaseURL && this.env.CF_AIG_TOKEN
-        ? { defaultHeaders: { 'cf-aig-authorization': `Bearer ${this.env.CF_AIG_TOKEN}` } }
-        : {}),
-    });
-
-    // Inject page context into the user message
-    const contextNote = buildContextNote(context);
-    const userContent = contextNote ? `${contextNote}\n\n${message}` : message;
-
-    // Sanitize on load — fixes any bad state persisted before this fix was deployed.
-    // Store raw message without context note; context is injected into the first
-    // API call only so historical turns don't carry stale context blocks.
-    const history = sanitizeHistory([...this.state.conversationHistory]);
-    const historyForStorage = [...history];
-    history.push({ role: 'user', content: message });
-    historyForStorage.push({ role: 'user', content: message });
-
-    // Agentic loop — keep calling Claude until no more tool use
-    let assistantContent: Anthropic.ContentBlock[] = [];
-
-    // Track any open edit session so we can abort it on unexpected errors
+    // Declared before the try so the catch can reach them for cleanup.
     interface ActiveEditSession {
       siteId: string;
       branchId: string;
@@ -171,81 +115,131 @@ export class ChatAgent extends Agent<Env, AgentState> {
       editSessionId: string;
     }
     let activeEditSession: ActiveEditSession | null = null;
+    let cssApi: McpApiClient | null = null;
 
-    // Index of the last stable (pre-turn) message in history. Captured once so
-    // the cache breakpoint stays fixed as history grows during the loop.
-    const stableHistoryLastIdx = history.length - 2; // -1 for current user msg, -1 for 0-based
-
-    // Tracks the last tool-result message added within this turn. Updated after
-    // each tool exchange so the 4th cache slot covers completed within-turn
-    // exchanges (notably the large get_document snapshot) on subsequent calls.
-    let turnCacheBreakpointIdx = -1;
-
-    const userMsgIdx = stableHistoryLastIdx + 1;
+    // One try/catch wraps the whole handler so any failure — setup or agentic loop —
+    // surfaces as a structured {type:'error'} rather than an unhandled rejection.
     try {
+      let parsed: IncomingMessage;
+      try {
+        parsed = JSON.parse(rawMessage) as IncomingMessage;
+      } catch {
+        this.send(connection, { type: 'error', error: 'Invalid message format' });
+        return;
+      }
+
+      if (parsed.type === 'clear') {
+        await this.setState({ conversationHistory: [] });
+        this.send(connection, { type: 'cleared' });
+        return;
+      }
+
+      if (parsed.type !== 'chat') return;
+
+      const { message, context } = parsed;
+
+      // Validate the user's CSS auth token
+      let user: ValidatedUser;
+      try {
+        user = await validateCSSToken(context.token, this.env.CSS_BACKEND_URL);
+      } catch {
+        this.send(connection, { type: 'error', error: 'Authentication failed' });
+        return;
+      }
+
+      // Build CSS API client acting on behalf of the validated user
+      cssApi = new McpApiClient({
+        baseUrl: this.env.CSS_BACKEND_URL,
+        agentId: this.env.AGENT_ID,
+        agentApiKey: this.env.AGENT_API_KEY,
+        actingUser: { id: user.id, email: user.email, name: user.name },
+      });
+
+      // Route model calls through the AI Gateway's OpenAI-compatible endpoint; the
+      // gateway token authenticates the request, so no per-provider key is needed.
+      if (!this.env.AI_GATEWAY_ACCOUNT_ID || !this.env.AI_GATEWAY_NAME || !this.env.CF_AIG_TOKEN) {
+        this.send(connection, { type: 'error', error: 'AI Gateway not configured' });
+        return;
+      }
+      const ai = new OpenAI({
+        apiKey: this.env.CF_AIG_TOKEN,
+        baseURL: `https://gateway.ai.cloudflare.com/v1/${this.env.AI_GATEWAY_ACCOUNT_ID}/${this.env.AI_GATEWAY_NAME}/compat`,
+      });
+      const model = this.env.AGENT_MODEL || DEFAULT_MODEL;
+      const tools = [...CSS_TOOLS, ...WEB_TOOLS];
+
+      // Inject page context into the user message sent to the model, but persist the raw
+      // message so stored turns don't carry stale context blocks.
+      const contextNote = buildContextNote(context);
+      const userContent = contextNote ? `${contextNote}\n\n${message}` : message;
+
+      // Sanitize on load — drops malformed/legacy entries persisted before the Workers AI
+      // migration so old sessions self-heal instead of crashing.
+      const history = sanitizeHistory([...this.state.conversationHistory]);
+      const historyForStorage = [...history];
+      history.push({ role: 'user', content: userContent });
+      historyForStorage.push({ role: 'user', content: message });
+
+      // Agentic loop — keep calling the model until it stops requesting tools.
       while (true) {
-        // Always inject the current page context into the user message position so
-        // the agent retains its document anchor even after tool failures in the loop.
-        const baseMessages: Anthropic.MessageParam[] = contextNote
-          ? [
-              ...history.slice(0, userMsgIdx),
-              { role: 'user' as const, content: userContent },
-              ...history.slice(userMsgIdx + 1),
-            ]
-          : history;
-        // Slot 3: cache everything up to the last pre-turn message.
-        // Slot 4: cache everything up to the last completed within-turn exchange
-        //         (covers the get_document snapshot on calls 3–N of the loop).
-        const apiMessages = withCacheBreakpoint(
-          withCacheBreakpoint(baseMessages, stableHistoryLastIdx),
-          turnCacheBreakpointIdx,
-        );
-        const response = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
+        const completion = await ai.chat.completions.create({
+          model,
           max_tokens: 8192,
-          system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-          messages: apiMessages,
-          tools: [
-            ...CSS_TOOLS,
-            ...WEB_TOOLS.slice(0, -1),
-            { ...WEB_TOOLS[WEB_TOOLS.length - 1], cache_control: { type: 'ephemeral' } },
-          ],
+          messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...history],
+          tools,
+          tool_choice: 'auto',
         });
 
-        assistantContent = response.content;
+        const choice = completion.choices[0]?.message;
+        if (!choice) throw new Error('Model returned no choices');
 
-        // Stream text blocks and tool starts to the client
-        for (const block of response.content) {
-          if (block.type === 'text') {
-            this.send(connection, { type: 'token', content: block.text });
-          } else if (block.type === 'tool_use') {
-            this.send(connection, { type: 'tool_start', toolName: block.name, toolInput: block.input });
-          }
+        type FnToolCall = Extract<
+          OpenAI.Chat.Completions.ChatCompletionMessageToolCall,
+          { type: 'function' }
+        >;
+        const toolCalls = (choice.tool_calls ?? []).filter(
+          (tc): tc is FnToolCall => tc.type === 'function',
+        );
+
+        // Stream assistant text and tool starts to the client
+        if (choice.content) this.send(connection, { type: 'token', content: choice.content });
+        for (const tc of toolCalls) {
+          let input: Record<string, unknown> = {};
+          try { input = JSON.parse(tc.function.arguments || '{}'); } catch { /* reported on execute */ }
+          this.send(connection, { type: 'tool_start', toolName: tc.function.name, toolInput: input });
         }
 
-        if (response.stop_reason !== 'tool_use') break;
+        // Carry tool_calls on the assistant message so the following tool results pair back by id.
+        const assistantMsg: ChatMessage = {
+          role: 'assistant',
+          content: choice.content ?? '',
+          ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+        };
+        history.push(assistantMsg);
+        historyForStorage.push(assistantMsg);
 
-        // Execute tool calls and collect results
-        const toolResultsFull: Anthropic.ToolResultBlockParam[] = [];
-        const toolResultsTrimmed: Anthropic.ToolResultBlockParam[] = [];
-        for (const block of response.content) {
-          if (block.type !== 'tool_use') continue;
+        if (toolCalls.length === 0) break;
 
+        // Execute each tool call and append its result to history.
+        for (const tc of toolCalls) {
           let result: unknown;
           let isError = false;
           try {
-            result = await executeTool(block.name, block.input as Record<string, unknown>, cssApi, user.id, { token: context.token, mediaWorkerUrl: this.env.MEDIA_WORKER_URL });
+            const input = JSON.parse(tc.function.arguments || '{}') as Record<string, unknown>;
+            result = await executeTool(tc.function.name, input, cssApi, user.id, {
+              token: context.token,
+              mediaWorkerUrl: this.env.MEDIA_WORKER_URL,
+            });
 
             // Track edit session lifecycle for cleanup on failure
-            const input = block.input as Record<string, unknown>;
-            if (block.name === 'start_edit_session' && !isError) {
+            if (tc.function.name === 'start_edit_session') {
               activeEditSession = {
                 siteId: input.site_id as string,
                 branchId: input.branch_id as string,
                 documentPath: input.document_path as string,
                 editSessionId: (result as { editSessionId: string }).editSessionId,
               };
-            } else if (block.name === 'complete_edit_session' || block.name === 'abort_edit_session') {
+            } else if (tc.function.name === 'complete_edit_session' || tc.function.name === 'abort_edit_session') {
               activeEditSession = null;
             }
           } catch (err) {
@@ -253,37 +247,25 @@ export class ChatAgent extends Agent<Env, AgentState> {
             isError = true;
           }
 
-          this.send(connection, { type: 'tool_end', toolName: block.name, toolResult: result });
+          this.send(connection, { type: 'tool_end', toolName: tc.function.name, toolResult: result });
 
-          const base = {
-            type: 'tool_result' as const,
-            tool_use_id: block.id,
-            ...(isError ? { is_error: true } : {}),
-          };
-          toolResultsFull.push({ ...base, content: JSON.stringify(result) });
-          toolResultsTrimmed.push({ ...base, content: JSON.stringify(trimForHistory(block.name, result)) });
+          // Model gets full results; storage gets trimmed results (errors kept intact).
+          history.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
+          historyForStorage.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: JSON.stringify(isError ? result : trimForHistory(tc.function.name, result)),
+          });
         }
-
-        // Claude gets full results; storage gets trimmed results
-        history.push({ role: 'assistant', content: assistantContent });
-        history.push({ role: 'user', content: toolResultsFull });
-        // Advance the within-turn cache breakpoint to the tool results just added
-        // so the next iteration caches all completed exchanges (including any
-        // large get_document snapshot from earlier in this turn).
-        turnCacheBreakpointIdx = history.length - 1;
-
-        historyForStorage.push({ role: 'assistant', content: assistantContent });
-        historyForStorage.push({ role: 'user', content: toolResultsTrimmed });
       }
 
-      // Persist updated history (keep last 20 turns to manage DO storage)
-      historyForStorage.push({ role: 'assistant', content: assistantContent });
+      // Persist updated history (keep last 20 entries to manage DO storage)
       await this.setState({ conversationHistory: trimHistory(historyForStorage, 20) });
 
       this.send(connection, { type: 'done' });
     } catch (err) {
       // Best-effort abort any open edit session before reporting the error
-      if (activeEditSession) {
+      if (activeEditSession && cssApi) {
         try {
           await cssApi.abortAgentEdit({
             ...activeEditSession,
@@ -293,32 +275,13 @@ export class ChatAgent extends Agent<Env, AgentState> {
           // Ignore cleanup failures — primary error takes precedence
         }
       }
-      const errorMessage = err instanceof Anthropic.RateLimitError
+      const status = err instanceof OpenAI.APIError ? err.status : undefined;
+      const errorMessage = status === 429
         ? 'Rate limit reached — please wait a moment and try again.'
         : err instanceof Error ? err.message : 'Unknown error';
       this.send(connection, { type: 'error', error: errorMessage });
     }
   }
-}
-
-// Add an Anthropic prompt-cache breakpoint to the last content block of the
-// message at `index`. Everything up to and including that block is eligible
-// for caching on subsequent API calls within the same agentic turn.
-function withCacheBreakpoint(messages: Anthropic.MessageParam[], index: number): Anthropic.MessageParam[] {
-  if (index < 0 || index >= messages.length) return messages;
-  const msg = messages[index];
-  const content = msg.content;
-  const cc = { type: 'ephemeral' as const };
-  let marked: Anthropic.MessageParam['content'];
-  if (typeof content === 'string') {
-    marked = [{ type: 'text', text: content, cache_control: cc }];
-  } else if (Array.isArray(content) && content.length > 0) {
-    const last = { ...(content[content.length - 1] as object), cache_control: cc };
-    marked = [...content.slice(0, -1), last] as unknown as Anthropic.MessageParam['content'];
-  } else {
-    return messages;
-  }
-  return [...messages.slice(0, index), { ...msg, content: marked }, ...messages.slice(index + 1)];
 }
 
 function buildContextNote(context: ChatContext): string {

@@ -1,23 +1,43 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type OpenAI from 'openai';
 
-// Remove any leading messages before the first clean user message (non-tool_result-only)
-// to prevent orphaned tool_result blocks that have no matching tool_use.
-export function sanitizeHistory(history: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
-  const firstCleanIdx = history.findIndex(m => {
-    if (m.role !== 'user') return false;
-    if (typeof m.content === 'string') return true;
-    if (Array.isArray(m.content)) {
-      return m.content.some(b => (b as { type: string }).type !== 'tool_result');
-    }
-    return false;
-  });
-  if (firstCleanIdx === -1) return [];
-  return firstCleanIdx > 0 ? history.slice(firstCleanIdx) : history;
+type Msg = OpenAI.Chat.Completions.ChatCompletionMessageParam;
+
+// Guard against malformed or legacy (Anthropic-shaped, array-content) entries left
+// in Durable Object state from before the Workers AI migration. Anything that does
+// not conform to the OpenAI message shape is dropped so old sessions self-heal
+// rather than crash the request.
+function isValidMessage(m: unknown): m is Msg {
+  if (m === null || typeof m !== 'object') return false;
+  const role = (m as { role?: unknown }).role;
+  const content = (m as { content?: unknown }).content;
+  switch (role) {
+    case 'system':
+    case 'user':
+      return typeof content === 'string';
+    case 'assistant':
+      // We always persist assistant content as a string; tool_calls may be present.
+      return content == null || typeof content === 'string';
+    case 'tool':
+      return typeof (m as { tool_call_id?: unknown }).tool_call_id === 'string';
+    default:
+      return false;
+  }
 }
 
-// Trim history to maxLength entries, sanitizing both before and after slicing
-// so the result never starts with orphaned tool_result blocks.
-export function trimHistory(history: Anthropic.MessageParam[], maxLength: number): Anthropic.MessageParam[] {
+// Drop any leading messages before the first user message. Tool and assistant
+// messages only appear as replies, so slicing from the first user turn guarantees
+// the history never starts with an orphaned tool result (a tool message with no
+// preceding assistant tool_call) — which the model API rejects.
+export function sanitizeHistory(history: Msg[]): Msg[] {
+  const valid = history.filter(isValidMessage);
+  const firstUserIdx = valid.findIndex(m => m.role === 'user');
+  if (firstUserIdx === -1) return [];
+  return firstUserIdx > 0 ? valid.slice(firstUserIdx) : valid;
+}
+
+// Trim history to maxLength entries, sanitizing both before and after slicing so the
+// result never starts with an orphaned tool result.
+export function trimHistory(history: Msg[], maxLength: number): Msg[] {
   const sanitized = sanitizeHistory(history);
   if (sanitized.length <= maxLength) return sanitized;
   return sanitizeHistory(sanitized.slice(-maxLength));

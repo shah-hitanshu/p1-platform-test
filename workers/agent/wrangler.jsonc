@@ -17,8 +17,14 @@
   "vars": {
     "ENVIRONMENT": "local",
     "CSS_BACKEND_URL": "http://localhost:8787",
-    "AI_GATEWAY_ACCOUNT_ID": "80174c9d7c006c2f1841b8d99c8803fa",
+    // All model calls go through this AI Gateway's OpenAI-compatible endpoint.
+    // Put CF_AIG_TOKEN in .env for local runs.
+    "AI_GATEWAY_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
     "AI_GATEWAY_NAME": "p1-chatbot",
+    // Model in provider/model notation. workers-ai/@cf/... = native Cloudflare model
+    // (billed via Workers AI, no gateway credits). Switch to anthropic/... once the
+    // gateway holds an Anthropic credential.
+    "AGENT_MODEL": "workers-ai/@cf/moonshotai/kimi-k2.7-code",
     "MEDIA_WORKER_URL": "https://p1-media.chris-801.workers.dev"
   },
   "env": {
@@ -26,8 +32,9 @@
       "vars": {
         "ENVIRONMENT": "sbx1",
         "CSS_BACKEND_URL": "https://collaborative-state-worker-sbx1.chris-801.workers.dev",
-        "AI_GATEWAY_ACCOUNT_ID": "80174c9d7c006c2f1841b8d99c8803fa",
+        "AI_GATEWAY_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
         "AI_GATEWAY_NAME": "p1-chatbot",
+        "AGENT_MODEL": "workers-ai/@cf/moonshotai/kimi-k2.7-code",
         "MEDIA_WORKER_URL": "https://p1-media.chris-801.workers.dev"
       },
       "durable_objects": {

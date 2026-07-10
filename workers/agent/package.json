@@ -10,9 +10,9 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
     "@pantheon-systems/p1-content-validator": "^1.0.0",
-    "agents": "^0.11.0"
+    "agents": "^0.11.0",
+    "openai": "^6.45.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250109.0",
