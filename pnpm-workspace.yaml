@@ -1,5 +1,6 @@
 packages:
   - "workers/*"
+  - "packages/*"
 
 allowBuilds:
   core-js-pure: true

@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { Button, Icon, Textarea, UtilityButton } from '@pantheon-systems/pds-toolkit-react';
-import { useCSSPuck, useCSSAuth } from '@pantheon/puck-css';
+import { useP1Puck, useP1Auth } from '@pantheon-systems/puck-css';
 import { useAgentChat } from './useAgentChat.js';
 import { ChatMessage } from './ChatMessage.js';
 import type { AIChatPluginOptions } from './types.js';
@@ -13,8 +13,8 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const css = useCSSPuck();
-  const { token } = useCSSAuth();
+  const css = useP1Puck();
+  const { token } = useP1Auth();
 
   // Stable refs so getAgentId/getContext don't change on every render
   const cssRef = useRef(css);

@@ -1,5 +1,5 @@
 {
-  "name": "@pantheon/p1-ai-chat",
+  "name": "@pantheon-systems/p1-ai-chat",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -17,20 +17,21 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "react-markdown": "^10.1.0"
   },
   "peerDependencies": {
-    "@pantheon-systems/pds-toolkit-react": ">=2.0.0-alpha.0",
-    "@pantheon/puck-css": ">=0.3.0",
+    "@pantheon-systems/pds-toolkit-react": ">=2.0.0-alpha.0 <=2.0.0-alpha.12",
+    "@pantheon-systems/puck-css": ">=0.4.0",
     "@puckeditor/core": "^0.21.0",
     "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
-    "@pantheon-systems/pds-toolkit-react": "^2.0.0-alpha.12",
-    "@pantheon/puck-css": "^0.3.1",
+    "@pantheon-systems/pds-toolkit-react": "2.0.0-alpha.12",
+    "@pantheon-systems/puck-css": "^0.4.4",
     "@puckeditor/core": "^0.21.1",
     "@types/react": "^18.0.0",
     "react": "^18.0.0",
