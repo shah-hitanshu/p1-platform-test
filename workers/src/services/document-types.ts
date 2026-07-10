@@ -50,6 +50,7 @@ export interface DocumentOnBranchRow extends DocumentRow {
   inherited: boolean;
   published_version_id: string | null;
   published_at: string | null;
+  snapshot_title: string | null;
 }
 
 /**
@@ -67,6 +68,7 @@ export interface DocumentOnBranch extends DocumentWithArchive {
   isPublished: boolean;
   publishedVersionId?: string;
   publishedAt?: string;
+  snapshotTitle?: string;
 }
 
 /**
@@ -230,6 +232,9 @@ export function mapRowToDocumentOnBranch(row: DocumentOnBranchRow): DocumentOnBr
   }
   if (row.published_at !== null) {
     doc.publishedAt = row.published_at;
+  }
+  if (row.snapshot_title !== null) {
+    doc.snapshotTitle = row.snapshot_title;
   }
   return doc;
 }

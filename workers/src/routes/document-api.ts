@@ -68,6 +68,7 @@ async function parseJsonBody<T>(request: Request): Promise<T> {
  */
 interface CreateDocumentBody {
   path?: string;
+  title?: string;
   snapshot?: Record<string, unknown>;
   templateId?: string;
   templateVersion?: number;
@@ -326,11 +327,15 @@ async function handleCreateDocumentOnBranch(
     }
   }
 
+  const snapshot = body.title
+    ? { title: body.title, ...body.snapshot }
+    : body.snapshot;
+
   const result = await createDocumentOnBranch({
     siteId,
     branchId,
     path: body.path,
-    snapshot: body.snapshot,
+    snapshot,
     templateId: body.templateId,
     templateVersion: resolvedTemplateVersion,
     createdById: principal.dbUserId ?? principal.id,

@@ -1186,6 +1186,190 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
         expect(response.status).toBe(404);
       });
+
+      it('should merge title into snapshot when provided', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'feature',
+          status: 'active',
+          isMain: false,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.createDocumentOnBranch).mockResolvedValueOnce({
+          document: {
+            id: 'doc-new',
+            siteId: 'site-1',
+            path: 'pages/about-us',
+            createdAt: '2026-01-24T12:00:00.000Z',
+          },
+          version: {
+            id: 'version-1',
+            documentId: 'doc-new',
+            branchId: 'branch-1',
+            versionNumber: 1,
+            snapshot: { title: 'About Us' },
+            source: 'edit',
+            createdById: 'user-1',
+            createdByType: 'user',
+            createdAt: '2026-01-24T12:00:00.000Z',
+          },
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: 'pages/about-us', title: 'About Us' }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(201);
+        expect(services.createDocumentOnBranch).toHaveBeenCalledWith(
+          expect.objectContaining({
+            snapshot: { title: 'About Us' },
+          }),
+        );
+      });
+
+      it('should not add title to snapshot when title is omitted', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'feature',
+          status: 'active',
+          isMain: false,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.createDocumentOnBranch).mockResolvedValueOnce({
+          document: {
+            id: 'doc-new',
+            siteId: 'site-1',
+            path: 'pages/new-page',
+            createdAt: '2026-01-24T12:00:00.000Z',
+          },
+          version: {
+            id: 'version-1',
+            documentId: 'doc-new',
+            branchId: 'branch-1',
+            versionNumber: 1,
+            snapshot: {},
+            source: 'edit',
+            createdById: 'user-1',
+            createdByType: 'user',
+            createdAt: '2026-01-24T12:00:00.000Z',
+          },
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: 'pages/new-page' }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(201);
+        expect(services.createDocumentOnBranch).toHaveBeenCalledWith(
+          expect.objectContaining({
+            snapshot: undefined,
+          }),
+        );
+      });
+
+      it('should merge title with existing snapshot fields', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'feature',
+          status: 'active',
+          isMain: false,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.createDocumentOnBranch).mockResolvedValueOnce({
+          document: {
+            id: 'doc-new',
+            siteId: 'site-1',
+            path: 'pages/contact',
+            createdAt: '2026-01-24T12:00:00.000Z',
+          },
+          version: {
+            id: 'version-1',
+            documentId: 'doc-new',
+            branchId: 'branch-1',
+            versionNumber: 1,
+            snapshot: { title: 'Contact', content: [] },
+            source: 'edit',
+            createdById: 'user-1',
+            createdByType: 'user',
+            createdAt: '2026-01-24T12:00:00.000Z',
+          },
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              path: 'pages/contact',
+              title: 'Contact',
+              snapshot: { content: [] },
+            }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(201);
+        expect(services.createDocumentOnBranch).toHaveBeenCalledWith(
+          expect.objectContaining({
+            snapshot: { title: 'Contact', content: [] },
+          }),
+        );
+      });
     });
 
     // =========================================================================

@@ -54,7 +54,8 @@ export async function listDocumentsOnBranch(
     let sql = `
       SELECT DISTINCT d.*, false AS inherited,
         pub.document_version_id AS published_version_id,
-        pub.published_at
+        pub.published_at,
+        snap.snapshot_title
       FROM app.documents d
       INNER JOIN app.document_versions dv ON dv.document_id = d.id
       LEFT JOIN LATERAL (
@@ -66,6 +67,13 @@ export async function listDocumentsOnBranch(
         ORDER BY cp.created_at DESC
         LIMIT 1
       ) pub ON true
+      LEFT JOIN LATERAL (
+        SELECT dv_snap.snapshot->>'title' AS snapshot_title
+        FROM app.document_versions dv_snap
+        WHERE dv_snap.document_id = d.id AND dv_snap.branch_id = $1
+        ORDER BY dv_snap.version_number DESC
+        LIMIT 1
+      ) snap ON true
       WHERE dv.branch_id = $1
         AND d.archived_at IS NULL
         AND NOT EXISTS (
@@ -96,7 +104,8 @@ export async function listDocumentsOnBranch(
 
       SELECT DISTINCT d.*, true AS inherited,
         pub.document_version_id AS published_version_id,
-        pub.published_at
+        pub.published_at,
+        snap.snapshot_title
       FROM app.documents d
       INNER JOIN app.document_versions dv ON dv.document_id = d.id
       INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
@@ -110,6 +119,13 @@ export async function listDocumentsOnBranch(
         ORDER BY cp2.created_at DESC
         LIMIT 1
       ) pub ON true
+      LEFT JOIN LATERAL (
+        SELECT dv_snap.snapshot->>'title' AS snapshot_title
+        FROM app.document_versions dv_snap
+        WHERE dv_snap.document_id = d.id AND dv_snap.branch_id = $2
+        ORDER BY dv_snap.version_number DESC
+        LIMIT 1
+      ) snap ON true
       WHERE dv.branch_id = $2
         AND cp.branch_id = $2
         AND cp.checkpoint_type = 'publish'
@@ -147,7 +163,8 @@ export async function listDocumentsOnBranch(
   let sql = `
     SELECT DISTINCT d.*, false AS inherited,
       pub.document_version_id AS published_version_id,
-      pub.published_at
+      pub.published_at,
+      snap.snapshot_title
     FROM app.documents d
     INNER JOIN app.document_versions dv ON dv.document_id = d.id
     LEFT JOIN LATERAL (
@@ -159,6 +176,13 @@ export async function listDocumentsOnBranch(
       ORDER BY cp.created_at DESC
       LIMIT 1
     ) pub ON true
+    LEFT JOIN LATERAL (
+      SELECT dv_snap.snapshot->>'title' AS snapshot_title
+      FROM app.document_versions dv_snap
+      WHERE dv_snap.document_id = d.id AND dv_snap.branch_id = $1
+      ORDER BY dv_snap.version_number DESC
+      LIMIT 1
+    ) snap ON true
     WHERE dv.branch_id = $1
       AND d.archived_at IS NULL
       AND NOT EXISTS (
