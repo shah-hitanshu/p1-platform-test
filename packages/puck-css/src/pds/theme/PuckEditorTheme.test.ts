@@ -53,10 +53,11 @@ describe('PuckEditorTheme.css', () => {
       expect(css).toContain('var(--pds-color-bg-default-secondary)');
     });
 
-    it('maps --puck-color-grey-03 to PDS default border', () => {
+    it('maps --puck-color-grey-03 to PDS secondary foreground', () => {
       const css = readThemeCSS();
-      expect(css).toContain('--puck-color-grey-03');
-      expect(css).toContain('var(--pds-color-border-default)');
+      expect(css).toMatch(
+        /--puck-color-grey-03:\s*var\(--pds-color-fg-default-secondary\)/,
+      );
     });
 
     it('maps --puck-color-grey-05 to PDS input border', () => {
