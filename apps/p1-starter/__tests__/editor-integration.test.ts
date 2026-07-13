@@ -27,6 +27,10 @@ describe("editor-client uses P1 plugins", () => {
   it("wraps with P1QueryProvider for TanStack React Query", () => {
     expect(content).toContain("P1QueryProvider");
   });
+
+  it("gates RoleSwitcher behind NEXT_PUBLIC_ENABLE_ROLE_SWITCHER", () => {
+    expect(content).toContain("NEXT_PUBLIC_ENABLE_ROLE_SWITCHER");
+  });
 });
 
 describe("API handler passes fetcher config", () => {

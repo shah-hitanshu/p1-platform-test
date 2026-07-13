@@ -130,7 +130,9 @@ export function EditorClientWrapper({ path }: { path: string }) {
         >
           <EditorContent path={path} lastGoodStateRef={lastGoodStateRef} />
         </P1App>
-        <RoleSwitcher currentRole={userRole} onRoleChange={setUserRole} />
+        {process.env.NEXT_PUBLIC_ENABLE_ROLE_SWITCHER === 'true' && (
+          <RoleSwitcher currentRole={userRole} onRoleChange={setUserRole} />
+        )}
       </P1NextRouterProvider>
     </P1QueryProvider>
   );
