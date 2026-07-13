@@ -8,8 +8,8 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import React from 'react';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
-import { P1EditorHeader } from './P1EditorHeader.js';
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
+import { P1EditorHeader, BEFORE_NAVIGATE_TIMEOUT_MS } from './P1EditorHeader.js';
 
 // =============================================================================
 // Mocks
@@ -117,6 +117,394 @@ describe('P1EditorHeader', () => {
     render(<P1EditorHeader {...defaultProps} />);
 
     expect(screen.getByTestId('p1-logo')).toBeDefined();
+  });
+
+  it('renders a custom img when logoUrl is provided', () => {
+    const logoUrl = 'https://cdn.test/logo.png';
+    render(<P1EditorHeader {...defaultProps} siteId="site-1" logoUrl={logoUrl} />);
+
+    const logo = screen.getByTestId('p1-logo');
+    expect(logo.tagName).toBe('IMG');
+    expect(logo.getAttribute('src')).toBe(logoUrl);
+  });
+
+  it('renders the default PantheonLogo when logoUrl is not provided', () => {
+    render(<P1EditorHeader {...defaultProps} siteId="site-1" />);
+
+    const logo = screen.getByTestId('p1-logo');
+    expect(logo.tagName).not.toBe('IMG');
+  });
+
+  it('falls back to PantheonLogo when the custom logo image fails to load', async () => {
+    const logoUrl = 'https://cdn.test/broken.png';
+    render(<P1EditorHeader {...defaultProps} siteId="site-1" logoUrl={logoUrl} />);
+
+    expect(screen.getByTestId('p1-logo').tagName).toBe('IMG');
+
+    fireEvent.error(screen.getByTestId('p1-logo'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('p1-logo').tagName).not.toBe('IMG');
+    });
+  });
+
+  it('renders custom img when logoUrl is provided even without siteId', () => {
+    // logoUrl controls branding independently of siteId (navigation config).
+    render(<P1EditorHeader {...defaultProps} logoUrl="https://cdn.test/logo.png" />);
+
+    const logo = screen.getByTestId('p1-logo');
+    expect(logo.tagName).toBe('IMG');
+    expect(logo.getAttribute('src')).toBe('https://cdn.test/logo.png');
+  });
+
+  it('renders p1-logo-link even when siteId is absent (no href, click is a no-op)', () => {
+    render(<P1EditorHeader {...defaultProps} />);
+
+    const link = screen.getByTestId('p1-logo-link');
+    expect(link).toBeDefined();
+    expect(link.getAttribute('href')).toBeNull();
+  });
+
+  it('does not call onBeforeLogoNavigate when logo is clicked without siteId', () => {
+    const onBeforeLogoNavigate = vi.fn().mockResolvedValue(undefined);
+    render(<P1EditorHeader {...defaultProps} onBeforeLogoNavigate={onBeforeLogoNavigate} />);
+
+    fireEvent.click(screen.getByTestId('p1-logo-link'));
+
+    expect(onBeforeLogoNavigate).not.toHaveBeenCalled();
+  });
+
+  it('navigates to the dashboard after onBeforeLogoNavigate resolves', async () => {
+    const locationMock = { href: 'http://localhost/' };
+    vi.stubGlobal('location', locationMock);
+
+    const onBeforeLogoNavigate = vi.fn().mockResolvedValue(undefined);
+    render(
+      <P1EditorHeader
+        {...defaultProps}
+        siteId="site-1"
+        onBeforeLogoNavigate={onBeforeLogoNavigate}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('p1-logo-link'));
+
+    await waitFor(() => {
+      expect(onBeforeLogoNavigate).toHaveBeenCalledTimes(1);
+      expect(locationMock.href).toBe('https://content.pantheon.io/dashboard/sites/site-1');
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  // ── Logo navigation save guard ──────────────────────────────────────
+  describe('logo navigation save guard', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+    });
+
+    it('shows a loading state on the logo link while the save is in flight', () => {
+      const onBeforeLogoNavigate = vi.fn(() => new Promise<void>(() => { /* never settles — simulates a hung save */ }));
+      render(
+        <P1EditorHeader
+          {...defaultProps}
+          siteId="site-1"
+          onBeforeLogoNavigate={onBeforeLogoNavigate}
+        />,
+      );
+
+      const link = screen.getByTestId('p1-logo-link');
+      expect(link.getAttribute('aria-busy')).toBeNull();
+
+      fireEvent.click(link);
+
+      // Dimmed + disabled only — no spinner element. aria-disabled mirrors
+      expect(link.getAttribute('aria-busy')).toBe('true');
+      expect(link.getAttribute('aria-disabled')).toBe('true');
+      expect(screen.queryByTestId('logo-saving-spinner')).toBeNull();
+    });
+
+    it('ignores additional logo clicks while a save is in flight', () => {
+      const onBeforeLogoNavigate = vi.fn(() => new Promise<void>(() => { /* never settles — simulates a hung save */ }));
+      render(
+        <P1EditorHeader
+          {...defaultProps}
+          siteId="site-1"
+          onBeforeLogoNavigate={onBeforeLogoNavigate}
+        />,
+      );
+
+      const link = screen.getByTestId('p1-logo-link');
+      fireEvent.click(link);
+      fireEvent.click(link);
+
+      expect(onBeforeLogoNavigate).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks to confirm leaving instead of silently navigating when the save rejects', async () => {
+      const locationMock = { href: 'http://localhost/' };
+      vi.stubGlobal('location', locationMock);
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+      const onBeforeLogoNavigate = vi.fn().mockRejectedValue(new Error('network error'));
+      render(
+        <P1EditorHeader
+          {...defaultProps}
+          siteId="site-1"
+          onBeforeLogoNavigate={onBeforeLogoNavigate}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('p1-logo-link'));
+
+      await waitFor(() => {
+        expect(confirmSpy).toHaveBeenCalledTimes(1);
+      });
+      expect(confirmSpy.mock.calls[0][0]).toContain('Leave anyway');
+      // User declined — no navigation.
+      expect(locationMock.href).toBe('http://localhost/');
+      // Loading state is cleared once the confirm takes over.
+      expect(screen.getByTestId('p1-logo-link').getAttribute('aria-busy')).toBeNull();
+    });
+
+    it('navigates when the user confirms leaving after a failed save', async () => {
+      const locationMock = { href: 'http://localhost/' };
+      vi.stubGlobal('location', locationMock);
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      const onBeforeLogoNavigate = vi.fn().mockRejectedValue(new Error('network error'));
+      render(
+        <P1EditorHeader
+          {...defaultProps}
+          siteId="site-1"
+          onBeforeLogoNavigate={onBeforeLogoNavigate}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('p1-logo-link'));
+
+      await waitFor(() => {
+        expect(locationMock.href).toBe('https://content.pantheon.io/dashboard/sites/site-1');
+      });
+    });
+
+    it('re-enables the logo for a retry when the user declines to leave', async () => {
+      const locationMock = { href: 'http://localhost/' };
+      vi.stubGlobal('location', locationMock);
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+      const onBeforeLogoNavigate = vi.fn().mockRejectedValue(new Error('network error'));
+      render(
+        <P1EditorHeader
+          {...defaultProps}
+          siteId="site-1"
+          onBeforeLogoNavigate={onBeforeLogoNavigate}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('p1-logo-link'));
+      await waitFor(() => {
+        expect(confirmSpy).toHaveBeenCalledTimes(1);
+      });
+
+      // Logo is interactive again — a retry re-invokes the save.
+      fireEvent.click(screen.getByTestId('p1-logo-link'));
+      expect(onBeforeLogoNavigate).toHaveBeenCalledTimes(2);
+    });
+
+    it('stops waiting and asks to confirm leaving when the save exceeds the timeout', async () => {
+      vi.useFakeTimers();
+      const locationMock = { href: 'http://localhost/' };
+      vi.stubGlobal('location', locationMock);
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+      const onBeforeLogoNavigate = vi.fn(() => new Promise<void>(() => { /* never settles — simulates a hung save */ }));
+      render(
+        <P1EditorHeader
+          {...defaultProps}
+          siteId="site-1"
+          onBeforeLogoNavigate={onBeforeLogoNavigate}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('p1-logo-link'));
+      expect(confirmSpy).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(BEFORE_NAVIGATE_TIMEOUT_MS);
+      });
+
+      expect(confirmSpy).toHaveBeenCalledTimes(1);
+      expect(locationMock.href).toBe('http://localhost/');
+      expect(screen.getByTestId('p1-logo-link').getAttribute('aria-busy')).toBeNull();
+    });
+
+    it('clears the loading state before navigating so a bfcache restore shows an idle logo', async () => {
+      const locationMock = { href: 'http://localhost/' };
+      vi.stubGlobal('location', locationMock);
+
+      const onBeforeLogoNavigate = vi.fn().mockResolvedValue(undefined);
+      render(
+        <P1EditorHeader
+          {...defaultProps}
+          siteId="site-1"
+          onBeforeLogoNavigate={onBeforeLogoNavigate}
+        />,
+      );
+
+      const link = screen.getByTestId('p1-logo-link');
+      fireEvent.click(link);
+      expect(link.getAttribute('aria-busy')).toBe('true');
+
+      await waitFor(() => {
+        expect(locationMock.href).toBe('https://content.pantheon.io/dashboard/sites/site-1');
+      });
+
+      // The bfcache snapshots the page as of navigation — the loading state
+      // must already be off so browser-back doesn't restore a stuck spinner.
+      await waitFor(() => {
+        expect(link.getAttribute('aria-busy')).toBeNull();
+      });
+    });
+
+    it('does not navigate when the save resolves after the header unmounted', async () => {
+      const locationMock = { href: 'http://localhost/' };
+      vi.stubGlobal('location', locationMock);
+
+      let resolveSave!: () => void;
+      const onBeforeLogoNavigate = vi.fn(
+        () => new Promise<void>((resolve) => { resolveSave = resolve; }),
+      );
+      const { unmount } = render(
+        <P1EditorHeader
+          {...defaultProps}
+          siteId="site-1"
+          onBeforeLogoNavigate={onBeforeLogoNavigate}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('p1-logo-link'));
+      unmount();
+
+      resolveSave();
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(locationMock.href).toBe('http://localhost/');
+    });
+
+    it('does not show the confirm when the save fails after the header unmounted', async () => {
+      const locationMock = { href: 'http://localhost/' };
+      vi.stubGlobal('location', locationMock);
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      let rejectSave!: (err: Error) => void;
+      const onBeforeLogoNavigate = vi.fn(
+        () => new Promise<void>((_resolve, reject) => { rejectSave = reject; }),
+      );
+      const { unmount } = render(
+        <P1EditorHeader
+          {...defaultProps}
+          siteId="site-1"
+          onBeforeLogoNavigate={onBeforeLogoNavigate}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('p1-logo-link'));
+      unmount();
+
+      rejectSave(new Error('network error'));
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(locationMock.href).toBe('http://localhost/');
+    });
+
+    it('does not navigate when the save resolves after the timeout confirm was declined', async () => {
+      vi.useFakeTimers();
+      const locationMock = { href: 'http://localhost/' };
+      vi.stubGlobal('location', locationMock);
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+      let resolveSave!: () => void;
+      const onBeforeLogoNavigate = vi.fn(
+        () => new Promise<void>((resolve) => { resolveSave = resolve; }),
+      );
+      render(
+        <P1EditorHeader
+          {...defaultProps}
+          siteId="site-1"
+          onBeforeLogoNavigate={onBeforeLogoNavigate}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('p1-logo-link'));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(BEFORE_NAVIGATE_TIMEOUT_MS);
+      });
+      expect(confirmSpy).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        resolveSave();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(locationMock.href).toBe('http://localhost/');
+    });
+  });
+
+  it('calls onBeforeLogoNavigate when the logo link is clicked', async () => {
+    const onBeforeLogoNavigate = vi.fn().mockResolvedValue(undefined);
+    render(
+      <P1EditorHeader
+        {...defaultProps}
+        siteId="site-1"
+        onBeforeLogoNavigate={onBeforeLogoNavigate}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('p1-logo-link'));
+
+    await waitFor(() => {
+      expect(onBeforeLogoNavigate).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('calls onBeforeLogoNavigate when the default PantheonLogo (no logoUrl) is clicked', async () => {
+    const onBeforeLogoNavigate = vi.fn().mockResolvedValue(undefined);
+    render(
+      <P1EditorHeader
+        {...defaultProps}
+        siteId="site-1"
+        onBeforeLogoNavigate={onBeforeLogoNavigate}
+      />,
+    );
+
+    // Click the logo element directly (not the <a> wrapper) to confirm event bubbling
+    fireEvent.click(screen.getByTestId('p1-logo'));
+
+    await waitFor(() => {
+      expect(onBeforeLogoNavigate).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('intercepts logo link click and navigates via JS even without a save callback', () => {
+    vi.stubGlobal('location', { href: 'http://localhost/' });
+
+    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+    render(<P1EditorHeader {...defaultProps} siteId="site-1" />);
+
+    const link = screen.getByTestId('p1-logo-link');
+    link.dispatchEvent(clickEvent);
+
+    expect(clickEvent.defaultPrevented).toBe(true);
+
+    vi.unstubAllGlobals();
   });
 
   it.skip('renders the WorkstreamSwitcher', () => {

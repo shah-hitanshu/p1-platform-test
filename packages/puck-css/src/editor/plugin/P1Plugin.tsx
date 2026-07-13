@@ -517,6 +517,8 @@ export interface P1PluginOptions {
   siteId?: string;
   /** Base URL for the P1 dashboard (defaults to https://content.pantheon.io) */
   dashboardUrl?: string;
+  /** Custom logo image URL for the editor header */
+  logoUrl?: string;
   /** Currently authenticated user */
   currentUser?: CurrentUser;
   /** Callback when user logs out */
@@ -879,6 +881,8 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
           siteName={stableOptions.siteName ?? css.siteName ?? ''}
           siteId={stableOptions.siteId}
           dashboardUrl={stableOptions.dashboardUrl}
+          logoUrl={stableOptions.logoUrl}
+          onBeforeLogoNavigate={css.saveNow}
           currentUser={currentUser}
           onSelectDocument={(fc.enableDocumentBrowser ?? true)
             ? (doc) => stableOptions.onDocumentSelect?.(doc.path) : () => {}}

@@ -19,6 +19,8 @@ import styles from './P1EditorHeader.module.css';
 
 export type { PageNavigatorDocument };
 
+export const BEFORE_NAVIGATE_TIMEOUT_MS = 8000;
+
 export interface CurrentUser {
   id: string;
   name?: string;
@@ -40,6 +42,10 @@ export interface P1EditorHeaderProps {
   siteName: string;
   siteId?: string;
   dashboardUrl?: string;
+  /** Custom logo image URL. When provided, replaces the default PantheonLogo. */
+  logoUrl?: string;
+  /** Called (and awaited) before the logo link navigates — use to flush pending saves. */
+  onBeforeLogoNavigate?: () => Promise<void>;
   onSelectDocument: (doc: PageNavigatorDocument) => void;
   onCreateDocument?: (path: string, template?: TemplateSummary | null, title?: string) => Promise<void>;
   onLogout: () => void;
@@ -64,6 +70,8 @@ export function P1EditorHeader({
   siteName,
   siteId,
   dashboardUrl,
+  logoUrl,
+  onBeforeLogoNavigate,
   onSelectDocument,
   onCreateDocument,
   onLogout,
@@ -86,6 +94,9 @@ export function P1EditorHeader({
   const [userMenuStyle, setUserMenuStyle] = useState<React.CSSProperties>({});
   const userMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  const [logoImgError, setLogoImgError] = useState(false);
+  useEffect(() => { setLogoImgError(false); }, [logoUrl]);
 
   const handlePageSelectorClick = useCallback(() => {
     setUserMenuOpen(false);
@@ -172,18 +183,92 @@ export function P1EditorHeader({
     return `${baseUrl}/dashboard/sites/${siteId}`;
   }, [siteId, dashboardUrl]);
 
+
+  const [logoNavSaving, setLogoNavSaving] = useState(false);
+  const logoNavTimerRef = useRef<number | undefined>(undefined);
+
+  const logoNavMountedRef = useRef(true);
+
+  useEffect(() => {
+    logoNavMountedRef.current = true;
+    return () => {
+      logoNavMountedRef.current = false;
+      window.clearTimeout(logoNavTimerRef.current);
+    };
+  }, []);
+
+  const handleLogoClick = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>) => {
+      if (!dashboardHref) return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+      e.preventDefault();
+      if (logoNavSaving) return;
+      const navigate = () => {
+        if (!logoNavMountedRef.current) return;
+        window.location.href = dashboardHref;
+      };
+      if (!onBeforeLogoNavigate) {
+        navigate();
+        return;
+      }
+      let settled = false;
+      const settle = () => {
+        settled = true;
+        window.clearTimeout(logoNavTimerRef.current);
+        setLogoNavSaving(false);
+      };
+      const confirmLeave = () => {
+        if (!logoNavMountedRef.current) return;
+        const leave = window.confirm(
+          'Save failed — your latest changes couldn’t be saved. Leave anyway?',
+        );
+        if (leave) navigate();
+      };
+      setLogoNavSaving(true);
+      logoNavTimerRef.current = window.setTimeout(() => {
+        if (settled) return;
+        settle();
+        confirmLeave();
+      }, BEFORE_NAVIGATE_TIMEOUT_MS);
+      onBeforeLogoNavigate()
+        .then(() => {
+          if (settled) return;
+          settle();
+          navigate();
+        })
+        .catch((err: unknown) => {
+          if (settled) return;
+          settle();
+          console.error('[P1EditorHeader] Pre-navigation save failed:', err);
+          confirmLeave();
+        });
+    },
+    [onBeforeLogoNavigate, dashboardHref, logoNavSaving],
+  );
+
   return (
     <header data-testid="p1-editor-header" className={styles.header}>
       {/* Branding */}
-      {dashboardHref ? (
-        <a
-          href={dashboardHref}
-          className={styles.logoLink}
-          title="Go to P1 Dashboard"
-          data-testid="p1-logo-link"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+      <a
+        href={dashboardHref}
+        className={
+          logoNavSaving ? `${styles.logoLink} ${styles.logoLinkSaving}` : styles.logoLink
+        }
+        title={dashboardHref ? 'Go to P1 Dashboard' : undefined}
+        data-testid="p1-logo-link"
+        aria-busy={logoNavSaving || undefined}
+        aria-disabled={logoNavSaving || undefined}
+        onClick={handleLogoClick}
+      >
+        {logoUrl && !logoImgError ? (
+          <img
+            src={logoUrl}
+            alt="Pantheon P1"
+            data-testid="p1-logo"
+            className={styles.logo}
+            onError={() => setLogoImgError(true)}
+          />
+        ) : (
           <PantheonLogo
             data-testid="p1-logo"
             className={styles.logo}
@@ -192,18 +277,8 @@ export function P1EditorHeader({
             size="s"
             linkContent={null}
           />
-        </a>
-      ) : (
-        <PantheonLogo
-          data-testid="p1-logo"
-          className={styles.logo}
-          displayType="sub-brand"
-          subBrand="P1"
-          size="s"
-          linkContent={null}
-        />
-      )}
-
+        )}
+      </a>
       {/* Site label */}
       <div
         data-testid="site-label"

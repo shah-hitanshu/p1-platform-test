@@ -16,6 +16,7 @@ import {
 import { P1NextRouterProvider } from "@pantheon-systems/p1-next-sdk";
 import type { Checkpoint } from "@pantheon-systems/puck-css";
 import type { ContentRole } from "@pantheon-systems/puck-css";
+import { P1_ASSETS } from "../../../constants/assets";
 
 import "@pantheon-systems/puck-css/styles.css";
 import "@pantheon-systems/puck-css/pds/styles.css";
@@ -243,6 +244,7 @@ function EditorContent({
       selectedDocumentPath: path,
       siteId: process.env.NEXT_PUBLIC_CSS_SITE_ID,
       dashboardUrl: process.env.NEXT_PUBLIC_P1_ADMIN_DASHBOARD_URL,
+      logoUrl: P1_ASSETS.LOGO_URL,
     },
     overrideOptions: {
       showDefaultPublish: false,

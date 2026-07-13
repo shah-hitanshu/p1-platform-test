@@ -42,10 +42,22 @@
   align-items: center;
   cursor: pointer;
   transition: opacity 0.2s cubic-bezier(0.2, 0, 0, 1);
+  /* Tighten gap to the adjacent site-label only; header gap handles everything else */
+  margin-inline-end: calc(var(--pds-spacing-xs, 0.5rem) - var(--pds-spacing-m, 1rem));
 }
 
 .logoLink:hover {
   opacity: 0.7;
+}
+
+/* When no href (no siteId configured), suppress interactive affordances */
+.logoLink:not([href]),
+.logoLink:not([href]) .logo {
+  cursor: default;
+}
+
+.logoLink:not([href]):hover {
+  opacity: 1;
 }
 
 .logoLink .logo {
@@ -59,14 +71,22 @@
 }
 
 /* Scale the Pantheon bolt icon to compact header size */
-.logo svg {
+.logo svg,
+img.logo {
   height: 1.563rem;
+  width: auto;
 }
 
 /* Scale sub-brand wordmark to match compact proportions */
 .logo :global(.pds-pantheon-logo__sub-brand-wordmark) {
   font-size: 1.2rem;
   padding-inline-end: 0;
+}
+
+.logoLinkSaving {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: progress;
 }
 
 /* ── Site label ───────────────────────────────────────────── */

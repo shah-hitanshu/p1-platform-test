@@ -68,6 +68,8 @@ export interface UseP1PluginOptions {
   siteId?: string;
   /** Base URL for the P1 dashboard (defaults to https://content.pantheon.io) */
   dashboardUrl?: string;
+  /** Custom logo image URL for the editor header */
+  logoUrl?: string;
   /** Currently authenticated user */
   currentUser?: CurrentUser;
   /** Callback when user logs out */
@@ -173,6 +175,7 @@ export function useP1Plugin(options: UseP1PluginOptions = {}): PuckPlugin {
     siteMenuItems: options.siteMenuItems,
     siteId: options.siteId,
     dashboardUrl: options.dashboardUrl,
+    logoUrl: options.logoUrl,
     currentUser: options.currentUser,
     onLogout: options.onLogout,
     onPublish: fc.enablePublishButton ? options.onPublish : undefined,
