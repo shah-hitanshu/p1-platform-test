@@ -13,7 +13,7 @@ import { Icon, Avatar, PantheonLogo } from '@pantheon-systems/pds-toolkit-react'
 import { getAvatarStyleOverride } from '../../collaboration/utils/avatarColor.js';
 import { PageNavigator } from './PageNavigator.js';
 import type { PageNavigatorDocument } from './PageNavigator.js';
-import type { Template } from '../../features/content-type-templates/types.js';
+import type { Template, TemplateSummary } from '../../features/content-type-templates/types.js';
 import { CreatePageModal } from './CreatePageModal.js';
 import styles from './P1EditorHeader.module.css';
 
@@ -41,9 +41,9 @@ export interface P1EditorHeaderProps {
   siteId?: string;
   dashboardUrl?: string;
   onSelectDocument: (doc: PageNavigatorDocument) => void;
-  onCreateDocument?: (path: string, template?: Template | null, title?: string) => Promise<void>;
+  onCreateDocument?: (path: string, template?: TemplateSummary | null, title?: string) => Promise<void>;
   onLogout: () => void;
-  templates?: Template[];
+  templates?: TemplateSummary[];
   templatesLoading?: boolean;
   /** Data sources (built-in + user) for the modal's collection builder. */
   datasources?: { id: string; label: string; inputs?: string[] }[];
@@ -151,8 +151,8 @@ export function P1EditorHeader({
 
   // CreatePageModal emits a bare path + title (+ a content-type template id when
   // creating from a "Page type template"). Normalize to a leading slash and
-  // resolve the template id to the full Template so the provider scaffolds the
-  // template's components and binds templateId/version.
+  // resolve the template id to its list entry so the provider scaffolds from
+  // the template and binds templateId/version.
   const handleModalCreateDocument = useCallback(
     async (path: string, title: string, templateId?: string): Promise<void> => {
       if (!onCreateDocument) return;

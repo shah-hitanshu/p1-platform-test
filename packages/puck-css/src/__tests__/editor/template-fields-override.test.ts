@@ -5,11 +5,11 @@
 
 import { describe, it, expect } from 'vitest';
 import { templateFromRegistryPath } from '../../editor/plugin/createP1Overrides.js';
-import type { Template } from '../../features/content-type-templates/types.js';
+import type { TemplateSummary } from '../../features/content-type-templates/types.js';
 
-const templates: Template[] = [
-  { id: 't1', name: 'blog-post', label: 'Blog', version: 1, components: [], updatedAt: '' },
-  { id: 't2', name: 'event', label: 'Event', version: 1, components: [], updatedAt: '' },
+const templates: TemplateSummary[] = [
+  { id: 't1', name: 'blog-post', label: 'Blog', version: 1, updatedAt: '' },
+  { id: 't2', name: 'event', label: 'Event', version: 1, updatedAt: '' },
 ];
 
 describe('templateFromRegistryPath', () => {

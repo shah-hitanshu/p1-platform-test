@@ -296,9 +296,7 @@ describe('CreatePageModal', () => {
     const onCreateTemplate = vi.fn().mockResolvedValue({
       id: 't9',
       name: 'recipes',
-      label: 'Recipes',
       version: 1,
-      components: [],
       updatedAt: '',
     });
     const onNavigate = vi.fn();

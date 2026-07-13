@@ -6,7 +6,7 @@
 
 import React from 'react';
 import type { P1Client } from '@pantheon-systems/css-client';
-import type { Template } from '../types.js';
+import type { TemplateSummary } from '../types.js';
 import { useTemplateList } from '../hooks/useTemplateList.js';
 
 export interface TemplateSelectorProps {
@@ -17,7 +17,7 @@ export interface TemplateSelectorProps {
   /** Branch ID */
   branchId: string;
   /** Callback when template is selected (null for blank page) */
-  onSelect: (template: Template | null) => void;
+  onSelect: (template: TemplateSummary | null) => void;
   /** Currently selected template ID */
   selectedTemplateId?: string | null;
 }

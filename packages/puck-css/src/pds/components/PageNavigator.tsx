@@ -13,7 +13,7 @@
 import React, { useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import styles from './PageNavigator.module.css';
-import type { Template } from '../../features/content-type-templates/types.js';
+import type { TemplateSummary } from '../../features/content-type-templates/types.js';
 
 export interface PageNavigatorDocument {
   id: string;
@@ -32,7 +32,7 @@ export interface PageNavigatorProps {
   /** Whether the current branch is main/live. Inherited docs are dimmed when false. */
   isMainBranch?: boolean;
   /** Called when the user creates a new page. If omitted, the "+ New page" button has no effect. */
-  onCreateDocument?: (path: string, template?: Template | null) => Promise<void>;
+  onCreateDocument?: (path: string, template?: TemplateSummary | null) => Promise<void>;
   /**
    * Called when "+ New page" is clicked. When provided, it takes over the button
    * (e.g. to open the Create Page modal) instead of the inline create form.
@@ -45,7 +45,7 @@ export interface PageNavigatorProps {
    */
   onCreateTemplate?: () => void;
   /** Available templates for document creation. When non-empty, a template selector step is shown. */
-  templates?: Template[];
+  templates?: TemplateSummary[];
   /** Whether templates are still loading. */
   templatesLoading?: boolean;
   /**
@@ -75,7 +75,7 @@ export function PageNavigator({
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'pages' | 'templates'>('pages');
   const [creationStep, setCreationStep] = useState<CreationStep>('idle');
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateSummary | null>(null);
   const [newPath, setNewPath] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -89,7 +89,7 @@ export function PageNavigator({
     }
   }, [hasTemplates]);
 
-  const handleTemplateSelect = useCallback((template: Template | null) => {
+  const handleTemplateSelect = useCallback((template: TemplateSummary | null) => {
     setSelectedTemplate(template);
     setCreationStep('path');
   }, []);

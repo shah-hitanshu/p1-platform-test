@@ -4,7 +4,7 @@
  * Creates a resolvePermissions function for Puck that enforces template constraints.
  */
 
-import type { Template, ContentRole } from '../types.js';
+import type { Template, TemplateSummary, ContentRole } from '../types.js';
 
 /**
  * Puck permission flags for a component.
@@ -48,6 +48,10 @@ export type PuckPermissionResolver = (
 /**
  * Create a Puck permissions resolver based on template and user role.
  *
+ * A component type counts as pinned when the template's content has an
+ * instance whose id maps to `true` in `root.props._pinMap`. Pages correlate
+ * to the template by component type (durable per-instance ids are PCC-3358).
+ *
  * Permission logic:
  * - **Pinned components**: drag=false, delete=false for all roles
  * - **Non-pinned components**:
@@ -58,7 +62,8 @@ export type PuckPermissionResolver = (
  *   - Junior Editor: no structural permissions
  * - **Historical versions**: all structural permissions false for all roles
  *
- * @param template - Template this document is bound to (null for blank pages)
+ * @param template - Template this document is bound to (null for blank pages;
+ *   a metadata-only summary carries no pins)
  * @param role - User's content role
  * @param isHistoricalVersion - Whether viewing a historical version (read-only)
  * @returns Permission resolver function for Puck
@@ -75,10 +80,20 @@ export type PuckPermissionResolver = (
  * ```
  */
 export function createPuckPermissions(
-  template: Template | null,
+  template: Template | TemplateSummary | null,
   role: ContentRole,
   isHistoricalVersion: boolean
 ): PuckPermissionResolver {
+  const pinnedTypes = new Set<string>();
+  if (template && 'content' in template) {
+    const pinMap = template.root?.props?._pinMap ?? {};
+    for (const item of template.content ?? []) {
+      if (pinMap[item.props.id] === true) {
+        pinnedTypes.add(item.type);
+      }
+    }
+  }
+
   return (item: PuckItem): PuckPermissions => {
     // Historical versions: all structural permissions false
     if (isHistoricalVersion) {
@@ -93,43 +108,17 @@ export function createPuckPermissions(
 
     const juniorEditorRestricted = role === 'junior-editor';
 
-    // No template or template without components
-    if (!template || !template.components) {
-      return {
-        edit: true,
-        drag: !juniorEditorRestricted,
-        delete: !juniorEditorRestricted,
-        insert: !juniorEditorRestricted,
-        duplicate: !juniorEditorRestricted,
-      };
-    }
-
-    // Find component in template
-    const templateComponent = template.components.find((c) => c.type === item.type);
-
-    // Component not in template (user added it)
-    if (!templateComponent) {
-      return {
-        edit: true,
-        drag: !juniorEditorRestricted,
-        delete: !juniorEditorRestricted,
-        insert: !juniorEditorRestricted,
-        duplicate: !juniorEditorRestricted,
-      };
-    }
-
     // Pinned component: locked for all roles
-    if (templateComponent.pinned) {
+    if (pinnedTypes.has(item.type)) {
       return {
         edit: true,
         drag: false,
         delete: false,
-        insert: juniorEditorRestricted ? false : true,
-        duplicate: juniorEditorRestricted ? false : true,
+        insert: !juniorEditorRestricted,
+        duplicate: !juniorEditorRestricted,
       };
     }
 
-    // Non-pinned component in template
     return {
       edit: true,
       drag: !juniorEditorRestricted,

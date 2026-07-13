@@ -15,14 +15,19 @@ describe('P1PuckProvider - Template Integration', () => {
   const mockTemplate: Template = {
     id: 'template-1',
     name: 'blog-post',
-    label: 'Blog Post',
     version: 3,
-    components: [
-      { type: 'HeadingBlock', pinned: true, defaultProps: {} },
-      { type: 'TextBlock', pinned: false, defaultProps: {} },
-    ],
-    createdAt: '2026-06-08T00:00:00Z',
     updatedAt: '2026-06-08T00:00:00Z',
+    content: [
+      { type: 'HeadingBlock', props: { id: 'HeadingBlock-a1b2' } },
+      { type: 'TextBlock', props: { id: 'TextBlock-c3d4' } },
+    ],
+    root: {
+      props: {
+        _template: { label: 'Blog Post', deprecated: false },
+        _pinMap: { 'HeadingBlock-a1b2': true, 'TextBlock-c3d4': false },
+      },
+    },
+    zones: {},
   };
 
   const mockDocument: Document = {
@@ -102,8 +107,8 @@ describe('P1PuckProvider - Template Integration', () => {
     expect(templates.get).toHaveBeenCalledWith('site-1', 'branch-1', 'template-1');
   });
 
-  it('exposes createTemplate that creates with empty components and returns the template', async () => {
-    const created = { ...mockTemplate, id: 'new-1', name: 'recipes', label: 'Recipes' };
+  it('exposes createTemplate that creates with metadata only and returns the template', async () => {
+    const created = { ...mockTemplate, id: 'new-1', name: 'recipes' };
     const templates = mockClient.templates as unknown as Record<
       string,
       ReturnType<typeof vi.fn>
@@ -137,13 +142,12 @@ describe('P1PuckProvider - Template Integration', () => {
       label: 'Recipes',
       description: 'Recipe pages',
       defaultUrlPattern: '/recipes/:slug',
-      components: [],
     });
     expect(returned).toEqual(created);
   });
 
   it('exposes updateTemplate that calls templates.update with the params', async () => {
-    const updated = { ...mockTemplate, label: 'Updated' };
+    const updated = { ...mockTemplate };
     const templates = mockClient.templates as unknown as Record<
       string,
       ReturnType<typeof vi.fn>
@@ -175,45 +179,6 @@ describe('P1PuckProvider - Template Integration', () => {
       label: 'Updated',
       description: 'New desc',
       defaultUrlPattern: '/x/:slug',
-    });
-  });
-
-  it('forwards components to templates.update when provided (complete-template save)', async () => {
-    const updated = { ...mockTemplate, label: 'Updated' };
-    const templates = mockClient.templates as unknown as Record<
-      string,
-      ReturnType<typeof vi.fn>
-    >;
-    templates.update = vi.fn().mockResolvedValue(updated);
-    templates.list = vi.fn().mockResolvedValue([updated]);
-
-    const { result } = renderHook(() => useP1Puck(), {
-      wrapper: ({ children }) => (
-        <P1PuckProvider
-          client={mockClient}
-          siteId="site-1"
-          branchId="branch-1"
-          userId="user-1"
-          userRole="admin"
-        >
-          {children}
-        </P1PuckProvider>
-      ),
-    });
-
-    const components = [
-      { type: 'HeadingBlock', pinned: true, defaultProps: { text: 'Hi' } },
-    ];
-    await result.current.updateTemplate('template-1', {
-      label: 'Updated',
-      components,
-    });
-
-    // The complete-template save sends the canvas-derived components alongside
-    // metadata so the backend full-replace can't wipe them.
-    expect(templates.update).toHaveBeenCalledWith('site-1', 'branch-1', 'template-1', {
-      label: 'Updated',
-      components,
     });
   });
 

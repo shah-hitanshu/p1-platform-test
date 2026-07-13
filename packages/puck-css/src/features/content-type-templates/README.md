@@ -1,90 +1,85 @@
-# Content Type Templates (PROPOSAL-010)
+# Content Type Templates
 
-Feature for defining structural templates that content editors can use to create conformant documents.
+Structural templates that content editors scaffold new documents from, with role-based permissions that keep a page's required components in place.
 
-## Status: Ready for Integration Testing ✅
+## What it does
 
-**Frontend implementation complete.** Backend API exists and is ready for integration.
+- Templates are stored and edited as Puck-shaped snapshots, the same shape as a document.
+- `_registry/templates/{name}` documents hold a template's layout; editing one in the canvas is how a template's content is authored.
+- Creating a document from a template copies its content into a fresh page (`scaffoldFromTemplate`).
+- Pinning a component in a template (`root.props._pinMap`) marks it structurally required; pages scaffolded from that template can't have the pinned component moved or removed, regardless of editor role.
+- `ContentRole` (`admin` / `editor` / `junior-editor`) gates coarser editing capabilities such as adding components or overriding a page's URL pattern.
 
-## What's Implemented
-
-### Core Features
-- ✅ Template CRUD operations (via backend API)
-- ✅ Role-based permissions (admin/editor/junior-editor)
-- ✅ Structural validation (pinned components)
-- ✅ Template scaffolding (create documents from templates)
-- ✅ API-backed template store for production
-- ✅ DAL integration
-
-### Architecture
-
-**Storage:**
-- Templates stored as documents at `_registry/templates/{name}` in backend
-- Template bindings stored in `documents.template_id`, `documents.template_version` columns
-- Frontend uses `createApiTemplateStore(client, siteId, branchId)` for API access
-
-**Permissions:**
-- **Admin**: Full template + document control
-- **Editor**: Can add/remove non-pinned components, pinned components locked
-- **Junior-Editor**: Props editing only, no structural changes
-
-**Types:**
-- `ContentRole` - User roles
-- `Template` - Template definition with components
-- `TemplateComponent` - Component with pinned status and default props
-- `TemplateBinding` - Document-to-template association
-
-## Usage
-
-### Initialize Template Store
+## Template shape
 
 ```typescript
-import { createApiTemplateStore, initializeStores } from '@pantheon-systems/puck-css';
+interface Template {
+  id: string;
+  name: string; // kebab-case identifier
+  version: number;
+  updatedAt: string;
+  content: TemplateContentItem[]; // component instances; their props seed scaffolded pages
+  root: {
+    props: {
+      _template: TemplateMetadata; // label, description, defaultUrlPattern, deprecated
+      _pinMap: Record<string, boolean>; // pin state keyed by component instance id
+    };
+  };
+  zones: Record<string, unknown>;
+}
+
+interface TemplateContentItem {
+  type: string;
+  props: { id: string; [key: string]: unknown };
+}
+
+interface TemplateSummary extends TemplateMetadata {
+  id: string;
+  name: string;
+  version: number;
+  updatedAt: string;
+}
+```
+
+`templates.list()` returns `TemplateSummary[]`: metadata only, no `content`, `root`, or `zones`. Fetch a template by ID to get its full snapshot.
+
+## Creating and updating templates
+
+`create()` and `update()` accept metadata fields only; a template's layout is authored afterward on the editor canvas and persisted through the document's normal version history.
+
+```typescript
 import { P1Client } from '@pantheon-systems/css-client';
 
 const client = new P1Client({ baseUrl, apiKey });
-const templateStore = createApiTemplateStore(client, siteId, branchId);
 
-initializeStores({ templateStore });
-```
-
-### Create a Template
-
-```typescript
-import { templateStore } from '@pantheon-systems/puck-css/data/dal';
-
-const template = await templateStore.create({
+const template = await client.templates.create(siteId, branchId, {
   name: 'blog-post',
   label: 'Blog Post',
   description: 'Standard blog post layout',
-  components: [
-    { type: 'HeadingBlock', pinned: true, defaultProps: { title: 'Blog Title' } },
-    { type: 'TextBlock', pinned: true, defaultProps: {} },
-  ],
+});
+
+// Later, edit metadata without touching content or pin state:
+await client.templates.update(siteId, branchId, template.id, {
+  description: 'Standard blog post layout with a hero image',
 });
 ```
 
-### Create Document from Template
+`templates.deprecate()` / `templates.reactivate()` are convenience wrappers over `update()` that toggle `deprecated` without changing other metadata. A deprecated template stays bound to any documents already created from it but is excluded from template pickers.
+
+A `TemplateStore` (`createInMemoryTemplateStore`, `createApiTemplateStore`) wraps the same operations plus document-to-template bindings (`getBinding` / `setBinding` / `listBindings` / `removeBinding`); the API-backed store's binding methods are managed server-side through the documents API and are not implemented on the store itself.
+
+## Scaffolding a page
 
 ```typescript
 import { scaffoldFromTemplate } from '@pantheon-systems/puck-css';
 
-// Get template
-const template = await templateStore.get(templateId);
-
-// Create Puck data from template
-const initialData = scaffoldFromTemplate(template);
-
-// Create document with template binding
-await client.documents.create({
-  siteId,
-  branchId,
-  path: '/my-blog-post',
-  // Note: Template binding must be set via backend when it supports it
-});
+const template = await client.templates.get(siteId, branchId, templateId);
+const initialData = scaffoldFromTemplate(template); // Puck Data for a new document
 ```
 
-### Validate Document Structure
+Each content item is copied with a fresh component id, so a scaffolded page's components are independent of the template's.
+
+## Validating structure
 
 ```typescript
 import { validateStructure } from '@pantheon-systems/puck-css';
@@ -92,95 +87,38 @@ import { validateStructure } from '@pantheon-systems/puck-css';
 const result = validateStructure(documentData, template);
 
 if (!result.valid) {
-  console.error('Validation errors:', result.errors);
-  // Errors: MISSING_PINNED_COMPONENT, PINNED_COMPONENT_OUT_OF_ORDER
+  // result.errors[].code is MISSING_PINNED_COMPONENT or PINNED_COMPONENT_OUT_OF_ORDER
 }
 ```
 
-### Check Permissions
+A document conforms when every pinned component type from the template is present in the document, in the same relative order. Non-pinned components can be added freely.
 
-```typescript
-import { useContentRole, useTemplatePermissions } from '@pantheon-systems/puck-css';
+## Permissions
 
-function Editor() {
-  const { role, permissions } = useContentRole('editor');
-  const editorPerms = useTemplatePermissions(role, isHistoricalVersion);
-  
-  if (!editorPerms.canAddComponents) {
-    return <div>Read-only mode</div>;
-  }
-  
-  return <PuckEditor />;
-}
-```
+`getPermissionsForRole` / `useContentRole` compute coarse, role-only capabilities (`canAddComponents`, `canRemoveComponents`, `canMoveComponents`, `canEditProps`, `canOverrideUrl`). `junior-editor` is restricted to prop edits; `admin` and `editor` otherwise get the same capabilities. `useResolveContentRole` resolves a user's `ContentRole` from the CSS backend's role for a site/branch.
 
-## Backend API
+Pin locking is enforced per component, independent of role: the editor resolves Puck's `resolvePermissions` so that pinned components can never be dragged or deleted, and (for `junior-editor`) non-pinned components and blank pages get no structural permissions either. Viewing a historical version disables all structural permissions for every role.
 
-Endpoints already implemented in `collaborative-state-system`:
+## API endpoints
 
-- `GET /api/sites/{siteId}/branches/{branchId}/templates` - List templates
-- `GET /api/sites/{siteId}/templates/{templateId}` - Get template
-- `POST /api/sites/{siteId}/branches/{branchId}/templates` - Create template
-- `PATCH /api/sites/{siteId}/templates/{templateId}` - Update template
-- `DELETE /api/sites/{siteId}/branches/{branchId}/templates/{templateId}` - Delete template
+- `GET /api/sites/{siteId}/branches/{branchId}/templates` - list templates as `TemplateSummary[]`
+- `GET /api/sites/{siteId}/branches/{branchId}/templates/{templateId}` - get a template's full snapshot
+- `POST /api/sites/{siteId}/branches/{branchId}/templates` - create a template (metadata only)
+- `PATCH /api/sites/{siteId}/branches/{branchId}/templates/{templateId}` - update metadata, or toggle `deprecated`
+- `DELETE /api/sites/{siteId}/branches/{branchId}/templates/{templateId}` - delete a template
 
-**Schema** (`039_template_support.sql`):
-- `documents.template_id UUID` - Reference to template document
-- `documents.template_version INTEGER` - Version of template
-- `migration_jobs` - For tracking migrations (future use)
-- `migration_conflicts` - For conflict resolution (future use)
+The client also exposes `migrate()`, `previewMigration()`, `rollbackMigration()`, and `getMigrationJob()` under `/api/sites/{siteId}/branches/{branchId}/templates/{templateId}/...` and `/api/sites/{siteId}/branches/{branchId}/migrations/{jobId}` for rolling a structural template change out across existing documents. `client.migrationConflicts.list()` and `client.migrationConflicts.resolve()` review and resolve the conflicts a migration job records.
 
-## Not Yet Implemented
+## Compatibility
 
-### Migration System (Phases 9-14)
-Deferred pending integration testing:
-- Action classification (tracking structural changes)
-- Template delta computation
-- Migration job orchestration
-- Conflict detection and resolution
-- Migration UI
-
-Migration endpoints exist but return 501:
-- `POST /api/sites/{siteId}/branches/{branchId}/templates/{templateId}/migrate`
-- `POST /api/sites/{siteId}/branches/{branchId}/templates/{templateId}/rollback`
-
-### Document Binding API
-Backend needs to support:
-- Setting `template_id`/`template_version` on document creation
-- Filtering documents by `template_id`
-- Updating template bindings
-
-## Testing
-
-**79 tests passing** covering:
-- Type system
-- Template stores (in-memory + API)
-- Role permissions
-- Structural validation
-- Template scaffolding
-- Editor hooks
-
-Run tests:
-```bash
-pnpm --filter @pantheon-systems/puck-css test
-```
-
-## Next Steps
-
-1. **Integration testing** - Test frontend with backend API
-2. **Document binding** - Wire template selection into document creation
-3. **Migration system** - Implement phases 9-14 when needed
-4. **UI components** - Add template management UI to editor
+The backend serves a top-level `label` and a `components` array (with `pinned` and `defaultProps` per entry) alongside the snapshot fields, for a deprecation window, so 0.4.x clients keep working against the same backend. Both derived fields are deprecated; read metadata from `root.props._template` and content from `content` / `root.props._pinMap` instead.
 
 ## Files
 
-**Core:**
-- `types.ts` - TypeScript definitions
-- `stores/` - Template persistence (in-memory, API)
-- `validation/` - Structural conformance validation
-- `permissions/` - Role-based permission system
-- `editor/` - React hooks for template editing
-
-**Integration:**
-- `src/data/dal/index.ts` - DAL integration
-- `src/index.ts` - Public API exports
+- `types.ts` - `ContentRole`, `TemplateBinding`, and re-exports of the `@pantheon-systems/css-client` template types
+- `stores/` - `TemplateStore` interface, in-memory and API-backed implementations
+- `permissions/` - role-based `ComponentPermissions`, the `useContentRole` / `useResolveContentRole` hooks, and the Puck `resolvePermissions` resolver
+- `editor/` - scaffolding (`scaffoldFromTemplate`) and role/history permission merging
+- `validation/` - `validateStructure` and its error codes
+- `ui/` - template picker, the template metadata panel, and the pin-toggle action bar button used by the editor
+- `hooks/useTemplateList.ts` - fetches and refreshes a branch's `TemplateSummary[]`

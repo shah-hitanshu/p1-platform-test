@@ -18,6 +18,7 @@ import { P1PuckContext } from '../core/P1PuckContext.js';
 import { NotificationProvider, useNotifications } from '../core/NotificationContext.js';
 import { PresenceContext } from '../core/PresenceContext.js';
 import type { PresenceContextValue } from '../core/PresenceContext.js';
+import isEqual from 'lodash.isequal';
 import { debounce } from '../core/utils/debounce.js';
 import { withRetry } from '../core/utils/retry.js';
 import { useRealtime } from './useRealtime.js';
@@ -30,7 +31,7 @@ import type { P1FeatureConfig } from '../core/featureConfig.js';
 import { resolveFeatureConfig } from '../core/featureConfig.js';
 import { resolveActivePlugins, composeProviders } from './composePlugins.js';
 import { DEFAULT_CSS_FEATURE_PLUGINS } from './defaultPlugins.js';
-import type { Template } from '../features/content-type-templates/types.js';
+import type { Template, TemplateSummary } from '../features/content-type-templates/types.js';
 import { createPuckPermissions } from '../features/content-type-templates/permissions/createPuckPermissions.js';
 import { useTemplateList } from '../features/content-type-templates/hooks/useTemplateList.js';
 
@@ -220,11 +221,11 @@ function P1PuckProviderInner({
   // corruption during rapid document switching.
   const currentDataDocumentPathRef = useRef<string | null>(null);
 
-  // Suppresses the next saveData call after loadDocument completes.
-  // PuckDataSynchronizer dispatches setData into Puck, which fires onChange,
-  // which calls saveData — but this is just echoing the loaded data, not a
-  // user edit. This flag prevents that echo from triggering a false save.
-  const suppressNextSaveRef = useRef(false);
+  // Snapshot of the data loadDocument just loaded. The first onChange after a
+  // load echoes this back; saveData drops that echo by structural compare
+  // (not a one-shot flag, which would swallow a lone genuine first edit like a
+  // pin toggle). Structural, not string: Puck re-normalizes key order.
+  const suppressNextSaveRef = useRef<PuckData | null>(null);
 
   // Monotonically increasing counter for stale loadDocument response detection.
   // Each loadDocument call increments this and captures the current value.
@@ -504,15 +505,23 @@ function P1PuckProviderInner({
   const createDocumentRawRef = useRef(createDocumentRaw);
   createDocumentRawRef.current = createDocumentRaw;
   const stableCreateDocument = useCallback(
-    async (path: string, template?: Template | null, title?: string): Promise<void> => {
+    async (path: string, template?: TemplateSummary | null, title?: string): Promise<void> => {
       if (!branchIdRef.current) {
         throw new Error('Cannot create document: no branch selected');
       }
       if (template) {
-        // Fetch the full template — the list endpoint may omit the components array
+        // The list endpoint carries no layout content; fetch the full template.
         const fullTemplate = await userClient.templates.get(
           siteId, branchIdRef.current, template.id
         );
+        // A template without a content array has no stored layout snapshot;
+        // scaffolding from it would silently create a blank page. An empty
+        // array is a legitimate empty layout and passes.
+        if (!fullTemplate.content) {
+          throw new Error(
+            `Template "${template.label || template.name}" has no layout yet. Open it in the editor and add components before creating pages from it.`
+          );
+        }
         const { scaffoldFromTemplate } = await import('../features/content-type-templates/editor/useTemplateScaffold.js');
         const initialData = scaffoldFromTemplate(fullTemplate) as unknown as PuckData;
         await createDocumentRawRef.current(path, initialData, {
@@ -532,9 +541,9 @@ function P1PuckProviderInner({
   // to the Template record, then refresh the list so the changes propagate.
   const refreshTemplatesRef = useRef(refreshTemplates);
   refreshTemplatesRef.current = refreshTemplates;
-  // Create a new template (empty component skeleton — the layout is built in the
-  // template editor afterwards). Returns the created Template so callers can
-  // navigate to its editor. Used by the Create Page modal's "New template" flow.
+  // Create a new template (empty layout, built in the template editor
+  // afterwards). Returns the created Template so callers can navigate to its
+  // editor. Used by the Create Page modal's "New template" flow.
   const stableCreateTemplate = useCallback(
     async (params: {
       name: string;
@@ -545,10 +554,7 @@ function P1PuckProviderInner({
       if (!branchIdRef.current) {
         throw new Error('Cannot create template: no branch selected');
       }
-      const created = await userClient.templates.create(siteId, branchIdRef.current, {
-        ...params,
-        components: [],
-      });
+      const created = await userClient.templates.create(siteId, branchIdRef.current, params);
       await refreshTemplatesRef.current();
       return created;
     },
@@ -561,9 +567,6 @@ function P1PuckProviderInner({
         label?: string;
         description?: string;
         defaultUrlPattern?: string;
-        // Component skeleton from the live canvas — sent so the backend's
-        // full-replace update can't wipe components on a metadata save.
-        components?: { type: string; pinned: boolean; defaultProps: Record<string, unknown> }[];
       },
     ): Promise<void> => {
       if (!branchIdRef.current) {
@@ -653,7 +656,7 @@ function P1PuckProviderInner({
   }, [refreshBranches]);
 
   // Perform save operation - uses refs to avoid dependency issues
-  const performSave = useCallback(async () => {
+  const performSave = useCallback(async (options?: { keepalive?: boolean }) => {
     const dataToSave = pendingDataRef.current;
     const doc = currentDocumentRef.current;
 
@@ -688,12 +691,15 @@ function P1PuckProviderInner({
           const actionsToSend = pendingActionsRef.current.length > 0
             ? [...pendingActionsRef.current]
             : undefined;
-          await userClient.versions.create(siteId, {
+          const params = {
             documentId: doc.id,
             branchId,
             snapshot: dataToSave as unknown as Record<string, unknown>,
             puckActions: actionsToSend,
-          });
+          };
+          await (options?.keepalive
+            ? userClient.versions.create(siteId, params, { keepalive: true })
+            : userClient.versions.create(siteId, params));
           pendingActionsRef.current = [];
         },
         { maxAttempts: maxRetries }
@@ -738,6 +744,32 @@ function P1PuckProviderInner({
     };
   }, [debouncedSave]);
 
+  // Best-effort flush of a pending debounced save when the tab is closed,
+  // navigated away from, or hidden.
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const flushPendingSave = (): void => {
+      if (pendingDataRef.current) {
+        // keepalive lets the POST finish after the page is discarded.
+        debouncedSave.cancel();
+        void performSave({ keepalive: true });
+      }
+    };
+    const handleVisibilityChange = (): void => {
+      if (document.visibilityState === 'hidden') {
+        flushPendingSave();
+      }
+    };
+    window.addEventListener('beforeunload', flushPendingSave);
+    window.addEventListener('pagehide', flushPendingSave);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('beforeunload', flushPendingSave);
+      window.removeEventListener('pagehide', flushPendingSave);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [debouncedSave, performSave]);
+
   // Pause auto-save
   const pauseAutoSave = useCallback(() => {
     debouncedSave.pause();
@@ -778,9 +810,13 @@ function P1PuckProviderInner({
   // Sends changes via WebSocket when realtime is enabled (but not for remote updates)
   const saveData = useCallback(
     (data: PuckData) => {
-      if (suppressNextSaveRef.current) {
-        suppressNextSaveRef.current = false;
-        return;
+      if (suppressNextSaveRef.current !== null) {
+        const loadedSnapshot = suppressNextSaveRef.current;
+        suppressNextSaveRef.current = null;
+        // Drop only the echo; a structurally different first onChange is a real edit.
+        if (isEqual(data, loadedSnapshot)) {
+          return;
+        }
       }
 
       // When realtime is enabled, detect whether this onChange came from a remote
@@ -878,6 +914,21 @@ function P1PuckProviderInner({
   // Load document by path
   const loadDocument = useCallback(
     async (path: string) => {
+      // Flush any pending debounced save while the outgoing document's
+      // identity is still current, then drop the pending buffer so a late
+      // debounce can never write one document's data into another.
+      if (pendingDataRef.current) {
+        debouncedSave.cancel();
+        await performSave();
+        // performSave clears the buffer only on success; if it survived, the
+        // flush failed — abort the switch instead of discarding the edits.
+        if (pendingDataRef.current) {
+          return;
+        }
+      }
+      debouncedSave.cancel();
+      pendingDataRef.current = null;
+
       // Cancel any pending remote sync to prevent race conditions
       // where a stale remote update overrides the document we're loading
       cancelPendingRemoteSync();
@@ -979,7 +1030,7 @@ function P1PuckProviderInner({
         realtimeDataCaptureRef.current = null;
 
         currentDataDocumentPathRef.current = doc.path;
-        suppressNextSaveRef.current = true;
+        suppressNextSaveRef.current = puckData;
         setCurrentData(puckData);
         setLatestVersionData(puckData);
         setViewingVersion(null);
@@ -1000,7 +1051,7 @@ function P1PuckProviderInner({
         throw error;
       }
     },
-    [userClient, siteId, branchId, cancelPendingRemoteSync, enableRealtime]
+    [userClient, siteId, branchId, cancelPendingRemoteSync, enableRealtime, debouncedSave, performSave]
   );
 
   // Load a specific version into the editor

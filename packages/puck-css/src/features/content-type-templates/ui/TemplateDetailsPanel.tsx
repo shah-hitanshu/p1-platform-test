@@ -5,12 +5,11 @@
  * (template mode — document path `_registry/templates/<name>`). It replaces the
  * default "Page" root fields with a "Template" section exposing the template's
  * Label, Description and URL pattern. Edits **autosave** (debounced) to the
- * Template record via `onSave`, which sends the complete template (metadata +
- * the live canvas's components) so the backend can't wipe the components.
+ * template's metadata via `onSave`; the layout itself is saved by the canvas.
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { Template } from '../types.js';
+import type { TemplateSummary } from '../types.js';
 
 /** Delay after the last keystroke before autosaving the template details. */
 const AUTOSAVE_DEBOUNCE_MS = 600;
@@ -24,7 +23,7 @@ export interface TemplateDetailsSave {
 export interface TemplateDetailsPanelProps {
   /** The template being edited (provides current label/description/URL pattern). */
   template: Pick<
-    Template,
+    TemplateSummary,
     'id' | 'label' | 'name' | 'description' | 'defaultUrlPattern'
   >;
   /** Persist the edited details (e.g. via templates.update). */

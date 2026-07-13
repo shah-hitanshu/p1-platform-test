@@ -7,6 +7,7 @@
 
 import type {
   Template,
+  TemplateSummary,
   TemplateBinding,
   CreateTemplateParams,
   UpdateTemplateParams,
@@ -27,12 +28,12 @@ export interface TemplateStore {
   get(id: string): Promise<Template | undefined>;
 
   /**
-   * List all templates.
+   * List all templates as metadata summaries.
    */
-  list(): Promise<Template[]>;
+  list(): Promise<TemplateSummary[]>;
 
   /**
-   * Update an existing template.
+   * Update a template's metadata.
    * Increments the version number.
    */
   update(id: string, params: UpdateTemplateParams): Promise<Template>;
@@ -83,13 +84,21 @@ export function createInMemoryTemplateStore(): TemplateStore {
       const template: Template = {
         id: generateId(),
         name: params.name,
-        label: params.label,
-        description: params.description,
-        defaultUrlPattern: params.defaultUrlPattern,
         version: 1,
-        components: params.components,
-        createdAt: now,
         updatedAt: now,
+        content: [],
+        root: {
+          props: {
+            _template: {
+              label: params.label,
+              description: params.description,
+              defaultUrlPattern: params.defaultUrlPattern,
+              deprecated: false,
+            },
+            _pinMap: {},
+          },
+        },
+        zones: {},
       };
 
       templates.set(template.id, template);
@@ -100,8 +109,14 @@ export function createInMemoryTemplateStore(): TemplateStore {
       return templates.get(id);
     },
 
-    async list(): Promise<Template[]> {
-      return Array.from(templates.values());
+    async list(): Promise<TemplateSummary[]> {
+      return Array.from(templates.values()).map((t) => ({
+        id: t.id,
+        name: t.name,
+        version: t.version,
+        updatedAt: t.updatedAt,
+        ...t.root.props._template,
+      }));
     },
 
     async update(id: string, params: UpdateTemplateParams): Promise<Template> {
@@ -110,12 +125,21 @@ export function createInMemoryTemplateStore(): TemplateStore {
         throw new Error('Template not found');
       }
 
+      const meta = existing.root.props._template;
       const updated: Template = {
         ...existing,
-        label: params.label ?? existing.label,
-        description: params.description ?? existing.description,
-        defaultUrlPattern: params.defaultUrlPattern ?? existing.defaultUrlPattern,
-        components: params.components ?? existing.components,
+        root: {
+          ...existing.root,
+          props: {
+            ...existing.root.props,
+            _template: {
+              label: params.label ?? meta.label,
+              description: params.description ?? meta.description,
+              defaultUrlPattern: params.defaultUrlPattern ?? meta.defaultUrlPattern,
+              deprecated: params.deprecated ?? meta.deprecated,
+            },
+          },
+        },
         version: existing.version + 1,
         updatedAt: new Date().toISOString(),
       };

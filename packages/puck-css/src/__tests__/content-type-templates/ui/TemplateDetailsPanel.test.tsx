@@ -9,16 +9,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { TemplateDetailsPanel } from '../../../features/content-type-templates/ui/TemplateDetailsPanel.js';
-import type { Template } from '../../../features/content-type-templates/types.js';
+import type { TemplateSummary } from '../../../features/content-type-templates/types.js';
 
-const template: Template = {
+const template: TemplateSummary = {
   id: 'tpl-1',
   name: 'blog-post',
   label: 'Blog Post',
   description: 'Standard blog layout',
   defaultUrlPattern: '/blog/:slug',
   version: 2,
-  components: [],
   updatedAt: '2026-06-27T00:00:00.000Z',
 };
 

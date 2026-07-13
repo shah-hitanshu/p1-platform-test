@@ -6,10 +6,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { P1Client } from '@pantheon-systems/css-client';
 import { useTemplateList } from '../../../features/content-type-templates/hooks/useTemplateList.js';
-import type { Template } from '../../../features/content-type-templates/types.js';
+import type { TemplateSummary } from '../../../features/content-type-templates/types.js';
 
 describe('useTemplateList', () => {
-  const mockTemplates: Template[] = [
+  const mockTemplates: TemplateSummary[] = [
     {
       id: 'template-1',
       name: 'blog-post',
@@ -17,11 +17,6 @@ describe('useTemplateList', () => {
       description: 'Standard blog post layout',
       defaultUrlPattern: '/blog/:slug',
       version: 1,
-      components: [
-        { type: 'HeadingBlock', pinned: true, defaultProps: {} },
-        { type: 'TextBlock', pinned: false, defaultProps: {} },
-      ],
-      createdAt: '2026-06-08T00:00:00Z',
       updatedAt: '2026-06-08T00:00:00Z',
     },
     {
@@ -31,11 +26,6 @@ describe('useTemplateList', () => {
       description: 'Marketing landing page',
       defaultUrlPattern: '/landing/:slug',
       version: 2,
-      components: [
-        { type: 'HeroBlock', pinned: true, defaultProps: {} },
-        { type: 'CTABlock', pinned: true, defaultProps: {} },
-      ],
-      createdAt: '2026-06-08T00:00:00Z',
       updatedAt: '2026-06-08T00:00:00Z',
     },
   ];

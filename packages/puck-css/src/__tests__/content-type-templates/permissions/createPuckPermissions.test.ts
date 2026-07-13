@@ -5,21 +5,30 @@
 import { describe, it, expect } from 'vitest';
 import type { Item as PuckItem, Data as PuckData } from '@puckeditor/core';
 import { createPuckPermissions } from '../../../features/content-type-templates/permissions/createPuckPermissions.js';
-import type { Template } from '../../../features/content-type-templates/types.js';
+import type { Template, TemplateSummary } from '../../../features/content-type-templates/types.js';
 
 describe('createPuckPermissions', () => {
   const mockTemplate: Template = {
     id: 'template-1',
     name: 'blog-post',
-    label: 'Blog Post',
     version: 1,
-    components: [
-      { type: 'HeadingBlock', pinned: true, defaultProps: {} },
-      { type: 'TextBlock', pinned: true, defaultProps: {} },
-      { type: 'ImageBlock', pinned: false, defaultProps: {} },
-    ],
-    createdAt: '2026-06-08T00:00:00Z',
     updatedAt: '2026-06-08T00:00:00Z',
+    content: [
+      { type: 'HeadingBlock', props: { id: 'HeadingBlock-a1b2' } },
+      { type: 'TextBlock', props: { id: 'TextBlock-c3d4' } },
+      { type: 'ImageBlock', props: { id: 'ImageBlock-e5f6' } },
+    ],
+    root: {
+      props: {
+        _template: { label: 'Blog Post', deprecated: false },
+        _pinMap: {
+          'HeadingBlock-a1b2': true,
+          'TextBlock-c3d4': true,
+          'ImageBlock-e5f6': false,
+        },
+      },
+    },
+    zones: {},
   };
 
   describe('with template (templated document)', () => {
@@ -76,6 +85,55 @@ describe('createPuckPermissions', () => {
       expect(pinnedPerms.edit).toBe(true);
       expect(pinnedPerms.insert).toBe(false);
       expect(pinnedPerms.duplicate).toBe(false);
+    });
+
+    it('treats a component instance without a pin map entry as unpinned', () => {
+      const template: Template = {
+        ...mockTemplate,
+        root: {
+          props: {
+            _template: { label: 'Blog Post' },
+            _pinMap: {},
+          },
+        },
+      };
+      const resolver = createPuckPermissions(template, 'editor', false);
+
+      const perms = resolver({ type: 'HeadingBlock' } as PuckItem, {} as PuckData);
+      expect(perms.drag).toBe(true);
+      expect(perms.delete).toBe(true);
+    });
+  });
+
+  describe('with template summary (no component data)', () => {
+    const summary: TemplateSummary = {
+      id: 'template-1',
+      name: 'blog-post',
+      label: 'Blog Post',
+      version: 1,
+      updatedAt: '2026-06-08T00:00:00Z',
+    };
+
+    it('should allow full structural permissions for editor', () => {
+      const resolver = createPuckPermissions(summary, 'editor', false);
+
+      const perms = resolver({ type: 'HeadingBlock' } as PuckItem, {} as PuckData);
+      expect(perms.drag).toBe(true);
+      expect(perms.delete).toBe(true);
+      expect(perms.edit).toBe(true);
+      expect(perms.insert).toBe(true);
+      expect(perms.duplicate).toBe(true);
+    });
+
+    it('should restrict structural ops for junior-editor', () => {
+      const resolver = createPuckPermissions(summary, 'junior-editor', false);
+
+      const perms = resolver({ type: 'HeadingBlock' } as PuckItem, {} as PuckData);
+      expect(perms.drag).toBe(false);
+      expect(perms.delete).toBe(false);
+      expect(perms.edit).toBe(true);
+      expect(perms.insert).toBe(false);
+      expect(perms.duplicate).toBe(false);
     });
   });
 

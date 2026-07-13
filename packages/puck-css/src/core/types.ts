@@ -16,7 +16,7 @@ import type { ConflictNotification } from '../merge/components/conflict-notifica
 import type { UseAgentEditReturn } from '../agent/useAgentEdit.js';
 import type { UseAgentTriggerReturn } from '../agent/useAgentTrigger.js';
 import type { P1FeatureConfig } from './featureConfig.js';
-import type { Template } from '../features/content-type-templates/types.js';
+import type { Template, TemplateSummary } from '../features/content-type-templates/types.js';
 
 /**
  * Save status for auto-save functionality.
@@ -446,14 +446,15 @@ export interface P1PuckContextValue {
    */
   createDocument: (
     path: string,
-    template?: Template | null,
+    template?: TemplateSummary | null,
     title?: string,
   ) => Promise<void>;
 
   /**
-   * Create a new template (empty component skeleton) on the current branch, then
-   * refresh the template list. Returns the created template so callers can open
-   * its editor. Used by the Create Page modal's "New template" flow.
+   * Create a new template (empty layout, authored in the editor afterwards) on
+   * the current branch, then refresh the template list. Returns the created
+   * template so callers can open its editor. Used by the Create Page modal's
+   * "New template" flow.
    */
   createTemplate: (params: {
     name: string;
@@ -473,11 +474,6 @@ export interface P1PuckContextValue {
       label?: string;
       description?: string;
       defaultUrlPattern?: string;
-      /**
-       * Component skeleton derived from the live canvas. Sent so the backend's
-       * full-replace update doesn't wipe components on a metadata-only save.
-       */
-      components?: { type: string; pinned: boolean; defaultProps: Record<string, unknown> }[];
     },
   ) => Promise<void>;
 
@@ -589,9 +585,9 @@ export interface P1PuckContextValue {
   userRole: 'admin' | 'editor' | 'junior-editor';
 
   /**
-   * Available templates on the current branch.
+   * Available templates on the current branch (metadata summaries).
    */
-  templates: Template[];
+  templates: TemplateSummary[];
 
   /**
    * Whether templates are loading.

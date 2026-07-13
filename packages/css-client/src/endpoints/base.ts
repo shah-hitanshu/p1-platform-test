@@ -37,6 +37,8 @@ export interface RequestOptions {
   method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: string;
   headers?: Record<string, string>;
+  /** Let the request outlive page teardown. Subject to the ~64KB body limit. */
+  keepalive?: boolean;
 }
 
 interface ErrorResponse {
@@ -105,6 +107,7 @@ export class BaseEndpoint {
         method: options.method,
         headers,
         body: options.body,
+        keepalive: options.keepalive,
       });
     } catch (error) {
       throw new NetworkError(
@@ -124,6 +127,7 @@ export class BaseEndpoint {
             method: options.method,
             headers,
             body: options.body,
+            keepalive: options.keepalive,
           });
         } catch (error) {
           throw new NetworkError(

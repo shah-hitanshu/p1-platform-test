@@ -83,13 +83,17 @@ export type {
   ExecuteMergeRequestOptions,
   // Template types
   Template,
-  TemplateComponent,
+  TemplateSummary,
+  TemplateMetadata,
+  TemplateContentItem,
+  TemplateRootProps,
   CreateTemplateParams,
   UpdateTemplateParams,
   // Migration types
   MigrationJob,
   MigrationConflict,
   MigrationPreview,
+  MigrationPreviewDocument,
   TriggerMigrationParams,
 } from './types.js';
 

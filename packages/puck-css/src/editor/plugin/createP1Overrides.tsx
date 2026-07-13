@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { ActionBar, createUsePuck } from '@puckeditor/core';
+import { ActionBar, createUsePuck, usePuck } from '@puckeditor/core';
 import type { Checkpoint, DocumentVersion, PuckData, ActorPresence } from '@pantheon-systems/css-client';
 import type { SaveStatus } from '../../core/types.js';
 import { SaveIndicator } from '../components/SaveIndicator.js';
@@ -16,9 +16,8 @@ import { AgentActivityBanner } from '../../collaboration/components/AgentActivit
 import { PublishedStatusBadge } from '../components/PublishedStatusBadge.js';
 import { ActionBarPinButton } from '../../features/content-type-templates/ui/ActionBarPinButton.js';
 import { TemplateDetailsPanel } from '../../features/content-type-templates/ui/TemplateDetailsPanel.js';
-import { dataToUpdateParams } from '../../features/content-type-templates/ui/dataToTemplate.js';
 import { useP1PuckOptional } from '../../core/P1PuckContext.js';
-import type { Template } from '../../features/content-type-templates/types.js';
+import type { TemplateSummary } from '../../features/content-type-templates/types.js';
 // NOTE: PuckDataSynchronizer is NOT imported here - it's used in P1Plugin instead
 // because headerActions renders outside Puck's context where usePuck() doesn't work.
 
@@ -32,8 +31,8 @@ const useOverridesPuck = createUsePuck();
  */
 export function templateFromRegistryPath(
   path: string | undefined | null,
-  templates: Template[] | undefined,
-): Template | null {
+  templates: TemplateSummary[] | undefined,
+): TemplateSummary | null {
   if (!path || !templates) return null;
   const match = path.match(/^_registry\/templates\/(.+)$/);
   if (!match) return null;
@@ -51,15 +50,7 @@ function P1TemplateFields({ children }: { children: React.ReactNode }): React.Re
   const itemSelector = useOverridesPuck(
     (s) => (s as unknown as { appState?: { ui?: { itemSelector?: unknown } } }).appState?.ui?.itemSelector,
   );
-  // Live canvas content + pin map — the source of truth for the template's
-  // components. We send these on every save so the backend's full-replace
-  // update can't wipe the component skeleton (see PCC-3225).
-  const content = useOverridesPuck(
-    (s) => (s as unknown as { appState?: { data?: { content?: { type: string; props: Record<string, unknown> }[] } } }).appState?.data?.content,
-  );
-  const rootProps = useOverridesPuck(
-    (s) => (s as unknown as { appState?: { data?: { root?: { props?: Record<string, unknown> } } } }).appState?.data?.root?.props,
-  );
+  const { dispatch } = usePuck();
   const template = templateFromRegistryPath(css?.currentDocument?.path, css?.templates);
 
   // Only override the ROOT fields (nothing selected) while editing a template.
@@ -68,21 +59,38 @@ function P1TemplateFields({ children }: { children: React.ReactNode }): React.Re
     return (
       <TemplateDetailsPanel
         template={template}
-        onSave={(details) => {
-          // Build the complete template (metadata + canvas-derived components)
-          // so a metadata save never drops the components.
-          const pinMapObj = (rootProps?._pinMap as Record<string, boolean> | undefined) ?? {};
-          const pinMap = new Map(Object.entries(pinMapObj));
-          const params = dataToUpdateParams(
-            { content: content ?? [], root: { props: rootProps ?? {} } },
-            pinMap,
-            {
-              label: details.label,
-              description: details.description,
-              defaultUrlPattern: details.defaultUrlPattern,
+        onSave={async (details) => {
+          // Metadata-only PATCH; the layout is persisted by the canvas autosave.
+          await updateTemplate(template.id, {
+            label: details.label,
+            description: details.description,
+            defaultUrlPattern: details.defaultUrlPattern,
+          });
+          // Mirror the saved metadata into the live Puck root props
+          // (root.props._template) so the canvas autosave writes the same
+          // metadata the PATCH persisted.
+          dispatch({
+            type: 'setData',
+            data: (prev: Record<string, unknown>) => {
+              const root = (prev.root ?? {}) as Record<string, unknown>;
+              const props = (root.props ?? {}) as Record<string, unknown>;
+              return {
+                ...prev,
+                root: {
+                  ...root,
+                  props: {
+                    ...props,
+                    _template: {
+                      ...((props._template ?? {}) as Record<string, unknown>),
+                      label: details.label,
+                      description: details.description,
+                      defaultUrlPattern: details.defaultUrlPattern,
+                    },
+                  },
+                },
+              };
             },
-          );
-          return updateTemplate(template.id, params);
+          } as never);
         }}
       />
     );

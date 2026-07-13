@@ -426,7 +426,7 @@ export interface P1PluginOptions {
   /** Callback when a document is selected */
   onDocumentSelect?: (path: string) => void;
   /** Callback to create a new document */
-  onDocumentCreate?: (path: string, template?: import('../../features/content-type-templates/types.js').Template | null, title?: string) => Promise<void>;
+  onDocumentCreate?: (path: string, template?: import('../../features/content-type-templates/types.js').TemplateSummary | null, title?: string) => Promise<void>;
   /** Callback to delete a document */
   onDocumentDelete?: (documentId: string, path: string) => Promise<void>;
   /** Whether documents are loading */
@@ -534,7 +534,7 @@ export interface P1PluginOptions {
   /** Called when the user creates a new workstream. Receives the branch name. */
   onCreateBranch?: (name: string) => Promise<void>;
   /** Available templates for document creation */
-  templates?: import('../../features/content-type-templates/types.js').Template[];
+  templates?: import('../../features/content-type-templates/types.js').TemplateSummary[];
   /** Whether templates are loading */
   templatesLoading?: boolean;
   /** Create a new template (Create Page modal's "New template" flow). */

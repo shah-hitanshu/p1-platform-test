@@ -17,23 +17,14 @@ function generateComponentId(): string {
 /**
  * Create Puck data from a template.
  *
- * Deep-clones the template component skeleton with unique IDs.
+ * Copies each content item with a shallow spread of its props and a fresh
+ * component ID (durable ids across template-to-page are PCC-3358).
  */
-export function scaffoldFromTemplate(template: Template & { content?: Array<{ type: string; props: Record<string, unknown> }> }): Data {
-  // Prefer the Puck content array (from the template's snapshot) which has
-  // full component data. Fall back to the components metadata array.
-  const sourceContent = (template as { content?: Array<{ type: string; props: Record<string, unknown> }> }).content ?? [];
-  const sourceComponents = template.components ?? [];
-
-  const content = sourceContent.length > 0
-    ? sourceContent.map((item) => ({
-        type: item.type,
-        props: { ...item.props, id: generateComponentId() },
-      }))
-    : sourceComponents.map((component) => ({
-        type: component.type,
-        props: { ...component.defaultProps, id: generateComponentId() },
-      }));
+export function scaffoldFromTemplate(template: Pick<Template, 'content'>): Data {
+  const content = (template.content ?? []).map((item) => ({
+    type: item.type,
+    props: { ...item.props, id: generateComponentId() },
+  }));
 
   return {
     root: { props: {} as Record<string, unknown> },

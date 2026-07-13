@@ -840,45 +840,81 @@ export interface ExecuteMergeRequestOptions {
 // =============================================================================
 
 /**
- * A component in a template skeleton.
+ * Template metadata stored at `root.props._template` in the template snapshot.
  */
-export interface TemplateComponent {
-  /** Component type */
-  type: string;
-  /** Whether this component is pinned (locked position) */
-  pinned: boolean;
-  /** Default props for this component */
-  defaultProps: Record<string, unknown>;
-}
-
-/**
- * A content type template.
- */
-export interface Template {
-  /** Unique template ID */
-  id: string;
-  /** Template name (kebab-case identifier) */
-  name: string;
+export interface TemplateMetadata {
   /** Human-readable label */
   label: string;
   /** Optional description */
   description?: string;
   /** Optional default URL pattern */
   defaultUrlPattern?: string;
-  /** Template version number */
-  version: number;
   /** Whether this template is deprecated (soft-disabled for new documents) */
   deprecated?: boolean;
-  /** Component skeleton */
-  components: TemplateComponent[];
-  /** Creation timestamp (not returned by list/get endpoints) */
-  createdAt?: string;
+}
+
+/**
+ * A component instance in a template's content. Its props are the default
+ * props applied to pages scaffolded from the template.
+ */
+export interface TemplateContentItem {
+  /** Component type */
+  type: string;
+  /** Component props, including the instance id */
+  props: { id: string; [key: string]: unknown };
+}
+
+/**
+ * Root props of a template snapshot.
+ */
+export interface TemplateRootProps {
+  /** Template metadata */
+  _template: TemplateMetadata;
+  /** Pinned state by component instance id */
+  _pinMap: Record<string, boolean>;
+  [key: string]: unknown;
+}
+
+/**
+ * A template list entry: document identifiers plus the `_template` metadata
+ * fields. Carries no component data.
+ */
+export interface TemplateSummary extends TemplateMetadata {
+  /** Template document ID */
+  id: string;
+  /** Template name (kebab-case identifier, last segment of the registry path) */
+  name: string;
+  /** Latest version number */
+  version: number;
   /** Last update timestamp */
   updatedAt: string;
 }
 
 /**
- * Parameters for creating a template.
+ * A content type template: the stored Puck-shaped snapshot plus identifier
+ * fields. Metadata lives at `root.props._template`, pin state at
+ * `root.props._pinMap`.
+ */
+export interface Template {
+  /** Template document ID */
+  id: string;
+  /** Template name (kebab-case identifier) */
+  name: string;
+  /** Latest version number */
+  version: number;
+  /** Last update timestamp */
+  updatedAt: string;
+  /** Component instances; their props are the defaults for scaffolded pages */
+  content: TemplateContentItem[];
+  /** Root props carrying template metadata and pin state */
+  root: { props: TemplateRootProps };
+  /** Puck zones record */
+  zones: Record<string, unknown>;
+}
+
+/**
+ * Parameters for creating a template. Metadata only; the layout is authored
+ * on the editor canvas afterwards.
  */
 export interface CreateTemplateParams {
   /** Template name (kebab-case identifier) */
@@ -889,12 +925,11 @@ export interface CreateTemplateParams {
   description?: string;
   /** Optional default URL pattern */
   defaultUrlPattern?: string;
-  /** Initial component skeleton */
-  components: TemplateComponent[];
 }
 
 /**
- * Parameters for updating a template.
+ * Parameters for updating a template's `_template` metadata. Never touches
+ * content or pin state.
  */
 export interface UpdateTemplateParams {
   /** Updated label */
@@ -903,8 +938,6 @@ export interface UpdateTemplateParams {
   description?: string;
   /** Updated default URL pattern */
   defaultUrlPattern?: string;
-  /** Updated component skeleton */
-  components?: TemplateComponent[];
   /** Whether to deprecate or reactivate */
   deprecated?: boolean;
 }
@@ -920,9 +953,12 @@ export interface MigrationJob {
   templateId: string;
   fromVersion: number;
   toVersion: number;
+  checkpointId: string | null;
   status: 'pending' | 'in_progress' | 'completed' | 'completed_with_conflicts' | 'failed';
   totalDocuments: number;
   processedDocuments: number;
+  createdById: string;
+  createdByType: 'user' | 'agent' | 'system';
   createdAt: string;
   completedAt: string | null;
 }
@@ -931,7 +967,10 @@ export interface MigrationConflict {
   id: string;
   migrationJobId: string;
   documentId: string;
-  documentPath: string;
+  branchId: string;
+  templateId: string;
+  fromVersion: number;
+  toVersion: number;
   templateDelta: unknown;
   documentActions: unknown;
   resolution: 'apply' | 'skip' | 'manual' | null;
@@ -939,15 +978,32 @@ export interface MigrationConflict {
   resolvedAt: string | null;
 }
 
+/**
+ * Per-document detail in a migration preview, present only when
+ * previewMigration is called with detail enabled.
+ */
+export interface MigrationPreviewDocument {
+  documentId: string;
+  path: string;
+  currentTemplateVersion: number | null;
+  hasConflict: boolean;
+  proposedSnapshot?: Record<string, unknown>;
+  conflictDetails?: {
+    templateDelta: unknown[];
+    documentActions: unknown[];
+  };
+}
+
 export interface MigrationPreview {
-  totalDocuments: number;
+  templateId: string;
+  fromVersion: number;
+  toVersion: number;
+  templateDelta: unknown[];
+  affectedDocuments: number;
+  estimatedConflicts: number;
   cleanDocuments: number;
-  conflictedDocuments: number;
-  conflicts: Array<{
-    documentId: string;
-    documentPath: string;
-    conflictType: string;
-  }>;
+  /** Present only when previewMigration is called with detail enabled. */
+  documents?: MigrationPreviewDocument[];
 }
 
 export interface TriggerMigrationParams {

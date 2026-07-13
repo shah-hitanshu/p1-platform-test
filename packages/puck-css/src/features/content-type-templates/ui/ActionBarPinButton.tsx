@@ -1,8 +1,8 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback } from 'react';
 import { ActionBar, createUsePuck, usePuck } from '@puckeditor/core';
 import { Icon } from '@pantheon-systems/pds-toolkit-react';
 import { useP1PuckOptional } from '../../../core/P1PuckContext.js';
-import type { Template, TemplateComponent } from '../types.js';
+import type { TemplateSummary } from '../types.js';
 
 const usePuckState = createUsePuck();
 
@@ -15,13 +15,15 @@ interface PinMapRecord {
   [componentId: string]: boolean;
 }
 
+/**
+ * Resolve the template being edited in template mode (document path
+ * `_registry/templates/<name>`). Pinning is a template-authoring capability,
+ * so ordinary pages (including template-bound ones) resolve to null.
+ */
 function resolveTemplate(css: {
-  currentTemplate: Template | null;
   currentDocument: { path: string } | null;
-  templates: Template[];
-}): Template | null {
-  if (css.currentTemplate) return css.currentTemplate;
-
+  templates: TemplateSummary[];
+}): TemplateSummary | null {
   const path = css.currentDocument?.path;
   if (!path) return null;
 
@@ -34,23 +36,20 @@ function resolveTemplate(css: {
 export function ActionBarPinButton(): React.ReactElement | null {
   const css = useP1PuckOptional();
   const selectedItem = usePuckState((s) => s.selectedItem) as ContentItem | null;
-  const content = usePuckState(
-    (s) => (s as unknown as { appState: { data: { content: ContentItem[] } } }).appState?.data?.content
-  );
   const rootProps = usePuckState(
     (s) => (s as unknown as { appState: { data: { root: { props: Record<string, unknown> } } } }).appState?.data?.root?.props
   );
 
-  const { dispatch, refreshPermissions } = usePuck();
-  const [toggling, setToggling] = useState(false);
+  const { dispatch } = usePuck();
 
   const template = css ? resolveTemplate(css) : null;
 
   const pinMap: PinMapRecord = (rootProps?._pinMap as PinMapRecord) ?? {};
 
-  const handleTogglePin = useCallback(async () => {
-    if (!css || !template || !selectedItem || !content || toggling) return;
-    setToggling(true);
+  // Pin state lives in the document's root props (_pinMap) and persists
+  // through the normal document autosave.
+  const handleTogglePin = useCallback(() => {
+    if (!css || !template || !selectedItem || css.isViewingHistoricalVersion) return;
 
     const compId = selectedItem.props.id;
     const newPinned = !pinMap[compId];
@@ -69,33 +68,9 @@ export function ActionBarPinButton(): React.ReactElement | null {
         },
       }),
     } as never);
+  }, [css, template, selectedItem, pinMap, dispatch]);
 
-    // Puck caches resolvePermissions results per component instance and only
-    // re-resolves when the component's own data changes. Since _pinMap lives
-    // in root props, toggling it doesn't invalidate per-component caches.
-    // Force a full re-resolution so the updated pinMap is respected immediately.
-    void refreshPermissions();
-
-    const updatedComponents: TemplateComponent[] = content.map((c) => {
-      const existing = template.components?.find((tc) => tc.type === c.type);
-      return {
-        type: c.type,
-        pinned: updatedPinMap[c.props.id] ?? false,
-        defaultProps: existing?.defaultProps ?? {},
-      };
-    });
-
-    try {
-      await css.client.templates.update(css.siteId, css.branchId, template.id, {
-        components: updatedComponents,
-      });
-      await css.refreshTemplates();
-    } finally {
-      setToggling(false);
-    }
-  }, [css, template, selectedItem, content, pinMap, dispatch, refreshPermissions, toggling]);
-
-  if (!css || !template || !selectedItem || !content) {
+  if (!css || !template || !selectedItem) {
     return null;
   }
 
@@ -107,7 +82,8 @@ export function ActionBarPinButton(): React.ReactElement | null {
       label={isPinned ? 'Unpin component' : 'Pin component'}
       onClick={handleTogglePin}
       active={isPinned}
-      disabled={toggling || !isAdmin}
+      // Historical versions are read-only; a toggle there would never persist.
+      disabled={!isAdmin || css.isViewingHistoricalVersion}
     >
       <Icon
         iconName={isPinned ? 'lock' : 'lockOpen'}

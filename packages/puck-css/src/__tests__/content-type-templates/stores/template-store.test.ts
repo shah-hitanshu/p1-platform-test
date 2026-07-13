@@ -16,40 +16,37 @@ describe('TemplateStore interface', () => {
   });
 
   describe('create', () => {
-    it('creates a template with generated ID and timestamps', async () => {
+    it('creates a template with generated ID and an empty content snapshot', async () => {
       const params: CreateTemplateParams = {
         name: 'blog-post',
         label: 'Blog Post',
-        components: [],
       };
 
       const template = await store.create(params);
 
       expect(template.id).toBeDefined();
       expect(template.name).toBe('blog-post');
-      expect(template.label).toBe('Blog Post');
       expect(template.version).toBe(1);
-      expect(template.components).toEqual([]);
-      expect(template.createdAt).toBeDefined();
       expect(template.updatedAt).toBeDefined();
+      expect(template.content).toEqual([]);
+      expect(template.zones).toEqual({});
+      expect(template.root.props._template.label).toBe('Blog Post');
+      expect(template.root.props._pinMap).toEqual({});
     });
 
-    it('creates template with all optional fields', async () => {
+    it('creates template with all optional metadata fields', async () => {
       const params: CreateTemplateParams = {
         name: 'event',
         label: 'Event Page',
         description: 'Template for events',
         defaultUrlPattern: '/events/:slug',
-        components: [
-          { type: 'HeadingBlock', pinned: true, defaultProps: { title: 'Event' } },
-        ],
       };
 
       const template = await store.create(params);
 
-      expect(template.description).toBe('Template for events');
-      expect(template.defaultUrlPattern).toBe('/events/:slug');
-      expect(template.components).toHaveLength(1);
+      expect(template.root.props._template.description).toBe('Template for events');
+      expect(template.root.props._template.defaultUrlPattern).toBe('/events/:slug');
+      expect(template.root.props._template.deprecated).toBe(false);
     });
   });
 
@@ -58,7 +55,6 @@ describe('TemplateStore interface', () => {
       const created = await store.create({
         name: 'blog',
         label: 'Blog',
-        components: [],
       });
 
       const retrieved = await store.get(created.id);
@@ -78,24 +74,25 @@ describe('TemplateStore interface', () => {
       expect(templates).toEqual([]);
     });
 
-    it('returns all templates', async () => {
-      await store.create({ name: 'blog', label: 'Blog', components: [] });
-      await store.create({ name: 'event', label: 'Event', components: [] });
+    it('returns metadata summaries for all templates', async () => {
+      await store.create({ name: 'blog', label: 'Blog' });
+      await store.create({ name: 'event', label: 'Event' });
 
       const templates = await store.list();
 
       expect(templates).toHaveLength(2);
       expect(templates.map((t) => t.name)).toContain('blog');
       expect(templates.map((t) => t.name)).toContain('event');
+      expect(templates.map((t) => t.label)).toContain('Blog');
+      expect(templates.map((t) => t.label)).toContain('Event');
     });
   });
 
   describe('update', () => {
-    it('updates template fields and increments version', async () => {
+    it('updates metadata fields and increments version', async () => {
       const template = await store.create({
         name: 'blog',
         label: 'Blog',
-        components: [],
       });
 
       // Small delay to ensure timestamp changes
@@ -107,29 +104,26 @@ describe('TemplateStore interface', () => {
       });
 
       expect(updated.id).toBe(template.id);
-      expect(updated.label).toBe('Blog Post');
-      expect(updated.description).toBe('Updated description');
+      expect(updated.root.props._template.label).toBe('Blog Post');
+      expect(updated.root.props._template.description).toBe('Updated description');
       expect(updated.version).toBe(2);
       expect(new Date(updated.updatedAt).getTime()).toBeGreaterThanOrEqual(
         new Date(template.updatedAt).getTime()
       );
     });
 
-    it('updates components array', async () => {
+    it('leaves content and pin state untouched', async () => {
       const template = await store.create({
         name: 'blog',
         label: 'Blog',
-        components: [],
       });
 
       const updated = await store.update(template.id, {
-        components: [
-          { type: 'HeadingBlock', pinned: true, defaultProps: {} },
-        ],
+        label: 'Blog Post',
       });
 
-      expect(updated.components).toHaveLength(1);
-      expect(updated.version).toBe(2);
+      expect(updated.content).toEqual(template.content);
+      expect(updated.root.props._pinMap).toEqual(template.root.props._pinMap);
     });
 
     it('throws error for non-existent template', async () => {
@@ -144,7 +138,6 @@ describe('TemplateStore interface', () => {
       const template = await store.create({
         name: 'blog',
         label: 'Blog',
-        components: [],
       });
 
       await store.delete(template.id);

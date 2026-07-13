@@ -62,7 +62,11 @@ export class VersionsEndpoint {
   /**
    * Create a new version of a document.
    */
-  async create(siteId: string, params: CreateDocumentVersionParams): Promise<DocumentVersion> {
+  async create(
+    siteId: string,
+    params: CreateDocumentVersionParams,
+    options?: { keepalive?: boolean }
+  ): Promise<DocumentVersion> {
     const body: Record<string, unknown> = { snapshot: params.snapshot };
     if (params.puckActions && params.puckActions.length > 0) {
       body.puckActions = params.puckActions;
@@ -72,6 +76,7 @@ export class VersionsEndpoint {
       {
         method: 'POST',
         body: JSON.stringify(body),
+        keepalive: options?.keepalive,
       }
     );
   }

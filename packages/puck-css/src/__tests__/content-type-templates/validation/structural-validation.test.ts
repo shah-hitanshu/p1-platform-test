@@ -15,14 +15,19 @@ import type { Template } from '../../../features/content-type-templates/types.js
 const mockTemplate: Template = {
   id: 'tmpl-1',
   name: 'blog',
-  label: 'Blog',
   version: 1,
-  components: [
-    { type: 'HeadingBlock', pinned: true, defaultProps: {} },
-    { type: 'TextBlock', pinned: true, defaultProps: {} },
-  ],
-  createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
+  content: [
+    { type: 'HeadingBlock', props: { id: 'HeadingBlock-a1b2' } },
+    { type: 'TextBlock', props: { id: 'TextBlock-c3d4' } },
+  ],
+  root: {
+    props: {
+      _template: { label: 'Blog', deprecated: false },
+      _pinMap: { 'HeadingBlock-a1b2': true, 'TextBlock-c3d4': true },
+    },
+  },
+  zones: {},
 };
 
 describe('validateStructure', () => {
@@ -88,7 +93,13 @@ describe('validateStructure', () => {
   it('passes when template has no pinned components', () => {
     const template: Template = {
       ...mockTemplate,
-      components: [{ type: 'TextBlock', pinned: false, defaultProps: {} }],
+      content: [{ type: 'TextBlock', props: { id: 'TextBlock-c3d4' } }],
+      root: {
+        props: {
+          _template: { label: 'Blog', deprecated: false },
+          _pinMap: { 'TextBlock-c3d4': false },
+        },
+      },
     };
 
     const data: Data = {

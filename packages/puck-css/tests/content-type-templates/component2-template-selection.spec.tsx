@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import type { P1Client, Branch, Document } from '@pantheon-systems/css-client';
-import type { Template } from '../../src/features/content-type-templates/types.js';
+import type { Template, TemplateSummary } from '../../src/features/content-type-templates/types.js';
 
 // =============================================================================
 // Mock useRealtime hook
@@ -54,33 +54,46 @@ const mockBranch: Branch = {
   updatedAt: '2026-01-01T00:00:00Z',
 };
 
-const mockTemplate: Template = {
+const mockTemplateSummary: TemplateSummary = {
   id: 'template-1',
   name: 'blog-post',
   label: 'Blog Post',
   description: 'A template for blog posts',
   defaultUrlPattern: '/blog/{slug}',
   version: 1,
-  components: [
-    { type: 'Hero', pinned: true, defaultProps: { title: 'Default Hero' } },
-    { type: 'RichText', pinned: false, defaultProps: {} },
-  ],
-  createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 };
 
-const mockTemplates: Template[] = [
-  mockTemplate,
+const mockTemplate: Template = {
+  id: 'template-1',
+  name: 'blog-post',
+  version: 1,
+  updatedAt: '2026-01-01T00:00:00Z',
+  content: [
+    { type: 'Hero', props: { id: 'Hero-a1b2', title: 'Default Hero' } },
+    { type: 'RichText', props: { id: 'RichText-c3d4' } },
+  ],
+  root: {
+    props: {
+      _template: {
+        label: 'Blog Post',
+        description: 'A template for blog posts',
+        defaultUrlPattern: '/blog/{slug}',
+        deprecated: false,
+      },
+      _pinMap: { 'Hero-a1b2': true, 'RichText-c3d4': false },
+    },
+  },
+  zones: {},
+};
+
+const mockTemplates: TemplateSummary[] = [
+  mockTemplateSummary,
   {
     id: 'template-2',
     name: 'landing-page',
     label: 'Landing Page',
     version: 1,
-    components: [
-      { type: 'Hero', pinned: true, defaultProps: {} },
-      { type: 'Features', pinned: true, defaultProps: {} },
-    ],
-    createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
   },
 ];
@@ -347,7 +360,7 @@ describe('PageNavigator template selection', () => {
 
     // onCreateDocument should be called with the selected template (leading slash stripped)
     await waitFor(() => {
-      expect(onCreateDocument).toHaveBeenCalledWith('blog/my-post', mockTemplate);
+      expect(onCreateDocument).toHaveBeenCalledWith('blog/my-post', mockTemplateSummary);
     });
   });
 
@@ -569,7 +582,7 @@ describe('P1PuckProvider.createDocument with template', () => {
 
     // Create document with template
     await act(async () => {
-      await result.current.createDocument('/test-page', mockTemplate);
+      await result.current.createDocument('/test-page', mockTemplateSummary);
     });
 
     // Verify versions.create was called with scaffolded data
@@ -577,11 +590,81 @@ describe('P1PuckProvider.createDocument with template', () => {
     const createCall = (client.versions.create as any).mock.calls[0];
     const snapshot = createCall[1].snapshot;
 
-    // Should have content from template components
+    // Should have content scaffolded from the template
     expect(snapshot.content).toBeDefined();
     expect(snapshot.content.length).toBe(2);
     expect(snapshot.content[0].type).toBe('Hero');
+    expect(snapshot.content[0].props.title).toBe('Default Hero');
     expect(snapshot.content[1].type).toBe('RichText');
+  });
+
+  it('rejects creation when the fetched template has no content array', async () => {
+    const { content: _content, ...templateWithoutContent } = mockTemplate;
+    const templates = client.templates as unknown as { get: ReturnType<typeof vi.fn> };
+    templates.get = vi.fn().mockResolvedValue(templateWithoutContent);
+
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(P1PuckProvider, {
+        client,
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        userId: 'user-789',
+      }, children);
+
+    const { result } = renderHook(() => useP1Puck(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.createDocument).toBeDefined();
+    });
+
+    await expect(
+      act(async () => {
+        await result.current.createDocument('/test-page', mockTemplateSummary);
+      }),
+    ).rejects.toThrow(/no layout yet/i);
+
+    // No page (or version) is created from an un-backfilled template.
+    expect(client.documents.create).not.toHaveBeenCalled();
+    expect(client.versions.create).not.toHaveBeenCalled();
+  });
+
+  it('creates an empty page when the template content is an empty array', async () => {
+    const mockDoc = {
+      id: 'doc-new',
+      siteId: 'site-1',
+      path: '/test-page',
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      templateId: 'template-1',
+      templateVersion: 1,
+    };
+    const documents = client.documents as unknown as { create: ReturnType<typeof vi.fn> };
+    documents.create = vi.fn().mockResolvedValue(mockDoc);
+    const templates = client.templates as unknown as { get: ReturnType<typeof vi.fn> };
+    templates.get = vi.fn().mockResolvedValue({ ...mockTemplate, content: [] });
+
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(P1PuckProvider, {
+        client,
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        userId: 'user-789',
+      }, children);
+
+    const { result } = renderHook(() => useP1Puck(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.createDocument).toBeDefined();
+    });
+
+    await act(async () => {
+      await result.current.createDocument('/test-page', mockTemplateSummary);
+    });
+
+    expect(client.versions.create).toHaveBeenCalled();
+    const createCall = vi.mocked(client.versions.create).mock.calls[0];
+    const snapshot = (createCall[1] as { snapshot: { content: unknown[] } }).snapshot;
+    expect(snapshot.content).toEqual([]);
   });
 
   it('creates blank document when no template is provided', async () => {

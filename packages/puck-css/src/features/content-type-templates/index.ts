@@ -10,12 +10,13 @@
 export type {
   ContentRole,
   TemplateMetadata,
-  TemplateComponent,
+  TemplateContentItem,
+  TemplateRootProps,
   Template,
+  TemplateSummary,
   TemplateBinding,
   CreateTemplateParams,
   UpdateTemplateParams,
-  TemplateDocument,
 } from './types.js';
 
 export type { TemplateStore } from './stores/index.js';

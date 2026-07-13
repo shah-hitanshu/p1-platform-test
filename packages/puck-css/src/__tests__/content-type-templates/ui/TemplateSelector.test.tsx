@@ -5,7 +5,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { TemplateSelector } from '../../../features/content-type-templates/ui/TemplateSelector.js';
-import type { Template } from '../../../features/content-type-templates/types.js';
+import type { TemplateSummary } from '../../../features/content-type-templates/types.js';
 
 // Mock the useTemplateList hook
 vi.mock('../../../features/content-type-templates/hooks/useTemplateList.js', () => ({
@@ -15,7 +15,7 @@ vi.mock('../../../features/content-type-templates/hooks/useTemplateList.js', () 
 import { useTemplateList } from '../../../features/content-type-templates/hooks/useTemplateList.js';
 
 describe('TemplateSelector', () => {
-  const mockTemplates: Template[] = [
+  const mockTemplates: TemplateSummary[] = [
     {
       id: 'template-1',
       name: 'blog-post',
@@ -23,8 +23,6 @@ describe('TemplateSelector', () => {
       description: 'Standard blog post layout',
       defaultUrlPattern: '/blog/:slug',
       version: 1,
-      components: [],
-      createdAt: '2026-06-08T00:00:00Z',
       updatedAt: '2026-06-08T00:00:00Z',
     },
     {
@@ -34,8 +32,6 @@ describe('TemplateSelector', () => {
       description: 'Marketing landing page',
       defaultUrlPattern: '/landing/:slug',
       version: 2,
-      components: [],
-      createdAt: '2026-06-08T00:00:00Z',
       updatedAt: '2026-06-08T00:00:00Z',
     },
   ];

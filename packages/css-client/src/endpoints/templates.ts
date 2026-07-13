@@ -6,6 +6,7 @@
 
 import type {
   Template,
+  TemplateSummary,
   CreateTemplateParams,
   UpdateTemplateParams,
   MigrationJob,
@@ -17,10 +18,11 @@ export class TemplatesEndpoint {
   constructor(private readonly base: BaseEndpoint) {}
 
   /**
-   * List all templates on a branch.
+   * List all templates on a branch. Returns metadata summaries without
+   * component data; use get() for a template's full snapshot.
    */
-  async list(siteId: string, branchId: string): Promise<Template[]> {
-    const response = await this.base.request<{ templates: Template[] }>(
+  async list(siteId: string, branchId: string): Promise<TemplateSummary[]> {
+    const response = await this.base.request<{ templates: TemplateSummary[] }>(
       `/api/sites/${siteId}/branches/${branchId}/templates`,
       { method: 'GET' }
     );
@@ -129,16 +131,19 @@ export class TemplatesEndpoint {
   }
 
   /**
-   * Preview a migration without executing it (dry-run).
+   * Preview a migration without executing it (dry-run). Pass detail to
+   * include the per-document breakdown in the response.
    */
   async previewMigration(
     siteId: string,
     branchId: string,
     templateId: string,
     params: { fromVersion: number; toVersion: number },
+    detail?: boolean,
   ): Promise<MigrationPreview> {
+    const query = detail === true ? '?detail=true' : '';
     return this.base.request<MigrationPreview>(
-      `/api/sites/${siteId}/branches/${branchId}/templates/${templateId}/migrate/preview`,
+      `/api/sites/${siteId}/branches/${branchId}/templates/${templateId}/migrate/preview${query}`,
       {
         method: 'POST',
         body: JSON.stringify(params),
@@ -173,4 +178,5 @@ export class TemplatesEndpoint {
       { method: 'GET' },
     );
   }
+
 }

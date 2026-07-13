@@ -7,7 +7,33 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TemplatesEndpoint } from '../../src/endpoints/templates.js';
 import type { BaseEndpoint } from '../../src/endpoints/base.js';
-import type { Template, CreateTemplateParams, UpdateTemplateParams } from '../../src/types.js';
+import type {
+  Template,
+  TemplateSummary,
+  CreateTemplateParams,
+  UpdateTemplateParams,
+  MigrationPreview,
+} from '../../src/types.js';
+
+function makeTemplate(overrides: Partial<Template> = {}): Template {
+  return {
+    id: 'tmpl-1',
+    name: 'blog',
+    version: 1,
+    updatedAt: '2026-01-01T00:00:00Z',
+    content: [
+      { type: 'HeroBlock', props: { id: 'HeroBlock-a1b2', title: '' } },
+    ],
+    root: {
+      props: {
+        _template: { label: 'Blog', deprecated: false },
+        _pinMap: { 'HeroBlock-a1b2': true },
+      },
+    },
+    zones: {},
+    ...overrides,
+  };
+}
 
 describe('TemplatesEndpoint', () => {
   let baseEndpoint: BaseEndpoint;
@@ -21,15 +47,16 @@ describe('TemplatesEndpoint', () => {
   });
 
   describe('list', () => {
-    it('makes GET request to list templates', async () => {
-      const mockTemplates: Template[] = [
+    it('makes GET request and returns metadata summaries', async () => {
+      const mockTemplates: TemplateSummary[] = [
         {
           id: 'tmpl-1',
           name: 'blog',
           label: 'Blog',
+          description: 'Blog post layout',
+          defaultUrlPattern: '/blog/:slug',
+          deprecated: false,
           version: 1,
-          components: [],
-          createdAt: '2026-01-01T00:00:00Z',
           updatedAt: '2026-01-01T00:00:00Z',
         },
       ];
@@ -47,16 +74,8 @@ describe('TemplatesEndpoint', () => {
   });
 
   describe('get', () => {
-    it('makes GET request to fetch a template by ID', async () => {
-      const mockTemplate: Template = {
-        id: 'tmpl-1',
-        name: 'blog',
-        label: 'Blog',
-        version: 1,
-        components: [],
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
-      };
+    it('makes GET request and returns the stored snapshot with identifiers', async () => {
+      const mockTemplate = makeTemplate();
 
       mockRequest.mockResolvedValue(mockTemplate);
 
@@ -66,24 +85,35 @@ describe('TemplatesEndpoint', () => {
         method: 'GET',
       });
       expect(result).toEqual(mockTemplate);
+      expect(result.content[0].props.id).toBe('HeroBlock-a1b2');
+      expect(result.root.props._template.label).toBe('Blog');
     });
   });
 
   describe('create', () => {
-    it('makes POST request to create a template', async () => {
+    it('makes POST request with metadata-only params', async () => {
       const params: CreateTemplateParams = {
         name: 'blog',
         label: 'Blog Post',
-        components: [],
+        description: 'Blog post layout',
+        defaultUrlPattern: '/blog/:slug',
       };
 
-      const mockResponse: Template = {
+      const mockResponse = makeTemplate({
         id: 'tmpl-new',
-        ...params,
-        version: 1,
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
-      };
+        content: [],
+        root: {
+          props: {
+            _template: {
+              label: 'Blog Post',
+              description: 'Blog post layout',
+              defaultUrlPattern: '/blog/:slug',
+              deprecated: false,
+            },
+            _pinMap: {},
+          },
+        },
+      });
 
       mockRequest.mockResolvedValue(mockResponse);
 
@@ -101,22 +131,26 @@ describe('TemplatesEndpoint', () => {
   });
 
   describe('update', () => {
-    it('makes PATCH request to update a template', async () => {
+    it('makes PATCH request with metadata-only params', async () => {
       const params: UpdateTemplateParams = {
         label: 'Updated Label',
         description: 'Updated description',
       };
 
-      const mockResponse: Template = {
-        id: 'tmpl-1',
-        name: 'blog',
-        label: 'Updated Label',
-        description: 'Updated description',
+      const mockResponse = makeTemplate({
         version: 2,
-        components: [],
-        createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-02T00:00:00Z',
-      };
+        root: {
+          props: {
+            _template: {
+              label: 'Updated Label',
+              description: 'Updated description',
+              deprecated: false,
+            },
+            _pinMap: { 'HeroBlock-a1b2': true },
+          },
+        },
+      });
 
       mockRequest.mockResolvedValue(mockResponse);
 
@@ -132,15 +166,7 @@ describe('TemplatesEndpoint', () => {
 
   describe('deprecate', () => {
     it('sends PATCH with deprecated: true', async () => {
-      const mockResponse: Template = {
-        id: 'tmpl-1',
-        name: 'blog',
-        label: 'Blog',
-        version: 1,
-        components: [],
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
-      };
+      const mockResponse = makeTemplate();
 
       mockRequest.mockResolvedValue(mockResponse);
 
@@ -156,15 +182,7 @@ describe('TemplatesEndpoint', () => {
 
   describe('reactivate', () => {
     it('sends PATCH with deprecated: false', async () => {
-      const mockResponse: Template = {
-        id: 'tmpl-1',
-        name: 'blog',
-        label: 'Blog',
-        version: 1,
-        components: [],
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
-      };
+      const mockResponse = makeTemplate();
 
       mockRequest.mockResolvedValue(mockResponse);
 
@@ -188,6 +206,76 @@ describe('TemplatesEndpoint', () => {
         '/api/sites/site-123/branches/branch-456/templates/tmpl-1',
         { method: 'DELETE' }
       );
+    });
+  });
+
+  describe('previewMigration', () => {
+    it('makes POST request without a detail query when detail is omitted', async () => {
+      const preview: MigrationPreview = {
+        templateId: 'tmpl-1',
+        fromVersion: 1,
+        toVersion: 2,
+        templateDelta: [],
+        affectedDocuments: 2,
+        estimatedConflicts: 0,
+        cleanDocuments: 2,
+      };
+
+      mockRequest.mockResolvedValue(preview);
+
+      const result = await endpoint.previewMigration('site-123', 'branch-456', 'tmpl-1', {
+        fromVersion: 1,
+        toVersion: 2,
+      });
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        '/api/sites/site-123/branches/branch-456/templates/tmpl-1/migrate/preview',
+        {
+          method: 'POST',
+          body: JSON.stringify({ fromVersion: 1, toVersion: 2 }),
+        },
+      );
+      expect(result).toEqual(preview);
+    });
+
+    it('appends detail=true and returns the per-document breakdown', async () => {
+      const preview: MigrationPreview = {
+        templateId: 'tmpl-1',
+        fromVersion: 1,
+        toVersion: 2,
+        templateDelta: [],
+        affectedDocuments: 1,
+        estimatedConflicts: 0,
+        cleanDocuments: 1,
+        documents: [
+          {
+            documentId: 'doc-1',
+            path: '/blog/hello',
+            currentTemplateVersion: 1,
+            hasConflict: false,
+            proposedSnapshot: { content: [] },
+          },
+        ],
+      };
+
+      mockRequest.mockResolvedValue(preview);
+
+      const result = await endpoint.previewMigration(
+        'site-123',
+        'branch-456',
+        'tmpl-1',
+        { fromVersion: 1, toVersion: 2 },
+        true,
+      );
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        '/api/sites/site-123/branches/branch-456/templates/tmpl-1/migrate/preview?detail=true',
+        {
+          method: 'POST',
+          body: JSON.stringify({ fromVersion: 1, toVersion: 2 }),
+        },
+      );
+      expect(result.documents?.[0].path).toBe('/blog/hello');
     });
   });
 });

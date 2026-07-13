@@ -172,14 +172,19 @@ describe('resolvePermissions exposed on context', () => {
     const mockTemplate = {
       id: 'template-1',
       name: 'blog-post',
-      label: 'Blog Post',
       version: 1,
-      components: [
-        { type: 'Hero', pinned: true, defaultProps: {} },
-        { type: 'RichText', pinned: false, defaultProps: {} },
-      ],
-      createdAt: '2026-01-01T00:00:00Z',
       updatedAt: '2026-01-01T00:00:00Z',
+      content: [
+        { type: 'Hero', props: { id: 'Hero-a1b2' } },
+        { type: 'RichText', props: { id: 'RichText-c3d4' } },
+      ],
+      root: {
+        props: {
+          _template: { label: 'Blog Post', deprecated: false },
+          _pinMap: { 'Hero-a1b2': true, 'RichText-c3d4': false },
+        },
+      },
+      zones: {},
     };
 
     (client.templates as any).get = vi.fn().mockResolvedValue(mockTemplate);

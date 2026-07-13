@@ -35,15 +35,18 @@ export interface ValidationResult {
  */
 export function validateStructure(data: Data, template: Template): ValidationResult {
   const errors: ValidationError[] = [];
-  const pinnedComponents = (template.components ?? []).filter((c) => c.pinned);
 
-  if (pinnedComponents.length === 0) {
+  // Pinned component types in template content order: an instance is pinned
+  // when its id maps to true in root.props._pinMap.
+  const pinMap = template.root?.props?._pinMap ?? {};
+  const expectedTypes = (template.content ?? [])
+    .filter((c) => pinMap[c.props.id] === true)
+    .map((c) => c.type);
+
+  if (expectedTypes.length === 0) {
     // No structural requirements
     return { valid: true, errors: [] };
   }
-
-  // Build a list of pinned component types in template order
-  const expectedTypes = pinnedComponents.map((c) => c.type);
 
   const documentTypes = data.content.map((c) => c.type);
   const foundIndices: number[] = [];

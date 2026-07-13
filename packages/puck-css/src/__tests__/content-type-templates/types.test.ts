@@ -8,8 +8,9 @@ import { describe, it, expect } from 'vitest';
 import type {
   ContentRole,
   TemplateMetadata,
-  TemplateComponent,
+  TemplateContentItem,
   Template,
+  TemplateSummary,
   TemplateBinding,
 } from '../../features/content-type-templates/types.js';
 
@@ -33,57 +34,44 @@ describe('ContentRole', () => {
 describe('TemplateMetadata', () => {
   it('validates minimal template metadata', () => {
     const meta: TemplateMetadata = {
-      name: 'blog-post',
       label: 'Blog Post',
-      version: 1,
     };
-    expect(meta.name).toBe('blog-post');
     expect(meta.label).toBe('Blog Post');
-    expect(meta.version).toBe(1);
   });
 
   it('validates complete template metadata with optional fields', () => {
     const meta: TemplateMetadata = {
-      name: 'event',
       label: 'Event Page',
       description: 'Template for event pages',
       defaultUrlPattern: '/events/:slug',
-      version: 2,
+      deprecated: false,
     };
     expect(meta.description).toBe('Template for event pages');
     expect(meta.defaultUrlPattern).toBe('/events/:slug');
+    expect(meta.deprecated).toBe(false);
   });
 });
 
-describe('TemplateComponent', () => {
-  it('validates component with pinned status', () => {
-    const component: TemplateComponent = {
+describe('TemplateContentItem', () => {
+  it('validates a component instance with default props', () => {
+    const item: TemplateContentItem = {
       type: 'HeadingBlock',
-      pinned: true,
-      defaultProps: {
+      props: {
+        id: 'HeadingBlock-a1b2',
         title: 'Default Title',
         level: 1,
       },
     };
-    expect(component.type).toBe('HeadingBlock');
-    expect(component.pinned).toBe(true);
-    expect(component.defaultProps).toEqual({ title: 'Default Title', level: 1 });
+    expect(item.type).toBe('HeadingBlock');
+    expect(item.props.id).toBe('HeadingBlock-a1b2');
+    expect(item.props.title).toBe('Default Title');
   });
 
-  it('validates unpinned component', () => {
-    const component: TemplateComponent = {
-      type: 'TextBlock',
-      pinned: false,
-      defaultProps: {},
-    };
-    expect(component.pinned).toBe(false);
-  });
-
-  it('validates component with complex default props', () => {
-    const component: TemplateComponent = {
+  it('validates a component instance with complex props', () => {
+    const item: TemplateContentItem = {
       type: 'CardBlock',
-      pinned: true,
-      defaultProps: {
+      props: {
+        id: 'CardBlock-c3d4',
         title: 'Card',
         items: [
           { label: 'Item 1', value: 'a' },
@@ -91,43 +79,75 @@ describe('TemplateComponent', () => {
         ],
       },
     };
-    expect(component.defaultProps.items).toHaveLength(2);
+    expect(item.props.items).toHaveLength(2);
   });
 });
 
 describe('Template', () => {
-  it('validates minimal template', () => {
+  it('validates an empty template snapshot', () => {
     const template: Template = {
       id: 'tmpl_123',
       name: 'blog-post',
-      label: 'Blog Post',
       version: 1,
-      components: [],
-      createdAt: '2026-06-08T00:00:00Z',
       updatedAt: '2026-06-08T00:00:00Z',
+      content: [],
+      root: {
+        props: {
+          _template: { label: 'Blog Post', deprecated: false },
+          _pinMap: {},
+        },
+      },
+      zones: {},
     };
     expect(template.id).toBe('tmpl_123');
-    expect(template.components).toEqual([]);
+    expect(template.content).toEqual([]);
+    expect(template.root.props._template.label).toBe('Blog Post');
   });
 
-  it('validates template with components', () => {
+  it('validates a template with content and pins', () => {
     const template: Template = {
       id: 'tmpl_456',
       name: 'event',
-      label: 'Event Page',
-      description: 'Event template',
-      defaultUrlPattern: '/events/:id',
       version: 1,
-      components: [
-        { type: 'HeadingBlock', pinned: true, defaultProps: { title: 'Event Title' } },
-        { type: 'TextBlock', pinned: false, defaultProps: {} },
+      updatedAt: '2026-06-08T00:00:00Z',
+      content: [
+        { type: 'HeadingBlock', props: { id: 'HeadingBlock-a1b2', title: 'Event Title' } },
+        { type: 'TextBlock', props: { id: 'TextBlock-c3d4' } },
       ],
-      createdAt: '2026-06-08T00:00:00Z',
+      root: {
+        props: {
+          _template: {
+            label: 'Event Page',
+            description: 'Event template',
+            defaultUrlPattern: '/events/:id',
+            deprecated: false,
+          },
+          _pinMap: { 'HeadingBlock-a1b2': true, 'TextBlock-c3d4': false },
+        },
+      },
+      zones: {},
+    };
+    expect(template.content).toHaveLength(2);
+    expect(template.root.props._pinMap['HeadingBlock-a1b2']).toBe(true);
+    expect(template.root.props._pinMap['TextBlock-c3d4']).toBe(false);
+  });
+});
+
+describe('TemplateSummary', () => {
+  it('validates a list entry with identifiers and metadata', () => {
+    const summary: TemplateSummary = {
+      id: 'tmpl_123',
+      name: 'blog-post',
+      label: 'Blog Post',
+      description: 'Standard blog layout',
+      defaultUrlPattern: '/blog/:slug',
+      deprecated: false,
+      version: 3,
       updatedAt: '2026-06-08T00:00:00Z',
     };
-    expect(template.components).toHaveLength(2);
-    expect(template.components[0].pinned).toBe(true);
-    expect(template.components[1].pinned).toBe(false);
+    expect(summary.name).toBe('blog-post');
+    expect(summary.label).toBe('Blog Post');
+    expect(summary.version).toBe(3);
   });
 });
 

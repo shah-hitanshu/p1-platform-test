@@ -9,18 +9,23 @@ import type { Template } from '../../../features/content-type-templates/types.js
 const mockTemplate: Template = {
   id: 'tmpl-1',
   name: 'blog',
-  label: 'Blog',
   version: 1,
-  components: [
-    { type: 'HeadingBlock', pinned: true, defaultProps: { title: 'Blog Title' } },
-    { type: 'TextBlock', pinned: true, defaultProps: { text: 'Content here' } },
-  ],
-  createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
+  content: [
+    { type: 'HeadingBlock', props: { id: 'HeadingBlock-a1b2', title: 'Blog Title' } },
+    { type: 'TextBlock', props: { id: 'TextBlock-c3d4', text: 'Content here' } },
+  ],
+  root: {
+    props: {
+      _template: { label: 'Blog', deprecated: false },
+      _pinMap: { 'HeadingBlock-a1b2': true },
+    },
+  },
+  zones: {},
 };
 
 describe('scaffoldFromTemplate', () => {
-  it('creates Puck data from template components', () => {
+  it('creates Puck data from the template content', () => {
     const data = scaffoldFromTemplate(mockTemplate);
 
     expect(data.content).toHaveLength(2);
@@ -28,25 +33,33 @@ describe('scaffoldFromTemplate', () => {
     expect(data.content[1].type).toBe('TextBlock');
   });
 
-  it('applies default props to components', () => {
+  it('applies the template component props as defaults', () => {
     const data = scaffoldFromTemplate(mockTemplate);
 
     expect(data.content[0].props.title).toBe('Blog Title');
     expect(data.content[1].props.text).toBe('Content here');
   });
 
-  it('generates unique component IDs', () => {
+  it('generates fresh unique component IDs', () => {
     const data = scaffoldFromTemplate(mockTemplate);
 
     expect(data.content[0].props.id).toBeDefined();
     expect(data.content[1].props.id).toBeDefined();
     expect(data.content[0].props.id).not.toBe(data.content[1].props.id);
+    expect(data.content[0].props.id).not.toBe('HeadingBlock-a1b2');
+    expect(data.content[1].props.id).not.toBe('TextBlock-c3d4');
   });
 
-  it('creates empty data for template with no components', () => {
+  it('does not carry template metadata into the page root', () => {
+    const data = scaffoldFromTemplate(mockTemplate);
+
+    expect(data.root.props).toEqual({});
+  });
+
+  it('creates empty data for a template with empty content', () => {
     const emptyTemplate: Template = {
       ...mockTemplate,
-      components: [],
+      content: [],
     };
 
     const data = scaffoldFromTemplate(emptyTemplate);

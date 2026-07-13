@@ -6,11 +6,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { P1Client } from '@pantheon-systems/css-client';
-import type { Template } from '../types.js';
+import type { TemplateSummary } from '../types.js';
 
 export interface UseTemplateListReturn {
-  /** List of templates */
-  templates: Template[];
+  /** List of templates (metadata summaries; no component data) */
+  templates: TemplateSummary[];
   /** Whether templates are currently being fetched */
   loading: boolean;
   /** Error that occurred during fetch, if any */
@@ -46,7 +46,7 @@ export function useTemplateList(
   siteId: string,
   branchId: string
 ): UseTemplateListReturn {
-  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
