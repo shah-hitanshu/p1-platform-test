@@ -1,5 +1,13 @@
 # @pantheon-systems/p1-next-sdk
 
+## 0.5.0
+
+### Patch Changes
+
+- Updated dependencies [0bc7982]
+  - @pantheon-systems/css-client@0.5.0
+  - @pantheon-systems/puck-css@0.5.0
+
 ## 0.4.4
 
 ### Patch Changes
@@ -15,7 +23,6 @@
 - Bug fixes and improvements: deferred branch detection for read:published tokens, init promise retry, production backend URL handling, editor top menu UI improvements.
 - Updated dependencies
   - @pantheon-systems/puck-css@0.4.3
-
 
 ## 0.4.2
 

@@ -1,5 +1,16 @@
 # @pantheon-systems/puck-css
 
+## 0.5.0
+
+### Minor Changes
+
+- 0bc7982: Template types and the template editor now use the content snapshot shape: a `Template` carries `content` items plus `root.props._template` metadata and `root.props._pinMap` pin state, mirroring a Puck document. `templates.list()` returns `TemplateSummary[]` (metadata only, no layout content); fetch a template by ID for its full snapshot. Template layout is authored on the editor canvas and saved through document versions; `templates.create()` and `templates.update()` now accept metadata fields only (label, description, defaultUrlPattern, deprecated). This requires a backend running the matching template API (PCC-3357). Older 0.4.x clients keep working against the updated backend through a temporary compatibility window that also serves derived legacy fields (a top-level label and a components array). The client also reviews and resolves migration conflicts via `migrationConflicts.list()` and `migrationConflicts.resolve()`.
+
+### Patch Changes
+
+- Updated dependencies [0bc7982]
+  - @pantheon-systems/css-client@0.5.0
+
 ## 0.4.4
 
 ### Patch Changes
@@ -15,7 +26,6 @@
 - Bug fixes and improvements: deferred branch detection for read:published tokens, init promise retry, production backend URL handling, editor top menu UI improvements.
 - Updated dependencies
   - @pantheon-systems/css-client@0.4.3
-
 
 ## 0.4.2
 

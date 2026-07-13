@@ -1,5 +1,11 @@
 # @pantheon-systems/create-p1-starter-kit
 
+## 0.5.0
+
+### Patch Changes
+
+- efb961d: Fix the starter kit's auth route forcing Google's full re-authentication screen on every login (`prompt: 'login'`), even with a live browser session. Sites scaffolded via `create-p1-starter-kit` now use `prompt: 'select_account'`, so an existing Google session is reused with a lightweight account-chooser step instead of forcing full re-auth, while still letting users switch accounts on logout/login.
+
 ## 0.4.4
 
 ### Patch Changes
@@ -11,7 +17,6 @@
 ### Patch Changes
 
 - Bug fixes and improvements: deferred branch detection for read:published tokens, init promise retry, production backend URL handling, editor top menu UI improvements.
-
 
 ## 0.4.2
 
