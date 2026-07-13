@@ -25,6 +25,9 @@
       ],
       "pds": [
         "./dist/pds/index.d.ts"
+      ],
+      "fields": [
+        "./dist/data/fields.d.ts"
       ]
     }
   },
@@ -65,7 +68,12 @@
       "default": "./dist/pds/index.js",
       "types": "./dist/pds/index.d.ts"
     },
-    "./pds/styles.css": "./src/pds/theme/PuckEditorTheme.css"
+    "./pds/styles.css": "./src/pds/theme/PuckEditorTheme.css",
+    "./fields": {
+      "import": "./dist/data/fields.js",
+      "default": "./dist/data/fields.js",
+      "types": "./dist/data/fields.d.ts"
+    }
   },
   "files": [
     "dist",
