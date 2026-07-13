@@ -451,6 +451,39 @@ describe('CreatePageModal', () => {
     expect(screen.queryByTestId('create-page-title-required')).toBeNull();
   });
 
+  it('flags a missing title (red) and keeps Create disabled for a blank page', () => {
+    render(<CreatePageModal {...defaultProps} />);
+
+    // Blank is selected by default; with no title the slug is empty, so
+    // Create must be disabled and the title-required hint shown.
+    expect(screen.getByTestId('create-page-title-required')).toBeDefined();
+    expect(
+      (screen.getByTestId('create-page-submit') as HTMLButtonElement).disabled,
+    ).toBe(true);
+
+    fireEvent.change(screen.getByTestId('create-page-title-input'), {
+      target: { value: 'My Page' },
+    });
+
+    expect(screen.queryByTestId('create-page-title-required')).toBeNull();
+    expect(
+      (screen.getByTestId('create-page-submit') as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it('shows a "still in the works" note and keeps Create disabled for Generate with AI', () => {
+    render(<CreatePageModal {...defaultProps} />);
+
+    fireEvent.click(screen.getByTestId('create-page-option-generate-ai'));
+
+    expect(
+      screen.getByTestId('create-page-generate-ai-note').textContent,
+    ).toContain('This feature is still in the works.');
+    expect(
+      (screen.getByTestId('create-page-submit') as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
   it('creates from a pattern-less template using the slug (not an empty path)', async () => {
     const onCreateDocument = vi.fn().mockResolvedValue(undefined);
     const onNavigate = vi.fn();
@@ -669,6 +702,28 @@ describe('CreatePageModal', () => {
     expect(screen.getByTestId('create-page-route-param-id')).toBeDefined();
     expect(screen.getByTestId('create-page-route-param-monster')).toBeDefined();
     expect(screen.getAllByTestId('create-page-route-param-id')).toHaveLength(1);
+  });
+
+  it('explains why "+ Add source" is disabled until a name is entered', () => {
+    render(<CreatePageModal {...defaultProps} datasources={[]} />);
+
+    fireEvent.click(screen.getByTestId('create-page-option-plug-external-data'));
+    fireEvent.click(screen.getByTestId('wizard-option-new'));
+
+    // No name yet → hint shown, "+ Add source" disabled.
+    expect(screen.getByTestId('create-page-new-name-required')).toBeDefined();
+    expect(
+      (screen.getByTestId('create-page-add-source') as HTMLButtonElement).disabled,
+    ).toBe(true);
+
+    fireEvent.change(screen.getByTestId('create-page-new-name'), {
+      target: { value: 'Recipes' },
+    });
+
+    expect(screen.queryByTestId('create-page-new-name-required')).toBeNull();
+    expect(
+      (screen.getByTestId('create-page-add-source') as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 
   it('adds a data source on the fly, deriving its inputs from the URL', () => {

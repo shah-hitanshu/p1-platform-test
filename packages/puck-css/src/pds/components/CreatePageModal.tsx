@@ -900,7 +900,7 @@ export function CreatePageModal({
                 value={title}
                 onChange={handleTitleChange}
               />
-              {selectedCt && !slug.trim() && (
+              {showPageFields && !slug.trim() && (
                 <span
                   data-testid="create-page-title-required"
                   role="alert"
@@ -968,6 +968,15 @@ export function CreatePageModal({
               </div>
             )}
           </div>
+          ) : selected === 'generate-ai' ? (
+            <div className={styles.fields}>
+              <p
+                data-testid="create-page-generate-ai-note"
+                className={styles.fieldHint}
+              >
+                This feature is still in the works.
+              </p>
+            </div>
           ) : null}
 
           {isPlugExternalData && (
@@ -1047,6 +1056,14 @@ export function CreatePageModal({
                           value={newName}
                           onChange={(e) => setNewName(e.target.value)}
                         />
+                        {!newName.trim() && (
+                          <span
+                            data-testid="create-page-new-name-required"
+                            className={styles.fieldHint}
+                          >
+                            Enter a name to add this source.
+                          </span>
+                        )}
                         <input
                           type="text"
                           data-testid="create-page-new-url"
@@ -1314,7 +1331,7 @@ export function CreatePageModal({
                         ? !pageStructure || !slug.trim() || collectionNeedsParam
                         : selectedCt
                           ? !canCreateContentType
-                          : selected !== 'blank')
+                          : selected !== 'blank' || !slug.trim())
                   }
                   aria-busy={submitting}
                 >
