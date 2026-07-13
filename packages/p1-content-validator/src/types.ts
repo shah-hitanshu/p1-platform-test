@@ -63,12 +63,22 @@ export interface ValidateInput {
 
 export interface TemplateComponent {
   type: string;
-  pinned: boolean;
-  defaultProps: Record<string, unknown>;
+  /** Component props are the template's default props. `id` keys into `_pinMap`. */
+  props: { id?: string; [key: string]: unknown };
 }
 
+/** A template's version snapshot: Puck data, identical in shape to a page. */
 export interface TemplateSnapshot {
-  components: TemplateComponent[];
+  content: TemplateComponent[];
+  root: {
+    props: {
+      _template?: Record<string, unknown>;
+      /** Component id to pinned flag. A component is pinned only when its entry is `true`. */
+      _pinMap?: Record<string, boolean>;
+      [key: string]: unknown;
+    };
+  };
+  zones?: Record<string, unknown>;
 }
 
 export interface StructuralConformanceError {

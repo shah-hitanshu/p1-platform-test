@@ -9,7 +9,7 @@
 
 import type { McpApiClientConfig, ActingUser } from './types.js';
 import { getBackendBreaker } from '../circuit-breaker.js';
-import type { ComponentSchema } from '@pantheon-systems/p1-content-validator';
+import type { ComponentSchema, TemplateSnapshot } from '@pantheon-systems/p1-content-validator';
 import { snapshotToComponentSchema } from '@pantheon-systems/p1-content-validator';
 
 // =============================================================================
@@ -92,6 +92,30 @@ export interface DocumentSnapshot {
   version?: number;
   templateId?: string;
 }
+
+/** Metadata flattened from a template snapshot's root.props._template. */
+export interface TemplateMetadata {
+  label?: string;
+  description?: string;
+  defaultUrlPattern?: string;
+  deprecated?: boolean;
+}
+
+/** A `list_templates` entry: identity plus flattened metadata, no layout. */
+export interface TemplateSummary extends TemplateMetadata {
+  id: string;
+  name: string;
+  version: number;
+  updatedAt: string;
+}
+
+/** A single template's full response: its content-shaped snapshot plus identity. */
+export type TemplateDetail = TemplateSnapshot & {
+  id: string;
+  name: string;
+  version: number;
+  updatedAt: string;
+};
 
 export interface CanAgentEditRequest {
   siteId: string;
@@ -984,48 +1008,51 @@ export class McpApiClient {
   /**
    * Get a template document by its ID.
    *
-   * Templates are stored at _registry/templates/{templateId}.
-   * This method fetches the template's latest snapshot for validation.
+   * Templates are stored at _registry/templates/{templateId}. The response
+   * is the template's Puck content snapshot (content, root.props._template,
+   * root.props._pinMap, zones) plus id/name/version/updatedAt, spread flat
+   * rather than wrapped in a `.snapshot` key.
    *
    * @param siteId - Site ID
    * @param branchId - Branch ID
    * @param templateId - Template document ID
-   * @returns Template document snapshot
+   * @returns Template detail: identity plus its content-shaped snapshot
    */
   async getTemplate(
     siteId: string,
     branchId: string,
     templateId: string,
-  ): Promise<{ id: string; name: string; components?: { type: string; pinned: boolean; defaultProps: Record<string, unknown> }[]; [key: string]: unknown }> {
+  ): Promise<TemplateDetail> {
     const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/templates/${templateId}`;
     const response = await this.doFetch(url, {
       method: 'GET',
       headers: this.getHeaders(),
     });
-    return this.handleResponse<{ id: string; name: string; components?: { type: string; pinned: boolean; defaultProps: Record<string, unknown> }[]; [key: string]: unknown }>(response);
+    return this.handleResponse<TemplateDetail>(response);
   }
 
   /**
    * List all templates available on a branch.
    *
-   * Templates are stored at _registry/templates/ and define reusable page structures.
-   * This method fetches template metadata including id, name, label, description,
-   * and component structure with pinned flags.
+   * Templates are stored at _registry/templates/ and define reusable page
+   * structures. Each entry carries id, name, version, updatedAt, and the
+   * template's metadata (label, description, defaultUrlPattern, deprecated)
+   * flattened onto it, with no layout or component data.
    *
    * @param siteId - Site ID
    * @param branchId - Branch ID
-   * @returns Array of template documents with metadata
+   * @returns Array of template summaries
    */
   async listTemplates(
     siteId: string,
     branchId: string,
-  ): Promise<{ id: string; name: string; [key: string]: unknown }[]> {
+  ): Promise<TemplateSummary[]> {
     const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/templates`;
     const response = await this.doFetch(url, {
       method: 'GET',
       headers: this.getHeaders(),
     });
-    const result = await this.handleResponse<{ templates: { id: string; name: string; [key: string]: unknown }[] }>(response);
+    const result = await this.handleResponse<{ templates: TemplateSummary[] }>(response);
     return result.templates;
   }
 

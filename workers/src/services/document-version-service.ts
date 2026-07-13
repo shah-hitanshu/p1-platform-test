@@ -39,6 +39,14 @@ export interface CreateDocumentVersionParams {
   skipDuplicateCheck?: boolean;
   /** Mark this version as a tombstone (document deletion). */
   isTombstone?: boolean;
+  /**
+   * Persist the version with action_type null so migrations never treat it as
+   * an edit. Reserved for representation changes (the template content-shape
+   * backfill and the PATCH lazy conversion) where the stored bytes change but
+   * no authored edit occurred, so no delta must propagate to associated pages.
+   * @default false
+   */
+  forceNonStructural?: boolean;
 }
 
 /**
@@ -301,8 +309,12 @@ export async function createDocumentVersion(
   const { actionType: computedActionType, actionMetadata: computedActionMetadata } =
     classifyChange(forwardPatch ?? params.patch ?? undefined, params.puckActions);
 
-  const finalActionType = params.actionType ?? computedActionType;
-  const finalActionMetadata = params.actionMetadata ?? computedActionMetadata;
+  const finalActionType = params.forceNonStructural === true
+    ? null
+    : params.actionType ?? computedActionType;
+  const finalActionMetadata = params.forceNonStructural === true
+    ? null
+    : params.actionMetadata ?? computedActionMetadata;
 
   try {
     // Use a CTE to atomically:

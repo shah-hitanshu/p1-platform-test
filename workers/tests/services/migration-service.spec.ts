@@ -47,7 +47,7 @@ describe('Phase 5: Migration Service', () => {
     from_version: number;
     to_version: number;
     checkpoint_id: string | null;
-    status: 'pending' | 'in_progress' | 'completed' | 'failed';
+    status: 'pending' | 'in_progress' | 'completed' | 'completed_with_conflicts' | 'failed';
     total_documents: number;
     processed_documents: number;
     created_by_id: string;
@@ -298,6 +298,92 @@ describe('Phase 5: Migration Service', () => {
       );
 
       expect(result).toEqual({ structuralActions: [], propPatches: [] });
+    });
+
+    it('excludes editor-private root props (_template/_pinMap) from prop patches', async () => {
+      const { extractTemplateDelta } = await import('../../src/services/migration-service');
+      const db = await import('../../src/db');
+      const dvs = await import('../../src/services/document-version-service');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+      const fromSnapshot = {
+        content: [],
+        root: { props: { _template: { label: 'Old', deprecated: false }, _pinMap: {} } },
+        zones: {},
+      };
+      const toSnapshot = {
+        content: [],
+        root: { props: { _template: { label: 'New', deprecated: true }, _pinMap: { 'hero-1': true } } },
+        zones: {},
+      };
+      vi.mocked(dvs.reconstructVersionSnapshot)
+        .mockResolvedValueOnce(fromSnapshot)
+        .mockResolvedValueOnce(toSnapshot);
+
+      const result = await extractTemplateDelta('template-uuid-001', 'branch-uuid-789', 1, 2);
+
+      expect(result.propPatches).toEqual([]);
+    });
+
+    it('propagates a non-underscore root prop change as a __root__ patch', async () => {
+      const { extractTemplateDelta } = await import('../../src/services/migration-service');
+      const db = await import('../../src/db');
+      const dvs = await import('../../src/services/document-version-service');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+      const fromSnapshot = {
+        content: [],
+        root: { props: { title: 'Old Title', _template: { label: 'X', deprecated: false } } },
+        zones: {},
+      };
+      const toSnapshot = {
+        content: [],
+        root: { props: { title: 'New Title', _template: { label: 'X', deprecated: false } } },
+        zones: {},
+      };
+      vi.mocked(dvs.reconstructVersionSnapshot)
+        .mockResolvedValueOnce(fromSnapshot)
+        .mockResolvedValueOnce(toSnapshot);
+
+      const result = await extractTemplateDelta('template-uuid-001', 'branch-uuid-789', 1, 2);
+
+      const rootPatch = result.propPatches.find((p) => p.componentId === '__root__');
+      expect(rootPatch).toBeDefined();
+      expect(rootPatch?.operations).toEqual([
+        { op: 'replace', path: '/title', value: 'New Title' },
+      ]);
+    });
+
+    it('propagates only the non-underscore key when a root change mixes both', async () => {
+      const { extractTemplateDelta } = await import('../../src/services/migration-service');
+      const db = await import('../../src/db');
+      const dvs = await import('../../src/services/document-version-service');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+      const fromSnapshot = {
+        content: [],
+        root: { props: { title: 'Old', _pinMap: {} } },
+        zones: {},
+      };
+      const toSnapshot = {
+        content: [],
+        root: { props: { title: 'New', _pinMap: { 'hero-1': true } } },
+        zones: {},
+      };
+      vi.mocked(dvs.reconstructVersionSnapshot)
+        .mockResolvedValueOnce(fromSnapshot)
+        .mockResolvedValueOnce(toSnapshot);
+
+      const result = await extractTemplateDelta('template-uuid-001', 'branch-uuid-789', 1, 2);
+
+      const rootPatch = result.propPatches.find((p) => p.componentId === '__root__');
+      expect(rootPatch?.operations).toEqual([
+        { op: 'replace', path: '/title', value: 'New' },
+      ]);
+      expect(rootPatch?.operations.some((op) => op.path.includes('_pinMap'))).toBe(false);
     });
   });
 
@@ -2730,6 +2816,207 @@ describe('Phase 5: Migration Service', () => {
       expect(result.staleDocumentCount).toBe(3);
       expect(result.oldestDocumentVersion).toBeNull();
       expect(result.migrationAvailable).toBe(true);
+    });
+  });
+
+  // =========================================================================
+  // getMigrationStatus - activeMigration
+  // =========================================================================
+
+  describe('getMigrationStatus activeMigration', () => {
+    it('should report activeMigration as null when there are no jobs', async () => {
+      const { getMigrationStatus } = await import('../../src/services/migration-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ version_number: 5 }],
+        rowCount: 1,
+      });
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ count: '2', oldest_version: 1 }],
+        rowCount: 1,
+      });
+      // Latest job lookup: no jobs
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [],
+        rowCount: 0,
+      });
+
+      const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
+
+      expect(result.activeMigration).toBeNull();
+    });
+
+    it('should report progress when the latest job is running', async () => {
+      const { getMigrationStatus } = await import('../../src/services/migration-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ version_number: 5 }],
+        rowCount: 1,
+      });
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ count: '7', oldest_version: 2 }],
+        rowCount: 1,
+      });
+      // Latest job lookup: in_progress
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [createMockMigrationJob({
+          id: 'job-uuid-running',
+          status: 'in_progress',
+          total_documents: 10,
+          processed_documents: 4,
+        })],
+        rowCount: 1,
+      });
+      // Unresolved conflict count
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ count: '0' }],
+        rowCount: 1,
+      });
+
+      const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
+
+      expect(result.activeMigration).toEqual({
+        jobId: 'job-uuid-running',
+        status: 'in_progress',
+        processedDocuments: 4,
+        totalDocuments: 10,
+        unresolvedConflicts: 0,
+      });
+    });
+
+    it('should report progress when the latest job is pending', async () => {
+      const { getMigrationStatus } = await import('../../src/services/migration-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ version_number: 5 }],
+        rowCount: 1,
+      });
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ count: '7', oldest_version: 2 }],
+        rowCount: 1,
+      });
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [createMockMigrationJob({
+          id: 'job-uuid-pending',
+          status: 'pending',
+          total_documents: 10,
+          processed_documents: 0,
+        })],
+        rowCount: 1,
+      });
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ count: '0' }],
+        rowCount: 1,
+      });
+
+      const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
+
+      expect(result.activeMigration?.jobId).toBe('job-uuid-pending');
+      expect(result.activeMigration?.status).toBe('pending');
+    });
+
+    it('should surface a completed_with_conflicts job with unresolved conflicts', async () => {
+      const { getMigrationStatus } = await import('../../src/services/migration-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ version_number: 5 }],
+        rowCount: 1,
+      });
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ count: '3', oldest_version: 1 }],
+        rowCount: 1,
+      });
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [createMockMigrationJob({
+          id: 'job-uuid-conflicts',
+          status: 'completed_with_conflicts',
+          total_documents: 8,
+          processed_documents: 8,
+        })],
+        rowCount: 1,
+      });
+      // Two unresolved conflicts
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ count: '2' }],
+        rowCount: 1,
+      });
+
+      const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
+
+      expect(result.activeMigration).toEqual({
+        jobId: 'job-uuid-conflicts',
+        status: 'completed_with_conflicts',
+        processedDocuments: 8,
+        totalDocuments: 8,
+        unresolvedConflicts: 2,
+      });
+    });
+
+    it('should report activeMigration as null when the latest job is cleanly completed', async () => {
+      const { getMigrationStatus } = await import('../../src/services/migration-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ version_number: 5 }],
+        rowCount: 1,
+      });
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ count: '0', oldest_version: null }],
+        rowCount: 1,
+      });
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [createMockMigrationJob({
+          id: 'job-uuid-done',
+          status: 'completed',
+          total_documents: 6,
+          processed_documents: 6,
+        })],
+        rowCount: 1,
+      });
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ count: '0' }],
+        rowCount: 1,
+      });
+
+      const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
+
+      expect(result.activeMigration).toBeNull();
+    });
+
+    it('should report activeMigration as null when a completed_with_conflicts job has all conflicts resolved', async () => {
+      const { getMigrationStatus } = await import('../../src/services/migration-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ version_number: 5 }],
+        rowCount: 1,
+      });
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ count: '0', oldest_version: null }],
+        rowCount: 1,
+      });
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [createMockMigrationJob({
+          id: 'job-uuid-resolved',
+          status: 'completed_with_conflicts',
+          total_documents: 4,
+          processed_documents: 4,
+        })],
+        rowCount: 1,
+      });
+      // All conflicts resolved
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ count: '0' }],
+        rowCount: 1,
+      });
+
+      const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
+
+      expect(result.activeMigration).toBeNull();
     });
   });
 

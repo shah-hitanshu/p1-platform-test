@@ -11,6 +11,49 @@ function createMockResponse(ok: boolean, data: unknown, status = 200): Response 
   return { ok, status, json: () => Promise.resolve(data) } as Response;
 }
 
+/**
+ * Route fetch by URL and method rather than call order, so apply_document_edits
+ * tests stay green when the handler adds or reorders backend calls. get_document
+ * returns the post-edit snapshot once the edits request has been observed.
+ */
+function routeApplyEditsFetch(routes: {
+  preEditSnapshot?: unknown;
+  postEditSnapshot?: unknown;
+  templateId?: string;
+  registryDocuments?: unknown[];
+  template?: unknown;
+  applyEditsResult?: unknown;
+}): (url: string, init?: { method?: string; body?: string }) => Promise<Response> {
+  let editApplied = false;
+  return (url) => {
+    if (url.includes('/edits')) {
+      editApplied = true;
+      return Promise.resolve(
+        createMockResponse(true, routes.applyEditsResult ?? { success: true, version: 2 }),
+      );
+    }
+    if (url.includes('/documents/by-path/')) {
+      return Promise.resolve(
+        createMockResponse(true, routes.templateId !== undefined ? { templateId: routes.templateId } : {}),
+      );
+    }
+    if (url.includes('pathPrefix=')) {
+      return Promise.resolve(createMockResponse(true, { documents: routes.registryDocuments ?? [] }));
+    }
+    if (url.includes('/templates/')) {
+      return Promise.resolve(createMockResponse(true, routes.template ?? {}));
+    }
+    if (url.includes('/documents/')) {
+      return Promise.resolve(
+        createMockResponse(true, {
+          snapshot: editApplied ? routes.postEditSnapshot : routes.preEditSnapshot,
+        }),
+      );
+    }
+    return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+  };
+}
+
 describe('Tool Definitions', () => {
   beforeEach(() => { vi.resetAllMocks(); });
   afterEach(() => { vi.restoreAllMocks(); });
@@ -33,6 +76,15 @@ describe('Tool Definitions', () => {
       expect(def.description).toBeTruthy();
       expect(def.inputSchema).toBeDefined();
     }
+  });
+
+  // The list response carries template metadata only, no per-component data,
+  // so the tool description must not advertise a component or pinned breakdown.
+  it('list_templates description does not promise component structure', async () => {
+    const { getToolDefinitions } = await import('../../src/shared/tools.js');
+    const def = getToolDefinitions().find((d) => d.name === 'list_templates');
+    expect(def?.description).not.toMatch(/component/i);
+    expect(def?.description).not.toMatch(/pinned/i);
   });
 });
 
@@ -103,12 +155,7 @@ describe('Tool Handlers', () => {
     const client = new McpApiClient(defaultConfig);
     const handlers = createToolHandlers(client);
 
-    // getDocument prefetch (for validation)
-    mockFetch.mockResolvedValueOnce(createMockResponse(true, { snapshot: {} }));
-    // lookupDocumentByPath (template metadata)
-    mockFetch.mockResolvedValueOnce(createMockResponse(true, {}));
-    // applyEdits
-    mockFetch.mockResolvedValueOnce(createMockResponse(true, { success: true, version: 2 }));
+    mockFetch.mockImplementation(routeApplyEditsFetch({ preEditSnapshot: {} }));
 
     await handlers.apply_document_edits({
       site_id: 's1',
@@ -118,8 +165,9 @@ describe('Tool Handlers', () => {
       operations: [{ type: 'replace', path: '/content/0/props/title', content: 'New' }],
     });
 
-    const [, options] = mockFetch.mock.calls[2];
-    const body = JSON.parse(options.body);
+    const editsCall = mockFetch.mock.calls.find(([url]) => String(url).includes('/edits'));
+    expect(editsCall).toBeDefined();
+    const body = JSON.parse((editsCall![1] as { body: string }).body);
     expect(body.operations[0].path).toBe('content.0.props.title');
   });
 
@@ -266,6 +314,99 @@ describe('Tool Handlers', () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.actors).toContain('[agent]');
     expect(parsed.actors).toContain('[human]');
+  });
+
+  // list_templates reads the metadata-only list response (id, name, version,
+  // updatedAt, plus flattened label/description/deprecated) and never renders
+  // component or pinned counts, even when a response carries a stray
+  // "components" field the list API does not populate.
+  it('should list templates from flattened metadata without component counts', async () => {
+    const { McpApiClient } = await import('../../src/shared/api-client.js');
+    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const client = new McpApiClient(defaultConfig);
+    const handlers = createToolHandlers(client);
+
+    mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+      templates: [
+        {
+          id: 'tmpl-1',
+          name: 'blog',
+          version: 3,
+          updatedAt: '2026-01-01T00:00:00Z',
+          label: 'Blog Post',
+          description: 'Standard blog layout',
+          deprecated: false,
+          components: [
+            { type: 'Hero', pinned: true },
+            { type: 'Body', pinned: false },
+          ],
+        },
+      ],
+    }));
+
+    const result = await handlers.list_templates({ site_id: 's1', branch_id: 'b1' });
+    const text = result.content[0].text;
+    expect(text).toContain('blog (Blog Post)');
+    expect(text).toContain('Standard blog layout');
+    expect(text).toContain('template_id: tmpl-1');
+    expect(text).not.toMatch(/component/i);
+    expect(text).not.toMatch(/pinned/i);
+  });
+});
+
+/**
+ * apply_document_edits structural validation (PROPOSAL-014)
+ *
+ * validateDocumentStructure reads the template's pinned components straight
+ * from the content-shaped snapshot the template API returns
+ * ({ content, root: { props: { _template, _pinMap } }, zones }).
+ */
+describe('apply_document_edits structural validation', () => {
+  beforeEach(() => { vi.resetAllMocks(); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  const validatingConfig = {
+    baseUrl: 'http://localhost:8787',
+    agentId: 'agent-1',
+    agentApiKey: 'aak_test',
+    enableValidation: true,
+  };
+
+  it('flags a document missing a component pinned in the template content snapshot', async () => {
+    const { McpApiClient } = await import('../../src/shared/api-client.js');
+    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const client = new McpApiClient(validatingConfig);
+    const handlers = createToolHandlers(client);
+
+    // Post-edit the document has only Body; the template pins Hero, so
+    // conformance must fail.
+    mockFetch.mockImplementation(routeApplyEditsFetch({
+      preEditSnapshot: { content: [] },
+      postEditSnapshot: { content: [{ type: 'Body', props: { id: 'body-1' } }] },
+      templateId: 'tmpl-1',
+      registryDocuments: [],
+      template: {
+        id: 'tmpl-1',
+        name: 'blog',
+        version: 1,
+        updatedAt: '2026-01-01T00:00:00Z',
+        content: [{ type: 'Hero', props: { id: 'hero-1' } }],
+        root: { props: { _template: { label: 'Blog' }, _pinMap: { 'hero-1': true } } },
+        zones: {},
+      },
+    }));
+
+    const result = await handlers.apply_document_edits({
+      site_id: 's1',
+      branch_id: 'b1',
+      document_path: '/blog-post',
+      edit_session_id: 'sess-1',
+      operations: [{ type: 'replace', path: '/content/0/props/title', content: 'New' }],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Structural validation failed');
+    expect(result.content[0].text).toContain('Hero');
   });
 });
 

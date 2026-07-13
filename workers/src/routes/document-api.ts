@@ -38,6 +38,7 @@ import {
 } from '../services';
 import { normalizePath } from '../services/document-types';
 import { assertPermission, AuthorizationError, getEffectiveRole } from '../auth/authorization';
+import { templateMetadata } from './template-api';
 import { validatePagination } from './validation';
 
 /**
@@ -317,8 +318,7 @@ async function handleCreateDocumentOnBranch(
   if (body.templateId !== undefined && body.templateId !== '') {
     const latestTemplateVersion = await getLatestDocumentVersion(body.templateId, branchId);
     if (latestTemplateVersion?.snapshot !== undefined) {
-      const templateSnapshot = latestTemplateVersion.snapshot;
-      if (templateSnapshot.deprecated === true) {
+      if (templateMetadata(latestTemplateVersion.snapshot).deprecated === true) {
         return errorResponse('Cannot create document from deprecated template', 400);
       }
     }

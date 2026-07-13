@@ -1,7 +1,9 @@
 /**
  * Template API Routes Tests
  *
- * Tests for PROPOSAL-010 template CRUD operations with admin-only access control.
+ * Tests for template CRUD operations with admin-only access control.
+ * Template snapshots are Puck content-shaped ({ content, root, zones });
+ * metadata lives at root.props._template and pin state at root.props._pinMap.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
@@ -18,6 +20,26 @@ let mainBranchId: string;
 let adminUserId: string;
 let editorUserId: string;
 let viewerUserId: string;
+
+/**
+ * Build a content-shaped template snapshot as the canvas save path writes it.
+ */
+function templateSnapshot(
+  content: { type: string; props: Record<string, unknown> }[],
+  metadata: Record<string, unknown>,
+  pinMap: Record<string, boolean> = {},
+): Record<string, unknown> {
+  return {
+    content,
+    root: {
+      props: {
+        _template: { deprecated: false, ...metadata },
+        _pinMap: pinMap,
+      },
+    },
+    zones: {},
+  };
+}
 
 beforeAll(async () => {
   sql = postgres(TEST_DATABASE_URL, { max: 1 });
@@ -213,9 +235,6 @@ describe('Template API - Access Control', () => {
         body: JSON.stringify({
           name: 'admin-created-template',
           label: 'Admin Created Template',
-          components: [
-            { type: 'Hero', pinned: false, defaultProps: { title: 'Welcome' } },
-          ],
         }),
       },
     );
@@ -236,7 +255,7 @@ describe('Template API - Access Control', () => {
     expect(response.status).toBe(201);
     const body = await response.json();
     expect(body.name).toBe('admin-created-template');
-    expect(body.label).toBe('Admin Created Template');
+    expect(body.root.props._template.label).toBe('Admin Created Template');
     expect(body.id).toBeDefined();
 
     // Verify in database
@@ -259,7 +278,6 @@ describe('Template API - Access Control', () => {
         body: JSON.stringify({
           name: 'editor-attempted-template',
           label: 'Editor Attempted Template',
-          components: [],
         }),
       },
     );
@@ -293,7 +311,6 @@ describe('Template API - Access Control', () => {
         body: JSON.stringify({
           name: 'viewer-attempted-template',
           label: 'Viewer Attempted Template',
-          components: [],
         }),
       },
     );
@@ -326,7 +343,6 @@ describe('Template API - Access Control', () => {
         body: JSON.stringify({
           name: 'template-to-update',
           label: 'Original Label',
-          components: [],
         }),
       },
     );
@@ -375,7 +391,7 @@ describe('Template API - Access Control', () => {
 
     expect(updateResponse.status).toBe(200);
     const updateBody = await updateResponse.json();
-    expect(updateBody.label).toBe('Updated Label');
+    expect(updateBody.root.props._template.label).toBe('Updated Label');
   });
 
   it('should deny editor from updating template', async () => {
@@ -387,7 +403,7 @@ describe('Template API - Access Control', () => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'editor-update-deny-test', label: 'Test', components: [] }),
+        body: JSON.stringify({ name: 'editor-update-deny-test', label: 'Test' }),
       },
     );
     const createRes = await handleTemplateRequest(createReq, {
@@ -400,7 +416,8 @@ describe('Template API - Access Control', () => {
         tokenExpiry: '2026-12-31T23:59:59.000Z',
       },
     });
-    const tplId = ((await createRes.json()) as { id: string }).id;
+    const createResBody = await createRes.json();
+    const tplId = createResBody.id as string;
 
     const updateRequest = new Request(
       `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates/${tplId}`,
@@ -442,7 +459,6 @@ describe('Template API - Access Control', () => {
         body: JSON.stringify({
           name: 'template-to-delete',
           label: 'Template to Delete',
-          components: [],
         }),
       },
     );
@@ -495,7 +511,7 @@ describe('Template API - Access Control', () => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'editor-delete-deny-test', label: 'Test', components: [] }),
+        body: JSON.stringify({ name: 'editor-delete-deny-test', label: 'Test' }),
       },
     );
     const createRes = await handleTemplateRequest(createReq, {
@@ -508,7 +524,8 @@ describe('Template API - Access Control', () => {
         tokenExpiry: '2026-12-31T23:59:59.000Z',
       },
     });
-    const tplId = ((await createRes.json()) as { id: string }).id;
+    const createResBody = await createRes.json();
+    const tplId = createResBody.id as string;
 
     const deleteRequest = new Request(
       `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates/${tplId}`,
@@ -531,117 +548,6 @@ describe('Template API - Access Control', () => {
 
     expect(deleteResponse.status).toBe(403);
   });
-
-  it('should allow admin to trigger migration', async () => {
-    const { handleTemplateRequest } = await import('../../src/routes/template-api');
-    const { createDocumentOnBranch } = await import('../../src/services');
-
-    // Create a template with version 1
-    const createReq = new Request(
-      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'migration-access-test',
-          label: 'Migration Access Test',
-          components: [
-            { type: 'Hero', required: true, pinned: true, defaultProps: {} },
-          ],
-        }),
-      },
-    );
-
-    const createRes = await handleTemplateRequest(createReq, {
-      siteId: testSiteId,
-      branchId: mainBranchId,
-      principal: {
-        id: adminUserId,
-        type: 'user',
-        dbUserId: adminUserId,
-        email: 'admin@example.com',
-        pantheonSiteRoles: { [testSiteId]: 'admin' },
-        tokenExpiry: '2026-12-31T23:59:59.000Z',
-      },
-    });
-    const tmpl = await createRes.json();
-    const tmplId = tmpl.id as string;
-
-    // Create a page referencing template at version 1
-    await createDocumentOnBranch({
-      siteId: testSiteId,
-      branchId: mainBranchId,
-      path: 'pages/migration-access-page',
-      snapshot: { content: [{ type: 'Hero', props: {} }] },
-      templateId: tmplId,
-      templateVersion: 1,
-      createdById: adminUserId,
-      createdByType: 'user',
-    });
-
-    // Update template to version 2 with puckActions
-    const updateReq = new Request(
-      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates/${tmplId}`,
-      {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          components: [
-            { type: 'Hero', required: true, pinned: true, defaultProps: {} },
-            { type: 'CTA', required: false, pinned: false, defaultProps: {} },
-          ],
-          puckActions: [
-            { type: 'insert', componentType: 'CTA', destinationIndex: 1 },
-          ],
-        }),
-      },
-    );
-
-    await handleTemplateRequest(updateReq, {
-      siteId: testSiteId,
-      branchId: mainBranchId,
-      templateId: tmplId,
-      principal: {
-        id: adminUserId,
-        type: 'user',
-        dbUserId: adminUserId,
-        email: 'admin@example.com',
-        pantheonSiteRoles: { [testSiteId]: 'admin' },
-        tokenExpiry: '2026-12-31T23:59:59.000Z',
-      },
-    });
-
-    // Trigger migration
-    const migrateReq = new Request(
-      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates/${tmplId}/migrate`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fromVersion: 1, toVersion: 2 }),
-      },
-    );
-
-    const response = await handleTemplateRequest(migrateReq, {
-      siteId: testSiteId,
-      branchId: mainBranchId,
-      templateId: tmplId,
-      action: 'migrate',
-      principal: {
-        id: adminUserId,
-        type: 'user',
-        dbUserId: adminUserId,
-        email: 'admin@example.com',
-        pantheonSiteRoles: { [testSiteId]: 'admin' },
-        tokenExpiry: '2026-12-31T23:59:59.000Z',
-      },
-    });
-
-    expect(response.status).toBe(200);
-    const body = await response.json();
-    expect(body.job).toBeDefined();
-    expect(body.job.totalDocuments).toBe(1);
-    expect(body.processedDocuments).toBe(1);
-  });
 });
 
 describe('Template API - CRUD Operations', () => {
@@ -657,13 +563,11 @@ describe('Template API - CRUD Operations', () => {
     templateDocId = doc[0].id;
 
     // Create initial version
-    const templateSnapshot = {
-      name: 'test-template',
-      label: 'Test Template',
-      components: [
-        { type: 'Hero', pinned: true, defaultProps: { title: 'Hello' } },
-      ],
-    };
+    const storedSnapshot = templateSnapshot(
+      [{ type: 'Hero', props: { id: 'hero-1', title: 'Hello' } }],
+      { label: 'Test Template' },
+      { 'hero-1': true },
+    );
 
     await sql`
       INSERT INTO app.document_versions (
@@ -672,7 +576,7 @@ describe('Template API - CRUD Operations', () => {
       )
       VALUES (
         ${templateDocId}, ${mainBranchId}, 1,
-        ${sql.json(templateSnapshot)},
+        ${sql.json(storedSnapshot as never)},
         'edit', ${adminUserId}, 'user'
       )
     `;
@@ -716,7 +620,7 @@ describe('Template API - CRUD Operations', () => {
     }
   });
 
-  it('should list templates on a branch', async () => {
+  it('should list templates as metadata summaries without component data', async () => {
     const { handleTemplateRequest } = await import('../../src/routes/template-api');
 
     const request = new Request(
@@ -745,13 +649,17 @@ describe('Template API - CRUD Operations', () => {
 
     const template = body.templates.find((t: { name: string }) => t.name === 'test-template');
     expect(template).toBeDefined();
+    expect(template.id).toBe(templateDocId);
     expect(template.label).toBe('Test Template');
+    expect(template.deprecated).toBe(false);
     expect(template.version).toBe(1);
     expect(template.updatedAt).toBeDefined();
     expect(typeof template.updatedAt).toBe('string');
+    expect(template.content).toBeUndefined();
+    expect(template.root).toBeUndefined();
   });
 
-  it('should get template detail by ID', async () => {
+  it('should get template detail as the stored snapshot', async () => {
     const { handleTemplateRequest } = await import('../../src/routes/template-api');
 
     const request = new Request(
@@ -777,15 +685,21 @@ describe('Template API - CRUD Operations', () => {
     const body = await response.json();
     expect(body.id).toBe(templateDocId);
     expect(body.name).toBe('test-template');
-    expect(body.label).toBe('Test Template');
-    expect(body.components).toBeDefined();
-    expect(Array.isArray(body.components)).toBe(true);
     expect(body.version).toBe(1);
     expect(body.updatedAt).toBeDefined();
     expect(typeof body.updatedAt).toBe('string');
+    expect(body.content).toEqual([
+      { type: 'Hero', props: { id: 'hero-1', title: 'Hello' } },
+    ]);
+    expect(body.root.props._template).toEqual({
+      label: 'Test Template',
+      deprecated: false,
+    });
+    expect(body.root.props._pinMap).toEqual({ 'hero-1': true });
+    expect(body.zones).toEqual({});
   });
 
-  it('should create new template with valid structure', async () => {
+  it('should create new template seeded with an empty content snapshot', async () => {
     const { handleTemplateRequest } = await import('../../src/routes/template-api');
 
     const request = new Request(
@@ -798,10 +712,6 @@ describe('Template API - CRUD Operations', () => {
           label: 'New Valid Template',
           description: 'A test template',
           defaultUrlPattern: '/pages/:slug',
-          components: [
-            { type: 'Header', pinned: true, defaultProps: { logo: 'logo.png' } },
-            { type: 'Content', pinned: false, defaultProps: {} },
-          ],
         }),
       },
     );
@@ -823,10 +733,15 @@ describe('Template API - CRUD Operations', () => {
     const body = await response.json();
     expect(body.id).toBeDefined();
     expect(body.name).toBe('new-valid-template');
-    expect(body.label).toBe('New Valid Template');
-    expect(body.description).toBe('A test template');
-    expect(body.defaultUrlPattern).toBe('/pages/:slug');
-    expect(body.components.length).toBe(2);
+    expect(body.content).toEqual([]);
+    expect(body.root.props._template).toEqual({
+      label: 'New Valid Template',
+      description: 'A test template',
+      defaultUrlPattern: '/pages/:slug',
+      deprecated: false,
+    });
+    expect(body.root.props._pinMap).toEqual({});
+    expect(body.zones).toEqual({});
 
     // Verify in database
     const docs = await sql<{ id: string; path: string }[]>`
@@ -840,13 +755,24 @@ describe('Template API - CRUD Operations', () => {
       WHERE document_id = ${docs[0].id} AND branch_id = ${mainBranchId}
     `;
     expect(versions.length).toBe(1);
-    expect(versions[0].snapshot).toMatchObject({
-      name: 'new-valid-template',
-      label: 'New Valid Template',
+    expect(versions[0].snapshot).toEqual({
+      content: [],
+      root: {
+        props: {
+          _template: {
+            label: 'New Valid Template',
+            description: 'A test template',
+            defaultUrlPattern: '/pages/:slug',
+            deprecated: false,
+          },
+          _pinMap: {},
+        },
+      },
+      zones: {},
     });
   });
 
-  it('should update existing template', async () => {
+  it('should update template metadata without touching layout', async () => {
     const { handleTemplateRequest } = await import('../../src/routes/template-api');
 
     const updateRequest = new Request(
@@ -856,10 +782,7 @@ describe('Template API - CRUD Operations', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           label: 'Updated Test Template',
-          components: [
-            { type: 'Hero', pinned: true, defaultProps: { title: 'Updated Title' } },
-            { type: 'Footer', pinned: false, defaultProps: {} },
-          ],
+          description: 'Updated description',
         }),
       },
     );
@@ -880,20 +803,38 @@ describe('Template API - CRUD Operations', () => {
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.label).toBe('Updated Test Template');
-    expect(body.components.length).toBe(2);
+    expect(body.name).toBe('test-template');
+    expect(body.root.props._template.label).toBe('Updated Test Template');
+    expect(body.root.props._template.description).toBe('Updated description');
+    expect(body.content).toEqual([
+      { type: 'Hero', props: { id: 'hero-1', title: 'Hello' } },
+    ]);
 
-    // Verify new version created in database
-    const versions = await sql<{ version_number: number; snapshot: unknown }[]>`
+    // Verify new version created in database with layout intact
+    const versions = await sql<{ version_number: number; snapshot: Record<string, unknown> }[]>`
       SELECT version_number, snapshot FROM app.document_versions
       WHERE document_id = ${templateDocId} AND branch_id = ${mainBranchId}
       ORDER BY version_number DESC
     `;
     expect(versions.length).toBe(2);
     expect(versions[0].version_number).toBe(2);
+    expect(versions[0].snapshot).toEqual({
+      content: [{ type: 'Hero', props: { id: 'hero-1', title: 'Hello' } }],
+      root: {
+        props: {
+          _template: {
+            label: 'Updated Test Template',
+            description: 'Updated description',
+            deprecated: false,
+          },
+          _pinMap: { 'hero-1': true },
+        },
+      },
+      zones: {},
+    });
   });
 
-  it('should forward puckActions to document version when updating template', async () => {
+  it('should ignore layout fields sent to a metadata update', async () => {
     const { handleTemplateRequest } = await import('../../src/routes/template-api');
 
     const updateRequest = new Request(
@@ -902,13 +843,11 @@ describe('Template API - CRUD Operations', () => {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          components: [
-            { type: 'Hero', pinned: true, defaultProps: { title: 'Hello' } },
-            { type: 'CTABlock', pinned: false, defaultProps: { label: 'Learn more' } },
-          ],
-          puckActions: [
-            { type: 'insert', componentType: 'CTABlock', destinationIndex: 1, zone: 'content' },
-          ],
+          label: 'Metadata Only',
+          content: [{ type: 'Rogue', props: { id: 'rogue-1' } }],
+          zones: { rogue: [] },
+          components: [{ type: 'Rogue', pinned: true, defaultProps: {} }],
+          puckActions: [{ type: 'insert', componentType: 'Rogue', destinationIndex: 0 }],
         }),
       },
     );
@@ -929,20 +868,79 @@ describe('Template API - CRUD Operations', () => {
 
     expect(response.status).toBe(200);
 
-    const latestVersion = await sql<{ action_type: string | null; action_metadata: Record<string, unknown> | null }[]>`
-      SELECT action_type, action_metadata FROM app.document_versions
+    const versions = await sql<{ snapshot: Record<string, unknown> }[]>`
+      SELECT snapshot FROM app.document_versions
       WHERE document_id = ${templateDocId} AND branch_id = ${mainBranchId}
       ORDER BY version_number DESC
       LIMIT 1
     `;
-    expect(latestVersion[0].action_type).toBe('structural');
-    expect(latestVersion[0].action_metadata).toBeDefined();
-    const rawMetadata = latestVersion[0].action_metadata;
-    const metadata = (typeof rawMetadata === 'string' ? JSON.parse(rawMetadata) : rawMetadata) as { puckActions?: unknown[] };
-    expect(metadata.puckActions).toBeDefined();
-    expect(Array.isArray(metadata.puckActions)).toBe(true);
-    expect(metadata.puckActions?.length).toBe(1);
-    expect((metadata.puckActions?.[0] as { type: string } | undefined)?.type).toBe('insert');
+    expect(versions[0].snapshot).toEqual({
+      content: [{ type: 'Hero', props: { id: 'hero-1', title: 'Hello' } }],
+      root: {
+        props: {
+          _template: { label: 'Metadata Only', deprecated: false },
+          _pinMap: { 'hero-1': true },
+        },
+      },
+      zones: {},
+    });
+  });
+
+  it('should block document creation from a deprecated template', async () => {
+    const { handleTemplateRequest } = await import('../../src/routes/template-api');
+    const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+
+    const adminPrincipal = {
+      id: adminUserId,
+      type: 'user' as const,
+      dbUserId: adminUserId,
+      email: 'admin@example.com',
+      pantheonSiteRoles: { [testSiteId]: 'admin' },
+      tokenExpiry: '2026-12-31T23:59:59.000Z',
+    };
+
+    const deprecateRequest = new Request(
+      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates/${templateDocId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deprecated: true }),
+      },
+    );
+
+    const deprecateResponse = await handleTemplateRequest(deprecateRequest, {
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      templateId: templateDocId,
+      principal: adminPrincipal,
+    });
+
+    expect(deprecateResponse.status).toBe(200);
+    const deprecateBody = await deprecateResponse.json();
+    expect(deprecateBody.root.props._template.deprecated).toBe(true);
+
+    const createDocRequest = new Request(
+      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/documents`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: 'pages/from-deprecated-template',
+          templateId: templateDocId,
+          snapshot: { content: [] },
+        }),
+      },
+    );
+
+    const createDocResponse = await handleDocumentRoutes(createDocRequest, {
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      principal: adminPrincipal,
+    });
+
+    expect(createDocResponse.status).toBe(400);
+    const createDocBody = await createDocResponse.json();
+    expect(createDocBody.error).toContain('deprecated');
   });
 
   it('should delete template', async () => {
@@ -957,7 +955,6 @@ describe('Template API - CRUD Operations', () => {
         body: JSON.stringify({
           name: 'template-to-be-deleted',
           label: 'Template to be deleted',
-          components: [],
         }),
       },
     );
@@ -1022,7 +1019,6 @@ describe('Template API - CRUD Operations', () => {
         body: JSON.stringify({
           name: 'referenced-template',
           label: 'Referenced Template',
-          components: [],
         }),
       },
     );
@@ -1100,7 +1096,6 @@ describe('Template API - CRUD Operations', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           label: 'Missing Name Template',
-          components: [],
         }),
       },
     );
@@ -1130,7 +1125,6 @@ describe('Template API - CRUD Operations', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: 'missing-label',
-          components: [],
         }),
       },
     );
@@ -1151,40 +1145,6 @@ describe('Template API - CRUD Operations', () => {
     expect(responseNoLabel.status).toBe(400);
     const bodyNoLabel = await responseNoLabel.json();
     expect(bodyNoLabel.error).toContain('label');
-
-    // Invalid components (not an array)
-    const requestInvalidComponents = new Request(
-      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'invalid-components',
-          label: 'Invalid Components',
-          components: 'not-an-array',
-        }),
-      },
-    );
-
-    const responseInvalidComponents = await handleTemplateRequest(
-      requestInvalidComponents,
-      {
-        siteId: testSiteId,
-        branchId: mainBranchId,
-        principal: {
-          id: adminUserId,
-          type: 'user',
-          dbUserId: adminUserId,
-          email: 'admin@example.com',
-          pantheonSiteRoles: { [testSiteId]: 'admin' },
-          tokenExpiry: '2026-12-31T23:59:59.000Z',
-        },
-      },
-    );
-
-    expect(responseInvalidComponents.status).toBe(400);
-    const bodyInvalidComponents = await responseInvalidComponents.json();
-    expect(bodyInvalidComponents.error).toContain('array');
   });
 
   it('should prevent duplicate template names', async () => {
@@ -1199,7 +1159,6 @@ describe('Template API - CRUD Operations', () => {
         body: JSON.stringify({
           name: 'test-template', // Already exists from beforeEach
           label: 'Duplicate Template',
-          components: [],
         }),
       },
     );
@@ -1227,7 +1186,7 @@ describe('Template API - Migration Operations', () => {
 
   beforeAll(async () => {
     const { handleTemplateRequest } = await import('../../src/routes/template-api');
-    const { createDocumentOnBranch } = await import('../../src/services');
+    const { createDocumentOnBranch, createDocumentVersion } = await import('../../src/services');
 
     const adminPrincipal = {
       id: adminUserId,
@@ -1238,7 +1197,7 @@ describe('Template API - Migration Operations', () => {
       tokenExpiry: '2026-12-31T23:59:59.000Z',
     };
 
-    // Create template v1
+    // Create template (v1: empty content seed)
     const createRes = await handleTemplateRequest(
       new Request(
         `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates`,
@@ -1248,9 +1207,6 @@ describe('Template API - Migration Operations', () => {
           body: JSON.stringify({
             name: 'migration-ops-template',
             label: 'Migration Ops Template',
-            components: [
-              { type: 'Hero', required: true, pinned: true, defaultProps: {} },
-            ],
           }),
         },
       ),
@@ -1259,44 +1215,52 @@ describe('Template API - Migration Operations', () => {
     const tmpl = await createRes.json();
     migrationTemplateId = tmpl.id as string;
 
-    // Create page referencing template v1
+    // Canvas save writes the layout (v2)
+    await createDocumentVersion({
+      documentId: migrationTemplateId,
+      branchId: mainBranchId,
+      snapshot: templateSnapshot(
+        [{ type: 'Hero', props: { id: 'hero-1' } }],
+        { label: 'Migration Ops Template' },
+        { 'hero-1': true },
+      ),
+      source: 'edit',
+      createdById: adminUserId,
+      createdByType: 'user',
+    });
+
+    // Create page referencing template v2
     const pageResult = await createDocumentOnBranch({
       siteId: testSiteId,
       branchId: mainBranchId,
       path: 'pages/migration-ops-page',
-      snapshot: { content: [{ type: 'Hero', props: {} }] },
+      snapshot: { content: [{ type: 'Hero', props: { id: 'hero-1' } }] },
       templateId: migrationTemplateId,
-      templateVersion: 1,
+      templateVersion: 2,
       createdById: adminUserId,
       createdByType: 'user',
     });
     migrationPageId = pageResult.document.id;
 
-    // Update template to v2
-    await handleTemplateRequest(
-      new Request(
-        `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates/${migrationTemplateId}`,
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            components: [
-              { type: 'Hero', required: true, pinned: true, defaultProps: {} },
-              { type: 'CTA', required: false, pinned: false, defaultProps: {} },
-            ],
-            puckActions: [
-              { type: 'insert', componentType: 'CTA', destinationIndex: 1 },
-            ],
-          }),
-        },
+    // Canvas save adds CTA with structural intent (v3)
+    await createDocumentVersion({
+      documentId: migrationTemplateId,
+      branchId: mainBranchId,
+      snapshot: templateSnapshot(
+        [
+          { type: 'Hero', props: { id: 'hero-1' } },
+          { type: 'CTA', props: { id: 'cta-1', label: 'Learn more' } },
+        ],
+        { label: 'Migration Ops Template' },
+        { 'hero-1': true },
       ),
-      {
-        siteId: testSiteId,
-        branchId: mainBranchId,
-        templateId: migrationTemplateId,
-        principal: adminPrincipal,
-      },
-    );
+      source: 'edit',
+      createdById: adminUserId,
+      createdByType: 'user',
+      puckActions: [
+        { type: 'insert', componentType: 'CTA', destinationIndex: 1 },
+      ],
+    });
   });
 
   it('should trigger template migration and process documents', async () => {
@@ -1307,7 +1271,7 @@ describe('Template API - Migration Operations', () => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fromVersion: 1, toVersion: 2 }),
+        body: JSON.stringify({ fromVersion: 2, toVersion: 3 }),
       },
     );
 
@@ -1337,7 +1301,7 @@ describe('Template API - Migration Operations', () => {
     const doc = await sql<{ template_version: number }[]>`
       SELECT template_version FROM app.documents WHERE id = ${migrationPageId}
     `;
-    expect(doc[0].template_version).toBe(2);
+    expect(doc[0].template_version).toBe(3);
   });
 
   it('should rollback a completed migration', async () => {
@@ -1384,7 +1348,7 @@ describe('Template API - Migration Operations', () => {
     const doc = await sql<{ template_version: number }[]>`
       SELECT template_version FROM app.documents WHERE id = ${migrationPageId}
     `;
-    expect(doc[0].template_version).toBe(1);
+    expect(doc[0].template_version).toBe(2);
   });
 
   it('should return migration status for template', async () => {
@@ -1413,7 +1377,7 @@ describe('Template API - Migration Operations', () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.templateId).toBe(migrationTemplateId);
-    expect(body.currentVersion).toBeGreaterThanOrEqual(2);
+    expect(body.currentVersion).toBeGreaterThanOrEqual(3);
     expect(typeof body.staleDocumentCount).toBe('number');
     expect(typeof body.migrationAvailable).toBe('boolean');
   });
@@ -1426,7 +1390,7 @@ describe('Template API - Migration Operations', () => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fromVersion: 1, toVersion: 2 }),
+        body: JSON.stringify({ fromVersion: 2, toVersion: 3 }),
       },
     );
 
@@ -1448,8 +1412,8 @@ describe('Template API - Migration Operations', () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.templateId).toBe(migrationTemplateId);
-    expect(body.fromVersion).toBe(1);
-    expect(body.toVersion).toBe(2);
+    expect(body.fromVersion).toBe(2);
+    expect(body.toVersion).toBe(3);
     expect(typeof body.affectedDocuments).toBe('number');
     expect(typeof body.estimatedConflicts).toBe('number');
     expect(typeof body.cleanDocuments).toBe('number');
@@ -1506,7 +1470,6 @@ describe('Template API - Authorization Edge Cases', () => {
           body: JSON.stringify({
             name: 'editor-branch-grant-template',
             label: 'Editor Branch Grant Template',
-            components: [],
           }),
         },
       );
@@ -1534,45 +1497,6 @@ describe('Template API - Authorization Edge Cases', () => {
     }
   });
 
-  it.skip('should restrict agent acting as user to minimum permission intersection', async () => {
-    const { handleTemplateRequest } = await import('../../src/routes/template-api');
-
-    // Create agent principal with ADMIN role
-    // Set actingUserEmail to VIEWER user's email
-    // Expected behavior: min(ADMIN, VIEWER) = VIEWER, so create should fail
-    const request = new Request(
-      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'agent-acting-template',
-          label: 'Agent Acting Template',
-          components: [],
-        }),
-      },
-    );
-
-    const response = await handleTemplateRequest(request, {
-      siteId: testSiteId,
-      branchId: mainBranchId,
-      principal: {
-        id: 'agent-123',
-        type: 'agent',
-        dbUserId: 'agent-123',
-        email: 'agent@example.com',
-        pantheonSiteRoles: { [testSiteId]: 'admin' }, // Agent has ADMIN
-        actingUserEmail: 'viewer@example.com', // Acting as VIEWER user
-        tokenExpiry: '2026-12-31T23:59:59.000Z',
-      },
-    });
-
-    // Should fail with 403 because effective permission is min(ADMIN, VIEWER) = VIEWER
-    expect(response.status).toBe(403);
-    const body = await response.json();
-    expect(body.error).toContain('ADMIN');
-  });
-
   it('should allow service principal bound to site to create template', async () => {
     const { handleTemplateRequest } = await import('../../src/routes/template-api');
 
@@ -1586,7 +1510,6 @@ describe('Template API - Authorization Edge Cases', () => {
         body: JSON.stringify({
           name: 'service-principal-template',
           label: 'Service Principal Template',
-          components: [],
         }),
       },
     );
@@ -1607,54 +1530,610 @@ describe('Template API - Authorization Edge Cases', () => {
     const body = await response.json();
     expect(body.name).toBe('service-principal-template');
   });
+});
 
-  it.skip('should reject template creation on archived branch', async () => {
-    const { handleTemplateRequest } = await import('../../src/routes/template-api');
+describe('Template API - Legacy manifest snapshots', () => {
+  const createdDocIds: string[] = [];
 
-    // Create an archived branch
-    const archivedBranch = await sql<{ id: string }[]>`
-      INSERT INTO app.branches (site_id, name, status, is_main, created_by_id, created_by_type)
-      VALUES (${testSiteId}, 'archived-branch', 'archived', false, ${adminUserId}, 'user')
+  interface TestPrincipal {
+    id: string;
+    type: 'user';
+    dbUserId: string;
+    email: string;
+    pantheonSiteRoles: Record<string, string>;
+    tokenExpiry: string;
+  }
+
+  function adminPrincipal(): TestPrincipal {
+    return {
+      id: adminUserId,
+      type: 'user',
+      dbUserId: adminUserId,
+      email: 'admin@example.com',
+      pantheonSiteRoles: { [testSiteId]: 'admin' },
+      tokenExpiry: '2026-12-31T23:59:59.000Z',
+    };
+  }
+
+  async function seedTemplateDocument(
+    name: string,
+    snapshot: Record<string, unknown>,
+  ): Promise<string> {
+    const doc = await sql<{ id: string }[]>`
+      INSERT INTO app.documents (site_id, path)
+      VALUES (${testSiteId}, ${'_registry/templates/' + name})
       RETURNING id
     `;
-    const archivedBranchId = archivedBranch[0].id;
+    const docId = doc[0].id;
+    createdDocIds.push(docId);
 
-    try {
-      const request = new Request(
-        `https://api.example.com/api/sites/${testSiteId}/branches/${archivedBranchId}/templates`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: 'archived-branch-template',
-            label: 'Archived Branch Template',
-            components: [],
-          }),
-        },
-      );
+    await sql`
+      INSERT INTO app.document_versions (
+        document_id, branch_id, version_number, snapshot,
+        source, created_by_id, created_by_type
+      )
+      VALUES (
+        ${docId}, ${mainBranchId}, 1,
+        ${sql.json(snapshot as never)},
+        'edit', ${adminUserId}, 'user'
+      )
+    `;
+    return docId;
+  }
 
-      const response = await handleTemplateRequest(request, {
-        siteId: testSiteId,
-        branchId: archivedBranchId,
-        principal: {
-          id: adminUserId,
-          type: 'user',
-          dbUserId: adminUserId,
-          email: 'admin@example.com',
-          pantheonSiteRoles: { [testSiteId]: 'admin' },
-          tokenExpiry: '2026-12-31T23:59:59.000Z',
-        },
-      });
-
-      // Should fail - archived branches should not allow template creation
-      expect(response.status).toBeGreaterThanOrEqual(400);
-      const body = await response.json();
-      expect(body.error).toBeDefined();
-    } finally {
-      // Clean up archived branch and any data created on it
-      await sql`DELETE FROM app.document_versions WHERE branch_id = ${archivedBranchId}`;
-      await sql`DELETE FROM app.documents WHERE site_id = ${testSiteId} AND path = '_registry/templates/archived-branch-template'`;
-      await sql`DELETE FROM app.branches WHERE id = ${archivedBranchId}`;
+  afterEach(async () => {
+    for (const docId of createdDocIds.splice(0)) {
+      await sql`DELETE FROM app.document_versions WHERE document_id = ${docId}`;
+      await sql`DELETE FROM app.documents WHERE id = ${docId}`;
     }
+  });
+
+  it('converts a manifest-shaped snapshot to the content shape on metadata PATCH', async () => {
+    const { handleTemplateRequest } = await import('../../src/routes/template-api');
+    const { backfillTemplateContentShape } = await import('../../src/services/template-content-backfill');
+
+    const docId = await seedTemplateDocument('legacy-manifest-patch', {
+      name: 'legacy-manifest-patch',
+      label: 'Legacy Blog',
+      description: 'Legacy blog layout',
+      components: [
+        { type: 'HeroBlock', pinned: true, defaultProps: { title: 'Hero' } },
+      ],
+    });
+
+    const patchRequest = new Request(
+      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates/${docId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deprecated: true }),
+      },
+    );
+
+    const response = await handleTemplateRequest(patchRequest, {
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      templateId: docId,
+      principal: adminPrincipal(),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.content).toHaveLength(1);
+    expect(body.content[0].type).toBe('HeroBlock');
+    expect(body.content[0].props.title).toBe('Hero');
+    expect(body.root.props._template).toEqual({
+      label: 'Legacy Blog',
+      description: 'Legacy blog layout',
+      deprecated: true,
+    });
+    const heroId = body.content[0].props.id as string;
+    expect(body.root.props._pinMap).toEqual({ [heroId]: true });
+
+    // The conversion is a representation change: written as non-structural
+    const versions = await sql<{ version_number: number; action_type: string | null }[]>`
+      SELECT version_number, action_type FROM app.document_versions
+      WHERE document_id = ${docId} AND branch_id = ${mainBranchId}
+      ORDER BY version_number DESC
+    `;
+    expect(versions[0].version_number).toBe(2);
+    expect(versions[0].action_type).toBeNull();
+
+    // The backfill then skips the already-converted snapshot
+    const backfill = await backfillTemplateContentShape();
+    expect(backfill.converted.some((e) => e.documentId === docId)).toBe(false);
+    expect(backfill.skipped.some((e) => e.documentId === docId)).toBe(true);
+  });
+
+  it('lists a legacy manifest row with its top-level metadata', async () => {
+    const { handleTemplateRequest } = await import('../../src/routes/template-api');
+
+    await seedTemplateDocument('legacy-manifest-list', {
+      name: 'legacy-manifest-list',
+      label: 'Legacy List Template',
+      deprecated: true,
+      components: [],
+    });
+
+    const request = new Request(
+      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates`,
+      { method: 'GET' },
+    );
+
+    const response = await handleTemplateRequest(request, {
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      principal: adminPrincipal(),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const entry = body.templates.find(
+      (t: { name: string }) => t.name === 'legacy-manifest-list',
+    );
+    expect(entry).toBeDefined();
+    expect(entry.label).toBe('Legacy List Template');
+    expect(entry.deprecated).toBe(true);
+  });
+
+  it('blocks page creation from a legacy deprecated manifest template', async () => {
+    const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+
+    const docId = await seedTemplateDocument('legacy-manifest-deprecated', {
+      name: 'legacy-manifest-deprecated',
+      label: 'Legacy Deprecated Template',
+      deprecated: true,
+      components: [],
+    });
+
+    const createDocRequest = new Request(
+      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/documents`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: 'pages/from-legacy-deprecated-template',
+          templateId: docId,
+          snapshot: { content: [] },
+        }),
+      },
+    );
+
+    const response = await handleDocumentRoutes(createDocRequest, {
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      principal: adminPrincipal(),
+    });
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toContain('deprecated');
+  });
+
+  it('preserves unknown _template keys across an unrelated PATCH', async () => {
+    const { handleTemplateRequest } = await import('../../src/routes/template-api');
+
+    const docId = await seedTemplateDocument('extra-metadata-key', {
+      content: [],
+      root: {
+        props: {
+          _template: { label: 'Extra Key Template', deprecated: false, icon: 'star' },
+          _pinMap: {},
+        },
+      },
+      zones: {},
+    });
+
+    const patchRequest = new Request(
+      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates/${docId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: 'Now with a description' }),
+      },
+    );
+
+    const response = await handleTemplateRequest(patchRequest, {
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      templateId: docId,
+      principal: adminPrincipal(),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.root.props._template).toEqual({
+      label: 'Extra Key Template',
+      deprecated: false,
+      icon: 'star',
+      description: 'Now with a description',
+    });
+  });
+});
+
+describe('Template API - Legacy client compatibility window', () => {
+  const createdDocIds: string[] = [];
+
+  interface TestPrincipal {
+    id: string;
+    type: 'user';
+    dbUserId: string;
+    email: string;
+    pantheonSiteRoles: Record<string, string>;
+    tokenExpiry: string;
+  }
+
+  function adminPrincipal(): TestPrincipal {
+    return {
+      id: adminUserId,
+      type: 'user',
+      dbUserId: adminUserId,
+      email: 'admin@example.com',
+      pantheonSiteRoles: { [testSiteId]: 'admin' },
+      tokenExpiry: '2026-12-31T23:59:59.000Z',
+    };
+  }
+
+  async function seedTemplateDocument(
+    name: string,
+    snapshot: Record<string, unknown>,
+  ): Promise<string> {
+    const doc = await sql<{ id: string }[]>`
+      INSERT INTO app.documents (site_id, path)
+      VALUES (${testSiteId}, ${'_registry/templates/' + name})
+      RETURNING id
+    `;
+    const docId = doc[0].id;
+    createdDocIds.push(docId);
+
+    await sql`
+      INSERT INTO app.document_versions (
+        document_id, branch_id, version_number, snapshot,
+        source, created_by_id, created_by_type
+      )
+      VALUES (
+        ${docId}, ${mainBranchId}, 1,
+        ${sql.json(snapshot as never)},
+        'edit', ${adminUserId}, 'user'
+      )
+    `;
+    return docId;
+  }
+
+  afterEach(async () => {
+    for (const docId of createdDocIds.splice(0)) {
+      await sql`DELETE FROM app.document_versions WHERE document_id = ${docId}`;
+      await sql`DELETE FROM app.documents WHERE id = ${docId}`;
+    }
+  });
+
+  it('persists a content-shaped snapshot from a legacy manifest create body and returns both shapes', async () => {
+    const { handleTemplateRequest } = await import('../../src/routes/template-api');
+
+    const request = new Request(
+      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'manifest-create',
+          label: 'Manifest Create',
+          description: 'From a legacy client',
+          components: [
+            { type: 'Hero', pinned: true, defaultProps: { title: 'Hello' } },
+            { type: 'CTA', pinned: false, defaultProps: { label: 'Go' } },
+          ],
+        }),
+      },
+    );
+
+    const response = await handleTemplateRequest(request, {
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      principal: adminPrincipal(),
+    });
+
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    const docId = body.id as string;
+    createdDocIds.push(docId);
+
+    // Response carries the canonical content shape with generated ids
+    expect(body.content).toHaveLength(2);
+    expect(body.content[0].type).toBe('Hero');
+    expect(body.content[0].props.title).toBe('Hello');
+    expect(typeof body.content[0].props.id).toBe('string');
+    const heroId = body.content[0].props.id as string;
+    const ctaId = body.content[1].props.id as string;
+    expect(body.root.props._template).toEqual({
+      label: 'Manifest Create',
+      description: 'From a legacy client',
+      deprecated: false,
+    });
+    expect(body.root.props._pinMap).toEqual({ [heroId]: true });
+
+    // Response also carries the legacy manifest projection
+    expect(body.label).toBe('Manifest Create');
+    expect(body.deprecated).toBe(false);
+    expect(body.components).toEqual([
+      { type: 'Hero', pinned: true, defaultProps: { title: 'Hello' } },
+      { type: 'CTA', pinned: false, defaultProps: { label: 'Go' } },
+    ]);
+
+    // Storage is single-shape canonical: no manifest fields persisted
+    const versions = await sql<{ snapshot: Record<string, unknown> }[]>`
+      SELECT snapshot FROM app.document_versions
+      WHERE document_id = ${docId} AND branch_id = ${mainBranchId}
+    `;
+    expect(versions).toHaveLength(1);
+    expect(versions[0].snapshot).toEqual({
+      content: [
+        { type: 'Hero', props: { title: 'Hello', id: heroId } },
+        { type: 'CTA', props: { label: 'Go', id: ctaId } },
+      ],
+      root: {
+        props: {
+          _template: {
+            label: 'Manifest Create',
+            description: 'From a legacy client',
+            deprecated: false,
+          },
+          _pinMap: { [heroId]: true },
+        },
+      },
+      zones: {},
+    });
+  });
+
+  it('returns canonical content plus legacy fields for a manifest-shaped stored snapshot', async () => {
+    const { handleTemplateRequest } = await import('../../src/routes/template-api');
+
+    const docId = await seedTemplateDocument('manifest-get', {
+      name: 'manifest-get',
+      label: 'Manifest Get',
+      description: 'Legacy layout',
+      components: [
+        { type: 'Hero', pinned: true, defaultProps: { title: 'Hi' } },
+      ],
+    });
+
+    const request = new Request(
+      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates/${docId}`,
+      { method: 'GET' },
+    );
+
+    const response = await handleTemplateRequest(request, {
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      templateId: docId,
+      principal: adminPrincipal(),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+
+    // Canonical content shape derived in memory
+    expect(body.content).toHaveLength(1);
+    expect(body.content[0].type).toBe('Hero');
+    expect(body.content[0].props.title).toBe('Hi');
+    const heroId = body.content[0].props.id as string;
+    expect(typeof heroId).toBe('string');
+    expect(body.root.props._template).toEqual({
+      label: 'Manifest Get',
+      description: 'Legacy layout',
+      deprecated: false,
+    });
+    expect(body.root.props._pinMap).toEqual({ [heroId]: true });
+
+    // Legacy fields present alongside the content shape
+    expect(body.label).toBe('Manifest Get');
+    expect(body.components).toEqual([
+      { type: 'Hero', pinned: true, defaultProps: { title: 'Hi' } },
+    ]);
+
+    // Read path persists nothing
+    const versions = await sql<{ version_number: number }[]>`
+      SELECT version_number FROM app.document_versions
+      WHERE document_id = ${docId} AND branch_id = ${mainBranchId}
+    `;
+    expect(versions).toHaveLength(1);
+    expect(versions[0].version_number).toBe(1);
+  });
+
+  it('derives legacy components from a content-shaped stored snapshot in content order', async () => {
+    const { handleTemplateRequest } = await import('../../src/routes/template-api');
+
+    const docId = await seedTemplateDocument('content-get', {
+      content: [
+        { type: 'Hero', props: { id: 'hero-1', title: 'Hello' } },
+        { type: 'CTA', props: { id: 'cta-1', label: 'Go' } },
+      ],
+      root: {
+        props: {
+          _template: { label: 'Content Get', deprecated: false },
+          _pinMap: { 'hero-1': true },
+        },
+      },
+      zones: {},
+    });
+
+    const request = new Request(
+      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates/${docId}`,
+      { method: 'GET' },
+    );
+
+    const response = await handleTemplateRequest(request, {
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      templateId: docId,
+      principal: adminPrincipal(),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+
+    expect(body.content).toEqual([
+      { type: 'Hero', props: { id: 'hero-1', title: 'Hello' } },
+      { type: 'CTA', props: { id: 'cta-1', label: 'Go' } },
+    ]);
+
+    // pinned strictly from _pinMap === true, defaultProps = props minus id
+    expect(body.components).toEqual([
+      { type: 'Hero', pinned: true, defaultProps: { title: 'Hello' } },
+      { type: 'CTA', pinned: false, defaultProps: { label: 'Go' } },
+    ]);
+  });
+
+  it('adds a components projection to list entries and keeps the templates wrapper', async () => {
+    const { handleTemplateRequest } = await import('../../src/routes/template-api');
+
+    const docId = await seedTemplateDocument('content-list', {
+      content: [{ type: 'Hero', props: { id: 'hero-1', title: 'Hello' } }],
+      root: {
+        props: {
+          _template: { label: 'Content List', deprecated: false },
+          _pinMap: { 'hero-1': true },
+        },
+      },
+      zones: {},
+    });
+
+    const request = new Request(
+      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates`,
+      { method: 'GET' },
+    );
+
+    const response = await handleTemplateRequest(request, {
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      principal: adminPrincipal(),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toHaveProperty('templates');
+    expect(Array.isArray(body.templates)).toBe(true);
+
+    const entry = body.templates.find((t: { id: string }) => t.id === docId);
+    expect(entry).toBeDefined();
+    expect(entry.label).toBe('Content List');
+    expect(entry.components).toEqual([
+      { type: 'Hero', pinned: true, defaultProps: { title: 'Hello' } },
+    ]);
+    expect(entry.content).toBeUndefined();
+    expect(entry.root).toBeUndefined();
+  });
+
+  it('folds legacy pin flags type-keyed into _pinMap while leaving content and unflagged types alone', async () => {
+    const { handleTemplateRequest } = await import('../../src/routes/template-api');
+
+    const docId = await seedTemplateDocument('content-pin-patch', {
+      content: [
+        { type: 'Hero', props: { id: 'hero-1', title: 'Hello' } },
+        { type: 'CTA', props: { id: 'cta-1', label: 'Go' } },
+      ],
+      root: {
+        props: {
+          _template: { label: 'Pin Patch', deprecated: false },
+          _pinMap: { 'cta-1': true },
+        },
+      },
+      zones: {},
+    });
+
+    const request = new Request(
+      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates/${docId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: 'Pinned Hero',
+          components: [
+            { type: 'Hero', pinned: true, defaultProps: { title: 'Ignored' } },
+            { type: 'CTA' },
+          ],
+        }),
+      },
+    );
+
+    const response = await handleTemplateRequest(request, {
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      templateId: docId,
+      principal: adminPrincipal(),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+
+    // Metadata applied and combined shape returned
+    expect(body.root.props._template.label).toBe('Pinned Hero');
+    expect(body.label).toBe('Pinned Hero');
+
+    // Content untouched: defaultProps not applied
+    expect(body.content).toEqual([
+      { type: 'Hero', props: { id: 'hero-1', title: 'Hello' } },
+      { type: 'CTA', props: { id: 'cta-1', label: 'Go' } },
+    ]);
+
+    // Hero pinned by type; CTA carries no pin flag so keeps its existing pin
+    expect(body.root.props._pinMap).toEqual({ 'hero-1': true, 'cta-1': true });
+
+    const versions = await sql<{
+      snapshot: { content: unknown[]; root: { props: { _pinMap: Record<string, boolean> } } };
+    }[]>`
+      SELECT snapshot FROM app.document_versions
+      WHERE document_id = ${docId} AND branch_id = ${mainBranchId}
+      ORDER BY version_number DESC
+      LIMIT 1
+    `;
+    expect(versions[0].snapshot.content).toEqual([
+      { type: 'Hero', props: { id: 'hero-1', title: 'Hello' } },
+      { type: 'CTA', props: { id: 'cta-1', label: 'Go' } },
+    ]);
+    expect(versions[0].snapshot.root.props._pinMap).toEqual({ 'hero-1': true, 'cta-1': true });
+  });
+
+  it('leaves _pinMap unchanged on a metadata PATCH without components', async () => {
+    const { handleTemplateRequest } = await import('../../src/routes/template-api');
+
+    const docId = await seedTemplateDocument('content-no-components-patch', {
+      content: [{ type: 'Hero', props: { id: 'hero-1', title: 'Hello' } }],
+      root: {
+        props: {
+          _template: { label: 'No Components', deprecated: false },
+          _pinMap: { 'hero-1': true },
+        },
+      },
+      zones: {},
+    });
+
+    const request = new Request(
+      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates/${docId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: 'Added' }),
+      },
+    );
+
+    const response = await handleTemplateRequest(request, {
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      templateId: docId,
+      principal: adminPrincipal(),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.root.props._pinMap).toEqual({ 'hero-1': true });
+
+    const versions = await sql<{ snapshot: { root: { props: { _pinMap: Record<string, boolean> } } } }[]>`
+      SELECT snapshot FROM app.document_versions
+      WHERE document_id = ${docId} AND branch_id = ${mainBranchId}
+      ORDER BY version_number DESC
+      LIMIT 1
+    `;
+    expect(versions[0].snapshot.root.props._pinMap).toEqual({ 'hero-1': true });
   });
 });

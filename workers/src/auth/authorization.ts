@@ -72,7 +72,7 @@ export function isPantheonUser(principal: AuthenticatedPrincipal): boolean {
  * @param masClient - Optional MAS client for live role fetching
  * @returns The system role name for this principal on this site
  */
-async function getSiteRole(
+export async function getSiteRole(
   principal: AuthenticatedPrincipal,
   siteId: string,
   masClient?: MASClient,

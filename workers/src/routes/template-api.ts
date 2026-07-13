@@ -21,6 +21,7 @@ import {
   DuplicateDocumentPathError,
 } from '../services';
 import { assertPermission, getEffectiveRole, AuthorizationError } from '../auth/authorization';
+import { isManifestShapedSnapshot, convertManifestToContent } from '../services/template-content-backfill';
 import { query } from '../db';
 import {
   triggerMigration,
@@ -76,39 +77,148 @@ export interface TemplateRouteContext {
 }
 
 /**
- * Template structure
+ * Template metadata stored at root.props._template of the snapshot
  */
-interface Template {
-  name: string;
+interface TemplateMetadata {
   label: string;
   description?: string;
   defaultUrlPattern?: string;
-  deprecated?: boolean;
-  components: {
-    type: string;
-    pinned: boolean;
-    defaultProps: Record<string, unknown>;
-  }[];
+  deprecated: boolean;
 }
 
 /**
- * Request body for creating/updating a template
+ * A template's version snapshot: Puck data, identical in shape to a page.
+ * Metadata lives at root.props._template; pin state at root.props._pinMap.
  */
-interface TemplateBody {
+interface TemplateSnapshot {
+  content: unknown[];
+  root: {
+    props: {
+      _template: TemplateMetadata;
+      _pinMap: Record<string, boolean>;
+    };
+  };
+  zones: Record<string, unknown>;
+}
+
+/**
+ * A component entry in a legacy manifest create body.
+ */
+interface ManifestComponentInput {
+  type: string;
+  pinned?: boolean;
+  defaultProps?: Record<string, unknown>;
+}
+
+/**
+ * Request body for creating a template. Legacy clients include a `components`
+ * manifest array, which is converted to the content shape before storage.
+ */
+interface CreateTemplateBody {
   name: string;
   label: string;
   description?: string;
   defaultUrlPattern?: string;
+  components?: ManifestComponentInput[];
+}
+
+/**
+ * Request body for updating template metadata. Legacy clients send a full
+ * manifest whose `components` pin flags are folded into _pinMap; any other
+ * per-component fields are ignored.
+ */
+interface UpdateTemplateBody {
+  label?: string;
+  description?: string;
+  defaultUrlPattern?: string;
   deprecated?: boolean;
-  components: {
-    type: string;
-    pinned: boolean;
-    defaultProps: Record<string, unknown>;
+  components?: { type: string; pinned?: boolean }[];
+}
+
+/**
+ * Extract the metadata block from a template snapshot.
+ *
+ * Content-shaped snapshots carry metadata at root.props._template. Pre-backfill
+ * manifest snapshots carry it as top-level fields; those are read as a fallback
+ * so listing and the deprecated-template guard work regardless of shape.
+ */
+export function templateMetadata(
+  snapshot: Record<string, unknown> | undefined,
+): Partial<TemplateMetadata> {
+  const root = snapshot?.root as { props?: { _template?: Partial<TemplateMetadata> } } | undefined;
+  const fromRoot = root?.props?._template;
+  if (fromRoot) {
+    return fromRoot;
+  }
+
+  if (!snapshot) {
+    return {};
+  }
+  const legacy: Partial<TemplateMetadata> = {};
+  if (typeof snapshot.label === 'string') legacy.label = snapshot.label;
+  if (typeof snapshot.description === 'string') legacy.description = snapshot.description;
+  if (typeof snapshot.defaultUrlPattern === 'string') legacy.defaultUrlPattern = snapshot.defaultUrlPattern;
+  if (typeof snapshot.deprecated === 'boolean') legacy.deprecated = snapshot.deprecated;
+  return legacy;
+}
+
+/**
+ * A single component in the legacy manifest projection.
+ */
+interface LegacyComponent {
+  type: unknown;
+  pinned: boolean;
+  defaultProps: Record<string, unknown>;
+}
+
+/**
+ * The legacy manifest projection of a content-shaped snapshot.
+ */
+interface LegacyProjection {
+  label: string;
+  deprecated: boolean;
+  description?: string;
+  defaultUrlPattern?: string;
+  components: LegacyComponent[];
+}
+
+/**
+ * Derives the legacy manifest fields old clients read from a content-shaped
+ * snapshot. `components` mirrors content order; each entry's `pinned` reflects
+ * root.props._pinMap and `defaultProps` is the content item's props without id.
+ */
+export function legacyTemplateProjection(
+  snapshot: Record<string, unknown> | undefined,
+): LegacyProjection {
+  const metadata = templateMetadata(snapshot);
+
+  const root = snapshot?.root as { props?: { _pinMap?: Record<string, boolean> } } | undefined;
+  const pinMap = root?.props?._pinMap ?? {};
+
+  const rawContent = snapshot?.content;
+  const content = (Array.isArray(rawContent) ? rawContent : []) as {
+    type?: unknown;
+    props?: Record<string, unknown>;
   }[];
-  puckActions?: {
-    type: string;
-    [key: string]: unknown;
-  }[];
+
+  const components: LegacyComponent[] = content.map((item) => {
+    const props = item.props ?? {};
+    const defaultProps = { ...props };
+    delete defaultProps.id;
+    return {
+      type: item.type,
+      pinned: pinMap[props.id as string] === true,
+      defaultProps,
+    };
+  });
+
+  return {
+    label: metadata.label ?? '',
+    deprecated: metadata.deprecated ?? false,
+    ...(metadata.description !== undefined && { description: metadata.description }),
+    ...(metadata.defaultUrlPattern !== undefined && { defaultUrlPattern: metadata.defaultUrlPattern }),
+    components,
+  };
 }
 
 /**
@@ -178,12 +288,16 @@ async function handleListTemplates(
       const templateName = extractTemplateName(doc.path);
 
       if (version?.snapshot && templateName !== null) {
+        const canonical: Record<string, unknown> = isManifestShapedSnapshot(version.snapshot)
+          ? convertManifestToContent(version.snapshot)
+          : version.snapshot;
         return {
           id: doc.id,
           name: templateName,
           version: version.versionNumber,
           updatedAt: version.createdAt,
-          ...version.snapshot as Template,
+          ...templateMetadata(canonical),
+          components: legacyTemplateProjection(canonical).components,
         };
       }
       return null;
@@ -220,12 +334,17 @@ async function handleGetTemplate(
 
   const templateName = extractTemplateName(document.path);
 
+  const canonicalSnapshot: Record<string, unknown> = isManifestShapedSnapshot(version.snapshot)
+    ? convertManifestToContent(version.snapshot)
+    : (version.snapshot ?? {});
+
   return jsonResponse({
     id: document.id,
     name: templateName,
     version: version.versionNumber,
     updatedAt: version.createdAt,
-    ...version.snapshot as Template,
+    ...canonicalSnapshot,
+    ...legacyTemplateProjection(canonicalSnapshot),
   });
 }
 
@@ -238,7 +357,7 @@ async function handleCreateTemplate(
   branchId: string,
   principal: AuthenticatedPrincipal,
 ): Promise<Response> {
-  const body = await parseJsonBody<TemplateBody>(request);
+  const body = await parseJsonBody<CreateTemplateBody>(request);
 
   // Validate required fields
   if (!body.name || body.name.trim() === '') {
@@ -246,9 +365,6 @@ async function handleCreateTemplate(
   }
   if (!body.label || body.label.trim() === '') {
     return errorResponse('label is required', 400);
-  }
-  if (!Array.isArray(body.components)) {
-    return errorResponse('components must be an array', 400);
   }
 
   // Validate template name format (alphanumeric, hyphens, underscores)
@@ -258,12 +374,44 @@ async function handleCreateTemplate(
 
   const templatePath = `_registry/templates/${body.name}`;
 
+  let snapshot: Record<string, unknown>;
+  if (body.components !== undefined) {
+    if (!Array.isArray(body.components)) {
+      return errorResponse('components must be an array', 400);
+    }
+    snapshot = convertManifestToContent({
+      name: body.name,
+      label: body.label,
+      ...(body.description !== undefined && { description: body.description }),
+      ...(body.defaultUrlPattern !== undefined && { defaultUrlPattern: body.defaultUrlPattern }),
+      deprecated: false,
+      components: body.components,
+    });
+  } else {
+    const seed: TemplateSnapshot = {
+      content: [],
+      root: {
+        props: {
+          _template: {
+            label: body.label,
+            ...(body.description !== undefined && { description: body.description }),
+            ...(body.defaultUrlPattern !== undefined && { defaultUrlPattern: body.defaultUrlPattern }),
+            deprecated: false,
+          },
+          _pinMap: {},
+        },
+      },
+      zones: {},
+    };
+    snapshot = seed;
+  }
+
   // Create template as document
   const result = await createDocumentOnBranch({
     siteId,
     branchId,
     path: templatePath,
-    snapshot: body,
+    snapshot: { ...snapshot },
     createdById: principal.dbUserId ?? principal.id,
     createdByType: toActorType(principal.type),
   });
@@ -272,7 +420,10 @@ async function handleCreateTemplate(
     {
       id: result.document.id,
       name: body.name,
-      ...body,
+      version: result.version.versionNumber,
+      updatedAt: result.version.createdAt,
+      ...snapshot,
+      ...legacyTemplateProjection(snapshot),
     },
     201,
   );
@@ -287,7 +438,7 @@ async function handleUpdateTemplate(
   branchId: string,
   principal: AuthenticatedPrincipal,
 ): Promise<Response> {
-  const body = await parseJsonBody<Partial<TemplateBody>>(request);
+  const body = await parseJsonBody<UpdateTemplateBody>(request);
 
   // Check if template exists
   const exists = await documentExistsOnBranch(templateId, branchId);
@@ -311,38 +462,98 @@ async function handleUpdateTemplate(
     return errorResponse('Template version not found', 404);
   }
 
-  const currentTemplate = currentVersion.snapshot as Template;
+  // Metadata update: replaces root.props._template, folds legacy pin flags
+  // into _pinMap when the body carries a manifest, and leaves content and
+  // zones untouched. Layout changes arrive only through document saves. A
+  // never-backfilled manifest snapshot is converted to the content shape on
+  // this write, lifting its legacy top-level metadata into _template before
+  // the patch is applied.
+  const currentSnapshot = currentVersion.snapshot ?? {};
+  const isManifest = isManifestShapedSnapshot(currentSnapshot);
+  const baseSnapshot: Record<string, unknown> = isManifest
+    ? convertManifestToContent(currentSnapshot)
+    : currentSnapshot;
 
-  // Merge updates with current template
-  const updatedTemplate: Template = {
-    name: currentTemplate.name, // Name cannot be changed
-    label: body.label ?? currentTemplate.label,
-    description: body.description ?? currentTemplate.description,
-    defaultUrlPattern: body.defaultUrlPattern ?? currentTemplate.defaultUrlPattern,
-    deprecated: body.deprecated ?? currentTemplate.deprecated,
-    components: body.components ?? currentTemplate.components,
+  const baseRoot = (baseSnapshot.root ?? {}) as { props?: Record<string, unknown> };
+  const baseRootProps = baseRoot.props ?? {};
+  const currentMetadata = (baseRootProps._template ?? {}) as Record<string, unknown>;
+
+  const patchedFields: Record<string, unknown> = {};
+  if (body.label !== undefined) patchedFields.label = body.label;
+  if (body.description !== undefined) patchedFields.description = body.description;
+  if (body.defaultUrlPattern !== undefined) patchedFields.defaultUrlPattern = body.defaultUrlPattern;
+  if (body.deprecated !== undefined) patchedFields.deprecated = body.deprecated;
+
+  const updatedMetadata: Record<string, unknown> = {
+    label: '',
+    deprecated: false,
+    ...currentMetadata,
+    ...patchedFields,
   };
 
-  // Validate components if provided
-  if (body.components && !Array.isArray(body.components)) {
-    return errorResponse('components must be an array', 400);
+  const updatedRootProps: Record<string, unknown> = {
+    ...baseRootProps,
+    _template: updatedMetadata,
+  };
+
+  // Legacy pin toggles arrive as a manifest whose pins are type-keyed. Rebuild
+  // _pinMap by content item: a type named in the body takes that pin, others
+  // keep their current pin. Content itself is never touched here.
+  if (body.components !== undefined) {
+    const basePinMap = (baseRootProps._pinMap ?? {}) as Record<string, boolean>;
+    const rawContent = baseSnapshot.content;
+    const content = (Array.isArray(rawContent) ? rawContent : []) as {
+      type?: unknown;
+      props?: Record<string, unknown>;
+    }[];
+
+    const pinnedByType = new Map<string, boolean>();
+    for (const entry of body.components) {
+      if (entry.pinned !== undefined && !pinnedByType.has(entry.type)) {
+        pinnedByType.set(entry.type, entry.pinned);
+      }
+    }
+
+    const newPinMap: Record<string, boolean> = {};
+    for (const item of content) {
+      const id = item.props?.id as string | undefined;
+      if (id === undefined) continue;
+      const typeKey = item.type as string;
+      const resolved = pinnedByType.has(typeKey) ? pinnedByType.get(typeKey) : basePinMap[id];
+      if (resolved !== undefined) {
+        newPinMap[id] = resolved;
+      }
+    }
+    updatedRootProps._pinMap = newPinMap;
   }
 
-  // Create new version
-  await createDocumentVersion({
+  const updatedSnapshot: Record<string, unknown> = {
+    ...baseSnapshot,
+    root: {
+      ...baseRoot,
+      props: updatedRootProps,
+    },
+  };
+
+  // Create new version. A manifest-to-content conversion is a representation
+  // change, not an authored edit, so it is written as non-structural.
+  const version = await createDocumentVersion({
     documentId: templateId,
     branchId,
-    snapshot: updatedTemplate,
+    snapshot: updatedSnapshot,
     source: 'edit',
     createdById: principal.dbUserId ?? principal.id,
     createdByType: toActorType(principal.type),
-    puckActions: body.puckActions,
+    forceNonStructural: isManifest,
   });
 
   return jsonResponse({
     id: templateId,
-    name: updatedTemplate.name,
-    ...updatedTemplate,
+    name: extractTemplateName(document.path),
+    version: version.versionNumber,
+    updatedAt: version.createdAt,
+    ...updatedSnapshot,
+    ...legacyTemplateProjection(updatedSnapshot),
   });
 }
 

@@ -18,7 +18,7 @@ import {
   DuplicatePantheonSiteIdError,
   InvalidSiteParamsError,
 } from '../services';
-import { assertPermission, AuthorizationError } from '../auth/authorization';
+import { assertPermission, getSiteRole, AuthorizationError } from '../auth/authorization';
 import { validatePagination } from './validation';
 import type { ScreenshotProducerEnv } from '../queues/screenshot-producer';
 import { query } from '../db';
@@ -194,7 +194,9 @@ async function handleGetSite(context: SiteRouteContext): Promise<Response> {
     return errorResponse('Site not found', 404);
   }
 
-  return jsonResponse(site);
+  const role = await getSiteRole(context.principal, context.siteId);
+
+  return jsonResponse({ ...site, role });
 }
 
 /**

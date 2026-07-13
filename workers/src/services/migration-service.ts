@@ -168,6 +168,9 @@ export interface MigrationPreview {
   fromVersion: number;
   toVersion: number;
   templateDelta: PuckAction[];
+  // Count of prop-level default changes, which are applied but not represented
+  // in templateDelta (that carries structural actions only).
+  propChangeCount: number;
   affectedDocuments: number;
   estimatedConflicts: number;
   cleanDocuments: number;
@@ -651,6 +654,24 @@ function diffComponentProps(
   return { componentId, operations: ops };
 }
 
+// Template metadata (_template) and pin state (_pinMap) are editor-private
+// root props; they are excluded from migration propagation so they never
+// overwrite props on associated pages. Every other root prop, including any
+// with a leading underscore, is a page-inheritable authored value.
+const EDITOR_PRIVATE_ROOT_PROPS = new Set(['_template', '_pinMap']);
+
+function stripEditorPrivateRootProps(
+  props: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!props) return props;
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(props)) {
+    if (EDITOR_PRIVATE_ROOT_PROPS.has(key)) continue;
+    result[key] = value;
+  }
+  return result;
+}
+
 function extractPropPatches(
   fromSnapshot: Record<string, unknown> | null,
   toSnapshot: Record<string, unknown> | null,
@@ -673,8 +694,12 @@ function extractPropPatches(
   }
 
   // Root props
-  const fromRoot = (fromSnapshot.root as { props?: Record<string, unknown> } | undefined)?.props;
-  const toRoot = (toSnapshot.root as { props?: Record<string, unknown> } | undefined)?.props;
+  const fromRoot = stripEditorPrivateRootProps(
+    (fromSnapshot.root as { props?: Record<string, unknown> } | undefined)?.props,
+  );
+  const toRoot = stripEditorPrivateRootProps(
+    (toSnapshot.root as { props?: Record<string, unknown> } | undefined)?.props,
+  );
   if (fromRoot && toRoot && !deepEqual(fromRoot, toRoot)) {
     const ops = jsonPatchCompare(fromRoot, toRoot);
     if (ops.length > 0) {
@@ -1100,7 +1125,7 @@ export async function processMigration(
            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [jobId, doc.id, job.branchId, job.templateId,
             job.fromVersion, job.toVersion,
-            JSON.stringify(templateDelta), JSON.stringify(conflict.documentActions)],
+            templateDelta, conflict.documentActions],
         );
         conflictedDocuments++;
       } else {
@@ -1121,7 +1146,7 @@ export async function processMigration(
              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
             [jobId, doc.id, job.branchId, job.templateId,
               job.fromVersion, job.toVersion,
-              JSON.stringify(templateDelta), JSON.stringify({ error: String(applyErr) })],
+              templateDelta, { error: String(applyErr) }],
           );
           conflictedDocuments++;
         }
@@ -1303,6 +1328,7 @@ export async function previewMigration(
     fromVersion,
     toVersion,
     templateDelta,
+    propChangeCount: migrationDelta.propPatches.length,
     affectedDocuments,
     estimatedConflicts,
     cleanDocuments,
@@ -1316,6 +1342,18 @@ export async function previewMigration(
 }
 
 /**
+ * Progress and conflict state for the migration a template is currently
+ * running or awaiting conflict resolution on.
+ */
+export interface ActiveMigration {
+  jobId: string;
+  status: string;
+  processedDocuments: number;
+  totalDocuments: number;
+  unresolvedConflicts: number;
+}
+
+/**
  * Migration status summary for a template on a branch.
  */
 export interface MigrationStatus {
@@ -1324,6 +1362,7 @@ export interface MigrationStatus {
   staleDocumentCount: number;
   oldestDocumentVersion: number | null;
   migrationAvailable: boolean;
+  activeMigration: ActiveMigration | null;
 }
 
 /**
@@ -1362,12 +1401,64 @@ export async function getMigrationStatus(
   const staleDocumentCount = parseInt(staleResult.rows[0].count, 10);
   const oldestDocumentVersion = staleResult.rows[0].oldest_version;
 
+  const activeMigration = await getActiveMigration(templateId, branchId);
+
   return {
     templateId,
     currentVersion,
     staleDocumentCount,
     oldestDocumentVersion,
     migrationAvailable: staleDocumentCount > 0,
+    activeMigration,
+  };
+}
+
+/**
+ * Resolve the migration a template is still working through: the latest job
+ * that is either running (pending, in_progress) or completed with conflicts
+ * that remain unresolved. Returns null when the latest job is cleanly
+ * completed, failed, or has had all conflicts resolved.
+ */
+async function getActiveMigration(
+  templateId: string,
+  branchId: string,
+): Promise<ActiveMigration | null> {
+  const jobResult = await query<MigrationJobRow>(
+    `SELECT * FROM app.migration_jobs
+     WHERE template_id = $1 AND branch_id = $2
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [templateId, branchId],
+  );
+
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  const latestJobRow = jobResult?.rows[0];
+  if (!latestJobRow) {
+    return null;
+  }
+
+  const job = mapRowToJob(latestJobRow);
+
+  const conflictResult = await query<{ count: string }>(
+    `SELECT COUNT(*) as count FROM app.migration_conflicts
+     WHERE migration_job_id = $1 AND resolution IS NULL`,
+    [job.id],
+  );
+  const unresolvedConflicts = parseInt(conflictResult.rows[0].count, 10);
+
+  const isRunning = job.status === 'pending' || job.status === 'in_progress';
+  const awaitingResolution = job.status === 'completed_with_conflicts' && unresolvedConflicts > 0;
+
+  if (!isRunning && !awaitingResolution) {
+    return null;
+  }
+
+  return {
+    jobId: job.id,
+    status: job.status,
+    processedDocuments: job.processedDocuments,
+    totalDocuments: job.totalDocuments,
+    unresolvedConflicts,
   };
 }
 
@@ -1388,13 +1479,17 @@ export async function resolveMigrationConflict(
 
   const conflict = conflictResult.rows[0];
 
-  if (expectedJobId && conflict.migration_job_id !== expectedJobId) {
+  if (expectedJobId !== undefined && conflict.migration_job_id !== expectedJobId) {
     throw new MigrationJobNotFoundError(expectedJobId);
   }
 
   if (resolution === 'apply') {
-    const delta = Array.isArray(conflict.template_delta)
-      ? conflict.template_delta as PuckAction[]
+    // Tolerate a delta stored as a JSON string, not just a jsonb array.
+    const rawDelta = typeof conflict.template_delta === 'string'
+      ? (JSON.parse(conflict.template_delta) as unknown)
+      : conflict.template_delta;
+    const delta = Array.isArray(rawDelta)
+      ? rawDelta as PuckAction[]
       : [];
 
     const tplSnapshot = await reconstructVersionSnapshot(

@@ -12,23 +12,16 @@ import type { McpApiClient } from './api-client.js';
 import type { ActingUser } from './types.js';
 import {
   validateOps as _validateOps,
-  validateDocumentStructure as _validateDocumentStructure,
+  validateDocumentStructure,
 } from '@pantheon-systems/p1-content-validator';
 import type { ValidationError, StructuralConformanceError } from '@pantheon-systems/p1-content-validator';
 
-// Type-safe wrappers to satisfy ESLint
+// Narrow the loosely-typed package export to the input/output shape used here.
 const validateOps = _validateOps as (input: {
   operations: unknown[];
   registry: Record<string, unknown>;
   currentSnapshot?: Record<string, unknown>;
 }) => { errors: ValidationError[] };
-
-const validateDocumentStructure = _validateDocumentStructure as (input: {
-  documentSnapshot: Record<string, unknown>;
-  templateSnapshot: {
-    components: { type: string; pinned: boolean; defaultProps: Record<string, unknown> }[];
-  };
-}) => { errors: StructuralConformanceError[] };
 
 // =============================================================================
 // ULID generator (inline — no external dependency required in Workers)
@@ -570,7 +563,7 @@ export function getToolDefinitions(): ToolDefinition[] {
     {
       name: 'list_templates',
       description:
-        'List available templates on a branch. Returns template metadata including id, name, label, description, and component structure with pinned flags. Use this to discover available templates before calling create_page with template_id.',
+        'List available templates on a branch. Returns template metadata including id, name, label, description, and deprecation status. Use this to discover available templates before calling create_page with template_id.',
       inputSchema: ListTemplatesInputSchema,
     },
     {
@@ -1159,7 +1152,7 @@ export function createToolHandlers(
               input.document_path,
             );
 
-            // Fetch the template (returns flat fields, not wrapped in .snapshot)
+            // Fetch the template's content-shaped snapshot (returns flat fields, not wrapped in .snapshot)
             const template = await apiClient.getTemplate(
               input.site_id,
               input.branch_id,
@@ -1169,9 +1162,7 @@ export function createToolHandlers(
             // Validate structure conformance
             const validationResult = validateDocumentStructure({
               documentSnapshot: updatedDoc.snapshot,
-              templateSnapshot: {
-                components: Array.isArray(template.components) ? template.components : [],
-              },
+              templateSnapshot: template,
             });
 
             if (validationResult.errors.length > 0) {
@@ -1361,27 +1352,13 @@ export function createToolHandlers(
         }
 
         const templateLines = templates.map((template) => {
-          const components = template.components as { type: string; pinned: boolean }[] | undefined;
-          const componentCount = Array.isArray(components) ? components.length : 0;
-          const pinnedCount = Array.isArray(components)
-            ? components.filter((c) => c.pinned).length
-            : 0;
+          const label = template.label ?? template.name;
+          const description = template.description ?? '';
 
-          const label = typeof template.label === 'string'
-            ? template.label
-            : template.name;
-          const description = typeof template.description === 'string'
-            ? template.description
-            : '';
-
-          const isDeprecated = template.deprecated === true;
-          const deprecatedNote = isDeprecated ? ' [DEPRECATED]' : '';
+          const deprecatedNote = template.deprecated === true ? ' [DEPRECATED]' : '';
           const descriptionNote = description !== '' ? ` — ${description}` : '';
-          const componentNote = componentCount > 0
-            ? ` (${String(componentCount)} component${componentCount === 1 ? '' : 's'}, ${String(pinnedCount)} pinned)`
-            : '';
 
-          return `- ${template.name} (${label})${deprecatedNote}${componentNote}${descriptionNote}\n  template_id: ${template.id}`;
+          return `- ${template.name} (${label})${deprecatedNote}${descriptionNote}\n  template_id: ${template.id}`;
         });
 
         return formatResult(`Templates available on this branch (${String(templates.length)} total):\n${templateLines.join('\n')}`);

@@ -53,6 +53,7 @@ vi.mock('../../src/services', () => ({
 // Mock authorization (used by site-api.ts) — only for T5 round-trip scenario
 vi.mock('../../src/auth/authorization', () => ({
   assertPermission: vi.fn(),
+  getSiteRole: vi.fn().mockResolvedValue('ADMIN'),
   AuthorizationError: class AuthorizationError extends Error {
     override name = 'AuthorizationError';
     constructor(

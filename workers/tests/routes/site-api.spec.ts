@@ -33,6 +33,7 @@ vi.mock('../../src/services', () => ({
 // Mock authorization
 vi.mock('../../src/auth/authorization', () => ({
   assertPermission: vi.fn(),
+  getSiteRole: vi.fn().mockResolvedValue('ADMIN'),
   AuthorizationError: class AuthorizationError extends Error {
     override name = 'AuthorizationError';
     constructor(
@@ -679,6 +680,53 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       const body = await response.json();
       expect(body.id).toBe('site-1');
       expect(body.name).toBe('Marketing Website');
+    });
+
+    it('includes the caller site-level role', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+      const authorization = await import('../../src/auth/authorization');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+      vi.mocked(authorization.getSiteRole).mockResolvedValueOnce('EDITOR');
+      vi.mocked(services.getSite).mockResolvedValueOnce({
+        id: 'site-1',
+        pantheonSiteId: 'pantheon-1',
+        name: 'Marketing Website',
+        allowedOrigins: [],
+        workflowSettings: {
+          mergeApprovalMode: 'required',
+          minApprovers: 2,
+          allowSelfApproval: false,
+          approverMode: 'both',
+          approverMinRole: 'EDITOR',
+        },
+        createdAt: '2026-01-24T10:00:00.000Z',
+        updatedAt: '2026-01-24T10:00:00.000Z',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1',
+        { method: 'GET' },
+      );
+
+      const response = await handleSiteRoutes(request, {
+        siteId: 'site-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.role).toBe('EDITOR');
     });
 
     it('should return 404 for non-existent site', async () => {

@@ -25,6 +25,8 @@ import {
   processMigration,
   previewMigration,
   extractTemplateDelta,
+  listMigrationConflicts,
+  resolveMigrationConflict,
 } from '../../src/services/migration-service';
 import {
   listDocumentsOnBranch,
@@ -792,6 +794,121 @@ describe('Template Migration CUJ — Integration Tests', () => {
       `;
       expect(rows[0].action_type).toBe('structural');
       expect(rows[0].puck_actions).not.toBeNull();
+    });
+  });
+
+  // ===========================================================================
+  // Migration conflict delta round-trip: write → read → resolve-apply
+  // ===========================================================================
+
+  describe('Migration conflict delta jsonb round-trip', () => {
+    async function setUpConflict(pathSuffix: string): Promise<{
+      templateDocId: string;
+      pageDocId: string;
+      jobId: string;
+      conflictId: string;
+    }> {
+      const tpl = await createDocumentOnBranch({
+        siteId, branchId,
+        path: `_registry/templates/${pathSuffix}`,
+        snapshot: makeSnapshot([
+          { type: 'HeadingBlock', props: { id: 'h1' } },
+          { type: 'TextBlock', props: { id: 't1' } },
+        ]),
+        createdById: TEST_USER_ID, createdByType: 'user',
+      });
+      const templateDocId = tpl.document.id;
+
+      const page = await createDocumentOnBranch({
+        siteId, branchId,
+        path: `${pathSuffix}-page`,
+        snapshot: makeSnapshot([
+          { type: 'HeadingBlock', props: { id: 'h1' } },
+          { type: 'TextBlock', props: { id: 't1' } },
+        ]),
+        templateId: templateDocId, templateVersion: 1,
+        createdById: TEST_USER_ID, createdByType: 'user',
+      });
+      const pageDocId = page.document.id;
+
+      // Page reorders HeadingBlock — a structural edit on the same type the
+      // template touches, which forces a conflict rather than a clean apply.
+      await createDocumentVersion({
+        documentId: pageDocId, branchId,
+        snapshot: makeSnapshot([
+          { type: 'TextBlock', props: { id: 't1' } },
+          { type: 'HeadingBlock', props: { id: 'h1' } },
+        ]),
+        source: 'edit', createdById: TEST_USER_ID, createdByType: 'user',
+        puckActions: [{ type: 'reorder', sourceIndex: 0, destinationIndex: 1, componentType: 'HeadingBlock' }],
+      });
+
+      // Template v2 inserts a second HeadingBlock.
+      await createDocumentVersion({
+        documentId: templateDocId, branchId,
+        snapshot: makeSnapshot([
+          { type: 'HeadingBlock', props: { id: 'h1' } },
+          { type: 'TextBlock', props: { id: 't1' } },
+          { type: 'HeadingBlock', props: { id: 'h2' } },
+        ]),
+        source: 'edit', createdById: TEST_USER_ID, createdByType: 'user',
+        puckActions: [{ type: 'insert', componentType: 'HeadingBlock', destinationIndex: 2 }],
+      });
+
+      const job = await triggerMigration(siteId, branchId, templateDocId, 1, 2, { id: TEST_USER_ID, type: 'user' });
+      const result = await processMigration(job.id);
+      expect(result.conflictedDocuments).toBe(1);
+
+      const conflicts = await listMigrationConflicts(job.id);
+      expect(conflicts).toHaveLength(1);
+
+      return { templateDocId, pageDocId, jobId: job.id, conflictId: conflicts[0].id };
+    }
+
+    it('stores template_delta as a jsonb array and applies it on resolve', async () => {
+      const { pageDocId, conflictId } = await setUpConflict('test-conflict-roundtrip');
+
+      // The delta is stored as a real jsonb array, not a double-encoded string.
+      const typeRows = await sql`
+        SELECT jsonb_typeof(template_delta) as t
+        FROM app.migration_conflicts WHERE id = ${conflictId}
+      `;
+      expect(typeRows[0].t).toBe('array');
+
+      await resolveMigrationConflict(conflictId, 'apply', { id: TEST_USER_ID, type: 'user' });
+
+      const latest = await getLatestDocumentVersion(pageDocId, branchId);
+      const content = latest!.snapshot!.content as Array<{ type: string; props: { id?: string } }>;
+      expect(content.filter(c => c.type === 'HeadingBlock')).toHaveLength(2);
+      expect(content.some(c => c.props.id === 'h2')).toBe(true);
+
+      const docRow = await sql`SELECT template_version FROM app.documents WHERE id = ${pageDocId}`;
+      expect(docRow[0].template_version).toBe(2);
+    });
+
+    it('applies a delta stored as a double-encoded jsonb string', async () => {
+      const { pageDocId, conflictId } = await setUpConflict('test-conflict-legacy');
+
+      // Rewrite the row to the double-encoded shape older writers produced: a
+      // jsonb string scalar whose text is the delta's JSON.
+      const current = await sql`SELECT template_delta FROM app.migration_conflicts WHERE id = ${conflictId}`;
+      const deltaJson = JSON.stringify(current[0].template_delta);
+      await sql`
+        UPDATE app.migration_conflicts
+        SET template_delta = to_jsonb(${deltaJson}::text)
+        WHERE id = ${conflictId}
+      `;
+      const typeRows = await sql`
+        SELECT jsonb_typeof(template_delta) as t
+        FROM app.migration_conflicts WHERE id = ${conflictId}
+      `;
+      expect(typeRows[0].t).toBe('string');
+
+      await resolveMigrationConflict(conflictId, 'apply', { id: TEST_USER_ID, type: 'user' });
+
+      const latest = await getLatestDocumentVersion(pageDocId, branchId);
+      const content = latest!.snapshot!.content as Array<{ type: string; props: { id?: string } }>;
+      expect(content.some(c => c.props.id === 'h2')).toBe(true);
     });
   });
 });

@@ -117,7 +117,14 @@ async function handleResolveConflict(
     type: toPrincipalType(principal.type),
   };
 
-  const conflict = await resolveMigrationConflict(conflictId, body.resolution, migrationPrincipal, jobId);
+  // Treat a blank path segment as "no expected job" rather than an id to match.
+  const expectedJobId = jobId.trim() === '' ? undefined : jobId;
+  const conflict = await resolveMigrationConflict(
+    conflictId,
+    body.resolution,
+    migrationPrincipal,
+    expectedJobId,
+  );
 
   return jsonResponse(conflict);
 }

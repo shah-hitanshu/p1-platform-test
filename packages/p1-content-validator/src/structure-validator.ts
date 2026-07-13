@@ -3,8 +3,18 @@ import type {
   ValidateStructureInput,
 } from './types.js';
 
+/** Returns the value when it is a plain object, otherwise undefined. */
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
 /**
  * Validates that a document snapshot conforms to a template's structural skeleton.
+ *
+ * A template component is pinned when `root.props._pinMap[props.id]` is `true`;
+ * pinned types are checked in template `content` order.
  *
  * Conformance rules:
  * 1. All pinned components must be present in the document
@@ -27,38 +37,38 @@ export function validateDocumentStructure(
   const { documentSnapshot, templateSnapshot } = input;
   const errors: StructuralConformanceError[] = [];
 
-  // Defensively extract content array from document snapshot.
-  // Puck snapshots store the component array at top-level `content`,
-  // but some wrappers nest it under `root.props.content`. Check both paths.
+  // Puck snapshots store the component array at top-level `content`, but some
+  // wrappers nest it under `root.props.content`. Check both, fall back to empty.
   const topLevelContent = documentSnapshot?.content;
-  let contentRaw: unknown;
-
-  if (Array.isArray(topLevelContent)) {
-    contentRaw = topLevelContent;
-  } else {
-    const root = documentSnapshot?.root;
-    const isRootValid = root !== null && typeof root === 'object' && !Array.isArray(root);
-    const props = isRootValid ? (root as Record<string, unknown>).props : undefined;
-    const isPropsValid = props !== null && typeof props === 'object' && !Array.isArray(props);
-    contentRaw = isPropsValid ? (props as Record<string, unknown>).content : undefined;
-  }
-
-  // Gracefully handle missing or malformed content - always fall back to empty array
+  const contentRaw = Array.isArray(topLevelContent)
+    ? topLevelContent
+    : asRecord(asRecord(documentSnapshot?.root)?.props)?.content;
   const content = Array.isArray(contentRaw)
     ? (contentRaw as { type?: string }[])
     : [];
 
-  // Defensively handle template components array
-  // Handle null, undefined, or non-array values
-  const templateComponents = Array.isArray(templateSnapshot?.components)
-    ? templateSnapshot.components
+  const templateContent = Array.isArray(templateSnapshot?.content)
+    ? (templateSnapshot.content as { type?: unknown; props?: unknown }[])
     : [];
 
-  // Filter template for pinned components only
-  const pinnedComponents = templateComponents.filter((c) => c?.pinned === true);
+  // A component is pinned only when root.props._pinMap[props.id] is true.
+  const pinMap = asRecord(asRecord(asRecord(templateSnapshot?.root)?.props)?._pinMap) ?? {};
+
+  // Pinned component types in template content order.
+  // A component without a string type or string id is never pinned.
+  const pinnedTypes: string[] = [];
+  for (const templateComponent of templateContent) {
+    if (!templateComponent || typeof templateComponent.type !== 'string') {
+      continue;
+    }
+    const id = asRecord(templateComponent.props)?.id;
+    if (typeof id === 'string' && pinMap[id] === true) {
+      pinnedTypes.push(templateComponent.type);
+    }
+  }
 
   // If template has no pinned components, document always conforms
-  if (pinnedComponents.length === 0) {
+  if (pinnedTypes.length === 0) {
     return { errors };
   }
 
@@ -71,7 +81,7 @@ export function validateDocumentStructure(
       return;
     }
 
-    if (pinnedComponents.some((p) => p.type === component.type)) {
+    if (pinnedTypes.includes(component.type)) {
       const indices = pinnedIndices.get(component.type) || [];
       indices.push(index);
       pinnedIndices.set(component.type, indices);
@@ -82,31 +92,37 @@ export function validateDocumentStructure(
   let lastFoundIndex = -1;
 
   // Check each pinned component in template order
-  for (let i = 0; i < pinnedComponents.length; i++) {
-    const expected = pinnedComponents[i];
-    const indices = pinnedIndices.get(expected.type) || [];
+  for (let i = 0; i < pinnedTypes.length; i++) {
+    const expectedType = pinnedTypes[i];
+    const indices = pinnedIndices.get(expectedType) || [];
 
     // Find the first occurrence of this component type after lastFoundIndex
     const foundIndex = indices.find((idx) => idx > lastFoundIndex);
 
     if (foundIndex === undefined) {
-      // Component is missing or out of order
-      // Check if the component exists anywhere in the document
-      if (indices.length === 0) {
+      // No unconsumed occurrence appears after the last match. If the document
+      // holds fewer instances of this type than the template pins up to here,
+      // a required instance is absent; otherwise the instances that exist sit
+      // before where this one must appear.
+      let requiredSoFar = 0;
+      for (let j = 0; j <= i; j++) {
+        if (pinnedTypes[j] === expectedType) requiredSoFar++;
+      }
+      if (indices.length < requiredSoFar) {
         errors.push({
           code: 'missing_pinned_component',
-          componentType: expected.type,
-          message: `Required component "${expected.type}" is missing from the document.`,
+          componentType: expectedType,
+          message: `Required component "${expectedType}" is missing from the document.`,
         });
       } else {
         // Component exists but is out of order (appears before lastFoundIndex)
         errors.push({
           code: 'pinned_component_out_of_order',
-          componentType: expected.type,
+          componentType: expectedType,
           expectedIndex: i,
           actualIndex: indices[0],
           message:
-            `Pinned component "${expected.type}" appears out of order. ` +
+            `Pinned component "${expectedType}" appears out of order. ` +
             `Expected after index ${lastFoundIndex} but found at index ${indices[0]}.`,
         });
       }

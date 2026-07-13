@@ -5061,3 +5061,28 @@ Three new integration test suites against real Postgres:
 #### Decision
 
 User chose to surface prop conflicts in the migration preview using the same conflict model as structural changes, rather than silently auto-resolving. Scope covers content[] components, root props, and zone component props.
+
+## PROPOSAL-014: Template Content-Shape Consolidation (2026-07-08)
+
+### What was done
+
+Consolidated template persistence on the page content shape (PCC-3357). A template's snapshot is now Puck data (`content`, `root`, `zones`) with metadata under `root.props._template` and pins under `root.props._pinMap`; the `{components}` manifest is retired from storage; the API serves a deprecated legacy projection during a client compatibility window (PROPOSAL-014 section 8).
+
+- Template API: create seeds an empty content-shaped snapshot, converting a legacy `components` body to the content shape at the boundary; PATCH is metadata-only, folds legacy per-type pin flags into `_pinMap`, and lazy-converts legacy manifest snapshots on write; list returns metadata summaries plus the derived `components` projection; get canonicalizes manifest-shaped rows in memory and returns the snapshot plus the projection. Metadata reads fall back to legacy top-level fields until the backfill runs. The projection and legacy write acceptance are removed once the client fleet is on the 0.5.x package line (published 0.4.x clients are embedded in customer sites).
+- `p1-content-validator` v2.0.0: `validateDocumentStructure` accepts the content-shaped template and derives pinned order from `content` joined with `_pinMap`.
+- Migration engine: one exclusion rule added (`stripEditorPrivateRootProps`): underscore-prefixed root props are editor-private and never propagate to pages. Backfill and conversion versions are written non-structural so boundary-spanning migrations apply nothing.
+- One-time backfill: `pnpm db:backfill-template-content-shape` (dry-run default, `--execute` to write), idempotent, per document and branch. Must run immediately after deploy.
+- MCP server: template tools present the new shapes; `apply_document_edits` validation passes the template snapshot straight through.
+- Frontend (puck-css-integration, same branch name): templates round-trip as ordinary documents; details saves mirror metadata into live editor state; pins persist through autosave with flush-on-navigation and flush-on-hide; scaffolding blocks templates with no layout.
+
+### Decisions
+
+- Retired the manifest entirely instead of keeping it as a read-time projection: every consumer is ours and reads better off the content shape directly (user decision after evaluating both paths).
+- Underscore-prefixed root props excluded from migration propagation (approved amendment; the alternative of relocating `_template`/`_pinMap` out of `root.props` would have reintroduced a save/load shape transform).
+- Pin button restricted to template mode; page-local instance pinning deferred to a designed follow-on after PCC-3358 (durable component ids).
+- Proposal renumbered 013 to 014: PR #184 claims PROPOSAL-013 for durable slot identity.
+
+### Fixed bugs
+
+- Saved templates reopened to a blank canvas (manifest snapshot had no renderable layout).
+- Template migrations completed without applying anything (delta extraction found no `.content` on manifest templates).

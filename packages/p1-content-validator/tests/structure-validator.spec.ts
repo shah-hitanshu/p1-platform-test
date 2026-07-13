@@ -15,28 +15,46 @@ function component(
   return { type, props: { id: TEST_UUID, ...props } };
 }
 
+function template(
+  entries: {
+    type: string;
+    id: string;
+    pinned: boolean;
+    props?: Record<string, unknown>;
+  }[],
+): TemplateSnapshot {
+  return {
+    content: entries.map(({ type, id, props = {} }) => ({
+      type,
+      props: { id, ...props },
+    })),
+    root: {
+      props: {
+        _pinMap: Object.fromEntries(
+          entries.map(({ id, pinned }) => [id, pinned]),
+        ),
+      },
+    },
+    zones: {},
+  };
+}
+
 // Template with all pinned components
-const blogTemplate: TemplateSnapshot = {
-  components: [
-    { type: 'HeroBlock', pinned: true, defaultProps: { title: '', subtitle: '' } },
-    { type: 'BodyBlock', pinned: true, defaultProps: { content: '' } },
-    { type: 'CTABlock', pinned: true, defaultProps: { label: '', url: '' } },
-  ],
-};
+const blogTemplate = template([
+  { type: 'HeroBlock', id: 'hero-1', pinned: true, props: { title: '', subtitle: '' } },
+  { type: 'BodyBlock', id: 'body-1', pinned: true, props: { content: '' } },
+  { type: 'CTABlock', id: 'cta-1', pinned: true, props: { label: '', url: '' } },
+]);
 
 // Template with mixed pinned/non-pinned components
-const productTemplate: TemplateSnapshot = {
-  components: [
-    { type: 'HeroBlock', pinned: true, defaultProps: { title: '' } },
-    { type: 'FeaturesBlock', pinned: false, defaultProps: { items: [] } },
-    { type: 'CTABlock', pinned: true, defaultProps: { label: '' } },
-  ],
-};
+const productTemplate = template([
+  { type: 'HeroBlock', id: 'hero-1', pinned: true, props: { title: '' } },
+  { type: 'FeaturesBlock', id: 'features-1', pinned: false, props: { items: [] } },
+  { type: 'CTABlock', id: 'cta-1', pinned: true, props: { label: '' } },
+]);
 
 // Empty template (no components)
-const emptyTemplate: TemplateSnapshot = {
-  components: [],
-};
+const emptyTemplate = template([]);
 
 // ---------------------------------------------------------------------------
 // validateDocumentStructure — structural conformance validation
@@ -103,6 +121,192 @@ describe('validateDocumentStructure', () => {
       });
 
       expect(errors).toHaveLength(0);
+    });
+  });
+
+  describe('pinned derivation from template content', () => {
+    it('does not require components whose pin map entry is false', () => {
+      const documentSnapshot = {
+        root: {
+          props: {
+            content: [
+              component('HeroBlock', { title: 'Welcome' }),
+              component('CTABlock', { label: 'Click' }),
+            ],
+          },
+        },
+      };
+
+      const { errors } = validateDocumentStructure({
+        documentSnapshot,
+        templateSnapshot: productTemplate, // FeaturesBlock is unpinned
+      });
+
+      expect(errors).toHaveLength(0);
+    });
+
+    it('treats a missing pin map as nothing pinned', () => {
+      const content = [
+        { type: 'HeroBlock', props: { id: 'hero-1', title: '' } },
+        { type: 'BodyBlock', props: { id: 'body-1', content: '' } },
+      ];
+      const emptyDocument = { root: { props: { content: [] } } };
+
+      // No _pinMap: an empty document conforms because nothing is pinned.
+      expect(
+        validateDocumentStructure({
+          documentSnapshot: emptyDocument,
+          templateSnapshot: { content, root: { props: {} }, zones: {} },
+        }).errors,
+      ).toHaveLength(0);
+
+      // The same template with a pin map does require those components,
+      // proving the empty result above comes from the absent map, not from
+      // the validator ignoring the template.
+      expect(
+        validateDocumentStructure({
+          documentSnapshot: emptyDocument,
+          templateSnapshot: {
+            content,
+            root: { props: { _pinMap: { 'hero-1': true, 'body-1': true } } },
+            zones: {},
+          },
+        }).errors,
+      ).toHaveLength(2);
+    });
+
+    it('requires only the mapped component when an id is absent from the pin map', () => {
+      // hero-1 is pinned via the map; body-1 is absent from it.
+      const templateSnapshot: TemplateSnapshot = {
+        content: [
+          { type: 'HeroBlock', props: { id: 'hero-1', title: '' } },
+          { type: 'BodyBlock', props: { id: 'body-1', content: '' } },
+        ],
+        root: { props: { _pinMap: { 'hero-1': true } } },
+        zones: {},
+      };
+
+      // A document with only HeroBlock conforms — BodyBlock is not pinned.
+      expect(
+        validateDocumentStructure({
+          documentSnapshot: {
+            root: { props: { content: [component('HeroBlock', { title: 'Welcome' })] } },
+          },
+          templateSnapshot,
+        }).errors,
+      ).toHaveLength(0);
+
+      // Dropping HeroBlock fails: the mapped entry is genuinely enforced,
+      // while the unmapped BodyBlock never triggers an error.
+      const { errors } = validateDocumentStructure({
+        documentSnapshot: { root: { props: { content: [] } } },
+        templateSnapshot,
+      });
+      expect(errors).toHaveLength(1);
+      expect(errors[0].code).toBe('missing_pinned_component');
+      expect(errors[0].componentType).toBe('HeroBlock');
+    });
+
+    it('treats a component without an id as unpinned', () => {
+      // HeroBlock has no id so it can never key into the map; body-1 is pinned.
+      const templateSnapshot: TemplateSnapshot = {
+        content: [
+          { type: 'HeroBlock', props: { title: '' } }, // no id
+          { type: 'BodyBlock', props: { id: 'body-1', content: '' } },
+        ],
+        root: { props: { _pinMap: { 'body-1': true } } },
+        zones: {},
+      };
+
+      // A document with only BodyBlock conforms: the id-less HeroBlock is
+      // not required.
+      expect(
+        validateDocumentStructure({
+          documentSnapshot: {
+            root: { props: { content: [component('BodyBlock', { content: 'Content' })] } },
+          },
+          templateSnapshot,
+        }).errors,
+      ).toHaveLength(0);
+
+      // An empty document fails only on the pinned BodyBlock — the id-less
+      // HeroBlock never produces an error.
+      const { errors } = validateDocumentStructure({
+        documentSnapshot: { root: { props: { content: [] } } },
+        templateSnapshot,
+      });
+      expect(errors).toHaveLength(1);
+      expect(errors[0].componentType).toBe('BodyBlock');
+    });
+
+    it('treats non-boolean pin map values as unpinned', () => {
+      const content = [{ type: 'HeroBlock', props: { id: 'hero-1', title: '' } }];
+      const emptyDocument = { root: { props: { content: [] } } };
+
+      // A string "true" is not the boolean true, so hero-1 is not pinned.
+      expect(
+        validateDocumentStructure({
+          documentSnapshot: emptyDocument,
+          templateSnapshot: {
+            content,
+            root: { props: { _pinMap: { 'hero-1': 'true' as unknown as boolean } } },
+            zones: {},
+          },
+        }).errors,
+      ).toHaveLength(0);
+
+      // The boolean true does pin it — confirming only strict === true counts.
+      expect(
+        validateDocumentStructure({
+          documentSnapshot: emptyDocument,
+          templateSnapshot: { content, root: { props: { _pinMap: { 'hero-1': true } } }, zones: {} },
+        }).errors,
+      ).toHaveLength(1);
+    });
+
+    it('pins per instance when the same type appears pinned and unpinned', () => {
+      const templateSnapshot = template([
+        { type: 'HeroBlock', id: 'hero-1', pinned: true, props: { title: '' } },
+        { type: 'BodyBlock', id: 'body-1', pinned: true, props: { content: '' } },
+        { type: 'HeroBlock', id: 'hero-2', pinned: false, props: { title: '' } },
+      ]);
+
+      // One HeroBlock satisfies the single pinned instance
+      const conforming = {
+        root: {
+          props: {
+            content: [
+              component('HeroBlock', { title: 'Welcome' }),
+              component('BodyBlock', { content: 'Content' }),
+            ],
+          },
+        },
+      };
+
+      expect(
+        validateDocumentStructure({
+          documentSnapshot: conforming,
+          templateSnapshot,
+        }).errors,
+      ).toHaveLength(0);
+
+      // Only the pinned instance is required: a lone HeroBlock is missing BodyBlock, not a second HeroBlock
+      const missingBody = {
+        root: {
+          props: {
+            content: [component('HeroBlock', { title: 'Welcome' })],
+          },
+        },
+      };
+
+      const { errors } = validateDocumentStructure({
+        documentSnapshot: missingBody,
+        templateSnapshot,
+      });
+
+      expect(errors).toHaveLength(1);
+      expect(errors[0].code).toBe('missing_pinned_component');
+      expect(errors[0].componentType).toBe('BodyBlock');
     });
   });
 
@@ -305,12 +509,10 @@ describe('validateDocumentStructure', () => {
     });
 
     it('returns no errors for template with only non-pinned components', () => {
-      const flexibleTemplate: TemplateSnapshot = {
-        components: [
-          { type: 'StatsBlock', pinned: false, defaultProps: {} },
-          { type: 'TestimonialsBlock', pinned: false, defaultProps: {} },
-        ],
-      };
+      const flexibleTemplate = template([
+        { type: 'StatsBlock', id: 'stats-1', pinned: false },
+        { type: 'TestimonialsBlock', id: 'testimonials-1', pinned: false },
+      ]);
 
       const documentSnapshot = {
         root: {
@@ -450,13 +652,11 @@ describe('validateDocumentStructure', () => {
       });
 
       it('handles template with duplicate pinned component types', () => {
-        const duplicateTemplate: TemplateSnapshot = {
-          components: [
-            { type: 'HeroBlock', pinned: true, defaultProps: { title: '' } },
-            { type: 'BodyBlock', pinned: true, defaultProps: { content: '' } },
-            { type: 'HeroBlock', pinned: true, defaultProps: { subtitle: '' } }, // duplicate type
-          ],
-        };
+        const duplicateTemplate = template([
+          { type: 'HeroBlock', id: 'hero-1', pinned: true, props: { title: '' } },
+          { type: 'BodyBlock', id: 'body-1', pinned: true, props: { content: '' } },
+          { type: 'HeroBlock', id: 'hero-2', pinned: true, props: { subtitle: '' } }, // duplicate type
+        ]);
 
         const documentSnapshot = {
           root: {
@@ -557,51 +757,84 @@ describe('validateDocumentStructure', () => {
     });
 
     describe('template null/undefined handling', () => {
-      it('handles template components array is null', () => {
-        const nullTemplate: TemplateSnapshot = {
-          components: null as unknown as TemplateComponent[],
-        };
-
-        const documentSnapshot = {
-          root: {
-            props: {
-              content: [
-                component('HeroBlock', { title: 'Welcome' }),
-              ],
-            },
+      const conformingDocument = {
+        root: {
+          props: {
+            content: [
+              component('HeroBlock', { title: 'Welcome' }),
+            ],
           },
-        };
+        },
+      };
+
+      it('handles template content is null', () => {
+        const templateSnapshot = {
+          content: null,
+          root: { props: { _pinMap: {} } },
+          zones: {},
+        } as unknown as TemplateSnapshot;
 
         const { errors } = validateDocumentStructure({
-          documentSnapshot,
-          templateSnapshot: nullTemplate,
+          documentSnapshot: conformingDocument,
+          templateSnapshot,
         });
 
         // Should handle gracefully - no components to validate
         expect(errors).toHaveLength(0);
       });
 
-      it('handles template components array is undefined', () => {
-        const undefinedTemplate: TemplateSnapshot = {
-          components: undefined as unknown as TemplateComponent[],
-        };
-
-        const documentSnapshot = {
-          root: {
-            props: {
-              content: [
-                component('HeroBlock', { title: 'Welcome' }),
-              ],
-            },
-          },
-        };
+      it('handles template content is undefined', () => {
+        const templateSnapshot = {
+          root: { props: { _pinMap: {} } },
+          zones: {},
+        } as unknown as TemplateSnapshot;
 
         const { errors } = validateDocumentStructure({
-          documentSnapshot,
-          templateSnapshot: undefinedTemplate,
+          documentSnapshot: conformingDocument,
+          templateSnapshot,
         });
 
         // Should handle gracefully - no components to validate
+        expect(errors).toHaveLength(0);
+      });
+
+      it('handles template root is null', () => {
+        const templateSnapshot = {
+          content: [{ type: 'HeroBlock', props: { id: 'hero-1' } }],
+          root: null,
+          zones: {},
+        } as unknown as TemplateSnapshot;
+
+        const { errors } = validateDocumentStructure({
+          documentSnapshot: conformingDocument,
+          templateSnapshot,
+        });
+
+        // No pin map reachable - nothing pinned
+        expect(errors).toHaveLength(0);
+      });
+
+      it('handles pin map that is not an object', () => {
+        const templateSnapshot = {
+          content: [{ type: 'HeroBlock', props: { id: 'hero-1' } }],
+          root: { props: { _pinMap: 'invalid' } },
+          zones: {},
+        } as unknown as TemplateSnapshot;
+
+        const { errors } = validateDocumentStructure({
+          documentSnapshot: conformingDocument,
+          templateSnapshot,
+        });
+
+        expect(errors).toHaveLength(0);
+      });
+
+      it('handles null template snapshot', () => {
+        const { errors } = validateDocumentStructure({
+          documentSnapshot: conformingDocument,
+          templateSnapshot: null as unknown as TemplateSnapshot,
+        });
+
         expect(errors).toHaveLength(0);
       });
     });
