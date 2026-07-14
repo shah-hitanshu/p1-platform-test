@@ -21,15 +21,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
+      - run: corepack enable pnpm
+
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
+          cache: pnpm
           registry-url: 'https://registry.npmjs.org'
-          scope: '@pantheon-systems'
-
-      - name: Enable corepack
-        run: corepack enable
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -41,8 +40,9 @@ jobs:
       - name: Set version override
         if: inputs.version_override != ''
         working-directory: packages/p1-content-validator
-        run: npm version "${{ inputs.version_override }}" --no-git-tag-version
+        run: |
+          jq --arg v "${{ inputs.version_override }}" '.version = $v' package.json > tmp.json && mv tmp.json package.json
 
       - name: Publish p1-content-validator
         working-directory: packages/p1-content-validator
-        run: npm publish
+        run: pnpm publish --access public --no-git-checks

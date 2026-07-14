@@ -126,6 +126,7 @@ Thumbs.db
 *.tmp
 *.temp
 *.png
+*.tgz
 .wrangler/
 .worktrees
 
