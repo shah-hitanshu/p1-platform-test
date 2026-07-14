@@ -700,3 +700,74 @@ describe('P1EditorHeader', () => {
     // TODO: menu interactions may have changed, update test
   });
 });
+
+// =============================================================================
+// "View page" (open-external) button — PCC-3398
+//
+// The button opens the published page in a new tab. It must:
+//  - show on the home page (root path "/"), linking to the site root
+//  - be hidden when editing a content-type template (not publicly published)
+//  - keep working for normal pages, and stay hidden when nothing is selected
+// =============================================================================
+
+const docRoot: Document = {
+  id: 'doc-root',
+  path: '/',
+  archived: false,
+  isPublished: true,
+  inherited: false,
+};
+
+const docTemplate: Document = {
+  id: 'doc-template',
+  path: '_registry/templates/blog-post',
+  archived: false,
+  isPublished: false,
+  inherited: false,
+};
+
+describe('P1EditorHeader — "View page" (open-external) button', () => {
+  const baseProps = {
+    documents: [docHome, docAbout],
+    currentDocument: docAbout,
+    currentUser,
+    siteName: 'My Awesome Site',
+    onSelectDocument: vi.fn(),
+    onLogout: vi.fn(),
+  };
+
+  it('shows the button for a normal page, linking to its path', () => {
+    render(<P1EditorHeader {...baseProps} currentDocument={docAbout} />);
+
+    const link = screen.getByTestId('open-external');
+    expect(link).toBeDefined();
+    expect(link.getAttribute('href')).toBe('/about');
+    expect(link.getAttribute('target')).toBe('_blank');
+  });
+
+  it('shows the button on the home page ("/"), linking to the site root', () => {
+    render(<P1EditorHeader {...baseProps} currentDocument={docRoot} />);
+
+    const link = screen.getByTestId('open-external');
+    expect(link).toBeDefined();
+    expect(link.getAttribute('href')).toBe('/');
+  });
+
+  it('hides the button when editing a content-type template', () => {
+    render(<P1EditorHeader {...baseProps} currentDocument={docTemplate} />);
+
+    expect(screen.queryByTestId('open-external')).toBeNull();
+  });
+
+  it('hides the button when no document is selected', () => {
+    render(
+      <P1EditorHeader
+        {...baseProps}
+        currentDocument={null}
+        selectedDocumentPath={null}
+      />,
+    );
+
+    expect(screen.queryByTestId('open-external')).toBeNull();
+  });
+});

@@ -307,11 +307,15 @@ export function P1EditorHeader({
           </span>
         </button>
 
-        {/* Open in new tab button — shown when editing a page with a valid path */}
+        {/* Open in new tab button — shown when editing a publicly viewable page */}
         {(() => {
           const pagePath = currentDocument?.path || selectedDocumentPath;
-          // Show button if there's a path and it's not empty/root
-          const shouldShow = pagePath && pagePath !== '/' && pagePath !== '';
+          // Templates (edited at _registry/templates/<name>) aren't publicly
+          // published, so there's no page to view — hide the button for them.
+          const isTemplatePath =
+            typeof pagePath === 'string' && /^\/?_registry\/templates\//.test(pagePath);
+          // Show for any real page path, including the home page ("/").
+          const shouldShow = !!pagePath && !isTemplatePath;
           return shouldShow ? (
             <a
               href={pagePath}

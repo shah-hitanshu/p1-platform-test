@@ -18,6 +18,28 @@ puck-css-integration/
 
 ## Completed Work
 
+### PCC-3398 — "View page" button: show on home, hide for templates (2026-07-13) ✅
+
+**Branch:** `PCC-3398-view-page-button-home-and-templates` (plain branch off `main`).
+
+**Bug:** the editor header's "View page" (open-in-new-tab) button behaved wrong in two cases:
+1. **Home page** — the button was hidden by a `pagePath !== '/'` guard, even though the home
+   page is publicly viewable (served at the site root).
+2. **Templates** — the button was shown while editing a content-type template
+   (`_registry/templates/<name>`), which isn't publicly published, so there's no page to view.
+
+**Fix** (single file, `packages/puck-css/src/pds/components/P1EditorHeader.tsx`): replaced the
+visibility condition. Now shows for any real page path including `/` (home → `href="/"`), and
+hides when the path is a template, detected with `/^\/?_registry\/templates\//` — the same
+signature `useP1Editor.ts` uses for template mode. No API/data-layer changes; normal-page href
+behavior untouched.
+
+**TDD:** 4 new cases in `P1EditorHeader.test.tsx` (home shows + `href="/"`, template hidden,
+normal-page regression, no-selection regression). Red: 2 failed / 2 passed. Green: 20 passed.
+0 lint errors; clean build. Verified manually on localhost `/p1`. Security review: no findings
+(unchanged href sink already carries `rel="noopener noreferrer"`; template regex is a hardening).
+Commits: tests `93ba50b`, impl `747ffea`.
+
 ### Create Page Modal — rev2 integration onto content-type templates (2026-06-26) 🚧
 
 **Branch:** `create-page-modal-rev2` (based on `origin/main`, which now includes
