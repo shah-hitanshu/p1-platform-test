@@ -6,7 +6,12 @@
     "workers/*",
     "packages/*"
   ],
+  "scripts": {
+    "ci:version": "changeset version",
+    "ci:publish": "changeset publish"
+  },
   "devDependencies": {
+    "@changesets/cli": "^2.31.0",
     "ws": "^8.21.0"
   }
 }
