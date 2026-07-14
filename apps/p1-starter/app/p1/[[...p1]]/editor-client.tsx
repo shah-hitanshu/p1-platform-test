@@ -14,6 +14,8 @@ import {
   editorPathHref,
 } from "@pantheon-systems/puck-css";
 import { P1NextRouterProvider } from "@pantheon-systems/p1-next-sdk";
+import { createAIChatPlugin } from "@pantheon-systems/p1-ai-chat";
+import { useFlags } from "launchdarkly-react-client-sdk";
 import type { Checkpoint } from "@pantheon-systems/puck-css";
 import type { ContentRole } from "@pantheon-systems/puck-css";
 import { P1_ASSETS } from "../../../constants/assets";
@@ -21,8 +23,10 @@ import { P1_ASSETS } from "../../../constants/assets";
 import "@pantheon-systems/puck-css/styles.css";
 import "@pantheon-systems/puck-css/pds/styles.css";
 
+import { ChatbotFlagProvider } from "../../../components/ChatbotFlagProvider";
 import { P1Lockup } from "../../../components/p1-lockup";
 import config from "../../../puck.config";
+import { shouldShowChatbot, CHATBOT_FLAG_KEY } from "../../../lib/chatbot-flag/feature-gate";
 
 const DEFAULT_PAGE_DATA = {
   root: { props: { title: "New page" } },
@@ -129,7 +133,9 @@ export function EditorClientWrapper({ path }: { path: string }) {
           config={{ ...p1Config, userRole }}
           loginFallback={<P1SignInPage />}
         >
-          <EditorContent path={path} lastGoodStateRef={lastGoodStateRef} />
+          <ChatbotFlagProvider>
+            <EditorContent path={path} lastGoodStateRef={lastGoodStateRef} />
+          </ChatbotFlagProvider>
         </P1App>
         {process.env.NEXT_PUBLIC_ENABLE_ROLE_SWITCHER === 'true' && (
           <RoleSwitcher currentRole={userRole} onRoleChange={setUserRole} />
@@ -199,6 +205,20 @@ function EditorContent({
   const router = useRouter();
   const { getToken } = useP1Auth();
   const p1Plugins = useP1Plugins(path, config);
+  const flags = useFlags();
+  const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL;
+  const chatbotEnabled = shouldShowChatbot(flags[CHATBOT_FLAG_KEY], agentUrl);
+  const aiPlugin = React.useMemo(
+    () =>
+      chatbotEnabled && agentUrl
+        ? createAIChatPlugin({ agentUrl })
+        : null,
+    [chatbotEnabled, agentUrl],
+  );
+  const additionalPlugins = React.useMemo(
+    () => (aiPlugin ? [...p1Plugins, aiPlugin] : p1Plugins),
+    [p1Plugins, aiPlugin],
+  ) as typeof p1Plugins;
 
   const [redirecting, setRedirecting] = React.useState(false);
 
@@ -237,7 +257,7 @@ function EditorContent({
   const { loading, error, puckKey, puckProps } = useP1Editor({
     documentPath: path,
     puckConfig: editorConfig,
-    additionalPlugins: p1Plugins,
+    additionalPlugins,
     onDocumentNotFound: handleDocumentNotFound,
     pluginOptions: {
       onDocumentSelect: handleDocumentSelect,
@@ -339,7 +359,7 @@ function EditorContent({
         </div>
       )}
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-      <Puck key={displayState.puckKey} {...displayState.puckProps as any} _experimentalFullScreenCanvas={true} />
+      <Puck key={`${displayState.puckKey}-${chatbotEnabled ? "ai" : "no-ai"}`} {...displayState.puckProps as any} _experimentalFullScreenCanvas={true} />
     </div>
   );
 }

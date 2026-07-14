@@ -10,6 +10,9 @@ ignoredOptionalDependencies:
   - '@fortawesome/free-brands-svg-icons'
   - '@fortawesome/fontawesome-common-types'
 
+minimumReleaseAgeExclude:
+  - '@pantheon-systems/p1-ai-chat@0.1.0'
+
 overrides:
   esbuild: '>=0.25.0'
   minimatch: '>=10.2.5'
