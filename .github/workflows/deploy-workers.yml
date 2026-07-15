@@ -26,9 +26,6 @@ permissions:
   contents: read
   id-token: write
 
-env:
-  PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: "false"
-
 jobs:
   backend:
     runs-on: ubuntu-latest
