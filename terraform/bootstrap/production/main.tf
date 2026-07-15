@@ -71,6 +71,10 @@ module "github_actions_wif" {
   sa_roles               = local.apply_sa_roles
   terraform_state_bucket = local.terraform_state_bucket
   state_bucket_role      = "roles/storage.objectAdmin"
+  additional_secret_ids = [
+    "MEDIA_WORKER_R2_ACCESS_KEY_ID",
+    "MEDIA_WORKER_R2_SECRET_ACCESS_KEY",
+  ]
 }
 
 # Plan SA: impersonated by the PR plan job, which runs on any same-repo PR.

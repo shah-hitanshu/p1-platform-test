@@ -83,6 +83,12 @@ variable "cloudflare_token_secret_id" {
   default     = "P1_CF_DEPLOY_TOKEN"
 }
 
+variable "additional_secret_ids" {
+  description = "Extra Secret Manager secrets the SA can read, e.g. worker runtime credentials the deploy pushes to Cloudflare"
+  type        = list(string)
+  default     = []
+}
+
 variable "wif_pool_name" {
   description = "Resource path of Pantheon's shared Workload Identity pool (project pantheon-wif)"
   type        = string
@@ -143,6 +149,15 @@ resource "google_storage_bucket_iam_member" "state_bucket" {
 resource "google_secret_manager_secret_iam_member" "cloudflare_token" {
   project   = var.gcp_project
   secret_id = var.cloudflare_token_secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "additional_secrets" {
+  for_each = toset(var.additional_secret_ids)
+
+  project   = var.gcp_project
+  secret_id = each.value
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.github_actions.email}"
 }
