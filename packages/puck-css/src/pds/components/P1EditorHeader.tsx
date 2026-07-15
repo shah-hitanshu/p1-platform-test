@@ -279,6 +279,7 @@ export function P1EditorHeader({
           />
         )}
       </a>
+      <div className={styles.divider} aria-hidden="true" />
       {/* Site label */}
       <div
         data-testid="site-label"
