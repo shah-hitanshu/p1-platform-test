@@ -1,5 +1,12 @@
 # @pantheon-systems/p1-starter
 
+## 1.0.5
+
+### Patch Changes
+
+- @pantheon-systems/puck-css@0.6.0
+- @pantheon-systems/p1-next-sdk@0.6.0
+
 ## 1.0.4
 
 ### Patch Changes

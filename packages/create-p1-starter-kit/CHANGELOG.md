@@ -1,5 +1,11 @@
 # @pantheon-systems/create-p1-starter-kit
 
+## 0.6.0
+
+### Patch Changes
+
+- 986075f: Add the LaunchDarkly-gated `p1-chatbot` AI assistant to the starter-kit editor. The chatbot renders only when the `p1-chatbot` LaunchDarkly flag is enabled and an agent URL is configured, so scaffolded sites ship with it off by default until opted in.
+
 ## 0.5.0
 
 ### Patch Changes
