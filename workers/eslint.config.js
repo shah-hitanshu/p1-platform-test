@@ -41,6 +41,18 @@ export default tseslint.config(
 
       // Relaxations for Cloudflare Workers patterns
       '@typescript-eslint/no-misused-promises': ['error', { checksVoidReturn: false }],
+
+      // Importing from @cloudflare/workers-types loads its 15k-line index.ts
+      // source as a second copy of the entire Workers type universe, which
+      // tsserver/tsc must structurally compare against the ambient globals —
+      // hanging type checking for minutes. The types are already global via
+      // the tsconfig "types" array; use them without importing.
+      'no-restricted-imports': ['error', {
+        paths: [{
+          name: '@cloudflare/workers-types',
+          message: 'These types are ambient globals (tsconfig "types"). Importing this package loads a duplicate 15k-line type universe and hangs tsserver/tsc. Use the global types directly.',
+        }],
+      }],
     },
   },
   {

@@ -17,7 +17,6 @@ vi.mock('cloudflare:workers', () => ({
 }));
 
 import { BrokerTransaction } from '../../../src/durable-objects/broker-transaction.js';
-import type { DurableObjectState } from '@cloudflare/workers-types';
 
 function createMockDurableObjectState(id: string): DurableObjectState {
   const storage = new Map<string, unknown>();

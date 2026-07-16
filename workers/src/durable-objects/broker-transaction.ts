@@ -12,7 +12,12 @@
  */
 
 import { DurableObject } from 'cloudflare:workers';
-import type { DurableObjectState } from '@cloudflare/workers-types';
+// DurableObjectState comes from the ambient @cloudflare/workers-types globals
+// (tsconfig "types"). Do NOT import it from '@cloudflare/workers-types': the
+// package ships no "types" entry, so a value/type import resolves to its
+// 15k-line index.ts source — a duplicate of the entire Workers type universe
+// that tsserver must structurally compare against the ambient globals, hanging
+// type checking for minutes.
 import {
   MAX_ACTOR_ID_LENGTH,
   MAX_REASON_LENGTH,

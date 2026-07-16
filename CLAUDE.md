@@ -28,6 +28,9 @@ When creating code, you MUST follow these guidelines:
 
 5. Ensure that you're designing systems in such a way that they interface with the infrastructure we have defined in the README.md file. 
 
+# Never import from @cloudflare/workers-types
+In `workers/`, never write `import ... from '@cloudflare/workers-types'`. The package ships no `types`/`exports` entry, so the import resolves to its 15k-line `index.ts` source — a duplicate copy of the entire Workers type universe that tsserver/tsc must structurally compare against the ambient globals, hanging type checking for minutes. The types (`DurableObjectState`, `ExecutionContext`, `KVNamespace`, etc.) are already ambient globals via the tsconfig `types` array — use them directly without importing. An ESLint `no-restricted-imports` rule enforces this. (Importing from `cloudflare:workers`, e.g. `DurableObject`, is fine.)
+
 # Ask me for help and do not expand scope without permission
 Do not expand the scope of the architecture. If you see gaps or opportunities as we develop, prepare a reasoned summary for my review before proceeding. 
 

@@ -3,7 +3,6 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { DurableObjectNamespace, DurableObjectId, DurableObjectStub } from '@cloudflare/workers-types';
 
 vi.mock('../../../src/auth/broker/jwt-issuer.js', () => ({
   issueBrokerJwt: vi.fn(),
