@@ -1,7 +1,11 @@
 import { MAX_ACTOR_ID_LENGTH, MAX_PATH_DEPTH } from '../constants/security-limits';
 import type { EditOperation } from '../types';
 
-export const ACTOR_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+// Allows the "|" that OAuth subjects (e.g. Auth0/Google `google-oauth2|<id>`)
+// always contain. Safe: the realtime connect path already cross-validates actorId
+// against the authenticated principal (see realtime-api), so this charset is not
+// the security boundary — it just has to permit legitimate identity values.
+export const ACTOR_ID_PATTERN = /^[a-zA-Z0-9_|-]+$/;
 
 /**
  * Validate actor ID format
@@ -13,7 +17,7 @@ export function validateActorId(actorId: string): string | null {
   }
 
   if (!ACTOR_ID_PATTERN.test(actorId)) {
-    return 'actorId contains invalid characters. Only alphanumeric, hyphens, and underscores allowed.';
+    return 'actorId contains invalid characters. Only alphanumeric, hyphens, underscores, and pipes allowed.';
   }
 
   return null;
