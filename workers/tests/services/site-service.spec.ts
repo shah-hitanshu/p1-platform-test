@@ -880,6 +880,171 @@ describe('Phase 3.1: Site Service', () => {
         expect(sql).toContain('revoked_at IS NULL');
       });
     });
+
+    // ---------------------------------------------------------------------
+    // System admins (users.system_role = 'admin') have ADMIN on all sites
+    // (see getEffectiveRole in src/auth/authorization.ts), so listSites must
+    // return every site for them instead of only sites with explicit
+    // user_site_roles grants.
+    // ---------------------------------------------------------------------
+    describe('systemRole admin bypass (user principals)', () => {
+      it('should select all sites without joining user_site_roles for a system admin user', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listSites({
+          principalId: 'db-user-admin',
+          principalType: 'user',
+          systemRole: 'admin',
+        });
+
+        const sql = vi.mocked(db.query).mock.calls[0][0];
+        expect(sql).toContain('FROM app.sites');
+        expect(sql).not.toContain('user_site_roles');
+        expect(sql).not.toContain('agent_site_roles');
+        // Active-only default and ordering must be preserved.
+        expect(sql).toContain('archived_at IS NULL');
+        expect(sql).toContain('ORDER BY s.created_at DESC');
+      });
+
+      it('should preserve the archived filter for a system admin user', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listSites({
+          principalId: 'db-user-admin',
+          principalType: 'user',
+          systemRole: 'admin',
+          archived: true,
+        });
+
+        const sql = vi.mocked(db.query).mock.calls[0][0];
+        expect(sql).toContain('archived_at IS NOT NULL');
+        expect(sql).not.toContain('user_site_roles');
+      });
+
+      it('should keep LIMIT/OFFSET parameter numbering correct on the admin path', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listSites({
+          principalId: 'db-user-admin',
+          principalType: 'user',
+          systemRole: 'admin',
+          limit: 10,
+          offset: 20,
+        });
+
+        const sql = vi.mocked(db.query).mock.calls[0][0];
+        const params = vi.mocked(db.query).mock.calls[0][1];
+
+        // The admin path does not filter by principalId, so it must not be
+        // in the params and the placeholder numbering must line up exactly
+        // with the params actually passed.
+        expect(params).not.toContain('db-user-admin');
+        const placeholders = [...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1]));
+        expect(Math.max(...placeholders)).toBe(params.length);
+        const limitIndex = params.indexOf(10);
+        const offsetIndex = params.indexOf(20);
+        expect(sql).toContain(`LIMIT $${String(limitIndex + 1)}`);
+        expect(sql).toContain(`OFFSET $${String(offsetIndex + 1)}`);
+      });
+
+      it('should map admin-path rows to Site objects', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        const mockRows = [
+          createMockSiteRow({ id: 'site-1', pantheon_site_id: 'pantheon-1', name: 'All Sites 1' }),
+          createMockSiteRow({ id: 'site-2', pantheon_site_id: 'pantheon-2', name: 'All Sites 2' }),
+        ];
+        vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+
+        const result = await listSites({
+          principalId: 'db-user-admin',
+          principalType: 'user',
+          systemRole: 'admin',
+        });
+
+        expect(result).toHaveLength(2);
+        expect(result[0]).toMatchObject({ id: 'site-1', pantheonSiteId: 'pantheon-1', name: 'All Sites 1' });
+      });
+
+      it('should still join user_site_roles for a non-admin systemRole', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listSites({
+          principalId: 'db-user-member',
+          principalType: 'user',
+          systemRole: 'member',
+        });
+
+        const sql = vi.mocked(db.query).mock.calls[0][0];
+        const params = vi.mocked(db.query).mock.calls[0][1];
+        expect(sql).toContain('INNER JOIN app.user_site_roles');
+        expect(params).toContain('db-user-member');
+      });
+
+      it('should still join user_site_roles when systemRole is undefined', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listSites({ principalId: 'db-user-plain', principalType: 'user' });
+
+        const sql = vi.mocked(db.query).mock.calls[0][0];
+        expect(sql).toContain('INNER JOIN app.user_site_roles');
+      });
+
+      it('should NOT bypass role filtering for agent principals even with systemRole admin', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listSites({
+          principalId: 'agent-abc',
+          principalType: 'agent',
+          systemRole: 'admin',
+        });
+
+        const sql = vi.mocked(db.query).mock.calls[0][0];
+        // Agent traffic keeps its own role scoping regardless of systemRole.
+        expect(sql).toContain('INNER JOIN app.agent_site_roles');
+        expect(sql).toContain('revoked_at IS NULL');
+      });
+
+      it('should keep PCC-3190 intersection semantics for agents with systemRole admin and actingUserId', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listSites({
+          principalId: 'agent-abc',
+          principalType: 'agent',
+          systemRole: 'admin',
+          actingUserId: 'db-user-xyz',
+        });
+
+        const sql = vi.mocked(db.query).mock.calls[0][0];
+        const params = vi.mocked(db.query).mock.calls[0][1];
+        expect(sql).toContain('INNER JOIN app.agent_site_roles');
+        expect(sql).toContain('INNER JOIN app.user_site_roles');
+        expect(params).toContain('agent-abc');
+        expect(params).toContain('db-user-xyz');
+      });
+    });
   });
 
   describe('getSiteAllowedOrigins', () => {

@@ -438,6 +438,36 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       );
     });
 
+    it('should pass the principal systemRole through to listSites', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.listSites).mockResolvedValueOnce([]);
+
+      const request = new Request('https://api.example.com/api/sites', {
+        method: 'GET',
+      });
+
+      await handleSiteRoutes(request, {
+        principal: {
+          id: 'provider-id',
+          type: 'user',
+          dbUserId: 'db-admin-user',
+          systemRole: 'admin',
+          pantheonSiteRoles: {},
+          tokenExpiry: '2026-01-24T10:00:00.000Z',
+        },
+      });
+
+      expect(services.listSites).toHaveBeenCalledWith(
+        expect.objectContaining({
+          principalId: 'db-admin-user',
+          principalType: 'user',
+          systemRole: 'admin',
+        }),
+      );
+    });
+
     it('should fall back to principal.id when dbUserId is not set', async () => {
       const { handleSiteRoutes } = await import('../../src/routes/site-api');
       const services = await import('../../src/services');

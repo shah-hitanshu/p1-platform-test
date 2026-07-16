@@ -342,7 +342,9 @@ async function handleRequest(
   }
 
   // Allowlist check: if users table has entries, only listed users can access.
-  // Skip for mock auth mode (development ergonomics).
+  // In mock auth mode only the REJECTION is skipped (development ergonomics);
+  // enrichment from a matching users row still runs so systemRole-driven
+  // behavior can be exercised locally.
   // Skip for service principals (they authenticate via site API tokens, not user accounts).
   //
   // PCC-3190: agent principals carry no email of their own, so the previous
@@ -356,8 +358,10 @@ async function handleRequest(
     principal.email
     ?? (principal.type === 'agent' ? principal.actingUserEmail : undefined);
 
-  if (!isMockOnly && principal.type !== 'service' && subjectEmail !== undefined) {
-    const allowlistResult = await checkUserAllowlist(principal, subjectEmail);
+  if (principal.type !== 'service' && subjectEmail !== undefined) {
+    const allowlistResult = await checkUserAllowlist(principal, subjectEmail, {
+      enforceAllowlist: !isMockOnly,
+    });
     if (allowlistResult !== null) {
       return cors(allowlistResult);
     }
@@ -386,6 +390,13 @@ async function handleRequest(
  * principals this is principal.email; for agent principals forwarding an
  * acting user (PCC-3190), it is principal.actingUserEmail.
  *
+ * `options.enforceAllowlist` controls only the rejection: when false (mock
+ * auth mode), users missing from the allowlist or inactive are NOT rejected
+ * (development ergonomics), but enrichment from a matching active users row
+ * (dbUserId, systemRole, name, avatar) still runs so admin behavior can be
+ * exercised locally. When true (real auth providers configured), rejection
+ * behaves as before.
+ *
  * Agent principals are NOT enriched (dbUserId/systemRole/etc.) from the
  * acting user's row — downstream agent-keyed authorization expects
  * principal.id to remain the agent identity. Acting-user permissions
@@ -394,6 +405,7 @@ async function handleRequest(
 async function checkUserAllowlist(
   principal: AuthenticatedPrincipal,
   subjectEmail: string,
+  options: { enforceAllowlist: boolean },
 ): Promise<Response | null> {
   const userCountResult = await query<{ count: string }>(
     'SELECT COUNT(*) as count FROM app.users',
@@ -416,7 +428,12 @@ async function checkUserAllowlist(
 
     const userRow = userResult.rows[0];
     if (userRow?.is_active !== true) {
-      return errorResponse('User not authorized', 403);
+      // No matching active row: reject only when the allowlist is enforced
+      // (real auth providers configured). In mock auth mode the request
+      // proceeds unenriched.
+      return options.enforceAllowlist
+        ? errorResponse('User not authorized', 403)
+        : null;
     }
 
     // Agent principals must not adopt the acting user's DB identity.

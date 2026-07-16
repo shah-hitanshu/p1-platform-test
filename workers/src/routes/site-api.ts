@@ -174,6 +174,7 @@ async function handleListSites(
     principalId: context.principal.dbUserId ?? context.principal.id,
     principalType: context.principal.type as 'user' | 'agent',
     actingUserId,
+    systemRole: context.principal.systemRole,
     archived,
   });
 
