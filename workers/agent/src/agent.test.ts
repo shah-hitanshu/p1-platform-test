@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type OpenAI from 'openai';
-import { trimHistory, sanitizeHistory, trimForHistory } from './history.js';
+import { trimHistory, sanitizeHistory, trimForHistory, buildRestoredHistory } from './history.js';
 import { injectPuckIds } from './tools.js';
 
 type Msg = OpenAI.Chat.Completions.ChatCompletionMessageParam;
@@ -208,6 +208,65 @@ describe('trimForHistory', () => {
     const trimmed = trimForHistory('apply_document_edits', result) as Record<string, unknown>;
     expect(trimmed.error).toBe('Edit session expired');
     expect(trimmed.snapshot).toBeUndefined();
+  });
+});
+
+describe('buildRestoredHistory', () => {
+  const assistantToolTurn = (text: string, id: string, name: string, args: string): Msg => ({
+    role: 'assistant',
+    content: text,
+    tool_calls: [{ id, type: 'function', function: { name, arguments: args } }],
+  });
+
+  it('maps a plain user/assistant exchange', () => {
+    const restored = buildRestoredHistory([
+      user('hi'),
+      assistant('hello there'),
+    ]);
+    expect(restored).toEqual([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'hello there' },
+    ]);
+  });
+
+  it('collapses a multi-iteration agentic turn into one assistant entry with tool calls', () => {
+    const restored = buildRestoredHistory([
+      user('add a hero'),
+      assistantToolTurn('On it.', 'call-1', 'apply_document_edits', '{"site_id":"s1"}'),
+      { role: 'tool', tool_call_id: 'call-1', content: JSON.stringify({ success: true, operationsApplied: 2 }) },
+      assistant('Done — added the hero.'),
+    ]);
+
+    expect(restored).toHaveLength(2);
+    expect(restored[0]).toEqual({ role: 'user', content: 'add a hero' });
+
+    const asst = restored[1];
+    expect(asst.role).toBe('assistant');
+    // Assistant text from both iterations is merged.
+    expect(asst.content).toBe('On it.\n\nDone — added the hero.');
+    expect(asst.toolCalls).toHaveLength(1);
+    expect(asst.toolCalls![0]).toEqual({
+      name: 'apply_document_edits',
+      input: { site_id: 's1' },
+      result: { success: true, operationsApplied: 2 },
+    });
+  });
+
+  it('drops empty assistant entries and omits empty toolCalls arrays', () => {
+    const restored = buildRestoredHistory([
+      user('hi'),
+      { role: 'assistant', content: '' }, // empty, no tool calls → dropped
+    ]);
+    expect(restored).toEqual([{ role: 'user', content: 'hi' }]);
+  });
+
+  it('keeps the raw string when a tool result is not JSON', () => {
+    const restored = buildRestoredHistory([
+      user('go'),
+      assistantToolTurn('', 'call-9', 'complete_edit_session', '{}'),
+      { role: 'tool', tool_call_id: 'call-9', content: 'ok' },
+    ]);
+    expect(restored[1].toolCalls![0].result).toBe('ok');
   });
 });
 

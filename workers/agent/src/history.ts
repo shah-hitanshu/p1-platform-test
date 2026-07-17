@@ -1,4 +1,5 @@
 import type OpenAI from 'openai';
+import type { RestoredMessage, RestoredToolCall } from './types.js';
 
 type Msg = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
@@ -41,6 +42,63 @@ export function trimHistory(history: Msg[], maxLength: number): Msg[] {
   const sanitized = sanitizeHistory(history);
   if (sanitized.length <= maxLength) return sanitized;
   return sanitizeHistory(sanitized.slice(-maxLength));
+}
+
+/**
+ * Collapse stored OpenAI-format history into one entry per visible chat bubble.
+ * Streaming shows a single assistant bubble per user turn that accumulates text
+ * and tool badges across every agentic-loop iteration; replay must match, so all
+ * assistant + tool messages between two user messages merge into one entry.
+ */
+export function buildRestoredHistory(history: Msg[]): RestoredMessage[] {
+  // Index tool results by call id so each restored tool call carries its outcome.
+  const toolResults = new Map<string, unknown>();
+  for (const m of history) {
+    if (m.role === 'tool' && typeof m.tool_call_id === 'string') {
+      let parsed: unknown = m.content;
+      try { parsed = JSON.parse(m.content as string); } catch { /* keep raw string */ }
+      toolResults.set(m.tool_call_id, parsed);
+    }
+  }
+
+  const restored: RestoredMessage[] = [];
+  let currentAssistant: RestoredMessage | null = null;
+
+  for (const m of history) {
+    if (m.role === 'user') {
+      currentAssistant = null;
+      restored.push({ role: 'user', content: typeof m.content === 'string' ? m.content : '' });
+    } else if (m.role === 'assistant') {
+      if (!currentAssistant) {
+        currentAssistant = { role: 'assistant', content: '', toolCalls: [] };
+        restored.push(currentAssistant);
+      }
+      if (typeof m.content === 'string' && m.content) {
+        currentAssistant.content = currentAssistant.content
+          ? `${currentAssistant.content}\n\n${m.content}`
+          : m.content;
+      }
+      const toolCalls = (m as { tool_calls?: unknown[] }).tool_calls ?? [];
+      for (const tc of toolCalls) {
+        const fn = (tc as { function?: { name?: string; arguments?: string }; id?: string });
+        let input: unknown = {};
+        try { input = JSON.parse(fn.function?.arguments || '{}'); } catch { /* leave empty */ }
+        const call: RestoredToolCall = { name: fn.function?.name ?? 'tool', input };
+        if (fn.id && toolResults.has(fn.id)) call.result = toolResults.get(fn.id);
+        currentAssistant.toolCalls!.push(call);
+      }
+    }
+    // 'tool'/'system' messages are folded in above or irrelevant to replay.
+  }
+
+  // Drop empty assistant entries and empty toolCalls arrays for a clean transcript.
+  return restored
+    .filter(m => m.role === 'user' || m.content || (m.toolCalls && m.toolCalls.length > 0))
+    .map(m =>
+      m.role === 'assistant' && (!m.toolCalls || m.toolCalls.length === 0)
+        ? { role: m.role, content: m.content }
+        : m,
+    );
 }
 
 export function trimForHistory(toolName: string, result: unknown): unknown {

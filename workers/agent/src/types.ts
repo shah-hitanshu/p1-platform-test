@@ -39,15 +39,39 @@ export interface ChatContext {
 
 export type IncomingMessage =
   | { type: 'chat'; message: string; context: ChatContext }
-  | { type: 'clear' };
+  | { type: 'get_history'; token: string }
+  | { type: 'clear'; token: string };
 
 export interface OutgoingMessage {
-  type: 'token' | 'done' | 'error' | 'tool_start' | 'tool_end' | 'cleared';
+  type: 'token' | 'done' | 'error' | 'tool_start' | 'tool_end' | 'cleared' | 'history';
   content?: string;
   toolName?: string;
   toolInput?: unknown;
   toolResult?: unknown;
   error?: string;
+  history?: RestoredMessage[];
+}
+
+/**
+ * A single tool call, flattened for UI replay. Carries the (trimmed) result that
+ * was persisted alongside the call so restored turns show the same tool badges.
+ */
+export interface RestoredToolCall {
+  name: string;
+  input?: unknown;
+  result?: unknown;
+}
+
+/**
+ * Persisted conversation collapsed into one entry per visible chat bubble — the
+ * shape the plugin renders. All the assistant/tool messages the agentic loop
+ * produced for a single user turn are merged into one assistant entry so replay
+ * matches what streaming showed live.
+ */
+export interface RestoredMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  toolCalls?: RestoredToolCall[];
 }
 
 export interface ValidatedUser {

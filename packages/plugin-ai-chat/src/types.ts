@@ -29,10 +29,25 @@ export interface AIChatPluginOptions {
   getAgentId?: () => string;
 }
 
+/** A single tool call within a replayed turn — already executed, so it carries its result. */
+export interface RestoredToolCall {
+  name: string;
+  input?: unknown;
+  result?: unknown;
+}
+
+/** A stored turn replayed from the agent, ready to be mapped into a ChatMessage. */
+export interface RestoredMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  toolCalls?: RestoredToolCall[];
+}
+
 // Server → client message types
 export type ServerMessage =
   | { type: 'token'; content: string }
   | { type: 'done' }
   | { type: 'error'; error: string }
   | { type: 'tool_start'; toolName: string; toolInput?: unknown }
-  | { type: 'tool_end'; toolName: string; toolResult?: unknown };
+  | { type: 'tool_end'; toolName: string; toolResult?: unknown }
+  | { type: 'history'; history: RestoredMessage[] };

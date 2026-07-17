@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { Button, Icon, Textarea, UtilityButton } from '@pantheon-systems/pds-toolkit-react';
 import { useP1Puck, useP1Auth } from '@pantheon-systems/puck-css';
 import { useAgentChat } from './useAgentChat.js';
@@ -22,11 +22,16 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   const tokenRef = useRef(token);
   tokenRef.current = token;
 
-  const defaultGetAgentId = useCallback(() => {
-    const { userId, siteId, branchId, currentDocument } = cssRef.current;
+  // Reactive scope key: recomputed when the user/site/branch/document changes so
+  // the hook reconnects and loads that conversation's history. History is
+  // persisted per-document, so switching documents shows that document's chat.
+  const { userId, siteId, branchId, currentDocument } = css;
+  const agentId = useMemo(() => {
+    if (options.getAgentId) return options.getAgentId();
     const docSlug = (currentDocument?.path ?? '').replace(/^\//, '').replace(/\//g, '-') || 'root';
     return `${userId}-${siteId}-${branchId}-${docSlug}`;
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options.getAgentId, userId, siteId, branchId, currentDocument?.path]);
 
   const getContext = useCallback(() => ({
     siteId: cssRef.current.siteId,
@@ -38,7 +43,7 @@ export function ChatPanel({ options }: Props): React.ReactElement {
 
   const { messages, input, setInput, submit, isLoading, clearMessages } = useAgentChat({
     agentUrl: options.agentUrl,
-    getAgentId: options.getAgentId ?? defaultGetAgentId,
+    agentId,
     getContext,
   });
 
@@ -138,7 +143,7 @@ export function ChatPanel({ options }: Props): React.ReactElement {
           showLabel={false}
           placeholder="Describe what you want to build or change…"
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value)}
           textareaProps={{ onKeyDown: handleKeyDown }}
           disabled={isLoading}
           rows={2}

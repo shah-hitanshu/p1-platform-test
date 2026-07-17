@@ -5,7 +5,7 @@ import type { Env, IncomingMessage, OutgoingMessage, ChatContext, ValidatedUser 
 import { McpApiClient } from './css-api.js';
 import { CSS_TOOLS, WEB_TOOLS, executeTool } from './tools.js';
 import { validateCSSToken } from './auth.js';
-import { trimHistory, sanitizeHistory, trimForHistory } from './history.js';
+import { trimHistory, sanitizeHistory, trimForHistory, buildRestoredHistory } from './history.js';
 
 // Model reached through the AI Gateway compat endpoint, in provider/model notation
 // (workers-ai/@cf/... for native Cloudflare models, anthropic/... for Claude).
@@ -16,6 +16,11 @@ type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
 interface AgentState {
   conversationHistory: ChatMessage[];
+  // The validated user who owns this conversation, established on the first
+  // authenticated chat turn. get_history/clear require the caller's token to
+  // resolve to this id — the DO key is built from non-secret, guessable ids, so
+  // ownership can't rely on the key alone.
+  ownerId?: string;
 }
 
 const SYSTEM_PROMPT = `You are an AI assistant integrated into a P1 page editor.
@@ -101,6 +106,25 @@ export class ChatAgent extends Agent<Env, AgentState> {
     connection.send(JSON.stringify(message));
   }
 
+  // Gate read/clear of a conversation: the token must validate, and once the
+  // conversation has an owner (set on the first chat turn) the caller must be
+  // that owner. The DO key is built from non-secret ids, so the token — not the
+  // key — is the access control.
+  private async authorizeConversationAccess(
+    token: string,
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    let user: ValidatedUser;
+    try {
+      user = await validateCSSToken(token, this.env.CSS_BACKEND_URL);
+    } catch {
+      return { ok: false, error: 'Authentication failed' };
+    }
+    if (this.state.ownerId !== undefined && this.state.ownerId !== user.id) {
+      return { ok: false, error: 'Not authorized for this conversation' };
+    }
+    return { ok: true };
+  }
+
   async onMessage(connection: Connection, rawMessage: WSMessage): Promise<void> {
     if (typeof rawMessage !== 'string') {
       this.send(connection, { type: 'error', error: 'Binary messages not supported' });
@@ -128,8 +152,31 @@ export class ChatAgent extends Agent<Env, AgentState> {
         return;
       }
 
+      if (parsed.type === 'get_history') {
+        // Auth: the conversation is per-user and the DO key is guessable, so require
+        // a valid token whose user owns this conversation before returning history.
+        const authed = await this.authorizeConversationAccess(parsed.token);
+        if (!authed.ok) {
+          this.send(connection, { type: 'error', error: authed.error });
+          return;
+        }
+        // Only replay to an established owner. If ownership isn't set yet — a brand-new
+        // conversation, or legacy state persisted before ownership tracking — return
+        // empty rather than risk leaking history to a non-owner with a valid token.
+        const restored = this.state.ownerId === undefined
+          ? []
+          : buildRestoredHistory(sanitizeHistory([...this.state.conversationHistory]));
+        this.send(connection, { type: 'history', history: restored });
+        return;
+      }
+
       if (parsed.type === 'clear') {
-        await this.setState({ conversationHistory: [] });
+        const authed = await this.authorizeConversationAccess(parsed.token);
+        if (!authed.ok) {
+          this.send(connection, { type: 'error', error: authed.error });
+          return;
+        }
+        await this.setState({ conversationHistory: [], ownerId: this.state.ownerId });
         this.send(connection, { type: 'cleared' });
         return;
       }
@@ -144,6 +191,14 @@ export class ChatAgent extends Agent<Env, AgentState> {
         user = await validateCSSToken(context.token, this.env.CSS_BACKEND_URL);
       } catch {
         this.send(connection, { type: 'error', error: 'Authentication failed' });
+        return;
+      }
+
+      // Ownership: a conversation belongs to the user who started it. Reject attempts
+      // to continue (or read, via model context) someone else's conversation — the DO
+      // key is guessable, so the validated token is the access control here too.
+      if (this.state.ownerId !== undefined && this.state.ownerId !== user.id) {
+        this.send(connection, { type: 'error', error: 'Not authorized for this conversation' });
         return;
       }
 
@@ -260,7 +315,12 @@ export class ChatAgent extends Agent<Env, AgentState> {
       }
 
       // Persist updated history (keep last 20 entries to manage DO storage)
-      await this.setState({ conversationHistory: trimHistory(historyForStorage, 20) });
+      // Persist history and bind the conversation to the authenticated user so
+      // subsequent get_history/clear calls can be authorized against this owner.
+      await this.setState({
+        conversationHistory: trimHistory(historyForStorage, 20),
+        ownerId: user.id,
+      });
 
       this.send(connection, { type: 'done' });
     } catch (err) {
