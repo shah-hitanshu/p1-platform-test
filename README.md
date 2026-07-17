@@ -1,51 +1,79 @@
 # p1-media-r2
 
-A monorepo providing image/media management for Puck-based P1 sites, backed by Cloudflare R2 storage. It includes a Cloudflare Worker API for storing and managing media, and a React plugin that integrates a media library UI into the Puck editor.
+A monorepo providing image/media management for Puck-based P1 sites, backed by Cloudflare R2 (bytes) and D1 (metadata). It includes a Cloudflare Worker API for uploading, versioning, and serving media with editable metadata (alt text, caption, …), and a React plugin that integrates a media library UI and a rich `p1-media` field type into the Puck editor.
+
+This document covers working **on** this repo — architecture, infrastructure, local development, and deployment. If you're looking for how to **use** what it produces:
+
+- **Integrating the Puck plugin** (component and site developers) → [`packages/plugin/README.md`](packages/plugin/README.md)
+- **Calling the Worker API directly** (e.g. an MCP tool or other service) → [`docs/openapi.yaml`](docs/openapi.yaml), served with an interactive Swagger UI at `/docs` on the deployed worker
 
 ## Architecture
 
 ```
 p1-media-r2/
-  worker/           Cloudflare Worker — media write API (upload, list, delete)
+  worker/           Cloudflare Worker — media API (upload, version, list, get,
+                    metadata PATCH, soft-delete) + on-demand image transforms
+    migrations/     D1 schema migrations (assets + asset_versions)
   packages/
-    plugin/         @pantheon-systems/p1-media-r2 — Puck editor plugin
+    plugin/         @pantheon-systems/p1-media-r2 — Puck editor plugin + render helpers
   terraform/
     modules/
-      cloudflare-media/   Terraform module for R2 bucket provisioning
+      cloudflare-media/   Terraform module — R2 bucket + D1 database
     environments/
       sandbox/
       staging/
       production/
   .github/
     workflows/
-      deploy-worker.yml   GHA workflow for worker deployment
+      deploy-worker.yml   GHA workflow — D1 migrations + worker deploy
+      publish.yml         GHA workflow — plugin npm publish (OIDC)
 ```
 
 ### Delivery model
 
-**Write path (this repo):** The Cloudflare Worker handles upload, list, and delete. Uploaded images are stored in R2 under `{siteId}/{workstreamId}/media/{timestamp}-{filename}`. The worker returns CDN delivery URLs so that stored field values point directly at the transformation layer.
+**Write path (this repo):** The Worker stores an uploaded image as an **asset** with an
+**immutable version**. Bytes go to R2 under `{siteId}/assets/{assetId}/{versionId}-{filename}`;
+metadata (filename, dimensions, alt, caption, …) goes to D1. Replacing an image adds a new
+immutable version and repoints the asset's `current_version` — old versions are never
+overwritten. The Worker returns an asset record (`MediaAsset`) whose `url` is a CDN
+delivery URL for the current version.
 
 **Read/delivery path (this repo):** The same Worker's `/image/*` route serves and transforms images on demand using the Cloudflare Images binding. Transformations — resize, format conversion, smart crop, face-aware crop, blur, brightness, contrast, and more — are applied at request time based on URL query params. Responses carry `Cache-Control: public, max-age=31536000, immutable` so browsers and the Cloudflare CDN cache each unique URL.
 
 ```
-Editor uploads → Worker → R2 bucket
-                              ↓
-               media.p1.pantheon.io/image/{key}?width=1200&format=auto
-                              ↓
-                   Worker → Cloudflare Images binding → transformed image
+                          ┌── R2 bucket        (immutable version bytes)
+Editor uploads → Worker ──┤
+                          └── D1: assets +      (metadata defaults; alt, caption, …)
+                              asset_versions
+        │
+        │  On select, the editor copies the chosen version's URL + metadata
+        │  into the Puck document (edit-time join). Published pages render from
+        │  the document alone — <Render> never calls this API.
+        ▼
+   media.p1.pantheon.io/image/{key}?width=1200&format=auto
+        │
+        ▼
+   Worker → Cloudflare Images binding → transformed image
 ```
 
-Images are never re-uploaded or duplicated for different sizes — only the original is stored. The Images binding bills per transformation request; browser and CDN caching via the `Cache-Control` header avoids redundant calls for the same URL.
+Images are never re-uploaded or duplicated for different sizes — only the original bytes are stored per version. The Images binding bills per transformation request; browser and CDN caching via the `Cache-Control` header avoids redundant calls for the same URL.
 
 > **Production upgrade path (PCC-3277):** The Images binding is account-based and works on Workers-only accounts. When P1 zones are provisioned, this should migrate to `cf.image` (zone-level transforms) for CDN-edge execution and built-in tiered caching. Migration scope: `worker/src/handlers/image.ts` only.
 
-### Workstream isolation
+### Asset model & workstream semantics
 
-Images are namespaced by both `siteId` and `workstreamId` (branch/workstream UUID from CCR). This means:
+The media library is **site-scoped and workstream-agnostic**. An asset is a logical
+identity (`assetId`); each upload or replacement creates an immutable `versionId`.
 
-- Images from different workstreams editing the same content slot never collide
-- A new workstream's images are not referenced in live content until the workstream is published
-- Discarded workstreams can have their images cleaned up by deleting the `{siteId}/{workstreamId}/media/*` prefix
+- **CCR owns workstream state, not the media store.** Which version a page shows is
+  decided by the version pinned in the CCR-managed Puck document, which already has
+  draft / preview / merge / rollback. The Worker knows nothing about workstreams
+  (the `workstreamId` query param is accepted for backward compatibility and ignored).
+- **Immutable version URLs** cache indefinitely and never need invalidation.
+- **`DELETE` is a soft delete** — the asset is hidden from the library but its bytes keep
+  serving, so already-published pages don't break. A hard-purge path for legal takedown
+  is tracked separately (**PCC-3386**); it is required because the `immutable` cache
+  headers mean a deleted object otherwise keeps serving for up to a year.
 
 ### Auth
 
@@ -54,68 +82,78 @@ Images are namespaced by both `siteId` and `workstreamId` (branch/workstream UUI
 3. The CSS service binding is used when available to avoid Cloudflare error 1042 (same-account worker-to-worker requests).
 4. Image delivery via `/image/*` is public — no auth required (consistent with CDN delivery).
 
+> **Write-role gate (PCC-3278):** today all authenticated endpoints assert only
+> `canView`. Uploading, versioning, patching metadata, and deleting should require an
+> editor role (`canEditDocuments`), but CSS does not yet expose the caller's effective
+> role to the worker. Marked `TODO(PCC-3278)` in `worker/src/index.ts`. The write
+> endpoints must **not** be exposed on a live worker until that check lands — the primary
+> path (Puck editor with a user JWT → EDITOR/ADMIN) is unaffected, but a viewer-role
+> agent or service token could otherwise write.
+
 ## Worker API
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| `GET` | `/image/{key}[?params]` | No | Serve and transform an image from R2. Query params drive transformation (see below). |
-| `GET` | `/media?siteId={id}&workstreamId={id}` | Yes | List media for a site + workstream (optional `search` param) |
-| `POST` | `/media?siteId={id}&workstreamId={id}` | Yes | Upload media via multipart form (`file` field). Accepted: png, jpeg, gif, webp, avif. Max 10 MB. |
-| `DELETE` | `/media/{key}?siteId={id}&workstreamId={id}` | Yes | Delete a media item |
-
-All endpoints return JSON (except `/image/*`) and include CORS headers. Authenticated endpoints require `Authorization: Bearer <token>`.
-
-### Image transformation params
-
-| Param | Description | Example |
-|-------|-------------|---------|
-| `width` | Output width in pixels | `?width=400` |
-| `height` | Output height in pixels | `?height=300` |
-| `format` | Output format: `auto`, `webp`, `avif`, `jpeg`, `png`, `gif` | `?format=auto` |
-| `quality` | Compression quality 1–100 (default 85) | `?quality=80` |
-| `fit` | `contain`, `cover`, `crop`, `pad`, `scale-down` | `?fit=cover` |
-| `gravity` | Crop focal point: `auto`, `face`, `left`, `right`, `top`, `bottom`, `center`, `XxY` | `?gravity=face` |
-| `fit` + `gravity` | Use `fit=cover&gravity=auto` for content-aware smart crop | `?fit=cover&gravity=auto` |
-| `blur` | Blur radius 0–250 | `?blur=5` |
-| `brightness` | Brightness multiplier (1 = default) | `?brightness=1.2` |
-| `contrast` | Contrast multiplier (1 = default) | `?contrast=0.9` |
-| `saturation` | Saturation multiplier (0 = grayscale, 1 = default) | `?saturation=0` |
-| `sharpen` | Sharpen amount 0–10 | `?sharpen=2` |
-| `rotate` | Rotation: `90`, `180`, `270` | `?rotate=90` |
-| `trim.top/left/height/width` | Manual crop region in pixels | `?trim.top=10&trim.left=20&trim.height=300&trim.width=400` |
-
-`format=auto` negotiates the best format from the `Accept` header (avif → webp → jpeg fallback). When no transformation params are present, the raw R2 object is served directly.
+The full request/response contract — all endpoints, auth, the `MediaAsset` shape, and
+every image transformation param — is the OpenAPI spec at
+[`docs/openapi.yaml`](docs/openapi.yaml). The deployed worker serves it with an
+interactive Swagger UI at `/docs` (and the raw spec at `/docs/openapi.yaml`); both are
+unauthenticated so the API surface is publicly browsable. This section previously
+duplicated that table — kept in one place now to avoid drift.
 
 ### Environment variables and bindings
 
 | Name | Type | Description |
 |------|------|-------------|
-| `MEDIA_BUCKET` | R2 Binding | R2 bucket for this environment |
+| `MEDIA_BUCKET` | R2 Binding | R2 bucket for this environment (immutable version bytes) |
+| `MEDIA_DB` | D1 Binding | D1 database holding asset + version metadata (`database_id` from the Terraform `d1_database_id` output) |
 | `IMAGES` | Images Binding | Cloudflare Images binding for on-demand transformation |
 | `CSS_SERVICE` | Service Binding | CSS worker (avoids error 1042 for same-account auth calls) |
 | `CSS_BASE_URL` | Var | Public base URL of the CSS auth service |
 | `CDN_BASE_URL` | Var | Base URL returned in upload/list responses (e.g. `https://media.p1.pantheon.io/image`) |
 | `MAX_UPLOAD_BYTES` | Var | Maximum upload size in bytes (default `10485760` = 10 MB) |
+| `RECONCILE_DRY_RUN` | Var | Orphan-reconcile Cron Trigger safety switch — see below. Defaults to dry-run unless literally `"false"` |
+
+### Orphan-reconcile Cron Trigger
+
+A scheduled job (hourly in staging/production; `worker/src/handlers/reconcile.ts`) deletes
+R2 objects from abandoned presigned uploads — a client PUTs bytes but never calls
+`/finalize` (tab closed, network blip). It only ever considers objects with no
+`asset_versions` row referencing them AND older than 24h, re-checking each candidate
+against D1 immediately before deleting (not just an upfront snapshot) so a legitimately
+slow finalize can't lose the race. Ships with `RECONCILE_DRY_RUN: "true"` in every
+environment — it logs candidates but deletes nothing until an operator reviews those
+logs (`wrangler tail` or the dashboard) and manually flips the var to `"false"` for that
+environment.
 
 ## Infrastructure
 
-### R2 buckets
+### R2 buckets and D1 databases
 
-| Environment | Bucket | CDN delivery base URL |
-|-------------|--------|-----------------------|
+Each environment lives in its own Cloudflare account and gets a same-named R2 bucket and D1 database.
+
+| Environment | Bucket / D1 name | CDN delivery base URL |
+|-------------|------------------|-----------------------|
 | sandbox | `p1-media-sandbox` | `https://media.sandbox.p1.pantheon.io/image` |
-| staging | `p1-media-staging` | `https://media.staging.p1.pantheon.io/image` |
+| staging | `p1-media-staging` | `https://staging.media.p1.pantheon.io/image` |
 | production | `p1-media-prod` | `https://media.p1.pantheon.io/image` |
 
 ### Provision with Terraform
 
+The module creates both the R2 bucket and the D1 database. The Cloudflare API token must carry **D1 edit scope** in addition to R2/Workers.
+
 ```sh
-export CLOUDFLARE_API_TOKEN=<your-token>
+export CLOUDFLARE_API_TOKEN=<your-token>   # needs R2 + D1 edit scope
 
 cd terraform/environments/staging
 terraform init
 terraform apply -var="cloudflare_account_id=<account-id>"
+
+# Copy the D1 id into wrangler.jsonc for this env (database_id, like bucket_name):
+terraform output d1_database_id
 ```
+
+After provisioning, paste the `d1_database_id` value into the matching env block's
+`d1_databases` binding in `worker/wrangler.jsonc` (it ships with a `REPLACE_WITH_TF_d1_database_id`
+placeholder), then apply schema migrations (see Deployment).
 
 Terraform state uses the existing GCS buckets shared with other P1 services — no new bucket required:
 
@@ -131,7 +169,7 @@ Once the custom domains are provisioned, set `custom_domain` in the relevant env
 
 ### Prerequisites
 
-- Node.js >= 18
+- Node.js >= 22.5 (the worker test suite uses the built-in `node:sqlite` for its real-D1 harness)
 - pnpm >= 10 (`corepack enable && corepack prepare pnpm@10`)
 - Wrangler CLI (installed as a dev dependency)
 
@@ -143,15 +181,26 @@ pnpm install
 
 ### Run the worker locally
 
+First apply the D1 schema to the local database (once, and after any new migration):
+
+```sh
+cd worker
+pnpm exec wrangler d1 migrations apply p1-media-local --local
+```
+
+Then start the dev server:
+
 ```sh
 pnpm dev:worker
 ```
 
-Starts a local Wrangler dev server at `http://localhost:8788` with R2 emulation. Auth falls back to `fetch` against `CSS_BASE_URL` (no service binding in local dev).
+Starts a local Wrangler dev server at `http://localhost:8788` with local R2 and D1 (miniflare). 
 
-**Note:** The `wrangler.jsonc` top-level config sets `"images": { "binding": "IMAGES", "remote": true }`, which connects the Images binding to the real Cloudflare account (Pantheon P1 Sandbox) during local dev. This means all transformation params — `fit`, `gravity`, image filters, etc. — work correctly with plain `wrangler dev`. R2 stays local (miniflare), so uploaded images are accessible without touching a live bucket.
+**Images binding:** the top-level `wrangler.jsonc` sets `"images": { "binding": "IMAGES", "remote": true }`, connecting to the real Cloudflare account (Pantheon P1 Sandbox) during local dev, so all transformation params — `fit`, `gravity`, filters, etc. — work with plain `wrangler dev`. Upload, list, metadata, and *raw* image serving work without it (dimension capture via `IMAGES.info()` is best-effort and degrades to no dimensions if unavailable).
 
-Local mode is sufficient for all features. Use `wrangler dev --env staging` (or a deployed environment) only if you need to test against live staging data.
+**Auth in local dev:** `validateAuth` calls `CSS_BASE_URL`, which by default points at `localhost` and has no CSS running. For an end-to-end local run, point `CSS_BASE_URL` at a reachable CSS (e.g. staging) and use a real bearer token — this exercises the real auth path. `wrangler dev --env staging` runs against live staging data. Nothing in local testing depends on PCC-3278: for a normal editor token the `canView` check behaves identically before and after that work.
+
+To drive the plugin against your local worker, set the plugin's `workerUrl` to `http://localhost:8788`.
 
 ### Run tests
 
@@ -173,149 +222,20 @@ pnpm build
 
 ### Via GitHub Actions (recommended)
 
-Use the **Deploy Worker** workflow (`Actions → Deploy Worker → Run workflow`). Select the target environment (sandbox, staging, production) and optionally enable dry-run.
+Use the **Deploy Worker** workflow (`Actions → Deploy Worker → Run workflow`). Select the target environment (sandbox, staging, production) and optionally enable dry-run. The workflow applies D1 migrations (`--remote`, skipped on dry-run) before deploying the worker.
 
-Required GitHub environment secrets per environment:
-- `CLOUDFLARE_API_TOKEN`
+Required GitHub environment config per environment:
+- `CLOUDFLARE_API_TOKEN` (via Secret Manager) — must carry **D1 edit scope** as well as Workers/R2
 - `CLOUDFLARE_ACCOUNT_ID`
 
 ### Manual
 
-```sh
-cd worker && pnpm exec wrangler deploy --env staging
-```
-
-## Plugin Usage
-
-The plugin has two distinct audiences with different levels of involvement.
-
----
-
-### For component developers
-
-If you are building a Puck component for a P1 site, you do not need to install or configure the plugin. CCR wires it up automatically when it initialises the Puck editor — `workerUrl`, `siteId`, `workstreamId`, and `getAuthToken` all come from CCR context.
-
-**Your only responsibility** is naming image fields using the standard patterns so the media picker activates automatically, and using `buildImageUrl` in your component's render output to apply the right dimensions and format.
-
-#### Field naming — auto-detected patterns
-
-Name your image fields using any of the following patterns and the media library picker will appear automatically in the Puck sidebar:
-
-- `image`, `imageUrl`
-- `logo`, `logoUrl`
-- `media`, `mediaUrl`
-- `icon`, `iconUrl`
-- `thumbnail`, `thumbnailUrl`
-- Any field ending in `ImageUrl` or `LogoUrl`
-
-Navigation URL patterns (`buttonUrl`, `linkUrl`, `ctaUrl`) and alt text fields are excluded.
-
-#### Applying transforms in your component
-
-The stored field value is a clean CDN URL. Use `buildImageUrl` to add size, format, and quality at render time. It preserves any crop intent the editor may have set (e.g. `?smart=true`).
-
-```tsx
-import { buildImageUrl } from "@pantheon-systems/p1-media-r2";
-
-// You control size and format — the editor's crop choice is preserved automatically
-<img src={buildImageUrl(data.heroImage, { width: 1200, height: 630, format: "webp" })} />
-<img src={buildImageUrl(data.thumbnail, { width: 150, height: 150, format: "webp", quality: 80 })} />
-```
-
-#### Stored field value format
-
-For reference, the value stored in Puck data looks like:
-
-```
-https://media.p1.pantheon.io/image/{siteId}/{workstreamId}/media/{timestamp}-{filename}
-```
-
-With fit-in (scale to fit, no cropping or padding):
-
-```
-https://media.p1.pantheon.io/image/{siteId}/{workstreamId}/media/{timestamp}-{filename}?fit=scale-down
-```
-
-With smart crop (content-aware crop to fill):
-
-```
-https://media.p1.pantheon.io/image/{siteId}/{workstreamId}/media/{timestamp}-{filename}?fit=cover&gravity=auto
-```
-
-`buildImageUrl` merges transform params onto the stored URL at render time, so component developers only need to specify `width`, `height`, `format`, and `quality`. The editor-set crop intent is preserved automatically.
-
----
-
-### For site developers enabling the media library
-
-If you are building a P1-powered site and want editors to have a media library in the Puck sidebar, install this package and add the media plugin alongside the standard CCR editor setup. The values required by `createMediaPlugin` — site ID, workstream ID, and auth token — are all available from CCR context, so no additional configuration is needed beyond wiring them through.
-
-#### Install
+Apply migrations before deploying (additive-only, so migrating ahead of the code is safe):
 
 ```sh
-pnpm add @pantheon-systems/p1-media-r2
+cd worker
+pnpm exec wrangler d1 migrations apply p1-media-staging --env staging --remote
+pnpm exec wrangler deploy --env staging
 ```
 
-#### Integration with puck-css
-
-Pass the media plugin via `additionalPlugins` in `useP1Editor`. The hook handles stable plugin merging internally — no manual override wiring needed.
-
-```tsx
-import { useMemo } from "react";
-import { Puck } from "@puckeditor/core";
-import { createMediaPlugin } from "@pantheon-systems/p1-media-r2";
-import { useP1Editor, useP1Auth } from "@pantheon-systems/puck-css";
-
-function Editor({ siteId, workstreamId, documentPath, config }) {
-  const { getToken } = useP1Auth();
-
-  const mediaPlugin = useMemo(
-    () =>
-      createMediaPlugin({
-        workerUrl: "https://media.staging.p1.pantheon.io",
-        siteId,       // from CCR context
-        workstreamId, // from CCR context
-        getAuthToken: getToken, // from useP1Auth — always returns the current token
-      }),
-    [siteId, workstreamId, getToken],
-  );
-
-  const { loading, error, puckKey, puckProps } = useP1Editor({
-    documentPath,
-    puckConfig: config,
-    additionalPlugins: [mediaPlugin],
-  });
-
-  if (loading) return null;
-  if (error) return <div>Error: {error.message}</div>;
-  return <Puck key={puckKey} {...puckProps} />;
-}
-```
-
-#### `createMediaPlugin` options
-
-| Option | Type | Description |
-|--------|------|-------------|
-| `workerUrl` | `string` | Base URL of the deployed p1-media Worker |
-| `siteId` | `string` | Site UUID — from CCR context |
-| `workstreamId` | `string` | Workstream UUID — from CCR context |
-| `getAuthToken` | `() => Promise<string \| null> \| string \| null` | Returns the CCR auth bearer token — pass `useP1Auth().getToken` directly |
-| `fieldNamePatterns` | `RegExp[]` | Override the default field name patterns |
-
----
-
-### Exports
-
-```ts
-import {
-  createMediaPlugin,           // Plugin factory (for CCR integration)
-  buildImageUrl,               // Apply transform params to a CDN URL (for components)
-} from "@pantheon-systems/p1-media-r2";
-
-import type {
-  MediaPluginOptions,          // createMediaPlugin config shape
-  ImageTransformParams,        // { width?, height?, format?, quality? }
-} from "@pantheon-systems/p1-media-r2";
-
-import { DEFAULT_MEDIA_PATTERNS } from "@pantheon-systems/p1-media-r2";
-```
+> **Prerequisite:** the env's `d1_databases.database_id` in `wrangler.jsonc` must be set to the real D1 id from Terraform (`terraform output d1_database_id`) — it ships as a placeholder.

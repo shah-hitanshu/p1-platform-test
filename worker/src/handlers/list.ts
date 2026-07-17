@@ -1,46 +1,19 @@
-import { Env, MediaItem } from '../types';
+import { Env } from '../types';
+import { listAssets } from '../store';
 
-export async function handleList(
-  request: Request,
-  env: Env,
-  siteId: string,
-  workstreamId: string,
-  cdnBaseUrl: string,
-): Promise<Response> {
+/** GET /media — site-scoped asset list with optional filename/alt search. */
+export async function handleList(request: Request, env: Env, siteId: string): Promise<Response> {
   const url = new URL(request.url);
-  const search = url.searchParams.get('search')?.toLowerCase();
+  const search = url.searchParams.get('search') || undefined;
+  const limitParam = url.searchParams.get('limit');
+  const limit = limitParam ? parseInt(limitParam, 10) : undefined;
 
-  const prefix = `${siteId}/${workstreamId}/media/`;
-  const items: MediaItem[] = [];
+  const assets = await listAssets(env, siteId, {
+    search,
+    limit: limit && !isNaN(limit) ? limit : undefined,
+  });
 
-  let cursor: string | undefined;
-  do {
-    const listed = await env.MEDIA_BUCKET.list({ prefix, cursor });
-    cursor = listed.truncated ? listed.cursor : undefined;
-
-    for (const object of listed.objects) {
-      // Strip "{siteId}/media/{timestamp}-" prefix to get the original filename
-      const afterPrefix = object.key.slice(prefix.length);
-      const dashIndex = afterPrefix.indexOf('-');
-      const filename = dashIndex !== -1 ? afterPrefix.slice(dashIndex + 1) : afterPrefix;
-
-      // Apply search filter if provided
-      if (search && !filename.toLowerCase().includes(search)) {
-        continue;
-      }
-
-      const encodedKey = object.key.split('/').map(encodeURIComponent).join('/');
-      items.push({
-        key: object.key,
-        url: `${cdnBaseUrl}/${encodedKey}`,
-        filename,
-        size: object.size,
-        lastModified: object.uploaded?.toISOString(),
-      });
-    }
-  } while (cursor);
-
-  return new Response(JSON.stringify(items), {
+  return new Response(JSON.stringify(assets), {
     headers: { 'Content-Type': 'application/json' },
   });
 }

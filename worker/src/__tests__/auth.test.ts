@@ -7,8 +7,13 @@ const TEST_SITE_ID = 'site-123';
 function createEnv(): Env {
   return {
     MEDIA_BUCKET: {} as R2Bucket,
+    MEDIA_DB: {} as D1Database, // auth.ts does not touch D1 — present only to satisfy Env
     CSS_BASE_URL: 'https://css.example.com',
     CDN_BASE_URL: 'https://cdn.example.com/p1',
+    R2_ACCESS_KEY_ID: 'test-access-key',
+    R2_SECRET_ACCESS_KEY: 'test-secret-key',
+    R2_ACCOUNT_ID: 'test-account',
+    R2_BUCKET_NAME: 'test-bucket',
     IMAGES: {} as ImagesBinding,
   };
 }
@@ -75,8 +80,13 @@ describe('validateAuth', () => {
     const mockFetch = vi.fn().mockResolvedValue(siteOkResponse());
     const env: Env = {
       MEDIA_BUCKET: {} as R2Bucket,
+      MEDIA_DB: {} as D1Database, // auth.ts does not touch D1 — present only to satisfy Env
       CSS_BASE_URL: 'https://css.example.com',
       CDN_BASE_URL: 'https://cdn.example.com/p1',
+    R2_ACCESS_KEY_ID: 'test-access-key',
+    R2_SECRET_ACCESS_KEY: 'test-secret-key',
+    R2_ACCOUNT_ID: 'test-account',
+    R2_BUCKET_NAME: 'test-bucket',
       CSS_SERVICE: { fetch: mockFetch } as unknown as Fetcher,
       IMAGES: {} as ImagesBinding,
     };

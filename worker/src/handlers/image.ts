@@ -37,6 +37,19 @@ function num(val: string | null): number | undefined {
   return isNaN(n) ? undefined : n;
 }
 
+// R9: bound transform params so an unauthenticated caller can't drive unbounded
+// compute/billing with absurd values. (Rate limiting on /image/* is a separate,
+// deferred mitigation.)
+const MAX_DIMENSION = 5000;
+function clampNum(
+  val: number | undefined,
+  min: number,
+  max: number,
+): number | undefined {
+  if (val === undefined) return undefined;
+  return Math.min(Math.max(val, min), max);
+}
+
 function parseGravity(val: string | null): ImageTransform['gravity'] | undefined {
   if (!val) return undefined;
   if (VALID_GRAVITY_NAMED.has(val)) return val as 'face' | 'left' | 'right' | 'top' | 'bottom' | 'center' | 'auto' | 'entropy';
@@ -58,15 +71,15 @@ function buildTransform(p: URLSearchParams): ImageTransform {
   const rotateRaw = num(p.get('rotate'));
 
   return {
-    width:      num(p.get('width')),
-    height:     num(p.get('height')),
+    width:      clampNum(num(p.get('width')), 1, MAX_DIMENSION),
+    height:     clampNum(num(p.get('height')), 1, MAX_DIMENSION),
     fit:        fitRaw && VALID_FIT.has(fitRaw) ? fitRaw as ImageTransform['fit'] : undefined,
     gravity:    parseGravity(p.get('gravity')),
-    blur:       num(p.get('blur')),
-    brightness: num(p.get('brightness')),
-    contrast:   num(p.get('contrast')),
-    saturation: num(p.get('saturation')),
-    sharpen:    num(p.get('sharpen')),
+    blur:       clampNum(num(p.get('blur')), 0, 250),
+    brightness: clampNum(num(p.get('brightness')), 0, 10),
+    contrast:   clampNum(num(p.get('contrast')), 0, 10),
+    saturation: clampNum(num(p.get('saturation')), 0, 10),
+    sharpen:    clampNum(num(p.get('sharpen')), 0, 10),
     rotate:     rotateRaw !== undefined && VALID_ROTATE.has(rotateRaw)
                   ? rotateRaw as 0 | 90 | 180 | 270
                   : undefined,
@@ -112,7 +125,7 @@ export async function handleImage(
 
   if (shouldTransform) {
     const format = resolveFormat(request.headers.get('Accept'), params.get('format'));
-    const quality = num(params.get('quality'));
+    const quality = clampNum(num(params.get('quality')), 1, 100);
     const transform = buildTransform(params);
 
     // Uses Cloudflare Images binding (account-based, Workers-only accounts).

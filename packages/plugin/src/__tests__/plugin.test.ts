@@ -26,4 +26,25 @@ describe("createMediaPlugin", () => {
     });
     expect(plugin.overrides.fieldTypes.text).toBeTypeOf("function");
   });
+
+  it("registers the rich p1-media field type alongside the text hijack", () => {
+    const plugin = createMediaPlugin(defaultOptions);
+    expect(plugin.overrides.fieldTypes["p1-media"]).toBeTypeOf("function");
+    // basic mode preserved
+    expect(plugin.overrides.fieldTypes.text).toBeTypeOf("function");
+  });
+
+  it("registers a p1-media fieldTransform that normalizes strings for preview", () => {
+    const plugin = createMediaPlugin(defaultOptions);
+    const transform = plugin.fieldTransforms["p1-media"];
+    expect(transform).toBeTypeOf("function");
+    // legacy string → object shape (preview only, never written back)
+    expect(transform({ value: "https://cdn/x.jpg" })).toEqual({
+      url: "https://cdn/x.jpg",
+      alt: "",
+    });
+    // an existing MediaValue passes through untouched
+    const obj = { assetId: "a", versionId: "v", url: "https://cdn/x.jpg", alt: "cat" };
+    expect(transform({ value: obj })).toBe(obj);
+  });
 });

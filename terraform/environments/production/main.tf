@@ -40,3 +40,11 @@ output "bucket_name" {
 output "bucket_public_url" {
   value = module.cloudflare_media.bucket_public_url
 }
+
+output "d1_database_id" {
+  value = module.cloudflare_media.d1_database_id
+}
+
+output "d1_database_name" {
+  value = module.cloudflare_media.d1_database_name
+}

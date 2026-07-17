@@ -1,418 +1,355 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Env } from '../types';
 
-// We import the default export (the Worker object with fetch method)
+// Router tests mock the auth check AND every handler so we test ONLY index.ts's
+// job: method/path dispatch, the auth gate, CORS, and error mapping. The handlers'
+// own behavior is covered in handlers.test.ts. The key discipline (Rule 9) is that
+// every reject path also asserts NON-dispatch — a 401/403/404 that still called the
+// handler would be a security hole a status-only assertion cannot catch.
+vi.mock('../auth', () => ({ validateAuth: vi.fn() }));
+vi.mock('../handlers/image', () => ({ handleImage: vi.fn() }));
+vi.mock('../handlers/list', () => ({ handleList: vi.fn() }));
+vi.mock('../handlers/presign', () => ({ handlePresignUpload: vi.fn(), handlePresignVersion: vi.fn() }));
+vi.mock('../handlers/finalize', () => ({ handleFinalizeUpload: vi.fn(), handleFinalizeVersion: vi.fn() }));
+vi.mock('../handlers/get', () => ({ handleGetAsset: vi.fn() }));
+vi.mock('../handlers/patch', () => ({ handlePatch: vi.fn() }));
+vi.mock('../handlers/delete', () => ({ handleDelete: vi.fn() }));
+vi.mock('../handlers/reconcile', () => ({ handleReconcile: vi.fn() }));
+
 import worker from '../index';
+import { validateAuth } from '../auth';
+import { handleImage } from '../handlers/image';
+import { handleList } from '../handlers/list';
+import { handlePresignUpload, handlePresignVersion } from '../handlers/presign';
+import { handleFinalizeUpload, handleFinalizeVersion } from '../handlers/finalize';
+import { handleGetAsset } from '../handlers/get';
+import { handlePatch } from '../handlers/patch';
+import { handleDelete } from '../handlers/delete';
+import { handleReconcile } from '../handlers/reconcile';
+import { METADATA_SCHEMA } from '../schema';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function createMockR2Bucket(
-  objects: Record<
-    string,
-    {
-      body: ReadableStream | string;
-      httpMetadata?: { contentType: string };
-      size: number;
-      uploaded: Date;
-    }
-  > = {},
-) {
+function createEnv(): Env {
   return {
-    get: vi.fn(async (key: string) => {
-      const obj = objects[key];
-      if (!obj) return null;
-      return {
-        body: obj.body,
-        httpMetadata: obj.httpMetadata,
-        size: obj.size,
-      };
-    }),
-    put: vi.fn(),
-    delete: vi.fn(),
-    list: vi.fn(async ({ prefix }: { prefix: string }) => ({
-      objects: Object.entries(objects)
-        .filter(([key]) => key.startsWith(prefix))
-        .map(([key, val]) => ({
-          key,
-          size: val.size,
-          uploaded: val.uploaded,
-        })),
-    })),
-  } as unknown as R2Bucket;
-}
-
-function createEnv(bucket?: R2Bucket): Env {
-  return {
-    MEDIA_BUCKET: bucket ?? createMockR2Bucket(),
+    MEDIA_BUCKET: {} as R2Bucket,
+    MEDIA_DB: {} as D1Database,
     CSS_BASE_URL: 'https://css.example.com',
     CDN_BASE_URL: 'https://cdn.example.com/p1',
+    R2_ACCESS_KEY_ID: 'test-access-key',
+    R2_SECRET_ACCESS_KEY: 'test-secret-key',
+    R2_ACCOUNT_ID: 'test-account',
+    R2_BUCKET_NAME: 'test-bucket',
     IMAGES: {} as ImagesBinding,
   };
 }
 
-function createRequest(url: string, init?: RequestInit): Request {
-  return new Request(url, init);
+function req(url: string, init: RequestInit = {}, withAuth = true): Request {
+  const headers = new Headers(init.headers);
+  if (withAuth) headers.set('Authorization', 'Bearer test-token');
+  return new Request(url, { ...init, headers });
 }
 
-const CORS_HEADER_NAMES = [
-  'Access-Control-Allow-Origin',
-  'Access-Control-Allow-Methods',
-  'Access-Control-Allow-Headers',
-];
-
-// CSS GET /api/sites/{siteId} returns 200 when the caller has canView access
-function authOkResponse(): Response {
-  return new Response(JSON.stringify({ id: 'site1', name: 'Test Site' }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-// CSS returns 403 when the caller has no access to the site
-function authForbiddenResponse(): Response {
-  return new Response(JSON.stringify({ error: 'Forbidden' }), {
-    status: 403,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-// CSS returns 401 when the token is invalid
-function authUnauthorizedResponse(): Response {
-  return new Response(JSON.stringify({ error: 'Authentication required' }), {
-    status: 401,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+const anyHandlerCalled = () =>
+  [
+    handleImage, handleList, handlePresignUpload,
+    handleFinalizeUpload, handlePresignVersion, handleFinalizeVersion, handleGetAsset,
+    handlePatch, handleDelete,
+  ].some((h) => vi.mocked(h).mock.calls.length > 0);
 
 describe('Worker router', () => {
-  let originalFetch: typeof globalThis.fetch;
-
   beforeEach(() => {
-    originalFetch = globalThis.fetch;
+    vi.clearAllMocks();
+    vi.mocked(validateAuth).mockResolvedValue(true); // default: authorized
+    vi.mocked(handleImage).mockResolvedValue(new Response('image', { status: 200 }));
+    vi.mocked(handleList).mockResolvedValue(new Response('list', { status: 200 }));
+    vi.mocked(handlePresignUpload).mockResolvedValue(new Response('presign', { status: 200 }));
+    vi.mocked(handleFinalizeUpload).mockResolvedValue(new Response('finalize', { status: 201 }));
+    vi.mocked(handlePresignVersion).mockResolvedValue(new Response('presign-version', { status: 200 }));
+    vi.mocked(handleFinalizeVersion).mockResolvedValue(new Response('finalize-version', { status: 201 }));
+    vi.mocked(handleGetAsset).mockResolvedValue(new Response('get', { status: 200 }));
+    vi.mocked(handlePatch).mockResolvedValue(new Response('patch', { status: 200 }));
+    vi.mocked(handleDelete).mockResolvedValue(new Response('delete', { status: 200 }));
   });
 
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
-  });
+  // ---- CORS / OPTIONS ----
 
-  // ---- OPTIONS / CORS ----
-
-  it('OPTIONS returns 204 with CORS headers', async () => {
-    const env = createEnv();
-    const request = createRequest('https://worker.example.com/media', {
-      method: 'OPTIONS',
-    });
-
-    const response = await worker.fetch(request, env);
-
+  it('OPTIONS returns 204 with CORS headers and no handler dispatch', async () => {
+    const response = await worker.fetch(req('https://w.example.com/media', { method: 'OPTIONS' }, false), createEnv());
     expect(response.status).toBe(204);
-    for (const header of CORS_HEADER_NAMES) {
-      expect(response.headers.has(header)).toBe(true);
-    }
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(anyHandlerCalled()).toBe(false);
   });
 
-  it('all responses include CORS headers', async () => {
-    const env = createEnv();
+  it('advertises PATCH in Access-Control-Allow-Methods (the picker edits metadata via PATCH)', async () => {
+    const response = await worker.fetch(req('https://w.example.com/media', { method: 'OPTIONS' }, false), createEnv());
+    expect(response.headers.get('Access-Control-Allow-Methods')).toContain('PATCH');
+  });
 
-    // A 404 response for an unknown route should still have CORS
-    const request = createRequest('https://worker.example.com/unknown-path');
-    const response = await worker.fetch(request, env);
-
+  it('adds CORS headers even to a 404', async () => {
+    const response = await worker.fetch(req('https://w.example.com/nope', {}, false), createEnv());
     expect(response.status).toBe(404);
-    for (const header of CORS_HEADER_NAMES) {
-      expect(response.headers.has(header)).toBe(true);
-    }
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
   });
 
-  // ---- GET /image/* ----
+  // ---- public routes (no auth) ----
 
-  it('GET /image/* routes to handleImage without auth', async () => {
-    const bucket = createMockR2Bucket({
-      'site1/media/12345-photo.jpg': {
-        body: 'image-data',
-        httpMetadata: { contentType: 'image/jpeg' },
-        size: 512,
-        uploaded: new Date(),
-      },
-    });
-    const env = createEnv(bucket);
-    // No Authorization header — image route does not require auth
-    const request = createRequest('https://worker.example.com/image/site1/media/12345-photo.jpg');
-
-    const response = await worker.fetch(request, env);
-
+  it('GET /image/* dispatches to handleImage WITHOUT calling auth', async () => {
+    const request = req('https://w.example.com/image/site1/assets/a/x.jpg', {}, false);
+    const response = await worker.fetch(request, createEnv());
     expect(response.status).toBe(200);
-    expect(response.headers.get('Content-Type')).toBe('image/jpeg');
-    // Verify no fetch to auth backend was made
-    // (globalThis.fetch was not replaced, and the handler doesn't call validateAuth)
+    // siteId is derived from the key prefix and passed with the full key.
+    expect(handleImage).toHaveBeenCalledWith(request, expect.anything(), 'site1', 'site1/assets/a/x.jpg');
+    expect(validateAuth).not.toHaveBeenCalled();
   });
 
-  // ---- GET /media ----
+  it('GET /image/<no-slash> returns 400 Invalid image path', async () => {
+    const response = await worker.fetch(req('https://w.example.com/image/justkey', {}, false), createEnv());
+    expect(response.status).toBe(400);
+    expect(handleImage).not.toHaveBeenCalled();
+  });
 
-  it('GET /media routes to handleList with auth', async () => {
-    const bucket = createMockR2Bucket({
-      'site1/wkst1/media/100-file.png': {
-        body: '',
-        size: 100,
-        uploaded: new Date('2025-01-01'),
-      },
-    });
-    const env = createEnv(bucket);
-
-    globalThis.fetch = vi.fn().mockResolvedValue(authOkResponse());
-
-    const token = 'list-token-' + Math.random();
-    const request = createRequest('https://worker.example.com/media?siteId=site1&workstreamId=wkst1', {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    const response = await worker.fetch(request, env);
-
+  it('GET /media/schema returns the field list WITHOUT auth', async () => {
+    const response = await worker.fetch(req('https://w.example.com/media/schema', {}, false), createEnv());
     expect(response.status).toBe(200);
-    const items = await response.json() as any[];
-    expect(Array.isArray(items)).toBe(true);
-    expect(items).toHaveLength(1);
-    expect(items[0].filename).toBe('file.png');
+    // The picker fetches the schema before the user is scoped to any site.
+    expect(await response.json()).toEqual(METADATA_SCHEMA);
+    expect(validateAuth).not.toHaveBeenCalled();
   });
 
-  // ---- POST /media ----
+  it('GET /docs serves the Swagger UI page WITHOUT auth', async () => {
+    const response = await worker.fetch(req('https://w.example.com/docs', {}, false), createEnv());
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toContain('text/html');
+    expect(await response.text()).toContain('SwaggerUIBundle');
+    expect(validateAuth).not.toHaveBeenCalled();
+    expect(anyHandlerCalled()).toBe(false);
+  });
 
-  it('POST /media routes to handleUpload with auth', async () => {
-    const bucket = createMockR2Bucket();
-    const env = createEnv(bucket);
+  it('GET /docs/ (trailing slash) also serves the Swagger UI page', async () => {
+    const response = await worker.fetch(req('https://w.example.com/docs/', {}, false), createEnv());
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toContain('text/html');
+  });
 
-    globalThis.fetch = vi.fn().mockResolvedValue(authOkResponse());
+  it('GET /docs/openapi.yaml serves the raw spec WITHOUT auth', async () => {
+    const response = await worker.fetch(req('https://w.example.com/docs/openapi.yaml', {}, false), createEnv());
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toContain('yaml');
+    const body = await response.text();
+    expect(body).toContain('openapi:');
+    expect(body).toContain('/media/{assetId}');
+    expect(validateAuth).not.toHaveBeenCalled();
+    expect(anyHandlerCalled()).toBe(false);
+  });
 
-    const formData = new FormData();
-    formData.append('file', new File(['x'], 'test.png', { type: 'image/png' }));
+  // ---- auth gate on /media ----
 
-    const token = 'upload-token-' + Math.random();
-    const request = createRequest('https://worker.example.com/media?siteId=site1&workstreamId=wkst1', {
-      method: 'POST',
-      body: formData,
-      headers: { Authorization: `Bearer ${token}` },
-    });
+  it('returns 401 with no bearer token, before auth or handler runs', async () => {
+    const response = await worker.fetch(req('https://w.example.com/media?siteId=site1', {}, false), createEnv());
+    expect(response.status).toBe(401);
+    expect(validateAuth).not.toHaveBeenCalled(); // short-circuits on the missing header
+    expect(handleList).not.toHaveBeenCalled();
+  });
 
-    const response = await worker.fetch(request, env);
+  it('returns 400 when siteId query param is missing, before auth runs', async () => {
+    const response = await worker.fetch(req('https://w.example.com/media'), createEnv());
+    expect(response.status).toBe(400);
+    expect((await response.json() as { error: string }).error).toContain('siteId');
+    expect(validateAuth).not.toHaveBeenCalled();
+    expect(handleList).not.toHaveBeenCalled();
+  });
 
+  it('returns 403 without dispatching when validateAuth denies access', async () => {
+    vi.mocked(validateAuth).mockResolvedValue(false); // valid token, no access to this site
+    const response = await worker.fetch(req('https://w.example.com/media?siteId=site1'), createEnv());
+    expect(response.status).toBe(403);
+    expect(handleList).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 without dispatching when validateAuth rejects the token', async () => {
+    vi.mocked(validateAuth).mockResolvedValue(null); // invalid token
+    const response = await worker.fetch(req('https://w.example.com/media?siteId=site1'), createEnv());
+    expect(response.status).toBe(401);
+    expect(handleList).not.toHaveBeenCalled();
+  });
+
+  // ---- auth gate on the mutating /media/:assetId routes (R0-sensitive) ----
+  // These share one authenticate() call (GET/PATCH/DELETE) and the versions POST has
+  // its OWN — a regression dropping the gate on any of them must fail loudly here.
+
+  it('GET /media/:id returns 401 with no bearer, without dispatching', async () => {
+    const response = await worker.fetch(
+      req('https://w.example.com/media/asset-1?siteId=site1', {}, false),
+      createEnv(),
+    );
+    expect(response.status).toBe(401);
+    expect(validateAuth).not.toHaveBeenCalled();
+    expect(handleGetAsset).not.toHaveBeenCalled();
+  });
+
+  it('PATCH /media/:id returns 403 when validateAuth denies, without dispatching', async () => {
+    vi.mocked(validateAuth).mockResolvedValue(false);
+    const response = await worker.fetch(
+      req('https://w.example.com/media/asset-1?siteId=site1', { method: 'PATCH' }),
+      createEnv(),
+    );
+    expect(response.status).toBe(403);
+    expect(handlePatch).not.toHaveBeenCalled();
+  });
+
+  it('DELETE /media/:id returns 401 when validateAuth rejects the token, without dispatching', async () => {
+    vi.mocked(validateAuth).mockResolvedValue(null);
+    const response = await worker.fetch(
+      req('https://w.example.com/media/asset-1?siteId=site1', { method: 'DELETE' }),
+      createEnv(),
+    );
+    expect(response.status).toBe(401);
+    expect(handleDelete).not.toHaveBeenCalled();
+  });
+
+  it('POST /media/presign returns 401 with no bearer, without dispatching', async () => {
+    const response = await worker.fetch(
+      req('https://w.example.com/media/presign?siteId=site1', { method: 'POST' }, false),
+      createEnv(),
+    );
+    expect(response.status).toBe(401);
+    expect(validateAuth).not.toHaveBeenCalled();
+    expect(handlePresignUpload).not.toHaveBeenCalled();
+  });
+
+  it('POST /media/finalize returns 403 when validateAuth denies, without dispatching', async () => {
+    vi.mocked(validateAuth).mockResolvedValue(false);
+    const response = await worker.fetch(
+      req('https://w.example.com/media/finalize?siteId=site1', { method: 'POST' }),
+      createEnv(),
+    );
+    expect(response.status).toBe(403);
+    expect(handleFinalizeUpload).not.toHaveBeenCalled();
+  });
+
+  it('POST /media/:id/versions/presign returns 401 with no bearer, without dispatching', async () => {
+    const response = await worker.fetch(
+      req('https://w.example.com/media/asset-1/versions/presign?siteId=site1', { method: 'POST' }, false),
+      createEnv(),
+    );
+    expect(response.status).toBe(401);
+    expect(validateAuth).not.toHaveBeenCalled();
+    expect(handlePresignVersion).not.toHaveBeenCalled();
+  });
+
+  it('POST /media/:id/versions/finalize returns 403 when validateAuth denies, without dispatching', async () => {
+    vi.mocked(validateAuth).mockResolvedValue(false);
+    const response = await worker.fetch(
+      req('https://w.example.com/media/asset-1/versions/finalize?siteId=site1', { method: 'POST' }),
+      createEnv(),
+    );
+    expect(response.status).toBe(403);
+    expect(handleFinalizeVersion).not.toHaveBeenCalled();
+  });
+
+  // ---- /media dispatch (authorized) ----
+
+  it('GET /media dispatches to handleList with the authenticated siteId', async () => {
+    const request = req('https://w.example.com/media?siteId=site1');
+    await worker.fetch(request, createEnv());
+    expect(handleList).toHaveBeenCalledWith(request, expect.anything(), 'site1');
+  });
+
+  it('POST /media (old multipart upload route) returns 405 — removed in favor of /media/presign + /media/finalize', async () => {
+    const request = req('https://w.example.com/media?siteId=site1', { method: 'POST' });
+    const response = await worker.fetch(request, createEnv());
+    expect(response.status).toBe(405);
+    expect(validateAuth).not.toHaveBeenCalled();
+    expect(anyHandlerCalled()).toBe(false);
+  });
+
+  // ---- /media/:assetId dispatch (authorized) ----
+
+  it('POST /media/:id/versions (old multipart add-version route) returns 404 — removed in favor of /versions/presign + /versions/finalize', async () => {
+    const request = req('https://w.example.com/media/asset-1/versions?siteId=site1', { method: 'POST' });
+    const response = await worker.fetch(request, createEnv());
+    expect(response.status).toBe(404);
+    expect(validateAuth).not.toHaveBeenCalled();
+    expect(anyHandlerCalled()).toBe(false);
+  });
+
+  it('POST /media/presign dispatches to handlePresignUpload with the authenticated siteId', async () => {
+    const request = req('https://w.example.com/media/presign?siteId=site1', { method: 'POST' });
+    const response = await worker.fetch(request, createEnv());
+    expect(response.status).toBe(200);
+    expect(handlePresignUpload).toHaveBeenCalledWith(request, expect.anything(), 'site1');
+    // Regression guard for the routing hazard: "presign" is a syntactically valid
+    // assetId (no slash), so it must be special-cased ahead of the generic
+    // /media/:assetId fallback, not swallowed by it.
+    expect(handleGetAsset).not.toHaveBeenCalled();
+  });
+
+  it('POST /media/finalize dispatches to handleFinalizeUpload with the authenticated siteId', async () => {
+    const request = req('https://w.example.com/media/finalize?siteId=site1', { method: 'POST' });
+    const response = await worker.fetch(request, createEnv());
     expect(response.status).toBe(201);
-    expect(bucket.put).toHaveBeenCalledTimes(1);
+    expect(handleFinalizeUpload).toHaveBeenCalledWith(request, expect.anything(), 'site1');
+    expect(handleGetAsset).not.toHaveBeenCalled();
   });
 
-  // ---- DELETE /media/* ----
-
-  it('DELETE /media/* routes to handleDelete with auth', async () => {
-    const bucket = createMockR2Bucket();
-    const env = createEnv(bucket);
-
-    globalThis.fetch = vi.fn().mockResolvedValue(authOkResponse());
-
-    const token = 'delete-token-' + Math.random();
-    const request = createRequest(
-      'https://worker.example.com/media/site1/wkst1/media/12345-photo.jpg?siteId=site1&workstreamId=wkst1',
-      {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    );
-
-    const response = await worker.fetch(request, env);
-
+  it('POST /media/:id/versions/presign dispatches to handlePresignVersion', async () => {
+    const request = req('https://w.example.com/media/asset-1/versions/presign?siteId=site1', { method: 'POST' });
+    const response = await worker.fetch(request, createEnv());
     expect(response.status).toBe(200);
-    const body = await response.json() as Record<string, unknown>;
-    expect(body).toEqual({ success: true });
-    expect(bucket.delete).toHaveBeenCalledWith('site1/wkst1/media/12345-photo.jpg');
+    expect(handlePresignVersion).toHaveBeenCalledWith(request, expect.anything(), 'site1', 'asset-1');
   });
 
-  // ---- Auth-required routes return 401 ----
-
-  it('auth-required routes return 401 without valid token', async () => {
-    const env = createEnv();
-
-    // GET /media without auth
-    const getResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media?siteId=site1'),
-      env,
-    );
-    expect(getResponse.status).toBe(401);
-
-    // POST /media without auth
-    const formData = new FormData();
-    formData.append('file', new File(['x'], 'f.png', { type: 'image/png' }));
-    const postResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media?siteId=site1', {
-        method: 'POST',
-        body: formData,
-      }),
-      env,
-    );
-    expect(postResponse.status).toBe(401);
-
-    // DELETE /media/* without auth
-    const deleteResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media/site1/media/file.jpg?siteId=site1', {
-        method: 'DELETE',
-      }),
-      env,
-    );
-    expect(deleteResponse.status).toBe(401);
+  it('POST /media/:id/versions/finalize dispatches to handleFinalizeVersion', async () => {
+    const request = req('https://w.example.com/media/asset-1/versions/finalize?siteId=site1', { method: 'POST' });
+    const response = await worker.fetch(request, createEnv());
+    expect(response.status).toBe(201);
+    expect(handleFinalizeVersion).toHaveBeenCalledWith(request, expect.anything(), 'site1', 'asset-1');
   });
 
-  // ---- Missing siteId ----
-
-  it('missing siteId returns 400', async () => {
-    const env = createEnv();
-    const authFetch = () => vi.fn().mockResolvedValue(authOkResponse());
-    const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
-
-    globalThis.fetch = authFetch();
-    const getResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media?workstreamId=wkst1', { headers: headers('t1') }),
-      env,
-    );
-    expect(getResponse.status).toBe(400);
-    expect((await getResponse.json() as { error: string }).error).toContain('siteId');
-
-    const formData = new FormData();
-    formData.append('file', new File(['x'], 'f.png', { type: 'image/png' }));
-    globalThis.fetch = authFetch();
-    const postResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media?workstreamId=wkst1', {
-        method: 'POST', body: formData, headers: headers('t2'),
-      }),
-      env,
-    );
-    expect(postResponse.status).toBe(400);
-
-    globalThis.fetch = authFetch();
-    const deleteResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media/site1/wkst1/media/file.jpg?workstreamId=wkst1', {
-        method: 'DELETE', headers: headers('t3'),
-      }),
-      env,
-    );
-    expect(deleteResponse.status).toBe(400);
+  it('GET /media/:assetId dispatches to handleGetAsset with (env, siteId, assetId)', async () => {
+    await worker.fetch(req('https://w.example.com/media/asset-1?siteId=site1'), createEnv());
+    expect(handleGetAsset).toHaveBeenCalledWith(expect.anything(), 'site1', 'asset-1');
   });
 
-  it('missing workstreamId returns 400', async () => {
-    const env = createEnv();
-    const authFetch = () => vi.fn().mockResolvedValue(authOkResponse());
-    const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
-
-    globalThis.fetch = authFetch();
-    const getResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media?siteId=site1', { headers: headers('t4') }),
-      env,
-    );
-    expect(getResponse.status).toBe(400);
-    expect((await getResponse.json() as { error: string }).error).toContain('workstreamId');
-
-    const formData = new FormData();
-    formData.append('file', new File(['x'], 'f.png', { type: 'image/png' }));
-    globalThis.fetch = authFetch();
-    const postResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media?siteId=site1', {
-        method: 'POST', body: formData, headers: headers('t5'),
-      }),
-      env,
-    );
-    expect(postResponse.status).toBe(400);
-
-    globalThis.fetch = authFetch();
-    const deleteResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media/site1/wkst1/media/file.jpg?siteId=site1', {
-        method: 'DELETE', headers: headers('t6'),
-      }),
-      env,
-    );
-    expect(deleteResponse.status).toBe(400);
+  it('PATCH /media/:assetId dispatches to handlePatch', async () => {
+    const request = req('https://w.example.com/media/asset-1?siteId=site1', { method: 'PATCH' });
+    await worker.fetch(request, createEnv());
+    expect(handlePatch).toHaveBeenCalledWith(request, expect.anything(), 'site1', 'asset-1');
   });
 
-  // ---- Invalid id characters ----
-
-  it('siteId or workstreamId containing / or .. returns 400', async () => {
-    const env = createEnv();
-    const authFetch = () => vi.fn().mockResolvedValue(authOkResponse());
-    const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
-
-    globalThis.fetch = authFetch();
-    const slashResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media?siteId=site1/evil&workstreamId=wkst1', {
-        headers: headers('t7'),
-      }),
-      env,
-    );
-    expect(slashResponse.status).toBe(400);
-    expect((await slashResponse.json() as { error: string }).error).toContain('Invalid');
-
-    globalThis.fetch = authFetch();
-    const dotResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media?siteId=site1&workstreamId=..%2Fevil', {
-        headers: headers('t8'),
-      }),
-      env,
-    );
-    expect(dotResponse.status).toBe(400);
+  it('DELETE /media/:assetId dispatches to handleDelete with (env, siteId, assetId)', async () => {
+    await worker.fetch(req('https://w.example.com/media/asset-1?siteId=site1', { method: 'DELETE' }), createEnv());
+    expect(handleDelete).toHaveBeenCalledWith(expect.anything(), 'site1', 'asset-1');
   });
 
-  // ---- siteId not in user's siteRoles ----
-
-  it('auth-required routes return 403 when siteId is not in user siteRoles', async () => {
-    const env = createEnv();
-    const headers = (t: string) => ({ Authorization: `Bearer ${t}` });
-
-    // GET /media — valid token, but siteId not in siteRoles
-    globalThis.fetch = vi.fn().mockResolvedValue(authForbiddenResponse());
-    const getResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media?siteId=site1&workstreamId=wkst1', {
-        headers: headers('t-forbidden-get-' + Math.random()),
-      }),
-      env,
-    );
-    expect(getResponse.status).toBe(403);
-    expect((await getResponse.json() as { error: string }).error).toBe('Forbidden');
-
-    // POST /media — valid token, but siteId not in siteRoles
-    const formData = new FormData();
-    formData.append('file', new File(['x'], 'f.png', { type: 'image/png' }));
-    globalThis.fetch = vi.fn().mockResolvedValue(authForbiddenResponse());
-    const postResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media?siteId=site1&workstreamId=wkst1', {
-        method: 'POST', body: formData, headers: headers('t-forbidden-post-' + Math.random()),
-      }),
-      env,
-    );
-    expect(postResponse.status).toBe(403);
-
-    // DELETE /media/* — valid token, but siteId not in siteRoles
-    globalThis.fetch = vi.fn().mockResolvedValue(authForbiddenResponse());
-    const deleteResponse = await worker.fetch(
-      createRequest('https://worker.example.com/media/site1/wkst1/media/file.jpg?siteId=site1&workstreamId=wkst1', {
-        method: 'DELETE', headers: headers('t-forbidden-del-' + Math.random()),
-      }),
-      env,
-    );
-    expect(deleteResponse.status).toBe(403);
+  it('an assetId containing a slash is rejected with 404, before auth or dispatch', async () => {
+    // A path-traversal-shaped id must never reach the store; UUIDs never contain "/".
+    const response = await worker.fetch(req('https://w.example.com/media/foo/bar?siteId=site1'), createEnv());
+    expect(response.status).toBe(404);
+    expect(validateAuth).not.toHaveBeenCalled();
+    expect(handleGetAsset).not.toHaveBeenCalled();
   });
 
-  // ---- Unknown routes ----
+  // ---- error mapping ----
+
+  it('maps an unexpected handler error to 500', async () => {
+    vi.mocked(handleList).mockRejectedValue(new Error('boom'));
+    const response = await worker.fetch(req('https://w.example.com/media?siteId=site1'), createEnv());
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: 'Internal server error' });
+  });
 
   it('unknown routes return 404', async () => {
-    const env = createEnv();
-
-    const response = await worker.fetch(
-      createRequest('https://worker.example.com/nonexistent'),
-      env,
-    );
-
+    const response = await worker.fetch(req('https://w.example.com/nonexistent', {}, false), createEnv());
     expect(response.status).toBe(404);
-    const body = await response.json() as Record<string, unknown>;
-    expect(body).toEqual({ error: 'Not found' });
+    expect(await response.json()).toEqual({ error: 'Not found' });
+  });
+
+  // ---- scheduled (Cron Trigger) ----
+
+  it('scheduled() dispatches to handleReconcile with the env', async () => {
+    const env = createEnv();
+    const controller = { scheduledTime: Date.now(), cron: '0 * * * *', noRetry: vi.fn() };
+    await worker.scheduled!(controller as unknown as ScheduledController, env);
+    expect(handleReconcile).toHaveBeenCalledWith(env);
   });
 });

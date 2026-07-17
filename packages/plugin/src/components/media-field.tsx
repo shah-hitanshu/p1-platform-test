@@ -3,25 +3,7 @@
 import { useState, type ReactElement } from "react";
 import type { CustomField } from "@puckeditor/core";
 import { MediaLibrary } from "./media-library";
-
-type CropMode = "fit" | "smart";
-
-function getBaseUrl(value: string): string {
-  return value ? value.split("?")[0] : "";
-}
-
-function getCropMode(value: string): CropMode {
-  if (!value) return "fit";
-  const params = new URLSearchParams(value.includes("?") ? value.split("?")[1] : "");
-  return params.get("fit") === "cover" ? "smart" : "fit";
-}
-
-function buildValueWithCrop(baseUrl: string, crop: CropMode): string {
-  // baseUrl always has query params stripped by getBaseUrl before being passed here
-  return crop === "smart"
-    ? `${baseUrl}?fit=cover&gravity=auto`
-    : `${baseUrl}?fit=scale-down`;
-}
+import { getBaseUrl, getCropMode, buildValueWithCrop, type CropMode } from "../crop";
 
 export function MediaFieldRender(props: {
   field: CustomField<string>;

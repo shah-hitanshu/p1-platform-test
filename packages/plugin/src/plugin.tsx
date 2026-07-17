@@ -3,6 +3,8 @@
 import { DEFAULT_MEDIA_PATTERNS } from "./patterns";
 import { MediaConfigProvider, type MediaConfig } from "./context";
 import { MediaFieldRender } from "./components/media-field";
+import { MediaObjectFieldRender } from "./components/media-object-field";
+import type { MediaFieldValue, MetadataFieldDef } from "./types";
 
 export interface MediaPluginOptions {
   /** The base URL of the Cloudflare Worker media API */
@@ -15,15 +17,22 @@ export interface MediaPluginOptions {
   getAuthToken: () => Promise<string | null> | string | null;
   /** Field name patterns that trigger the media picker (defaults to common image URL patterns) */
   fieldNamePatterns?: RegExp[];
+  /**
+   * Fallback metadata field schema for the rich `p1-media` field, used when
+   * `GET /media/schema` is unavailable. Defaults to
+   * `[{ name: "alt", label: "Alt text", type: "string" }]`.
+   */
+  metadataFields?: MetadataFieldDef[];
 }
 
 /**
- * Creates a Puck plugin that automatically replaces text fields matching
- * image/media URL patterns with a media library picker backed by Cloudflare R2.
- *
- * The stored field value is a clean CDN URL with an optional `?smart=true` param
- * set by the content editor. Use `buildImageUrl()` in your components to add
- * size, format, and quality params at render time.
+ * Creates a Puck plugin that adds a media library backed by Cloudflare R2 + D1.
+ * It supports two field modes:
+ *   - Basic: text fields matching image/media name patterns are replaced with the
+ *     picker and store a clean CDN URL string. Render with `buildImageUrl()`.
+ *   - Rich: a registered `p1-media` field type stores a MediaValue object (version
+ *     URL + metadata such as alt). Render with `getMediaProps()` / `MediaImage` /
+ *     `MediaFigure`. The editor's crop intent is carried as `?fit=…&gravity=…`.
  *
  * @example
  * ```tsx
@@ -43,6 +52,7 @@ export function createMediaPlugin(options: MediaPluginOptions) {
     siteId: options.siteId,
     workstreamId: options.workstreamId,
     getAuthToken: options.getAuthToken,
+    metadataFields: options.metadataFields,
   };
 
   return {
@@ -78,7 +88,32 @@ export function createMediaPlugin(options: MediaPluginOptions) {
             </MediaConfigProvider>
           );
         },
+        // Rich mode: a first-class `p1-media` field whose value is an object.
+        // Puck ≥0.20 dispatches overrides.fieldTypes[field.type] for new types.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        "p1-media": (props: any) => {
+          const { name, field, value, onChange, readOnly, id } = props;
+          return (
+            <MediaConfigProvider config={config}>
+              <MediaObjectFieldRender
+                label={field?.label ?? name}
+                name={name}
+                id={id ?? name}
+                value={value ?? ""}
+                onChange={onChange}
+                readOnly={readOnly}
+              />
+            </MediaConfigProvider>
+          );
+        },
       },
+    },
+    // Editor-preview only (never written back): normalize a legacy string to
+    // the object shape so components reading the raw prop see `{ url, alt }`.
+    // The R10 write-path guard lives in makeMediaValue, not here.
+    fieldTransforms: {
+      "p1-media": ({ value }: { value: MediaFieldValue }) =>
+        typeof value === "string" ? { url: value, alt: "" } : value,
     },
   };
 }

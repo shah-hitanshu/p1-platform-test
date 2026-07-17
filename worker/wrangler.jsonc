@@ -3,6 +3,14 @@
 
   "name": "p1-media-worker",
   "main": "src/index.ts",
+
+  // Treat .yaml files as raw text modules so docs/openapi.yaml can be imported
+  // directly in TypeScript without a generated intermediate file. fallthrough
+  // keeps wrangler's default Text rule (.txt/.html/.sql) active alongside this one.
+  "rules": [
+    { "type": "Text", "globs": ["**/*.yaml"], "fallthrough": true }
+  ],
+
   "compatibility_date": "2024-01-01",
   "account_id": "b64d7635bcad811044d61491827b4040",
 
@@ -11,12 +19,30 @@
     { "binding": "MEDIA_BUCKET", "bucket_name": "p1-media-local" }
   ],
 
+  // D1 metadata store. database_id is copied from the Terraform `d1_database_id`
+  // output per environment (same manual wiring as bucket_name). Local dev uses a
+  // local SQLite regardless of the id. Run migrations: pnpm exec wrangler d1
+  // migrations apply p1-media-local --local (add --env / --remote for deploys).
+  "d1_databases": [
+    { "binding": "MEDIA_DB", "database_name": "p1-media-local", "database_id": "local" }
+  ],
+
   "vars": {
     "CSS_BASE_URL": "http://localhost:8787",
     // Local dev: serve images via the worker's own /image/* route so uploads work without a live CDN
     "CDN_BASE_URL": "http://localhost:8788/image",
     // Maximum upload size in bytes. Override per environment without a code change.
-    "MAX_UPLOAD_BYTES": "10485760"
+    "MAX_UPLOAD_BYTES": "10485760",
+    // R2 S3 API endpoint pieces for presigned uploads — account_id/bucket_name are
+    // deploy-time-only wrangler config otherwise invisible to the running worker.
+    // R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY are secrets: `wrangler secret put
+    // R2_ACCESS_KEY_ID` / `... R2_SECRET_ACCESS_KEY` (add --local for local dev), never
+    // committed here.
+    "R2_ACCOUNT_ID": "b64d7635bcad811044d61491827b4040",
+    "R2_BUCKET_NAME": "p1-media-local",
+    // Orphan-reconcile Cron Trigger: log candidates only, delete nothing, until an
+    // operator explicitly flips this to "false" per environment after eyeballing logs.
+    "RECONCILE_DRY_RUN": "true"
   },
 
   // Images binding — remote: true so local dev uses real Cloudflare Images (supports fit, gravity, etc.).
@@ -39,6 +65,9 @@
       "r2_buckets": [
         { "binding": "MEDIA_BUCKET", "bucket_name": "p1-media-sandbox" }
       ],
+      "d1_databases": [
+        { "binding": "MEDIA_DB", "database_name": "p1-media-sandbox", "database_id": "REPLACE_WITH_TF_d1_database_id" }
+      ],
       "images": { "binding": "IMAGES" },
       "services": [
         { "binding": "CSS_SERVICE", "service": "collaborative-state-worker-sandbox" }
@@ -46,7 +75,10 @@
       "vars": {
         "CSS_BASE_URL": "https://sandbox.ccr.p1.pantheon.io",
         "CDN_BASE_URL": "https://media.sandbox.p1.pantheon.io/image",
-        "MAX_UPLOAD_BYTES": "10485760"
+        "MAX_UPLOAD_BYTES": "10485760",
+        "R2_ACCOUNT_ID": "b64d7635bcad811044d61491827b4040",
+        "R2_BUCKET_NAME": "p1-media-sandbox",
+        "RECONCILE_DRY_RUN": "true"
       },
       "observability": {
         "logs": { "enabled": true, "invocation_logs": true }
@@ -60,6 +92,9 @@
       "r2_buckets": [
         { "binding": "MEDIA_BUCKET", "bucket_name": "p1-media-staging" }
       ],
+      "d1_databases": [
+        { "binding": "MEDIA_DB", "database_name": "p1-media-staging", "database_id": "8fd7b7df-fe84-4dd3-87fa-e95699e76011" }
+      ],
       "images": { "binding": "IMAGES" },
       "services": [
         { "binding": "CSS_SERVICE", "service": "collaborative-state-worker-staging" }
@@ -67,8 +102,14 @@
       "vars": {
         "CSS_BASE_URL": "https://staging.ccr.p1.pantheon.io",
         "CDN_BASE_URL": "https://staging.media.p1.pantheon.io/image",
-        "MAX_UPLOAD_BYTES": "10485760"
+        "MAX_UPLOAD_BYTES": "10485760",
+        "R2_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
+        "R2_BUCKET_NAME": "p1-media-staging",
+        "RECONCILE_DRY_RUN": "true"
       },
+      // Orphan-reconcile job. Hourly is plenty given the 24h age threshold — this
+      // isn't time-sensitive, it just bounds how long abandoned uploads sit in R2.
+      "triggers": { "crons": ["0 * * * *"] },
       "observability": {
         "logs": { "enabled": true, "invocation_logs": true }
       }
@@ -81,6 +122,9 @@
       "r2_buckets": [
         { "binding": "MEDIA_BUCKET", "bucket_name": "p1-media-prod" }
       ],
+      "d1_databases": [
+        { "binding": "MEDIA_DB", "database_name": "p1-media-prod", "database_id": "31feac9b-6786-47f0-8cb0-e31111520f41" }
+      ],
       "images": { "binding": "IMAGES" },
       "services": [
         { "binding": "CSS_SERVICE", "service": "collaborative-state-worker-production" }
@@ -88,8 +132,12 @@
       "vars": {
         "CSS_BASE_URL": "https://ccr.p1.pantheon.io",
         "CDN_BASE_URL": "https://media.p1.pantheon.io/image",
-        "MAX_UPLOAD_BYTES": "10485760"
+        "MAX_UPLOAD_BYTES": "10485760",
+        "R2_ACCOUNT_ID": "c7357ecc2566ef9d5d555e40fccb3071",
+        "R2_BUCKET_NAME": "p1-media-prod",
+        "RECONCILE_DRY_RUN": "true"
       },
+      "triggers": { "crons": ["0 * * * *"] },
       "observability": {
         "logs": { "enabled": true, "invocation_logs": true }
       }

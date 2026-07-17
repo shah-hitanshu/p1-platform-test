@@ -2,6 +2,7 @@
 #
 # Creates Cloudflare R2 infrastructure for the P1 media service:
 # - R2 bucket for image storage
+# - D1 database for asset/version metadata
 # - Custom domain binding (once {env}.media.p1.pantheon.io is provisioned)
 #
 # Note: Worker deployment is handled by wrangler, not Terraform.
@@ -48,6 +49,7 @@ variable "custom_domain" {
 
 locals {
   bucket_name = "p1-media-${var.environment == "production" ? "prod" : var.environment}"
+  d1_name     = "p1-media-${var.environment == "production" ? "prod" : var.environment}"
 }
 
 # -----------------------------------------------------------------------------
@@ -57,6 +59,15 @@ locals {
 resource "cloudflare_r2_bucket" "media" {
   account_id = var.cloudflare_account_id
   name       = local.bucket_name
+}
+
+# -----------------------------------------------------------------------------
+# D1 Database (asset/version metadata)
+# -----------------------------------------------------------------------------
+
+resource "cloudflare_d1_database" "media" {
+  account_id = var.cloudflare_account_id
+  name       = local.d1_name
 }
 
 # -----------------------------------------------------------------------------
@@ -83,4 +94,14 @@ output "bucket_name" {
 output "bucket_public_url" {
   description = "Public URL for the R2 bucket (used as P1_MEDIA_URL in media-cdn nginx)"
   value       = var.custom_domain != "" ? "https://${var.custom_domain}" : "https://${cloudflare_r2_bucket.media.name}.${var.cloudflare_account_id}.r2.cloudflarestorage.com"
+}
+
+output "d1_database_id" {
+  description = "D1 database ID (used as database_id in wrangler.jsonc)"
+  value       = cloudflare_d1_database.media.id
+}
+
+output "d1_database_name" {
+  description = "D1 database name (used as database_name in wrangler.jsonc)"
+  value       = cloudflare_d1_database.media.name
 }
