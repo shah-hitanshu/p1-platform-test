@@ -87,8 +87,8 @@ export interface CreateDocumentOnBranchParams {
   branchId: string;
   path: string;
   snapshot?: Record<string, unknown>;
-  templateId?: string;
-  templateVersion?: number;
+  templateId?: string | null;
+  templateVersion?: number | null;
   createdById: string;
   createdByType: 'user' | 'agent' | 'service';
 }

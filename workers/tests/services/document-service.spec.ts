@@ -1045,6 +1045,7 @@ describe('Phase 3.1: Document Service', () => {
           .mockResolvedValueOnce({ rows: [existingDocRow] }) // SELECT existing doc
           .mockResolvedValueOnce({ rows: [tombstonedVersionRow] }) // SELECT latest version (tombstoned)
           .mockResolvedValueOnce({ rows: [] }) // DELETE all versions on branch
+          .mockResolvedValueOnce({ rows: [] }) // DELETE stale template edge
           .mockResolvedValueOnce({ rows: [newVersionRow] }) // INSERT new version (version 1)
           .mockResolvedValueOnce({ rows: [] }); // COMMIT
 

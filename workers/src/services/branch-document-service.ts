@@ -33,6 +33,7 @@ import {
   DocumentNotFoundError,
 } from './document-types';
 import type { DocumentOnBranch } from './document-types';
+import { TEMPLATE_RELATION_JOIN, DOCUMENT_WITH_TEMPLATE_COLUMNS } from './document-queries';
 
 /**
  * Lists documents that have versions on a specific branch.
@@ -52,11 +53,13 @@ export async function listDocumentsOnBranch(
     // Copy-on-write query: include documents from branch + inherited from main
     // Includes publish state via LEFT JOIN LATERAL on checkpoint_documents
     let sql = `
-      SELECT DISTINCT d.*, false AS inherited,
+      SELECT DISTINCT ${DOCUMENT_WITH_TEMPLATE_COLUMNS},
+        false AS inherited,
         pub.document_version_id AS published_version_id,
         pub.published_at,
         snap.snapshot_title
       FROM app.documents d
+      ${TEMPLATE_RELATION_JOIN}
       INNER JOIN app.document_versions dv ON dv.document_id = d.id
       LEFT JOIN LATERAL (
         SELECT cd.document_version_id, cp.created_at AS published_at
@@ -102,11 +105,13 @@ export async function listDocumentsOnBranch(
 
       UNION
 
-      SELECT DISTINCT d.*, true AS inherited,
+      SELECT DISTINCT ${DOCUMENT_WITH_TEMPLATE_COLUMNS},
+        true AS inherited,
         pub.document_version_id AS published_version_id,
         pub.published_at,
         snap.snapshot_title
       FROM app.documents d
+      ${TEMPLATE_RELATION_JOIN}
       INNER JOIN app.document_versions dv ON dv.document_id = d.id
       INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
       INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
@@ -161,11 +166,13 @@ export async function listDocumentsOnBranch(
   // Original query: only documents with versions on the branch
   // When called without mainBranchId, the branchId itself is treated as main
   let sql = `
-    SELECT DISTINCT d.*, false AS inherited,
+    SELECT DISTINCT ${DOCUMENT_WITH_TEMPLATE_COLUMNS},
+      false AS inherited,
       pub.document_version_id AS published_version_id,
       pub.published_at,
       snap.snapshot_title
     FROM app.documents d
+    ${TEMPLATE_RELATION_JOIN}
     INNER JOIN app.document_versions dv ON dv.document_id = d.id
     LEFT JOIN LATERAL (
       SELECT cd.document_version_id, cp.created_at AS published_at
@@ -232,19 +239,21 @@ export async function createDocumentOnBranch(
 
     let document: Document;
     let isRecreation = false;
+    let documentCreated = false;
 
     // Try to create the document using SAVEPOINT to handle unique constraint violations
     // PostgreSQL aborts transactions on errors, so we need SAVEPOINT to recover
     await query('SAVEPOINT insert_doc');
     try {
       const docResult = await query<DocumentRow>(
-        `INSERT INTO app.documents (site_id, path, template_id, template_version)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO app.documents (site_id, path)
+         VALUES ($1, $2)
          RETURNING *`,
-        [params.siteId, normalizedPath, params.templateId ?? null, params.templateVersion ?? null],
+        [params.siteId, normalizedPath],
       );
       await query('RELEASE SAVEPOINT insert_doc');
       document = mapRowToDocument(docResult.rows[0]);
+      documentCreated = true;
     } catch (docError) {
       // Rollback to savepoint to clear the error state and allow further queries
       await query('ROLLBACK TO SAVEPOINT insert_doc');
@@ -252,8 +261,9 @@ export async function createDocumentOnBranch(
       // If document already exists, find it
       if (isUniqueConstraintViolation(docError)) {
         const existingResult = await query<DocumentRow>(
-          `SELECT * FROM app.documents
-           WHERE site_id = $1 AND path = $2 AND archived_at IS NULL`,
+          `SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS} FROM app.documents d
+           ${TEMPLATE_RELATION_JOIN}
+           WHERE d.site_id = $1 AND d.path = $2 AND d.archived_at IS NULL`,
           [params.siteId, normalizedPath],
         );
         if (existingResult.rows.length === 0) {
@@ -295,6 +305,45 @@ export async function createDocumentOnBranch(
         throw new SiteNotFoundError(params.siteId);
       } else {
         throw docError;
+      }
+    }
+
+    // A recreation can inherit a stale edge from a prior incarnation, so upsert
+    // to the requested template or clear the edge when the recreation names none.
+    const hasTemplate =
+      params.templateId !== undefined &&
+      params.templateId !== null &&
+      params.templateId !== '';
+    if (documentCreated || isRecreation) {
+      if (hasTemplate) {
+        try {
+          await query(
+            `INSERT INTO app.document_relations
+               (source_document_id, target_document_id, relation_type, synced_version)
+             VALUES ($1, $2, 'template', $3)
+             ON CONFLICT (source_document_id, relation_type)
+             DO UPDATE SET target_document_id = EXCLUDED.target_document_id,
+                           synced_version = EXCLUDED.synced_version`,
+            [document.id, params.templateId, params.templateVersion ?? null],
+          );
+        } catch (relError) {
+          if (isForeignKeyViolation(relError)) {
+            throw new DocumentNotFoundError(params.templateId);
+          }
+          throw relError;
+        }
+        document.templateId = params.templateId;
+        if (params.templateVersion !== undefined && params.templateVersion !== null) {
+          document.templateVersion = params.templateVersion;
+        }
+      } else if (isRecreation) {
+        await query(
+          `DELETE FROM app.document_relations
+           WHERE source_document_id = $1 AND relation_type = 'template'`,
+          [document.id],
+        );
+        document.templateId = undefined;
+        document.templateVersion = undefined;
       }
     }
 

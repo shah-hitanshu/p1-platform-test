@@ -319,11 +319,11 @@ describe('Multi-version migration (v1→v3)', () => {
         }),
       );
 
-      // The template_version batch update should reference toVersion=3
+      // The synced_version batch update should reference toVersion=3
       const updateCalls = vi.mocked(db.query).mock.calls.filter(
         (call) => {
           const sql = (call[0]).toUpperCase();
-          return sql.includes('UPDATE') && sql.includes('TEMPLATE_VERSION');
+          return sql.includes('UPDATE') && sql.includes('SYNCED_VERSION') && sql.includes('DOCUMENT_RELATIONS');
         },
       );
       expect(updateCalls.length).toBeGreaterThanOrEqual(1);

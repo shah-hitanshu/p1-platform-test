@@ -65,6 +65,7 @@ beforeAll(async () => {
     await sql`DELETE FROM app.checkpoint_documents WHERE checkpoint_id IN (SELECT id FROM app.checkpoints WHERE branch_id IN (SELECT id FROM app.branches WHERE site_id = ${staleSiteId}))`;
     await sql`UPDATE app.branches SET source_checkpoint_id = NULL WHERE site_id = ${staleSiteId}`;
     await sql`DELETE FROM app.checkpoints WHERE branch_id IN (SELECT id FROM app.branches WHERE site_id = ${staleSiteId})`;
+    await sql`DELETE FROM app.document_relations WHERE source_document_id IN (SELECT id FROM app.documents WHERE site_id = ${staleSiteId}) OR target_document_id IN (SELECT id FROM app.documents WHERE site_id = ${staleSiteId})`;
     await sql`DELETE FROM app.document_versions WHERE document_id IN (SELECT id FROM app.documents WHERE site_id = ${staleSiteId})`;
     await sql`DELETE FROM app.documents WHERE site_id = ${staleSiteId}`;
     await sql`DELETE FROM app.user_site_roles WHERE site_id = ${staleSiteId}`;
@@ -129,6 +130,7 @@ afterAll(async () => {
       await sql`DELETE FROM app.checkpoint_documents WHERE checkpoint_id IN (SELECT id FROM app.checkpoints WHERE branch_id IN (SELECT id FROM app.branches WHERE site_id = ${testSiteId}))`;
       await sql`UPDATE app.branches SET source_checkpoint_id = NULL WHERE site_id = ${testSiteId}`;
       await sql`DELETE FROM app.checkpoints WHERE branch_id IN (SELECT id FROM app.branches WHERE site_id = ${testSiteId})`;
+      await sql`DELETE FROM app.document_relations WHERE source_document_id IN (SELECT id FROM app.documents WHERE site_id = ${testSiteId}) OR target_document_id IN (SELECT id FROM app.documents WHERE site_id = ${testSiteId})`;
       await sql`DELETE FROM app.document_versions WHERE document_id IN (SELECT id FROM app.documents WHERE site_id = ${testSiteId})`;
       await sql`DELETE FROM app.documents WHERE site_id = ${testSiteId}`;
       await sql`DELETE FROM app.user_site_roles WHERE site_id = ${testSiteId}`;
@@ -1041,15 +1043,21 @@ describe('Template API - CRUD Operations', () => {
 
     // Create documents referencing this template
     const doc1 = await sql<{ id: string }[]>`
-      INSERT INTO app.documents (site_id, path, template_id)
-      VALUES (${testSiteId}, '/pages/test-page-1', ${referencedTemplateId})
+      INSERT INTO app.documents (site_id, path)
+      VALUES (${testSiteId}, '/pages/test-page-1')
       RETURNING id
     `;
 
     const doc2 = await sql<{ id: string }[]>`
-      INSERT INTO app.documents (site_id, path, template_id)
-      VALUES (${testSiteId}, '/pages/test-page-2', ${referencedTemplateId})
+      INSERT INTO app.documents (site_id, path)
+      VALUES (${testSiteId}, '/pages/test-page-2')
       RETURNING id
+    `;
+
+    await sql`
+      INSERT INTO app.document_relations (source_document_id, target_document_id, relation_type)
+      VALUES (${doc1[0].id}, ${referencedTemplateId}, 'template'),
+             (${doc2[0].id}, ${referencedTemplateId}, 'template')
     `;
 
     try {
@@ -1081,6 +1089,7 @@ describe('Template API - CRUD Operations', () => {
       expect(deleteBody.error).toContain('document(s) still reference it');
     } finally {
       // Cleanup documents
+      await sql`DELETE FROM app.document_relations WHERE source_document_id IN (${doc1[0].id}, ${doc2[0].id})`;
       await sql`DELETE FROM app.documents WHERE id IN (${doc1[0].id}, ${doc2[0].id})`;
     }
   });
@@ -1297,11 +1306,12 @@ describe('Template API - Migration Operations', () => {
     expect(body.processedDocuments).toBe(1);
     expect(body.conflictedDocuments).toBe(0);
 
-    // Verify the page's template_version was updated
-    const doc = await sql<{ template_version: number }[]>`
-      SELECT template_version FROM app.documents WHERE id = ${migrationPageId}
+    // Verify the page's synced template version was updated
+    const rel = await sql<{ synced_version: number }[]>`
+      SELECT synced_version FROM app.document_relations
+      WHERE source_document_id = ${migrationPageId} AND relation_type = 'template'
     `;
-    expect(doc[0].template_version).toBe(3);
+    expect(rel[0].synced_version).toBe(3);
   });
 
   it('should rollback a completed migration', async () => {
@@ -1344,11 +1354,12 @@ describe('Template API - Migration Operations', () => {
     const body = await response.json();
     expect(body.rolledBackDocuments).toBeGreaterThanOrEqual(0);
 
-    // Verify the page's template_version was reverted
-    const doc = await sql<{ template_version: number }[]>`
-      SELECT template_version FROM app.documents WHERE id = ${migrationPageId}
+    // Verify the page's synced template version was reverted
+    const rel = await sql<{ synced_version: number }[]>`
+      SELECT synced_version FROM app.document_relations
+      WHERE source_document_id = ${migrationPageId} AND relation_type = 'template'
     `;
-    expect(doc[0].template_version).toBe(2);
+    expect(rel[0].synced_version).toBe(2);
   });
 
   it('should return migration status for template', async () => {

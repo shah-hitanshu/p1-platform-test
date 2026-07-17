@@ -24,6 +24,7 @@ import {
   DocumentPathConflictError,
 } from './document-types';
 import type { DocumentWithArchive } from './document-types';
+import { TEMPLATE_RELATION_JOIN, DOCUMENT_WITH_TEMPLATE_COLUMNS } from './document-queries';
 
 // =============================================================================
 // Re-exports for backward compatibility
@@ -117,7 +118,10 @@ export async function createDocument(
  */
 export async function getDocument(documentId: string): Promise<Document | null> {
   const result = await query<DocumentRow>(
-    'SELECT * FROM app.documents WHERE id = $1',
+    `SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
+     FROM app.documents d
+     ${TEMPLATE_RELATION_JOIN}
+     WHERE d.id = $1`,
     [documentId],
   );
 
@@ -144,8 +148,10 @@ export async function getDocumentByPath(
   // Only return non-archived documents
   // Archived documents with the same path are considered deleted and should not be returned
   const result = await query<DocumentRow>(
-    `SELECT * FROM app.documents
-     WHERE site_id = $1 AND path = $2 AND archived_at IS NULL
+    `SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
+     FROM app.documents d
+     ${TEMPLATE_RELATION_JOIN}
+     WHERE d.site_id = $1 AND d.path = $2 AND d.archived_at IS NULL
      LIMIT 1`,
     [siteId, normalizedPath],
   );
@@ -175,10 +181,15 @@ export async function updateDocumentPath(
 
   try {
     const result = await query<DocumentRow>(
-      `UPDATE app.documents
-       SET path = $1
-       WHERE id = $2
-       RETURNING *`,
+      `WITH upd AS (
+         UPDATE app.documents
+         SET path = $1
+         WHERE id = $2
+         RETURNING *
+       )
+       SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
+       FROM upd d
+       ${TEMPLATE_RELATION_JOIN}`,
       [normalizedPath, documentId],
     );
 
@@ -223,25 +234,28 @@ export async function listDocuments(
 ): Promise<DocumentWithArchive[]> {
   const { limit, offset, pathPrefix, archived } = options;
 
-  let sql = 'SELECT * FROM app.documents WHERE site_id = $1';
+  let sql = `SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
+     FROM app.documents d
+     ${TEMPLATE_RELATION_JOIN}
+     WHERE d.site_id = $1`;
   const params: unknown[] = [siteId];
 
   // Filter by archived status
   if (archived === true) {
-    sql += ' AND archived_at IS NOT NULL';
+    sql += ' AND d.archived_at IS NOT NULL';
   } else {
     // Default: only non-archived documents (archived is false or undefined)
-    sql += ' AND archived_at IS NULL';
+    sql += ' AND d.archived_at IS NULL';
   }
 
   if (pathPrefix !== undefined && pathPrefix !== '') {
     // Normalize prefix to match stored paths, then escape LIKE wildcards
     const normalizedPrefix = normalizePath(pathPrefix);
     params.push(escapeLikePattern(normalizedPrefix) + '%');
-    sql += ' AND path LIKE $' + String(params.length) + " ESCAPE '\\'";
+    sql += ' AND d.path LIKE $' + String(params.length) + " ESCAPE '\\'";
   }
 
-  sql += ' ORDER BY path ASC';
+  sql += ' ORDER BY d.path ASC';
 
   if (limit !== undefined) {
     params.push(limit);
@@ -342,10 +356,15 @@ export async function restoreDocument(documentId: string): Promise<DocumentWithA
 
   // Restore the document
   const result = await query<DocumentRow>(
-    `UPDATE app.documents
-     SET archived_at = NULL
-     WHERE id = $1
-     RETURNING *`,
+    `WITH upd AS (
+       UPDATE app.documents
+       SET archived_at = NULL
+       WHERE id = $1
+       RETURNING *
+     )
+     SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
+     FROM upd d
+     ${TEMPLATE_RELATION_JOIN}`,
     [documentId],
   );
 

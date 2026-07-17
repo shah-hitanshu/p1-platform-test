@@ -17,6 +17,7 @@ import { compare as jsonPatchCompare, type Operation } from 'fast-json-patch';
 import { query } from '../db';
 import { createCheckpoint, revertToCheckpoint } from './checkpoint-service';
 import { getLatestDocumentVersion, createDocumentVersion, reconstructVersionSnapshot } from './document-version-service';
+import { TEMPLATE_RELATION_INNER_JOIN } from './document-queries';
 
 // =============================================================================
 // Types
@@ -825,15 +826,19 @@ export async function findAffectedDocuments(
     template_version: number | null;
     snapshot: Record<string, unknown>;
   }>(
-    `SELECT d.id, d.site_id, d.path, d.template_id, d.template_version, dv.snapshot
+    `SELECT d.id, d.site_id, d.path,
+       dr.target_document_id AS template_id,
+       dr.synced_version AS template_version,
+       dv.snapshot
      FROM app.documents d
+     ${TEMPLATE_RELATION_INNER_JOIN}
      JOIN LATERAL (
        SELECT snapshot FROM app.document_versions
        WHERE document_id = d.id AND branch_id = $1
        ORDER BY version_number DESC LIMIT 1
      ) dv ON true
-     WHERE d.template_id = $2
-       AND (d.template_version IS NULL OR d.template_version < $3)
+     WHERE dr.target_document_id = $2
+       AND (dr.synced_version IS NULL OR dr.synced_version < $3)
        AND d.archived_at IS NULL
      ORDER BY d.id
      LIMIT $4 OFFSET $5`,
@@ -1013,8 +1018,11 @@ export async function triggerMigration(
   }
 
   const countResult = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM app.documents
-     WHERE template_id = $1 AND (template_version IS NULL OR template_version < $2) AND archived_at IS NULL`,
+    `SELECT COUNT(*) as count FROM app.documents d
+     ${TEMPLATE_RELATION_INNER_JOIN}
+     WHERE dr.target_document_id = $1
+       AND (dr.synced_version IS NULL OR dr.synced_version < $2)
+       AND d.archived_at IS NULL`,
     [templateId, toVersion],
   );
   const totalDocuments = parseInt(countResult.rows[0].count, 10);
@@ -1155,10 +1163,11 @@ export async function processMigration(
       processedDocuments++;
     }
 
-    // Batch update template_version for all clean documents in this batch
+    // Advance the template edge's synced_version for all clean documents in this batch
     if (cleanDocumentIds.length > 0) {
       await query(
-        'UPDATE app.documents SET template_version = $1 WHERE id = ANY($2)',
+        `UPDATE app.document_relations SET synced_version = $1
+         WHERE source_document_id = ANY($2) AND relation_type = 'template'`,
         [job.toVersion, cleanDocumentIds],
       );
 
@@ -1219,7 +1228,8 @@ export async function rollbackMigration(
       `DELETE FROM app.document_versions
        WHERE source = 'migration'
          AND document_id IN (
-           SELECT id FROM app.documents WHERE template_id = $1
+           SELECT source_document_id FROM app.document_relations
+           WHERE target_document_id = $1 AND relation_type = 'template'
          )
          AND branch_id = $2
          AND created_at >= $3`,
@@ -1229,8 +1239,11 @@ export async function rollbackMigration(
   }
 
   await query(
-    `UPDATE app.documents SET template_version = $1
-     WHERE template_id = $2 AND template_version = $3 AND archived_at IS NULL`,
+    `UPDATE app.document_relations dr SET synced_version = $1
+     FROM app.documents d
+     WHERE dr.source_document_id = d.id
+       AND dr.target_document_id = $2 AND dr.synced_version = $3
+       AND dr.relation_type = 'template' AND d.archived_at IS NULL`,
     [job.fromVersion, job.templateId, job.toVersion],
   );
 
@@ -1390,11 +1403,12 @@ export async function getMigrationStatus(
 
   // Count stale documents and find the oldest version
   const staleResult = await query<{ count: string; oldest_version: number | null }>(
-    `SELECT COUNT(*) as count, MIN(COALESCE(template_version, 0)) as oldest_version
-     FROM app.documents
-     WHERE template_id = $1
-       AND (template_version IS NULL OR template_version < $2)
-       AND archived_at IS NULL`,
+    `SELECT COUNT(*) as count, MIN(COALESCE(dr.synced_version, 0)) as oldest_version
+     FROM app.documents d
+     ${TEMPLATE_RELATION_INNER_JOIN}
+     WHERE dr.target_document_id = $1
+       AND (dr.synced_version IS NULL OR dr.synced_version < $2)
+       AND d.archived_at IS NULL`,
     [templateId, currentVersion],
   );
 
@@ -1508,7 +1522,8 @@ export async function resolveMigrationConflict(
     );
 
     await query(
-      'UPDATE app.documents SET template_version = $1 WHERE id = $2',
+      `UPDATE app.document_relations SET synced_version = $1
+       WHERE source_document_id = $2 AND relation_type = 'template'`,
       [conflict.to_version, conflict.document_id],
     );
   }

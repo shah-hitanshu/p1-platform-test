@@ -30,6 +30,7 @@ import {
 } from './document-version-service';
 import { createCheckpoint } from './checkpoint-service';
 import { getMainBranch } from './branch-service';
+import { TEMPLATE_RELATION_INNER_JOIN } from './document-queries';
 import { publishMergedVersions } from './merge-publish';
 import { query } from '../db';
 import {
@@ -849,8 +850,9 @@ async function triggerPostMergeTemplateMigrations(
       }
 
       const staleDocsResult = await query<{ count: string }>(
-        `SELECT COUNT(*) as count FROM app.documents
-         WHERE template_id = $1 AND template_version < $2 AND archived_at IS NULL`,
+        `SELECT COUNT(*) as count FROM app.documents d
+         ${TEMPLATE_RELATION_INNER_JOIN}
+         WHERE dr.target_document_id = $1 AND dr.synced_version < $2 AND d.archived_at IS NULL`,
         [templateChange.documentId, latestVersion.versionNumber],
       );
       const staleCount = parseInt(staleDocsResult.rows[0].count, 10);

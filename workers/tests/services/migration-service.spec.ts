@@ -2352,7 +2352,7 @@ describe('Phase 5: Migration Service', () => {
       ).rejects.toThrow(MigrationJobNotFoundError);
     });
 
-    it('should restore template_version on affected documents', async () => {
+    it('should restore the synced template version on affected documents', async () => {
       const { rollbackMigration } = await import('../../src/services/migration-service');
       const db = await import('../../src/db');
       const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
@@ -2393,12 +2393,12 @@ describe('Phase 5: Migration Service', () => {
         { id: 'user-uuid-001', type: 'user' },
       );
 
-      // Verify template_version was reset
+      // Verify synced_version was reset on the template edges
       const allCalls = vi.mocked(db.query).mock.calls;
       const resetCall = allCalls.find(
         (call) => {
           const sql = (call[0] as string).toLowerCase();
-          return sql.includes('template_version') && sql.includes('update');
+          return sql.includes('synced_version') && sql.includes('update') && sql.includes('document_relations');
         },
       );
       expect(resetCall).toBeDefined();
@@ -2660,7 +2660,7 @@ describe('Phase 5: Migration Service', () => {
       expect(updateCall).toBeDefined();
     });
 
-    it('should update template_version on apply resolution', async () => {
+    it('should update the synced template version on apply resolution', async () => {
       const { resolveMigrationConflict } = await import('../../src/services/migration-service');
       const db = await import('../../src/db');
       const { getLatestDocumentVersion, createDocumentVersion } = await import('../../src/services/document-version-service');
@@ -2695,7 +2695,7 @@ describe('Phase 5: Migration Service', () => {
         createdAt: '2026-06-08T10:00:00.000Z',
       });
 
-      // Update documents.template_version
+      // Update the template edge's synced_version
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
       // Update conflict record
@@ -2714,12 +2714,12 @@ describe('Phase 5: Migration Service', () => {
         { id: 'user-uuid-001', type: 'user' },
       );
 
-      // Verify template_version was updated
+      // Verify the template edge's synced_version was updated
       const allCalls = vi.mocked(db.query).mock.calls;
       const templateVersionCall = allCalls.find(
         (call) => {
           const sql = (call[0] as string).toLowerCase();
-          return sql.includes('template_version') && sql.includes('update') && sql.includes('documents');
+          return sql.includes('synced_version') && sql.includes('update') && sql.includes('document_relations');
         },
       );
       expect(templateVersionCall).toBeDefined();

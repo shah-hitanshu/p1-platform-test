@@ -79,6 +79,11 @@ beforeAll(async () => {
     await sql`DELETE FROM app.checkpoints WHERE branch_id IN (
       SELECT id FROM app.branches WHERE site_id = ${siteId}
     )`;
+    await sql`DELETE FROM app.document_relations WHERE source_document_id IN (
+      SELECT id FROM app.documents WHERE site_id = ${siteId}
+    ) OR target_document_id IN (
+      SELECT id FROM app.documents WHERE site_id = ${siteId}
+    )`;
     await sql`DELETE FROM app.document_versions WHERE document_id IN (
       SELECT id FROM app.documents WHERE site_id = ${siteId}
     )`;
@@ -126,6 +131,11 @@ afterAll(async () => {
     )`;
     await sql`DELETE FROM app.checkpoints WHERE branch_id IN (
       SELECT id FROM app.branches WHERE site_id = ${testSiteId}
+    )`;
+    await sql`DELETE FROM app.document_relations WHERE source_document_id IN (
+      SELECT id FROM app.documents WHERE site_id = ${testSiteId}
+    ) OR target_document_id IN (
+      SELECT id FROM app.documents WHERE site_id = ${testSiteId}
     )`;
     await sql`DELETE FROM app.document_versions WHERE document_id IN (
       SELECT id FROM app.documents WHERE site_id = ${testSiteId}
@@ -231,11 +241,12 @@ describe('Template Migration E2E', () => {
     expect(pageDocId).toBeDefined();
 
     // Verify the document references the template
-    const doc = await sql<{ template_id: string; template_version: number }[]>`
-      SELECT template_id, template_version FROM app.documents WHERE id = ${pageDocId}
+    const rel = await sql<{ target_document_id: string; synced_version: number }[]>`
+      SELECT target_document_id, synced_version FROM app.document_relations
+      WHERE source_document_id = ${pageDocId} AND relation_type = 'template'
     `;
-    expect(doc[0].template_id).toBe(templateId);
-    expect(doc[0].template_version).toBe(2);
+    expect(rel[0].target_document_id).toBe(templateId);
+    expect(rel[0].synced_version).toBe(2);
   });
 
   it('Step 4: Save a new template layout, adding CTABlock with puckActions', async () => {
@@ -356,11 +367,12 @@ describe('Template Migration E2E', () => {
   });
 
   it('Step 8: Verify page picked up the new version with inserted defaults', async () => {
-    // Check template_version was updated on the document
-    const doc = await sql<{ template_version: number }[]>`
-      SELECT template_version FROM app.documents WHERE id = ${pageDocId}
+    // Check the template edge's synced_version was advanced
+    const rel = await sql<{ synced_version: number }[]>`
+      SELECT synced_version FROM app.document_relations
+      WHERE source_document_id = ${pageDocId} AND relation_type = 'template'
     `;
-    expect(doc[0].template_version).toBe(3);
+    expect(rel[0].synced_version).toBe(3);
 
     // The inserted component carries the template's default props,
     // and the page's own customizations are untouched

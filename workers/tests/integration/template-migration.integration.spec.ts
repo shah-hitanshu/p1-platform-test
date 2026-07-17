@@ -127,6 +127,7 @@ describe('Template Migration CUJ — Integration Tests', () => {
       await sql`DELETE FROM app.migration_jobs WHERE site_id = ${siteId}`;
       await sql`DELETE FROM app.checkpoint_documents WHERE checkpoint_id IN (SELECT id FROM app.checkpoints WHERE branch_id = ${branchId})`;
       await sql`DELETE FROM app.checkpoints WHERE branch_id = ${branchId}`;
+      await sql`DELETE FROM app.document_relations WHERE source_document_id IN (SELECT id FROM app.documents WHERE site_id = ${siteId}) OR target_document_id IN (SELECT id FROM app.documents WHERE site_id = ${siteId})`;
       await sql`DELETE FROM app.document_versions WHERE document_id IN (SELECT id FROM app.documents WHERE site_id = ${siteId})`;
       await sql`DELETE FROM app.documents WHERE site_id = ${siteId}`;
       await sql`DELETE FROM app.user_site_roles WHERE site_id = ${siteId}`;
@@ -248,14 +249,20 @@ describe('Template Migration CUJ — Integration Tests', () => {
       expect(content[2].props.href).toBe('/action');
       expect(content[2].props.id).toBe('button-1');
 
-      // Verify template_version updated
-      const docRow = await sql`SELECT template_version FROM app.documents WHERE id = ${pageDocId}`;
-      expect(docRow[0].template_version).toBe(2);
+      // Verify synced_version updated
+      const relRow = await sql`
+        SELECT synced_version FROM app.document_relations
+        WHERE source_document_id = ${pageDocId} AND relation_type = 'template'
+      `;
+      expect(relRow[0].synced_version).toBe(2);
     });
 
     it('should not create duplicates on re-migration', async () => {
-      // Reset template_version to trigger migration again
-      await sql`UPDATE app.documents SET template_version = 1 WHERE id = ${pageDocId}`;
+      // Reset synced_version to trigger migration again
+      await sql`
+        UPDATE app.document_relations SET synced_version = 1
+        WHERE source_document_id = ${pageDocId} AND relation_type = 'template'
+      `;
 
       const job = await triggerMigration(
         siteId, branchId, templateDocId, 1, 2,
@@ -456,8 +463,8 @@ describe('Template Migration CUJ — Integration Tests', () => {
   // Documents with NULL template_version found by migration
   // ===========================================================================
 
-  describe('NULL template_version handling', () => {
-    it('should find documents with NULL template_version as migration candidates', async () => {
+  describe('NULL synced_version handling', () => {
+    it('should find documents with a NULL synced version as migration candidates', async () => {
       const tpl = await createDocumentOnBranch({
         siteId, branchId,
         path: '_registry/templates/test-null-tv',
@@ -465,16 +472,19 @@ describe('Template Migration CUJ — Integration Tests', () => {
         createdById: TEST_USER_ID, createdByType: 'user',
       });
 
-      // Create document with template_id but NULL template_version
+      // Create a document with a template edge whose synced_version is NULL
       // (simulates documents created before template versioning was added)
-      await sql`
-        INSERT INTO app.documents (site_id, path, template_id, template_version)
-        VALUES (${siteId}, 'test-null-tv-page', ${tpl.document.id}, NULL)
-      `;
       const docRows = await sql`
-        SELECT id FROM app.documents WHERE path = 'test-null-tv-page' AND site_id = ${siteId}
+        INSERT INTO app.documents (site_id, path)
+        VALUES (${siteId}, 'test-null-tv-page')
+        RETURNING id
       `;
       const nullTvDocId = docRows[0].id as string;
+      await sql`
+        INSERT INTO app.document_relations
+          (source_document_id, target_document_id, relation_type, synced_version)
+        VALUES (${nullTvDocId}, ${tpl.document.id}, 'template', NULL)
+      `;
 
       // Create an initial version for the document
       await createDocumentVersion({
@@ -882,8 +892,11 @@ describe('Template Migration CUJ — Integration Tests', () => {
       expect(content.filter(c => c.type === 'HeadingBlock')).toHaveLength(2);
       expect(content.some(c => c.props.id === 'h2')).toBe(true);
 
-      const docRow = await sql`SELECT template_version FROM app.documents WHERE id = ${pageDocId}`;
-      expect(docRow[0].template_version).toBe(2);
+      const relRow = await sql`
+        SELECT synced_version FROM app.document_relations
+        WHERE source_document_id = ${pageDocId} AND relation_type = 'template'
+      `;
+      expect(relRow[0].synced_version).toBe(2);
     });
 
     it('applies a delta stored as a double-encoded jsonb string', async () => {

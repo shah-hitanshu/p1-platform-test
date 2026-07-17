@@ -23,6 +23,7 @@ import {
 import { assertPermission, getEffectiveRole, AuthorizationError } from '../auth/authorization';
 import { isManifestShapedSnapshot, convertManifestToContent } from '../services/template-content-backfill';
 import { query } from '../db';
+import { TEMPLATE_RELATION_INNER_JOIN } from '../services/document-queries';
 import {
   triggerMigration,
   processMigration,
@@ -584,8 +585,9 @@ async function handleDeleteTemplate(
   // Check if any documents reference this template
   const refs = await query(
     `SELECT COUNT(*) as count
-     FROM app.documents
-     WHERE template_id = $1 AND archived_at IS NULL`,
+     FROM app.documents d
+     ${TEMPLATE_RELATION_INNER_JOIN}
+     WHERE dr.target_document_id = $1 AND d.archived_at IS NULL`,
     [templateId],
   );
 

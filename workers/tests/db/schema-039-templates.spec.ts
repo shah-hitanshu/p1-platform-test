@@ -102,10 +102,6 @@ function hasColumn(columns: ColumnInfo[], name: string): boolean {
   return columns.some((col) => col.column_name === name);
 }
 
-function getColumn(columns: ColumnInfo[], name: string): ColumnInfo | undefined {
-  return columns.find((col) => col.column_name === name);
-}
-
 function hasIndex(indexes: IndexInfo[], name: string): boolean {
   return indexes.some((idx) => idx.indexname === name);
 }
@@ -119,50 +115,6 @@ function hasConstraint(
     (c) => c.constraint_name === name && (!type || c.constraint_type === type),
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Documents Table Extensions
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('Migration 039: Documents Table Extensions', () => {
-  it('should have template_id column', async () => {
-    const columns = await getTableColumns('documents');
-    const col = getColumn(columns, 'template_id');
-    expect(col).toBeDefined();
-    expect(col?.data_type).toBe('uuid');
-    expect(col?.is_nullable).toBe('YES');
-  });
-
-  it('should have template_version column', async () => {
-    const columns = await getTableColumns('documents');
-    const col = getColumn(columns, 'template_version');
-    expect(col).toBeDefined();
-    expect(col?.data_type).toBe('integer');
-    expect(col?.is_nullable).toBe('YES');
-  });
-
-  it('should have foreign key constraint on template_id', async () => {
-    const constraints = await getTableConstraints('documents');
-    const hasFk = constraints.some(
-      (c) =>
-        c.constraint_type === 'FOREIGN KEY' &&
-        c.constraint_name.includes('template_id'),
-    );
-    expect(hasFk).toBe(true);
-  });
-
-  it('should have idx_documents_template index', async () => {
-    const indexes = await getTableIndexes('documents');
-    expect(hasIndex(indexes, 'idx_documents_template')).toBe(true);
-  });
-
-  it('idx_documents_template should be partial (WHERE template_id IS NOT NULL)', async () => {
-    const indexes = await getTableIndexes('documents');
-    const idx = indexes.find((i) => i.indexname === 'idx_documents_template');
-    expect(idx?.indexdef).toContain('WHERE');
-    expect(idx?.indexdef).toContain('template_id IS NOT NULL');
-  });
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Migration Jobs Table
@@ -377,111 +329,6 @@ describe('Database Constraints - Migration 039', () => {
     await sql`DELETE FROM app.checkpoints WHERE id = ${TEST_CHECKPOINT_ID}`;
     await sql`DELETE FROM app.branches WHERE id = ${TEST_BRANCH_ID}`;
     await sql`DELETE FROM app.sites WHERE id = ${TEST_SITE_ID}`;
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Template FK Constraints on Documents Table
-  // ───────────────────────────────────────────────────────────────────────────
-
-  describe('Documents.template_id Foreign Key Constraints', () => {
-    it('should prevent template_id FK violation (non-existent document)', async () => {
-      await expect(
-        sql`
-          INSERT INTO app.documents (site_id, path, template_id)
-          VALUES (
-            ${TEST_SITE_ID},
-            '/test/fk-violation',
-            '00000000-0000-0000-0000-000000000099'::uuid
-          )
-        `,
-      ).rejects.toThrow(/foreign key constraint|violates foreign key/i);
-    });
-
-    it('should allow template_id pointing to regular document (FK constraint only)', async () => {
-      // First create a regular document (not a template)
-      const regularDocResult = await sql<{ id: string }[]>`
-        INSERT INTO app.documents (site_id, path)
-        VALUES (${TEST_SITE_ID}, '/pages/regular-doc')
-        RETURNING id
-      `;
-      const regularDocId = regularDocResult[0].id;
-
-      try {
-        // This should succeed - FK only checks documents table, not path
-        const result = await sql<{ id: string }[]>`
-          INSERT INTO app.documents (site_id, path, template_id)
-          VALUES (${TEST_SITE_ID}, '/pages/using-non-template', ${regularDocId})
-          RETURNING id
-        `;
-
-        expect(result.length).toBe(1);
-        expect(result[0].id).toBeDefined();
-
-        // Note: Path enforcement (/templates/*) is application-level, not DB-level
-
-        // Cleanup
-        await sql`DELETE FROM app.documents WHERE id = ${result[0].id}`;
-      } finally {
-        await sql`DELETE FROM app.documents WHERE id = ${regularDocId}`;
-      }
-    });
-
-    it('should allow NULL template_version with non-NULL template_id', async () => {
-      // Create a template document
-      const templateResult = await sql<{ id: string }[]>`
-        INSERT INTO app.documents (site_id, path)
-        VALUES (${TEST_SITE_ID}, '/templates/test-template')
-        RETURNING id
-      `;
-      const templateId = templateResult[0].id;
-
-      try {
-        // This should succeed - both columns are independently nullable
-        const result = await sql<{ id: string }[]>`
-          INSERT INTO app.documents (site_id, path, template_id, template_version)
-          VALUES (${TEST_SITE_ID}, '/pages/inconsistent', ${templateId}, NULL)
-          RETURNING id
-        `;
-
-        expect(result.length).toBe(1);
-
-        // Note: Application should enforce both-or-neither constraint
-
-        // Cleanup
-        await sql`DELETE FROM app.documents WHERE id = ${result[0].id}`;
-      } finally {
-        await sql`DELETE FROM app.documents WHERE id = ${templateId}`;
-      }
-    });
-
-    it('should allow negative template_version (no CHECK constraint)', async () => {
-      // Create a template document
-      const templateResult = await sql<{ id: string }[]>`
-        INSERT INTO app.documents (site_id, path)
-        VALUES (${TEST_SITE_ID}, '/templates/version-template')
-        RETURNING id
-      `;
-      const templateId = templateResult[0].id;
-
-      try {
-        // This should succeed - no CHECK constraint on template_version
-        const result = await sql<{ id: string; template_version: number }[]>`
-          INSERT INTO app.documents (site_id, path, template_id, template_version)
-          VALUES (${TEST_SITE_ID}, '/pages/negative-version', ${templateId}, -1)
-          RETURNING id, template_version
-        `;
-
-        expect(result.length).toBe(1);
-        expect(result[0].template_version).toBe(-1);
-
-        // Note: Application should validate positive versions
-
-        // Cleanup
-        await sql`DELETE FROM app.documents WHERE id = ${result[0].id}`;
-      } finally {
-        await sql`DELETE FROM app.documents WHERE id = ${templateId}`;
-      }
-    });
   });
 
   // ───────────────────────────────────────────────────────────────────────────

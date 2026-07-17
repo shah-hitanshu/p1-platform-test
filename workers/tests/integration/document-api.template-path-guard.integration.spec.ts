@@ -39,6 +39,7 @@ beforeAll(async () => {
   const staleData = await sql<{ id: string }[]>`SELECT id FROM app.sites WHERE pantheon_site_id = 'test-doc-template-guard-site'`;
   if (staleData.length > 0) {
     const staleSiteId = staleData[0].id;
+    await sql`DELETE FROM app.document_relations WHERE source_document_id IN (SELECT id FROM app.documents WHERE site_id = ${staleSiteId}) OR target_document_id IN (SELECT id FROM app.documents WHERE site_id = ${staleSiteId})`;
     await sql`DELETE FROM app.document_versions WHERE document_id IN (SELECT id FROM app.documents WHERE site_id = ${staleSiteId})`;
     await sql`DELETE FROM app.documents WHERE site_id = ${staleSiteId}`;
     await sql`DELETE FROM app.user_site_roles WHERE site_id = ${staleSiteId}`;
@@ -98,6 +99,11 @@ beforeAll(async () => {
 afterAll(async () => {
   try {
     if (testSiteId) {
+      await sql`DELETE FROM app.document_relations WHERE source_document_id IN (
+        SELECT id FROM app.documents WHERE site_id = ${testSiteId}
+      ) OR target_document_id IN (
+        SELECT id FROM app.documents WHERE site_id = ${testSiteId}
+      )`;
       await sql`DELETE FROM app.document_versions WHERE document_id IN (
         SELECT id FROM app.documents WHERE site_id = ${testSiteId}
       )`;
@@ -293,7 +299,7 @@ describe('Document API - Template Path Guard', () => {
     expect(docs.length).toBe(1);
   });
 
-  it('should check templateId parameter and write to documents table', async () => {
+  it('should check templateId parameter and record a template edge', async () => {
     const { handleDocumentRoutes } = await import('../../src/routes/document-api');
 
     // First create a template to reference
@@ -350,14 +356,17 @@ describe('Document API - Template Path Guard', () => {
     const body = await response.json();
     expect(body.document.path).toBe('pages/templated-page');
 
-    // Verify in database with template_id and template_version
-    const docs = await sql<{ template_id: string | null; template_version: number | null }[]>`
-      SELECT template_id, template_version
-      FROM app.documents
-      WHERE site_id = ${testSiteId} AND path = 'pages/templated-page'
+    // Verify the template edge was recorded in document_relations
+    const rels = await sql<{ target_document_id: string; synced_version: number | null }[]>`
+      SELECT dr.target_document_id, dr.synced_version
+      FROM app.document_relations dr
+      JOIN app.documents d ON d.id = dr.source_document_id
+      WHERE d.site_id = ${testSiteId}
+        AND d.path = 'pages/templated-page'
+        AND dr.relation_type = 'template'
     `;
-    expect(docs.length).toBe(1);
-    expect(docs[0].template_id).toBe(templateId);
-    expect(docs[0].template_version).toBe(1);
+    expect(rels.length).toBe(1);
+    expect(rels[0].target_document_id).toBe(templateId);
+    expect(rels[0].synced_version).toBe(1);
   });
 });
