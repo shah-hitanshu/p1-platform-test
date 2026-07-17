@@ -18,6 +18,32 @@ puck-css-integration/
 
 ## Completed Work
 
+### Publish button UI — fuse Workstream switcher + Publish button reliably (2026-07-14) ✅
+
+**Branch:** `minor-publish-button-ui-fix` (plain branch off `main`). Commit `9ddf341`.
+
+**Bug:** in the editor subheader the Workstream switcher and the black Publish split-button are
+meant to render as one fused segmented control (switcher rounded-left/flat-right joined to Publish
+flat-left/rounded-right). Instead the switcher kept fully-rounded corners while the Publish button
+squared its left corners, producing a visual mismatch.
+
+**Root cause:** the `.workstreamPublishGroup` rule in `P1EditorSubheader.module.css` that squares
+the switcher's right corners was pinned to a hardcoded CSS-module hash
+(`.WorkstreamSwitcher-module__vbDGzq__trigger`). The package build tool and the app's build emit
+different hashes for the same module (the app renders `qeUOEG`), so the `:global(...)` literal
+silently stopped matching. The Publish-side rule uses the stable global `.pds-split-button`
+class, so only that side squared — hence the mismatch. Source files were byte-identical to the
+reference clone; the divergence was purely this fragile hash.
+
+**Fix** (single file, `packages/puck-css/src/pds/components/P1EditorSubheader.module.css`):
+replaced the hash-pinned selector with a build-independent attribute-substring match,
+`:global([class*='WorkstreamSwitcher-module'][class*='__trigger'])`, so the rule survives hash
+changes across build tools.
+
+**Verification:** `puck-css` build + full `pnpm build` clean (exit 0); lint 0 errors (pre-existing
+warnings only); dev server on :3002 confirmed the served CSS now matches the live `qeUOEG` trigger.
+Visually confirmed working on localhost :3002. CSS-only change — no security surface.
+
 ### PCC-3398 — "View page" button: show on home, hide for templates (2026-07-13) ✅
 
 **Branch:** `PCC-3398-view-page-button-home-and-templates` (plain branch off `main`).

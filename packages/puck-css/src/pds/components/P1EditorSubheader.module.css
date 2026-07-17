@@ -82,8 +82,11 @@
   flex-shrink: 0;
 }
 
-/* Remove rounded corners and right border on workstream switcher when grouped */
-.workstreamPublishGroup :global(.WorkstreamSwitcher-module__vbDGzq__trigger) {
+/* Remove rounded corners and right border on workstream switcher when grouped.
+ * Match by attribute substring rather than a fixed CSS-module hash so the rule
+ * survives rebuilds (the hash changes between build tools, e.g. vbDGzq -> qeUOEG). */
+.workstreamPublishGroup
+  :global([class*='WorkstreamSwitcher-module'][class*='__trigger']) {
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
   border-right: none;
