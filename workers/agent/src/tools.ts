@@ -35,6 +35,14 @@ function normalizePath(path: string): string {
   return path.replace(/^\.+/, '');
 }
 
+// The home page's canonical document path is the literal string "/" — every
+// other document is stored without a leading slash. Stripping the slash
+// unconditionally turns "/" into "", which matches no document.
+function normalizeDocumentPath(path: string): string {
+  if (path === '/') return path;
+  return path.startsWith('/') ? path.slice(1) : path;
+}
+
 // Recursively inject ULID ids into any Puck component (or array of components)
 // that is missing one. Handles both single-component and full-array replacements.
 export function injectPuckIds(content: unknown): unknown {
@@ -367,8 +375,14 @@ export async function executeTool(
       const siteId = toolInput.site_id as string;
       const branchId = toolInput.branch_id as string;
       const rawPath = toolInput.document_path as string;
-      const documentPath = rawPath.startsWith('/') ? rawPath.slice(1) : rawPath;
-      const docs = await cssApi.listDocuments(siteId, branchId, { pathPrefix: documentPath });
+      const documentPath = normalizeDocumentPath(rawPath);
+      // The home page's path is literally "/" — prefix-filtering on that value
+      // isn't a case we can verify against the backend, so skip the filter
+      // (an optimization only) and match the root doc against the full listing.
+      const docs = await cssApi.listDocuments(
+        siteId, branchId,
+        documentPath === '/' ? undefined : { pathPrefix: documentPath },
+      );
       const doc = docs.documents.find(d => d.path === documentPath);
       if (!doc) throw new Error(`Document not found: ${documentPath}`);
       return cssApi.getDocumentLatestVersion(siteId, branchId, doc.id);
@@ -417,7 +431,7 @@ export async function executeTool(
       const siteId = toolInput.site_id as string;
       const branchId = toolInput.branch_id as string;
       const rawDocPath = toolInput.document_path as string;
-      const documentPath = rawDocPath.startsWith('/') ? rawDocPath.slice(1) : rawDocPath;
+      const documentPath = normalizeDocumentPath(rawDocPath);
 
       // Fetch snapshot and registry in parallel for validation.
       // Both failures are handled gracefully — the library validates what it can.
@@ -428,7 +442,10 @@ export async function executeTool(
       if (hasContentOp) {
         await Promise.allSettled([
           (async () => {
-            const docs = await cssApi.listDocuments(siteId, branchId, { pathPrefix: documentPath });
+            const docs = await cssApi.listDocuments(
+              siteId, branchId,
+              documentPath === '/' ? undefined : { pathPrefix: documentPath },
+            );
             const doc = docs.documents.find(d => d.path === documentPath);
             if (doc) {
               const version = await cssApi.getDocumentLatestVersion(siteId, branchId, doc.id);

@@ -14,13 +14,13 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const css = useP1Puck();
-  const { token } = useP1Auth();
+  const { getToken } = useP1Auth();
 
   // Stable refs so getAgentId/getContext don't change on every render
   const cssRef = useRef(css);
   cssRef.current = css;
-  const tokenRef = useRef(token);
-  tokenRef.current = token;
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
 
   // Reactive scope key: recomputed when the user/site/branch/document changes so
   // the hook reconnects and loads that conversation's history. History is
@@ -33,12 +33,15 @@ export function ChatPanel({ options }: Props): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.getAgentId, userId, siteId, branchId, currentDocument?.path]);
 
-  const getContext = useCallback(() => ({
+  // Fetches a fresh token rather than reading React state directly — auth
+  // loads asynchronously on mount, so a state snapshot can still be null the
+  // moment a user submits their first message.
+  const getContext = useCallback(async () => ({
     siteId: cssRef.current.siteId,
     branchId: cssRef.current.branchId,
     documentPath: cssRef.current.currentDocument?.path ?? '',
     documentId: cssRef.current.currentDocument?.id ?? '',
-    token: tokenRef.current ?? '',
+    token: (await getTokenRef.current()) ?? '',
   }), []);
 
   const { messages, input, setInput, submit, isLoading, clearMessages } = useAgentChat({
@@ -99,7 +102,7 @@ export function ChatPanel({ options }: Props): React.ReactElement {
             label="Clear"
             iconName="trash"
             isCritical
-            onClick={clearMessages}
+            onClick={() => void clearMessages()}
           />
         )}
       </div>

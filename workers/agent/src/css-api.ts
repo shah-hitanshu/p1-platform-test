@@ -259,10 +259,6 @@ export class McpApiClient {
     return action ? `${base}/${action}` : base;
   }
 
-  private normalizePath(documentPath: string): string {
-    return documentPath.startsWith('/') ? documentPath.slice(1) : documentPath;
-  }
-
   private async handleResponse<T>(response: Response): Promise<T> {
     const data = await response.json() as T | ApiError;
     if (!response.ok) {
@@ -340,8 +336,7 @@ export class McpApiClient {
   }
 
   async canAgentEdit(request: CanAgentEditRequest): Promise<CanAgentEditResponse> {
-    const docPath = this.normalizePath(request.documentPath);
-    const url = `${this.baseUrl}/api/sites/${request.siteId}/branches/${request.branchId}/documents/${docPath}/can-agent-edit`;
+    const url = this.buildDocumentUrl(request.siteId, request.branchId, request.documentPath, 'can-agent-edit');
     const headers = this.getAgentEditHeaders(request.intent, request.targetRegions, request.trigger, request.requestedById, request.operationType);
     const response = await this.doFetch(url, {
       method: 'POST',
@@ -360,8 +355,7 @@ export class McpApiClient {
   }
 
   async startAgentEdit(request: StartAgentEditRequest): Promise<StartAgentEditResponse> {
-    const docPath = this.normalizePath(request.documentPath);
-    const url = `${this.baseUrl}/api/sites/${request.siteId}/branches/${request.branchId}/documents/${docPath}/agent-edit-start`;
+    const url = this.buildDocumentUrl(request.siteId, request.branchId, request.documentPath, 'agent-edit-start');
     const headers = this.getAgentEditHeaders(request.intent, request.targetRegions, request.trigger, request.requestedById, request.operationType);
     const response = await this.doFetch(url, {
       method: 'POST',
@@ -379,8 +373,7 @@ export class McpApiClient {
   }
 
   async applyEdits(request: ApplyEditsRequest): Promise<ApplyEditsResponse> {
-    const docPath = this.normalizePath(request.documentPath);
-    const url = `${this.baseUrl}/api/sites/${request.siteId}/branches/${request.branchId}/documents/${docPath}/edits`;
+    const url = this.buildDocumentUrl(request.siteId, request.branchId, request.documentPath, 'edits');
     const response = await this.doFetch(url, {
       method: 'POST',
       headers: this.getHeaders(),
@@ -390,8 +383,7 @@ export class McpApiClient {
   }
 
   async completeAgentEdit(request: CompleteAgentEditRequest): Promise<CompleteAgentEditResponse> {
-    const docPath = this.normalizePath(request.documentPath);
-    const url = `${this.baseUrl}/api/sites/${request.siteId}/branches/${request.branchId}/documents/${docPath}/agent-edit-complete`;
+    const url = this.buildDocumentUrl(request.siteId, request.branchId, request.documentPath, 'agent-edit-complete');
     const response = await this.doFetch(url, {
       method: 'POST',
       headers: { ...this.getHeaders(), 'X-Agent-Id': this.agentId },
@@ -401,8 +393,7 @@ export class McpApiClient {
   }
 
   async abortAgentEdit(request: AbortAgentEditRequest): Promise<AbortAgentEditResponse> {
-    const docPath = this.normalizePath(request.documentPath);
-    const url = `${this.baseUrl}/api/sites/${request.siteId}/branches/${request.branchId}/documents/${docPath}/agent-edit-abort`;
+    const url = this.buildDocumentUrl(request.siteId, request.branchId, request.documentPath, 'agent-edit-abort');
     const body: Record<string, string> = { editSessionId: request.editSessionId };
     if (request.reason) body.reason = request.reason;
     const response = await this.doFetch(url, {

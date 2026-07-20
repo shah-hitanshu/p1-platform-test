@@ -304,6 +304,82 @@ describe('executeTool unknown tool', () => {
 });
 
 // ---------------------------------------------------------------------------
+// executeTool — get_document
+// ---------------------------------------------------------------------------
+
+describe('executeTool get_document', () => {
+  const siteId = 'site-1';
+  const branchId = 'branch-1';
+
+  it('resolves the home page document at path "/"', async () => {
+    const listDocuments = vi.fn().mockResolvedValue({
+      documents: [{ id: 'doc-home', path: '/', createdAt: '' }],
+    });
+    const getDocumentLatestVersion = vi.fn().mockResolvedValue({
+      id: 'ver-1',
+      documentId: 'doc-home',
+      versionNumber: 1,
+      snapshot: { content: [] },
+    });
+    const stubCssApi = { listDocuments, getDocumentLatestVersion } as unknown as McpApiClient;
+
+    const result = await executeTool(
+      'get_document',
+      { site_id: siteId, branch_id: branchId, document_path: '/' },
+      stubCssApi,
+      'user-1',
+    );
+
+    // "/" must be preserved, not stripped down to "" (which matches no document).
+    expect(listDocuments).toHaveBeenCalledWith(siteId, branchId, undefined);
+    expect(getDocumentLatestVersion).toHaveBeenCalledWith(siteId, branchId, 'doc-home');
+    expect(result).toEqual({
+      id: 'ver-1',
+      documentId: 'doc-home',
+      versionNumber: 1,
+      snapshot: { content: [] },
+    });
+  });
+
+  it('strips a leading slash for non-root documents', async () => {
+    const listDocuments = vi.fn().mockResolvedValue({
+      documents: [{ id: 'doc-about', path: 'about', createdAt: '' }],
+    });
+    const getDocumentLatestVersion = vi.fn().mockResolvedValue({
+      id: 'ver-2',
+      documentId: 'doc-about',
+      versionNumber: 1,
+      snapshot: { content: [] },
+    });
+    const stubCssApi = { listDocuments, getDocumentLatestVersion } as unknown as McpApiClient;
+
+    await executeTool(
+      'get_document',
+      { site_id: siteId, branch_id: branchId, document_path: '/about' },
+      stubCssApi,
+      'user-1',
+    );
+
+    expect(listDocuments).toHaveBeenCalledWith(siteId, branchId, { pathPrefix: 'about' });
+  });
+
+  it('throws a descriptive error when the document is not found', async () => {
+    const stubCssApi = {
+      listDocuments: vi.fn().mockResolvedValue({ documents: [] }),
+    } as unknown as McpApiClient;
+
+    await expect(
+      executeTool(
+        'get_document',
+        { site_id: siteId, branch_id: branchId, document_path: '/missing' },
+        stubCssApi,
+        'user-1',
+      ),
+    ).rejects.toThrow('Document not found: missing');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // apply_document_edits — key-validation guard
 // ---------------------------------------------------------------------------
 

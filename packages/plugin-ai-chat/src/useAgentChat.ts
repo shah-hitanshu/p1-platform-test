@@ -26,7 +26,7 @@ export interface UseAgentChatOptions {
   agentUrl: string;
   /** Durable Object key. Scopes persisted history; changing it switches conversations. */
   agentId: string;
-  getContext: () => ChatContext;
+  getContext: () => ChatContext | Promise<ChatContext>;
 }
 
 export interface UseAgentChatReturn {
@@ -61,12 +61,21 @@ export function useAgentChat({ agentUrl, agentId, getContext }: UseAgentChatOpti
       wsRef.current = ws;
 
       ws.onopen = () => {
-        // Ask the agent for any persisted history so a page reload restores the chat.
-        // The token authorizes the read (the agent scopes history to its owner); the
-        // response is applied only when the local view is empty (see 'history'), so
-        // this never clobbers an in-progress conversation.
-        ws.send(JSON.stringify({ type: 'get_history', token: getContext().token }));
-        resolve(ws);
+        void (async () => {
+          // Ask the agent for any persisted history so a page reload restores the chat.
+          // The token authorizes the read (the agent scopes history to its owner); the
+          // response is applied only when the local view is empty (see 'history'), so
+          // this never clobbers an in-progress conversation. A failed token fetch still
+          // resolves the connection — chat can proceed even without restored history.
+          try {
+            const context = await getContext();
+            ws.send(JSON.stringify({ type: 'get_history', token: context.token }));
+          } catch {
+            // Non-fatal — the connection is still usable without restored history.
+          } finally {
+            resolve(ws);
+          }
+        })();
       };
       ws.onerror = () => reject(new Error('WebSocket connection failed'));
       ws.onclose = () => {
@@ -203,11 +212,11 @@ export function useAgentChat({ agentUrl, agentId, getContext }: UseAgentChatOpti
     setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '', isStreaming: true }]);
 
     try {
-      const ws = await getOrCreateWs();
+      const [ws, context] = await Promise.all([getOrCreateWs(), getContext()]);
       ws.send(JSON.stringify({
         type: 'chat',
         message: text,
-        context: getContext(),
+        context,
       }));
     } catch {
       setMessages(prev =>
@@ -220,10 +229,16 @@ export function useAgentChat({ agentUrl, agentId, getContext }: UseAgentChatOpti
     }
   }, [input, isLoading, getContext, getOrCreateWs]);
 
-  const clearMessages = useCallback(() => {
+  const clearMessages = useCallback(async () => {
     setMessages([]);
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'clear', token: getContext().token }));
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      try {
+        const context = await getContext();
+        ws.send(JSON.stringify({ type: 'clear', token: context.token }));
+      } catch {
+        // Non-fatal — the local view is already cleared regardless.
+      }
     }
   }, [getContext]);
 
