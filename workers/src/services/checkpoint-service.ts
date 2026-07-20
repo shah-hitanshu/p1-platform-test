@@ -29,6 +29,7 @@ import {
 } from './checkpoint-types';
 import { getFirstRow, isForeignKeyViolation, mapRowToCheckpoint } from './checkpoint-mappers';
 import { getCheckpoint, getDocumentsAtCheckpoint, getStructuresAtCheckpoint } from './checkpoint-queries';
+import { escapeLikePattern } from './document-types';
 
 // Re-export everything from sub-modules for backward compatibility
 export type {
@@ -189,32 +190,55 @@ export async function createCheckpoint(
       const isIncremental = insertRow.parent_checkpoint_id != null && params.forceFullSnapshot !== true;
       const parentCreatedAt = insertRow.parent_created_at;
 
+      // _registry/* is excluded from checkpoint capture (PCC-3430): those
+      // documents are sync-owned metadata written by syncComponentRegistry,
+      // not user-editable content. Sweeping them into an agent edit-session
+      // checkpoint means a later rollback can silently revert a registry
+      // descriptor to stale content behind the registry index's back.
+      //
+      // EXCEPTION: _registry/templates/ documents are user-authored content
+      // types (see isSystemManagedPath in merge-execution-service.ts) and
+      // must continue to be captured/revertible normally — mirroring the
+      // same exception merge already applies for the same reason.
+      //
+      // Patterns are escaped and parameterized (escapeLikePattern) rather
+      // than inlined as literals: an inlined '_registry/%' would have '_'
+      // match any single character under LIKE's semantics, not just a
+      // literal underscore.
+      const registryPathPattern = escapeLikePattern('_registry/') + '%';
+      const registryTemplatesPathPattern = escapeLikePattern('_registry/templates/') + '%';
+
       if (isIncremental && parentCreatedAt != null && parentCreatedAt !== '') {
-        // Incremental: only documents changed since the parent checkpoint
+        // Incremental: only documents changed since the parent checkpoint.
         const result = await query<{ document_id: string; document_version_id: string }>(
           `SELECT document_id, document_version_id FROM (
             SELECT DISTINCT ON (dv.document_id)
               dv.document_id, dv.id as document_version_id, dv.is_tombstone
             FROM app.document_versions dv
+            JOIN app.documents d ON d.id = dv.document_id
             WHERE dv.branch_id = $1 AND dv.created_at > $2
+              AND (d.path NOT LIKE $3 ESCAPE '\\' OR d.path LIKE $4 ESCAPE '\\')
             ORDER BY dv.document_id, dv.version_number DESC
           ) latest
           WHERE latest.is_tombstone = false`,
-          [params.branchId, parentCreatedAt],
+          [params.branchId, parentCreatedAt, registryPathPattern, registryTemplatesPathPattern],
         );
         docVersionRows = result.rows;
       } else {
-        // Full: all latest versions for the branch
+        // Full: all latest versions for the branch, excluding _registry/*
+        // (PCC-3430) — see comment above.
         const result = await query<{ document_id: string; document_version_id: string }>(
           `SELECT document_id, document_version_id FROM (
             SELECT DISTINCT ON (dv.document_id)
               dv.document_id, dv.id as document_version_id, dv.is_tombstone
             FROM app.document_versions dv
+            JOIN app.documents d ON d.id = dv.document_id
             WHERE dv.branch_id = $1
+              AND (d.path NOT LIKE $2 ESCAPE '\\' OR d.path LIKE $3 ESCAPE '\\')
             ORDER BY dv.document_id, dv.version_number DESC
           ) latest
           WHERE latest.is_tombstone = false`,
-          [params.branchId],
+          [params.branchId, registryPathPattern, registryTemplatesPathPattern],
         );
         docVersionRows = result.rows;
       }

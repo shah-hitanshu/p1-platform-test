@@ -5086,3 +5086,37 @@ Consolidated template persistence on the page content shape (PCC-3357). A templa
 
 - Saved templates reopened to a blank canvas (manifest snapshot had no renderable layout).
 - Template migrations completed without applying anything (delta extraction found no `.content` on manifest templates).
+
+## PCC-3430: Exclude `_registry/*` from Checkpoint Capture (2026-07-19)
+
+**Status:** Complete
+**Branch:** `fix/pcc-3430-exclude-registry-from-checkpoints`
+**Commits:**
+- `88dcfbc` — Add failing tests for excluding `_registry/*` from checkpoint capture (red state)
+- `e1bd184` — Exclude `_registry/*` documents from checkpoint capture (green state)
+- `c6584b4` — Fix LIKE wildcard escaping and preserve templates exception (review follow-up)
+
+### Context
+
+Root cause of a customer-reported bug (p1-teamworks, Jira [PCC-3430](https://getpantheon.atlassian.net/browse/PCC-3430)): after editing an already-registered Puck component's field schema and reloading the P1 editor, the backend's `_registry/components/<Name>` document stayed frozen at the old schema indefinitely — the same three components, same `registeredAt` timestamp, across every subsequent sync. The frontend-side symptom (a hash-comparison fast path in `syncComponentRegistry`/`useComponentRegistry` that trusts a cached index hash without ever reading the actual document) was demonstrated and mitigated separately in puck-css-integration (see that repo's PROGRESS.md). This entry is the root-cause fix: how the index and document ever became desynced in the first place.
+
+Traced mechanism: `createCheckpoint`'s `forceFullSnapshot: true` path (used unconditionally by `agent_pre_edit` checkpoints) captured the latest version of *every* document on a branch with no path filtering, including `_registry/components/*` and `_registry/index`. If an agent's edit session later expired and was cleaned up (`runCleanup()` → `rollbackToAgentCheckpoint` → `revertToCheckpoint`), every captured document — registry documents included — was silently reverted to its checkpoint-time content, with no mechanism to tell the registry index (which lives entirely in the frontend's understanding of the world) that this happened out-of-band.
+
+### What was done
+
+- `createCheckpoint`'s full-snapshot and incremental document-capture queries now join `app.documents` and exclude `_registry/*` paths, with one deliberate exception: `_registry/templates/*` is still captured/revertible normally, mirroring the same exception `merge-execution-service.ts`'s `isSystemManagedPath` already established (`_registry/templates/*` documents are user-authored content types, not sync-owned metadata — PROPOSAL-010, CUJ-13).
+- `revertToCheckpoint` needed no independent change: it only restores documents present in `app.checkpoint_documents` for a given checkpoint, and a document that was never captured can never appear there.
+- The merge path (`documentVersionIds`, used for `pre_merge`/`post_merge` checkpoints) was independently confirmed to already be protected by the same exclusion via `applySystemManagedExclusions`/`isSystemManagedPath` upstream of checkpoint creation — not a gap this fix needed to close.
+
+### Verification
+
+- 35/35 tests in `checkpoint-service.spec.ts` pass; full suite 3352/3352 (178 files).
+- Independent review (separate agent context, per Rule 13) caught two real defects before merge, both fixed and re-verified:
+  1. The exclusion pattern was an inlined `'_registry/%'` literal — SQL `LIKE`'s `_` wildcard matches any single character, so it also (incorrectly) matched paths like `Xregistry/foo`. Fixed using the existing `escapeLikePattern` helper with parameterized patterns, matching the same idiom already used at four other call sites in this codebase.
+  2. The blanket exclusion also swept up `_registry/templates/*`, contradicting the merge path's deliberate exception for user-authored content types. Fixed with an explicit `OR` exception clause.
+  - Both fixes verified directly against real Postgres (not just mocked-SQL-text assertions): normal documents captured, `_registry/index`/`_registry/components/*` excluded, `_registry/templates/*` captured normally, `_translations/`/`_structure/` (other underscore-prefixed user content) unaffected.
+- Security review (separate agent context): no HIGH/MEDIUM findings. Confirmed the new LIKE patterns are fixed literals (never caller-influenced) passed as bound parameters — no injection surface even in principle. Confirmed `_registry/templates/*` writes are already admin-gated in `document-api.ts`, so the templates exception can't be abused to smuggle unauthorized content through checkpoint capture. Confirmed excluding registry docs from checkpoint capture doesn't reduce forensic/audit capability — `app.document_versions` is append-only and untouched by this fix; only the convenience-rollback path is removed, not history.
+
+### Follow-up
+
+- The `write:registry` site-token scope (§0, a separate, still-unmerged worktree `worktree-write-registry-scope`) touches the same `_registry/components/*` and `_registry/index` paths via a different mechanism (upsert-on-conflict for a write-only CI token). The two features don't conflict today (verified: `write:registry` doesn't exist on this branch or `origin/main`), but should be sanity-checked together at integration time once both are merged.

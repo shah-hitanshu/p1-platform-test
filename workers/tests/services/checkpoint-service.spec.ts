@@ -290,6 +290,154 @@ describe('Phase 3.3: Checkpoint Service', () => {
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       expect(latestVersionsCall![0]).toContain('is_tombstone');
     });
+
+    // PCC-3430: root cause of the p1-teamworks stale-registry-descriptor bug.
+    // agent_pre_edit checkpoints (forceFullSnapshot: true) previously swept in
+    // the latest version of every document on the branch, including
+    // _registry/components/* and _registry/index — sync-owned metadata, not
+    // user-editable content. If such a checkpoint is later rolled back
+    // (orphaned agent session cleanup), the registry document is silently
+    // reverted to its checkpoint-time content, desyncing it from whatever the
+    // registry index believes is the latest hash — the index is never told
+    // about this out-of-band revert. syncComponentRegistry's fast path then
+    // trusts the (now-wrong) index forever, exactly matching the reported
+    // symptom (same descriptor frozen at the same registeredAt across every
+    // subsequent sync). _registry/* must never be captured by, or revertible
+    // via, an agent edit-session checkpoint.
+    it('PCC-3430: excludes _registry/* documents from the full-snapshot capture query', async () => {
+      const { createCheckpoint } = await import('../../src/services/checkpoint-service');
+      const db = await import('../../src/db');
+
+      const mockCheckpointRow = createMockCheckpointRow({ checkpoint_type: 'agent_pre_edit' });
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint
+        .mockResolvedValueOnce({
+          rows: [
+            createMockCheckpointDocRow({ document_id: 'doc-page', document_version_id: 'v-page' }),
+          ],
+        }) // get latest versions (registry doc excluded by SQL)
+        .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
+        .mockResolvedValueOnce({ rows: [] }) // structure capture
+        .mockResolvedValueOnce({ rows: [] }) // metadata capture
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+      await createCheckpoint({
+        branchId: 'branch-uuid-789',
+        checkpointType: 'agent_pre_edit',
+        createdById: 'agent-001',
+        createdByType: 'agent',
+        forceFullSnapshot: true,
+      });
+
+      const allCalls = vi.mocked(db.query).mock.calls;
+      const fullCaptureCall = allCalls.find(
+        (call) => typeof call[0] === 'string' && call[0].includes('DISTINCT ON'),
+      );
+
+      expect(fullCaptureCall).toBeDefined();
+      const [sql, sqlParams] = fullCaptureCall as [string, unknown[]];
+      // Must join documents to filter by path, and must exclude _registry/*
+      // via an escaped, parameterized pattern — not an inlined literal, since
+      // '_' is a LIKE wildcard (matches any single character) and an inlined
+      // '_registry/%' would also match e.g. 'xregistry/...'.
+      expect(sql).toMatch(/join\s+app\.documents/i);
+      expect(sql).toMatch(/not\s+like\s+\$\d+\s+escape/i);
+      expect(sqlParams).toContain('\\_registry/%');
+      // The templates exception (isSystemManagedPath's own exclusion) must
+      // still be captured/revertible normally.
+      expect(sql).toMatch(/like\s+\$\d+\s+escape/i);
+      expect(sqlParams).toContain('\\_registry/templates/%');
+    });
+
+    it('PCC-3430: excludes _registry/* documents from the incremental capture query', async () => {
+      const { createCheckpoint } = await import('../../src/services/checkpoint-service');
+      const db = await import('../../src/db');
+
+      const mockCheckpointRow = createMockCheckpointRow({ checkpoint_type: 'auto' });
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        // Insert checkpoint row — includes a parent, and no forceFullSnapshot,
+        // so createCheckpoint takes the incremental branch.
+        .mockResolvedValueOnce({
+          rows: [{ ...mockCheckpointRow, parent_checkpoint_id: 'parent-checkpoint-1', parent_created_at: '2026-01-01T00:00:00.000Z' }],
+        })
+        .mockResolvedValueOnce({ rows: [] }) // get changed-since-parent versions (empty)
+        .mockResolvedValueOnce({ rows: [] }) // structure capture
+        .mockResolvedValueOnce({ rows: [] }) // metadata capture
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+      await createCheckpoint({
+        branchId: 'branch-uuid-789',
+        checkpointType: 'auto',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+      });
+
+      const allCalls = vi.mocked(db.query).mock.calls;
+      const incrementalCaptureCall = allCalls.find(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('DISTINCT ON') &&
+          call[0].includes('created_at'),
+      );
+
+      expect(incrementalCaptureCall).toBeDefined();
+      const [sql, sqlParams] = incrementalCaptureCall as [string, unknown[]];
+      expect(sql).toMatch(/join\s+app\.documents/i);
+      expect(sql).toMatch(/not\s+like\s+\$\d+\s+escape/i);
+      expect(sqlParams).toContain('\\_registry/%');
+      expect(sql).toMatch(/like\s+\$\d+\s+escape/i);
+      expect(sqlParams).toContain('\\_registry/templates/%');
+    });
+
+    it('PCC-3430: does not exclude _registry/templates/* — those are user-authored content types, not sync-owned metadata', async () => {
+      const { createCheckpoint } = await import('../../src/services/checkpoint-service');
+      const db = await import('../../src/db');
+
+      const mockCheckpointRow = createMockCheckpointRow({ checkpoint_type: 'agent_pre_edit' });
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint
+        .mockResolvedValueOnce({
+          rows: [
+            createMockCheckpointDocRow({ document_id: 'doc-template', document_version_id: 'v-template' }),
+          ],
+        }) // get latest versions — a _registry/templates/* row IS returned
+        .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
+        .mockResolvedValueOnce({ rows: [] }) // structure capture
+        .mockResolvedValueOnce({ rows: [] }) // metadata capture
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+      const result = await createCheckpoint({
+        branchId: 'branch-uuid-789',
+        checkpointType: 'agent_pre_edit',
+        createdById: 'agent-001',
+        createdByType: 'agent',
+        forceFullSnapshot: true,
+      });
+
+      // The mocked "get latest versions" query returned one row (the
+      // template), so it must be reflected in the checkpoint's document
+      // count — the WHERE clause's templates exception must not be
+      // structured in a way that a real Postgres server would reject or
+      // that this test's mock bypasses.
+      expect(result.documentCount).toBe(1);
+
+      const allCalls = vi.mocked(db.query).mock.calls;
+      const fullCaptureCall = allCalls.find(
+        (call) => typeof call[0] === 'string' && call[0].includes('DISTINCT ON'),
+      );
+      const [sql] = fullCaptureCall as [string, unknown[]];
+      // The exception must be expressed as "excluded UNLESS templates" (an
+      // OR against a LIKE, not just a second unconditional exclusion) —
+      // guards against a future edit collapsing this into a plain AND that
+      // would exclude templates again.
+      expect(sql).toMatch(/not\s+like\s+\$\d+\s+escape\s+'\\\\?'\s+or\s+d\.path\s+like\s+\$\d+\s+escape/i);
+    });
   });
 
   describe('getCheckpoint', () => {
