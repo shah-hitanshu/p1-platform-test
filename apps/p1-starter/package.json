@@ -14,7 +14,7 @@
     "@pantheon-systems/cpub-react-sdk": "^5.2.1",
     "@pantheon-systems/p1-ai-chat": "^0.1.0",
     "@pantheon-systems/p1-next-sdk": "workspace:*",
-    "@pantheon-systems/pds-toolkit-react": "2.0.0-alpha.12",
+    "@pantheon-systems/pds-toolkit-react": "2.0.0-alpha.44",
     "@pantheon-systems/puck-css": "workspace:*",
     "@puckeditor/core": "^0.21.1",
     "@tailwindcss/postcss": "^4.2.2",
