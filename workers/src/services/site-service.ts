@@ -66,12 +66,6 @@ export interface ListSitesOptions {
    */
   actingUserId?: string;
   /**
-   * The principal's system role. When 'admin' on the user path, all sites
-   * are returned (system admins have full access to all sites). Ignored on
-   * the agent path.
-   */
-  systemRole?: string;
-  /**
    * Filter by archived status. true = archived only, false = active only,
    * undefined = active only (same as false, the safe default).
    */
@@ -699,14 +693,13 @@ export async function restoreSite(siteId: string): Promise<Site | null> {
  * Lists sites the given principal has access to, with optional pagination.
  */
 export async function listSites(options: ListSitesOptions): Promise<Site[]> {
-  const { limit, offset, principalId, principalType, actingUserId, systemRole, archived } = options;
-  const params: unknown[] = [];
+  const { limit, offset, principalId, principalType, actingUserId, archived } = options;
+  const params: unknown[] = [principalId];
 
   const archivedFilter = archived === true ? ' AND s.archived_at IS NOT NULL' : ' AND s.archived_at IS NULL';
 
   let sql: string;
   if (principalType === 'agent') {
-    params.push(principalId);
     // PCC-3190: when an agent acts on behalf of a user, intersect with
     // the user's site roles so the result never leaks beyond what the
     // acting user could see directly. The revoked_at filter on the agent
@@ -729,15 +722,7 @@ export async function listSites(options: ListSitesOptions): Promise<Site[]> {
         archivedFilter +
         ' ORDER BY s.created_at DESC';
     }
-  } else if (systemRole === 'admin') {
-    // System admins have full access to all sites, so skip the role join.
-    sql =
-      'SELECT s.* FROM app.sites s' +
-      ' WHERE 1=1' +
-      archivedFilter +
-      ' ORDER BY s.created_at DESC';
   } else {
-    params.push(principalId);
     sql =
       'SELECT DISTINCT s.* FROM app.sites s' +
       ' INNER JOIN app.user_site_roles usr ON usr.site_id = s.id' +
