@@ -28,6 +28,7 @@ import {
   validatePath,
   isUniqueConstraintViolation,
   isForeignKeyViolation,
+  isRegistryWritePath,
   SiteNotFoundError,
   DuplicateDocumentPathError,
   DocumentNotFoundError,
@@ -293,6 +294,13 @@ export async function createDocumentOnBranch(
               [document.id, params.branchId],
             );
             isRecreation = true;
+          } else if (isRegistryWritePath(normalizedPath)) {
+            // Registry paths (_registry/components/* and the registry index)
+            // are written by a write:registry-scoped token with no read
+            // access at all, so it has no way to discover an existing
+            // document's ID up front. Fall through and append a new version
+            // instead of erroring — every other path keeps the duplicate
+            // check below.
           } else {
             // Document exists and is not tombstoned - this is a duplicate
             await query('ROLLBACK');

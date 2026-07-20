@@ -5,7 +5,7 @@
  * used by document-service.ts and branch-document-service.ts.
  */
 
-import type { Document } from '../types';
+import type { AuthenticatedPrincipal, Document } from '../types';
 
 // =============================================================================
 // Types
@@ -90,7 +90,7 @@ export interface CreateDocumentOnBranchParams {
   templateId?: string | null;
   templateVersion?: number | null;
   createdById: string;
-  createdByType: 'user' | 'agent' | 'service';
+  createdByType: 'user' | 'agent' | 'service' | 'system';
 }
 
 /**
@@ -218,6 +218,28 @@ export class DocumentPathConflictError extends Error {
  */
 export function isTombstoneRow(row: { is_tombstone?: boolean }): boolean {
   return row.is_tombstone === true;
+}
+
+// =============================================================================
+// write:registry scope helpers (§0)
+//
+// Shared by src/routes/document-api.ts, src/routes/branch-api.ts, and
+// src/services/branch-document-service.ts — kept in one place so the
+// definition of "a registry path" and "a registry-scoped service principal"
+// can't drift between the routes and services layers.
+// =============================================================================
+
+export const REGISTRY_COMPONENTS_PREFIX = '_registry/components/';
+// Matches puck-css-integration's INDEX_PATH constant (packages/puck-css/src/editor/utils/syncComponentRegistry.ts) —
+// keep the two in sync if either changes.
+export const REGISTRY_INDEX_PATH = '_registry/index';
+
+export function isRegistryWritePath(path: string): boolean {
+  return path.startsWith(REGISTRY_COMPONENTS_PREFIX) || path === REGISTRY_INDEX_PATH;
+}
+
+export function isRegistryScopedServicePrincipal(principal: AuthenticatedPrincipal): boolean {
+  return principal.type === 'service' && (principal.scopes?.includes('write:registry') ?? false);
 }
 
 /**

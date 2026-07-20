@@ -5120,3 +5120,92 @@ Traced mechanism: `createCheckpoint`'s `forceFullSnapshot: true` path (used unco
 ### Follow-up
 
 - The `write:registry` site-token scope (§0, a separate, still-unmerged worktree `worktree-write-registry-scope`) touches the same `_registry/components/*` and `_registry/index` paths via a different mechanism (upsert-on-conflict for a write-only CI token). The two features don't conflict today (verified: `write:registry` doesn't exist on this branch or `origin/main`), but should be sanity-checked together at integration time once both are merged.
+
+---
+
+## §0: `write:registry` Site-Token Scope (2026-07-18)
+
+**Status:** Complete
+**Branch:** `worktree-write-registry-scope`
+**Commits:**
+- `a86fee2` — Add failing tests for write:registry site-token scope (red state)
+- `f191894` — Implement write:registry site-token scope (green state)
+
+### Context
+
+First phase of a larger, two-repo plan: customers doing AI-assisted Puck migrations can change a component's prop shape in code without the backend's `_registry/components/{name}` documents ever updating, since only opening the Puck Editor in a browser currently triggers the registry sync. The fix is an optional CI script (in `puck-css-integration`) that syncs the registry headlessly. That script needs a credential scoped to write only registry documents — the gap this phase closes. The CI script itself, and the `puck-css-integration`-side extraction it depends on, are a separate phase in that repo (not started as of this entry).
+
+### What was done
+
+Added a new `sat_` site-token scope, `write:registry`, letting a service principal create/version documents under `_registry/components/*` (and one registry index document) on any branch, and nothing else.
+
+- **`VALID_SCOPES`** (`site-api-token-service.ts`) and a coarse **`SCOPE_RULES`** entry (`service-principal.ts`): `{methods: ['POST'], allowedHandlers: ['documents'], mainBranchOnly: false}`.
+- **Deny-by-default operation allowlist** in `handleDocumentRoutes` (`document-api.ts`): the coarse rule above authorizes POST to every route mapping to the `documents` handler in `route-parser.ts` — not just document/version create. Tracing all of them found it also covers branch-scoped publish, site-scoped restore, and site-scoped create. A new allowlist, keyed on the `write:registry` scope specifically (not `principal.type`, so it can't silently constrain some future unrelated service-principal scope), permits only branch-scoped create and version-create; everything else 403s regardless of path.
+- **Path-prefix guard** on the two allowed operations: target path must be under `_registry/components/` or equal the registry index path. Runs before the existing `_registry/templates/` ADMIN guard, since that guard calls `getEffectiveRole()` directly, which hard-throws for any service principal by design — running after it would give a registry-scoped token a confusing, wrong-mechanism 403 instead of one attributable to this scope.
+- **Fixed a latent `created_by_type` bug**: both document-create and version-create handlers did `createdByType: principal.type as 'user' | 'agent'`, a compile-time-only assertion. For a service principal this silently stored the runtime literal `'service'` into a column/type union that never expected it. Now maps `service → 'system'` (an already-handled value elsewhere in the codebase, e.g. `bundle-export-service.ts`).
+
+### Decisions made during review
+
+- **`created_by_type` value — `'system'` vs `'service'`:** user chose `'system'`, reusing an already-accepted value everywhere (zero type-widening needed for versions; `CreateDocumentOnBranchParams` widened by one value for document creation) over adding a new `'service'` actor category, which would have needed wider auditing of every `created_by_type` consumer.
+- **No read scope added.** `write:registry` is POST-only, deliberately. Pairing it with `read:draft` (the obvious existing option) would grant the token broad site-wide draft-content read access to satisfy only a hash-comparison optimization in the CI script. User explicitly chose to accept that the sync script can't hash-compare before writing (every CI run creates a new document version even if nothing changed) rather than over-scope the token. Given code changes are expected to be infrequent post-launch, this is expected to stay in the hundreds-to-low-thousands of versions per site — any cleanup/pruning is deferred until it's a real problem.
+- **`_registry/index` path literal is provisional.** It isn't independently corroborated anywhere in this repo (`p1-content-validator` only ever queries `_registry/components/` by prefix, no index concept) — it must be cross-checked against `puck-css-integration`'s actual `INDEX_PATH` constant before the CI script goes live. Fails closed (a mismatch would 403 a legitimate index write, not silently allow something).
+
+### Verification
+
+- TDD: tests written and confirmed red first (11 failing assertions across 3 files), then implementation, then green (62 unit + 3359 full suite + 15 integration, all passing).
+- Independent review (separate agent context, per process): confirmed all 5 write surfaces closed, scope-specific gating, correct guard ordering, and the `created_by_type` fix. Found one low-severity, non-blocking gap — the deny-by-default gate triggered on mere presence of `write:registry` in scopes rather than on it being the actual authorizing scope, which would misfire on a hypothetical combined-scope token's GET requests. Fixed (gate now only applies to POST) and covered with a regression test before commit.
+- `/security-review`: no HIGH or MEDIUM findings.
+- Lint/typecheck: zero new issues introduced (verified against a pre-change baseline); pre-existing repo-wide lint/typecheck debt is unrelated and untouched (this repo's CI does not run full lint/typecheck — see memory).
+- Incidentally fixed the local dev Postgres container's migration state: migration 36 had been applied at the schema level without its bookkeeping row recorded, silently blocking migrations 37/38/41/42 for any session running integration tests against it. Confirmed 36's DDL already matched, recorded it, and let the runner apply the rest normally.
+
+### Follow-up
+
+- **Not started:** `puck-css-integration` changes (§§1-5 of the originating plan) — extracting `syncComponentRegistry` to a pure, subpath-exported function; the asset-stub Node loader; the CI sync script; the sample GitHub Actions workflow. Depends on this phase having shipped (the script needs a `write:registry`-scoped token to authenticate with).
+- Cross-check `REGISTRY_INDEX_PATH` (`'_registry/index'`, `document-api.ts`) against `puck-css-integration`'s real `INDEX_PATH` constant before the CI script is wired up against a live token.
+
+---
+
+## §0 Phase 2: Branch Read + Registry Upsert (2026-07-19)
+
+**Status:** Complete
+**Branch:** `worktree-write-registry-scope`
+**Commits:**
+- `f010345` — Add failing tests for write:registry Phase 2 — branch read + registry upsert (red state)
+- `cea9d63` — Implement write:registry Phase 2 — branch read + registry upsert (green state)
+
+### Context
+
+`puck-css-integration`'s CI sync script and shared sync algorithm (Components 1–3, built in that repo — see its own PROGRESS.md) were finished and locally end-to-end tested against a real `wrangler dev` instance backed by local Postgres, using a hand-seeded `write:registry` token. That test — not a tunnel/GitHub-Actions test, just running the real script against a real local server — immediately surfaced that the scope as shipped in §0 could not actually run the script:
+
+1. The script must call `GET .../branches` to match the pushed git branch's name to a CSS branch (per the earlier decision that CI should trigger on main *and* name-matched branches). `write:registry` was POST-only — denied outright.
+2. The shared sync algorithm (`syncComponentRegistry`, extracted verbatim from the browser flow) opens by listing existing `_registry/*` documents to decide create-vs-version per component — a GET the scope also had no path to.
+
+Both gaps trace back to a design decision recorded in §0 itself ("no read scope added ... POST-only, deliberately") that turned out to be *slightly* narrower than the CI script actually needs — not wrong, just incomplete once tested against the real script rather than reasoned about in the abstract.
+
+### Decisions made (via interactive discussion before any code was written)
+
+- **Branch-name resolution**: rather than pairing the token with an existing broad read scope (`read:draft`, which would grant site-wide draft-content read to solve a narrow branch-lookup need), extend `write:registry` itself with `GET` on the `branches` handler only, narrowed by a new deny-by-default guard to the list operation (not single-branch fetch, not create, not restore).
+- **Cross-product safety**: rather than patching two deny-by-default guards onto the existing flat `SCOPE_RULES` shape (which would re-open the exact combined-scope edge case §0's own review already caught once), restructure `ScopeRule`/`SCOPE_RULES` from one flat `{methods, allowedHandlers}` pair per scope into a list of independent clauses, OR'd together — so a scope needing two unrelated operations can't cross-product into method/handler combinations it was never meant to grant. `write:registry` is the only scope that currently needs two clauses; all others were wrapped as one-clause arrays with no behavioral change.
+- **Document existence**: rather than granting any read capability at all to solve "does this registry document already exist," made document creation idempotent specifically for `_registry/*` paths — `createDocumentOnBranch` already reused-and-versioned instead of erroring for 3 of its 4 conflict cases; the 4th (live version already exists on this exact branch) now does the same for registry paths only, gated on path via the existing `isRegistryWritePath`, not on caller/scope — a human user hitting a genuine path collision elsewhere still sees a clear 409.
+- Explored and declined an "idempotent-create-as-a-read-avoidance-strategy" framing for branch resolution too (a narrow `POST /branches/resolve`-style name-oracle endpoint) — concluded a POST that discloses whether a named branch exists is a read capability wearing a POST's clothes, not a way to avoid granting one; chose the direct, honest GET grant instead.
+
+### What was done
+
+- `service-principal.ts`: `SCOPE_RULES` type changed to `Record<string, ScopeRule[]>`; `isServicePrincipalAllowed` loops over each scope's clause list. `write:registry` now has two clauses: `{POST, [documents]}` (unchanged) and `{GET, [branches]}` (new).
+- `branch-api.ts`: new deny-by-default guard restricting write:registry's branches-GET to the list operation. Also checks whether some *other* scope on the same token independently authorizes the operation before denying (`isAllowedByAnotherScope`) — needed because, unlike the documents-side guard (which can restrict itself to `method === 'POST'` and stay a true no-op for any other scope, since nothing else grants POST on documents), `read:draft`/`read:all` also grant GET on `branches` — the same method write:registry's new clause uses — so a combined-scope token's legitimately-authorized single-branch GET must not be blocked just because write:registry is also present.
+- `branch-document-service.ts`: `createDocumentOnBranch`'s live-conflict case gets the registry-path upsert exception described above.
+- `document-types.ts`: `isRegistryWritePath`/`isRegistryScopedServicePrincipal` moved here from `document-api.ts` so routes (`document-api.ts`, `branch-api.ts`) and services (`branch-document-service.ts`) share one definition instead of risking drift between copies.
+
+### Verification
+
+- TDD: 7 failing assertions confirmed red (2 coarse-gate, 5 route-guard), then implementation, then green (80 unit tests across the two touched spec files; 3377 in the full suite; 5 new real-Postgres integration tests for the upsert behavior, including a same-path-twice version-bump check, an exact-match check for the index path, and two negative checks — a plain non-registry path, and a lookalike path (`not_registry/components/x`) that must NOT get upsert treatment).
+- Independent review (separate agent context): confirmed the `ScopeRule[]` restructure genuinely prevents the cross-product it was built to prevent, confirmed the other four scopes are behaviorally unchanged, confirmed the upsert fix is genuinely path-gated with correct version-numbering. Found one real gap: the new branch-api.ts guard denied by presence-of-scope rather than by whether write:registry was the actual authorizing scope — the exact bug class already fixed once on the documents side, reintroduced here because the "restrict by method" trick that worked there doesn't carry over (GET is used by both write:registry's new clause and read:draft/read:all). Fixed with `isAllowedByAnotherScope` and two new regression tests before commit.
+- `/security-review`: two candidate findings surfaced by the initial pass, both independently adversarially re-verified and rejected as false positives — a `templateId`-based cross-site existence-oracle claim (pre-existing gap unrelated to this phase, and defeated by the unguessable-UUID precondition plus no actual content disclosure), and a branch-list field-exposure observation (not new — `read:draft`/`read:all` already exposed the identical unfiltered response via the same handler before this phase).
+- Lint/typecheck: zero new issues (verified against the unmodified baseline via a scoped `git stash` diff, since this repo carries pre-existing, unrelated debt in both).
+- Local end-to-end proof: seeded a scratch site/branch/token directly in local Postgres (bypassing the Puck Editor and any tunnel), pointed `wrangler dev` at the local Docker `css-postgres` container via a gitignored `.dev.vars` (`POSTGRES_CONNECTION_STRING` — the code's own existing local-dev fallback, simpler than Hyperdrive's `localConnectionString` override and confirmed via direct `psql` query that writes genuinely land in the local container, not any shared sandbox), and exercised the real HTTP path end to end: `POST .../documents` under `_registry/components/*` → 201 with `createdByType: "system"`; the same path outside the registry → 403 with the exact expected message.
+
+### Follow-up
+
+- Re-run the full local end-to-end test (seed a fresh token, run the actual `sync-puck-registry.ts` CI script from `puck-css-integration` against this local backend) now that both gaps are closed — this was in progress when Phase 2 was discovered to be necessary, and resumes next.
+- A real Cloudflare-tunnel + GitHub-Actions test (the originally-requested "test end to end ... using cloudflare tunnel") is a separate, larger escalation: a cloud Actions runner does `npm ci` against published semver deps, but the CI script's `@pantheon-systems/puck-css` subpath export only exists on an unpublished local branch — so that path additionally needs a decision on publishing a prerelease, vendoring a built tarball, or using a self-hosted runner, none of which have been decided or started.
+- Not part of this phase, found incidentally by the security review and left unfixed as out of scope: `templateId`/`templateVersion` on the document-create endpoint aren't scoped to the caller's site before being used in a `document_relations` FK lookup. Pre-existing (predates `write:registry` entirely, affects every caller), low real-world impact (requires guessing an unguessable UUID, discloses no content), but worth a cheap defensive fix at some point — mirror the existing `path` scoping check onto `templateId`.

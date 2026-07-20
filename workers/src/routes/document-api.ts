@@ -36,7 +36,11 @@ import {
   InvalidDocumentVersionParamsError,
   publishDocument,
 } from '../services';
-import { normalizePath } from '../services/document-types';
+import {
+  normalizePath,
+  isRegistryWritePath,
+  isRegistryScopedServicePrincipal,
+} from '../services/document-types';
 import { assertPermission, AuthorizationError, getEffectiveRole } from '../auth/authorization';
 import { templateMetadata } from './template-api';
 import { validatePagination } from './validation';
@@ -54,6 +58,25 @@ export interface DocumentRouteContext {
   versionAction?: 'latest' | 'by-id';
   versionId?: string;
   principal: AuthenticatedPrincipal;
+}
+
+/**
+ * Deny-by-default allowlist for write:registry. The coarse gate
+ * (isServicePrincipalAllowed) authorizes POST to the entire 'documents'
+ * handler, which also covers publish, site-scoped restore, and site-scoped
+ * create — none of which this scope should grant. Only branch-scoped
+ * document create and branch-scoped version create are permitted here; the
+ * path-prefix restriction is enforced separately by isRegistryWritePath at
+ * those two call sites.
+ */
+function isAllowedRegistryOperation(context: DocumentRouteContext, method: string): boolean {
+  if (method !== 'POST' || context.branchId === undefined || context.action !== undefined) {
+    return false;
+  }
+  if (context.documentId === undefined) {
+    return true;
+  }
+  return context.versionsPath === true && context.versionAction === undefined;
 }
 
 /**
@@ -301,6 +324,13 @@ async function handleCreateDocumentOnBranch(
   // multiple slashes, and leading/trailing slash stripping consistently
   const normalizedPath = normalizePath(body.path);
 
+  if (isRegistryScopedServicePrincipal(principal) && !isRegistryWritePath(normalizedPath)) {
+    return errorResponse(
+      'write:registry scope only permits documents under _registry/components/ or the registry index',
+      403,
+    );
+  }
+
   // Prevent non-admins from creating documents at _registry/templates/* via document API
   if (normalizedPath.startsWith('_registry/templates/')) {
     const { roleName } = await getEffectiveRole(principal, siteId, branchId);
@@ -339,7 +369,7 @@ async function handleCreateDocumentOnBranch(
     templateId: body.templateId,
     templateVersion: resolvedTemplateVersion,
     createdById: principal.dbUserId ?? principal.id,
-    createdByType: principal.type as 'user' | 'agent',
+    createdByType: principal.type === 'service' ? 'system' : principal.type,
   });
 
   return jsonResponse(result, 201);
@@ -501,8 +531,20 @@ async function handleCreateDocumentVersion(
   siteId: string,
   principal: AuthenticatedPrincipal,
 ): Promise<Response> {
-  // Prevent non-admins from writing versions to template documents via document API
   const document = await getDocument(documentId);
+
+  if (
+    document !== null &&
+    isRegistryScopedServicePrincipal(principal) &&
+    !isRegistryWritePath(document.path)
+  ) {
+    return errorResponse(
+      'write:registry scope only permits document versions under _registry/components/ or the registry index',
+      403,
+    );
+  }
+
+  // Prevent non-admins from writing versions to template documents via document API
   if (document?.path.startsWith('_registry/templates/') === true) {
     const { roleName } = await getEffectiveRole(principal, siteId, branchId);
     if (roleName !== 'ADMIN') {
@@ -531,7 +573,7 @@ async function handleCreateDocumentVersion(
     snapshot: body.snapshot,
     source: 'edit',
     createdById: principal.dbUserId ?? principal.id,
-    createdByType: principal.type as 'user' | 'agent',
+    createdByType: principal.type === 'service' ? 'system' : principal.type,
     ...(body.puckActions ? { puckActions: body.puckActions } : {}),
   });
 
@@ -703,6 +745,27 @@ export async function handleDocumentRoutes(
   const method = request.method;
 
   try {
+    // This gate does not check whether some OTHER scope on the same token
+    // independently authorizes the request (contrast branch-api.ts's
+    // equivalent guard, which does via isAllowedByAnotherScope) — safe only
+    // because no scope besides write:registry currently grants POST on the
+    // documents handler (enforced by a canary test in
+    // service-principal-scopes.spec.ts). If a future scope is ever given
+    // POST+documents, that test will fail and this guard must be updated to
+    // check isAllowedByAnotherScope first, mirroring branch-api.ts — a naive
+    // scope addition here would wrongly 403 a combined-scope token the same
+    // way branch-api.ts's guard once did for GET+branches.
+    if (
+      method === 'POST' &&
+      isRegistryScopedServicePrincipal(context.principal) &&
+      !isAllowedRegistryOperation(context, method)
+    ) {
+      return errorResponse(
+        'write:registry scope only permits creating documents or document versions under _registry/components/',
+        403,
+      );
+    }
+
     // Handle branch-scoped routes first (authorization handled inside)
     if (context.branchId !== undefined) {
       return await handleBranchScopedDocumentRoutes(request, context);

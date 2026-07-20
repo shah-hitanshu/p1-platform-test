@@ -66,7 +66,7 @@ const TOKEN_RANDOM_BYTES = 32;
 const DISPLAY_PREFIX_LENGTH = 8; // chars after sat_ to store for display
 const DEFAULT_SCOPES = ['read:published'];
 
-export const VALID_SCOPES = ['read:published', 'read:all', 'read:draft', 'write:create'] as const;
+export const VALID_SCOPES = ['read:published', 'read:all', 'read:draft', 'write:create', 'write:registry'] as const;
 export type TokenScope = typeof VALID_SCOPES[number];
 
 // Base62 alphabet for encoding

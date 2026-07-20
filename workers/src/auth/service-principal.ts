@@ -25,33 +25,69 @@ export interface ScopeRule {
 }
 
 /**
- * Scope rules mapping.
- * Defines which HTTP methods, route handlers, and branch constraints each scope permits.
+ * Scope rules mapping. Each scope maps to a list of independent rule clauses
+ * (OR'd together) rather than one flat {methods, allowedHandlers} pair, so a
+ * scope needing two unrelated operations (e.g. POST on one handler, GET on
+ * another) can't accidentally cross-product into methods/handlers it was
+ * never meant to authorize (e.g. GET on the first handler, or POST on the
+ * second). Most scopes only need one clause; write:registry needs two.
  */
-export const SCOPE_RULES: Record<string, ScopeRule> = {
-  'read:published': {
-    methods: ['GET'],
-    allowedHandlers: ['content'],
-    mainBranchOnly: true,
-  },
-  'read:all': {
-    methods: ['GET'],
-    allowedHandlers: ['content', 'documents', 'branches', 'site-export'],
-    mainBranchOnly: false,
-  },
-  'read:draft': {
-    methods: ['GET'],
-    allowedHandlers: ['content', 'documents', 'branches'],
-    mainBranchOnly: false,
-  },
+export const SCOPE_RULES: Record<string, ScopeRule[]> = {
+  'read:published': [
+    {
+      methods: ['GET'],
+      allowedHandlers: ['content'],
+      mainBranchOnly: true,
+    },
+  ],
+  'read:all': [
+    {
+      methods: ['GET'],
+      allowedHandlers: ['content', 'documents', 'branches', 'site-export'],
+      mainBranchOnly: false,
+    },
+  ],
+  'read:draft': [
+    {
+      methods: ['GET'],
+      allowedHandlers: ['content', 'documents', 'branches'],
+      mainBranchOnly: false,
+    },
+  ],
   // Allows the site import endpoint (POST) and site export endpoint (GET).
   // Intentionally narrow — does not grant access to content, branch, grant,
   // checkpoint, or merge handlers. Use read:all for general read access.
-  'write:create': {
-    methods: ['GET', 'POST'],
-    allowedHandlers: ['site-import', 'site-export'],
-    mainBranchOnly: false,
-  },
+  'write:create': [
+    {
+      methods: ['GET', 'POST'],
+      allowedHandlers: ['site-import', 'site-export'],
+      mainBranchOnly: false,
+    },
+  ],
+  'write:registry': [
+    // Coarse gate only — narrowly restricted to _registry/components/ (and
+    // the registry index) by a path-aware, deny-by-default guard in
+    // document-api.ts, since this clause alone can't express "one operation
+    // on one path prefix" (it would otherwise also authorize publish,
+    // site-scoped restore, and site-scoped create, which POST + 'documents'
+    // also routes through).
+    {
+      methods: ['POST'],
+      allowedHandlers: ['documents'],
+      mainBranchOnly: false,
+    },
+    // A second, independent clause so the CI sync script can list branches
+    // (to match the pushed git branch's name to a CSS branch) without this
+    // GET grant also legalizing GET+documents or POST+branches as a
+    // cross-product side effect. Narrowed to the list operation only by a
+    // deny-by-default guard in branch-api.ts (denies single-branch fetch,
+    // create, and restore, which also route through GET/POST + 'branches').
+    {
+      methods: ['GET'],
+      allowedHandlers: ['branches'],
+      mainBranchOnly: false,
+    },
+  ],
 };
 
 /**
@@ -96,28 +132,30 @@ export function isServicePrincipalAllowed(
   const effectiveBranchIsMain = branchIsMain ?? true;
 
   for (const scope of scopes) {
-    const rule = SCOPE_RULES[scope];
-    if (!rule) {
+    const rules = SCOPE_RULES[scope];
+    if (!rules) {
       continue;
     }
 
-    // Check method
-    if (!rule.methods.includes(method)) {
-      continue;
-    }
+    for (const rule of rules) {
+      // Check method
+      if (!rule.methods.includes(method)) {
+        continue;
+      }
 
-    // Check handler
-    if (rule.allowedHandlers !== '*' && !rule.allowedHandlers.includes(routeHandler)) {
-      continue;
-    }
+      // Check handler
+      if (rule.allowedHandlers !== '*' && !rule.allowedHandlers.includes(routeHandler)) {
+        continue;
+      }
 
-    // Check branch constraint
-    if (rule.mainBranchOnly === true && !effectiveBranchIsMain) {
-      continue;
-    }
+      // Check branch constraint
+      if (rule.mainBranchOnly === true && !effectiveBranchIsMain) {
+        continue;
+      }
 
-    // This scope allows the operation
-    return { allowed: true };
+      // This clause allows the operation
+      return { allowed: true };
+    }
   }
 
   return {

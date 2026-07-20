@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { AuthenticatedPrincipal } from '../../src/types';
 
 // Mock the services
 vi.mock('../../src/services', () => ({
@@ -1013,6 +1014,193 @@ describe('Phase 7.1a: Branch API Routes', () => {
         'site-1',
         expect.objectContaining({ archived: true }),
       );
+    });
+  });
+
+  // ===========================================================================
+  // write:registry scope guard (§0 Phase 2)
+  //
+  // The CI registry sync script needs to list branches (to match the pushed
+  // git branch's name to a CSS branch), so write:registry's coarse SCOPE_RULES
+  // entry grants it GET on the 'branches' handler. That coarse grant can't by
+  // itself distinguish "list branches" from "fetch/create/restore a specific
+  // branch" — all of which share the same handler name — so this deny-by-
+  // default guard narrows it to exactly the list operation.
+  // ===========================================================================
+
+  describe('write:registry scope guard (§0 Phase 2)', () => {
+    function registryServicePrincipal(scopes: string[] = ['write:registry']): AuthenticatedPrincipal {
+      return {
+        id: 'token-uuid',
+        type: 'service' as const,
+        pantheonSiteRoles: {},
+        tokenExpiry: new Date(Date.now() + 86400000).toISOString(),
+        scopes,
+        siteId: 'site-1',
+        authProvider: 'site_token' as const,
+      };
+    }
+
+    it('allows GET on the branches collection (list) for a write:registry-scoped token', async () => {
+      const { handleBranchRoutes } = await import('../../src/routes/branch-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.listBranches).mockResolvedValueOnce([
+        {
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          isMain: true,
+          status: 'active',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          createdById: 'user-1',
+          createdByType: 'user',
+        },
+      ]);
+
+      const response = await handleBranchRoutes(
+        new Request('https://api.example.com/api/sites/site-1/branches', { method: 'GET' }),
+        { siteId: 'site-1', principal: registryServicePrincipal() },
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it('denies GET on a single branch by ID', async () => {
+      const { handleBranchRoutes } = await import('../../src/routes/branch-api');
+      const services = await import('../../src/services');
+
+      const response = await handleBranchRoutes(
+        new Request('https://api.example.com/api/sites/site-1/branches/branch-1', { method: 'GET' }),
+        { siteId: 'site-1', branchId: 'branch-1', principal: registryServicePrincipal() },
+      );
+
+      expect(response.status).toBe(403);
+      expect(services.getBranch).not.toHaveBeenCalled();
+    });
+
+    it('denies POST branch creation', async () => {
+      const { handleBranchRoutes } = await import('../../src/routes/branch-api');
+      const services = await import('../../src/services');
+
+      const response = await handleBranchRoutes(
+        new Request('https://api.example.com/api/sites/site-1/branches', {
+          method: 'POST',
+          body: JSON.stringify({ name: 'malicious-branch' }),
+        }),
+        { siteId: 'site-1', principal: registryServicePrincipal() },
+      );
+
+      expect(response.status).toBe(403);
+      expect(services.createBranch).not.toHaveBeenCalled();
+    });
+
+    it('denies POST branch restore', async () => {
+      const { handleBranchRoutes } = await import('../../src/routes/branch-api');
+      const services = await import('../../src/services');
+
+      const response = await handleBranchRoutes(
+        new Request('https://api.example.com/api/sites/site-1/branches/branch-1/restore', { method: 'POST' }),
+        { siteId: 'site-1', branchId: 'branch-1', action: 'restore', principal: registryServicePrincipal() },
+      );
+
+      expect(response.status).toBe(403);
+      expect(services.restoreBranch).not.toHaveBeenCalled();
+    });
+
+    it('denies PATCH on a single branch', async () => {
+      const { handleBranchRoutes } = await import('../../src/routes/branch-api');
+      const services = await import('../../src/services');
+
+      const response = await handleBranchRoutes(
+        new Request('https://api.example.com/api/sites/site-1/branches/branch-1', {
+          method: 'PATCH',
+          body: JSON.stringify({ name: 'renamed' }),
+        }),
+        { siteId: 'site-1', branchId: 'branch-1', principal: registryServicePrincipal() },
+      );
+
+      expect(response.status).toBe(403);
+      expect(services.updateBranch).not.toHaveBeenCalled();
+    });
+
+    it('denies DELETE on a single branch', async () => {
+      const { handleBranchRoutes } = await import('../../src/routes/branch-api');
+      const services = await import('../../src/services');
+
+      const response = await handleBranchRoutes(
+        new Request('https://api.example.com/api/sites/site-1/branches/branch-1', { method: 'DELETE' }),
+        { siteId: 'site-1', branchId: 'branch-1', principal: registryServicePrincipal() },
+      );
+
+      expect(response.status).toBe(403);
+      expect(services.archiveBranch).not.toHaveBeenCalled();
+    });
+
+    it('does not restrict a service principal that lacks write:registry (e.g. read:draft only)', async () => {
+      const { handleBranchRoutes } = await import('../../src/routes/branch-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1',
+        siteId: 'site-1',
+        name: 'feature',
+        isMain: false,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      const response = await handleBranchRoutes(
+        new Request('https://api.example.com/api/sites/site-1/branches/branch-1', { method: 'GET' }),
+        { siteId: 'site-1', branchId: 'branch-1', principal: registryServicePrincipal(['read:draft']) },
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it('does not block a GET on a single branch when the token also holds read:draft alongside write:registry', async () => {
+      const { handleBranchRoutes } = await import('../../src/routes/branch-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1',
+        siteId: 'site-1',
+        name: 'feature',
+        isMain: false,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      const response = await handleBranchRoutes(
+        new Request('https://api.example.com/api/sites/site-1/branches/branch-1', { method: 'GET' }),
+        {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          principal: registryServicePrincipal(['write:registry', 'read:draft']),
+        },
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it('still denies POST branch creation when the token also holds read:draft (read:draft grants no write)', async () => {
+      const { handleBranchRoutes } = await import('../../src/routes/branch-api');
+      const services = await import('../../src/services');
+
+      const response = await handleBranchRoutes(
+        new Request('https://api.example.com/api/sites/site-1/branches', {
+          method: 'POST',
+          body: JSON.stringify({ name: 'malicious-branch' }),
+        }),
+        { siteId: 'site-1', principal: registryServicePrincipal(['write:registry', 'read:draft']) },
+      );
+
+      expect(response.status).toBe(403);
+      expect(services.createBranch).not.toHaveBeenCalled();
     });
   });
 });

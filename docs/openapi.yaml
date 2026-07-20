@@ -562,7 +562,10 @@ paths:
       - $ref: '#/components/parameters/siteIdParam'
     get:
       summary: List branches
-      description: Returns all branches for a site. Defaults to active (non-archived) branches only.
+      description: |
+        Returns all branches for a site. Defaults to active (non-archived) branches only.
+        A write:registry scoped token may call this (to resolve a git branch name to a
+        CSS branch) but cannot fetch, create, or restore an individual branch.
       operationId: listBranches
       tags: [Branches]
       parameters:
@@ -904,7 +907,12 @@ paths:
 
     post:
       summary: Create document on branch
-      description: Creates a document with an initial version on this branch.
+      description: |
+        Creates a document with an initial version on this branch. Returns 409 if the
+        path already exists on this branch — except under _registry/components/* and
+        the registry index path, where a repeat POST instead creates a new version on
+        the existing document (upsert), since a write:registry scoped token has no read
+        access to discover an existing document's ID up front.
       operationId: createBranchDocument
       tags: [Documents]
       requestBody:
@@ -4766,13 +4774,14 @@ components:
           type: array
           items:
             type: string
-            enum: [read:published, read:all, read:draft, write:create]
+            enum: [read:published, read:all, read:draft, write:create, write:registry]
           description: |
             Permission scopes for this token. Defaults to [read:published].
             - read:published: GET published content on main branch only
             - read:all: GET all content, documents, and branches
             - read:draft: GET draft and published content on any branch
             - write:create: GET and POST (create) on all handlers and branches; cannot update or delete
+            - write:registry: POST documents/versions under _registry/components/* and the registry index only; GET branches (list only, for git-branch-to-CSS-branch name resolution); no other read access
 
     GenerateSiteTokenResponse:
       allOf:

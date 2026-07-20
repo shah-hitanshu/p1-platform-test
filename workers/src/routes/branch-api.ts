@@ -21,6 +21,8 @@ import {
   MainBranchProtectionError,
 } from '../services';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
+import { isRegistryScopedServicePrincipal } from '../services/document-types';
+import { isServicePrincipalAllowed } from '../auth/service-principal';
 
 /**
  * Request context for branch routes
@@ -30,6 +32,39 @@ export interface BranchRouteContext {
   branchId?: string;
   action?: string;
   principal: AuthenticatedPrincipal;
+}
+
+/**
+ * Deny-by-default allowlist for write:registry (§0 Phase 2). The coarse gate
+ * (isServicePrincipalAllowed) authorizes GET on the entire 'branches'
+ * handler, which also covers single-branch fetch — this scope only needs
+ * to list branches (to match the pushed git branch's name to a CSS
+ * branch), so nothing else reachable via this handler is permitted here.
+ */
+function isAllowedRegistryBranchOperation(context: BranchRouteContext, method: string): boolean {
+  return method === 'GET' && context.branchId === undefined;
+}
+
+/**
+ * True if some scope OTHER than write:registry on this token independently
+ * authorizes the operation. Unlike document-api.ts's equivalent guard (which
+ * can restrict itself to `method === 'POST'` and stay a no-op for every
+ * other scope, since no other scope grants POST on 'documents'), write:registry's
+ * branches clause and read:draft/read:all's branches clause both use GET —
+ * so a combined-scope token doing a legitimate read:draft-authorized GET on a
+ * single branch must not be denied just because write:registry is also
+ * present on the same token.
+ */
+function isAllowedByAnotherScope(
+  principal: AuthenticatedPrincipal,
+  siteId: string,
+  method: string,
+): boolean {
+  const otherScopes = (principal.scopes ?? []).filter((scope) => scope !== 'write:registry');
+  if (otherScopes.length === 0) {
+    return false;
+  }
+  return isServicePrincipalAllowed({ ...principal, scopes: otherScopes }, siteId, method, 'branches').allowed;
 }
 
 /**
@@ -270,6 +305,14 @@ export async function handleBranchRoutes(
   const method = request.method;
 
   try {
+    if (
+      isRegistryScopedServicePrincipal(context.principal) &&
+      !isAllowedRegistryBranchOperation(context, method) &&
+      !isAllowedByAnotherScope(context.principal, context.siteId, method)
+    ) {
+      return errorResponse('write:registry scope only permits listing branches', 403);
+    }
+
     // Routes with branchId (single branch operations)
     if (context.branchId !== undefined) {
       // POST /branches/:branchId/restore

@@ -230,6 +230,36 @@ describe('Site API Token Service', () => {
 
       expect(result.metadata.scopes).toEqual(['read:published']);
     });
+
+    it('should accept write:registry as a valid scope', async () => {
+      const { generateToken } = await import('../../src/services/site-api-token-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockTokenRow({ scopes: ['write:registry'] });
+      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+
+      const result = await generateToken({
+        siteId: 'site-uuid-456',
+        name: 'Registry CI sync token',
+        scopes: ['write:registry'],
+        createdBy: 'user-uuid-789',
+      });
+
+      expect(result.metadata.scopes).toEqual(['write:registry']);
+    });
+
+    it('should reject unknown scope strings', async () => {
+      const { generateToken } = await import('../../src/services/site-api-token-service');
+
+      await expect(
+        generateToken({
+          siteId: 'site-uuid-456',
+          name: 'My token',
+          scopes: ['write:everything'],
+          createdBy: 'user-uuid-789',
+        }),
+      ).rejects.toThrow(/Invalid scopes/);
+    });
   });
 
   // ===========================================================================
