@@ -58,6 +58,20 @@ export interface RegistryIndex {
    * instead of fetching each component document individually (N requests → 1).
    */
   hashes?: Record<string, string>;
+  /**
+   * Timestamp of the last full, per-component verification of every hash in
+   * `hashes` against its component document's own stored content (PCC-3430).
+   * The fast path trusts `hashes` without ever reading the documents it
+   * describes — if an entry ever comes to record a hash that doesn't match
+   * its document's real content (e.g. an out-of-band revert the index was
+   * never told about), the fast path has no way to detect this on its own
+   * and would skip forever. Once `verifiedAt` is older than
+   * REGISTRY_VERIFICATION_INTERVAL_MS, the hook forces a real per-component
+   * check instead of trusting `hashes`, bounding how long such a desync can
+   * persist. Carried forward unchanged on fast-path runs; only refreshed
+   * when a full per-component verification actually just ran.
+   */
+  verifiedAt?: string;
 }
 
 // =============================================================================
@@ -304,11 +318,18 @@ export function extractDescriptors(
 // Registry index
 // =============================================================================
 
-/** Builds the RegistryIndex from a list of extracted descriptors. */
+/**
+ * Builds the RegistryIndex from a list of extracted descriptors.
+ *
+ * @param verifiedAt - Pass when a full per-component verification just ran
+ *   (PCC-3430), to stamp the index with that confirmation time. Omit to
+ *   carry an existing value forward unchanged on a fast-path-only run.
+ */
 export function buildRegistryIndex(
   descriptors: ComponentDescriptor[],
   siteId: string,
   branchId: string,
+  verifiedAt?: string,
 ): RegistryIndex {
   return {
     siteId,
@@ -317,5 +338,6 @@ export function buildRegistryIndex(
     componentNames: descriptors.map((d) => d.name),
     provenance: Object.fromEntries(descriptors.map((d) => [d.name, d.provenance])),
     hashes: Object.fromEntries(descriptors.map((d) => [d.name, d.descriptorHash])),
+    ...(verifiedAt !== undefined && { verifiedAt }),
   };
 }

@@ -137,6 +137,7 @@ describe('useComponentRegistry', () => {
               componentNames: ['HeroBlock'],
               provenance: { HeroBlock: 'site' },
               updatedAt: '',
+              verifiedAt: new Date().toISOString(),
               hashes: { HeroBlock: storedHash },
             },
           });
@@ -423,6 +424,7 @@ describe('useComponentRegistry', () => {
               componentNames: ['HeroBlock'],
               provenance: { HeroBlock: 'site' },
               updatedAt: new Date().toISOString(),
+              verifiedAt: new Date().toISOString(),
               hashes: { HeroBlock: currentHash },
             },
           });
@@ -444,6 +446,120 @@ describe('useComponentRegistry', () => {
     expect(mockClient.versions.getLatest).toHaveBeenCalledWith('site-1', 'branch-1', 'doc-index');
 
     // Hash matches — nothing written
+    expect(mockClient.versions.create).not.toHaveBeenCalled();
+    expect(result.current.result?.skipped).toBe(1);
+    expect(result.current.result?.registered).toBe(0);
+  });
+
+  // PCC-3430: self-healing safety net. The fast path's skip decision trusts
+  // the index's hashes map alone and never reads a component document's own
+  // content — if the index ever comes to record a hash that doesn't actually
+  // match that document's real content (e.g. an out-of-band revert the index
+  // was never told about), the fast path has no way to detect it and skips
+  // forever. This periodic verification bounds that: once verifiedAt is
+  // stale, force a real per-component check even when the index hash
+  // matches, so any desync self-heals within the interval instead of
+  // persisting indefinitely.
+  it('PCC-3430: forces per-component verification and self-heals when the index verification is stale, even though its hash matches', async () => {
+    const ctx = makeMockContext();
+    const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+
+    const { extractDescriptors } = await import('../editor/utils/componentRegistry.js');
+    const [descriptor] = extractDescriptors(simplePuckConfig);
+    const currentHash = descriptor.descriptorHash;
+    const staleVerifiedAt = new Date(Date.now() - 40 * 60 * 60 * 1000).toISOString(); // 40h ago
+
+    mockClient.documents.list.mockResolvedValue([
+      { id: 'doc-hero', path: '_registry/components/HeroBlock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+      { id: 'doc-index', path: '_registry/index', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+    ]);
+
+    mockClient.versions.getLatest.mockImplementation(
+      (_siteId: string, _branchId: string, docId: string) => {
+        if (docId === 'doc-index') {
+          return Promise.resolve({
+            id: 'ver-index', versionNumber: 1,
+            snapshot: {
+              siteId: 'site-1', branchId: 'branch-1',
+              componentNames: ['HeroBlock'],
+              provenance: { HeroBlock: 'site' },
+              updatedAt: staleVerifiedAt,
+              verifiedAt: staleVerifiedAt,
+              hashes: { HeroBlock: currentHash }, // index already "current" — desynced from the doc
+            },
+          });
+        }
+        // The document's OWN stored content is genuinely stale — this is
+        // only ever consulted because verification is forced.
+        return Promise.resolve({
+          id: 'ver-hero', versionNumber: 1,
+          snapshot: { name: 'HeroBlock', descriptorHash: 'genuinely-old-hash' },
+        });
+      },
+    );
+
+    const { result } = renderHook(
+      () => useComponentRegistry({ puckConfig: simplePuckConfig }),
+      { wrapper: wrapper(ctx) },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe('registered'));
+
+    // Verification was forced: the component doc's own version was fetched.
+    expect(mockClient.versions.getLatest).toHaveBeenCalledWith('site-1', 'branch-1', 'doc-hero');
+
+    // Self-healed: the stale document is re-registered despite the index
+    // hash matching the current computed hash.
+    expect(result.current.result?.registered).toBe(1);
+    expect(mockClient.versions.create).toHaveBeenCalled();
+    const createCalls = mockClient.versions.create.mock.calls as unknown[][];
+    const heroCall = createCalls.find((args) => (args[1] as Record<string, string>).documentId === 'doc-hero');
+    expect(heroCall).toBeDefined();
+  });
+
+  it('PCC-3430: does not force per-component verification when verifiedAt is recent (preserves the fast-path optimization)', async () => {
+    const ctx = makeMockContext();
+    const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+
+    const { extractDescriptors } = await import('../editor/utils/componentRegistry.js');
+    const [descriptor] = extractDescriptors(simplePuckConfig);
+    const currentHash = descriptor.descriptorHash;
+    const recentVerifiedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 1h ago
+
+    mockClient.documents.list.mockResolvedValue([
+      { id: 'doc-hero', path: '_registry/components/HeroBlock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+      { id: 'doc-index', path: '_registry/index', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+    ]);
+
+    mockClient.versions.getLatest.mockImplementation(
+      (_siteId: string, _branchId: string, docId: string) => {
+        if (docId === 'doc-index') {
+          return Promise.resolve({
+            id: 'ver-index', versionNumber: 1,
+            snapshot: {
+              siteId: 'site-1', branchId: 'branch-1',
+              componentNames: ['HeroBlock'],
+              provenance: { HeroBlock: 'site' },
+              updatedAt: recentVerifiedAt,
+              verifiedAt: recentVerifiedAt,
+              hashes: { HeroBlock: currentHash },
+            },
+          });
+        }
+        return Promise.resolve({ id: 'ver-hero', versionNumber: 1, snapshot: {} });
+      },
+    );
+
+    const { result } = renderHook(
+      () => useComponentRegistry({ puckConfig: simplePuckConfig }),
+      { wrapper: wrapper(ctx) },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe('registered'));
+
+    // Fast path preserved: only the index was fetched, not the component doc.
+    expect(mockClient.versions.getLatest).toHaveBeenCalledTimes(1);
+    expect(mockClient.versions.getLatest).toHaveBeenCalledWith('site-1', 'branch-1', 'doc-index');
     expect(mockClient.versions.create).not.toHaveBeenCalled();
     expect(result.current.result?.skipped).toBe(1);
     expect(result.current.result?.registered).toBe(0);
@@ -479,6 +595,7 @@ describe('useComponentRegistry', () => {
               componentNames: ['HeroBlock', 'CardBlock'],
               provenance: { HeroBlock: 'site', CardBlock: 'site' },
               updatedAt: new Date().toISOString(),
+              verifiedAt: new Date().toISOString(),
               hashes: {
                 HeroBlock: 'stale-hash-000',
                 CardBlock: cardDesc.descriptorHash,
@@ -606,6 +723,7 @@ describe('useComponentRegistry', () => {
               componentNames: ['HeroBlock', 'CardBlock'],
               provenance: { HeroBlock: 'site', CardBlock: 'site' },
               updatedAt: new Date().toISOString(),
+              verifiedAt: new Date().toISOString(),
               hashes: {
                 HeroBlock: heroDesc.descriptorHash,
                 CardBlock: cardDesc.descriptorHash,

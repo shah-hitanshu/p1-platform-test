@@ -2560,3 +2560,36 @@ When backend implements:
 
 **Key Achievement:**
 Content Type Templates MVP is **feature-complete** on the frontend. All P0/P1 functionality implemented with comprehensive test coverage. Template selection, permission enforcement, and action capture are working. Ready for backend integration and end-to-end testing.
+
+## PCC-3430: Periodic Self-Heal Verification for the Registry Fast Path (2026-07-19)
+
+**Status:** Complete
+**Branch:** `fix/pcc-3430-registry-index-selfheal`
+**Commits:**
+- `737f00e` — Add failing test for periodic self-heal verification (red state)
+- `7be1f1f` — Periodic self-heal verification for the registry fast path (green state)
+
+### Context
+
+Root cause of a customer-reported bug (p1-teamworks, Jira [PCC-3430](https://getpantheon.atlassian.net/browse/PCC-3430)): editing an already-registered Puck component's field schema and reloading the P1 editor left the backend's `_registry/components/<Name>` document frozen at an older schema indefinitely — the same components, same `registeredAt`, across every subsequent sync.
+
+`useComponentRegistry.ts`'s fast-path optimization trusts a `hashes` map cached in the `_registry/index` document without ever reading a component document's own stored content (that's the entire point of collapsing N per-component reads into 1 index read). If the index's recorded hash for a component ever comes to equal the current computed hash while that component's actual document content is stale — the root cause traced to `agent_pre_edit` checkpoints sweeping registry documents into their capture/rollback blast radius, fixed separately in collaborative-state-system (see that repo's PROGRESS.md, PCC-3430) — the fast path has no signal to detect this and skips forever.
+
+### What was done
+
+This entry is the defense-in-depth half of the fix (the root cause is fixed in the sibling repo; this bounds the blast radius of any *other*, not-yet-found mechanism that could cause the same kind of desync):
+
+- Added `RegistryIndex.verifiedAt` — the timestamp of the last full per-component verification (the legacy path, which reads each component document's own stored `descriptorHash` directly, bypassing the cached index hash).
+- Added `REGISTRY_VERIFICATION_INTERVAL_MS` (24 hours, exported from `useComponentRegistry.ts`). Once `verifiedAt` is missing (covers every pre-existing production index) or older than this interval, the hook now forces the legacy per-component check instead of trusting the index's `hashes` map unconditionally — bounding how long a desync can persist to at most one verification interval instead of indefinitely.
+- `verifiedAt` is refreshed only when a full verification actually ran (`!gotHashesFromIndex`); a fast-path-only run — even one that registers a changed component — carries the existing value forward unchanged, since it doesn't re-verify every component's real content, only the ones whose index-cached hash happened to differ.
+- Four pre-existing fast-path tests were updated to include a recent `verifiedAt`, since they test fast-path behavior specifically and predate this field — each was confirmed load-bearing (would legitimately fail without the addition, for the right reason) by independent review, not just patched to pass.
+
+### Verification
+
+- 47/47 tests pass (`useComponentRegistry.test.tsx`, `componentRegistry.test.ts`). Full package suite: 1930 passed, 19 skipped, 14 failures — all in `token-refresh-auth.test.tsx`/`P1AuthProvider.avatar.test.tsx`, confirmed pre-existing and unrelated (identical `localStorage` environment failures reproduced in isolation both with and without this change).
+- Independent review (separate agent context, per Rule 13): no logic bugs found in the carry-forward-vs-refresh logic (the trickiest part) — traced with concrete timestamps and confirmed the fast path can only be trusted when `verifiedAt` is already a validly-parsed value, so it can never silently degrade to `undefined`. Confirmed `indexNeedsWrite` and the `verifiedAt`-refresh condition share the same `!gotHashesFromIndex` term, so a forced verification can never run without also being persisted (ruling out a "forces verification forever" failure mode).
+- Security review (separate agent context): no HIGH/MEDIUM findings. Confirmed the new debug log has zero interpolated values. Confirmed forcing more frequent verification doesn't cross any new trust boundary (same authenticated session, same data already reachable). Confirmed a forged far-future `verifiedAt` requires the same write access needed to cause the underlying desync in the first place — a by-design limitation of a defense-in-depth mitigation, not a new escalation.
+
+### Follow-up
+
+- 24 hours is a judgment call, not derived from an existing convention in this codebase (the nearest comparable pattern, a 30-second cache TTL in `p1-store.ts`, is a different order of magnitude for a different purpose). Revisit if real-world desync recurrence data ever suggests a different interval is warranted.

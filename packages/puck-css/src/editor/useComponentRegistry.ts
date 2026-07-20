@@ -54,6 +54,14 @@ const REGISTRY_PREFIX = '_registry/';
 const COMPONENT_PREFIX = '_registry/components/';
 const INDEX_PATH = '_registry/index';
 
+/**
+ * Maximum age of the registry index's last full per-component verification
+ * (PCC-3430) before the fast path is forced to re-verify every component's
+ * actual document content instead of trusting the index's hashes map alone.
+ * Bounds how long an index/document desync can persist undetected.
+ */
+export const REGISTRY_VERIFICATION_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 function componentPath(name: string): string {
   return `${COMPONENT_PREFIX}${name}`;
 }
@@ -102,12 +110,19 @@ async function runRegistration(
   // fetches so existing registries continue to work on the first run after deploy.
   const storedHashByName = new Map<string, string>();
   let gotHashesFromIndex = false;
+  let existingVerifiedAt: string | undefined;
 
   if (indexDoc !== undefined) {
     try {
       const indexVersion = await client.versions.getLatest(siteId, branchId, indexDoc.id);
       const indexSnapshot = indexVersion.snapshot as Partial<RegistryIndex>;
-      if (indexSnapshot.hashes !== undefined && typeof indexSnapshot.hashes === 'object') {
+      if (typeof indexSnapshot.verifiedAt === 'string') {
+        existingVerifiedAt = indexSnapshot.verifiedAt;
+      }
+      const verifiedAtMs = existingVerifiedAt !== undefined ? Date.parse(existingVerifiedAt) : NaN;
+      const verificationIsStale = !Number.isFinite(verifiedAtMs) || Date.now() - verifiedAtMs > REGISTRY_VERIFICATION_INTERVAL_MS;
+
+      if (indexSnapshot.hashes !== undefined && typeof indexSnapshot.hashes === 'object' && !verificationIsStale) {
         for (const [name, hash] of Object.entries(indexSnapshot.hashes)) {
           if (typeof hash === 'string') {
             storedHashByName.set(name, hash);
@@ -115,6 +130,15 @@ async function runRegistration(
         }
         gotHashesFromIndex = true;
         console.debug('[useComponentRegistry] Fast path: loaded', storedHashByName.size, 'hashes from index');
+      } else if (verificationIsStale) {
+        // PCC-3430: the fast path trusts `hashes` without ever reading the
+        // documents it describes. If an entry ever comes to record a hash
+        // that doesn't match its document's real content (e.g. an
+        // out-of-band revert the index was never told about), the fast path
+        // has no way to detect this on its own and would skip forever.
+        // Periodically forcing a real per-component check bounds how long
+        // such a desync can persist instead of letting it stick indefinitely.
+        console.debug('[useComponentRegistry] Registry verification is stale — forcing per-component fetch to self-heal any index/document desync');
       } else {
         console.debug('[useComponentRegistry] Index exists but has no hashes field (legacy format) — falling back to per-component fetch');
       }
@@ -226,7 +250,14 @@ async function runRegistration(
   console.debug('[useComponentRegistry] indexNeedsWrite =', indexNeedsWrite, '(registered > 0:', registered > 0, ', no indexDoc:', indexDoc === undefined, ', legacy format:', !gotHashesFromIndex, ')');
 
   if (indexNeedsWrite) {
-    const index: RegistryIndex = buildRegistryIndex(descriptors, siteId, branchId);
+    // A per-component verification just ran whenever we didn't trust the
+    // fast path (missing index, legacy format, or forced by staleness) —
+    // stamp verifiedAt as confirmed now. Otherwise carry the existing value
+    // forward: a fast-path-only run (skips + a changed component or two)
+    // doesn't verify every component's actual content, so it must not reset
+    // the clock on the next forced verification.
+    const verifiedAt = !gotHashesFromIndex ? new Date().toISOString() : existingVerifiedAt;
+    const index: RegistryIndex = buildRegistryIndex(descriptors, siteId, branchId, verifiedAt);
     let indexDocId: string;
     if (indexDoc === undefined) {
       try {
