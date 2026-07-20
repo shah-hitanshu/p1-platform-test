@@ -2593,3 +2593,88 @@ This entry is the defense-in-depth half of the fix (the root cause is fixed in t
 ### Follow-up
 
 - 24 hours is a judgment call, not derived from an existing convention in this codebase (the nearest comparable pattern, a 30-second cache TTL in `p1-store.ts`, is a different order of magnitude for a different purpose). Revisit if real-world desync recurrence data ever suggests a different interval is warranted.
+
+---
+
+## Optional CI Registry Sync (2026-07-19)
+
+**Status:** Complete
+**Branch:** `registry-ci-sync`
+**Commits:**
+- `6429e6c` — Add failing tests for syncComponentRegistry extraction (red state)
+- `8688e80` — Extract syncComponentRegistry, add registry-sync subpath export
+- `dc8de3d` — Add failing tests for asset-stub loader and registry sync script (red state)
+- `c4ece1a` — Add headless Puck registry CI sync script
+- `d76c205` — Treat unmatched CI branch as a skip, not a failure
+- `2a1bbaa` — Add sample GitHub Actions workflow for registry CI sync
+
+### Context
+
+Backend half of this feature (a new `write:registry` site-token scope, narrowly restricted to `_registry/components/*` and the registry index) shipped separately in `collaborative-state-system`. This is the frontend half: lets a CI job sync the Puck component registry headlessly, without anyone opening the editor, so an AI-assisted prop-shape change in code doesn't leave the backend's registry silently stale until someone next opens the editor.
+
+### What was done
+
+**`packages/puck-css`** — Extracted the registration algorithm out of `useComponentRegistry.ts` (a React hook) into a new pure module `editor/utils/syncComponentRegistry.ts` (verbatim move + rename, `runRegistration` → `syncComponentRegistry`, zero logic changes — confirmed byte-for-byte in review). Added a new `./registry-sync` package subpath export (`syncComponentRegistry`, `extractDescriptors`, `buildRegistryIndex` + types) — deliberately does not re-export `P1Client`/`ConflictError`, guarded by a dedicated identity test. `useComponentRegistry.test.tsx` is unmodified and still passes 18/18 unchanged — the regression proof the browser flow is untouched. Changeset added (`minor`).
+
+**`apps/p1-starter`** — New `scripts/sync-puck-registry.ts`: a CI script with env-var validation (fallback chain to `NEXT_PUBLIC_*`, all missing vars reported together, explicit rejection if only the read-scoped `P1_CSS_API_KEY` is set instead of `CSS_REGISTRY_API_KEY`), config-module resolution (`mod.default ?? mod.config ?? mod`, covering both export conventions seen in practice), and branch resolution (explicit override by id/name, else the site's main branch) — all as independently unit-tested pure functions, separate from `main()`'s I/O orchestration. Unlike the browser hook (which swallows registry errors so it never breaks the editor), `main()` fails loud — except when no CSS branch matches the pushed git branch at all, which is treated as a benign skip (`NoBranchMatchError`, exit 0), not a failure, since a workflow triggering on every branch push can't know in advance which branches have a CSS counterpart. New `scripts/asset-stub-hooks.mjs`: Node module customization hooks that stub out non-JS asset imports so this script can `import()` a Next.js app's `puck.config.tsx` without a bundler; wired via `node:module`'s `register()` inside `main()` (not module scope), so importing the file for tests never installs a process-wide loader hook.
+
+**`apps/p1-starter/ci-examples`** — Sample GitHub Actions workflow, deliberately placed outside `.github/workflows/` so it can never auto-activate on scaffold (it does get copied into a customer's generated project via the existing template-build pipeline, but only ever lands at `ci-examples/...`, never `.github/workflows/...`). Triggers on push to any branch touching `puck.config.tsx`/`components/puck/**`, passing the pushed branch name as `CSS_BRANCH_ID`.
+
+**`packages/create-p1-starter-kit/README.md`** — documents the capability (the one real, existing place it reaches a human today).
+
+### Decisions made along the way
+
+- **Actual template source is `apps/p1-starter`, not `packages/create-p1-starter-kit/template/`** — the latter is a gitignored build artifact regenerated from the former on every build. The original plan's proposed paths under `template/scripts/` and `template/ci-examples/` would have been silently wiped by the next `npm run build`; everything was placed under `apps/p1-starter/` instead.
+- **Scaffolded projects ship with no README today** (`build-template.js` explicitly skips `README.md` and never regenerates one) — a pre-existing, separate gap, not fixed here. Confirmed intentional/temporary: full public docs will live on the docs site at launch, not the code README, per this stealth-mode phase.
+- **Unmatched CI branch is a skip (exit 0), not a failure** — chosen over always-fail-loud specifically because the workflow triggers on every branch push and can't know ahead of time which branches have a CSS counterpart; failing loud there would train people to ignore red CI.
+- **No read scope requested for the CI token** (mirrors the backend-side decision in `collaborative-state-system`): the script can't hash-compare before writing, so every run creates a new version even when nothing changed. Accepted tradeoff — code changes are expected to be infrequent post-launch, and cleanup is deferred until it's a real problem.
+- **`register()` over the newer `registerHooks()`** for the asset-stub loader, despite a local deprecation warning on very recent Node — `registerHooks()` requires a much newer Node version than this monorepo's `engines: >=18.0.0`, and broad compatibility matters more here than using the newest API, since this script needs to run in arbitrary customer CI environments.
+
+### Verification
+
+- TDD throughout: each of the three components (puck-css extraction; asset-stub loader + sync script; GitHub Actions workflow) went tests-first (confirmed red), then implementation (confirmed green), independently reviewed in a separate agent context, then security-reviewed — no blocking findings at any stage.
+- Manually verified the sync script end-to-end against the real `puck.config.tsx` with fake credentials (no live backend needed): asset-stub loading, env validation, dynamic import, and descriptor extraction all succeed; the run fails only at the actual network call — confirming the one path unit tests can't reach (the real dynamic import + loader) genuinely works.
+- Full test suites, lint, and typecheck clean for all touched packages; `pnpm build` clean for both `puck-css` and `apps/p1-starter`.
+
+### Follow-up
+
+- Cross-check the `REGISTRY_INDEX_PATH`/`INDEX_PATH` literal (`_registry/index`) against `collaborative-state-system`'s guard for the same literal before the CI script is wired up against a real `write:registry`-scoped token — both sides currently assume the same string but neither repo can verify the other's copy.
+- The known, separate `allowedAdditionalProps`/`opaqueProps`-from-`resolveFields` gap and the no-README-in-scaffolded-output gap are both out of scope here, left as-is.
+
+---
+
+## Write-Only CI Registry Sync (2026-07-19)
+
+**Status:** Complete
+**Branch:** `registry-ci-sync`
+**Commits:**
+- `a8d91a6` — Add failing tests for write-only CI registry sync (red state)
+- `a0925e5` — Implement write-only CI registry sync (green state)
+
+### Context
+
+Real local end-to-end testing (running the actual `sync-puck-registry.ts` script against a real local `wrangler dev` backend, using a real `write:registry`-scoped token, in the same session as `collaborative-state-system`'s §0 Phase 2 work) immediately surfaced that the script from the prior phase couldn't complete a real write: it still called the shared `syncComponentRegistry` (the browser flow's hash-check algorithm), whose first step is `documents.list()` — a read the write:registry token can never make, no matter how the backend scope is shaped. Dry-run mode worked (it only lists branches, which the backend's companion phase newly permits); the real write path failed on the very next call.
+
+### What was done
+
+- **`documents.create()` (`css-client`)** gains an optional `snapshot` field, forwarded into the POST body. The backend already accepted `snapshot` on create and wrote it as the initial version in the same call — the client just never forwarded it, forcing every caller into a separate `versions.create()` round-trip even when the content was already known up front. Purely additive; the two existing call sites in this repo don't pass it and are unaffected (confirmed by grep + the existing template-binding test suite, unchanged, still passing).
+- **New `syncComponentRegistryWriteOnly`**, exported from `puck-css`'s `./registry-sync` subpath: the CI-only counterpart to `syncComponentRegistry`. For every descriptor, one `documents.create()` call with the full snapshot; then one more for the index built via `buildRegistryIndex` over the complete, current descriptor set. No `documents.list`, no `versions.getLatest`, no hash comparison, no skip-if-unchanged — every run rewrites everything unconditionally, relying entirely on the backend's `_registry/*` upsert-on-conflict to make repeat writes to the same path succeed as version bumps instead of erroring. `syncComponentRegistry` itself is untouched (three export-visibility changes on shared path constants, zero logic changes) — the interactive editor keeps its skip-if-unchanged behavior exactly as before.
+- **`sync-puck-registry.ts`** now calls the write-only function; its docstring and completion log updated to describe the always-rewrite behavior instead of a registered/skipped split that no longer applies.
+
+### Decisions made along the way
+
+- **Considered and rejected**: teaching the shared `syncComponentRegistry` to take a "skip reads" mode, or keeping the two-call create-then-version pattern for the CI path. The former would make one function reason about two very different callers; the latter would mint a wasted, empty-snapshot placeholder version on every single component on every single CI run (since the backend always creates a version on a successful create call, using whatever snapshot the client sent — `{}` if none) — doubling real version-history noise forever for no benefit. The `snapshot`-on-create SDK addition avoids both.
+- **No changeset was written for this in the first pass** — an independent review (separate agent context) caught the gap before commit, matching the prior extraction phase's precedent of a hand-authored changeset per public-API change; added `write-only-ci-sync.md` covering both packages before committing.
+
+### Verification
+
+- TDD: 3 failing assertions confirmed red (snapshot passthrough) plus a hard import failure (module didn't exist), then implementation, then green — 12/12 in `css-client`, 19/19 in `puck-css` for the directly-touched suites; full package suites clean (302/302 `css-client`; 1950/1950 `puck-css` excluding 14 pre-existing, unrelated `localStorage`/jsdom failures in two auth-provider test files, confirmed by direct inspection of the failure signature to have zero code-path connection to anything touched here).
+- Independent review (separate agent context): confirmed the new function never reads anything (traced every call), confirmed `snapshot` reaches the wire correctly with no double-encoding, confirmed the browser flow is genuinely untouched, confirmed no other caller of `documents.create()` is affected. Found two real gaps — a missing changeset, and a README line ("runs the same sync") that read as true of the outcome but no longer true of the implementation — both fixed before commit.
+- `/security-review`: no findings above 1/10 confidence across every category in the checklist (path traversal via component names, code injection via the dynamic `import()`/loader hook, credential logging, SSRF via `CSS_BASE_URL`) — all either unchanged by this phase or structurally incapable of crossing a new trust boundary.
+- **Real end-to-end proof, not just unit tests**: ran the actual `tsx scripts/sync-puck-registry.ts` against a real local `wrangler dev` instance (backed by real local Postgres, per `collaborative-state-system`'s companion phase) using a real `write:registry`-scoped token. Wrote all 11 real component descriptors from `apps/p1-starter`'s actual `puck.config.tsx` + the registry index in one run; confirmed via direct `psql` inspection of the resulting `document_versions` rows that every snapshot has real, non-empty, correctly-shaped content (not a placeholder), and that a leftover manually-tested document at an unrelated path was correctly left untouched.
+
+### Follow-up
+
+- The originally-requested Cloudflare-tunnel + real-GitHub-Actions test is still not done — this phase only closed the local (`wrangler dev` + local Postgres) path. A cloud Actions runner does `npm ci` against published semver deps, but `@pantheon-systems/puck-css`'s `registry-sync` subpath only exists on this unpublished local branch, so that escalation additionally needs a decision on publishing a prerelease, vendoring a built tarball, or using a self-hosted runner — none decided or started.
+- `REGISTRY_INDEX_PATH` cross-check (noted in the prior phase's follow-up) remains open, though now backed by more confidence: this session's real end-to-end run exercised both sides of that literal together for the first time and it matched correctly.
+- Rebased onto `main` after PCC-3430's self-heal fix (#116, see the entry above) landed there first: `runRegistration`'s extraction into `syncComponentRegistry.ts` was reconciled to carry the `verifiedAt` self-heal logic forward rather than dropping it in a naive conflict resolution, and `syncComponentRegistryWriteOnly` was given its own `verifiedAt` stamp — an unconditional full rewrite of every descriptor is itself the strongest possible verification, so it can legitimately claim one instead of forcing the next editor load into an unnecessary per-component fetch.

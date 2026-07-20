@@ -64,6 +64,7 @@ export class DocumentsEndpoint {
       path: string;
       templateId?: string;
       templateVersion?: number;
+      snapshot?: Record<string, unknown>;
     } = {
       path: params.path,
     };
@@ -73,6 +74,9 @@ export class DocumentsEndpoint {
     }
     if (params.templateVersion !== undefined) {
       body.templateVersion = params.templateVersion;
+    }
+    if (params.snapshot !== undefined) {
+      body.snapshot = params.snapshot;
     }
 
     const response = await this.base.request<{ document: Document }>(

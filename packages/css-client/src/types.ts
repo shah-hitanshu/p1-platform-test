@@ -237,6 +237,8 @@ export interface CreateDocumentParams {
   templateId?: string;
   /** Optional template version (defaults to template's current version if not provided) */
   templateVersion?: number;
+  /** Optional initial version content, written in the same call as the create */
+  snapshot?: Record<string, unknown>;
 }
 
 /**

@@ -1,0 +1,51 @@
+# Optional: syncs this site's Puck component registry to the CSS backend
+# headlessly on every push, without anyone needing to open the editor.
+#
+# This file is NOT active until you copy it into .github/workflows/ yourself
+# — it deliberately lives outside that directory in the scaffolded project so
+# it can never auto-run before you've provisioned secrets.
+#
+# Setup:
+#   1. Create a sat_ site token scoped to write:registry ONLY (do not reuse
+#      your read-scoped P1_CSS_API_KEY / SSR token for this).
+#   2. Add repo secrets: CSS_BASE_URL, CSS_SITE_ID, CSS_REGISTRY_API_KEY.
+#   3. Copy this file to .github/workflows/sync-puck-registry.yml.
+#
+# Triggers on push to any branch that touches puck.config.tsx or
+# components/puck/** — the sync script resolves the CSS branch by matching
+# the pushed git branch's name (falling back to the site's main branch when
+# no CSS_BRANCH_ID is given). A push on a branch with no matching CSS branch
+# is not an error: the script logs a skip and exits 0.
+name: Sync Puck Component Registry
+
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - 'puck.config.tsx'
+      - 'components/puck/**'
+  workflow_dispatch:
+    inputs:
+      branch_id:
+        description: 'CSS branch ID/name to sync against (blank = match the current git branch, else site main)'
+        required: false
+        default: ''
+
+jobs:
+  sync-registry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Sync component registry
+        run: npm run sync:registry
+        env:
+          CSS_BASE_URL: ${{ secrets.CSS_BASE_URL }}
+          CSS_SITE_ID: ${{ secrets.CSS_SITE_ID }}
+          CSS_REGISTRY_API_KEY: ${{ secrets.CSS_REGISTRY_API_KEY }}
+          CSS_BRANCH_ID: ${{ github.event.inputs.branch_id || github.ref_name }}

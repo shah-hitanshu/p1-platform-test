@@ -83,6 +83,31 @@ my-app/
 - **Add datasources:** Define in `lib/` and register for use in blocks
 - **Styling:** Edit Tailwind config or component styles
 
+## Optional: CI Registry Sync
+
+Changing a component's prop shape in code (`puck.config.tsx`, `components/puck/**`) doesn't
+update the CSS backend's component registry until someone opens the Puck Editor in a browser —
+that's the only thing that currently triggers a sync. If your team goes a while between editor
+sessions after a code change, AI-assisted edits and other tooling validate against a stale schema
+in the meantime.
+
+The scaffolded project includes `scripts/sync-puck-registry.ts`, which syncs the registry
+headlessly from CI. Because its token has no read access to the registry, it can't check
+what's already there — every run rewrites every component + the registry index
+unconditionally, unlike the editor's skip-if-unchanged behavior:
+
+1. Create a `sat_` site token scoped to `write:registry` **only** — do not reuse your existing
+   read-scoped API key (`CSS_API_KEY`/`P1_CSS_API_KEY`) for this; the script will refuse to run
+   with an explicit error if you try.
+2. Add `CSS_BASE_URL`, `CSS_SITE_ID`, and `CSS_REGISTRY_API_KEY` as repo secrets.
+3. Copy `ci-examples/github-actions-sync-puck-registry.yml` into `.github/workflows/` (it's
+   inert until you do this — never auto-runs on scaffold).
+
+Run it locally any time with `npm run sync:registry` (add `-- --dry-run` to see what would
+change without writing anything). The sample workflow triggers on push to any branch touching
+`puck.config.tsx`/`components/puck/**` and resolves the CSS branch by matching the pushed git
+branch's name; a push on a branch with no CSS counterpart is treated as a no-op, not a failure.
+
 ## Troubleshooting
 
 ### Module resolution errors

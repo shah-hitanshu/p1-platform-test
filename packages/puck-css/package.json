@@ -53,6 +53,11 @@
       "default": "./dist/server.js",
       "types": "./dist/server.d.ts"
     },
+    "./registry-sync": {
+      "import": "./dist/registry-sync.js",
+      "default": "./dist/registry-sync.js",
+      "types": "./dist/registry-sync.d.ts"
+    },
     "./auth-gate": {
       "import": "./dist/auth/AuthGate.js",
       "default": "./dist/auth/AuthGate.js",
