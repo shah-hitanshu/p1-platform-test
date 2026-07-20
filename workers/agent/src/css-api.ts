@@ -2,6 +2,7 @@
  * CSS Backend API Client
  * Adapted from collaborative-state-system/workers/mcp-server/src/shared/api-client.ts
  */
+import type { TemplateSnapshot } from '@pantheon-systems/p1-content-validator';
 
 export interface SiteInfo {
   id: string;
@@ -38,6 +39,27 @@ export interface DocumentInfo {
 export interface ListDocumentsResponse {
   documents: DocumentInfo[];
 }
+
+/**
+ * Document record from the by-path lookup. Carries the template linkage used
+ * for structural conformance validation (absent on documents with no template).
+ */
+export interface DocumentInfoWithTemplate extends DocumentInfo {
+  templateId?: string;
+  templateVersion?: number;
+}
+
+/**
+ * A template's version snapshot: Puck data (identical in shape to a page, so it
+ * satisfies the validator's {@link TemplateSnapshot} contract directly), plus
+ * identity fields, spread flat rather than wrapped under `.snapshot`.
+ * `root.props._pinMap` maps a component id to its pinned flag.
+ */
+export type TemplateDetail = TemplateSnapshot & {
+  id: string;
+  name?: string;
+  version?: number;
+};
 
 export interface DocumentVersionLatest {
   id: string;
@@ -317,6 +339,37 @@ export class McpApiClient {
       headers: this.getHeaders(),
     });
     return this.handleResponse<DocumentSnapshot>(response);
+  }
+
+  /**
+   * Look up a document by path to read its template linkage. The snapshot
+   * endpoint ({@link getDocument}) does not return document metadata, so
+   * template conformance validation uses this by-path endpoint to obtain
+   * `templateId`. Returns null when no document exists at the path.
+   */
+  async lookupDocumentByPath(siteId: string, documentPath: string): Promise<DocumentInfoWithTemplate | null> {
+    // Encode the raw path wholesale (no client-side leading-slash stripping),
+    // matching every other path method; the backend decodeURIComponent()s and
+    // normalizes it server-side.
+    const encodedPath = encodeURIComponent(documentPath);
+    const response = await this.doFetch(`${this.baseUrl}/api/sites/${siteId}/documents/by-path/${encodedPath}`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<DocumentInfoWithTemplate | null>(response);
+  }
+
+  /**
+   * Fetch a template document by id. Templates are stored at
+   * `_registry/templates/{templateId}`; the response is the template's Puck
+   * content snapshot (content, root.props._pinMap, zones) plus identity fields.
+   */
+  async getTemplate(siteId: string, branchId: string, templateId: string): Promise<TemplateDetail> {
+    const response = await this.doFetch(`${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/templates/${templateId}`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<TemplateDetail>(response);
   }
 
   async listComponents(siteId: string, branchId: string): Promise<{ components: unknown[] }> {

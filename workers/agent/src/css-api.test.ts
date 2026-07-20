@@ -178,3 +178,49 @@ describe("McpApiClient document path encoding", () => {
     );
   });
 });
+
+describe("McpApiClient template lookups", () => {
+  const baseConfig = {
+    baseUrl: "https://css.example.com",
+    agentId: "agent-abc",
+    agentApiKey: "key-xyz",
+  };
+
+  it("lookupDocumentByPath hits the by-path endpoint and returns templateId", async () => {
+    let capturedUrl = "";
+    const client = new McpApiClient({
+      ...baseConfig,
+      fetcher: {
+        fetch: async (input) => {
+          capturedUrl = String(input);
+          return new Response(
+            JSON.stringify({ id: "doc-1", path: "index", createdAt: "", templateId: "tpl-1" }),
+            { status: 200 },
+          );
+        },
+      },
+    });
+    const result = await client.lookupDocumentByPath("site-1", "index");
+    expect(capturedUrl).toBe("https://css.example.com/api/sites/site-1/documents/by-path/index");
+    expect(result?.templateId).toBe("tpl-1");
+  });
+
+  it("getTemplate hits the templates endpoint", async () => {
+    let capturedUrl = "";
+    const client = new McpApiClient({
+      ...baseConfig,
+      fetcher: {
+        fetch: async (input) => {
+          capturedUrl = String(input);
+          return new Response(
+            JSON.stringify({ id: "tpl-1", content: [], root: { props: {} } }),
+            { status: 200 },
+          );
+        },
+      },
+    });
+    const result = await client.getTemplate("site-1", "branch-1", "tpl-1");
+    expect(capturedUrl).toBe("https://css.example.com/api/sites/site-1/branches/branch-1/templates/tpl-1");
+    expect(result.id).toBe("tpl-1");
+  });
+});

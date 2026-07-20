@@ -51,8 +51,8 @@ importers:
   workers/agent:
     dependencies:
       '@pantheon-systems/p1-content-validator':
-        specifier: ^1.0.0
-        version: 1.0.0
+        specifier: ^2.0.0
+        version: 2.0.0
       agents:
         specifier: ^0.11.0
         version: 0.11.9(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/workers-types@4.20260525.1)(ai@6.0.191(zod@4.4.3))(react@19.2.6)(rolldown@1.0.3)(vite@8.0.16(@types/node@26.1.0)(esbuild@0.28.1))(zod@4.4.3)
@@ -783,8 +783,8 @@ packages:
     resolution: {integrity: sha512-corV+gjjK9oY/wTLNi7hbB9vTf1T+MQ5njBSV0tnrlkI8oazzkoDtdro1Qr5y6NI9ZxguLk/H2r67/6eWNnVmg==}
     engines: {node: '>=18.0.0'}
 
-  '@pantheon-systems/p1-content-validator@1.0.0':
-    resolution: {integrity: sha512-TfjTQl1VO1HyWrEW8avncg3oy55DWR5V0YfQGoWKEonzdl7LQqNoocHD7Ln8TbcqELhUFf/An816cBKpaGr5hQ==}
+  '@pantheon-systems/p1-content-validator@2.0.0':
+    resolution: {integrity: sha512-E3IdJR8uWQIWx4YW+UAWCS4ejMabwoMRsYuh2ZAZwcIkuNTzydNXjuc1dVW/6FQIFrIaqP3aKt8tcYOcGZ73MQ==}
     engines: {node: '>=20.0.0'}
 
   '@pantheon-systems/pds-design-tokens@2.0.0-alpha.54':
@@ -4164,7 +4164,7 @@ snapshots:
     transitivePeerDependencies:
       - react
 
-  '@pantheon-systems/p1-content-validator@1.0.0': {}
+  '@pantheon-systems/p1-content-validator@2.0.0': {}
 
   '@pantheon-systems/pds-design-tokens@2.0.0-alpha.54': {}
 

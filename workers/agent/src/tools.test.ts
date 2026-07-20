@@ -550,6 +550,134 @@ describe('executeTool apply_document_edits key-validation', () => {
 });
 
 // ---------------------------------------------------------------------------
+// apply_document_edits — template structure conformance (post-apply)
+// ---------------------------------------------------------------------------
+
+describe('executeTool apply_document_edits structure validation', () => {
+  const baseInput = {
+    site_id: 'site-1',
+    branch_id: 'branch-1',
+    document_path: '/index',
+    edit_session_id: 'session-1',
+  };
+
+  // A template that pins a single Hero component (Hero must be present, in order).
+  const templateWithPinnedHero = {
+    id: 'tpl-1',
+    content: [{ type: 'Hero', props: { id: 'tpl-hero' } }],
+    root: { props: { _pinMap: { 'tpl-hero': true } } },
+  };
+
+  function makeCssApi(overrides: Partial<McpApiClient> = {}): McpApiClient {
+    return {
+      listDocuments: vi.fn().mockResolvedValue({
+        documents: [{ id: 'doc-1', path: 'index', createdAt: '' }],
+      }),
+      getDocumentLatestVersion: vi.fn().mockResolvedValue({
+        id: 'ver-1', documentId: 'doc-1', versionNumber: 1,
+        snapshot: { content: [{ type: 'Hero', props: { id: 'h1', text: 'Hi', visible: true } }] },
+      }),
+      listComponents: vi.fn().mockResolvedValue({
+        components: [
+          { name: 'Hero', defaultProps: { text: '', visible: true } },
+          { name: 'Footer', defaultProps: { copyright: '', links: [] } },
+        ],
+      }),
+      applyEdits: vi.fn().mockResolvedValue({ success: true }),
+      // by-path lookup returns the template linkage
+      lookupDocumentByPath: vi.fn().mockResolvedValue({
+        id: 'doc-1', path: 'index', createdAt: '', templateId: 'tpl-1',
+      }),
+      // post-apply document snapshot (conforming by default: Hero present)
+      getDocument: vi.fn().mockResolvedValue({
+        snapshot: { content: [{ type: 'Hero', props: { id: 'h1' } }] },
+      }),
+      getTemplate: vi.fn().mockResolvedValue(templateWithPinnedHero),
+      ...overrides,
+    } as unknown as McpApiClient;
+  }
+
+  // A `remove` op skips pre-apply component validation (only add/replace trigger
+  // it), so these tests isolate the post-apply structure check.
+  const removeOp = { operations: [{ type: 'remove', path: 'content.0' }] };
+
+  it('throws and instructs abort when a pinned component is removed', async () => {
+    const cssApi = makeCssApi({
+      getDocument: vi.fn().mockResolvedValue({
+        snapshot: { content: [{ type: 'Footer', props: { id: 'f1' } }] },
+      }),
+    });
+    await expect(
+      executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1'),
+    ).rejects.toThrow(/abort_edit_session/);
+    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+  });
+
+  it('names the missing pinned component in the error', async () => {
+    const cssApi = makeCssApi({
+      getDocument: vi.fn().mockResolvedValue({
+        snapshot: { content: [{ type: 'Footer', props: { id: 'f1' } }] },
+      }),
+    });
+    await expect(
+      executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1'),
+    ).rejects.toThrow(/Hero/);
+  });
+
+  it('throws when a pinned component ends up out of order', async () => {
+    const cssApi = makeCssApi({
+      // Template pins Hero then Footer, in that order.
+      getTemplate: vi.fn().mockResolvedValue({
+        id: 'tpl-1',
+        content: [
+          { type: 'Hero', props: { id: 'tpl-hero' } },
+          { type: 'Footer', props: { id: 'tpl-footer' } },
+        ],
+        root: { props: { _pinMap: { 'tpl-hero': true, 'tpl-footer': true } } },
+      }),
+      // Document has them reversed: Footer before Hero.
+      getDocument: vi.fn().mockResolvedValue({
+        snapshot: {
+          content: [
+            { type: 'Footer', props: { id: 'f1' } },
+            { type: 'Hero', props: { id: 'h1' } },
+          ],
+        },
+      }),
+    });
+    await expect(
+      executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1'),
+    ).rejects.toThrow(/abort_edit_session/);
+  });
+
+  it('passes when structure still conforms after the edit', async () => {
+    const cssApi = makeCssApi();
+    await executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1');
+    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+    expect(cssApi.getTemplate).toHaveBeenCalledOnce();
+  });
+
+  it('skips structure validation when the document has no template', async () => {
+    const cssApi = makeCssApi({
+      lookupDocumentByPath: vi.fn().mockResolvedValue({ id: 'doc-1', path: 'index', createdAt: '' }),
+      // even a non-conforming snapshot must not fail when there's no template
+      getDocument: vi.fn().mockResolvedValue({ snapshot: { content: [] } }),
+    });
+    await executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1');
+    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+    expect(cssApi.getTemplate).not.toHaveBeenCalled();
+  });
+
+  it('degrades gracefully (no throw) when the template fetch fails', async () => {
+    const cssApi = makeCssApi({
+      getTemplate: vi.fn().mockRejectedValue(new Error('Network timeout')),
+    });
+    await executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1');
+    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // apply_document_edits — agent → backend op translation
 // ---------------------------------------------------------------------------
 

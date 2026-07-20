@@ -1,6 +1,6 @@
 import type OpenAI from 'openai';
 import type { McpApiClient } from './css-api.js';
-import { validateOps } from '@pantheon-systems/p1-content-validator';
+import { validateOps, validateDocumentStructure } from '@pantheon-systems/p1-content-validator';
 import type { ComponentSchema } from '@pantheon-systems/p1-content-validator';
 
 // Inline ULID generator — no external dependency required in Workers
@@ -440,7 +440,7 @@ export async function executeTool(
       let registry: Record<string, ComponentSchema> = {};
 
       if (hasContentOp) {
-        await Promise.allSettled([
+        const prefetch = await Promise.allSettled([
           (async () => {
             const docs = await cssApi.listDocuments(
               siteId, branchId,
@@ -457,6 +457,13 @@ export async function executeTool(
             registry = buildRegistry(result.components as unknown[]);
           })(),
         ]);
+        // Log prefetch failures so a backend auth/config issue silently
+        // disabling validation is noticeable in `wrangler tail`.
+        for (const r of prefetch) {
+          if (r.status === 'rejected') {
+            console.warn('apply_document_edits: validation prefetch failed —', r.reason);
+          }
+        }
 
         const { errors } = validateOps({ operations, registry, currentSnapshot: snapshot });
         if (errors.length > 0) {
@@ -491,13 +498,55 @@ export async function executeTool(
         }
       });
 
-      return cssApi.applyEdits({
-        siteId: toolInput.site_id as string,
-        branchId: toolInput.branch_id as string,
-        documentPath: toolInput.document_path as string,
+      const applyResult = await cssApi.applyEdits({
+        siteId,
+        branchId,
+        documentPath,
         editSessionId: toolInput.edit_session_id as string,
         operations: backendOps,
       });
+
+      // Structure validation (post-apply): if the document conforms to a page
+      // template, verify the edits didn't break its pinned-component skeleton.
+      // Runs after applying because there's no local JSON-Patch simulation.
+      //
+      // On failure we surface the error and instruct the agent to call
+      // abort_edit_session. Rollback is intentionally agent-driven, not
+      // automatic — this matches every consumer in the ecosystem (CSS
+      // mcp-server apply_document_edits). The edit session rolls back only when
+      // the caller aborts, so the applied-but-invalid edits persist until then.
+      let structuralError: string | undefined;
+      try {
+        const docInfo = await cssApi.lookupDocumentByPath(siteId, documentPath);
+        const templateId = docInfo?.templateId;
+        if (templateId) {
+          const [updatedDoc, template] = await Promise.all([
+            cssApi.getDocument(siteId, branchId, documentPath),
+            cssApi.getTemplate(siteId, branchId, templateId),
+          ]);
+          const { errors } = validateDocumentStructure({
+            documentSnapshot: updatedDoc.snapshot,
+            templateSnapshot: template,
+          });
+          if (errors.length > 0) {
+            structuralError = errors.map(e => e.message).join('\n');
+          }
+        }
+      } catch (err) {
+        // Template lookup/fetch failed — skip structure validation (graceful
+        // degradation; the backend still enforces its own rules). Log so a
+        // backend auth/config issue silently disabling enforcement is noticeable.
+        console.warn('apply_document_edits: structure validation skipped —', err);
+      }
+
+      if (structuralError !== undefined) {
+        throw new Error(
+          `${structuralError}\n\nThe edits were applied but violate the page template ` +
+          `structure. Call abort_edit_session to roll back these changes.`,
+        );
+      }
+
+      return applyResult;
     }
 
     case 'complete_edit_session':
