@@ -1,0 +1,67 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/schemas/config.json",
+
+  // Frontend Worker — serves the Vite-built SPA with runtime config injection
+  "name": "collaborative-state-frontend",
+  "main": "./src/worker.ts",
+  "compatibility_date": "2025-04-01",
+
+  // Static assets served from Vite build output
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+  },
+
+  // Default vars (overridden per environment)
+  "vars": {
+    "FRONTEND_API_BASE_URL": "",
+    "FRONTEND_GOOGLE_CLIENT_ID": "",
+    "FRONTEND_AUTH0_DOMAIN": "",
+    "FRONTEND_AUTH0_CLIENT_ID": "",
+    "FRONTEND_AUTH0_AUDIENCE": "",
+    "FRONTEND_ENABLE_MOCK_LOGIN": "false",
+  },
+
+  "env": {
+    // staging environment
+    "staging": {
+      "name": "collaborative-state-frontend-staging",
+      "vars": {
+        "FRONTEND_API_BASE_URL": "https://collaborative-state-worker-staging.pantheon-content-publisher.workers.dev",
+        "FRONTEND_GOOGLE_CLIENT_ID": "",
+        "FRONTEND_AUTH0_DOMAIN": "https://auth-staging.pantheon.io",
+        "FRONTEND_AUTH0_CLIENT_ID": "ZCByhgwCf1OTplxZdEaahS04NybzaBqQ",
+        "FRONTEND_AUTH0_AUDIENCE": "https://staging.mcp.p1.pantheon.io",
+        "FRONTEND_ENABLE_MOCK_LOGIN": "false",
+      },
+    },
+
+    // Sandbox environment
+    "sbx1": {
+      "name": "collaborative-state-frontend-sbx1",
+      "vars": {
+        "FRONTEND_API_BASE_URL": "https://collaborative-state-worker-sbx1.chris-801.workers.dev",
+        "FRONTEND_GOOGLE_CLIENT_ID": "698568233370-dctgfeorr18175lfh75pn9li4p93icmg.apps.googleusercontent.com",
+        "FRONTEND_AUTH0_DOMAIN": "",
+        "FRONTEND_AUTH0_CLIENT_ID": "",
+        "FRONTEND_AUTH0_AUDIENCE": "",
+        "FRONTEND_ENABLE_MOCK_LOGIN": "false",
+      },
+    },
+
+    // Production environment
+    "production": {
+      "name": "collaborative-state-frontend-production",
+      "vars": {
+        "FRONTEND_API_BASE_URL": "https://collaborative-state-worker-production.pantheon-p1-production.workers.dev",
+        "FRONTEND_GOOGLE_CLIENT_ID": "", // Google sign-in disabled in production; Auth0 only.
+        "FRONTEND_AUTH0_DOMAIN": "https://pantheon.auth0.com",
+        "FRONTEND_AUTH0_CLIENT_ID": "6wDFEzZdZ8kASQJxFXOIxdl4jzjCAZ0m",
+        "FRONTEND_AUTH0_AUDIENCE": "https://mcp.p1.pantheon.io",
+        "FRONTEND_ENABLE_MOCK_LOGIN": "false",
+      },
+    },
+  },
+}

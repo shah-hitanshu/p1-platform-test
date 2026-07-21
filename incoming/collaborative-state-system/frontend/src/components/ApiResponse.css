@@ -1,0 +1,22 @@
+/* API Response Styles */
+
+.api-response {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.api-response-loading {
+  padding: 24px;
+}
+
+.api-response-empty {
+  padding: 24px;
+  background-color: var(--dt-color-gray-1, #f3f4f6);
+  color: var(--dt-color-gray-6, #4b5563);
+  text-align: center;
+  font-size: 0.875rem;
+}
+
+.api-response-success {
+  /* Success state just wraps JsonViewer */
+}

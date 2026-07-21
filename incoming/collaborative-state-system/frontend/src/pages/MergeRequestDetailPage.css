@@ -1,0 +1,143 @@
+/**
+ * Merge Request Detail Page Styles
+ *
+ * Uses PDS components where possible:
+ * - Breadcrumb (PDS) for navigation breadcrumb
+ * - Panel (PDS) for section containers (header, metadata, description, actions, preview, conflicts)
+ * - Button (PDS) for action buttons (approve, close, delete, merge, etc.)
+ * - RouterLinkButton (PDS) for back navigation
+ * - Alert (PDS) for error messages
+ *
+ * Custom styles remain for:
+ * - Page layout and structure
+ * - Metadata grid
+ * - Branch display
+ * - Conflict section content
+ */
+
+.mr-detail-page {
+  max-width: 900px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.mr-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.mr-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--dt-color-gray-8, #1a1a2e);
+}
+
+.mr-branches {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.branch-tag {
+  padding: 6px 12px;
+}
+
+.branch-arrow {
+  color: var(--dt-color-gray-5, #6c757d);
+  font-size: 1.25rem;
+}
+
+/* Metadata Section */
+.metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.metadata-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metadata-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--dt-color-gray-5, #6c757d);
+}
+
+.metadata-value {
+  font-size: 0.9375rem;
+  color: var(--dt-color-gray-7, #333);
+}
+
+/* Description Section */
+.section-title {
+  margin: 0 0 16px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--dt-color-gray-8, #1a1a2e);
+}
+
+.description-content {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--dt-color-gray-7, #333);
+}
+
+.description-content p {
+  margin: 0;
+}
+
+.no-description {
+  color: var(--dt-color-gray-5, #6c757d);
+  font-style: italic;
+}
+
+/* Actions Section */
+.actions-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.status-message {
+  font-size: 0.9375rem;
+  color: var(--dt-color-gray-5, #6c757d);
+  font-style: italic;
+}
+
+/* PDS Alert spacing for action error */
+.action-error-alert {
+  margin-top: 12px;
+}
+
+/* Conflicts Section */
+.conflicts-note {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--dt-color-yellow-4, #856404);
+}
+
+/* Loading & Error */
+.loading-container {
+  padding: 40px;
+  text-align: center;
+}
+
+.error-container {
+  padding: 40px;
+  text-align: center;
+}
+
+.back-link-container {
+  margin-top: 16px;
+}

@@ -1,0 +1,48 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version_override:
+        description: 'Version to publish (e.g. 1.2.3 or 1.2.3-beta.1). If empty, uses version from package.json.'
+        required: false
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - run: corepack enable pnpm
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build p1-content-validator
+        working-directory: packages/p1-content-validator
+        run: pnpm build
+
+      - name: Set version override
+        if: inputs.version_override != ''
+        working-directory: packages/p1-content-validator
+        run: |
+          jq --arg v "${{ inputs.version_override }}" '.version = $v' package.json > tmp.json && mv tmp.json package.json
+
+      - name: Publish p1-content-validator
+        working-directory: packages/p1-content-validator
+        run: pnpm publish --access public --no-git-checks

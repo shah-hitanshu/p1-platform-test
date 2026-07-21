@@ -1,0 +1,44 @@
+{
+  "table": "app.agent_site_roles",
+  "backup_date": "2026-03-25T17:58:00Z",
+  "environment": "sbx1",
+  "schema": ["id", "agent_id", "site_id", "role", "created_at", "updated_at", "created_by_id"],
+  "rows": [
+    {
+      "id": "55385936-bb01-44eb-9d9a-dd9cf484daae",
+      "agent_id": "a0000000-0000-0000-0000-000000000001",
+      "site_id": "35b800c4-6010-4908-a724-f1512e2a2144",
+      "role": "admin",
+      "created_at": "2026-02-06T19:49:49.871Z",
+      "updated_at": "2026-02-06T19:49:49.871Z",
+      "created_by_id": null
+    },
+    {
+      "id": "f927128d-6585-4a72-a510-afa78f391717",
+      "agent_id": "a0000000-0000-0000-0000-000000000001",
+      "site_id": "5da7f0d0-81d8-4e92-9a4b-a4cb07090768",
+      "role": "admin",
+      "created_at": "2026-02-06T19:49:49.871Z",
+      "updated_at": "2026-02-06T19:49:49.871Z",
+      "created_by_id": null
+    },
+    {
+      "id": "125da510-c5af-4087-ad1d-c1e5e916cae0",
+      "agent_id": "a0000000-0000-0000-0000-000000000001",
+      "site_id": "b56bdbfd-512c-4c1f-82e9-e774c2a8ec22",
+      "role": "admin",
+      "created_at": "2026-02-06T19:49:49.871Z",
+      "updated_at": "2026-02-06T19:49:49.871Z",
+      "created_by_id": null
+    },
+    {
+      "id": "09358fb6-4234-4b57-8fea-9218b00ec9e0",
+      "agent_id": "a0000000-0000-0000-0000-000000000001",
+      "site_id": "03499be6-0236-47d8-9076-64b71c420e1e",
+      "role": "admin",
+      "created_at": "2026-02-24T21:48:52.696Z",
+      "updated_at": "2026-02-24T21:48:52.696Z",
+      "created_by_id": null
+    }
+  ]
+}

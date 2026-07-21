@@ -1,0 +1,142 @@
+.sites-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.header-content {
+  flex: 1;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--dt-color-gray-8, #1a1a2e);
+}
+
+.page-subtitle {
+  margin: 8px 0 0;
+  font-size: 0.9375rem;
+  color: var(--dt-color-gray-5, #6c757d);
+}
+
+.create-form-container {
+  margin-bottom: 24px;
+  padding: 20px;
+  background-color: var(--dt-color-white, #fff);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.create-form {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.form-fields {
+  display: flex;
+  flex: 1;
+  gap: 12px;
+}
+
+.create-error-alert {
+  margin-top: 12px;
+}
+
+.error-banner {
+  margin-bottom: 24px;
+}
+
+.loading-container {
+  padding: 40px;
+  text-align: center;
+}
+
+.sites-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.site-card {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--dt-color-white, #fff);
+  border: 1px solid var(--dt-color-gray-3, #e6e6e6);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: box-shadow 0.15s ease;
+}
+
+.site-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.site-card__body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--dt-color-gray-3, #e6e6e6);
+}
+
+.site-card__name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--dt-color-gray-8, #1a1a2e);
+}
+
+.site-card__meta {
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+  color: var(--dt-color-gray-6, #6c757d);
+}
+
+.site-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.site-card__overview {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border: 1px solid var(--dt-color-gray-4, #c4c4c4);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--dt-color-gray-8, #1a1a2e);
+  text-decoration: none;
+  background-color: var(--dt-color-white, #fff);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.site-card__overview:hover {
+  background-color: var(--dt-color-gray-2, #f5f5f5);
+  border-color: var(--dt-color-gray-5, #9e9e9e);
+}
+
+.site-card__editor {
+  font-size: 0.85rem;
+  color: var(--dt-color-gray-7, #555);
+  text-decoration: none;
+}
+
+.site-card__editor:hover {
+  text-decoration: underline;
+}
+
+.back-link-container {
+  margin-top: 16px;
+}
+
+.error-container {
+  padding: 40px;
+  text-align: center;
+}

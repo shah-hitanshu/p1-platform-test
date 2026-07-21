@@ -1,0 +1,5055 @@
+openapi: 3.0.3
+info:
+  title: P1 API
+  description: |
+    REST API for P1 — a JSON state versioning and real-time collaboration platform.
+
+    ## Overview
+
+    P1 provides:
+    - **Version Control**: Git-like branching and merging for JSON documents
+    - **Real-time Collaboration**: WebSocket-based collaborative editing with presence awareness
+    - **Agent Coordination**: AI agent support with human-first editing priority
+    - **Presence Awareness**: Real-time visibility of who is editing what
+
+    ## Authentication
+
+    All authenticated endpoints require one of:
+    - **Bearer Token**: `Authorization: Bearer <jwt-token>`
+    - **API Key**: `X-API-Key: <api-key>` header or `?apiKey=<key>` query parameter
+
+    ## Rate Limits
+
+    - Standard endpoints: 1000 requests/minute per principal
+    - Real-time connections: 100 concurrent WebSocket connections per document
+
+    ## Error Responses
+
+    All errors follow a consistent format:
+    ```json
+    {
+      "error": "Error message",
+      "details": {
+        "reason": "Specific reason",
+        "suggestions": ["Possible fix"]
+      }
+    }
+    ```
+
+  version: 1.0.0
+  contact:
+    name: Pantheon Engineering
+    url: https://pantheon.io
+  license:
+    name: Proprietary
+    url: https://pantheon.io/terms
+
+servers:
+  - url: https://ccr.p1.pantheon.io
+    description: Production
+  - url: http://localhost:8787
+    description: Local Development
+
+tags:
+  - name: Health
+    description: System health and status
+  - name: Authentication
+    description: Token issuance and validation
+  - name: Organizations
+    description: Organization management for agent configuration
+  - name: Agents
+    description: Agent registry and status management
+  - name: Sites
+    description: Pantheon site management
+  - name: Branches
+    description: Branch lifecycle and version control
+  - name: Documents
+    description: Document inventory and metadata
+  - name: Versions
+    description: Document version history
+  - name: Real-time
+    description: Real-time editing and WebSocket connections
+  - name: Checkpoints
+    description: Named snapshots for rollback
+  - name: Merge
+    description: Branch merging and conflict resolution
+  - name: Merge Requests
+    description: Merge request workflow
+  - name: Structures
+    description: Site hierarchies and navigation
+  - name: Structure Nodes
+    description: Nodes within site structures
+  - name: Document Metadata
+    description: Schema-validated document metadata
+  - name: Branch Grants
+    description: Branch-level authorization
+  - name: Presence
+    description: Actor presence and awareness
+  - name: Site Settings
+    description: Per-site cache and workflow configuration
+  - name: Site Tokens
+    description: Service principal tokens scoped to a site
+  - name: Collaborators
+    description: User access grants on a site
+  - name: Content
+    description: Published content delivery (read-only, for CDN/frontend consumption)
+  - name: Agent Keys
+    description: API key management for agents
+  - name: Agent Roles
+    description: Site role grants for agents
+  - name: Admin
+    description: System-level user allowlist management (system admin only)
+  - name: OAuth
+    description: CSS OAuth 2.0 Authorization Code flow (Google upstream IdP)
+
+security:
+  - bearerAuth: []
+  - apiKeyHeader: []
+
+paths:
+  # ===========================================================================
+  # Health & Auth
+  # ===========================================================================
+  /health:
+    get:
+      summary: Health check
+      description: Returns system health status including database connectivity.
+      operationId: getHealth
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: System unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  # ===========================================================================
+  # OAuth 2.0 (CSS Auth — Google upstream IdP)
+  # ===========================================================================
+  /auth/authorize:
+    get:
+      summary: Initiate OAuth 2.0 Authorization Code flow
+      description: |
+        Validates the client (site) and redirect_uri, registers the client in KV if
+        needed, then redirects the browser to Google for user authentication.
+        Uses PKCE (code_challenge / code_challenge_method).
+      operationId: oauthAuthorize
+      tags: [OAuth]
+      security: []
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          description: Site UUID — the OAuth client identifier
+          schema:
+            type: string
+            format: uuid
+        - name: redirect_uri
+          in: query
+          required: true
+          description: Must match site's configured allowedOrigins
+          schema:
+            type: string
+            format: uri
+        - name: response_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [code]
+        - name: code_challenge
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: code_challenge_method
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [S256]
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: scope
+          in: query
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to Google authentication
+        '400':
+          description: Missing or invalid parameters, or redirect_uri not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/callback:
+    get:
+      summary: OAuth 2.0 callback — exchange Google code for CSS token
+      description: |
+        Google redirects here after user authentication. Verifies HMAC-signed state,
+        re-validates redirect_uri, exchanges Google code, issues a CSS access token,
+        and redirects the browser back to the client redirect_uri.
+      operationId: oauthCallback
+      tags: [OAuth]
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to client with authorization code
+        '400':
+          description: Invalid or tampered state parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Failed to exchange code with Google
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Failed to re-validate site configuration (database unavailable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/me:
+    get:
+      summary: Get authenticated principal info
+      description: Returns the identity of the currently authenticated principal (user, agent, or service).
+      operationId: getAuthMe
+      tags: [Authentication]
+      responses:
+        '200':
+          description: Authenticated principal details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticatedPrincipal'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ===========================================================================
+  # Organizations
+  # ===========================================================================
+  # ===========================================================================
+  # Agents
+  # ===========================================================================
+  /api/organizations/{orgId}/agents:
+    parameters:
+      - $ref: '#/components/parameters/orgIdParam'
+    get:
+      summary: List agents
+      description: Returns all agents registered in the organization.
+      operationId: listAgents
+      tags: [Agents]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: status
+          in: query
+          description: Filter by agent status
+          schema:
+            $ref: '#/components/schemas/AgentStatus'
+      responses:
+        '200':
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentListResponse'
+
+    post:
+      summary: Create agent
+      description: Registers a new agent in the organization.
+      operationId: createAgent
+      tags: [Agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAgentRequest'
+      responses:
+        '201':
+          description: Agent created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisteredAgent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/organizations/{orgId}/agents/{agentId}:
+    parameters:
+      - $ref: '#/components/parameters/orgIdParam'
+      - $ref: '#/components/parameters/agentIdParam'
+    get:
+      summary: Get agent
+      description: Returns details for a specific agent.
+      operationId: getAgent
+      tags: [Agents]
+      responses:
+        '200':
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisteredAgent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update agent
+      description: Updates agent name, description, or settings.
+      operationId: updateAgent
+      tags: [Agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAgentRequest'
+      responses:
+        '200':
+          description: Agent updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisteredAgent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete agent
+      description: Removes an agent from the registry.
+      operationId: deleteAgent
+      tags: [Agents]
+      responses:
+        '204':
+          description: Agent deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/organizations/{orgId}/agents/{agentId}/status:
+    parameters:
+      - $ref: '#/components/parameters/orgIdParam'
+      - $ref: '#/components/parameters/agentIdParam'
+    put:
+      summary: Update agent status
+      description: Changes agent status (active, suspended, disabled).
+      operationId: updateAgentStatus
+      tags: [Agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  $ref: '#/components/schemas/AgentStatus'
+                reason:
+                  type: string
+                  description: Reason for status change
+      responses:
+        '200':
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisteredAgent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/organizations/{orgId}/agents/{agentId}/presence:
+    parameters:
+      - $ref: '#/components/parameters/orgIdParam'
+      - $ref: '#/components/parameters/agentIdParam'
+    get:
+      summary: Get agent global presence
+      description: Returns the agent's presence across all sites and documents.
+      operationId: getAgentPresence
+      tags: [Agents, Presence]
+      responses:
+        '200':
+          description: Agent presence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentGlobalPresence'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Sites
+  # ===========================================================================
+  /api/sites:
+    get:
+      summary: List sites
+      description: Returns all sites the principal has access to. Defaults to active (non-archived) sites only.
+      operationId: listSites
+      tags: [Sites]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: archived
+          in: query
+          description: Filter by archived state. true = archived only, false = active only (default).
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: List of sites
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteListResponse'
+
+    post:
+      summary: Create site
+      description: Registers a new Pantheon site in the system.
+      operationId: createSite
+      tags: [Sites]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSiteRequest'
+      responses:
+        '201':
+          description: Site created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Site'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Site with pantheonSiteId already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/sites/{siteId}:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+    get:
+      summary: Get site
+      description: Returns details for a specific site.
+      operationId: getSite
+      tags: [Sites]
+      responses:
+        '200':
+          description: Site details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Site'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update site
+      description: Updates site name or workflow settings.
+      operationId: updateSite
+      tags: [Sites]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSiteRequest'
+      responses:
+        '200':
+          description: Site updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Site'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Archive site (soft delete)
+      description: Soft-deletes a site by setting archivedAt. Cascades to branches and documents. Fails if the site has active non-archived branches. Recoverable via POST /api/sites/{siteId}/restore.
+      operationId: deleteSite
+      tags: [Sites]
+      responses:
+        '204':
+          description: Site archived
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Site has active branches or is already archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/sites/{siteId}/restore:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+    post:
+      summary: Restore archived site
+      description: Restores a soft-deleted site. Also restores branches and documents that were cascade-archived at the same time; independently-archived branches/docs remain archived.
+      operationId: restoreSite
+      tags: [Sites]
+      responses:
+        '200':
+          description: Site restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Site'
+        '404':
+          description: Site not found or not archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/sites/{siteId}/presence:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+    get:
+      summary: Get site presence
+      description: Returns aggregated presence for all branches and documents in the site.
+      operationId: getSitePresence
+      tags: [Sites, Presence]
+      responses:
+        '200':
+          description: Site presence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SitePresence'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Branches
+  # ===========================================================================
+  /api/sites/{siteId}/branches:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+    get:
+      summary: List branches
+      description: |
+        Returns all branches for a site. Defaults to active (non-archived) branches only.
+        A write:registry scoped token may call this (to resolve a git branch name to a
+        CSS branch) but cannot fetch, create, or restore an individual branch.
+      operationId: listBranches
+      tags: [Branches]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: status
+          in: query
+          description: Filter by branch status
+          schema:
+            $ref: '#/components/schemas/BranchStatus'
+        - name: archived
+          in: query
+          description: Filter by archived state. true = archived only, false = active only (default).
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: List of branches
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchListResponse'
+
+    post:
+      summary: Create branch
+      description: Creates a new branch from a parent branch.
+      operationId: createBranch
+      tags: [Branches]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBranchRequest'
+      responses:
+        '201':
+          description: Branch created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Branch name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/sites/{siteId}/branches/{branchId}:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+    get:
+      summary: Get branch
+      description: Returns details for a specific branch.
+      operationId: getBranch
+      tags: [Branches]
+      responses:
+        '200':
+          description: Branch details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update branch
+      description: Updates branch name, description, or status.
+      operationId: updateBranch
+      tags: [Branches]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBranchRequest'
+      responses:
+        '200':
+          description: Branch updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Archive branch (soft delete)
+      description: Soft-deletes a branch by setting archivedAt. Cannot archive main branch. Recoverable via POST /api/sites/{siteId}/branches/{branchId}/restore.
+      operationId: deleteBranch
+      tags: [Branches]
+      responses:
+        '204':
+          description: Branch archived
+        '400':
+          description: Cannot archive main branch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Branch is already archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/sites/{siteId}/branches/{branchId}/restore:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+    post:
+      summary: Restore archived branch
+      description: Restores a soft-deleted branch. Blocked if the parent site is archived.
+      operationId: restoreBranch
+      tags: [Branches]
+      responses:
+        '200':
+          description: Branch restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+        '404':
+          description: Branch not found or not archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/sites/{siteId}/branches/{branchId}/presence:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+    get:
+      summary: Get branch presence
+      description: Returns presence for all documents in the branch.
+      operationId: getBranchPresence
+      tags: [Branches, Presence]
+      responses:
+        '200':
+          description: Branch presence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchPresence'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Documents
+  # ===========================================================================
+  /api/sites/{siteId}/documents:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+    get:
+      summary: List documents
+      description: Returns all documents in a site.
+      operationId: listDocuments
+      tags: [Documents]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: pathPrefix
+          in: query
+          description: Filter documents by path prefix
+          schema:
+            type: string
+          example: pages/
+        - name: archived
+          in: query
+          description: Include archived documents. Omit or false for active only, true for archived only.
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: List of documents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentListResponse'
+
+    post:
+      summary: Create document
+      description: Creates a new document in the site.
+      operationId: createDocument
+      tags: [Documents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDocumentRequest'
+      responses:
+        '201':
+          description: Document created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '409':
+          description: Document path already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/sites/{siteId}/documents/{documentId}:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/documentIdParam'
+    get:
+      summary: Get document
+      description: Returns document metadata.
+      operationId: getDocument
+      tags: [Documents]
+      responses:
+        '200':
+          description: Document metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update document path
+      description: Updates the document's path.
+      operationId: updateDocument
+      tags: [Documents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                path:
+                  type: string
+                  description: New document path
+      responses:
+        '200':
+          description: Document updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Archive document
+      description: Soft-deletes (archives) a document.
+      operationId: deleteDocument
+      tags: [Documents]
+      responses:
+        '204':
+          description: Document archived
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/sites/{siteId}/documents/{documentId}/restore:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/documentIdParam'
+    post:
+      summary: Restore archived document
+      description: Restores a previously archived document.
+      operationId: restoreDocument
+      tags: [Documents]
+      responses:
+        '200':
+          description: Document restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/sites/{siteId}/documents/by-path/{path}:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - name: path
+        in: path
+        required: true
+        description: URL-encoded document path
+        schema:
+          type: string
+    get:
+      summary: Get document by path
+      description: Returns document by its path.
+      operationId: getDocumentByPath
+      tags: [Documents]
+      responses:
+        '200':
+          description: Document metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Branch-Scoped Documents
+  # ===========================================================================
+  /api/sites/{siteId}/branches/{branchId}/documents:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+    get:
+      summary: List branch documents
+      description: Returns documents with versions on this branch. Includes inherited documents from main via copy-on-write fallback.
+      operationId: listBranchDocuments
+      tags: [Documents]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: pathPrefix
+          in: query
+          description: Filter documents by path prefix
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of documents on branch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentListResponse'
+
+    post:
+      summary: Create document on branch
+      description: |
+        Creates a document with an initial version on this branch. Returns 409 if the
+        path already exists on this branch — except under _registry/components/* and
+        the registry index path, where a repeat POST instead creates a new version on
+        the existing document (upsert), since a write:registry scoped token has no read
+        access to discover an existing document's ID up front.
+      operationId: createBranchDocument
+      tags: [Documents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBranchDocumentRequest'
+      responses:
+        '201':
+          description: Document created with initial version
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document:
+                    $ref: '#/components/schemas/Document'
+                  version:
+                    $ref: '#/components/schemas/DocumentVersion'
+        '409':
+          description: Document path already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ===========================================================================
+  # Document Versions
+  # ===========================================================================
+  /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/documentIdParam'
+    get:
+      summary: List document versions
+      description: Returns version history for a document on a branch.
+      operationId: listDocumentVersions
+      tags: [Versions]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+      responses:
+        '200':
+          description: List of versions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentVersionListResponse'
+
+    post:
+      summary: Create document version
+      description: Creates a new version with the provided snapshot.
+      operationId: createDocumentVersion
+      tags: [Versions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVersionRequest'
+      responses:
+        '201':
+          description: Version created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentVersion'
+
+  /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/latest:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/documentIdParam'
+    get:
+      summary: Get latest version
+      description: Returns the latest version of a document on a branch.
+      operationId: getLatestDocumentVersion
+      tags: [Versions]
+      responses:
+        '200':
+          description: Latest version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentVersion'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/{versionId}:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/documentIdParam'
+      - name: versionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get specific version
+      description: Returns a specific version by ID.
+      operationId: getDocumentVersion
+      tags: [Versions]
+      responses:
+        '200':
+          description: Version details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentVersion'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Real-time Document Operations
+  # ===========================================================================
+  /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - name: documentPath
+        in: path
+        required: true
+        description: Document path (URL-encoded)
+        schema:
+          type: string
+    get:
+      summary: Get current document state
+      description: Returns the current resolved state of a document.
+      operationId: getDocumentState
+      tags: [Real-time]
+      responses:
+        '200':
+          description: Current document state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentState'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/connect:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - name: documentPath
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: WebSocket connection
+      description: |
+        Upgrades to WebSocket for real-time collaborative editing.
+
+        **Protocol:**
+        - Binary frames: collaborative sync updates
+        - Text frames: JSON presence messages
+
+        **Client Messages:**
+        - `focus_region_update`: Update actor's focus regions
+        - `presence_heartbeat`: Keep-alive with optional state update
+
+        **Server Messages:**
+        - `presence_update`: Full presence sync
+        - `focus_region_broadcast`: Other actor's focus changed
+        - `focus_region_ack`: Confirmation of focus update
+        - `presence_error`: Error in presence operation
+      operationId: connectDocument
+      tags: [Real-time]
+      parameters:
+        - name: apiKey
+          in: query
+          description: API key for WebSocket auth
+          schema:
+            type: string
+      responses:
+        '101':
+          description: Switching to WebSocket protocol
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/edits:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - name: documentPath
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Apply edit operations
+      description: Applies programmatic edit operations to a document.
+      operationId: applyEdits
+      tags: [Real-time]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditOperationsRequest'
+      responses:
+        '200':
+          description: Edits applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Concurrent edit conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ===========================================================================
+  # Agent Edit Workflow
+  # ===========================================================================
+  /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/can-agent-edit:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - name: documentPath
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Check if agent can edit
+      description: |
+        Checks whether an agent is allowed to edit the document based on:
+        - Human presence and activity
+        - Target region conflicts
+        - Agent status
+      operationId: canAgentEdit
+      tags: [Real-time]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentEditCheckRequest'
+      responses:
+        '200':
+          description: Edit permission check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEditPermission'
+
+  /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/agent-edit-start:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - name: documentPath
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Start agent edit session
+      description: |
+        Begins an agent edit session:
+        - Creates pre-edit checkpoint (for rollback)
+        - Registers agent presence with edit intent
+        - Locks target regions from other agents
+      operationId: agentEditStart
+      tags: [Real-time]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentEditStartRequest'
+      responses:
+        '200':
+          description: Edit session started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEditStartResponse'
+        '403':
+          description: Agent not allowed to edit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEditPermission'
+
+  /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/agent-edit-complete:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - name: documentPath
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Complete agent edit session
+      description: |
+        Completes an agent edit session:
+        - Creates post-edit checkpoint
+        - Releases region locks
+        - Updates agent presence state
+      operationId: agentEditComplete
+      tags: [Real-time]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentEditCompleteRequest'
+      responses:
+        '200':
+          description: Edit session completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checkpoint:
+                    $ref: '#/components/schemas/Checkpoint'
+
+  /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/agent-edit-abort:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - name: documentPath
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Abort agent edit session
+      description: |
+        Aborts an agent edit session:
+        - Reverts to pre-edit checkpoint
+        - Releases region locks
+        - Marks checkpoint as rolled back
+      operationId: agentEditAbort
+      tags: [Real-time]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentEditAbortRequest'
+      responses:
+        '200':
+          description: Edit session aborted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rolledBackTo:
+                    $ref: '#/components/schemas/Checkpoint'
+
+  /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/focus-regions:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - name: documentPath
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Update agent focus regions
+      description: Updates the agent's declared focus regions without WebSocket.
+      operationId: updateFocusRegions
+      tags: [Real-time]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentId, focusRegions]
+              properties:
+                agentId:
+                  type: string
+                  format: uuid
+                focusRegions:
+                  type: array
+                  items:
+                    type: string
+                  description: JSON paths the agent is focused on
+      responses:
+        '200':
+          description: Focus regions updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  # ===========================================================================
+  # Checkpoints
+  # ===========================================================================
+  /api/sites/{siteId}/branches/{branchId}/checkpoints:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+    get:
+      summary: List checkpoints
+      description: Returns checkpoints on a branch.
+      operationId: listCheckpoints
+      tags: [Checkpoints]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: checkpointType
+          in: query
+          schema:
+            $ref: '#/components/schemas/CheckpointType'
+      responses:
+        '200':
+          description: List of checkpoints
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckpointListResponse'
+
+    post:
+      summary: Create checkpoint
+      description: Creates a named checkpoint of current branch state.
+      operationId: createCheckpoint
+      tags: [Checkpoints]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCheckpointRequest'
+      responses:
+        '201':
+          description: Checkpoint created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Checkpoint'
+
+  /api/sites/{siteId}/checkpoints/{checkpointId}:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - name: checkpointId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get checkpoint
+      description: Returns checkpoint details.
+      operationId: getCheckpoint
+      tags: [Checkpoints]
+      responses:
+        '200':
+          description: Checkpoint details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Checkpoint'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete checkpoint
+      description: Deletes a checkpoint.
+      operationId: deleteCheckpoint
+      tags: [Checkpoints]
+      responses:
+        '204':
+          description: Checkpoint deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/sites/{siteId}/checkpoints/{checkpointId}/documents:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - name: checkpointId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get documents at checkpoint
+      description: Returns document versions at a checkpoint.
+      operationId: getCheckpointDocuments
+      tags: [Checkpoints]
+      responses:
+        '200':
+          description: Documents at checkpoint
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checkpointId:
+                    type: string
+                    format: uuid
+                  documents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DocumentVersion'
+
+  /api/sites/{siteId}/branches/{branchId}/checkpoints/{checkpointId}/revert:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - name: checkpointId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Revert to checkpoint
+      description: Reverts branch state to a checkpoint.
+      operationId: revertToCheckpoint
+      tags: [Checkpoints]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Reason for revert
+      responses:
+        '200':
+          description: Branch reverted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  newVersion:
+                    type: integer
+                  revertedAt:
+                    type: string
+                    format: date-time
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Merge Operations
+  # ===========================================================================
+  /api/sites/{siteId}/merge/check:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+    post:
+      summary: Check merge feasibility
+      description: Checks if a merge can be performed without conflicts.
+      operationId: checkMerge
+      tags: [Merge]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MergeCheckRequest'
+      responses:
+        '200':
+          description: Merge check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MergeCheckResponse'
+
+  /api/sites/{siteId}/merge/preview:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+    post:
+      summary: Preview merge results
+      description: Returns what the merge would look like without executing.
+      operationId: previewMerge
+      tags: [Merge]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MergeCheckRequest'
+      responses:
+        '200':
+          description: Merge preview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MergePreviewResponse'
+
+  /api/sites/{siteId}/merge/execute:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+    post:
+      summary: Execute merge
+      description: Performs the merge operation.
+      operationId: executeMerge
+      tags: [Merge]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MergeExecuteRequest'
+      responses:
+        '200':
+          description: Merge completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MergeExecuteResponse'
+        '409':
+          description: Merge has unresolved conflicts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MergeCheckResponse'
+
+  # ===========================================================================
+  # Merge Requests
+  # ===========================================================================
+  /api/sites/{siteId}/merge-requests:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+    get:
+      summary: List merge requests
+      description: Returns merge requests for a site.
+      operationId: listMergeRequests
+      tags: [Merge Requests]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/MergeRequestStatus'
+      responses:
+        '200':
+          description: List of merge requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MergeRequestListResponse'
+
+    post:
+      summary: Create merge request
+      description: Creates a new merge request.
+      operationId: createMergeRequest
+      tags: [Merge Requests]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMergeRequestRequest'
+      responses:
+        '201':
+          description: Merge request created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MergeRequest'
+
+  /api/sites/{siteId}/merge-requests/{requestId}:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - name: requestId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get merge request
+      description: Returns merge request details.
+      operationId: getMergeRequest
+      tags: [Merge Requests]
+      responses:
+        '200':
+          description: Merge request details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MergeRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update merge request
+      description: Updates merge request title, description, or status.
+      operationId: updateMergeRequest
+      tags: [Merge Requests]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMergeRequestRequest'
+      responses:
+        '200':
+          description: Merge request updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MergeRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete merge request
+      description: Deletes a merge request.
+      operationId: deleteMergeRequest
+      tags: [Merge Requests]
+      responses:
+        '204':
+          description: Merge request deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/sites/{siteId}/merge-requests/{requestId}/execute:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - name: requestId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Execute merge request
+      description: Performs the merge from the merge request.
+      operationId: executeMergeRequest
+      tags: [Merge Requests]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                conflictResolutions:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ConflictResolution'
+      responses:
+        '200':
+          description: Merge request executed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MergeRequest'
+        '409':
+          description: Has unresolved conflicts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ===========================================================================
+  # Structures
+  # ===========================================================================
+  /api/sites/{siteId}/branches/{branchId}/structures:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+    get:
+      summary: List structures
+      description: Returns structures on a branch.
+      operationId: listStructures
+      tags: [Structures]
+      responses:
+        '200':
+          description: List of structures
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructureListResponse'
+
+    post:
+      summary: Create structure
+      description: Creates a new site structure.
+      operationId: createStructure
+      tags: [Structures]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStructureRequest'
+      responses:
+        '201':
+          description: Structure created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteStructure'
+
+  /api/sites/{siteId}/branches/{branchId}/structures/{structureId}:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/structureIdParam'
+    get:
+      summary: Get structure
+      description: Returns structure details.
+      operationId: getStructure
+      tags: [Structures]
+      responses:
+        '200':
+          description: Structure details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteStructure'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update structure
+      description: Updates structure name or description.
+      operationId: updateStructure
+      tags: [Structures]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStructureRequest'
+      responses:
+        '200':
+          description: Structure updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteStructure'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete structure
+      description: Deletes a structure.
+      operationId: deleteStructure
+      tags: [Structures]
+      responses:
+        '204':
+          description: Structure deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/sites/{siteId}/branches/{branchId}/structures/{structureId}/navigation:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/structureIdParam'
+    get:
+      summary: Get navigation tree
+      description: Returns the hierarchical navigation tree.
+      operationId: getNavigationTree
+      tags: [Structures]
+      responses:
+        '200':
+          description: Navigation tree
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NavigationTree'
+
+  /api/sites/{siteId}/branches/{branchId}/structures/{structureId}/state:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/structureIdParam'
+    get:
+      summary: Get structure state
+      description: Returns branch-specific structure state.
+      operationId: getStructureState
+      tags: [Structures]
+      responses:
+        '200':
+          description: Structure state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchStructureState'
+
+  /api/sites/{siteId}/branches/{branchId}/structures/{structureId}/schema:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/structureIdParam'
+    put:
+      summary: Update metadata schema
+      description: Sets the metadata schema for a structure.
+      operationId: updateMetadataSchema
+      tags: [Document Metadata]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                schema:
+                  type: object
+                  description: JSON Schema for document metadata
+                enforcement:
+                  $ref: '#/components/schemas/SchemaEnforcementMode'
+      responses:
+        '200':
+          description: Schema updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchStructureState'
+
+  /api/sites/{siteId}/branches/{branchId}/structures/{structureId}/validate:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/structureIdParam'
+    post:
+      summary: Validate all documents
+      description: Validates all documents against the metadata schema.
+      operationId: validateDocuments
+      tags: [Document Metadata]
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaValidationResult'
+
+  # ===========================================================================
+  # Structure Nodes
+  # ===========================================================================
+  /api/sites/{siteId}/branches/{branchId}/structures/{structureId}/nodes:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/structureIdParam'
+    get:
+      summary: List nodes
+      description: Returns all nodes in a structure.
+      operationId: listNodes
+      tags: [Structure Nodes]
+      responses:
+        '200':
+          description: List of nodes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeListResponse'
+
+    post:
+      summary: Create node
+      description: Creates a new node in the structure.
+      operationId: createNode
+      tags: [Structure Nodes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNodeRequest'
+      responses:
+        '201':
+          description: Node created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructureNode'
+
+  /api/sites/{siteId}/branches/{branchId}/structures/{structureId}/nodes/{nodeId}:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/structureIdParam'
+      - $ref: '#/components/parameters/nodeIdParam'
+    get:
+      summary: Get node
+      description: Returns node details.
+      operationId: getNode
+      tags: [Structure Nodes]
+      responses:
+        '200':
+          description: Node details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructureNode'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update node
+      description: Updates node name or properties.
+      operationId: updateNode
+      tags: [Structure Nodes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNodeRequest'
+      responses:
+        '200':
+          description: Node updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructureNode'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete node
+      description: Deletes a node from the structure.
+      operationId: deleteNode
+      tags: [Structure Nodes]
+      responses:
+        '204':
+          description: Node deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/sites/{siteId}/branches/{branchId}/structures/{structureId}/nodes/{nodeId}/move:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/structureIdParam'
+      - $ref: '#/components/parameters/nodeIdParam'
+    post:
+      summary: Move node
+      description: Moves a node to a new parent or position.
+      operationId: moveNode
+      tags: [Structure Nodes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parentNodeId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: New parent (null for root)
+                position:
+                  type: integer
+                  minimum: 0
+                  description: Position among siblings
+      responses:
+        '200':
+          description: Node moved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructureNode'
+
+  /api/sites/{siteId}/branches/{branchId}/structures/{structureId}/nodes/reorder:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/structureIdParam'
+    post:
+      summary: Reorder nodes
+      description: Reorders nodes within a parent.
+      operationId: reorderNodes
+      tags: [Structure Nodes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nodeIds]
+              properties:
+                parentNodeId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Parent node (null for root level)
+                nodeIds:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  description: Ordered list of node IDs
+      responses:
+        '200':
+          description: Nodes reordered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  # ===========================================================================
+  # Document Metadata
+  # ===========================================================================
+  /api/sites/{siteId}/branches/{branchId}/structures/{structureId}/metadata:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/structureIdParam'
+    get:
+      summary: List document metadata
+      description: Returns metadata for all documents in a structure.
+      operationId: listDocumentMetadata
+      tags: [Document Metadata]
+      responses:
+        '200':
+          description: List of document metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BranchDocumentMetadata'
+
+  /api/sites/{siteId}/branches/{branchId}/structures/{structureId}/documents/{documentId}/metadata:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/structureIdParam'
+      - $ref: '#/components/parameters/documentIdParam'
+    get:
+      summary: Get document metadata
+      description: Returns metadata for a specific document.
+      operationId: getDocumentMetadata
+      tags: [Document Metadata]
+      responses:
+        '200':
+          description: Document metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchDocumentMetadata'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      summary: Set document metadata
+      description: Sets or updates metadata for a document.
+      operationId: setDocumentMetadata
+      tags: [Document Metadata]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                metadata:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Metadata updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchDocumentMetadata'
+        '400':
+          description: Validation failed (if schema enforcement is strict)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaValidationError'
+
+    delete:
+      summary: Delete document metadata
+      description: Removes metadata for a document.
+      operationId: deleteDocumentMetadata
+      tags: [Document Metadata]
+      responses:
+        '204':
+          description: Metadata deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Branch Grants
+  # ===========================================================================
+  /api/sites/{siteId}/branches/{branchId}/grants:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+    get:
+      summary: List branch grants
+      description: Returns all grants for a branch.
+      operationId: listBranchGrants
+      tags: [Branch Grants]
+      responses:
+        '200':
+          description: List of grants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchGrantListResponse'
+
+    post:
+      summary: Create branch grant
+      description: Creates a new grant for a user or agent.
+      operationId: createBranchGrant
+      tags: [Branch Grants]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBranchGrantRequest'
+      responses:
+        '201':
+          description: Grant created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchGrant'
+
+  /api/sites/{siteId}/branches/{branchId}/grants/{grantId}:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - name: grantId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get branch grant
+      description: Returns grant details.
+      operationId: getBranchGrant
+      tags: [Branch Grants]
+      responses:
+        '200':
+          description: Grant details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchGrant'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete branch grant
+      description: Revokes a branch grant.
+      operationId: deleteBranchGrant
+      tags: [Branch Grants]
+      responses:
+        '204':
+          description: Grant deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Site Settings
+  # ===========================================================================
+  /api/sites/{siteId}/settings:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+    get:
+      summary: Get site settings
+      description: Returns cache TTL and workflow settings for the site. Requires canView on main branch. Service principals are not allowed.
+      operationId: getSiteSettings
+      tags: [Site Settings]
+      responses:
+        '200':
+          description: Site settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  settings:
+                    $ref: '#/components/schemas/SiteSettings'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Update site settings
+      description: Updates cache TTL configuration. Requires canManageGrants on main branch. Service principals are not allowed.
+      operationId: updateSiteSettings
+      tags: [Site Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSiteSettingsRequest'
+      responses:
+        '200':
+          description: Updated site settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  settings:
+                    $ref: '#/components/schemas/SiteSettings'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Site Tokens
+  # ===========================================================================
+  /api/sites/{siteId}/tokens:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+    get:
+      summary: List site API tokens
+      description: Lists all active service-principal tokens for the site. Requires canManageGrants.
+      operationId: listSiteTokens
+      tags: [Site Tokens]
+      responses:
+        '200':
+          description: Token list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SiteToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      summary: Generate site API token
+      description: Creates a new service-principal token scoped to the site. The raw token value is only returned once. Requires canManageGrants.
+      operationId: generateSiteToken
+      tags: [Site Tokens]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateSiteTokenRequest'
+      responses:
+        '201':
+          description: Token created — raw value included once
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateSiteTokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/sites/{siteId}/tokens/{tokenId}:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - name: tokenId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      summary: Revoke site API token
+      description: Permanently revokes a site token. Requires canManageGrants.
+      operationId: revokeSiteToken
+      tags: [Site Tokens]
+      responses:
+        '204':
+          description: Token revoked
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Collaborators
+  # ===========================================================================
+  /api/sites/{siteId}/collaborators:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+    get:
+      summary: List site collaborators
+      description: Lists all users with site-level access grants. Requires canManageGrants.
+      operationId: listCollaborators
+      tags: [Collaborators]
+      responses:
+        '200':
+          description: Collaborator list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collaborators:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Collaborator'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      summary: Grant site access to a user
+      description: Adds or updates a local user-site role grant. Requires canManageGrants.
+      operationId: grantCollaboratorAccess
+      tags: [Collaborators]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantCollaboratorRequest'
+      responses:
+        '201':
+          description: Access granted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Collaborator'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/sites/{siteId}/collaborators/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - name: userId
+        in: path
+        required: true
+        description: User identifier (principal ID)
+        schema:
+          type: string
+    delete:
+      summary: Remove collaborator
+      description: Removes the local site-role grant for a user. Cannot remove the last owner. Requires canManageGrants.
+      operationId: removeCollaborator
+      tags: [Collaborators]
+      responses:
+        '204':
+          description: Collaborator removed
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot remove last site owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ===========================================================================
+  # Content Delivery
+  # ===========================================================================
+  /api/sites/{siteId}/content/{documentPath}:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - name: documentPath
+        in: path
+        required: true
+        description: URL-encoded document path (e.g. `pages%2Fhome`)
+        schema:
+          type: string
+      - name: branch
+        in: query
+        description: Branch UUID. Defaults to main branch.
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get published document content
+      description: |
+        Returns the published document content for delivery to frontends.
+        On the main branch, only checkpoint-published versions are served.
+        On non-main branches, the latest saved version is served with fallback
+        to main's published version. Supports ETag / If-None-Match caching.
+      operationId: getDocumentContent
+      tags: [Content]
+      parameters:
+        - name: If-None-Match
+          in: header
+          description: ETag from previous response for conditional GET
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Document content
+          headers:
+            ETag:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentContent'
+        '304':
+          description: Not modified (ETag matched)
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/sites/{siteId}/content-pages:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - name: branch
+        in: query
+        description: Branch UUID. Defaults to main branch.
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: List published pages
+      description: Returns an index of all documents with available content on the resolved branch.
+      operationId: listContentPages
+      tags: [Content]
+      responses:
+        '200':
+          description: Page list
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentPagesResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Branch Document — publish
+  # ===========================================================================
+  /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/publish:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/documentIdParam'
+    post:
+      summary: Publish document to main branch
+      description: Cherry-picks the latest version of this document onto the main branch and creates a checkpoint. Requires canEditDocuments.
+      operationId: publishDocument
+      tags: [Documents]
+      responses:
+        '200':
+          description: Document published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishDocumentResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Agent Keys
+  # ===========================================================================
+  /api/agents/{agentId}/keys:
+    parameters:
+      - $ref: '#/components/parameters/agentIdParam'
+    get:
+      summary: List agent API keys
+      description: Returns all active API keys for the agent. Only user principals can call this.
+      operationId: listAgentKeys
+      tags: [Agent Keys]
+      responses:
+        '200':
+          description: Key list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentKey'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: Generate agent API key
+      description: Creates a new API key for the agent. The raw key value is only returned once. Only user principals can call this.
+      operationId: generateAgentKey
+      tags: [Agent Keys]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateAgentKeyRequest'
+      responses:
+        '201':
+          description: Key created — raw value included once
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateAgentKeyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/agents/{agentId}/keys/{keyId}:
+    parameters:
+      - $ref: '#/components/parameters/agentIdParam'
+      - name: keyId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      summary: Revoke agent API key
+      description: Permanently revokes the key. Only user principals can call this.
+      operationId: revokeAgentKey
+      tags: [Agent Keys]
+      responses:
+        '204':
+          description: Key revoked
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Agent Roles (agent-scoped view)
+  # ===========================================================================
+  /api/agents/{agentId}/roles:
+    parameters:
+      - $ref: '#/components/parameters/agentIdParam'
+    get:
+      summary: List agent site roles
+      description: Returns all site-role grants for the agent. Only user principals can call this.
+      operationId: listAgentRoles
+      tags: [Agent Roles]
+      responses:
+        '200':
+          description: Role list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentSiteRole'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: Grant agent a site role
+      description: Grants the agent a role on a specific site. Only user principals can call this.
+      operationId: grantAgentRole
+      tags: [Agent Roles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantAgentRoleRequest'
+      responses:
+        '201':
+          description: Role granted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSiteRole'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/agents/{agentId}/roles/{roleId}:
+    parameters:
+      - $ref: '#/components/parameters/agentIdParam'
+      - name: roleId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      summary: Revoke agent site role
+      description: Revokes the specified role grant. Only user principals can call this.
+      operationId: revokeAgentRole
+      tags: [Agent Roles]
+      responses:
+        '204':
+          description: Role revoked
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Site Agent Roles (site-scoped view)
+  # ===========================================================================
+  /api/sites/{siteId}/agent-roles:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+    get:
+      summary: List agent roles on site
+      description: Returns all agent role grants for the site. Only user principals can call this.
+      operationId: listSiteAgentRoles
+      tags: [Agent Roles]
+      responses:
+        '200':
+          description: Role list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentSiteRole'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: Grant an agent a role on this site
+      description: Adds a site-scoped role grant for the specified agent. Only user principals can call this.
+      operationId: grantSiteAgentRole
+      tags: [Agent Roles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantSiteAgentRoleRequest'
+      responses:
+        '201':
+          description: Role granted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSiteRole'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/sites/{siteId}/agent-roles/{roleId}:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - name: roleId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      summary: Revoke agent role on site
+      description: Revokes the specified agent role grant on this site. Only user principals can call this.
+      operationId: revokeSiteAgentRole
+      tags: [Agent Roles]
+      responses:
+        '204':
+          description: Role revoked
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Admin — Site Export/Import (PROPOSAL-013)
+  # ===========================================================================
+  /api/admin/sites/{siteId}/export:
+    get:
+      summary: Export site bundle
+      description: |
+        Assembles a full site bundle as a versioned ZIP file, writes it to R2, and returns
+        a presigned download URL (7-day TTL) plus an HMAC-SHA256 signature.
+
+        The bundle is self-contained and integrity-verified:
+        - `bundle.json` contains a SHA-256 manifest of all other files
+        - `bundleSignature` in the response is an HMAC-SHA256 of `bundle.json` keyed to
+          `INTERNAL_SECRET`; pass it as `bundleSignature` when calling the import endpoint
+          so tampered bundles are rejected
+
+        **Version selection:**
+        - Main branch: all published versions + latest draft if not yet published
+        - Non-main branches: latest version only
+        - `_registry/` documents are excluded (they rebuild automatically on first editor open)
+
+        **What is NOT exported:** Yjs/CRDT state, collaborators/agent roles, site API tokens,
+        allowed origins.
+
+        **Size limit:** Bundle is assembled in memory. For very large sites, use the SQL
+        migration path instead.
+
+        Requires `read:all` or `write:create` scoped `sat_` token, or admin credentials.
+      operationId: exportSite
+      tags: [Admin]
+      parameters:
+        - name: siteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Bundle written to R2; presigned URL and signature returned
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [downloadUrl, expiresAt, exportedAt, bundleKey, documentCount, branchCount]
+                properties:
+                  downloadUrl:
+                    type: string
+                    format: uri
+                    description: Presigned R2 download URL (7-day TTL)
+                  expiresAt:
+                    type: string
+                    format: date-time
+                  exportedAt:
+                    type: string
+                    format: date-time
+                  bundleKey:
+                    type: string
+                    description: R2 object key (e.g. `{siteId}/{timestamp}.zip`)
+                  bundleSignature:
+                    type: string
+                    description: |
+                      HMAC-SHA256 of bundle.json keyed to INTERNAL_SECRET.
+                      Pass this as `bundleSignature` when calling the import endpoint.
+                      Absent if INTERNAL_SECRET is not configured on the source environment.
+                  documentCount:
+                    type: integer
+                  branchCount:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: R2 bundle storage not configured
+
+  /api/admin/sites/{siteId}/import:
+    post:
+      summary: Import site bundle
+      description: |
+        Accepts a multipart ZIP bundle and imports it into the target site.
+
+        **Processing order:** site → branches → documents → versions → publish checkpoints
+
+        **Idempotency:** Progress is tracked in KV keyed by `(targetSiteId, exportedAt)`.
+        Re-running the same import resumes from where it left off. The empty-site check is
+        skipped on resume, so partial imports can be continued safely.
+
+        **Target site requirements:** Must be empty (no non-registry documents, no non-main
+        branches) for a first-time import.
+
+        **UUID remapping:** All source UUIDs are replaced with new UUIDs on the target.
+        Source IDs are stored in `import_id_maps` for traceability.
+
+        **Collaborators:** Users and agents with roles on the source site are listed in
+        `requiresSetup.collaborators` in the response. They are never created automatically
+        — the operator must add them manually.
+
+        Requires `write:create` scoped `sat_` token or admin credentials on the **target** site.
+      operationId: importSite
+      tags: [Admin]
+      parameters:
+        - name: siteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: ZIP bundle produced by the export endpoint
+                bundleSignature:
+                  type: string
+                  description: |
+                    HMAC-SHA256 signature returned by the export endpoint.
+                    When provided, the import verifies the signature before processing
+                    any data. Strongly recommended — omitting it skips tamper detection.
+      responses:
+        '200':
+          description: Import complete (or resumed)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [importKey, completedPhases, documentCount, sourceSiteId, crossSiteImport]
+                properties:
+                  importKey:
+                    type: string
+                    description: KV key for this import run (use to resume)
+                  completedPhases:
+                    type: array
+                    items:
+                      type: string
+                    description: Phases completed in this run (including prior runs)
+                  documentCount:
+                    type: integer
+                  sourceSiteId:
+                    type: string
+                    format: uuid
+                  crossSiteImport:
+                    type: boolean
+                    description: True when source and target site IDs differ (migration use case)
+                  requiresSetup:
+                    type: object
+                    description: Resources that must be configured manually on the target
+                    properties:
+                      collaborators:
+                        type: object
+                        properties:
+                          users:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                email:
+                                  type: string
+                                name:
+                                  type: string
+                                role:
+                                  type: string
+                          agents:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                role:
+                                  type: string
+        '400':
+          description: Invalid or corrupt ZIP
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Target site is not empty (first-time import only)
+        '422':
+          description: Bundle manifest validation failed or signature mismatch
+
+  # ===========================================================================
+  # Admin — User Allowlist
+  # ===========================================================================
+  /api/admin/users:
+    get:
+      summary: List system users
+      description: Returns all users in the allowlist. System admin only.
+      operationId: listAdminUsers
+      tags: [Admin]
+      responses:
+        '200':
+          description: User list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SystemUser'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: Add user to allowlist
+      description: Adds a user to the system allowlist. System admin only. On first user creation (bootstrap), the calling principal is also added as admin.
+      operationId: addAdminUser
+      tags: [Admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddSystemUserRequest'
+      responses:
+        '201':
+          description: User added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemUser'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/admin/users/{userId}:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        description: User UUID
+        schema:
+          type: string
+          format: uuid
+    patch:
+      summary: Update system user
+      description: Updates name, systemRole, or isActive for a user. System admin only.
+      operationId: updateAdminUser
+      tags: [Admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSystemUserRequest'
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemUser'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Remove user from allowlist
+      description: Permanently removes a user from the system allowlist. System admin only.
+      operationId: deleteAdminUser
+      tags: [Admin]
+      responses:
+        '204':
+          description: User removed
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+# =============================================================================
+# Components
+# =============================================================================
+components:
+  # ---------------------------------------------------------------------------
+  # Security Schemes
+  # ---------------------------------------------------------------------------
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT/OAuth token from the CSS OAuth 2.0 flow (/auth/authorize)
+
+    apiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for agent authentication
+
+  # ---------------------------------------------------------------------------
+  # Parameters
+  # ---------------------------------------------------------------------------
+  parameters:
+    limitParam:
+      name: limit
+      in: query
+      description: Maximum number of items to return
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+
+    offsetParam:
+      name: offset
+      in: query
+      description: Number of items to skip
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+    siteIdParam:
+      name: siteId
+      in: path
+      required: true
+      description: Site UUID
+      schema:
+        type: string
+        format: uuid
+
+    branchIdParam:
+      name: branchId
+      in: path
+      required: true
+      description: Branch UUID
+      schema:
+        type: string
+        format: uuid
+
+    documentIdParam:
+      name: documentId
+      in: path
+      required: true
+      description: Document UUID
+      schema:
+        type: string
+        format: uuid
+
+    orgIdParam:
+      name: orgId
+      in: path
+      required: true
+      description: Organization UUID
+      schema:
+        type: string
+        format: uuid
+
+    agentIdParam:
+      name: agentId
+      in: path
+      required: true
+      description: Agent UUID
+      schema:
+        type: string
+        format: uuid
+
+    structureIdParam:
+      name: structureId
+      in: path
+      required: true
+      description: Structure UUID
+      schema:
+        type: string
+        format: uuid
+
+    nodeIdParam:
+      name: nodeId
+      in: path
+      required: true
+      description: Node UUID
+      schema:
+        type: string
+        format: uuid
+
+  # ---------------------------------------------------------------------------
+  # Responses
+  # ---------------------------------------------------------------------------
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Forbidden:
+      description: Permission denied
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  # ---------------------------------------------------------------------------
+  # Schemas
+  # ---------------------------------------------------------------------------
+  schemas:
+    # -------------------------------------------------------------------------
+    # Common Schemas
+    # -------------------------------------------------------------------------
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          properties:
+            reason:
+              type: string
+            suggestions:
+              type: array
+              items:
+                type: string
+
+    PaginatedResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+          description: Total number of items
+        limit:
+          type: integer
+          description: Page size
+        offset:
+          type: integer
+          description: Current offset
+
+    # -------------------------------------------------------------------------
+    # Enums
+    # -------------------------------------------------------------------------
+    ActorType:
+      type: string
+      enum: [user, agent, guest, service, system]
+
+    SiteRole:
+      type: string
+      enum: [owner, admin, developer, team_member]
+
+    RoleName:
+      type: string
+      enum: [NO_ACCESS, VIEWER, EDITOR, ADMIN]
+
+    BranchStatus:
+      type: string
+      enum: [active, review, merged, archived]
+
+    CheckpointType:
+      type: string
+      enum: [manual, auto, pre_merge, post_merge, agent_pre_edit, agent_post_edit]
+
+    CheckpointTrigger:
+      type: string
+      enum: [manual, human_requested, autonomous]
+
+    CheckpointStatus:
+      type: string
+      enum: [completed, rolled_back, partial]
+
+    DocumentVersionSource:
+      type: string
+      enum: [edit, merge, revert, checkpoint, realtime]
+
+    MergeRequestStatus:
+      type: string
+      enum: [open, approved, merged, closed, conflicted]
+
+    AgentStatus:
+      type: string
+      enum: [active, suspended, disabled]
+
+    PresenceState:
+      type: string
+      enum: [active, idle, editing]
+
+    StructureType:
+      type: string
+      enum: [collection, hierarchy]
+
+    NodeType:
+      type: string
+      enum: [section, document, external]
+
+    SchemaEnforcementMode:
+      type: string
+      enum: [strict, warn, none]
+
+    EditOperationType:
+      type: string
+      enum: [set, delete, insert, move, replace]
+
+    ConflictResolutionStrategy:
+      type: string
+      enum: [take-source, take-target, manual]
+
+    MergeApprovalMode:
+      type: string
+      enum: [none, optional, required]
+
+    ApproverMode:
+      type: string
+      enum: [role_based, explicit, both]
+
+    # -------------------------------------------------------------------------
+    # Health
+    # -------------------------------------------------------------------------
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        database:
+          type: object
+          properties:
+            connected:
+              type: boolean
+            latencyMs:
+              type: number
+        timestamp:
+          type: string
+          format: date-time
+
+    # -------------------------------------------------------------------------
+    # Authentication
+    # -------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Organizations
+    # -------------------------------------------------------------------------
+    OrganizationSettings:
+      type: object
+      properties:
+        agentIdleTimeoutMs:
+          type: integer
+          minimum: 0
+          default: 5000
+          description: Idle time before autonomous agents can edit
+
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        settings:
+          $ref: '#/components/schemas/OrganizationSettings'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO timestamp when the organization was soft-deleted; null if active.
+
+    CreateOrganizationRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        settings:
+          $ref: '#/components/schemas/OrganizationSettings'
+
+    UpdateOrganizationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        settings:
+          $ref: '#/components/schemas/OrganizationSettings'
+
+    OrganizationListResponse:
+      allOf:
+        - $ref: '#/components/schemas/PaginatedResponse'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Organization'
+
+    # -------------------------------------------------------------------------
+    # Agents
+    # -------------------------------------------------------------------------
+    AgentSettings:
+      type: object
+      properties:
+        priorityTier:
+          type: string
+        allowedOperationTypes:
+          type: array
+          items:
+            type: string
+        maxConcurrentDocuments:
+          type: integer
+          minimum: 1
+
+    RegisteredAgent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        status:
+          $ref: '#/components/schemas/AgentStatus'
+        settings:
+          $ref: '#/components/schemas/AgentSettings'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateAgentRequest:
+      type: object
+      required: [name, capabilities]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        settings:
+          $ref: '#/components/schemas/AgentSettings'
+
+    UpdateAgentRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        settings:
+          $ref: '#/components/schemas/AgentSettings'
+
+    AgentListResponse:
+      allOf:
+        - $ref: '#/components/schemas/PaginatedResponse'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/RegisteredAgent'
+
+    # -------------------------------------------------------------------------
+    # Sites
+    # -------------------------------------------------------------------------
+    WorkflowSettings:
+      type: object
+      properties:
+        mergeApprovalMode:
+          $ref: '#/components/schemas/MergeApprovalMode'
+        minApprovers:
+          type: integer
+          minimum: 1
+          default: 1
+        allowSelfApproval:
+          type: boolean
+          default: false
+        approverMode:
+          $ref: '#/components/schemas/ApproverMode'
+        approverMinRole:
+          type: string
+          enum: [EDITOR, ADMIN]
+
+    Site:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        pantheonSiteId:
+          type: string
+        organizationId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        workflowSettings:
+          $ref: '#/components/schemas/WorkflowSettings'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO timestamp when the site was soft-deleted; null if active.
+
+    CreateSiteRequest:
+      type: object
+      required: [pantheonSiteId, name]
+      properties:
+        pantheonSiteId:
+          type: string
+        name:
+          type: string
+        organizationId:
+          type: string
+          format: uuid
+        workflowSettings:
+          $ref: '#/components/schemas/WorkflowSettings'
+
+    UpdateSiteRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        workflowSettings:
+          $ref: '#/components/schemas/WorkflowSettings'
+
+    SiteListResponse:
+      allOf:
+        - $ref: '#/components/schemas/PaginatedResponse'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Site'
+
+    # -------------------------------------------------------------------------
+    # Branches
+    # -------------------------------------------------------------------------
+    Branch:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        siteId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/BranchStatus'
+        isMain:
+          type: boolean
+        sourceBranchId:
+          type: string
+          format: uuid
+        sourceCheckpointId:
+          type: string
+          format: uuid
+        createdById:
+          type: string
+          format: uuid
+        createdByType:
+          type: string
+          enum: [user, agent]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO timestamp when the branch was soft-deleted; null if active.
+
+    CreateBranchRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        parentBranchId:
+          type: string
+          format: uuid
+          description: Branch to fork from (defaults to main)
+
+    UpdateBranchRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/BranchStatus'
+
+    BranchListResponse:
+      allOf:
+        - $ref: '#/components/schemas/PaginatedResponse'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Branch'
+
+    # -------------------------------------------------------------------------
+    # Documents
+    # -------------------------------------------------------------------------
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        siteId:
+          type: string
+          format: uuid
+        path:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateDocumentRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+          description: Unique document path within site
+
+    CreateBranchDocumentRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+        initialContent:
+          type: object
+          additionalProperties: true
+          description: Initial document content
+
+    DocumentListResponse:
+      allOf:
+        - $ref: '#/components/schemas/PaginatedResponse'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Document'
+
+    # -------------------------------------------------------------------------
+    # Document Versions
+    # -------------------------------------------------------------------------
+    DocumentVersion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        versionNumber:
+          type: integer
+        snapshot:
+          type: object
+          additionalProperties: true
+        crdtState:
+          type: string
+          description: Base64-encoded document sync state
+        source:
+          $ref: '#/components/schemas/DocumentVersionSource'
+        createdById:
+          type: string
+          format: uuid
+        createdByType:
+          type: string
+          enum: [user, agent, system]
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateVersionRequest:
+      type: object
+      required: [snapshot]
+      properties:
+        snapshot:
+          type: object
+          additionalProperties: true
+        source:
+          $ref: '#/components/schemas/DocumentVersionSource'
+          default: edit
+
+    DocumentVersionListResponse:
+      allOf:
+        - $ref: '#/components/schemas/PaginatedResponse'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/DocumentVersion'
+
+    # -------------------------------------------------------------------------
+    # Real-time Operations
+    # -------------------------------------------------------------------------
+    DocumentState:
+      type: object
+      properties:
+        documentId:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        content:
+          type: object
+          additionalProperties: true
+        versionNumber:
+          type: integer
+        lastUpdated:
+          type: string
+          format: date-time
+
+    EditOperation:
+      type: object
+      required: [type, path]
+      properties:
+        type:
+          $ref: '#/components/schemas/EditOperationType'
+        path:
+          type: string
+          description: JSON path to target
+        value:
+          description: Value for set/replace operations
+        content:
+          description: Content for insert operations
+        index:
+          type: integer
+          description: Array index for insert operations
+        fromIndex:
+          type: integer
+          description: Source index for move operations
+        toIndex:
+          type: integer
+          description: Destination index for move operations
+
+    EditOperationsRequest:
+      type: object
+      required: [operations]
+      properties:
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/EditOperation'
+          maxItems: 100
+
+    # -------------------------------------------------------------------------
+    # Agent Edit Workflow
+    # -------------------------------------------------------------------------
+    AgentEditCheckRequest:
+      type: object
+      required: [agentId, trigger, targetRegions]
+      properties:
+        agentId:
+          type: string
+          format: uuid
+        trigger:
+          type: string
+          enum: [human_requested, autonomous]
+        targetRegions:
+          type: array
+          items:
+            type: string
+          description: JSON paths the agent intends to edit
+
+    AgentEditPermission:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+        reason:
+          type: string
+          enum: [human_active, region_conflict, agent_disabled, no_access]
+        retryAfterMs:
+          type: integer
+          description: Suggested retry delay in milliseconds
+        conflictingRegions:
+          type: array
+          items:
+            type: string
+
+    AgentEditStartRequest:
+      type: object
+      required: [agentId, trigger, targetRegions]
+      properties:
+        agentId:
+          type: string
+          format: uuid
+        trigger:
+          type: string
+          enum: [human_requested, autonomous]
+        intent:
+          type: string
+          description: Human-readable description of intended action
+        targetRegions:
+          type: array
+          items:
+            type: string
+
+    AgentEditStartResponse:
+      type: object
+      properties:
+        preEditCheckpoint:
+          $ref: '#/components/schemas/Checkpoint'
+        sessionId:
+          type: string
+          format: uuid
+
+    AgentEditCompleteRequest:
+      type: object
+      required: [agentId]
+      properties:
+        agentId:
+          type: string
+          format: uuid
+        summary:
+          type: string
+          description: Summary of changes made
+
+    AgentEditAbortRequest:
+      type: object
+      required: [agentId]
+      properties:
+        agentId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          description: Reason for aborting
+
+    # -------------------------------------------------------------------------
+    # Checkpoints
+    # -------------------------------------------------------------------------
+    Checkpoint:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        message:
+          type: string
+        description:
+          type: string
+        checkpointType:
+          $ref: '#/components/schemas/CheckpointType'
+        trigger:
+          $ref: '#/components/schemas/CheckpointTrigger'
+        requestedById:
+          type: string
+          format: uuid
+        operationType:
+          type: string
+        affectedRegions:
+          type: array
+          items:
+            type: string
+        status:
+          $ref: '#/components/schemas/CheckpointStatus'
+        rolledBackById:
+          type: string
+          format: uuid
+        rolledBackAt:
+          type: string
+          format: date-time
+        createdById:
+          type: string
+          format: uuid
+        createdByType:
+          type: string
+          enum: [user, agent, system]
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateCheckpointRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+        description:
+          type: string
+        checkpointType:
+          $ref: '#/components/schemas/CheckpointType'
+          default: manual
+
+    CheckpointListResponse:
+      allOf:
+        - $ref: '#/components/schemas/PaginatedResponse'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Checkpoint'
+
+    # -------------------------------------------------------------------------
+    # Merge
+    # -------------------------------------------------------------------------
+    MergeCheckRequest:
+      type: object
+      required: [sourceBranchId, targetBranchId]
+      properties:
+        sourceBranchId:
+          type: string
+          format: uuid
+        targetBranchId:
+          type: string
+          format: uuid
+
+    MergeCheckResponse:
+      type: object
+      properties:
+        mergeableStatus:
+          type: string
+          enum: [clear, conflicts, errors]
+        conflicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentConflict'
+        structureConflicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/StructureMergeConflict'
+
+    DocumentConflict:
+      type: object
+      properties:
+        documentId:
+          type: string
+          format: uuid
+        documentPath:
+          type: string
+        conflictType:
+          type: string
+          enum: [both-modified, deleted-in-source, deleted-in-target]
+        sourceVersion:
+          type: integer
+        targetVersion:
+          type: integer
+        suggestedResolution:
+          $ref: '#/components/schemas/ConflictResolutionStrategy'
+
+    StructureMergeConflict:
+      type: object
+      properties:
+        structureId:
+          type: string
+          format: uuid
+        conflictType:
+          type: string
+          enum: [node-move, node-delete, schema-change, metadata-change]
+        details:
+          type: object
+          properties:
+            nodeId:
+              type: string
+              format: uuid
+            documentId:
+              type: string
+              format: uuid
+            sourceValue: {}
+            targetValue: {}
+            baseValue: {}
+
+    MergePreviewResponse:
+      allOf:
+        - $ref: '#/components/schemas/MergeCheckResponse'
+        - type: object
+          properties:
+            preview:
+              type: object
+              properties:
+                addedDocuments:
+                  type: array
+                  items:
+                    type: string
+                modifiedDocuments:
+                  type: array
+                  items:
+                    type: string
+                deletedDocuments:
+                  type: array
+                  items:
+                    type: string
+
+    ConflictResolution:
+      type: object
+      required: [documentId, strategy]
+      properties:
+        documentId:
+          type: string
+          format: uuid
+        strategy:
+          $ref: '#/components/schemas/ConflictResolutionStrategy'
+        manualContent:
+          type: object
+          additionalProperties: true
+          description: Required when strategy is 'manual'
+
+    MergeExecuteRequest:
+      type: object
+      required: [sourceBranchId, targetBranchId]
+      properties:
+        sourceBranchId:
+          type: string
+          format: uuid
+        targetBranchId:
+          type: string
+          format: uuid
+        message:
+          type: string
+        conflictResolutions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConflictResolution'
+
+    MergeExecuteResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        mergeCheckpoint:
+          $ref: '#/components/schemas/Checkpoint'
+        mergedDocuments:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    # -------------------------------------------------------------------------
+    # Merge Requests
+    # -------------------------------------------------------------------------
+    MergeRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        siteId:
+          type: string
+          format: uuid
+        sourceBranchId:
+          type: string
+          format: uuid
+        targetBranchId:
+          type: string
+          format: uuid
+        baseCheckpointId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/MergeRequestStatus'
+        hasConflicts:
+          type: boolean
+        conflictDetails:
+          type: object
+          properties:
+            documentConflicts:
+              type: array
+              items:
+                $ref: '#/components/schemas/DocumentConflict'
+            structureConflicts:
+              type: array
+              items:
+                $ref: '#/components/schemas/StructureMergeConflict'
+        createdById:
+          type: string
+          format: uuid
+        createdByType:
+          type: string
+          enum: [user, agent]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        mergedAt:
+          type: string
+          format: date-time
+        mergedById:
+          type: string
+          format: uuid
+
+    CreateMergeRequestRequest:
+      type: object
+      required: [sourceBranchId, targetBranchId, title]
+      properties:
+        sourceBranchId:
+          type: string
+          format: uuid
+        targetBranchId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+
+    UpdateMergeRequestRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/MergeRequestStatus'
+
+    MergeRequestListResponse:
+      allOf:
+        - $ref: '#/components/schemas/PaginatedResponse'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/MergeRequest'
+
+    # -------------------------------------------------------------------------
+    # Structures
+    # -------------------------------------------------------------------------
+    SiteStructure:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        siteId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        structureType:
+          $ref: '#/components/schemas/StructureType'
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateStructureRequest:
+      type: object
+      required: [name, slug, structureType]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        structureType:
+          $ref: '#/components/schemas/StructureType'
+
+    UpdateStructureRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    StructureListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SiteStructure'
+
+    NavigationTree:
+      type: object
+      properties:
+        structureId:
+          type: string
+          format: uuid
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/NavigationNode'
+
+    NavigationNode:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        nodeType:
+          $ref: '#/components/schemas/NodeType'
+        documentId:
+          type: string
+          format: uuid
+        externalUrl:
+          type: string
+          format: uri
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/NavigationNode'
+
+    BranchStructureState:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        structureId:
+          type: string
+          format: uuid
+        nodesSnapshot:
+          type: array
+          items:
+            type: object
+        metadataSchema:
+          type: object
+          description: JSON Schema for document metadata
+        schemaEnforcement:
+          $ref: '#/components/schemas/SchemaEnforcementMode'
+        updatedAt:
+          type: string
+          format: date-time
+
+    # -------------------------------------------------------------------------
+    # Structure Nodes
+    # -------------------------------------------------------------------------
+    StructureNode:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        structureId:
+          type: string
+          format: uuid
+        parentNodeId:
+          type: string
+          format: uuid
+        position:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        nodeType:
+          $ref: '#/components/schemas/NodeType'
+        documentId:
+          type: string
+          format: uuid
+        externalUrl:
+          type: string
+          format: uri
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateNodeRequest:
+      type: object
+      required: [name, slug, nodeType]
+      properties:
+        parentNodeId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        nodeType:
+          $ref: '#/components/schemas/NodeType'
+        documentId:
+          type: string
+          format: uuid
+          description: Required for document nodes
+        externalUrl:
+          type: string
+          format: uri
+          description: Required for external nodes
+        position:
+          type: integer
+          minimum: 0
+
+    UpdateNodeRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        externalUrl:
+          type: string
+          format: uri
+
+    NodeListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StructureNode'
+
+    # -------------------------------------------------------------------------
+    # Document Metadata
+    # -------------------------------------------------------------------------
+    BranchDocumentMetadata:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        structureId:
+          type: string
+          format: uuid
+        metadata:
+          type: object
+          additionalProperties: true
+        updatedAt:
+          type: string
+          format: date-time
+
+    SchemaValidationError:
+      type: object
+      properties:
+        field:
+          type: string
+        message:
+          type: string
+        currentValue: {}
+
+    SchemaValidationResult:
+      type: object
+      properties:
+        structureId:
+          type: string
+          format: uuid
+        totalDocuments:
+          type: integer
+        conformingDocuments:
+          type: integer
+        nonConformingDocuments:
+          type: array
+          items:
+            type: object
+            properties:
+              documentId:
+                type: string
+                format: uuid
+              documentPath:
+                type: string
+              errors:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SchemaValidationError'
+
+    # -------------------------------------------------------------------------
+    # Branch Grants
+    # -------------------------------------------------------------------------
+    BranchGrant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        actorId:
+          type: string
+          format: uuid
+        actorType:
+          type: string
+          enum: [user, agent]
+        role:
+          $ref: '#/components/schemas/RoleName'
+        grantedById:
+          type: string
+          format: uuid
+        grantedByType:
+          type: string
+          enum: [user, agent]
+        grantedAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+
+    CreateBranchGrantRequest:
+      type: object
+      required: [principalId, principalType, role]
+      properties:
+        principalId:
+          type: string
+          format: uuid
+        principalType:
+          type: string
+          enum: [user, agent]
+        role:
+          $ref: '#/components/schemas/RoleName'
+        reason:
+          type: string
+
+    BranchGrantListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BranchGrant'
+
+    # -------------------------------------------------------------------------
+    # Presence
+    # -------------------------------------------------------------------------
+    ActorPresence:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        actorId:
+          type: string
+          format: uuid
+        actorType:
+          type: string
+          enum: [user, agent]
+        role:
+          type: string
+          enum: [human, agent]
+        name:
+          type: string
+        avatar:
+          type: string
+          format: uri
+        state:
+          $ref: '#/components/schemas/PresenceState'
+        intent:
+          type: string
+          description: Agent's declared intent
+        focusRegions:
+          type: array
+          items:
+            type: string
+        lastActivityAt:
+          type: string
+          format: date-time
+        joinedAt:
+          type: string
+          format: date-time
+
+    PresenceSummary:
+      type: object
+      properties:
+        totalActors:
+          type: integer
+        humanCount:
+          type: integer
+        agentCount:
+          type: integer
+        editingCount:
+          type: integer
+
+    DocumentPresenceSummary:
+      type: object
+      properties:
+        documentId:
+          type: string
+          format: uuid
+        documentPath:
+          type: string
+        actorCount:
+          type: integer
+        hasHumans:
+          type: boolean
+        hasAgents:
+          type: boolean
+
+    BranchPresenceSummary:
+      type: object
+      properties:
+        branchId:
+          type: string
+          format: uuid
+        branchName:
+          type: string
+        actorCount:
+          type: integer
+        hasHumans:
+          type: boolean
+        hasAgents:
+          type: boolean
+
+    BranchPresence:
+      type: object
+      properties:
+        branchId:
+          type: string
+          format: uuid
+        branchName:
+          type: string
+        siteId:
+          type: string
+          format: uuid
+        summary:
+          $ref: '#/components/schemas/PresenceSummary'
+        actors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActorPresence'
+        documentSummary:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentPresenceSummary'
+
+    SitePresence:
+      type: object
+      properties:
+        siteId:
+          type: string
+          format: uuid
+        siteName:
+          type: string
+        summary:
+          type: object
+          properties:
+            totalActors:
+              type: integer
+            humanCount:
+              type: integer
+            agentCount:
+              type: integer
+            activeBranches:
+              type: integer
+        branches:
+          type: array
+          items:
+            $ref: '#/components/schemas/BranchPresenceSummary'
+
+    AgentPresenceLocation:
+      type: object
+      properties:
+        siteId:
+          type: string
+          format: uuid
+        siteName:
+          type: string
+        branchId:
+          type: string
+          format: uuid
+        branchName:
+          type: string
+        documentId:
+          type: string
+          format: uuid
+        documentPath:
+          type: string
+        presence:
+          $ref: '#/components/schemas/ActorPresence'
+
+    AgentGlobalPresence:
+      type: object
+      properties:
+        agentId:
+          type: string
+          format: uuid
+        agentName:
+          type: string
+        organizationId:
+          type: string
+          format: uuid
+        locations:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPresenceLocation'
+
+    # -------------------------------------------------------------------------
+    # WebSocket Messages (for reference)
+    # -------------------------------------------------------------------------
+    WsFocusRegionUpdateMessage:
+      type: object
+      required: [type, focusRegions, timestamp]
+      properties:
+        type:
+          type: string
+          const: focus_region_update
+        focusRegions:
+          type: array
+          items:
+            type: string
+        timestamp:
+          type: integer
+
+    WsPresenceHeartbeatMessage:
+      type: object
+      required: [type, timestamp]
+      properties:
+        type:
+          type: string
+          const: presence_heartbeat
+        state:
+          $ref: '#/components/schemas/PresenceState'
+        timestamp:
+          type: integer
+
+    WsPresenceUpdateMessage:
+      type: object
+      required: [type, actors, timestamp]
+      properties:
+        type:
+          type: string
+          const: presence_update
+        actors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActorPresence'
+        timestamp:
+          type: integer
+
+    WsFocusRegionBroadcastMessage:
+      type: object
+      required: [type, actorId, focusRegions, timestamp]
+      properties:
+        type:
+          type: string
+          const: focus_region_broadcast
+        actorId:
+          type: string
+        focusRegions:
+          type: array
+          items:
+            type: string
+        timestamp:
+          type: integer
+
+    WsFocusRegionAckMessage:
+      type: object
+      required: [type, success, focusRegions, timestamp]
+      properties:
+        type:
+          type: string
+          const: focus_region_ack
+        success:
+          type: boolean
+        focusRegions:
+          type: array
+          items:
+            type: string
+        timestamp:
+          type: integer
+
+    WsPresenceErrorMessage:
+      type: object
+      required: [type, code, message, timestamp]
+      properties:
+        type:
+          type: string
+          const: presence_error
+        code:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: integer
+
+    # -------------------------------------------------------------------------
+    # Authentication
+    # -------------------------------------------------------------------------
+    AuthenticatedPrincipal:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Principal identifier (OAuth subject or agent ID)
+        type:
+          $ref: '#/components/schemas/ActorType'
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+        authProvider:
+          type: string
+          description: Identity provider used to authenticate this principal
+        tokenExpiry:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the current token expires (if available)
+        providerSubjectId:
+          type: string
+          nullable: true
+          description: Raw subject ID from the upstream identity provider
+
+    # -------------------------------------------------------------------------
+    # Site Settings
+    # -------------------------------------------------------------------------
+    SiteSettings:
+      type: object
+      properties:
+        cacheTtlMain:
+          type: integer
+          nullable: true
+          description: Cache TTL in seconds for main-branch content. Null uses system default (300s).
+        cacheTtlBranch:
+          type: integer
+          nullable: true
+          description: Cache TTL in seconds for non-main-branch content. Null uses system default (60s).
+
+    UpdateSiteSettingsRequest:
+      type: object
+      properties:
+        cacheTtlMain:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: Seconds. Null resets to system default.
+        cacheTtlBranch:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: Seconds. Null resets to system default.
+
+    # -------------------------------------------------------------------------
+    # Site Tokens
+    # -------------------------------------------------------------------------
+    SiteToken:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        siteId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    GenerateSiteTokenRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Human-readable label for this token
+        scopes:
+          type: array
+          items:
+            type: string
+            enum: [read:published, read:all, read:draft, write:create, write:registry]
+          description: |
+            Permission scopes for this token. Defaults to [read:published].
+            - read:published: GET published content on main branch only
+            - read:all: GET all content, documents, and branches
+            - read:draft: GET draft and published content on any branch
+            - write:create: GET and POST (create) on all handlers and branches; cannot update or delete
+            - write:registry: POST documents/versions under _registry/components/* and the registry index only; GET branches (list only, for git-branch-to-CSS-branch name resolution); no other read access
+
+    GenerateSiteTokenResponse:
+      allOf:
+        - $ref: '#/components/schemas/SiteToken'
+        - type: object
+          properties:
+            token:
+              type: string
+              description: Raw token value — only returned on creation
+
+    # -------------------------------------------------------------------------
+    # Collaborators
+    # -------------------------------------------------------------------------
+    Collaborator:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+        siteId:
+          type: string
+          format: uuid
+        role:
+          $ref: '#/components/schemas/SiteRole'
+        source:
+          type: string
+          enum: [local, mas]
+          description: Whether the grant was created locally or synced from MAS
+        email:
+          type: string
+          format: email
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    GrantCollaboratorRequest:
+      type: object
+      required: [userId, role]
+      properties:
+        userId:
+          type: string
+          description: Principal ID of the user to grant access to
+        role:
+          $ref: '#/components/schemas/SiteRole'
+
+    # -------------------------------------------------------------------------
+    # Content Delivery
+    # -------------------------------------------------------------------------
+    DocumentContent:
+      type: object
+      properties:
+        documentId:
+          type: string
+          format: uuid
+        path:
+          type: string
+        data:
+          type: object
+          description: The document's JSON content
+          additionalProperties: true
+        branchId:
+          type: string
+          format: uuid
+        branchName:
+          type: string
+        isMainBranch:
+          type: boolean
+        versionNumber:
+          type: integer
+        versionCreatedAt:
+          type: string
+          format: date-time
+        etag:
+          type: string
+        inherited:
+          type: boolean
+          description: True when content was inherited from main branch (non-main branches only)
+
+    ContentPagesResponse:
+      type: object
+      properties:
+        pages:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+              documentId:
+                type: string
+                format: uuid
+              lastModifiedAt:
+                type: string
+                format: date-time
+        branchId:
+          type: string
+          format: uuid
+        branchName:
+          type: string
+        isMainBranch:
+          type: boolean
+
+    # -------------------------------------------------------------------------
+    # Publish Document
+    # -------------------------------------------------------------------------
+    PublishDocumentResponse:
+      type: object
+      description: Result of publishing a document to the main branch
+      properties:
+        checkpoint:
+          $ref: '#/components/schemas/Checkpoint'
+        publishedVersionId:
+          type: string
+          format: uuid
+          description: ID of the version created on the main branch
+        sourceBranchName:
+          type: string
+          nullable: true
+          description: Name of the branch the document was published from
+
+    # -------------------------------------------------------------------------
+    # Agent Keys
+    # -------------------------------------------------------------------------
+    AgentKey:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        agentId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    GenerateAgentKeyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Human-readable label for this key
+
+    GenerateAgentKeyResponse:
+      allOf:
+        - $ref: '#/components/schemas/AgentKey'
+        - type: object
+          properties:
+            key:
+              type: string
+              description: Raw API key value — only returned on creation
+
+    # -------------------------------------------------------------------------
+    # Agent Site Roles
+    # -------------------------------------------------------------------------
+    AgentSiteRole:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        agentId:
+          type: string
+          format: uuid
+        siteId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [viewer, editor, admin]
+        grantedBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    GrantAgentRoleRequest:
+      type: object
+      required: [siteId, role]
+      properties:
+        siteId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [viewer, editor, admin]
+
+    GrantSiteAgentRoleRequest:
+      type: object
+      required: [agentId, role]
+      properties:
+        agentId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [viewer, editor, admin]
+
+    # -------------------------------------------------------------------------
+    # System Users (Admin)
+    # -------------------------------------------------------------------------
+    SystemUser:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+          nullable: true
+        principalId:
+          type: string
+          nullable: true
+          description: OAuth subject ID, populated on first login
+        authProvider:
+          type: string
+          nullable: true
+          description: Identity provider used on first login
+        systemRole:
+          type: string
+          enum: [admin, member]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AddSystemUserRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        systemRole:
+          type: string
+          enum: [admin, member]
+          default: member
+
+    UpdateSystemUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        systemRole:
+          type: string
+          enum: [admin, member]
+        isActive:
+          type: boolean

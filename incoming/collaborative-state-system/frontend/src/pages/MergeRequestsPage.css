@@ -1,0 +1,106 @@
+/**
+ * Merge Requests Page Styles
+ *
+ * Uses PDS components where possible:
+ * - Breadcrumb (PDS) for navigation
+ * - Panel (PDS) for page header and section containers
+ * - RouterLinkButton (PDS) for create and view links
+ * - CompactEmptyState (PDS) for empty states
+ *
+ * Custom styles remain for:
+ * - Page layout and structure
+ * - Filter tabs (will be migrated in Phase 4)
+ * - Table row and cell styling
+ */
+
+.merge-requests-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--dt-color-gray-8, #1a1a2e);
+}
+
+/* Filter Tabs */
+.filter-tabs {
+  display: flex;
+  gap: 4px;
+  background-color: var(--dt-color-white, #fff);
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.filter-tab {
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--dt-color-gray-5, #6c757d);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filter-tab:hover {
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  color: var(--dt-color-gray-7, #333);
+}
+
+.filter-tab.active {
+  background-color: var(--dt-color-cyan-3, #02a9e0);
+  color: var(--dt-color-white, #fff);
+}
+
+.clickable-row {
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.clickable-row:hover td {
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+}
+
+.mr-title {
+  font-weight: 500;
+}
+
+.branch-name code {
+  font-size: 0.8125rem;
+}
+
+.mr-date {
+  color: var(--dt-color-gray-5, #6c757d);
+}
+
+.mr-actions {
+  text-align: right;
+}
+
+/* Loading & Error */
+.loading-container {
+  padding: 40px;
+  text-align: center;
+}
+
+.error-container {
+  padding: 40px;
+  text-align: center;
+}
+
+.error-banner {
+  margin-bottom: 20px;
+}
+
+.back-link-container {
+  margin-top: 16px;
+}

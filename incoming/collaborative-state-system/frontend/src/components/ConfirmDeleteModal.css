@@ -1,0 +1,79 @@
+/**
+ * Confirm Delete Modal Styles
+ *
+ * Minimal overrides for PDS Modal components.
+ * Most styling is provided by PDS.
+ */
+
+/* Modal title styling */
+.pds-modal-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+/* Alert styling for warning and error */
+.delete-warning-alert {
+  margin-bottom: 1.5rem;
+}
+
+/* Code styling inherits from global styles in index.css */
+
+.delete-warning-alert p {
+  margin: 0.25rem 0 0;
+}
+
+.delete-error-alert {
+  margin-top: 1rem;
+}
+
+/* Form layout */
+.delete-confirm-form {
+  margin-top: 0;
+}
+
+.confirm-field {
+  margin-bottom: 0;
+}
+
+.confirm-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+  color: #374151;
+}
+
+.confirm-label code {
+  font-weight: 600;
+}
+
+/* Input styling using PDS design tokens */
+.pds-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  border: 1px solid var(--dt-color-gray-2, #d1d5db);
+  border-radius: 4px;
+  background-color: white;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.pds-input:focus {
+  outline: none;
+  border-color: var(--dt-color-cyan-3, #02a9e0);
+  box-shadow: 0 0 0 2px rgba(2, 169, 224, 0.2);
+}
+
+.pds-input:disabled {
+  background-color: var(--dt-color-gray-1, #f3f4f6);
+  cursor: not-allowed;
+}
+
+/* Action buttons layout */
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}

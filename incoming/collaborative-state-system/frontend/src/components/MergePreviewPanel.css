@@ -1,0 +1,115 @@
+/* Merge Preview Panel Styles */
+
+.merge-preview-panel {
+  margin-top: 16px;
+  padding: 20px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.preview-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+/* Refresh button now uses PDS Button component */
+
+.preview-info {
+  margin-bottom: 16px;
+}
+
+.preview-description {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #6c757d;
+}
+
+/* Code styling inherits from global styles in index.css */
+
+/* Preview Loading */
+.preview-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  color: #6c757d;
+  font-size: 0.875rem;
+}
+
+.preview-loading .loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e9ecef;
+  border-top-color: #6c757d;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Preview error now uses PDS Alert component */
+
+/* Preview Result */
+.preview-result {
+  background-color: #fff;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+  overflow: hidden;
+}
+
+.preview-summary {
+  padding: 16px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.merge-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.merge-status.can-merge {
+  color: #155724;
+}
+
+.merge-status.cannot-merge {
+  color: #721c24;
+}
+
+.merge-status .status-icon {
+  font-size: 1rem;
+}
+
+/* Conflicts warning now uses PDS Alert component */
+
+/* Preview Conflicts */
+.preview-conflicts {
+  padding: 16px;
+}
+
+/* Clean Merge */
+.clean-merge {
+  padding: 16px;
+}
+
+.clean-merge p {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: #155724;
+}

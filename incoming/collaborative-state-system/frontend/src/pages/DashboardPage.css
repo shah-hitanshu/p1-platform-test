@@ -1,0 +1,156 @@
+/**
+ * Dashboard Page Styles
+ *
+ * Uses PDS components where possible:
+ * - Button (PDS) for refresh button
+ *
+ * Custom styles remain for:
+ * - Page layout and grid
+ * - Card styling (will be migrated in Phase 3)
+ * - Quick action links
+ * - API endpoint list
+ */
+
+.dashboard-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--dt-color-gray-8, #1a1a2e);
+}
+
+.page-subtitle {
+  margin: 8px 0 0;
+  font-size: 0.9375rem;
+  color: var(--dt-color-gray-5, #6c757d);
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
+}
+
+.card-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--dt-color-gray-7, #333);
+}
+
+.card-content {
+  padding: 20px;
+}
+
+.quick-actions {
+  display: flex;
+  gap: 16px;
+}
+
+.action-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border: 1px solid var(--dt-color-gray-2, #e9ecef);
+  border-radius: 6px;
+  color: var(--dt-color-gray-7, #333);
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.action-link:hover {
+  background-color: var(--dt-color-gray-2, #e9ecef);
+  border-color: var(--dt-color-gray-3, #dee2e6);
+}
+
+.action-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background-color: var(--dt-color-cyan-3, #02a9e0);
+  color: var(--dt-color-white, #fff);
+  border-radius: 50%;
+  font-size: 1rem;
+  font-weight: bold;
+}
+
+.action-text {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.endpoints-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.endpoint-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-radius: 6px;
+}
+
+.endpoint-method {
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.endpoint-method.get {
+  background-color: var(--dt-color-green-1, #d4edda);
+  color: var(--dt-color-green-4, #155724);
+}
+
+.endpoint-method.post {
+  background-color: var(--dt-color-cyan-1, #cce5ff);
+  color: var(--dt-color-cyan-4, #004085);
+}
+
+.endpoint-method.put {
+  background-color: var(--dt-color-yellow-1, #fff3cd);
+  color: var(--dt-color-yellow-4, #856404);
+}
+
+.endpoint-method.delete {
+  background-color: var(--dt-color-red-1, #f8d7da);
+  color: var(--dt-color-red-4, #721c24);
+}
+
+.endpoint-path {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.8125rem;
+  color: var(--dt-color-gray-7, #333);
+}
+
+.endpoint-desc {
+  margin-left: auto;
+  font-size: 0.8125rem;
+  color: var(--dt-color-gray-5, #6c757d);
+}

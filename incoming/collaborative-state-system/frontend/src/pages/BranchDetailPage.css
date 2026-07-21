@@ -1,0 +1,161 @@
+/**
+ * Branch Detail Page Styles
+ *
+ * Uses PDS components where possible:
+ * - Breadcrumb (PDS) for navigation
+ * - Button (PDS) for create, submit, delete buttons
+ * - RouterLinkButton (PDS) for back navigation
+ * - Alert (PDS) for error messages
+ * - Panel (PDS) for section containers
+ * - CompactEmptyState (PDS) for empty states
+ *
+ * Custom styles remain for:
+ * - Page layout and structure
+ * - Branch info layout within Panel
+ * - Table column-specific td classes
+ * - Section header flex layout
+ */
+
+.branch-detail-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Branch Info (inside Panel) */
+.branch-title-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.branch-title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--dt-color-gray-8, #1a1a2e);
+}
+
+.branch-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.meta-item {
+  font-size: 0.875rem;
+  color: var(--dt-color-gray-5, #6c757d);
+}
+
+.meta-item strong {
+  color: var(--dt-color-gray-7, #333);
+  margin-right: 4px;
+}
+
+.no-parent {
+  color: var(--dt-color-gray-3, #ced4da);
+  font-style: italic;
+}
+
+/* Section header (inside Panel tab content) */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--dt-color-gray-8, #1a1a2e);
+}
+
+/* Create Form */
+.create-form-container {
+  margin-bottom: 20px;
+  padding: 16px;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-radius: 6px;
+}
+
+.create-form {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+/* PDS Alert spacing for create error */
+.create-error-alert {
+  margin-top: 12px;
+}
+
+/* Checkpoint specific */
+.checkpoint-name {
+  font-weight: 500;
+}
+
+.checkpoint-name .unnamed {
+  color: var(--dt-color-gray-3, #ced4da);
+  font-style: italic;
+  font-weight: normal;
+}
+
+/* Document specific */
+.clickable-row {
+  cursor: pointer;
+}
+
+.doc-link {
+  text-decoration: none;
+  color: inherit;
+}
+
+.doc-link:hover code {
+  color: var(--dt-color-cyan-3, #02a9e0);
+}
+
+.doc-path code {
+  transition: color 0.2s;
+}
+
+.doc-id code {
+  font-size: 0.75rem;
+}
+
+.created-by code {
+  font-size: 0.75rem;
+}
+
+.date {
+  color: var(--dt-color-gray-5, #6c757d);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Loading & Error */
+.loading-container {
+  padding: 40px;
+  text-align: center;
+}
+
+.error-container {
+  padding: 40px;
+  text-align: center;
+}
+
+.back-link-container {
+  margin-top: 16px;
+}
+
+.error-banner {
+  margin-bottom: 20px;
+}

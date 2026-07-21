@@ -1,0 +1,144 @@
+/**
+ * Login Page Styles
+ *
+ * Uses PDS components where possible:
+ * - Button (PDS) for login button
+ * - Alert (PDS) for error messages
+ * - FormGroup (PDS) for form layout
+ *
+ * Custom styles remain for:
+ * - Page layout and card styling
+ * - User preview section
+ * - Select styling using PDS Select component
+ */
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--dt-color-gray-8, #1a1a2e) 0%, var(--dt-color-gray-7, #16213e) 100%);
+  padding: 20px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  background-color: var(--dt-color-white, #fff);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.login-header {
+  padding: 32px 32px 24px;
+  text-align: center;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
+}
+
+.login-title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--dt-color-gray-8, #1a1a2e);
+}
+
+.login-subtitle {
+  margin: 8px 0 0;
+  font-size: 0.875rem;
+  color: var(--dt-color-gray-5, #6c757d);
+}
+
+.login-form {
+  padding: 24px 32px;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--dt-color-gray-7, #333);
+}
+
+.user-preview {
+  padding: 16px;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.preview-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 0.875rem;
+}
+
+.preview-label {
+  color: var(--dt-color-gray-5, #6c757d);
+}
+
+.preview-value {
+  color: var(--dt-color-gray-7, #333);
+  font-weight: 500;
+}
+
+.role-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background-color: var(--dt-color-cyan-1, #e7f3ff);
+  color: var(--dt-color-cyan-4, #0066cc);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.login-footer {
+  padding: 16px 32px;
+  text-align: center;
+  background-color: var(--dt-color-gray-1, #f8f9fa);
+  border-top: 1px solid var(--dt-color-gray-2, #e9ecef);
+}
+
+.login-footer p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--dt-color-gray-5, #6c757d);
+}
+
+/* Login sections */
+.login-section {
+  padding: 16px 32px;
+}
+
+/* OAuth / mock divider */
+.login-divider {
+  display: flex;
+  align-items: center;
+  padding: 0 32px;
+  color: var(--dt-color-gray-5, #6c757d);
+  font-size: 0.8125rem;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--dt-color-gray-2, #e9ecef);
+}
+
+.login-divider span {
+  padding: 0 12px;
+}
+
+/* PDS Alert spacing adjustment */
+.login-form .pds-alert {
+  margin-bottom: 20px;
+}
+
+/* PDS Button full width for login */
+.login-form .button-primary {
+  width: 100%;
+}
