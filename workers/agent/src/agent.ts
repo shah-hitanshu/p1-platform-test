@@ -1,18 +1,18 @@
 import { Agent } from 'agents';
 import type { Connection, WSMessage } from 'agents';
-import OpenAI from 'openai';
 import type { Env, IncomingMessage, OutgoingMessage, ChatContext, ValidatedUser } from './types.js';
 import { McpApiClient } from './css-api.js';
 import { CSS_TOOLS, WEB_TOOLS, executeTool } from './tools.js';
 import { validateCSSToken } from './auth.js';
 import { trimHistory, sanitizeHistory, trimForHistory, buildRestoredHistory } from './history.js';
+import { createTransport, apiErrorStatus, type ChatMessage } from './model.js';
+import { SYSTEM_PROMPT } from './prompt.js';
 
-// Model reached through the AI Gateway compat endpoint, in provider/model notation
-// (workers-ai/@cf/... for native Cloudflare models, anthropic/... for Claude).
-// Override per environment via AGENT_MODEL.
-const DEFAULT_MODEL = 'workers-ai/@cf/moonshotai/kimi-k2.7-code';
-
-type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
+// Default model. AGENT_MODEL is "provider/model" (must contain a slash): an `anthropic/`
+// prefix routes to the Anthropic /messages endpoint; everything else — including bare
+// Workers AI ids like `@cf/...` — routes to the OpenAI-compatible /chat/completions
+// endpoint. Override per env via AGENT_MODEL.
+const DEFAULT_MODEL = '@cf/moonshotai/kimi-k2.7-code';
 
 interface AgentState {
   conversationHistory: ChatMessage[];
@@ -22,82 +22,6 @@ interface AgentState {
   // ownership can't rely on the key alone.
   ownerId?: string;
 }
-
-const SYSTEM_PROMPT = `You are an AI assistant integrated into a P1 page editor.
-You help users build and edit web pages using the Collaborative State System (CSS).
-
-## Context you always have
-Every user message includes an editor context block with the current site ID, branch ID, and document path. Use these values directly — never call any tool to discover, list, or search for sites, branches, or documents. That information is already provided.
-
-Document paths do not have a leading slash (e.g. "new-from-sageview", not "/new-from-sageview"). Use the path exactly as provided in the editor context.
-
-## Default scope
-All requests apply to the current document in the editor context unless the user explicitly names a different page, site, or branch.
-
-## Create vs. edit — always confirm when ambiguous
-When a request could mean either editing the current page or creating a new one (e.g. "make a page about X", "build a page for X"), you MUST ask the user to clarify before taking any action:
-
-> "Do you want to update the current page to be about X, or create a new page at a different path?"
-
-Only proceed without asking when the intent is unambiguous:
-- Clear edit signals: "update this", "change the title", "add a section to this page", "modify the hero"
-- Clear create signals: "create a new page at /path", "add a page called /about", "make a new page"
-
-When in doubt, ask.
-
-## When to call get_document
-Call get_document whenever you need the current page structure and haven't already fetched it **in the current turn**. The full snapshot is not retained across turns — history only records that a fetch occurred, not its content — so prior turns tell you nothing about the current document state. Skip it only when:
-- You already called get_document earlier in this same turn and the document hasn't been modified since
-- The user is asking a general question that requires no structural knowledge
-
-## When to call list_components
-Only when creating a brand-new page that the user has confirmed they want. Do not call it when editing an existing page.
-
-## Workflow for editing the current page
-1. check_edit_permission — verify you can edit
-2. get_document — only if you need the current structure and don't already have it
-3. start_edit_session to reserve regions
-4. apply_document_edits with your changes
-5. complete_edit_session when done (or abort_edit_session on error)
-
-## Workflow for creating a new page (only after user confirms)
-1. list_components to see available components
-2. create_page with the chosen components and content
-
-## General guidance
-- Use dot-notation paths for edits: "content.0.props.title" not "content[0].props.title"
-- Always complete or abort edit sessions — never leave them open
-- **Prop field names must exactly match the component schema.** Never guess, invent, or rename prop keys.
-  - When editing an existing component: copy field names verbatim from the \`get_document\` snapshot.
-  - When adding a new component: use only the keys present in \`defaultProps\` from \`list_components\`.
-  - If you are uncertain about a component's field names, call \`list_components\` before editing.
-  - The backend will reject any prop key that does not exist in the component schema.
-
-## Moving or reordering components
-To move a single component to a different position, use the \`move\` operation — it is one atomic step:
-
-\`\`\`json
-{ "type": "move", "path": "content", "fromIndex": 0, "toIndex": 3 }
-\`\`\`
-
-This moves the component at index 0 to index 3 in the \`content\` array.
-
-For complex reorders involving many components at once, call \`get_document\`, compute the full reordered array, and apply a single \`replace\` on the \`content\` path with the new array.
-
-Never use \`remove\` followed by \`add\` to reposition a component — array indices shift after a removal and the result will be wrong.
-
-## Additional tools
-
-### fetch_page
-- Use when the user asks to reference, analyze, or recreate an existing public web page
-- Do not use unless the user provides or asks about a specific URL
-- After fetching, summarize what you found before proposing any edits
-
-### list_media
-- Use when the user asks about available images or wants to add an image to the page
-- Always use the \`site_id\` from the editor context
-- When selecting an image for a page component, show the user the filename and URL and confirm before using it — unless the filename makes the content unambiguous (e.g., \`logo.png\`, \`hero-banner.jpg\`)
-- If \`search\` is provided, it filters by filename substring (case-insensitive)`;
 
 export class ChatAgent extends Agent<Env, AgentState> {
   initialState: AgentState = { conversationHistory: [] };
@@ -210,18 +134,22 @@ export class ChatAgent extends Agent<Env, AgentState> {
         actingUser: { id: user.id, email: user.email, name: user.name },
       });
 
-      // Route model calls through the AI Gateway's OpenAI-compatible endpoint; the
-      // gateway token authenticates the request, so no per-provider key is needed.
-      if (!this.env.AI_GATEWAY_ACCOUNT_ID || !this.env.AI_GATEWAY_NAME || !this.env.CF_AIG_TOKEN) {
+      // Route model calls through the Cloudflare AI Gateway REST API. The Cloudflare API
+      // token authenticates (Bearer) and the gateway is selected by header, so no
+      // per-provider key is needed — providers bill through the gateway's unified billing.
+      // The transport picks the right endpoint from AGENT_MODEL's provider prefix
+      // (anthropic/* -> /ai/v1/messages with cache_control; everything else -> /ai/v1/chat/completions).
+      if (!this.env.AI_GATEWAY_ACCOUNT_ID || !this.env.AI_GATEWAY_NAME || !this.env.AI_GATEWAY_API_TOKEN) {
         this.send(connection, { type: 'error', error: 'AI Gateway not configured' });
         return;
       }
-      const ai = new OpenAI({
-        apiKey: this.env.CF_AIG_TOKEN,
-        baseURL: `https://gateway.ai.cloudflare.com/v1/${this.env.AI_GATEWAY_ACCOUNT_ID}/${this.env.AI_GATEWAY_NAME}/compat`,
+      const transport = createTransport({
+        accountId: this.env.AI_GATEWAY_ACCOUNT_ID,
+        gatewayId: this.env.AI_GATEWAY_NAME,
+        apiToken: this.env.AI_GATEWAY_API_TOKEN,
+        model: this.env.AGENT_MODEL || DEFAULT_MODEL,
+        tools: [...CSS_TOOLS, ...WEB_TOOLS],
       });
-      const model = this.env.AGENT_MODEL || DEFAULT_MODEL;
-      const tools = [...CSS_TOOLS, ...WEB_TOOLS];
 
       // Inject page context into the user message sent to the model, but persist the raw
       // message so stored turns don't carry stale context blocks.
@@ -235,29 +163,25 @@ export class ChatAgent extends Agent<Env, AgentState> {
       history.push({ role: 'user', content: userContent });
       historyForStorage.push({ role: 'user', content: message });
 
-      // Agentic loop — keep calling the model until it stops requesting tools.
+      // Agentic loop — keep calling the model until it stops requesting tools. The
+      // transport normalizes any provider's response to OpenAI-shaped tool calls.
       while (true) {
-        const completion = await ai.chat.completions.create({
-          model,
-          max_tokens: 8192,
-          messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...history],
-          tools,
-          tool_choice: 'auto',
+        const { content, toolCalls, usage } = await transport.complete({
+          system: SYSTEM_PROMPT,
+          messages: history,
+          maxTokens: 8192,
         });
 
-        const choice = completion.choices[0]?.message;
-        if (!choice) throw new Error('Model returned no choices');
-
-        type FnToolCall = Extract<
-          OpenAI.Chat.Completions.ChatCompletionMessageToolCall,
-          { type: 'function' }
-        >;
-        const toolCalls = (choice.tool_calls ?? []).filter(
-          (tc): tc is FnToolCall => tc.type === 'function',
-        );
+        // Prompt-cache accounting for observability. Anthropic reports write+read;
+        // native/OpenAI/Gemini report a read count only.
+        if (usage && (usage.cacheReadInputTokens || usage.cacheCreationInputTokens)) {
+          console.log(
+            `[model] cache read=${usage.cacheReadInputTokens ?? 0} write=${usage.cacheCreationInputTokens ?? 0}`,
+          );
+        }
 
         // Stream assistant text and tool starts to the client
-        if (choice.content) this.send(connection, { type: 'token', content: choice.content });
+        if (content) this.send(connection, { type: 'token', content });
         for (const tc of toolCalls) {
           let input: Record<string, unknown> = {};
           try { input = JSON.parse(tc.function.arguments || '{}'); } catch { /* reported on execute */ }
@@ -267,7 +191,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
         // Carry tool_calls on the assistant message so the following tool results pair back by id.
         const assistantMsg: ChatMessage = {
           role: 'assistant',
-          content: choice.content ?? '',
+          content,
           ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
         };
         history.push(assistantMsg);
@@ -335,7 +259,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
           // Ignore cleanup failures — primary error takes precedence
         }
       }
-      const status = err instanceof OpenAI.APIError ? err.status : undefined;
+      const status = apiErrorStatus(err);
       const errorMessage = status === 429
         ? 'Rate limit reached — please wait a moment and try again.'
         : err instanceof Error ? err.message : 'Unknown error';

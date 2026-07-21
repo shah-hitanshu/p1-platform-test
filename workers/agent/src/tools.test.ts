@@ -77,14 +77,14 @@ describe('WEB_TOOLS', () => {
 
   it('has list_media as first tool with required site_id', () => {
     const tool = WEB_TOOLS[0];
-    expect(tool.function.name).toBe('list_media');
-    expect((tool.function.parameters as { required?: string[] }).required).toContain('site_id');
+    expect(tool.name).toBe('list_media');
+    expect((tool.input_schema as { required?: string[] }).required).toContain('site_id');
   });
 
   it('has fetch_page as second tool with required url', () => {
     const tool = WEB_TOOLS[1];
-    expect(tool.function.name).toBe('fetch_page');
-    expect((tool.function.parameters as { required?: string[] }).required).toContain('url');
+    expect(tool.name).toBe('fetch_page');
+    expect((tool.input_schema as { required?: string[] }).required).toContain('url');
   });
 });
 
@@ -1267,7 +1267,7 @@ describe('executeTool create_page prop validation', () => {
 
 describe('CSS_TOOLS', () => {
   it('still exports list_components, get_document, apply_document_edits etc.', () => {
-    const names = CSS_TOOLS.map(t => t.function.name);
+    const names = CSS_TOOLS.map(t => t.name);
     expect(names).toContain('list_components');
     expect(names).toContain('get_document');
     expect(names).toContain('apply_document_edits');

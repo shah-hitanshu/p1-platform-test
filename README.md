@@ -11,7 +11,7 @@ Puck Editor (your site)
         ▼
 workers/agent             ← Cloudflare Agent Worker (Durable Object)
   ├── Validates CSS auth token
-  ├── Calls the model via Cloudflare AI Gateway (OpenAI-compatible endpoint)
+  ├── Calls the model via the Cloudflare AI Gateway REST API
   └── Executes CSS operations (12 tools)
         │ REST API
         ▼
@@ -20,7 +20,7 @@ CSS Backend               ← collaborative-state-system
 
 The plugin sends user intent to the Agent Worker over WebSocket. The Worker calls the configured model — a native Cloudflare Workers AI model by default, or a partner model such as Claude — with access to 12 tools (create pages, edit content, check presence, manage edit sessions, read media/web pages). The model's responses stream back to the plugin sidebar.
 
-All model calls go through **Cloudflare AI Gateway's OpenAI-compatible endpoint**, so the model is just a string (`AGENT_MODEL`) — switching providers is a config change, not a code change.
+All model calls go through the **Cloudflare AI Gateway REST API** (`api.cloudflare.com/client/v4/accounts/{id}/ai/...`). The `AGENT_MODEL` string's provider prefix selects the endpoint: `anthropic/*` uses the Anthropic-native `/ai/v1/messages` endpoint (with `cache_control` prompt-cache breakpoints), and everything else (bare Workers AI ids `@cf/...`, `openai/...`, `google-ai-studio/...`) uses the OpenAI-compatible `/ai/v1/chat/completions` endpoint (automatic prompt caching). Switching providers is a config change, not a code change.
 
 ---
 
@@ -29,10 +29,10 @@ All model calls go through **Cloudflare AI Gateway's OpenAI-compatible endpoint*
 - [Cloudflare account](https://dash.cloudflare.com/sign-up) with access to the target account (e.g. the P1 Staging account for staging)
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/): `npm install -g wrangler`
 - A deployed CSS backend (`collaborative-state-system`) with an agent registered
-- A **Cloudflare AI Gateway** and a gateway token (`CF_AIG_TOKEN`) — see step 1
+- A **Cloudflare AI Gateway** and a **Cloudflare API token** (`AI_GATEWAY_API_TOKEN`) with AI Gateway + Workers AI permissions — see step 1
 - Node.js 18+
 
-> **No Anthropic API key is needed.** Native `workers-ai/@cf/...` models are billed through Workers AI; partner models (`anthropic/...`) are billed through the gateway's Unified Billing. Either way the Worker authenticates with the gateway token, not a provider key.
+> **No Anthropic API key is needed.** Native Workers AI models (`@cf/...`) are billed through Workers AI; partner models (`anthropic/...`, `openai/...`, `google-ai-studio/...`) are billed through the gateway's Unified Billing (which must be enabled and funded). Either way the Worker authenticates with a Cloudflare API token, not a provider key.
 
 ---
 
@@ -54,16 +54,26 @@ Set both values in the appropriate env block in `wrangler.jsonc`:
 "AI_GATEWAY_NAME": "p1-chatbot"
 ```
 
-### Create a gateway token
+### Create a Cloudflare API token
 
-Create a Cloudflare **AI Gateway authentication token** (Account → AI Gateway → Run) and provide it to the Worker as the `CF_AIG_TOKEN` secret (see step 3). The Worker rejects a chat request if `AI_GATEWAY_ACCOUNT_ID`, `AI_GATEWAY_NAME`, or `CF_AIG_TOKEN` is missing.
+The Worker authenticates to the AI Gateway REST API with a **Cloudflare API token** (Bearer), not a provider key. Create a custom token (**Cloudflare Dashboard → My Profile → API Tokens → Create Custom Token**) with these **account-scoped** permissions:
+
+- **AI Gateway** — Read
+- **AI Gateway** — Edit
+- **Workers AI** — Read (needed for `@cf/...` models)
+
+Provide it to the Worker as the `AI_GATEWAY_API_TOKEN` secret (see step 3). The gateway is selected per request via the `cf-aig-gateway-id` header (set from `AI_GATEWAY_NAME`). The Worker rejects a chat request if `AI_GATEWAY_ACCOUNT_ID`, `AI_GATEWAY_NAME`, or `AI_GATEWAY_API_TOKEN` is missing.
+
+> This runtime token is **separate from Wrangler's deploy credential**. Deploying the Worker uses `wrangler login` (or a token with **Workers Scripts: Edit**); `AI_GATEWAY_API_TOKEN` is only the Worker's runtime secret. Don't set `CLOUDFLARE_API_TOKEN` in your shell for this token — Wrangler treats that reserved var as its own CLI credential.
 
 ### Choose the model
 
-`AGENT_MODEL` selects the model in `provider/model` notation:
+`AGENT_MODEL` is `provider/model` notation (must contain a slash). The prefix picks the gateway endpoint and caching behavior — only `anthropic/` is special-cased:
 
-- `workers-ai/@cf/moonshotai/kimi-k2.7-code` — native Cloudflare model (default), billed via Workers AI, no gateway credits needed
-- `anthropic/claude-haiku-4-5` (or another `anthropic/...` model) — requires the gateway to hold an Anthropic credential (Unified Billing credits or a stored key)
+- `anthropic/...` → Anthropic-native `/ai/v1/messages`; the Worker adds `cache_control` breakpoints for prompt caching.
+- everything else (bare Workers AI ids `@cf/...`, `openai/...`, `google-ai-studio/...`) → OpenAI-compatible `/ai/v1/chat/completions`; prompt caching is automatic.
+
+Use a model id that exists in your account's catalog — list them with `GET /accounts/{id}/ai/models/search`. **Partner models** (`anthropic/`, `openai/`, `google-ai-studio/`) require the gateway's **Unified Billing** to be enabled and funded; **Workers AI** models require Workers AI on the account's plan. A model that isn't available/funded returns "model not found".
 
 ---
 
@@ -112,8 +122,8 @@ pnpm install
 Set these via Wrangler for the environment you're deploying (`--env sbx1`, `--env staging`, etc.). Never commit them:
 
 ```bash
-wrangler secret put CF_AIG_TOKEN --env sbx1
-# paste your AI Gateway token
+wrangler secret put AI_GATEWAY_API_TOKEN --env sbx1
+# paste your Cloudflare API token (AI Gateway Read/Edit + Workers AI Read)
 
 wrangler secret put AGENT_ID --env sbx1
 # paste the agent UUID from step 2
@@ -125,7 +135,7 @@ wrangler secret put AGENT_API_KEY --env sbx1
 For local development, put the same keys in `workers/agent/.env` (gitignored) instead — `wrangler dev` loads them automatically:
 
 ```env
-CF_AIG_TOKEN=...
+AI_GATEWAY_API_TOKEN=...
 AGENT_ID=...
 AGENT_API_KEY=...
 ```
@@ -202,10 +212,10 @@ When `NEXT_PUBLIC_AGENT_URL` is unset the plugin is simply not added, so the edi
 | `CSS_BACKEND_URL` | var | CSS backend base URL |
 | `AI_GATEWAY_ACCOUNT_ID` | var | Cloudflare account ID that hosts the gateway |
 | `AI_GATEWAY_NAME` | var | AI Gateway name (e.g. `p1-chatbot`) |
-| `AGENT_MODEL` | var | Model in `provider/model` notation (defaults to `workers-ai/@cf/moonshotai/kimi-k2.7-code`) |
+| `AGENT_MODEL` | var | Model in `provider/model` notation; provider prefix selects the gateway endpoint (`anthropic/*` → `/messages`, else → `/chat/completions`) |
 | `MEDIA_WORKER_URL` | var | Media worker base URL |
 | `ENVIRONMENT` | var | `local`, `sbx1`, or `staging` |
-| `CF_AIG_TOKEN` | secret | Cloudflare AI Gateway token |
+| `AI_GATEWAY_API_TOKEN` | secret | Cloudflare API token (Bearer) for the AI Gateway REST API — AI Gateway Read/Edit + Workers AI Read |
 | `AGENT_ID` | secret | CSS registered agent UUID |
 | `AGENT_API_KEY` | secret | CSS agent API key (`sat_...`) |
 
@@ -274,6 +284,14 @@ cd workers/agent
 pnpm type-check
 pnpm test
 ```
+
+To verify live gateway connectivity and Anthropic prompt caching (needs a real token; makes two billed calls, so run on demand):
+
+```bash
+AI_GATEWAY_API_TOKEN=... AI_GATEWAY_ACCOUNT_ID=... AI_GATEWAY_NAME=p1-chatbot pnpm smoke:cache
+```
+
+It asserts a cache write on the first call and a cache read on the second, and surfaces the exact status/error if the URL, token, model id, or Unified Billing is wrong.
 
 ---
 

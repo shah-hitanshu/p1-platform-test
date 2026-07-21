@@ -8,6 +8,9 @@ allowBuilds:
   sharp: true
   workerd: true
 
+minimumReleaseAgeExclude:
+  - '@anthropic-ai/sdk@0.112.3'
+
 overrides:
   esbuild: "^0.28.1"
   form-data: "^4.0.6"

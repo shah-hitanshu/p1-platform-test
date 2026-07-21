@@ -7,23 +7,26 @@ export interface Env {
   CSS_BACKEND_URL: string;
   MEDIA_WORKER_URL: string;
 
-  // AI Gateway — all model calls go through the OpenAI-compatible endpoint at
-  // gateway.ai.cloudflare.com/v1/{account}/{name}/compat, so the model is just a
-  // string (native @cf/... or partner anthropic/...). Both IDs are required.
+  // AI Gateway REST API — model calls go through
+  // api.cloudflare.com/client/v4/accounts/{AI_GATEWAY_ACCOUNT_ID}/ai/v1/{chat/completions|messages}.
+  // AI_GATEWAY_ACCOUNT_ID is the Cloudflare account id (used in the URL path);
+  // AI_GATEWAY_NAME is the gateway id, sent as the cf-aig-gateway-id header. Both required.
   AI_GATEWAY_ACCOUNT_ID: string;
   AI_GATEWAY_NAME: string;
 
-  // Model to use, in the gateway compat endpoint's provider/model notation
-  // (e.g. workers-ai/@cf/... or anthropic/...). Optional — defaults in agent.ts.
+  // Model to use, as "provider/model" (must contain a slash), e.g. @cf/moonshotai/...,
+  // openai/gpt-4o, google-ai-studio/gemini-2.5-flash, anthropic/claude-... An `anthropic/`
+  // prefix selects the /messages endpoint; everything else uses /chat/completions.
+  // Optional — defaults in agent.ts.
   AGENT_MODEL?: string;
 
   // Secrets (set via wrangler secret / .dev.vars)
   AGENT_ID: string;
   AGENT_API_KEY: string;
-  // Cloudflare AI Gateway token — authenticates the Worker to the gateway. Required.
-  // Native @cf models bill via Workers AI; partner models bill via the gateway's
-  // unified billing / stored key (no per-request provider key needed).
-  CF_AIG_TOKEN: string;
+  // Cloudflare API token (AI Gateway Read/Edit + Workers AI Read) — authenticates the
+  // Worker to the REST API via Bearer auth. Providers bill through the gateway's unified
+  // billing, so no per-provider (Anthropic/OpenAI/…) key is needed.
+  AI_GATEWAY_API_TOKEN: string;
 }
 
 export interface ChatContext {
