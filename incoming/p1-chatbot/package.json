@@ -1,0 +1,17 @@
+{
+  "name": "p1-chatbot",
+  "private": true,
+  "packageManager": "pnpm@11.5.0",
+  "workspaces": [
+    "workers/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "ci:version": "changeset version",
+    "ci:publish": "changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0",
+    "ws": "^8.21.0"
+  }
+}
