@@ -46,5 +46,10 @@ jobs:
         with:
           version: pnpm ci:version
           publish: pnpm ci:publish
+          # Push the "Version Packages" commit via the GitHub API so it is
+          # GPG-signed by GitHub (verified), satisfying the "require signed
+          # commits" branch protection on main. Default "git-cli" pushes an
+          # unsigned bot commit, which the rule blocks.
+          commitMode: github-api
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
