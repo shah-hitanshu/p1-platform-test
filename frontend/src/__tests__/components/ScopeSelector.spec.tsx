@@ -11,13 +11,15 @@ import userEvent from '@testing-library/user-event';
 import { ScopeSelector } from '../../components/ScopeSelector';
 
 describe('ScopeSelector', () => {
-  it('should render all three scope checkboxes with correct labels', () => {
+  it('should render all five scope checkboxes with correct labels', () => {
     const onChange = vi.fn();
     render(<ScopeSelector selectedScopes={['read:published']} onChange={onChange} />);
 
     expect(screen.getByLabelText('Published content (main branch only)')).toBeInTheDocument();
     expect(screen.getByLabelText('All branch content')).toBeInTheDocument();
     expect(screen.getByLabelText('Draft data (editor API)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Site import/export (create new sites)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Component registry sync (CI pipeline writes)')).toBeInTheDocument();
   });
 
   it('should show published checked when selectedScopes includes read:published', () => {
@@ -85,5 +87,79 @@ describe('ScopeSelector', () => {
     expect(screen.getByLabelText('Draft data (editor API)')).toBeChecked();
     // read:published should not be checked since read:all supersedes it
     expect(screen.getByLabelText('Published content (main branch only)')).not.toBeChecked();
+  });
+
+  it('should show write:create checked when selectedScopes includes write:create', () => {
+    const onChange = vi.fn();
+    render(<ScopeSelector selectedScopes={['read:published', 'write:create']} onChange={onChange} />);
+
+    expect(screen.getByLabelText('Site import/export (create new sites)')).toBeChecked();
+    expect(screen.getByLabelText('Component registry sync (CI pipeline writes)')).not.toBeChecked();
+  });
+
+  it('should show write:registry checked when selectedScopes includes write:registry', () => {
+    const onChange = vi.fn();
+    render(<ScopeSelector selectedScopes={['read:published', 'write:registry']} onChange={onChange} />);
+
+    expect(screen.getByLabelText('Component registry sync (CI pipeline writes)')).toBeChecked();
+    expect(screen.getByLabelText('Site import/export (create new sites)')).not.toBeChecked();
+  });
+
+  it('should call onChange with expected scope array when write:create is selected', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<ScopeSelector selectedScopes={['read:published']} onChange={onChange} />);
+
+    await user.click(screen.getByLabelText('Site import/export (create new sites)'));
+
+    expect(onChange).toHaveBeenCalledWith(['read:published', 'write:create']);
+  });
+
+  it('should call onChange with expected scope array when write:registry is selected', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<ScopeSelector selectedScopes={['read:published']} onChange={onChange} />);
+
+    await user.click(screen.getByLabelText('Component registry sync (CI pipeline writes)'));
+
+    expect(onChange).toHaveBeenCalledWith(['read:published', 'write:registry']);
+  });
+
+  it('should allow write:create and write:registry to be selected together without supersession', () => {
+    const onChange = vi.fn();
+    render(
+      <ScopeSelector
+        selectedScopes={['read:published', 'write:create', 'write:registry']}
+        onChange={onChange}
+      />
+    );
+
+    expect(screen.getByLabelText('Published content (main branch only)')).toBeChecked();
+    expect(screen.getByLabelText('Site import/export (create new sites)')).toBeChecked();
+    expect(screen.getByLabelText('Component registry sync (CI pipeline writes)')).toBeChecked();
+  });
+
+  it('should call onChange with remaining scope when write:create is unchecked', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <ScopeSelector selectedScopes={['write:create', 'write:registry']} onChange={onChange} />
+    );
+
+    await user.click(screen.getByLabelText('Site import/export (create new sites)'));
+
+    expect(onChange).toHaveBeenCalledWith(['write:registry']);
+  });
+
+  it('should call onChange with remaining scope when write:registry is unchecked', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <ScopeSelector selectedScopes={['write:create', 'write:registry']} onChange={onChange} />
+    );
+
+    await user.click(screen.getByLabelText('Component registry sync (CI pipeline writes)'));
+
+    expect(onChange).toHaveBeenCalledWith(['write:create']);
   });
 });

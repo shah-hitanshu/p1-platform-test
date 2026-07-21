@@ -14,6 +14,8 @@ const SCOPE_OPTIONS = [
   { value: 'read:published', label: 'Published content (main branch only)' },
   { value: 'read:all', label: 'All branch content' },
   { value: 'read:draft', label: 'Draft data (editor API)' },
+  { value: 'write:create', label: 'Site import/export (create new sites)' },
+  { value: 'write:registry', label: 'Component registry sync (CI pipeline writes)' },
 ] as const;
 
 export function ScopeSelector({ selectedScopes, onChange }: ScopeSelectorProps) {
