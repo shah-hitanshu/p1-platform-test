@@ -1,5 +1,16 @@
 # @pantheon-systems/p1-next-sdk
 
+## 0.7.0
+
+### Patch Changes
+
+- Updated dependencies [b0254ff]
+- Updated dependencies
+- Updated dependencies [e937842]
+- Updated dependencies [e937842]
+  - @pantheon-systems/puck-css@0.7.0
+  - @pantheon-systems/css-client@0.7.0
+
 ## 0.6.0
 
 ### Patch Changes

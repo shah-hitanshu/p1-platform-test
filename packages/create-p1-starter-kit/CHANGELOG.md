@@ -1,5 +1,7 @@
 # @pantheon-systems/create-p1-starter-kit
 
+## 0.7.0
+
 ## 0.6.0
 
 ### Patch Changes
