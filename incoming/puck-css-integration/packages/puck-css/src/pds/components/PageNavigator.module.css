@@ -1,0 +1,375 @@
+/**
+ * PageNavigator — CSS Module
+ *
+ * Styles for the portal-rendered page-navigation dropdown.
+ * The root element is injected into document.body via createPortal and
+ * positioned with inline `style` (position:fixed + top/left/width/zIndex)
+ * so it escapes the header's overflow constraints.
+ *
+ * Font sizes, list max-height, and dropdown width match the prototype
+ * (PantheonP1PuckEditor-PDS.jsx PageNavigator component):
+ *   • fontSize: t.sizeS = var(--pds-typography-size-s, 0.875rem)
+ *   • list max-height: 360px with overflow-y: auto
+ *   • dropdown width: 560px max (set via inline style from positioning effect)
+ *   • z-index: 9999 (set via inline style from positioning effect)
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  background: var(--pds-color-bg-default, oklch(1.0000 0 0));
+  border: 1px solid oklch(0.96 0 0); /* c.borderSubtle */
+  border-radius: var(--pds-border-radius-container, 0.375rem);
+  box-shadow:
+    var(
+      --pds-elevation-overlay,
+      0px 0px 0px 1px rgba(0, 0, 0, 0.08),
+      0px 1px 1px 0px rgba(0, 0, 0, 0.02),
+      0px 8px 16px -4px rgba(0, 0, 0, 0.04),
+      0px 24px 32px -8px rgba(0, 0, 0, 0.06)
+    );
+  overflow: hidden;
+  /* z-index and positioning are set via inline style from the portal effect */
+}
+
+/* ── Header row: search input + close button ──────────────────────────── */
+
+.header {
+  display: flex;
+  align-items: center;
+  padding: var(--pds-spacing-xs, 0.625rem);
+  border-bottom: 1px solid oklch(0.96 0 0); /* c.borderSubtle */
+  gap: 0.512rem;
+  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+}
+
+/* ── Search input ──────────────────────────────────────────────────────── */
+/* Prototype: fontSize t.sizeS, bgMuted, borderInput */
+
+.search {
+  flex: 1;
+  border: 1px solid var(--pds-color-border-input, oklch(0.8853 0 0));
+  border-radius: var(--pds-border-radius-default, 0.188rem);
+  outline: none;
+  padding: 0.5rem 0.64rem;
+  background: var(--pds-color-bg-default, oklch(1.0000 0 0));
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  height: 2rem;
+  line-height: 1;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.search:focus {
+  border-color: var(--pds-color-interactive-focus, oklch(0.5558 0.2372 267.79));
+  box-shadow: 0 0 0 2px oklch(0.5558 0.2372 267.79 / 0.15);
+}
+
+/* ── Close button ──────────────────────────────────────────────────────── */
+
+.closeButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--pds-color-fg-default-secondary, oklch(0.5103 0 0));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border-radius: var(--pds-border-radius-default, 0.188rem);
+  flex-shrink: 0;
+}
+
+.closeButton:hover {
+  background: oklch(0.96 0 0); /* c.bgSubtle */
+}
+
+/* ── Document list ─────────────────────────────────────────────────────── */
+/* Prototype: maxHeight 360px, overflowY auto */
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0.41rem;
+  overflow-y: auto;
+  max-height: 360px;
+  flex: 1;
+}
+
+/* ── List item button ──────────────────────────────────────────────────── */
+/* Prototype: fontSize t.sizeS = 0.875rem, border-radius default */
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0 var(--pds-spacing-xs, 0.625rem);
+  border-bottom: 1px solid oklch(0.96 0 0);
+  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+}
+.tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 0.5rem 0.5rem;
+  cursor: pointer;
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  color: var(--pds-color-fg-default-secondary, oklch(0.45 0 0));
+  line-height: 1.5;
+}
+.tab:hover {
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+}
+.tabActive {
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  font-weight: 600;
+  border-bottom-color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+}
+
+.item {
+  display: block;
+  width: 100%;
+  padding: 0.41rem 0.64rem;
+  background: none;
+  border: none;
+  border-radius: var(--pds-border-radius-default, 0.188rem);
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.5;
+}
+
+.item[aria-current='page'],
+.itemCurrent {
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  background: var(--pds-color-status-info-background, oklch(0.9683 0.0161 245.08));
+  color: var(--pds-color-interactive-link-default, oklch(0.5558 0.2372 267.79));
+}
+
+.item:hover {
+  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+}
+
+/* ── Inherited (live-only) item — exists on live but not this branch ─── */
+
+.itemInherited {
+  color: var(--pds-color-fg-default-secondary, oklch(0.5103 0 0));
+}
+
+/* ── Empty state ───────────────────────────────────────────────────────── */
+
+.empty {
+  padding: 0.64rem;
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  color: var(--pds-color-fg-default-secondary, oklch(0.5103 0 0));
+  font-style: italic;
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────── */
+
+.footer {
+  padding: 0.512rem 0.64rem;
+  border-top: 1px solid oklch(0.96 0 0); /* c.borderSubtle */
+  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+  display: flex;
+  align-items: center;
+}
+
+/* ── Create form (replaces footer when isCreating) ────────────────────── */
+
+.createForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.41rem;
+  width: 100%;
+}
+
+.createInput {
+  flex: 1;
+  border: 1px solid var(--pds-color-border-input, oklch(0.8853 0 0));
+  border-radius: var(--pds-border-radius-default, 0.188rem);
+  outline: none;
+  padding: 0.375rem 0.5rem;
+  background: var(--pds-color-bg-default, oklch(1.0000 0 0));
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.createInput:focus {
+  border-color: var(--pds-color-interactive-focus, oklch(0.5558 0.2372 267.79));
+  box-shadow: 0 0 0 2px oklch(0.5558 0.2372 267.79 / 0.15);
+}
+
+.createActions {
+  display: flex;
+  gap: 0.41rem;
+}
+
+.createSubmit {
+  flex: 1;
+  padding: 0.375rem 0.5rem;
+  background: var(--pds-color-interactive-default, oklch(0.5558 0.2372 267.79));
+  color: oklch(1.0000 0 0);
+  border: none;
+  border-radius: var(--pds-border-radius-button, 3.5rem);
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  cursor: pointer;
+}
+
+.createSubmit:hover {
+  background: var(--pds-color-interactive-hover, oklch(0.4558 0.2372 267.79));
+}
+
+.createCancel {
+  padding: 0.375rem 0.5rem;
+  background: transparent;
+  border: 1px solid oklch(0.8853 0 0);
+  border-radius: var(--pds-border-radius-button, 3.5rem);
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  cursor: pointer;
+}
+
+.createCancel:hover {
+  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+}
+
+.createError {
+  font-size: var(--pds-typography-size-xs, 0.75rem);
+  color: var(--pds-color-status-critical-foreground, oklch(0.5274 0.2069 27.33));
+}
+
+/* ── New page button ───────────────────────────────────────────────────── */
+
+.newButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.41rem;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid oklch(0.8853 0 0); /* c.btnSecondaryBorder */
+  border-radius: var(--pds-border-radius-button, 3.5rem);
+  padding: 0.5rem 0.625rem;
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  height: 2rem;
+  line-height: 1;
+  letter-spacing: 0.025em;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.newButton:hover {
+  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+}
+
+/* ── Template selector ─────────────────────────────────────────────────── */
+
+.templateSelector {
+  width: 100%;
+}
+
+.templateSelectorHeader {
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  margin-bottom: 0.512rem;
+}
+
+.templateSelectorGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.512rem;
+}
+
+.templateSelectorLoading {
+  padding: 0.64rem;
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  color: var(--pds-color-fg-default-secondary, oklch(0.5103 0 0));
+  font-style: italic;
+}
+
+.templateOption {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+  padding: 0.5rem 0.64rem;
+  background: var(--pds-color-bg-default, oklch(1.0000 0 0));
+  border: 1px solid var(--pds-color-border-input, oklch(0.8853 0 0));
+  border-radius: var(--pds-border-radius-default, 0.188rem);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+}
+
+.templateOption:hover {
+  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+  border-color: var(--pds-color-interactive-focus, oklch(0.5558 0.2372 267.79));
+}
+
+.templateOptionLabel {
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+}
+
+.templateOptionDesc {
+  font-size: var(--pds-typography-size-xs, 0.75rem);
+  color: var(--pds-color-fg-default-secondary, oklch(0.5103 0 0));
+}
+
+.selectedTemplateBadge {
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-xs, 0.75rem);
+  color: var(--pds-color-interactive-link-default, oklch(0.5558 0.2372 267.79));
+  background: var(--pds-color-status-info-background, oklch(0.9683 0.0161 245.08));
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--pds-border-radius-default, 0.188rem);
+  margin-bottom: 0.25rem;
+}
+
+/* ── Mobile: full-width dropdown with horizontal scroll for long paths ── */
+
+@media (max-width: 767px) {
+  .root {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  .list {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .item {
+    width: max-content;
+    min-width: 100%;
+    overflow: visible;
+    text-overflow: clip;
+  }
+}

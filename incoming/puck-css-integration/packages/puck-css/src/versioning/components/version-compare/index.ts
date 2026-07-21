@@ -1,0 +1,41 @@
+/**
+ * Version Compare Components
+ *
+ * Components for displaying version comparison views.
+ */
+
+export { PropValueDisplay } from './PropValueDisplay.js';
+export type { PropValueDisplayProps } from './PropValueDisplay.js';
+
+export { PropDiffRow } from './PropDiffRow.js';
+export type { PropDiffRowProps } from './PropDiffRow.js';
+
+export { PropDiffPanel } from './PropDiffPanel.js';
+export type { PropDiffPanelProps } from './PropDiffPanel.js';
+
+export { ComponentNode } from './ComponentNode.js';
+export type { ComponentNodeProps } from './ComponentNode.js';
+
+export { ComponentTree } from './ComponentTree.js';
+export type { ComponentTreeProps } from './ComponentTree.js';
+
+export { DiffHeader } from './DiffHeader.js';
+export type { DiffHeaderProps } from './DiffHeader.js';
+
+export { VersionComparePage } from './VersionComparePage.js';
+export type { VersionComparePageProps } from './VersionComparePage.js';
+
+export { VisualVersionCompare } from './VisualVersionCompare.js';
+export type { VisualVersionCompareProps } from './VisualVersionCompare.js';
+
+export { BranchDiffHeader } from './BranchDiffHeader.js';
+export type { BranchDiffHeaderProps } from './BranchDiffHeader.js';
+
+export { BranchMergeCompare } from './BranchMergeCompare.js';
+export type { BranchMergeCompareProps } from './BranchMergeCompare.js';
+
+export { DocumentDiffList } from './DocumentDiffList.js';
+export type { DocumentDiffListProps } from './DocumentDiffList.js';
+
+export { VisualBranchCompare } from './VisualBranchCompare.js';
+export type { VisualBranchCompareProps } from './VisualBranchCompare.js';

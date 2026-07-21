@@ -1,0 +1,33 @@
+{
+  "name": "puck-css-integration",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Puck editor integration with Collaborative State System",
+  "scripts": {
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "typecheck": "pnpm -r typecheck",
+    "clean": "pnpm -r clean",
+    "publish:packages": "pnpm build && pnpm -r publish --no-git-checks --access public"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0",
+    "@pantheon-systems/eslint-config": "workspace:*",
+    "@playwright/test": "^1.58.0",
+    "@types/node": "^20.19.30",
+    "@vitest/coverage-v8": "^4.1.5",
+    "eslint": "^9.27.0",
+    "prettier": "^3.8.1",
+    "turbo": "^2.9.14",
+    "tsx": "^4.23.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
+  },
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

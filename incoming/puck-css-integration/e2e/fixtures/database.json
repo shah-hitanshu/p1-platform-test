@@ -1,0 +1,53 @@
+{
+  "/": {
+    "root": { "props": { "title": "Welcome to P1" } },
+    "content": [
+      {
+        "type": "HeadingBlock",
+        "props": {
+          "title": "Welcome to P1 Starter Kit",
+          "level": "h1",
+          "id": "HeadingBlock-welcome"
+        }
+      },
+      {
+        "type": "ParagraphBlock",
+        "props": {
+          "text": "Build and manage pages with the visual editor. Get started by editing this page or creating new ones from the dashboard.",
+          "id": "ParagraphBlock-welcome-desc"
+        }
+      },
+      {
+        "type": "SpacerBlock",
+        "props": {
+          "size": "medium",
+          "id": "SpacerBlock-welcome"
+        }
+      },
+      {
+        "type": "ButtonBlock",
+        "props": {
+          "label": "Open Page Editor",
+          "href": "/p1",
+          "openInNewTab": false,
+          "id": "ButtonBlock-welcome-cta"
+        }
+      }
+    ],
+    "zones": {}
+  },
+  "/contact-us": {
+    "root": { "props": { "title": "New page" } },
+    "content": [
+      {
+        "type": "HeadingBlock",
+        "props": {
+          "title": "Heading ee",
+          "level": "h1",
+          "id": "HeadingBlock-c62993ce-d5db-4172-87bf-4ddfb473f7b4"
+        }
+      }
+    ],
+    "zones": {}
+  }
+}

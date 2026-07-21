@@ -1,0 +1,2730 @@
+/* Google Fonts — must precede all rules per CSS spec.
+   Consolidates font imports from pds-core.css and PuckEditorTheme.css here
+   so consuming bundlers (e.g. Turbopack) never see @import url() after rules. */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&family=Inter+Tight:ital,wght@0,100..900;1,100..900&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&display=swap");
+
+@import './pds/theme/PuckEditorTheme.css';
+
+/**
+ * Puck CSS Integration Styles
+ *
+ * Styles for version comparison and other UI components.
+ */
+
+/* ============================================
+   Plugin Rail Toggle
+   ============================================ */
+
+/* Hide the plugin rail (left navigation with Blocks/Outline/History/etc.) */
+.p1-hide-plugin-rail [class*='_PuckLayout-nav_'] {
+  display: none;
+}
+
+/* Reclaim the space - set the side nav width to 0 so grid collapses that column */
+.p1-hide-plugin-rail [class*='_PuckLayout-inner_'] {
+  --puck-side-nav-width: 0;
+}
+
+/* ============================================
+   Sidebar Background Matching
+   ============================================ */
+
+/* Match plugin rail, blocks plugin, and sidebars background to header */
+[class*='_PuckLayout-nav_'],
+[class*='_BlocksPlugin_'],
+[class*='_Sidebar--left_'],
+[class*='_Sidebar--right_'] {
+  background: var(--pds-color-bg-default, oklch(1 0 0)) !important;
+}
+
+/* Override all nested backgrounds in right sidebar */
+[class*='_Sidebar--right_'] [class*='_SidebarSection'],
+[class*='_Sidebar--right_'] [class*='_Breadcrumbs_'],
+[class*='_Sidebar--right_'] [class*='_Heading_'] {
+  background: transparent !important;
+}
+
+/* ============================================
+   CSS Variables
+   ============================================ */
+:root {
+  /* Diff colors */
+  --puck-css-diff-added: #22c55e;
+  --puck-css-diff-added-bg: #dcfce7;
+  --puck-css-diff-removed: #ef4444;
+  --puck-css-diff-removed-bg: #fee2e2;
+  --puck-css-diff-modified: #f59e0b;
+  --puck-css-diff-modified-bg: #fef3c7;
+  --puck-css-diff-reordered: #8b5cf6;
+  --puck-css-diff-reordered-bg: #ede9fe;
+  --puck-css-diff-unchanged: #6b7280;
+  --puck-css-diff-unchanged-bg: #f3f4f6;
+
+  /* General colors */
+  --puck-css-border: #e5e7eb;
+  --puck-css-bg: #ffffff;
+  --puck-css-bg-secondary: #f9fafb;
+  --puck-css-text: #111827;
+  --puck-css-text-secondary: #6b7280;
+  --puck-css-primary: #3b82f6;
+  --puck-css-primary-hover: #2563eb;
+}
+
+/* ============================================
+   Utility: Visually Hidden (screen reader only)
+   ============================================ */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ============================================
+   DiffHeader
+   ============================================ */
+.diff-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--puck-css-bg);
+  border-bottom: 1px solid var(--puck-css-border);
+}
+
+.diff-header__versions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.diff-header__version {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.diff-header__version--before {
+  background: var(--puck-css-diff-removed-bg);
+  color: var(--puck-css-diff-removed);
+}
+
+.diff-header__version--after {
+  background: var(--puck-css-diff-added-bg);
+  color: var(--puck-css-diff-added);
+}
+
+.diff-header__arrow {
+  color: var(--puck-css-text-secondary);
+}
+
+.diff-header__summary {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.diff-header__stat {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.diff-header__stat--added {
+  background: var(--puck-css-diff-added-bg);
+  color: var(--puck-css-diff-added);
+}
+
+.diff-header__stat--removed {
+  background: var(--puck-css-diff-removed-bg);
+  color: var(--puck-css-diff-removed);
+}
+
+.diff-header__stat--modified {
+  background: var(--puck-css-diff-modified-bg);
+  color: var(--puck-css-diff-modified);
+}
+
+.diff-header__stat--reordered {
+  background: var(--puck-css-diff-reordered-bg);
+  color: var(--puck-css-diff-reordered);
+}
+
+.diff-header__close {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+/* ============================================
+   BranchDiffHeader
+   ============================================ */
+.branch-diff-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--puck-css-bg);
+  border-bottom: 1px solid var(--puck-css-border);
+}
+
+.branch-diff-header__branches {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.branch-diff-header__branch {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.branch-diff-header__branch--source {
+  background: var(--puck-css-diff-removed-bg);
+  color: var(--puck-css-diff-removed);
+}
+
+.branch-diff-header__branch--target {
+  background: var(--puck-css-diff-added-bg);
+  color: var(--puck-css-diff-added);
+}
+
+.branch-diff-header__arrow {
+  color: var(--puck-css-text-secondary);
+}
+
+.branch-diff-header__summary {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.branch-diff-header__stat {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.branch-diff-header__stat--added {
+  background: var(--puck-css-diff-added-bg);
+  color: var(--puck-css-diff-added);
+}
+
+.branch-diff-header__stat--removed {
+  background: var(--puck-css-diff-removed-bg);
+  color: var(--puck-css-diff-removed);
+}
+
+.branch-diff-header__stat--modified {
+  background: var(--puck-css-diff-modified-bg);
+  color: var(--puck-css-diff-modified);
+}
+
+.branch-diff-header__stat--reordered {
+  background: var(--puck-css-diff-reordered-bg);
+  color: var(--puck-css-diff-reordered);
+}
+
+.branch-diff-header__close {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+/* ============================================
+   VersionComparePage
+   ============================================ */
+.version-compare-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--puck-css-bg-secondary);
+}
+
+.version-compare-page__content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.version-compare-page__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--puck-css-text-secondary);
+  font-size: 1rem;
+}
+
+.version-compare-page__trees {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  padding: 1rem;
+  flex: 1;
+  overflow: auto;
+}
+
+.version-compare-page__detail {
+  border-top: 1px solid var(--puck-css-border);
+  padding: 1rem;
+  background: var(--puck-css-bg);
+  max-height: 40%;
+  overflow: auto;
+}
+
+/* ============================================
+   ComponentTree
+   ============================================ */
+.component-tree {
+  background: var(--puck-css-bg);
+  border: 1px solid var(--puck-css-border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.component-tree__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--puck-css-bg-secondary);
+  border-bottom: 1px solid var(--puck-css-border);
+}
+
+.component-tree__title {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.component-tree__count {
+  font-size: 0.75rem;
+  color: var(--puck-css-text-secondary);
+}
+
+.component-tree__content {
+  flex: 1;
+  overflow: auto;
+  padding: 0.5rem;
+}
+
+.component-tree__nodes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.component-tree__empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--puck-css-text-secondary);
+  font-size: 0.875rem;
+}
+
+/* ============================================
+   ComponentNode
+   ============================================ */
+.component-node {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 0.375rem;
+  background: transparent;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.875rem;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.component-node:hover {
+  background: var(--puck-css-bg-secondary);
+}
+
+.component-node--selected {
+  border-color: var(--puck-css-primary);
+  background: var(--puck-css-bg-secondary);
+}
+
+.component-node--added {
+  background: var(--puck-css-diff-added-bg);
+}
+
+.component-node--added:hover {
+  background: var(--puck-css-diff-added-bg);
+  filter: brightness(0.95);
+}
+
+.component-node--removed {
+  background: var(--puck-css-diff-removed-bg);
+}
+
+.component-node--removed:hover {
+  background: var(--puck-css-diff-removed-bg);
+  filter: brightness(0.95);
+}
+
+.component-node--modified {
+  background: var(--puck-css-diff-modified-bg);
+}
+
+.component-node--modified:hover {
+  background: var(--puck-css-diff-modified-bg);
+  filter: brightness(0.95);
+}
+
+.component-node--reordered {
+  background: var(--puck-css-diff-reordered-bg);
+}
+
+.component-node--reordered:hover {
+  background: var(--puck-css-diff-reordered-bg);
+  filter: brightness(0.95);
+}
+
+.component-node__icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.component-node--added .component-node__icon {
+  color: var(--puck-css-diff-added);
+}
+
+.component-node--removed .component-node__icon {
+  color: var(--puck-css-diff-removed);
+}
+
+.component-node--modified .component-node__icon {
+  color: var(--puck-css-diff-modified);
+}
+
+.component-node--reordered .component-node__icon {
+  color: var(--puck-css-diff-reordered);
+}
+
+.component-node--unchanged .component-node__icon {
+  color: var(--puck-css-diff-unchanged);
+}
+
+.component-node__type {
+  flex: 1;
+  font-weight: 500;
+}
+
+.component-node__position {
+  font-size: 0.75rem;
+  color: var(--puck-css-text-secondary);
+}
+
+.component-node__move-info {
+  font-size: 0.75rem;
+  color: var(--puck-css-diff-reordered);
+  font-style: italic;
+}
+
+/* ============================================
+   PropDiffPanel
+   ============================================ */
+.prop-diff-panel {
+  background: var(--puck-css-bg);
+  border-radius: 0.5rem;
+}
+
+.prop-diff-panel__header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.prop-diff-panel__type {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.prop-diff-panel__id {
+  font-size: 0.75rem;
+  color: var(--puck-css-text-secondary);
+}
+
+.prop-diff-panel__summary {
+  font-size: 0.875rem;
+  color: var(--puck-css-text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.prop-diff-panel__content {
+  display: flex;
+  flex-direction: column;
+}
+
+.prop-diff-panel__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.prop-diff-panel__empty {
+  padding: 1rem;
+  text-align: center;
+  color: var(--puck-css-text-secondary);
+  font-size: 0.875rem;
+}
+
+/* ============================================
+   PropDiffRow
+   ============================================ */
+.prop-diff-row {
+  display: grid;
+  grid-template-columns: 8rem 1fr 1.5rem 1fr;
+  gap: 0.5rem;
+  align-items: start;
+  padding: 0.5rem;
+  border-radius: 0.375rem;
+  background: var(--puck-css-bg-secondary);
+}
+
+.prop-diff-row--added {
+  background: var(--puck-css-diff-added-bg);
+}
+
+.prop-diff-row--removed {
+  background: var(--puck-css-diff-removed-bg);
+}
+
+.prop-diff-row--modified {
+  background: var(--puck-css-diff-modified-bg);
+}
+
+.prop-diff-row__name {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--puck-css-text);
+}
+
+.prop-diff-row__before,
+.prop-diff-row__after {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8125rem;
+  word-break: break-word;
+}
+
+.prop-diff-row__arrow {
+  text-align: center;
+  color: var(--puck-css-text-secondary);
+}
+
+/* ============================================
+   PropValueDisplay
+   ============================================ */
+.prop-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.prop-value--added {
+  color: var(--puck-css-diff-added);
+}
+
+.prop-value--removed {
+  color: var(--puck-css-diff-removed);
+  text-decoration: line-through;
+}
+
+.prop-value__color-swatch {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--puck-css-border);
+}
+
+.prop-value__null {
+  color: var(--puck-css-text-secondary);
+  font-style: italic;
+}
+
+.prop-value__undefined {
+  color: var(--puck-css-text-secondary);
+  font-style: italic;
+}
+
+.prop-value__boolean {
+  font-weight: 600;
+}
+
+.prop-value__boolean--true {
+  color: var(--puck-css-diff-added);
+}
+
+.prop-value__boolean--false {
+  color: var(--puck-css-diff-removed);
+}
+
+.prop-value__number {
+  color: var(--puck-css-primary);
+}
+
+.prop-value__string {
+  color: var(--puck-css-text);
+}
+
+.prop-value__array {
+  color: var(--puck-css-text-secondary);
+}
+
+.prop-value__object {
+  color: var(--puck-css-text-secondary);
+}
+
+/* ============================================
+   VisualVersionCompare
+   ============================================ */
+.visual-version-compare {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--puck-css-bg-secondary);
+}
+
+.visual-version-compare__legend {
+  display: flex;
+  gap: 1.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--puck-css-bg);
+  border-bottom: 1px solid var(--puck-css-border);
+  font-size: 0.75rem;
+}
+
+.visual-version-compare__legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.visual-version-compare__legend-color {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 0.25rem;
+}
+
+.visual-version-compare__legend-item--added .visual-version-compare__legend-color {
+  background: var(--puck-css-diff-added);
+}
+
+.visual-version-compare__legend-item--removed .visual-version-compare__legend-color {
+  background: var(--puck-css-diff-removed);
+}
+
+.visual-version-compare__legend-item--modified .visual-version-compare__legend-color {
+  background: var(--puck-css-diff-modified);
+}
+
+.visual-version-compare__content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.visual-version-compare__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--puck-css-text-secondary);
+  font-size: 1rem;
+}
+
+.visual-version-compare__panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  flex: 1;
+  overflow: hidden;
+  background: var(--puck-css-border);
+}
+
+.visual-version-compare__panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--puck-css-bg);
+  overflow: hidden;
+}
+
+.visual-version-compare__panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: var(--puck-css-bg-secondary);
+  border-bottom: 1px solid var(--puck-css-border);
+}
+
+.visual-version-compare__panel--before .visual-version-compare__panel-header {
+  background: var(--puck-css-diff-removed-bg);
+}
+
+.visual-version-compare__panel--after .visual-version-compare__panel-header {
+  background: var(--puck-css-diff-added-bg);
+}
+
+.visual-version-compare__panel-label {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.visual-version-compare__panel-version {
+  font-size: 0.75rem;
+  color: var(--puck-css-text-secondary);
+}
+
+.visual-version-compare__panel-content {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+}
+
+/* ============================================
+   Visual Diff Highlighting
+   ============================================ */
+.visual-diff-highlight {
+  position: relative;
+  border-radius: 0.375rem;
+}
+
+.visual-diff-highlight--added {
+  outline: 3px solid var(--puck-css-diff-added);
+  outline-offset: 2px;
+  background: var(--puck-css-diff-added-bg);
+}
+
+.visual-diff-highlight--removed {
+  outline: 3px solid var(--puck-css-diff-removed);
+  outline-offset: 2px;
+  background: var(--puck-css-diff-removed-bg);
+  opacity: 0.7;
+}
+
+.visual-diff-highlight--modified {
+  outline: 3px solid var(--puck-css-diff-modified);
+  outline-offset: 2px;
+  background: var(--puck-css-diff-modified-bg);
+}
+
+.visual-diff-highlight--reordered {
+  outline: 3px solid var(--puck-css-diff-reordered);
+  outline-offset: 2px;
+  background: var(--puck-css-diff-reordered-bg);
+}
+
+.visual-diff-badge {
+  position: absolute;
+  top: -0.5rem;
+  right: -0.5rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: white;
+  z-index: 10;
+}
+
+.visual-diff-badge--added {
+  background: var(--puck-css-diff-added);
+}
+
+.visual-diff-badge--removed {
+  background: var(--puck-css-diff-removed);
+}
+
+.visual-diff-badge--modified {
+  background: var(--puck-css-diff-modified);
+}
+
+.visual-diff-badge--reordered {
+  background: var(--puck-css-diff-reordered);
+}
+
+/* ============================================
+   HistoricalVersionBanner
+   ============================================ */
+.historical-version-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: var(--puck-css-diff-modified-bg);
+  border: 1px solid var(--puck-css-diff-modified);
+  border-radius: 0.375rem;
+  color: var(--puck-css-text);
+  font-size: 0.875rem;
+}
+
+.historical-version-banner__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--puck-css-diff-modified);
+  flex-shrink: 0;
+}
+
+.historical-version-banner__content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.historical-version-banner__text {
+  font-weight: 600;
+}
+
+.historical-version-banner__date {
+  color: var(--puck-css-text-secondary);
+  font-size: 0.75rem;
+}
+
+.historical-version-banner__locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  background: var(--puck-css-diff-removed-bg);
+  color: var(--puck-css-diff-removed);
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.historical-version-banner__button {
+  white-space: nowrap;
+}
+
+/* ============================================
+   CSS Plugin Panel
+   ============================================ */
+.css-plugin-panel {
+  padding: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  color: var(--puck-css-text);
+}
+
+.css-plugin-section {
+  margin-bottom: 16px;
+}
+
+.css-plugin-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.css-plugin-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--puck-css-text-secondary);
+  margin-bottom: 6px;
+}
+
+.css-plugin-section-header .css-plugin-label {
+  margin-bottom: 0;
+}
+
+.css-plugin-select {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid var(--puck-css-border);
+  border-radius: 6px;
+  background: var(--puck-css-bg);
+  color: var(--puck-css-text);
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M3 4.5L6 7.5L9 4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.css-plugin-select:focus {
+  outline: none;
+  border-color: var(--puck-css-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+
+.css-plugin-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.css-plugin-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid var(--puck-css-border);
+  border-radius: 6px;
+  background: var(--puck-css-bg);
+  color: var(--puck-css-text);
+  box-sizing: border-box;
+}
+
+.css-plugin-input:focus {
+  outline: none;
+  border-color: var(--puck-css-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.css-plugin-error {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--puck-css-diff-removed);
+  background: var(--puck-css-diff-removed-bg);
+  border-radius: 4px;
+}
+
+.css-plugin-loading,
+.css-plugin-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--puck-css-text-secondary);
+  background: var(--puck-css-bg-secondary);
+  border-radius: 6px;
+}
+
+.css-plugin-doc-list,
+.css-plugin-version-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--puck-css-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.css-plugin-doc-item,
+.css-plugin-version-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border-bottom: 1px solid var(--puck-css-border);
+}
+
+.css-plugin-doc-item:last-child,
+.css-plugin-version-item:last-child {
+  border-bottom: none;
+}
+
+.css-plugin-doc-item:hover,
+.css-plugin-version-item:hover {
+  background: var(--puck-css-bg-secondary);
+}
+
+.css-plugin-doc-item--active {
+  background: rgba(59, 130, 246, 0.1);
+  border-left: 3px solid var(--puck-css-primary);
+  padding-left: 7px;
+}
+
+.css-plugin-doc-item--main-only {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.css-plugin-doc-path {
+  font-size: 13px;
+  color: var(--puck-css-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.css-plugin-doc-delete {
+  padding: 2px 6px;
+  font-size: 14px;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  color: var(--puck-css-text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.css-plugin-doc-item:hover .css-plugin-doc-delete {
+  opacity: 1;
+}
+
+.css-plugin-doc-delete:hover {
+  color: var(--puck-css-diff-removed);
+}
+
+.css-plugin-version-item {
+  gap: 4px;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.css-plugin-version-item--selected {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.css-plugin-version-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.css-plugin-version-author {
+  font-size: 0.75rem;
+  color: var(--pds-color-fg-default-secondary, #666);
+  margin-top: 2px;
+}
+
+.css-plugin-version-restore {
+  margin-top: 4px;
+  align-self: flex-start;
+}
+
+.css-plugin-version-number {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--puck-css-text);
+}
+
+.css-plugin-version-date {
+  flex: 1;
+  font-size: 11px;
+  color: var(--puck-css-text-secondary);
+}
+
+.css-plugin-version-badge {
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  background: var(--puck-css-diff-added-bg);
+  color: var(--puck-css-diff-added);
+  border-radius: 3px;
+}
+
+
+/* ============================================
+   Toast Notifications
+   ============================================ */
+.css-puck-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  background: var(--puck-css-bg);
+  border: 1px solid var(--puck-css-border);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 300px;
+  max-width: 400px;
+  position: relative;
+  overflow: hidden;
+  animation: css-puck-toast-enter 0.2s ease-out;
+}
+
+@keyframes css-puck-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.css-puck-toast--exiting {
+  animation: css-puck-toast-exit 0.2s ease-in forwards;
+}
+
+@keyframes css-puck-toast-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+/* Severity variants */
+.css-puck-toast--success {
+  border-left: 4px solid var(--puck-css-diff-added);
+}
+
+.css-puck-toast--error {
+  border-left: 4px solid var(--puck-css-diff-removed);
+}
+
+.css-puck-toast--warning {
+  border-left: 4px solid var(--puck-css-diff-modified);
+}
+
+.css-puck-toast--info {
+  border-left: 4px solid var(--puck-css-primary);
+}
+
+/* Icon */
+.css-puck-toast__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: 50%;
+}
+
+.css-puck-toast__icon--success {
+  background: var(--puck-css-diff-added-bg);
+  color: var(--puck-css-diff-added);
+}
+
+.css-puck-toast__icon--error {
+  background: var(--puck-css-diff-removed-bg);
+  color: var(--puck-css-diff-removed);
+}
+
+.css-puck-toast__icon--warning {
+  background: var(--puck-css-diff-modified-bg);
+  color: var(--puck-css-diff-modified);
+}
+
+.css-puck-toast__icon--info {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--puck-css-primary);
+}
+
+/* Content */
+.css-puck-toast__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.css-puck-toast__title {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--puck-css-text);
+  margin-bottom: 0.25rem;
+}
+
+.css-puck-toast__message {
+  font-size: 0.8125rem;
+  color: var(--puck-css-text-secondary);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* Actions */
+.css-puck-toast__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+/* Dismiss button */
+.css-puck-toast__dismiss {
+  flex-shrink: 0;
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+/* Progress bar */
+.css-puck-toast__progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: var(--puck-css-primary);
+  transition: width 0.05s linear;
+  border-radius: 0 0 0 0.5rem;
+}
+
+.css-puck-toast--success .css-puck-toast__progress {
+  background: var(--puck-css-diff-added);
+}
+
+.css-puck-toast--error .css-puck-toast__progress {
+  background: var(--puck-css-diff-removed);
+}
+
+.css-puck-toast--warning .css-puck-toast__progress {
+  background: var(--puck-css-diff-modified);
+}
+
+/* ============================================
+   Notification Container
+   ============================================ */
+.css-puck-notification-container {
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.css-puck-notification-container > * {
+  pointer-events: auto;
+}
+
+/* Position variants */
+.css-puck-notification-container--top-right {
+  top: 1rem;
+  right: 1rem;
+}
+
+.css-puck-notification-container--top-left {
+  top: 1rem;
+  left: 1rem;
+}
+
+.css-puck-notification-container--top-center {
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.css-puck-notification-container--bottom-right {
+  bottom: 1rem;
+  right: 1rem;
+}
+
+.css-puck-notification-container--bottom-left {
+  bottom: 1rem;
+  left: 1rem;
+}
+
+.css-puck-notification-container--bottom-center {
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Bottom positions should stack upward */
+.css-puck-notification-container--bottom-right,
+.css-puck-notification-container--bottom-left,
+.css-puck-notification-container--bottom-center {
+  flex-direction: column-reverse;
+}
+
+/* Adjust animation direction for left-positioned containers */
+.css-puck-notification-container--top-left .css-puck-toast,
+.css-puck-notification-container--bottom-left .css-puck-toast {
+  animation-name: css-puck-toast-enter-left;
+}
+
+@keyframes css-puck-toast-enter-left {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.css-puck-notification-container--top-left .css-puck-toast--exiting,
+.css-puck-notification-container--bottom-left .css-puck-toast--exiting {
+  animation-name: css-puck-toast-exit-left;
+}
+
+@keyframes css-puck-toast-exit-left {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+}
+
+/* Center positions use vertical animation */
+.css-puck-notification-container--top-center .css-puck-toast {
+  animation-name: css-puck-toast-enter-top;
+}
+
+@keyframes css-puck-toast-enter-top {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.css-puck-notification-container--top-center .css-puck-toast--exiting {
+  animation-name: css-puck-toast-exit-top;
+}
+
+@keyframes css-puck-toast-exit-top {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+}
+
+.css-puck-notification-container--bottom-center .css-puck-toast {
+  animation-name: css-puck-toast-enter-bottom;
+}
+
+@keyframes css-puck-toast-enter-bottom {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.css-puck-notification-container--bottom-center .css-puck-toast--exiting {
+  animation-name: css-puck-toast-exit-bottom;
+}
+
+@keyframes css-puck-toast-exit-bottom {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+/* ============================================
+   Collaborator Avatars
+   ============================================ */
+
+/* Avatar colors - agents have a specific color, humans use hash-based colors via inline styles */
+:root {
+  --puck-css-avatar-agent: #6366f1;
+  --puck-css-avatar-fallback: #64748b;
+}
+
+.css-puck-collaborator-avatars {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.css-puck-collaborator-avatars__group {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.css-puck-collaborator-avatars__avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  position: relative;
+  border: 2px solid white;
+  margin-left: -8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.15s ease, z-index 0.15s ease;
+  /* Fallback color - actual color is set via inline style based on user ID hash */
+  background: var(--puck-css-avatar-fallback);
+}
+
+.css-puck-collaborator-avatars__avatar:first-child {
+  margin-left: 0;
+}
+
+.css-puck-collaborator-avatars__avatar:hover {
+  transform: scale(1.1);
+  z-index: 10;
+}
+
+/* Z-index stacking - later avatars appear behind earlier ones */
+.css-puck-collaborator-avatars__avatar:nth-child(1) { z-index: 5; }
+.css-puck-collaborator-avatars__avatar:nth-child(2) { z-index: 4; }
+.css-puck-collaborator-avatars__avatar:nth-child(3) { z-index: 3; }
+.css-puck-collaborator-avatars__avatar:nth-child(4) { z-index: 2; }
+.css-puck-collaborator-avatars__avatar:nth-child(5) { z-index: 1; }
+
+/* Editing state - pulsing ring */
+.css-puck-collaborator-avatars__avatar--editing {
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.4);
+  animation: css-puck-avatar-pulse 2s ease-in-out infinite;
+}
+
+@keyframes css-puck-avatar-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.2);
+  }
+}
+
+/* Agent avatar styling - uses same hash-based coloring as humans */
+/* The agent badge provides visual distinction without overriding the color */
+.css-puck-collaborator-avatars__avatar--agent {
+  /* No background override - agents use hash-based colors like humans */
+}
+
+.css-puck-collaborator-avatars__image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.css-puck-collaborator-avatars__initials {
+  text-transform: uppercase;
+  user-select: none;
+}
+
+/* Agent badge indicator */
+.css-puck-collaborator-avatars__agent-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 12px;
+  height: 12px;
+  background: var(--puck-css-avatar-agent);
+  border: 2px solid white;
+  border-radius: 50%;
+}
+
+.css-puck-collaborator-avatars__agent-badge::before {
+  content: "⚡";
+  font-size: 6px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Separator between groups */
+.css-puck-collaborator-avatars__separator {
+  width: 1px;
+  height: 24px;
+  background: var(--puck-css-border);
+  margin: 0 8px;
+}
+
+/* Overflow indicator */
+.css-puck-collaborator-avatars__overflow {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--puck-css-bg-secondary);
+  border: 2px solid white;
+  color: var(--puck-css-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: -8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Tooltip styling */
+.css-puck-collaborator-avatars__avatar[data-tooltip] {
+  position: relative;
+}
+
+.css-puck-collaborator-avatars__avatar[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 10px;
+  background: var(--puck-css-text);
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: pre-line;
+  border-radius: 6px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+  z-index: 100;
+  pointer-events: none;
+  min-width: 100px;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.css-puck-collaborator-avatars__avatar[data-tooltip]::before {
+  content: "";
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom-color: var(--puck-css-text);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+  z-index: 100;
+}
+
+.css-puck-collaborator-avatars__avatar[data-tooltip]:hover::after,
+.css-puck-collaborator-avatars__avatar[data-tooltip]:hover::before {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ============================================
+   AgentActivityBanner
+   ============================================ */
+.css-puck-agent-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--puck-css-bg);
+  border: 1px solid var(--puck-css-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  gap: 12px;
+}
+
+.css-puck-agent-banner--editing {
+  border-color: var(--puck-css-primary);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(99, 102, 241, 0.02) 100%);
+}
+
+.css-puck-agent-banner--active {
+  border-color: var(--puck-css-diff-added);
+}
+
+.css-puck-agent-banner__content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.css-puck-agent-banner__avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 12px;
+  position: relative;
+  flex-shrink: 0;
+  /* Default agent color - can be overridden by inline style */
+  background: var(--puck-css-avatar-agent, #6366f1);
+}
+
+.css-puck-agent-banner__initials {
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.css-puck-agent-banner__agent-icon {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 12px;
+  height: 12px;
+  background: var(--puck-css-avatar-agent, #6366f1);
+  border: 2px solid white;
+  border-radius: 50%;
+}
+
+.css-puck-agent-banner__agent-icon::before {
+  content: "⚡";
+  font-size: 6px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.css-puck-agent-banner__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.css-puck-agent-banner__name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--puck-css-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.css-puck-agent-banner__intent {
+  font-size: 12px;
+  color: var(--puck-css-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.css-puck-agent-banner__regions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.css-puck-agent-banner__regions-label {
+  font-size: 11px;
+  color: var(--puck-css-text-secondary);
+  font-weight: 500;
+}
+
+.css-puck-agent-banner__region {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: var(--puck-css-bg-secondary);
+  border-radius: 4px;
+  color: var(--puck-css-text);
+  font-family: ui-monospace, monospace;
+}
+
+.css-puck-agent-banner__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+
+/* ============================================
+   Focus Region Highlighting
+   ============================================ */
+
+/* Focus region highlight - applied directly to Puck's [data-puck-component] elements via DOM.
+   Uses outline (no layout impact) to avoid scroll jumps. */
+.focus-region-highlight {
+  position: relative;
+  outline: 2px solid var(--focus-color, #6366f1);
+  outline-offset: 2px;
+  border-radius: 0.375rem;
+}
+
+/* Editing state - thicker outline with pulsing animation */
+.focus-region-highlight--editing {
+  outline-width: 3px;
+  animation: focus-pulse 2s ease-in-out infinite;
+}
+
+@keyframes focus-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 var(--focus-color, #6366f1);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--focus-color, #6366f1) 30%, transparent);
+  }
+}
+
+/* Actor badge via ::after pseudo-element — avoids DOM insertion that triggers scroll */
+.focus-region-highlight[data-focus-initial]::after {
+  content: attr(data-focus-initial);
+  position: absolute;
+  top: -0.75rem;
+  left: 0.5rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--focus-color, #6366f1);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 50%;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* Legacy badge class (kept for backwards compatibility) */
+.focus-region-highlight__badge {
+  position: absolute;
+  top: -0.75rem;
+  left: 0.5rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--focus-color, #6366f1);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 50%;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* ============================================
+   Merge Preview Panel
+   ============================================ */
+
+.merge-preview-panel {
+  background: var(--puck-css-bg);
+  height: 100%;
+  padding: 1rem;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.merge-preview-panel__title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+  color: var(--puck-css-text);
+}
+
+.merge-preview-panel__branch-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--puck-css-text-secondary);
+  margin-bottom: 1rem;
+}
+
+.merge-preview-panel__branch {
+  font-weight: 500;
+}
+
+.merge-preview-panel__document-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.merge-preview-panel__empty,
+.merge-preview-panel__loading,
+.merge-preview-panel__error {
+  font-size: 0.875rem;
+  padding: 1rem 0;
+}
+
+.merge-preview-panel__empty,
+.merge-preview-panel__loading {
+  color: var(--puck-css-text-secondary);
+}
+
+.merge-preview-panel__error {
+  color: var(--pds-color-status-critical-foreground, #b91c1c);
+}
+
+.merge-preview-document__row {
+  width: 100%;
+  text-align: left;
+  background: var(--puck-css-bg-secondary);
+  border: 1px solid var(--puck-css-border);
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  color: var(--puck-css-text);
+}
+
+.merge-preview-document__row--expanded {
+  border-radius: 0.375rem 0.375rem 0 0;
+  border-bottom-color: transparent;
+}
+
+.merge-preview-document__detail {
+  border: 1px solid var(--puck-css-border);
+  border-top: none;
+  border-radius: 0 0 0.375rem 0.375rem;
+  overflow: hidden;
+}
+
+.merge-preview-document__detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+  background: var(--puck-css-bg-secondary);
+  border-bottom: 1px solid var(--puck-css-border);
+}
+
+.merge-preview-document__detail-path {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--puck-css-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merge-preview-document__detail-body {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* ============================================
+   View Mode Selector
+   ============================================ */
+
+.view-mode-selector {
+  display: flex;
+  gap: 0.25rem;
+}
+
+/* ============================================
+   Merge Preview Renderer
+   ============================================ */
+
+.merge-preview-renderer__wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.merge-preview-renderer__summary {
+  font-size: 0.75rem;
+  color: var(--puck-css-text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+/* -- Empty state -- */
+
+.merge-preview-renderer--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--puck-css-text-secondary);
+  font-size: 1rem;
+  padding: 2rem;
+}
+
+/* -- Side-by-side mode -- */
+
+.merge-preview-renderer--side-by-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.merge-preview-renderer__panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--puck-css-bg);
+  border: 1px solid var(--puck-css-border);
+  border-radius: 0.375rem;
+  overflow: hidden;
+}
+
+.merge-preview-renderer__panel-label {
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+  background: var(--puck-css-bg-secondary);
+  border-bottom: 1px solid var(--puck-css-border);
+}
+
+.merge-preview-renderer__panel-content {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+}
+
+/* -- Overlay mode -- */
+
+.merge-preview-renderer--overlay {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+}
+
+.merge-preview-renderer__overlay-layer {
+  width: 100%;
+}
+
+.merge-preview-renderer__overlay-layer--source {
+  position: relative;
+  z-index: 1;
+}
+
+.merge-preview-renderer__overlay-layer--target {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  opacity: 0.5;
+}
+
+/* -- Slider mode -- */
+
+.merge-preview-renderer--slider {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.merge-preview-renderer__slider-control {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: var(--puck-css-bg-secondary);
+  border-bottom: 1px solid var(--puck-css-border);
+}
+
+.merge-preview-renderer__slider-input {
+  flex: 1;
+}
+
+.merge-preview-renderer__slider-content {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+}
+
+.merge-preview-renderer__slider-layer {
+  width: 100%;
+}
+
+.merge-preview-renderer__slider-layer--source {
+  position: relative;
+  z-index: 1;
+}
+
+.merge-preview-renderer__slider-layer--target {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+}
+
+/* ============================================
+   Merge Review Page (Compare with Live overlay)
+   ============================================ */
+
+.merge-review-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--puck-css-bg);
+  overflow: hidden;
+}
+
+.merge-review-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--puck-css-border);
+  background: var(--puck-css-bg);
+  flex-shrink: 0;
+}
+
+.merge-review-page__header-leading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.merge-review-page__title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--puck-css-text);
+}
+
+.merge-review-page__body {
+  flex: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+.merge-review-page__message {
+  font-size: 0.875rem;
+  color: var(--puck-css-text-secondary);
+  margin: 0;
+}
+
+.merge-review-page__branch-selectors {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.merge-review-page__branch-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.merge-review-page__label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--puck-css-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.merge-review-page__branch-display {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--puck-css-border);
+  font-size: 0.875rem;
+  min-width: 12rem;
+  color: var(--puck-css-text);
+  background: var(--puck-css-bg);
+}
+
+.merge-review-page__branch-display--target {
+  background: var(--puck-css-bg-secondary);
+  color: var(--puck-css-text-secondary);
+}
+
+.merge-review-page__arrow {
+  font-size: 1.25rem;
+  color: var(--puck-css-text-secondary);
+  padding-bottom: 0.375rem;
+}
+
+/* ============================================
+   Merge Resolution Page (full-screen conflict resolution)
+   ============================================ */
+
+.merge-resolution-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--puck-css-bg);
+  overflow: hidden;
+}
+
+.merge-resolution-page__loading {
+  padding: 1.5rem;
+  font-size: 0.875rem;
+  color: var(--puck-css-text-secondary);
+  text-align: center;
+  margin: 0;
+}
+
+.merge-resolution-page__error,
+.merge-resolution-page__merge-error {
+  margin: 0.75rem 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  background: var(--pds-color-status-critical-background, #fde8e8);
+  color: var(--pds-color-status-critical-foreground, #b91c1c);
+}
+
+.merge-resolution-page__merge-success {
+  margin: 0.75rem 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  background: var(--pds-color-status-success-background, #d4edda);
+  color: var(--pds-color-status-success-foreground, #155724);
+}
+
+.merge-resolution-page__content {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  overflow: hidden;
+}
+
+.merge-resolution-page__list {
+  width: 20rem;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--puck-css-border);
+}
+
+.merge-resolution-page__detail {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.5rem;
+}
+
+/* ============================================
+   Merge Resolution Toolbar
+   ============================================ */
+
+.merge-resolution-toolbar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  background: var(--puck-css-bg-secondary);
+  border-bottom: 1px solid var(--puck-css-border);
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.merge-resolution-toolbar__left {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.merge-resolution-toolbar__branch-label {
+  font-size: 0.875rem;
+  color: var(--puck-css-text-secondary);
+}
+
+.merge-resolution-toolbar__center {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  justify-content: center;
+  min-width: 12rem;
+}
+
+.merge-resolution-toolbar__progress {
+  font-size: 0.8125rem;
+  color: var(--puck-css-text-secondary);
+  white-space: nowrap;
+}
+
+.merge-resolution-toolbar__progress-auto {
+  color: var(--puck-css-text-secondary);
+  opacity: 0.7;
+}
+
+.merge-resolution-toolbar__progress-bar {
+  width: 7.5rem;
+  height: 0.375rem;
+  background: var(--pds-color-status-neutral-background, #e5e7eb);
+  border-radius: 3.5rem;
+  overflow: hidden;
+}
+
+.merge-resolution-toolbar__progress-bar-fill {
+  height: 100%;
+  background: var(--pds-color-status-success-foreground, #28a745);
+  border-radius: 3.5rem;
+  transition: width 0.3s ease;
+}
+
+.merge-resolution-toolbar__right {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+}
+
+.merge-resolution-toolbar__mr-error {
+  color: var(--pds-color-status-critical-foreground, #b91c1c);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.merge-resolution-toolbar__confirm {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.merge-resolution-toolbar__confirm-text {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--pds-color-status-critical-foreground, #b91c1c);
+}
+
+.merge-resolution-toolbar__confirm-button {
+  background: var(--pds-color-status-critical-foreground, #c53030) !important;
+}
+
+.merge-resolution-toolbar__shortcuts {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--puck-css-bg);
+  border-radius: 0.375rem;
+  border: 1px solid var(--puck-css-border);
+  margin-top: 0.25rem;
+}
+
+.merge-resolution-toolbar__shortcuts-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.merge-resolution-toolbar__shortcuts-list dt {
+  font-weight: 600;
+  font-family: monospace;
+  color: var(--puck-css-text);
+}
+
+.merge-resolution-toolbar__shortcuts-list dd {
+  margin: 0;
+  color: var(--puck-css-text-secondary);
+}
+
+/* ============================================
+   Document Resolution List
+   ============================================ */
+
+.document-resolution-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  outline: none;
+}
+
+.document-resolution-list__item {
+  display: flex;
+  flex-direction: column;
+  padding: 0.625rem 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--puck-css-border);
+  transition: background-color 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.document-resolution-list__item--selected {
+  background: var(--puck-css-bg-secondary);
+  border-left-color: var(--pds-color-status-info-foreground, #0066cc);
+}
+
+.document-resolution-list__item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.document-resolution-list__path {
+  font-size: 0.875rem;
+  color: var(--puck-css-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.document-resolution-list__diff-counts {
+  display: flex;
+  gap: 0.375rem;
+  margin-top: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.document-resolution-list__diff-badge {
+  font-size: 0.625rem;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.document-resolution-list__diff-badge--added {
+  background: var(--pds-color-status-success-background, #dcfce7);
+  color: var(--pds-color-status-success-foreground, #166534);
+}
+
+.document-resolution-list__diff-badge--removed {
+  background: var(--pds-color-status-critical-background, #fee2e2);
+  color: var(--pds-color-status-critical-foreground, #991b1b);
+}
+
+.document-resolution-list__diff-badge--modified {
+  background: var(--pds-color-status-warning-background, #fef9c3);
+  color: var(--pds-color-status-warning-foreground, #854d0e);
+}
+
+/* css-plugin-merge-overlay: full-screen container */
+.css-plugin-merge-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 10000;
+  overflow: hidden;
+}
+
+/* =============================================================================
+   Puck nav: PDS icon-only tabs
+   Replaces the default Puck icon+label nav tabs with PDS-style icon-only tabs.
+
+   Nav order (Puck internals: built-ins first, then user plugins in array order):
+     nth-child(1) blocksPlugin  → Grid icon        (targeted by .lucide-hammer)
+     nth-child(2) outlinePlugin → rectangleList     (targeted by .lucide-layers)
+     nth-child(3) CSS plugin    → rotateClock       (React NavIcon in CSSPlugin)
+     nth-child(4) AI plugin     → sparkles          (targeted by nth-child)
+     nth-child(5) PCC plugin    → fileLines         (targeted by nth-child)
+   ============================================================================= */
+
+/* 1. Hide all text labels.
+      Puck renders the label as <span class=""> (empty class, not a named CSS module
+      class), so we target the second/last span child of the NavItem-link div. */
+[class*='NavItem-link'] > span[class=''],
+[class*='NavItem-link'] > span:not([class]) {
+  display: none;
+}
+
+/* 2. Shared pseudo-element for injected SVG icons */
+[class*='NavItem-linkIcon']:has(svg.lucide-hammer)::after,
+[class*='NavItem-linkIcon']:has(svg.lucide-layers)::after,
+[class*='Nav-list'] > li:nth-child(4) [class*='NavItem-linkIcon']::after,
+[class*='Nav-list'] > li:nth-child(5) [class*='NavItem-linkIcon']::after {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 20px;
+  background-repeat: no-repeat;
+  background-size: contain;
+  background-position: center;
+}
+
+/* 3. Hide original icons for replaced tabs */
+svg.lucide-hammer,
+svg.lucide-layers {
+  display: none;
+}
+
+[class*='Nav-list'] > li:nth-child(4) [class*='NavItem-linkIcon'] > *,
+[class*='Nav-list'] > li:nth-child(5) [class*='NavItem-linkIcon'] > * {
+  display: none;
+}
+
+/* 4. Inject replacement icons (Font Awesome 6 Pro paths) */
+
+/* blocksPlugin → fa-grid */
+[class*='NavItem-linkIcon']:has(svg.lucide-hammer)::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 448 512'%3E%3Cpath fill='%23374151' d='M0 64C0 46.3 14.3 32 32 32l48 0c17.7 0 32 14.3 32 32l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32L0 64zM0 232c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48zM112 400l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32zM168 64c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48zM280 232l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32zM168 400c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48zM448 64l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32zM336 232c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48zM448 400l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32z'/%3E%3C/svg%3E");
+}
+
+/* outlinePlugin → fa-rectangle-list */
+[class*='NavItem-linkIcon']:has(svg.lucide-layers)::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath fill='%23374151' d='M64 64C28.7 64 0 92.7 0 128L0 384c0 35.3 28.7 64 64 64l384 0c35.3 0 64-28.7 64-64l0-256c0-35.3-28.7-64-64-64L64 64zm96 256a32 32 0 1 1 -64 0 32 32 0 1 1 64 0zm-32-96a32 32 0 1 1 0-64 32 32 0 1 1 0 64zm120-56l144 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-144 0c-13.3 0-24-10.7-24-24s10.7-24 24-24zm0 128l144 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-144 0c-13.3 0-24-10.7-24-24s10.7-24 24-24z'/%3E%3C/svg%3E");
+}
+
+/* AI plugin (4th) → fa-sparkles */
+[class*='Nav-list'] > li:nth-child(4) [class*='NavItem-linkIcon']::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 576 512'%3E%3Cpath fill='%23374151' d='M391.5 53.2c-4.5 1.7-7.5 6-7.5 10.8s3 9.1 7.5 10.8L448 96 469.2 152.5c1.7 4.5 6 7.5 10.8 7.5s9.1-3 10.8-7.5L512 96 568.5 74.8c4.5-1.7 7.5-6 7.5-10.8s-3-9.1-7.5-10.8L512 32 490.8-24.5c-1.7-4.5-6-7.5-10.8-7.5s-9.1 3-10.8 7.5L448 32 391.5 53.2zm-185 20.1c-2.6-5.7-8.3-9.3-14.5-9.3s-11.9 3.6-14.5 9.3l-53.1 115-115 53.1C3.6 244.1 0 249.8 0 256s3.6 11.9 9.3 14.5l115 53.1 53.1 115c2.6 5.7 8.3 9.3 14.5 9.3s11.9-3.6 14.5-9.3l53.1-115 115-53.1c5.7-2.6 9.3-8.3 9.3-14.5s-3.6-11.9-9.3-14.5l-115-53.1-53.1-115zM416 416l-56.5 21.2c-4.5 1.7-7.5 6-7.5 10.8s3 9.1 7.5 10.8L416 480 437.2 536.5c1.7 4.5 6 7.5 10.8 7.5s9.1-3 10.8-7.5L480 480 536.5 458.8c4.5-1.7 7.5-6 7.5-10.8s-3-9.1-7.5-10.8L480 416 458.8 359.5c-1.7-4.5-6-7.5-10.8-7.5s-9.1 3-10.8 7.5L416 416z'/%3E%3C/svg%3E");
+}
+
+/* PCC plugin (5th) → fa-file-lines */
+[class*='Nav-list'] > li:nth-child(5) [class*='NavItem-linkIcon']::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 384 512'%3E%3Cpath fill='%23374151' d='M0 64C0 28.7 28.7 0 64 0L213.5 0c17 0 33.3 6.7 45.3 18.7L365.3 125.3c12 12 18.7 28.3 18.7 45.3L384 448c0 35.3-28.7 64-64 64L64 512c-35.3 0-64-28.7-64-64L0 64zm208-5.5l0 93.5c0 13.3 10.7 24 24 24L325.5 176 208 58.5zM120 256c-13.3 0-24 10.7-24 24s10.7 24 24 24l144 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-144 0zm0 96c-13.3 0-24 10.7-24 24s10.7 24 24 24l144 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-144 0z'/%3E%3C/svg%3E");
+}
+
+/* 5. Nav tooltips are handled purely by PuckEditorTheme.css — Puck's own
+      _NavItem-linkLabel_ spans are restyled as hover tooltips. */
+
+/* ============================================
+   Template Selector
+   ============================================ */
+
+.template-selector {
+  width: 100%;
+}
+
+.template-selector__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  padding: 16px 0;
+}
+
+.template-selector__option {
+  /* Extend PDS button styles */
+  min-height: 100px;
+  text-align: left;
+  padding: 16px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  border: 2px solid var(--puck-css-border);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.template-selector__option:hover {
+  border-color: var(--puck-css-primary);
+  background-color: var(--puck-css-bg-secondary);
+}
+
+.template-selector__option[aria-pressed="true"] {
+  border-color: var(--puck-css-primary);
+  background-color: var(--puck-css-primary);
+  color: white;
+}
+
+.template-selector__option[aria-pressed="true"] .template-selector__option-description {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.template-selector__option-content {
+  width: 100%;
+}
+
+.template-selector__option-label {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.template-selector__option-description {
+  font-size: 14px;
+  color: var(--puck-css-text-secondary);
+  line-height: 1.4;
+}
+
+.template-selector--loading,
+.template-selector--error {
+  padding: 32px;
+  text-align: center;
+}
+
+.template-selector__loading-message {
+  font-size: 16px;
+  color: var(--puck-css-text-secondary);
+}
+
+.template-selector__error-message {
+  color: var(--puck-css-diff-removed);
+}
+
+.template-selector__error-message strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+.template-selector__error-message p {
+  font-size: 14px;
+  margin: 0;
+}
+
+/* ── Template Manager Overlay ─────────────────────────────────────────── */
+
+.template-manager-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: var(--pds-color-bg-default, #fff);
+  display: flex;
+  flex-direction: column;
+}
+
+.template-manager-overlay__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--pds-color-border-default, #e5e7eb);
+  flex-shrink: 0;
+}
+
+.template-manager-overlay__title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.template-manager-overlay__close {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+  padding: 0.25rem 0.5rem;
+}
+
+.template-manager-overlay__close:hover {
+  color: var(--pds-color-fg-default, #1f2937);
+}
+
+.template-manager-overlay__error {
+  padding: 0.5rem 1.5rem;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.875rem;
+}
+
+.template-manager-overlay__list {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.template-manager-overlay__loading,
+.template-manager-overlay__empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+  font-size: 0.875rem;
+}
+
+.template-manager-overlay__template-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.template-manager-overlay__template-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--pds-color-border-default, #e5e7eb);
+  border-radius: 0.375rem;
+}
+
+.template-manager-overlay__template-item:hover {
+  background: var(--pds-color-bg-default-secondary, #f9fafb);
+}
+
+.template-manager-overlay__template-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.template-manager-overlay__template-label {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.template-manager-overlay__template-meta {
+  font-size: 0.75rem;
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+}
+
+.template-manager-overlay__template-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ── Template Editor (create/edit mode) ───────────────────────────────── */
+
+.template-manager-overlay__editor {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  flex: 1;
+  overflow: hidden;
+}
+
+.template-manager-overlay__editor-sidebar {
+  border-right: 1px solid var(--pds-color-border-default, #e5e7eb);
+  padding: 1rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.template-manager-overlay__editor-canvas {
+  overflow: hidden;
+}
+
+.template-manager-overlay__metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.template-manager-overlay__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.template-manager-overlay__field-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.template-manager-overlay__input,
+.template-manager-overlay__textarea {
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--pds-color-border-default, #e5e7eb);
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.template-manager-overlay__input:focus,
+.template-manager-overlay__textarea:focus {
+  outline: none;
+  border-color: var(--pds-color-interactive-focus, #3b82f6);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.template-manager-overlay__input:disabled {
+  background: var(--pds-color-bg-default-secondary, #f9fafb);
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+}
+
+.template-manager-overlay__save-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--pds-color-border-default, #e5e7eb);
+}
+
+.template-manager-overlay__puck-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+}
+
+/* ── Template Pin Panel ───────────────────────────────────────────────── */
+
+.template-pin-panel {
+  border: 1px solid var(--pds-color-border-default, #e5e7eb);
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+}
+
+.template-pin-panel--empty {
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+  font-size: 0.8125rem;
+  font-style: italic;
+}
+
+.template-pin-panel__header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+.template-pin-panel__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.template-pin-panel__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.8125rem;
+}
+
+.template-pin-panel__item:hover {
+  background: var(--pds-color-bg-default-secondary, #f9fafb);
+}
+
+.template-pin-panel__type {
+  font-weight: 500;
+}
+
+.template-pin-panel__pin-label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--pds-color-fg-default-secondary, #6b7280);
+  cursor: pointer;
+}

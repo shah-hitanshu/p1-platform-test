@@ -1,0 +1,61 @@
+{
+  "name": "@pantheon-systems/css-client",
+  "version": "0.7.0",
+  "description": "TypeScript API client for Collaborative State System",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "provenance": false
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pantheon-systems/puck-css-integration.git",
+    "directory": "packages/css-client"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./content": {
+      "import": "./dist/content.js",
+      "types": "./dist/content.d.ts"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "content": [
+        "./dist/content.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@pantheon-systems/eslint-config": "workspace:*",
+    "@types/node": "^20.19.30",
+    "eslint": "^9.27.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "partysocket": "^1.1.10",
+    "yjs": "^13.6.29"
+  }
+}

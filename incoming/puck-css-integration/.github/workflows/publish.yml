@@ -1,0 +1,67 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (leave empty to use package.json versions)'
+        required: false
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - run: corepack enable pnpm
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set package versions
+        if: ${{ inputs.version != '' }}
+        run: |
+          for pkg in css-client puck-css p1-next-sdk create-p1-starter-kit; do
+            jq --arg v "${{ inputs.version }}" '.version = $v' "packages/$pkg/package.json" > tmp.json && mv tmp.json "packages/$pkg/package.json"
+          done
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Remove READMEs from packages
+        run: find packages -name "README.md" -not -path "*/node_modules/*" -delete
+
+      - name: Publish css-client
+        working-directory: packages/css-client
+        # --no-git-checks: CI steps dirty the working tree (version/README mutations)
+        run: pnpm publish --access public --no-git-checks
+
+      - name: Publish puck-css
+        working-directory: packages/puck-css
+        # --no-git-checks: CI steps dirty the working tree (version/README mutations)
+        run: pnpm publish --access public --no-git-checks
+
+      - name: Publish p1-next-sdk
+        working-directory: packages/p1-next-sdk
+        # --no-git-checks: CI steps dirty the working tree (version/README mutations)
+        run: pnpm publish --access public --no-git-checks
+
+      - name: Publish create-p1-starter-kit
+        working-directory: packages/create-p1-starter-kit
+        # --no-git-checks: CI steps dirty the working tree (version/README mutations)
+        run: pnpm publish --access public --no-git-checks

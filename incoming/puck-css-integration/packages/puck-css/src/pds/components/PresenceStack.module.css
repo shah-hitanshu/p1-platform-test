@@ -1,0 +1,48 @@
+/* ============================================================================
+ * PresenceStack — CSS Module
+ *
+ * Horizontal stack of overlapping PDS Avatar components. Each avatar after
+ * the first is offset with a negative margin to create the overlap effect.
+ * An overflow "+N" badge follows the last visible avatar.
+ * ============================================================================ */
+
+.stack {
+  display: inline-flex;
+  align-items: center;
+  flex-direction: row;
+}
+
+/* Wrapper around each PDS Avatar — handles overlap margin and stacking */
+.avatarWrapper {
+  margin-left: -0.512rem;
+}
+
+.avatarWrapper:first-child {
+  margin-left: 0;
+}
+
+/* Wrapper that carries the overlap margin for the overflow tooltip */
+.overflowWrapper {
+  margin-left: -0.512rem;
+  display: inline-flex;
+}
+
+
+/* Overflow badge — "+N" for hidden actors */
+.overflow {
+  flex-shrink: 0;
+  width: 1.563rem;
+  height: 1.563rem;
+  border-radius: 50%;
+  border: 1px solid var(--pds-color-bg-default, oklch(1 0 0));
+  background: oklch(0.96 0 0);
+  color: var(--pds-color-fg-default-secondary, oklch(0.5103 0 0));
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-2xs, 0.625rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  cursor: default;
+}
