@@ -1,0 +1,663 @@
+openapi: 3.0.3
+info:
+  title: P1 Media API
+  description: |
+    REST API for uploading, versioning, and serving media assets for Puck-based P1
+    sites. Backed by Cloudflare R2 (bytes) and D1 (metadata).
+
+    ## Overview
+
+    An asset is a logical identity (`assetId`); each upload or replacement creates a new
+    **immutable version** (`versionId`) and repoints the asset's current version — old
+    versions are never overwritten, so a URL a document has already pinned keeps serving
+    forever. The store is **site-scoped and workstream-agnostic**: which version a page
+    shows is decided by the version pinned in the CCR-managed document, not by this API.
+    A legacy `workstreamId` query param is still accepted on `/media*` endpoints but is
+    ignored — it exists only so older callers don't 400.
+
+    Image bytes are served and transformed on demand from `/image/{key}` using the
+    Cloudflare Images binding — resize, format conversion, smart/manual crop, blur,
+    and more, all driven by query params (see the `Images` tag below). Responses carry
+    `Cache-Control: public, max-age=31536000, immutable`, so a given transformed URL
+    caches forever; nothing is ever re-uploaded or duplicated for a different size.
+
+    `DELETE` is a **soft delete** — the asset is hidden from listings but its bytes keep
+    serving, so already-published pages don't break.
+
+    ## Authentication
+
+    Authenticated endpoints require `Authorization: Bearer <token>` — the same bearer
+    token issued by CCR/CSS. The worker validates it by calling CCR's own
+    `GET /api/sites/{siteId}` and checking the caller has `canView` on that site;
+    `/image/*` and `GET /media/schema` require no auth and are safe to call publicly
+    (consistent with normal CDN image delivery).
+
+    ## Error responses
+
+    Errors are `{ "error": "<message>" }` with a standard HTTP status:
+    `400` invalid input, `401` missing/invalid token, `403` forbidden (token valid,
+    no access), `404` not found, `413` file too large, `415` unsupported file type,
+    `500` internal error.
+  version: "1.0"
+  contact:
+    name: Pantheon Engineering
+    url: https://pantheon.io
+  license:
+    name: Proprietary
+    url: https://pantheon.io/terms
+
+servers:
+  - url: https://media.p1.pantheon.io
+    description: Production
+  - url: https://staging.media.p1.pantheon.io
+    description: Staging
+  - url: https://media.sandbox.p1.pantheon.io
+    description: Sandbox
+  - url: http://localhost:8788
+    description: Local development (wrangler dev)
+
+tags:
+  - name: Images
+    description: Public, unauthenticated image delivery and on-demand transformation
+  - name: Media
+    description: Authenticated asset management — upload, list, edit, delete, version
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ===========================================================================
+  # Images — public delivery
+  # ===========================================================================
+  /image/{key}:
+    get:
+      summary: Serve and transform an image
+      description: |
+        Serves the immutable bytes for a version, transformed on the fly if any
+        transform query param is present; otherwise the raw R2 object is served
+        directly (no Images-binding billing). `key` is the full R2 object key —
+        `{siteId}/assets/{assetId}/{versionId}-{filename}` — and contains additional
+        slashes; the leading `{siteId}` segment is checked against the rest of the
+        key as a path-traversal guard, not against a separate auth token.
+      operationId: getImage
+      tags: [Images]
+      security: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+          description: >-
+            Full object key, e.g. `85f5c007-.../assets/1f49c524-.../37fb4ea0-...-photo.jpg`.
+          example: 85f5c007-07e7-497f-93ce-7c11b9397e65/assets/1f49c524-2271-40b9-8bcc-9fcc6a4d19c8/37fb4ea0-3b01-4c98-823d-9874ed9c626e-photo.jpg
+        - $ref: '#/components/parameters/widthParam'
+        - $ref: '#/components/parameters/heightParam'
+        - $ref: '#/components/parameters/formatParam'
+        - $ref: '#/components/parameters/qualityParam'
+        - $ref: '#/components/parameters/fitParam'
+        - $ref: '#/components/parameters/gravityParam'
+        - $ref: '#/components/parameters/blurParam'
+        - $ref: '#/components/parameters/brightnessParam'
+        - $ref: '#/components/parameters/contrastParam'
+        - $ref: '#/components/parameters/saturationParam'
+        - $ref: '#/components/parameters/sharpenParam'
+        - $ref: '#/components/parameters/rotateParam'
+        - $ref: '#/components/parameters/trimTopParam'
+        - $ref: '#/components/parameters/trimLeftParam'
+        - $ref: '#/components/parameters/trimHeightParam'
+        - $ref: '#/components/parameters/trimWidthParam'
+      responses:
+        '200':
+          description: Image bytes (raw or transformed, per requested `format`)
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        '403':
+          description: >-
+            Defensive path-traversal guard (the leading key segment must match
+            the site it claims to belong to). Not reachable through normal use,
+            since the worker derives that segment from the key itself.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Object not found in R2
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ===========================================================================
+  # Media — schema
+  # ===========================================================================
+  /media/schema:
+    get:
+      summary: Get the metadata field schema
+      description: >-
+        Pantheon-defined, global field set (`alt`, `caption`, `credit`, `byline` as of
+        this version) — drives the media library's metadata inputs. Fetch this rather
+        than hardcoding field names; the set may grow.
+      operationId: getMediaSchema
+      tags: [Media]
+      security: []
+      responses:
+        '200':
+          description: Ordered list of metadata field definitions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MetadataField' }
+
+  # ===========================================================================
+  # Media — list / upload
+  # ===========================================================================
+  /media:
+    get:
+      summary: List a site's assets
+      description: Newest first. `search` matches the filename and every metadata value (alt, caption, credit, byline, …), case-insensitively.
+      operationId: listMedia
+      tags: [Media]
+      parameters:
+        - $ref: '#/components/parameters/siteIdParam'
+        - name: search
+          in: query
+          schema: { type: string }
+          description: Case-insensitive substring match against filename and all metadata values.
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+          description: Clamped server-side to [1, 500].
+      responses:
+        '200':
+          description: Site's assets, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MediaAsset' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ===========================================================================
+  # Media — presigned direct-to-R2 upload (new asset)
+  # ===========================================================================
+  /media/presign:
+    post:
+      summary: Mint a presigned upload URL for a new asset
+      description: >-
+        Step 1 of the direct-to-R2 upload flow: validates the declared file
+        facts and metadata, mints `assetId`/`versionId`, and returns a
+        short-lived (5 min) presigned PUT URL. The client PUTs the file bytes
+        directly to `uploadUrl` — a bare request with no `Authorization`
+        header (the presigned URL's signed query string is the auth) and a
+        `Content-Type` that exactly matches what was declared here, since R2
+        signature-checks it and rejects a mismatch with `403`. No D1 write
+        happens at this step; call `POST /media/finalize` afterward to
+        persist the asset.
+      operationId: presignMediaUpload
+      tags: [Media]
+      parameters:
+        - $ref: '#/components/parameters/siteIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PresignRequest' }
+      responses:
+        '200':
+          description: Presigned upload URL minted; nothing persisted yet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PresignResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413':
+          description: Declared size exceeds the maximum upload size
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '415':
+          description: Unsupported file type
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /media/finalize:
+    post:
+      summary: Confirm a presigned upload and create the asset
+      description: >-
+        Step 2 of the direct-to-R2 upload flow, called after the client PUTs
+        bytes to the `uploadUrl` from `POST /media/presign`. Confirms the
+        object actually landed in R2 via a `head()` call — never trusts a
+        client-declared size or content type — enforces the real size cap
+        (deleting an oversized object rather than persisting anything about
+        it), captures dimensions, and writes the D1 rows. Idempotent: calling
+        this twice with the same `assetId`/`versionId` returns the same asset
+        both times, so it's safe to retry blindly on a timeout.
+      operationId: finalizeMediaUpload
+      tags: [Media]
+      parameters:
+        - $ref: '#/components/parameters/siteIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FinalizeUploadRequest' }
+      responses:
+        '201':
+          description: Asset created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MediaAsset' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: 'Upload not found — the presigned URL expired (5 min), or the PUT never completed'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '413':
+          description: Uploaded object exceeds the maximum size (the object is deleted server-side)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ===========================================================================
+  # Media — single asset
+  # ===========================================================================
+  /media/{assetId}:
+    get:
+      summary: Get a single asset
+      operationId: getMediaAsset
+      tags: [Media]
+      parameters:
+        - $ref: '#/components/parameters/siteIdParam'
+        - $ref: '#/components/parameters/assetIdParam'
+      responses:
+        '200':
+          description: The asset
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MediaAsset' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    patch:
+      summary: Update an asset's metadata defaults
+      description: >-
+        Flat map of field name → new value. A value of `null` clears that field.
+        Only field names advertised by `GET /media/schema` are accepted.
+      operationId: updateMediaMetadata
+      tags: [Media]
+      parameters:
+        - $ref: '#/components/parameters/siteIdParam'
+        - $ref: '#/components/parameters/assetIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                nullable: true
+                type: string
+                maxLength: 2000
+              maxProperties: 32
+              description: Only field names from `GET /media/schema` are accepted; any other key is a 400.
+              example: { alt: "A red barn at sunset", caption: null }
+      responses:
+        '200':
+          description: Updated asset
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MediaAsset' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      summary: Soft-delete an asset
+      description: Hidden from listings; bytes keep serving (already-published pages don't break).
+      operationId: deleteMediaAsset
+      tags: [Media]
+      parameters:
+        - $ref: '#/components/parameters/siteIdParam'
+        - $ref: '#/components/parameters/assetIdParam'
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ===========================================================================
+  # Media — presigned direct-to-R2 upload (replacement version)
+  # ===========================================================================
+  /media/{assetId}/versions/presign:
+    post:
+      summary: Mint a presigned upload URL for a replacement version
+      description: >-
+        Same flow as `POST /media/presign`, scoped to an existing asset.
+        Metadata defaults are untouched by a version replacement — use
+        `PATCH /media/{assetId}` for that.
+      operationId: presignMediaVersion
+      tags: [Media]
+      parameters:
+        - $ref: '#/components/parameters/siteIdParam'
+        - $ref: '#/components/parameters/assetIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PresignRequest' }
+      responses:
+        '200':
+          description: Presigned upload URL minted; nothing persisted yet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PresignResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413':
+          description: Declared size exceeds the maximum upload size
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '415':
+          description: Unsupported file type
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /media/{assetId}/versions/finalize:
+    post:
+      summary: Confirm a presigned replacement version
+      description: >-
+        Called after the client PUTs bytes to the `uploadUrl` from
+        `POST /media/{assetId}/versions/presign`. Same confirm/size-cap/
+        dimension-capture logic as `POST /media/finalize`, then repoints the
+        asset's `current_version`. Older versions' URLs keep serving.
+      operationId: finalizeMediaVersion
+      tags: [Media]
+      parameters:
+        - $ref: '#/components/parameters/siteIdParam'
+        - $ref: '#/components/parameters/assetIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FinalizeVersionRequest' }
+      responses:
+        '201':
+          description: New version added; asset now points at it
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MediaAsset' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: 'Asset not found for this site, or the upload was not found (presign expired / PUT never completed)'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '413':
+          description: Uploaded object exceeds the maximum size (the object is deleted server-side)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+components:
+  # ---------------------------------------------------------------------------
+  # Security
+  # ---------------------------------------------------------------------------
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: CCR/CSS-issued bearer token. Validated server-side against `GET {CSS_BASE_URL}/api/sites/{siteId}` (`canView`).
+
+  # ---------------------------------------------------------------------------
+  # Parameters
+  # ---------------------------------------------------------------------------
+  parameters:
+    siteIdParam:
+      name: siteId
+      in: query
+      required: true
+      schema: { type: string }
+      description: Site UUID. Every query is scoped to this site — an asset from another site is never returned or affected.
+    assetIdParam:
+      name: assetId
+      in: path
+      required: true
+      schema: { type: string }
+    widthParam:
+      name: width
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 5000 }
+      description: Output width in pixels.
+    heightParam:
+      name: height
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 5000 }
+      description: Output height in pixels.
+    formatParam:
+      name: format
+      in: query
+      schema: { type: string, enum: [auto, webp, avif, jpeg, jpg, png, gif] }
+      description: '`auto` negotiates the best format from the `Accept` header (avif → webp → jpeg). `jpg` is accepted as a synonym for `jpeg`.'
+    qualityParam:
+      name: quality
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 85 }
+    fitParam:
+      name: fit
+      in: query
+      schema: { type: string, enum: [scale-down, contain, pad, squeeze, cover, crop, aspect-crop] }
+      description: Use with `gravity=auto` for content-aware smart crop.
+    gravityParam:
+      name: gravity
+      in: query
+      schema: { type: string }
+      description: 'Named focal point (`auto`, `face`, `left`, `right`, `top`, `bottom`, `center`, `entropy`) or relative coordinates `XxY` (e.g. `0.3x0.7`).'
+    blurParam:
+      name: blur
+      in: query
+      schema: { type: number, minimum: 0, maximum: 250 }
+    brightnessParam:
+      name: brightness
+      in: query
+      schema: { type: number, minimum: 0, maximum: 10, default: 1 }
+    contrastParam:
+      name: contrast
+      in: query
+      schema: { type: number, minimum: 0, maximum: 10, default: 1 }
+    saturationParam:
+      name: saturation
+      in: query
+      schema: { type: number, minimum: 0, maximum: 10, default: 1 }
+      description: 0 = grayscale, 1 = default.
+    sharpenParam:
+      name: sharpen
+      in: query
+      schema: { type: number, minimum: 0, maximum: 10 }
+    rotateParam:
+      name: rotate
+      in: query
+      schema: { type: integer, enum: [0, 90, 180, 270] }
+    trimTopParam:
+      name: trim.top
+      in: query
+      schema: { type: number }
+      description: >-
+        Manual crop region, in source-image pixels. Intended to be sent as a
+        complete set of four; the worker does not validate that all four are
+        present or reject a partial/out-of-bounds set — an incomplete or invalid
+        combination is passed through to the Images binding as-is.
+    trimLeftParam:
+      name: trim.left
+      in: query
+      schema: { type: number }
+    trimHeightParam:
+      name: trim.height
+      in: query
+      schema: { type: number }
+    trimWidthParam:
+      name: trim.width
+      in: query
+      schema: { type: number }
+
+  # ---------------------------------------------------------------------------
+  # Reusable responses
+  # ---------------------------------------------------------------------------
+  responses:
+    BadRequest:
+      description: Invalid input
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Token is valid but lacks access to this site
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: No such asset for this site
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ---------------------------------------------------------------------------
+  # Schemas
+  # ---------------------------------------------------------------------------
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error: { type: string }
+      required: [error]
+
+    MetadataField:
+      type: object
+      properties:
+        name: { type: string, example: caption }
+        label: { type: string, example: Caption }
+        type: { type: string, enum: [string] }
+        required: { type: boolean }
+      required: [name, label, type]
+
+    PresignRequest:
+      type: object
+      required: [filename, contentType, size]
+      properties:
+        filename:
+          type: string
+          description: Gets sanitized server-side — the response's filename may differ from what you sent.
+        contentType:
+          type: string
+          enum: [image/png, image/jpeg, image/gif, image/webp, image/avif]
+        size:
+          type: integer
+          minimum: 1
+          description: Declared byte size — a soft check; finalize enforces the real cap against R2's own head() result.
+        metadata:
+          type: object
+          additionalProperties: { type: string, maxLength: 2000 }
+          maxProperties: 32
+          description: >-
+            Optional. Only field names from GET /media/schema are accepted.
+            Ignored entirely for a version replacement — metadata defaults
+            aren't touched by POST /media/{assetId}/versions/finalize.
+          example: { alt: "A red barn at sunset" }
+
+    PresignResponse:
+      type: object
+      required: [assetId, versionId, filename, uploadUrl, expiresAt]
+      properties:
+        assetId: { type: string, format: uuid }
+        versionId: { type: string, format: uuid }
+        filename: { type: string, description: Sanitized filename — resend this exact value to finalize. }
+        uploadUrl:
+          type: string
+          format: uri
+          description: >-
+            Presigned R2 PUT URL. PUT the file bytes here directly — no
+            Authorization header; Content-Type must exactly match what was
+            declared above, or R2 rejects the PUT with 403.
+        expiresAt: { type: string, format: date-time, description: 5 minutes after minting. }
+
+    FinalizeUploadRequest:
+      type: object
+      required: [assetId, versionId, filename]
+      properties:
+        assetId: { type: string, format: uuid, description: From the presign response. }
+        versionId: { type: string, format: uuid, description: From the presign response. }
+        filename: { type: string, description: Resend the exact filename the presign response returned. }
+        metadata:
+          type: object
+          additionalProperties: { type: string, maxLength: 2000 }
+          maxProperties: 32
+          description: Resend the same metadata sent to presign — finalize does not remember it server-side.
+
+    FinalizeVersionRequest:
+      type: object
+      required: [versionId, filename]
+      description: assetId comes from the URL path, not the body.
+      properties:
+        versionId: { type: string, format: uuid, description: From the presign response. }
+        filename: { type: string, description: Resend the exact filename the presign response returned. }
+
+    MediaAsset:
+      type: object
+      description: >-
+        `metadata` is a flat map of every schema field that is currently set,
+        including `alt` (promoted to its own indexed column internally, but presented
+        uniformly here).
+      properties:
+        assetId: { type: string, format: uuid }
+        versionId:
+          type: string
+          format: uuid
+          description: The current version.
+        url:
+          type: string
+          format: uri
+          description: Immutable CDN URL for the current version.
+        filename: { type: string }
+        contentType: { type: string, example: image/jpeg }
+        size: { type: integer, description: Bytes }
+        width: { type: integer }
+        height: { type: integer }
+        metadata:
+          type: object
+          additionalProperties: { type: string }
+          example: { alt: "A red barn at sunset", caption: "Barn, late afternoon" }
+        metaSchemaVersion:
+          type: integer
+          description: Which version of the metadata field set this asset's metadata conforms to.
+        createdAt: { type: string, format: date-time }
+      required: [assetId, versionId, url, filename, metadata]

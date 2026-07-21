@@ -1,0 +1,52 @@
+{
+  "name": "@pantheon-systems/p1-media-r2",
+  "version": "0.2.0",
+  "description": "Puck media library plugin backed by Cloudflare R2",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pantheon-systems/p1-media-r2.git",
+    "directory": "packages/plugin"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "provenance": false
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "react-server": {
+        "types": "./dist/server.d.ts",
+        "import": "./dist/server.mjs",
+        "require": "./dist/server.js"
+      },
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@puckeditor/core": ">=0.18",
+    "react": ">=18"
+  },
+  "devDependencies": {
+    "@puckeditor/core": "^0.22.0",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "react-image-crop": "^11.1.2",
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.7"
+  }
+}

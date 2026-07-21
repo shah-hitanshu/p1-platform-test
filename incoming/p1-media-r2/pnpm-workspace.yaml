@@ -1,0 +1,11 @@
+packages:
+  - "packages/*"
+  - "worker"
+allowBuilds:
+  esbuild: true
+  sharp: true
+  workerd: true
+overrides:
+  # GHSA-g7r4-m6w7-qqqr: esbuild dev-server arbitrary file read (Windows only).
+  # tsup and vite each pin an older esbuild internally; force the patched version.
+  esbuild: ">=0.28.1"
