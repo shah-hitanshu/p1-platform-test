@@ -277,6 +277,10 @@ function P1PuckProviderInner({
 
   // Ref to track viewingVersion for use in callbacks (avoids stale closure)
   const viewingVersionRef = useRef<DocumentVersion | null>(null);
+  // Tracks the latest data seen by saveData when NOT viewing historical.
+  // Used by returnToLatest to restore unsaved edits that were in Puck's
+  // memory when the user navigated to a historical version.
+  const latestLocalDataRef = useRef<PuckData | null>(null);
 
   // Helper to cancel any pending remote sync - used when loading documents/versions
   // This prevents race conditions where a pending remote update overrides loaded data
@@ -831,6 +835,12 @@ function P1PuckProviderInner({
         }
       }
 
+      // Only genuine user edits reach here — load/restore echoes arm
+      // suppressNextSaveRef before they fire and are returned early above.
+      if (!viewingVersionRef.current) {
+        latestLocalDataRef.current = data;
+      }
+
       // When realtime is enabled, detect whether this onChange came from a remote
       // sync (Yjs update from another client) vs. a local user edit.
       // Remote updates should NOT trigger a REST save — the DO handles persistence.
@@ -892,6 +902,13 @@ function P1PuckProviderInner({
           // this cache (PCC-3421).
           return;
         }
+      }
+
+      // Mirror the realtime guard: don't save when previewing a historical version.
+      // Without this, the PuckDataSynchronizer echo from loadVersion resumes the
+      // debounce and writes historical data to the server.
+      if (viewingVersionRef.current !== null) {
+        return;
       }
 
       pendingDataRef.current = data;
@@ -1144,6 +1161,11 @@ function P1PuckProviderInner({
       }
     }
 
+    // 1. Edits typed inside the debounce window — cleared from pendingDataRef by loadVersion but still live here.
+    const hadLocalEdits = !!latestLocalDataRef.current;
+    dataToRestore ??= latestLocalDataRef.current;
+    latestLocalDataRef.current = null; // consume — prevents stale ref short-circuiting server fetch on next history visit
+
     // Re-fetch the true latest from the server when no live Yjs snapshot is
     // available. The cached latestVersionDataRef is only a last-resort fallback
     // (e.g. no current document); it is NOT used on fetch failure — silently
@@ -1153,8 +1175,7 @@ function P1PuckProviderInner({
     if (!dataToRestore) {
       const doc = currentDocumentRef.current;
       if (doc) {
-        // Surface a loading state for the round trip — the editor is otherwise
-        // frozen on the historical snapshot with no indication.
+        // 2. Authoritative server state — the only source that reflects saves from other tabs, users, or agents.
         setIsReturningToLatest(true);
         try {
           const version = await userClient.versions.getLatest(siteId, branchId, doc.id);
@@ -1173,9 +1194,8 @@ function P1PuckProviderInner({
           setIsReturningToLatest(false);
         }
       }
-    }
-    if (!dataToRestore) {
-      dataToRestore = latestVersionDataRef.current;
+      // 3. No document context — can't fetch; use last value written by performSave.
+      dataToRestore ??= latestVersionDataRef.current;
     }
 
     if (dataToRestore) {
@@ -1183,8 +1203,9 @@ function P1PuckProviderInner({
       // Setting to null allows remote updates to resume
       viewingVersionRef.current = null;
 
-      // Suppress the echo save so returning to latest does not itself create a
-      // duplicate version from the data we just loaded back in. 
+      // Suppress the PuckDataSynchronizer echo: setCurrentData triggers a setData
+      // dispatch and Puck fires onChange → saveData. Arm the ref so saveData drops
+      // that echo; we control the save explicitly below.
       suppressNextSaveRef.current = dataToRestore;
       if (enableRealtime) {
         pendingRemoteUpdatesRef.current += 1;
@@ -1202,7 +1223,13 @@ function P1PuckProviderInner({
       // Resume auto-save
       debouncedSave.resume();
       setAutoSavePaused(false);
-      pendingDataRef.current = null;
+      // Only queue a save when restoring from local in-memory edits — those were
+      // never persisted. Data from the server fetch is already the latest saved
+      // version; queuing a save would create a spurious identical version.
+      if (hadLocalEdits) {
+        pendingDataRef.current = dataToRestore;
+        debouncedSave();
+      }
       setSaveStatus('idle');
     }
   }, [debouncedSave, cancelPendingRemoteSync, enableRealtime, realtime, userClient, siteId, branchId, showErrorNotifications, notificationContext]);

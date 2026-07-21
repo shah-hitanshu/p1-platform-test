@@ -71,6 +71,185 @@
 }
 
 /* ============================================
+   Version Preview Read-Only Inspector (PCC-3422)
+   ============================================ */
+
+/* Fields guard: dims all fields and removes interaction (inert attr handles the rest) */
+.p1-readonly-fields-guard {
+  opacity: 0.6;
+  user-select: none;
+  cursor: not-allowed;
+}
+
+/* Version read-only banner shown above the dimmed fields */
+.p1-version-readonly-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--pds-color-text-secondary, var(--puck-css-text-secondary));
+  background: var(--pds-color-bg-default-secondary, var(--puck-css-bg-secondary));
+  border-bottom: 1px solid var(--pds-color-border-default, var(--puck-css-border));
+  flex-shrink: 0;
+}
+
+/* Inspector tab header: Page / Blocks switcher */
+.p1-inspector-tab-header {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--pds-color-border-default, var(--puck-css-border));
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+.p1-inspector-tab {
+  position: relative;
+  flex: 1;
+  padding: 16px 8px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--pds-color-text-secondary, var(--puck-css-text-secondary));
+  background: none;
+  border: none;
+  cursor: pointer;
+  outline: none;
+}
+
+.p1-inspector-tab:focus-visible {
+  outline: 2px solid var(--pds-color-interactive-primary, var(--puck-css-primary));
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.p1-inspector-tab[aria-selected='true'] {
+  color: var(--pds-color-text-primary, var(--puck-css-text));
+}
+
+.p1-inspector-tab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--pds-color-interactive-primary, var(--puck-css-primary));
+  border-radius: 2px 2px 0 0;
+}
+
+/* Inspector fields wrapper */
+.p1-inspector-fields {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Collapse button — trailing end of the tab-header row */
+.p1-inspector-tab-collapse {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 0 10px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--pds-color-text-secondary, var(--puck-css-text-secondary));
+  outline: none;
+}
+
+.p1-inspector-tab-collapse:hover {
+  color: var(--pds-color-fg-default, var(--pds-color-text-primary, var(--puck-css-text)));
+}
+
+.p1-inspector-tab-collapse:focus-visible {
+  outline: 2px solid var(--pds-color-interactive-primary, var(--puck-css-primary));
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Breadcrumb shown below tab header when a block is selected */
+.p1-inspector-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--pds-color-text-secondary, var(--puck-css-text-secondary));
+  border-bottom: 1px solid var(--pds-color-border-default, var(--puck-css-border));
+  flex-shrink: 0;
+}
+
+.p1-inspector-breadcrumb__sep {
+  opacity: 0.5;
+}
+
+.p1-inspector-breadcrumb__block {
+  color: var(--pds-color-fg-default, var(--pds-color-text-primary, var(--puck-css-text)));
+  font-weight: 600;
+}
+
+/* Strip container: min-height bypasses ancestor height constraints;
+   overflow:hidden on _Sidebar--right_ clips it to the correct sidebar height. */
+.p1-inspector-reopen-strip {
+  width: 100%;
+  min-height: calc(100vh - 100px); /* 52px P1EditorHeader + 48px P1EditorSubheader */
+  background: var(--pds-color-bg-default, #fff);
+  border-left: 1px solid var(--pds-color-border-default, oklch(0.9401 0 0));
+  display: flex;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.p1-inspector-reopen-btn {
+  flex-shrink: 0;
+}
+
+.p1-inspector-reopen-btn .pds-icon {
+  transform: rotate(180deg);
+}
+
+/* TODO: Delete this block once @puckeditor/core removes showBreadcrumbs: true from the
+   fields SidebarSection (chunk-EBISZQTK.mjs line 7580). Puck hardcodes that prop so
+   <Breadcrumbs /> always renders above our InspectorTabHeader with no public API to
+   disable it. When the package is updated, delete this rule. */
+[class*='_Sidebar--right_'] [class*='_SidebarSection-title'] {
+  height: 0 !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  border: 0 !important;
+  min-height: 0 !important;
+}
+
+/* ============================================
+   Inspector Re-open Drawer Strip
+   ============================================ */
+
+/* When the right sidebar is collapsed, Puck sets the column to 0 and the sidebar
+   to display:none. Override both so the 48px strip stays in layout flow.
+   No fixed/portal positioning — canvas and monitor button are unaffected. */
+@media (min-width: 638px) {
+  [class*="_PuckLayout--mounted_"][class*="_PuckLayout--leftSideBarVisible_"]:not([class*="_PuckLayout--rightSideBarVisible_"]) [class*="_PuckLayout-inner_"] {
+    grid-template-columns: var(--puck-side-nav-width) var(--puck-left-side-bar-width) var(--puck-frame-width) 48px !important;
+  }
+}
+
+/* Override Puck's display:none — show the sidebar as a 48px strip.
+   overflow:hidden clips the strip to the sidebar's grid-placed dimensions. */
+[class*="_PuckLayout--mounted_"]:not([class*="_PuckLayout--rightSideBarVisible_"]) [class*="_Sidebar--right_"] {
+  display: flex !important;
+  overflow: hidden !important;
+}
+
+
+/* ============================================
    Utility: Visually Hidden (screen reader only)
    ============================================ */
 

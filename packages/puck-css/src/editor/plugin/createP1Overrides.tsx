@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { ActionBar, createUsePuck, usePuck } from '@puckeditor/core';
+import { ActionBar } from '@puckeditor/core';
 import type { Checkpoint, DocumentVersion, PuckData, ActorPresence } from '@pantheon-systems/css-client';
 import type { SaveStatus } from '../../core/types.js';
 import { SaveIndicator } from '../components/SaveIndicator.js';
@@ -15,88 +15,15 @@ import { CollaboratorAvatars } from '../../collaboration/components/Collaborator
 import { AgentActivityBanner } from '../../collaboration/components/AgentActivityBanner.js';
 import { PublishedStatusBadge } from '../components/PublishedStatusBadge.js';
 import { ActionBarPinButton } from '../../features/content-type-templates/ui/ActionBarPinButton.js';
-import { TemplateDetailsPanel } from '../../features/content-type-templates/ui/TemplateDetailsPanel.js';
-import { useP1PuckOptional } from '../../core/P1PuckContext.js';
-import type { TemplateSummary } from '../../features/content-type-templates/types.js';
+import { P1InspectorFields } from '../components/P1InspectorFields.js';
 // NOTE: PuckDataSynchronizer is NOT imported here - it's used in P1Plugin instead
 // because headerActions renders outside Puck's context where usePuck() doesn't work.
 
-// Module-level usePuck hook for reading the current selection inside the fields override.
-const useOverridesPuck = createUsePuck();
+// Re-exported for backwards compatibility — implementation lives in utils/templatePath.ts.
+export { templateFromRegistryPath } from '../utils/templatePath.js';
+// Re-exported for backwards compatibility — implementation lives in components/P1TemplateFields.tsx.
+export { P1TemplateFields } from '../components/P1TemplateFields.js';
 
-/**
- * Resolve the template being edited from a document path. Templates are stored
- * as documents at `_registry/templates/<name>`; returns the matching template
- * (by name) or null for ordinary pages.
- */
-export function templateFromRegistryPath(
-  path: string | undefined | null,
-  templates: TemplateSummary[] | undefined,
-): TemplateSummary | null {
-  if (!path || !templates) return null;
-  const match = path.match(/^_registry\/templates\/(.+)$/);
-  if (!match) return null;
-  return templates.find((t) => t.name === match[1]) ?? null;
-}
-
-/**
- * Right-sidebar fields override. In template mode (editing a template document)
- * with the root selected, it replaces the default "Page" root fields with the
- * "Template" details panel (Label / Description / URL pattern). Otherwise it
- * renders Puck's default fields unchanged.
- */
-function P1TemplateFields({ children }: { children: React.ReactNode }): React.ReactElement {
-  const css = useP1PuckOptional();
-  const itemSelector = useOverridesPuck(
-    (s) => (s as unknown as { appState?: { ui?: { itemSelector?: unknown } } }).appState?.ui?.itemSelector,
-  );
-  const { dispatch } = usePuck();
-  const template = templateFromRegistryPath(css?.currentDocument?.path, css?.templates);
-
-  // Only override the ROOT fields (nothing selected) while editing a template.
-  if (template && !itemSelector && css?.updateTemplate) {
-    const updateTemplate = css.updateTemplate;
-    return (
-      <TemplateDetailsPanel
-        template={template}
-        onSave={async (details) => {
-          // Metadata-only PATCH; the layout is persisted by the canvas autosave.
-          await updateTemplate(template.id, {
-            label: details.label,
-            description: details.description,
-            defaultUrlPattern: details.defaultUrlPattern,
-          });
-          // Mirror the saved metadata into the live Puck root props
-          // (root.props._template) so the canvas autosave writes the same
-          // metadata the PATCH persisted.
-          dispatch({
-            type: 'setData',
-            data: (prev: Record<string, unknown>) => {
-              const root = (prev.root ?? {}) as Record<string, unknown>;
-              const props = (root.props ?? {}) as Record<string, unknown>;
-              return {
-                ...prev,
-                root: {
-                  ...root,
-                  props: {
-                    ...props,
-                    _template: {
-                      ...((props._template ?? {}) as Record<string, unknown>),
-                      label: details.label,
-                      description: details.description,
-                      defaultUrlPattern: details.defaultUrlPattern,
-                    },
-                  },
-                },
-              };
-            },
-          } as never);
-        }}
-      />
-    );
-  }
-  return <>{children}</>;
-}
 
 /**
  * Options for creating P1 overrides
@@ -302,7 +229,7 @@ export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
       </ActionBar>
     ),
     fields: ({ children }: { children: React.ReactNode }) => (
-      <P1TemplateFields>{children}</P1TemplateFields>
+      <P1InspectorFields>{children}</P1InspectorFields>
     ),
     headerActions: ({ children }) => {
       // Read presence/agent values lazily from options (Proxy) each render

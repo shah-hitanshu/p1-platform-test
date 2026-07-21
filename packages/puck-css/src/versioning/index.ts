@@ -9,6 +9,10 @@ export { HistoricalVersionBanner } from './components/HistoricalVersionBanner.js
 export type { HistoricalVersionBannerProps } from './components/HistoricalVersionBanner.js';
 export { VersionPublishedBadge } from './components/VersionPublishedBadge.js';
 export type { VersionPublishedBadgeProps } from './components/VersionPublishedBadge.js';
+export { ReadOnlyFieldsGuard } from './components/ReadOnlyFieldsGuard.js';
+export type { ReadOnlyFieldsGuardProps } from './components/ReadOnlyFieldsGuard.js';
+export { VersionReadOnlyBanner } from './components/VersionReadOnlyBanner.js';
+export type { VersionReadOnlyBannerProps } from './components/VersionReadOnlyBanner.js';
 
 export { diffPuckData, diffProps } from './utils/diff.js';
 export type { ComponentDiff, ComponentDiffWithPosition, PropDiff } from '../core/types.js';

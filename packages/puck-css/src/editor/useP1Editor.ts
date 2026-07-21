@@ -420,7 +420,11 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
 
   const permissions = useMemo(() => {
     if (css.isViewingHistoricalVersion) {
-      return { delete: false, drag: false, duplicate: false, edit: false, insert: false };
+      // Omit edit:false so page/root fields are never locked by Puck's own
+      // readonly rendering. Interaction is blocked by ReadOnlyFieldsGuard
+      // (inert attribute) instead, which also covers root fields without
+      // requiring resolvePermissions on config.root.
+      return { delete: false, drag: false, duplicate: false, insert: false };
     }
     return { delete: true, drag: true, duplicate: true, edit: true, insert: true };
   }, [css.isViewingHistoricalVersion]);

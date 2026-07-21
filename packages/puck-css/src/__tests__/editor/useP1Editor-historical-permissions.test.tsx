@@ -135,7 +135,7 @@ describe('useP1Editor historical-version permissions', () => {
     mockCssContext.isViewingHistoricalVersion = false;
   });
 
-  it('locks down drag/delete/edit/insert/duplicate while viewing a historical version', async () => {
+  it('locks down drag/delete/insert/duplicate while viewing a historical version', async () => {
     mockCssContext.isViewingHistoricalVersion = true;
     const { result } = renderHook(() =>
       useP1Editor({
@@ -145,12 +145,13 @@ describe('useP1Editor historical-version permissions', () => {
     );
     await waitFor(() => expect(result.current.loading).toBe(false));
 
+    // edit is intentionally omitted — ReadOnlyFieldsGuard's inert attribute
+    // handles interaction blocking; Puck's edit permission is not used.
     const permissions = result.current.puckProps.permissions;
     expect(permissions).toEqual({
       delete: false,
       drag: false,
       duplicate: false,
-      edit: false,
       insert: false,
     });
   });

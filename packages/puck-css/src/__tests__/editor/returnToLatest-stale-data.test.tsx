@@ -272,6 +272,61 @@ describe('returnToLatest stale-data regression (PCC-3421)', () => {
     expect(applyLocalChange).toHaveBeenCalledWith(realEdit);
   });
 
+  it('restores unsaved in-memory edits that were cleared from pendingDataRef by loadVersion (PCC-3422)', async () => {
+    // Scenario: user edits → autosave debounce starts → user opens version
+    // history before debounce fires → loadVersion clears pendingDataRef →
+    // user returns to latest → the unsaved edit must be preserved.
+    await renderProvider();
+    const ctx = capturedCtx as unknown as {
+      loadDocument: (p: string) => Promise<void>;
+      loadVersion: (v: DocumentVersion) => Promise<void>;
+      returnToLatest: () => Promise<void>;
+      saveData: (d: PuckData) => void;
+      currentData: PuckData | null;
+    };
+
+    // 1. Open the document.
+    mockClientMethods.documents.getByPath.mockResolvedValueOnce(TEST_DOC);
+    mockClientMethods.versions.getLatest.mockResolvedValueOnce({
+      id: 'v1', documentId: 'doc-1', branchId: 'branch-1',
+      snapshot: DATA_V1, createdAt: '2026-01-01T00:00:00Z',
+    });
+    await act(async () => { await ctx.loadDocument(TEST_PATH); });
+
+    // 2. User makes an edit — saveData called (simulates Puck onChange).
+    //    The debounce hasn't fired yet so nothing is persisted.
+    const UNSAVED_EDIT: PuckData = {
+      content: [
+        { type: 'Heading', props: { id: 'h1' } },
+        { type: 'Image', props: { id: 'img1', src: 'new.png' } },
+      ],
+      root: { props: {} },
+      zones: {},
+    };
+    act(() => { ctx.saveData(UNSAVED_EDIT); });
+
+    // 3. User opens version history (no additional server fetch needed).
+    await act(async () => {
+      await ctx.loadVersion({
+        id: 'v-old', documentId: 'doc-1', branchId: 'branch-1',
+        snapshot: DATA_OLD, createdAt: '2025-12-01T00:00:00Z',
+      } as unknown as DocumentVersion);
+    });
+
+    // Server is not called on return because latestLocalDataRef has the edit.
+    const getLatestCallsBefore = mockClientMethods.versions.getLatest.mock.calls.length;
+
+    // 4. Return to latest.
+    await act(async () => { await ctx.returnToLatest(); });
+
+    // The unsaved edit must be restored — not the server version.
+    const finalCtx = capturedCtx as unknown as { currentData: PuckData | null };
+    expect(finalCtx.currentData).toEqual(UNSAVED_EDIT);
+
+    // No extra server round trip when local data covers the return.
+    expect(mockClientMethods.versions.getLatest.mock.calls.length).toBe(getLatestCallsBefore);
+  });
+
   it('aborts and notifies (does not degrade to the stale cache) when the latest fetch fails', async () => {
     await renderProvider();
     const ctx = capturedCtx as unknown as {
