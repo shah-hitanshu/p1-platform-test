@@ -24,7 +24,9 @@ export function ChatMessage({ message }: Props): React.ReactElement {
           color="discovery"
           label={
             <>
-              <Icon iconName="sparkles" iconSize="xs" verticalAlign="-0.1em" />
+              {/* alpha.43 removed the `xs` icon size (smallest is `s`=12px); pin to the
+                  pre-alpha.43 xs size (10px) via inline style so badge icons stay compact */}
+              <Icon iconName="sparkles" size="s" verticalAlign="-0.1em" style={{ width: '0.625rem', height: '0.625rem' }} />
               {' '}AI
             </>
           }
@@ -38,13 +40,14 @@ export function ChatMessage({ message }: Props): React.ReactElement {
           {message.toolCalls.map((tc, i) => (
             <Badge
               key={i}
-              color={tc.status === 'running' ? 'sky' : 'gaia'}
+              color={tc.status === 'running' ? 'sky' : 'success'}
               label={
                 <>
                   <Icon
                     iconName={tc.status === 'running' ? 'circleNotch' : 'circleCheck'}
-                    iconSize="xs"
+                    size="s"
                     verticalAlign="-0.1em"
+                    style={{ width: '0.625rem', height: '0.625rem' }}
                   />
                   {' '}{tc.name}
                 </>

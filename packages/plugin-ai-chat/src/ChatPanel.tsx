@@ -87,7 +87,7 @@ export function ChatPanel({ options }: Props): React.ReactElement {
         flexShrink: 0,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Icon iconName="sparkles" iconSize="m" />
+          <Icon iconName="sparkles" size="m" />
           <div>
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--pds-color-fg-default)' }}>
               AI Page Builder
@@ -124,7 +124,7 @@ export function ChatPanel({ options }: Props): React.ReactElement {
             paddingTop: 32,
           }}>
             <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
-              <Icon iconName="sparkles" iconSize="xl" />
+              <Icon iconName="sparkles" size="xl" />
             </div>
             Try: "Build me a page about the world's fastest helicopters"
           </div>
