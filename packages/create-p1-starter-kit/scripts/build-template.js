@@ -220,4 +220,16 @@ transformPackageJson(templateDest);
 console.log('Rewriting eslint config...');
 rewriteEslintConfig(templateDest);
 
+console.log('Generating pnpm-workspace.yaml...');
+const workspaceYaml = fs.readFileSync(path.join(repoRoot, 'pnpm-workspace.yaml'), 'utf-8');
+const allowBuildsMatch = workspaceYaml.match(/allowBuilds:\n((?:\s+\S+:\s+true\n?)+)/);
+if (allowBuildsMatch) {
+  fs.writeFileSync(
+    path.join(templateDest, 'pnpm-workspace.yaml'),
+    `allowBuilds:\n${allowBuildsMatch[1]}`
+  );
+  const pkgs = [...allowBuildsMatch[1].matchAll(/\s+(\S+):\s+true/g)].map(m => m[1]);
+  console.log(`  allowBuilds: ${pkgs.join(', ')}`);
+}
+
 console.log('✓ Template built successfully from apps/p1-starter');

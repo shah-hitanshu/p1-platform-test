@@ -107,3 +107,48 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 14
+
+  verify-starter-install:
+    name: Verify Starter Kit Install (${{ matrix.pm }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pm: [npm, yarn, pnpm]
+        include:
+          - pm: npm
+            install: npm install
+            verify: npm ls
+          - pm: yarn
+            install: yarn install
+            verify: yarn info --name-only
+          - pm: pnpm
+            install: pnpm install
+            verify: pnpm ls
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: corepack enable pnpm
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build starter kit template
+        run: pnpm --filter @pantheon-systems/create-p1-starter-kit build
+
+      - name: Prepare scaffolded project
+        run: |
+          cp -r packages/create-p1-starter-kit/template /tmp/test-starter-kit
+          sed -i 's/PLACEHOLDER_PROJECT_NAME/test-p1-starter/' /tmp/test-starter-kit/package.json
+
+      - name: Install dependencies (${{ matrix.pm }})
+        working-directory: /tmp/test-starter-kit
+        run: ${{ matrix.install }}
+
+      - name: Verify dependency tree
+        working-directory: /tmp/test-starter-kit
+        run: ${{ matrix.verify }}
