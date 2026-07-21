@@ -20,6 +20,8 @@ import {
   getLatestDocumentVersionWithFallback,
   listDocumentsOnBranch,
   reconstructVersionSnapshot,
+  buildPageMetadata,
+  getSite,
 } from '../services';
 import {
   getSiteSettings,
@@ -52,6 +54,7 @@ function errorResponse(error: string, status: number): Response {
 }
 
 import { UUID_RE } from '../utils/branch-ref';
+import type { PageContent } from '../types/page-metadata';
 
 /**
  * Resolve the branch from query param or default to main branch.
@@ -154,13 +157,19 @@ async function handleGetContent(
     return errorResponse('Document has been deleted', 404);
   }
 
-  // ETag handling
-  const etag = `"v-${version.id}"`;
+  const [settings, site] = await Promise.all([
+    getSiteSettings(siteId),
+    getSite(siteId),
+  ]);
+  const ttl = getEffectiveCacheTtl(settings, branch.isMain);
+
+  // ETag covers the version and the site's last update, since the payload
+  // carries site-derived metadata that changes without a version bump
+  const etag = site === null
+    ? `"v-${version.id}"`
+    : `"v-${version.id}-s-${String(new Date(site.updatedAt).getTime())}"`;
 
   const ifNoneMatch = request.headers.get('If-None-Match');
-  // Cache TTL
-  const settings = await getSiteSettings(siteId);
-  const ttl = getEffectiveCacheTtl(settings, branch.isMain);
 
   if (ifNoneMatch === etag) {
     return new Response(null, {
@@ -181,8 +190,9 @@ async function handleGetContent(
     version.versionNumber,
   );
 
-  const responseBody: Record<string, unknown> = {
+  const responseBody: PageContent = {
     documentId: document.id,
+    metadata: buildPageMetadata(site),
     path: document.path,
     data: snapshotData,
     branchId: branch.id,

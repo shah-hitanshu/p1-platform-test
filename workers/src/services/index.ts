@@ -544,3 +544,5 @@ export type {
   DocumentWithSnapshot,
   ConflictResult,
 } from './migration-service';
+
+export { buildPageMetadata } from './page-metadata-service';

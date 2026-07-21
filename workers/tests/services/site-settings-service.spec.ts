@@ -136,7 +136,7 @@ describe('Site Settings Service', () => {
         fields: [],
       });
 
-      const result = await updateSiteSettings('site-123', { cacheTtlMain: null as unknown as undefined });
+      const result = await updateSiteSettings('site-123', { cacheTtlMain: null });
       expect(result).toEqual({
         cacheTtlMain: 60,
         cacheTtlBranch: 5,
@@ -247,6 +247,14 @@ describe('Site Settings Service', () => {
 
       const result = getEffectiveCacheTtl({}, false);
       expect(result).toBe(5);
+    });
+
+    it('should fall back through env default to hardcoded when settings are null', async () => {
+      const { getEffectiveCacheTtl } = await import('../../src/services/site-settings-service');
+
+      expect(getEffectiveCacheTtl(null, true, { defaultCacheTtlMain: 90 })).toBe(90);
+      expect(getEffectiveCacheTtl(null, true)).toBe(60);
+      expect(getEffectiveCacheTtl(null, false)).toBe(5);
     });
 
     it('should prefer site override over env default', async () => {

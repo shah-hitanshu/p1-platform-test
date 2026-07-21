@@ -10,7 +10,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { AuthenticatedPrincipal, Branch, Document, DocumentVersion } from '../../src/types';
+import type { AuthenticatedPrincipal, Branch, Document, DocumentVersion, Site } from '../../src/types';
+import type { SeoMetadata } from '../../src/types/page-metadata';
 
 // Mock services
 vi.mock('../../src/services', () => ({
@@ -23,6 +24,8 @@ vi.mock('../../src/services', () => ({
   getLatestDocumentVersionWithFallback: vi.fn(),
   listDocumentsOnBranch: vi.fn(),
   reconstructVersionSnapshot: vi.fn(),
+  buildPageMetadata: vi.fn(),
+  getSite: vi.fn(),
 }));
 
 vi.mock('../../src/services/site-settings-service', () => ({
@@ -54,6 +57,7 @@ const mockMainBranch: Branch = {
   createdByType: 'user',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
+  archivedAt: null,
 };
 
 const mockFeatureBranch: Branch = {
@@ -67,6 +71,7 @@ const mockFeatureBranch: Branch = {
   createdByType: 'user',
   createdAt: '2026-02-15T10:00:00.000Z',
   updatedAt: '2026-02-15T10:00:00.000Z',
+  archivedAt: null,
 };
 
 const mockDocument: Document = {
@@ -74,6 +79,34 @@ const mockDocument: Document = {
   siteId: 'site-uuid-123',
   path: 'home',
   createdAt: '2026-01-05T12:00:00.000Z',
+};
+
+const mockSite: Site = {
+  id: 'site-uuid-123',
+  pantheonSiteId: 'pantheon-site-1',
+  name: 'Acme Docs',
+  url: 'https://content.public.url',
+  workflowSettings: {
+    mergeApprovalMode: 'optional',
+    minApprovers: 1,
+    allowSelfApproval: true,
+    approverMode: 'both',
+  },
+  allowedOrigins: [],
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+  archivedAt: null,
+};
+
+// The ETag covers the version and the site's last update, so a site rename
+// invalidates cached payloads carrying siteName.
+const mockEtag = `"v-version-uuid-001-s-${String(new Date(mockSite.updatedAt).getTime())}"`;
+
+// buildPageMetadata is a mocked service here; its own logic is unit-tested in
+// tests/services/page-metadata-service.spec.ts. This is the value it returns
+// so route tests can assert the payload carries it through.
+const mockMetadata: SeoMetadata = {
+  siteName: 'Acme Docs',
 };
 
 const mockPublishedVersion: DocumentVersion = {
@@ -149,9 +182,12 @@ function setupSettingsMocks(settingsService: typeof import('../../src/services/s
 // =============================================================================
 
 describe('Content Delivery API Routes', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+    const services = await import('../../src/services');
+    vi.mocked(services.buildPageMetadata).mockReturnValue(mockMetadata);
+    vi.mocked(services.getSite).mockResolvedValue(mockSite);
   });
 
   // ===========================================================================
@@ -188,6 +224,7 @@ describe('Content Delivery API Routes', () => {
       const body = await response.json();
       expect(body).toEqual({
         documentId: 'doc-uuid-abc',
+        metadata: mockMetadata,
         path: 'home',
         data: mockPublishedVersion.snapshot,
         branchId: 'branch-main-uuid',
@@ -195,8 +232,9 @@ describe('Content Delivery API Routes', () => {
         isMainBranch: true,
         versionNumber: 14,
         versionCreatedAt: '2026-03-07T18:00:00.000Z',
-        etag: '"v-version-uuid-001"',
+        etag: mockEtag,
       });
+      expect(services.buildPageMetadata).toHaveBeenCalledWith(mockSite);
     });
 
     it('should return 404 when document has saved versions but none are published on main', async () => {
@@ -287,6 +325,7 @@ describe('Content Delivery API Routes', () => {
       expect(body.data).toEqual(mockPublishedVersion.snapshot);
     });
   });
+
 
   // ===========================================================================
   // GET content — Non-main Branch (Work-in-Progress)
@@ -669,7 +708,7 @@ describe('Content Delivery API Routes', () => {
         {
           method: 'GET',
           headers: {
-            'If-None-Match': '"v-version-uuid-001"',
+            'If-None-Match': mockEtag,
           },
         },
       );
@@ -738,7 +777,71 @@ describe('Content Delivery API Routes', () => {
       });
 
       expect(response.status).toBe(200);
+      expect(response.headers.get('ETag')).toBe(mockEtag);
+    });
+
+    it('should return 200 when If-None-Match matches the version but the site has since been updated', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestPublishedDocumentVersion).mockResolvedValue(mockPublishedVersion);
+      vi.mocked(services.getSite).mockResolvedValue({
+        ...mockSite,
+        name: 'Acme Docs Renamed',
+        updatedAt: '2026-06-01T00:00:00.000Z',
+      });
+      setupSettingsMocks(settingsService);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home',
+        {
+          method: 'GET',
+          headers: {
+            'If-None-Match': mockEtag,
+          },
+        },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('ETag')).not.toBe(mockEtag);
+    });
+
+    it('should fall back to a version-only ETag when the site is not found', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestPublishedDocumentVersion).mockResolvedValue(mockPublishedVersion);
+      vi.mocked(services.getSite).mockResolvedValue(null);
+      setupSettingsMocks(settingsService);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
       expect(response.headers.get('ETag')).toBe('"v-version-uuid-001"');
+      expect(services.buildPageMetadata).toHaveBeenCalledWith(null);
     });
 
     it('should return 404 when branch not found', async () => {
@@ -1371,7 +1474,6 @@ describe('Content Delivery API Routes', () => {
     it('rejects a branch UUID belonging to a different site', async () => {
       const { handleContentRoutes } = await import('../../src/routes/content-api');
       const services = await import('../../src/services');
-      const settingsService = await import('../../src/services/site-settings-service');
 
       vi.mocked(services.getBranch).mockResolvedValueOnce({
         id: 'branch-other-uuid',

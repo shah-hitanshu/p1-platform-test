@@ -5087,6 +5087,37 @@ Consolidated template persistence on the page content shape (PCC-3357). A templa
 - Saved templates reopened to a blank canvas (manifest snapshot had no renderable layout).
 - Template migrations completed without applying anything (delta extraction found no `.content` on manifest templates).
 
+## PCC-3407: SEO Metadata on Content Payload (2026-07-17, revised 2026-07-20 after review)
+
+**Status:** Complete (pending merge)
+**Branch:** `nick/add-opengraph-metadata` (PR #203)
+
+### Summary
+
+`GET /api/sites/{siteId}/content/{documentPath}` now delivers a `metadata: SeoMetadata` object on the response so clients can populate `og:site_name` on public renders. This serves the client integration in puck-css-integration PR #111, which reads the field off the content read it already makes each navigation (no extra API calls).
+
+The payload originally carried `title`, `description`, and `canonicalUrl` as well; PR review moved those to the client (see Decisions), leaving `SeoMetadata { siteName? }`.
+
+### What was done
+
+- **New type** (`types/page-metadata.ts`): `SeoMetadata { siteName? }` and `PageContent` (the response body type, replacing an inline `Record<string, unknown>`).
+- **New service** (`services/page-metadata-service.ts`): `buildPageMetadata(site)` — a synchronous mapping from an already-fetched `Site | null`; no DB access of its own.
+- **Route** (`routes/content-api.ts`): fetches the site via `Promise.all` alongside `getSiteSettings` (no added serial latency on the hot path) and passes it to `buildPageMetadata`. The ETag is now `"v-{versionId}-s-{site.updatedAt millis}"` (version-only when the site lookup fails) so a site rename invalidates cached payloads without a version bump.
+- **Type fix** (`services/site-settings-service.ts`): `getEffectiveCacheTtl` now accepts `SiteSettings | null`, resolving the pre-existing tsc error at both content handlers (`getSiteSettings` returns `Required<SiteSettings> | null`); null falls through to env/hardcoded defaults.
+- **Tests:** service unit tests, route pass-through tests, ETag composition tests (site-aware, rename invalidation, null-site fallback), null-settings TTL test. Built TDD (red → tests committed → implement → green).
+
+### Decisions (from PR #203 review, a11rew)
+
+- **`title`/`description` dropped from the payload:** `root.props` is unvalidated client-defined JSON on the backend side, and the codebase had grown three different sources for "page title". The client already receives the full snapshot in `data` and derives these typed against its own Puck config (puck-css-integration branch `pcc-3407-seo-head-metadata` already falls back to root props).
+- **`canonicalUrl` dropped:** only the client knows the request origin, `basePath`, locale prefix, and trailing-slash policy; a backend-built URL from optional `site.url` desyncs from `NEXT_PUBLIC_SITE_URL` and emits production canonicals on preview branches.
+- **`siteName` kept:** it's the one value the snapshot cannot provide; backend delivery keeps the editor-managed site name authoritative over the client's deploy-time env var.
+- **ETag must cover the site:** payload now depends on `site.name`, which changes without a version bump; folding `site.updatedAt` into the ETag prevents indefinite 304/CDN staleness after a rename.
+
+### Notes / follow-ups
+
+- `snapshotTitle` for dashboard listings is a real backend need not covered by client-side title mapping — needs its own ticket.
+- `og:image` / Twitter card tags are out of scope for this ticket.
+- `pnpm typecheck` (`tsc --noEmit`) is broken repo-wide (~2,595 errors, not in CI) — tracked in the Obsidian Things to Fix list.
 ## PCC-3430: Exclude `_registry/*` from Checkpoint Capture (2026-07-19)
 
 **Status:** Complete

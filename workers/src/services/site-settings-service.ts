@@ -121,7 +121,7 @@ export async function getSiteSettings(
     [siteId],
   );
 
-  if (result.rows.length === 0) {
+  if (!result.rows[0]) {
     return null;
   }
 
@@ -188,7 +188,7 @@ export async function updateSiteSettings(
 
   const result = await query<SettingsRow>(sql, params);
 
-  if (result.rowCount === 0) {
+  if (!result.rows[0]) {
     return null;
   }
 
@@ -200,26 +200,26 @@ export async function updateSiteSettings(
  * Computes the effective cache TTL for a branch.
  * Priority: site override > env default > hardcoded default.
  *
- * @param siteSettings - The site's settings (may be partial)
+ * @param siteSettings - The site's settings (may be partial, or null when the site row is missing)
  * @param isMainBranch - Whether this is the main branch
  * @param envDefaults - Optional environment-level defaults
  * @returns The effective cache TTL in seconds
  */
 export function getEffectiveCacheTtl(
-  siteSettings: SiteSettings,
+  siteSettings: SiteSettings | null,
   isMainBranch: boolean,
   envDefaults?: EnvDefaults,
 ): number {
   if (isMainBranch) {
     return (
-      siteSettings.cacheTtlMain ??
+      siteSettings?.cacheTtlMain ??
       envDefaults?.defaultCacheTtlMain ??
       DEFAULT_CACHE_TTL_MAIN
     );
   }
 
   return (
-    siteSettings.cacheTtlBranch ??
+    siteSettings?.cacheTtlBranch ??
     envDefaults?.defaultCacheTtlBranch ??
     DEFAULT_CACHE_TTL_BRANCH
   );
