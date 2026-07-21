@@ -37,8 +37,8 @@
     "ws": "^8.21.0",
     "dotenv-cli": "^11.0.0"
   },
-  "packageManager": "pnpm@11.7.0",
+  "packageManager": "pnpm@11.15.1",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.0.0"
   }
 }

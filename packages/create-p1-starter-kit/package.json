@@ -35,7 +35,7 @@
     "template"
   ],
   "engines": {
-    "node": ">=20.12.0"
+    "node": ">=24.0.0"
   },
   "devDependencies": {
     "@pantheon-systems/css-client": "workspace:*",
