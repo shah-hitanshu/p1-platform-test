@@ -1,14 +1,14 @@
-import { WelcomeBlockRender } from "../components/puck/welcome-block-render";
 import {
   ensureInitialized,
   getPage,
   listRouteTemplateKeysFromDatabase,
   resolveDataTemplates,
-  resolveStringTemplates,
   extractReferencedDatasourceIds,
   loadRemoteDatasourceContext,
 } from "@pantheon-systems/puck-css/server";
 import type { Metadata } from "next";
+import { WelcomeBlockRender } from "../components/puck/welcome-block-render";
+import { resolvePageMetadata } from "../lib/page-seo";
 import { REMOTE_DATASOURCE_FETCHERS } from "../lib/remote-datasource-fetchers";
 import { Client } from "./[...puckPath]/client";
 
@@ -27,25 +27,7 @@ export async function generateMetadata(): Promise<Metadata> {
   if (!pageData) {
     return { title: "P1 Starter Kit" };
   }
-
-  const rawTitle = pageData.root.props?.title;
-  if (typeof rawTitle !== "string") {
-    return { title: rawTitle };
-  }
-  if (!rawTitle.includes("{{")) {
-    return { title: rawTitle };
-  }
-  const routeTemplateKeys = await listRouteTemplateKeysFromDatabase();
-  const referencedDatasourceIds = extractReferencedDatasourceIds(pageData);
-  const context = await loadRemoteDatasourceContext({
-    searchParams: {},
-    fetchImpl: fetch,
-    pagePath: "/",
-    routeTemplateKeys,
-    builtinFetchers: REMOTE_DATASOURCE_FETCHERS,
-    referencedDatasourceIds,
-  });
-  return { title: await resolveStringTemplates(rawTitle, context) };
+  return resolvePageMetadata({ pageData, path: "/", searchParams: {} });
 }
 
 export default async function HomePage() {

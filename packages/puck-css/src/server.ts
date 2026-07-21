@@ -71,6 +71,10 @@ export {
 // --- P1-backed store ---
 export { createP1PageStore } from "./data/dal/p1-store.js";
 export type { P1StoreConfig, P1StoreClient } from "./data/dal/p1-store.js";
+// Re-exported so consumers (e.g. the app's generateMetadata) can type the
+// root.props._seo the DAL folds in (PCC-3407) without depending on css-client
+// directly.
+export type { SeoMetadata } from "@pantheon-systems/css-client";
 export { ensureInitialized, type P1DataConfig } from "./data/dal/init.js";
 export { runWithAuthToken } from "./data/dal/request-auth.js";
 

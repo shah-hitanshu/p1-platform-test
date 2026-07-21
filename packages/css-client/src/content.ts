@@ -15,8 +15,19 @@ export interface P1ContentClientConfig {
   branchId?: string;
 }
 
+/**
+ * Site-level SEO metadata delivered on the content payload. Page-level tags
+ * (title, description, canonical URL) are derived client-side from the
+ * snapshot in `data`; the backend supplies only what the snapshot cannot.
+ */
+export interface SeoMetadata {
+  siteName?: string;
+}
+
 export interface PageContent {
   documentId: string;
+  /** Site-level SEO metadata for the <head>; present on public content reads. */
+  metadata?: SeoMetadata;
   path: string;
   data: Record<string, unknown>;
   branchId: string;
@@ -25,6 +36,7 @@ export interface PageContent {
   versionNumber: number;
   versionCreatedAt: string;
   etag: string;
+  inherited?: boolean;
 }
 
 export interface PageListEntry {

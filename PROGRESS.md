@@ -61,6 +61,52 @@ changes across build tools.
 **Verification:** `puck-css` build + full `pnpm build` clean (exit 0); lint 0 errors (pre-existing
 warnings only); dev server on :3002 confirmed the served CSS now matches the live `qeUOEG` trigger.
 Visually confirmed working on localhost :3002. CSS-only change — no security surface.
+### PCC-3407 — HTML `<head>` SEO metadata from Content repo (in progress, 2026-07-16) 🚧
+### PCC-3407 — HTML `<head>` SEO metadata from Content repo (2026-07-16) ✅
+
+**Branch:** `pcc-3407-seo-head-metadata` (single branch off `main`; stackit skipped).
+
+**Goal:** Inject seven `<head>` tags sourced from Content repo metadata — `<title>`,
+`meta name="description"`, `link rel="canonical"`, `og:title`, `og:description`,
+`og:url`, `og:site_name` — on public (non-editor) renders via Next.js
+`generateMetadata`.
+
+**BE contract:** the content payload (`GET /api/sites/{siteId}/content/{docPath}`,
+consumed by `P1ContentClient.getPage`) now carries a `metadata: SeoMetadata` object
+(`title` required; `description`/`canonicalUrl`/`siteName` optional). Six tags are
+per-page; `og:site_name` is site-wide but delivered on the same per-page payload, so
+no separate `/api/sites/{siteId}` call is needed. `metadata` is present only on the
+public content read path — the editor read path (`versions.getLatest`) has no
+`metadata`, so it's handled as optional downstream. Template (`{{ }}`) resolution on
+`title`/`description` stays client-side (BE returns them raw).
+
+**Component plan (TDD):**
+1. ✅ **css-client** — `SeoMetadata` interface + `metadata`/`inherited?` on `PageContent`
+   (test `dc54fb4`, impl `03ffffe`). Type-only change: red proven via targeted `tsc`
+   of the spec; runtime spec 13/13, build clean.
+2. ✅ **puck-css DAL** — folds `metadata` into `root.props._seo` on the public-read
+   branch of `p1-store.ts` via immutable shallow merge (`Data` stays the pipeline
+   currency; editor/versions path untouched). Reuses css-client's `SeoMetadata`
+   via a type-only import (single source of truth) rather than a local duplicate.
+   (test `70900ca`, impl `31c1e46`, 24/24 tests, build clean.)
+3. ✅ **seo-metadata + both `generateMetadata`s** — `buildPageMetadata` consumes the
+   `SeoMetadata` shape (read from `root.props._seo`): title/description → plain +
+   OG tags, absolute `canonicalUrl` → canonical + og:url (relative-path fallback),
+   `siteName` → og:site_name. Both routes keep client-side `{{ }}` resolution on
+   title/description. `layout.tsx` keeps env `metadataBase` + env `og:site_name`
+   as site-wide fallbacks that per-page values override via Next's merge.
+   `SeoMetadata` is re-exported from `puck-css/server` so the app avoids a direct
+   css-client dependency. (test `d0e1bea`, impl `adeca7b`, 38/38 app tests,
+   `pnpm build` clean — both routes render dynamic.)
+
+**Status:** all three components complete. Backend must ship `metadata: SeoMetadata`
+on the content payload for the tags to populate on public renders; until then the
+env fallbacks (og:site_name) and relative canonical apply.
+
+**Decisions:** field lives under `metadata` (BE-defined `SeoMetadata`), not flat props;
+`metadataBase` stays env-sourced (BE `canonicalUrl` is already absolute); `inherited`
+mirrored for payload fidelity but not consumed. Pre-existing demo edits stashed
+(`stash@{0}` "PCC-3407 demo (pre-metadata-model)") to rebuild Component 3 cleanly.
 
 ### PCC-3398 — "View page" button: show on home, hide for templates (2026-07-13) ✅
 

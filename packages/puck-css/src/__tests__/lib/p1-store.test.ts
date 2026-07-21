@@ -207,6 +207,81 @@ describe("createP1PageStore", () => {
       expect((contentClient.getPage as ReturnType<typeof vi.fn>)).toHaveBeenCalled();
       expect(mockClient.versions.getLatest).not.toHaveBeenCalled();
     });
+
+    // PCC-3407: the content payload carries a `metadata` object (SeoMetadata,
+    // site-level values only — currently just siteName). On public reads the
+    // DAL folds it into root.props._seo so it rides the single Data currency
+    // through resolvePageData into generateMetadata.
+    it("folds content payload metadata into root.props._seo (public rendering)", async () => {
+      const metadata = { siteName: "Acme Docs" };
+      const contentClient = {
+        getPage: vi.fn().mockResolvedValue({
+          data: { root: { props: { title: "Published" } }, content: [] },
+          metadata,
+        }),
+      } as unknown as P1ContentClientInterface;
+      mockClient = createMockClient();
+      const store = createP1PageStore(makeConfig(mockClient, contentClient));
+
+      const data = (await store.get("/")) as {
+        root: { props: Record<string, unknown> };
+      };
+      // Existing props are preserved…
+      expect(data.root.props.title).toBe("Published");
+      // …and the SEO metadata is attached under _seo.
+      expect(data.root.props._seo).toEqual(metadata);
+    });
+
+    it("omits _seo when the content payload has no metadata", async () => {
+      const contentClient = {
+        getPage: vi.fn().mockResolvedValue({
+          data: { root: { props: { title: "Published" } }, content: [] },
+        }),
+      } as unknown as P1ContentClientInterface;
+      mockClient = createMockClient();
+      const store = createP1PageStore(makeConfig(mockClient, contentClient));
+
+      const data = (await store.get("/")) as {
+        root: { props: Record<string, unknown> };
+      };
+      expect(data.root.props.title).toBe("Published");
+      expect("_seo" in data.root.props).toBe(false);
+    });
+
+    it("does not attach _seo on the editor path (auth token present)", async () => {
+      const contentClient = {
+        getPage: vi.fn().mockResolvedValue({
+          data: { root: { props: { title: "Published" } }, content: [] },
+          metadata: { siteName: "Acme Docs" },
+        }),
+      } as unknown as P1ContentClientInterface;
+      const docs: MockDocument[] = [
+        { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
+      ];
+      const versions: Record<string, MockVersion> = {
+        "doc-1": {
+          id: "v-latest",
+          documentId: "doc-1",
+          branchId: BRANCH_ID,
+          snapshot: { root: { props: { title: "Latest draft" } }, content: [] },
+        },
+      };
+      mockClient = createMockClient({ documents: docs, versions });
+      const store = createP1PageStore(makeConfig(mockClient, contentClient));
+
+      let data: unknown;
+      await runWithAuthToken("bearer-token-xyz", async () => {
+        data = await store.get("/");
+      });
+
+      const props = (data as { root: { props: Record<string, unknown> } }).root
+        .props;
+      expect(props.title).toBe("Latest draft");
+      expect("_seo" in props).toBe(false);
+      expect(
+        contentClient.getPage as ReturnType<typeof vi.fn>,
+      ).not.toHaveBeenCalled();
+    });
   });
 
   // -----------------------------------------------------------------------

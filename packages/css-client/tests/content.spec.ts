@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { P1ContentClient } from '../src/content.js';
+import type { PageContent, SeoMetadata } from '../src/content.js';
 import { P1ApiError } from '../src/errors.js';
 
 // Mock fetch globally
@@ -162,6 +163,70 @@ describe('P1ContentClient', () => {
       const client = new P1ContentClient({ baseUrl, apiToken, siteId });
 
       await expect(client.getPage('home')).rejects.toThrow(P1ApiError);
+    });
+
+    // PCC-3407: the content payload carries site-level SEO metadata for the
+    // HTML <head> on public renders (og:site_name). Page-level tags are
+    // derived client-side from the snapshot in `data`, so the wire type
+    // carries only siteName. It rides on the read the page already makes.
+    it('should surface SEO metadata from the content payload', async () => {
+      const metadata: SeoMetadata = {
+        siteName: 'Acme Docs',
+      };
+      const mockPage = {
+        documentId: 'doc-1',
+        metadata,
+        path: 'about/team',
+        data: { root: { props: {} } },
+        branchId: 'branch-1',
+        branchName: 'main',
+        isMainBranch: true,
+        versionNumber: 3,
+        versionCreatedAt: '2026-01-01T00:00:00Z',
+        etag: '"abc123"',
+        inherited: false,
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => mockPage,
+      });
+
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId });
+      const result: PageContent | null = await client.getPage('about/team');
+
+      expect(result?.metadata).toEqual(metadata);
+      // Typed access proves the field exists on the interface.
+      expect(result?.metadata?.siteName).toBe('Acme Docs');
+      expect(result?.inherited).toBe(false);
+    });
+
+    it('should treat siteName as absent when omitted', async () => {
+      // Every SeoMetadata field is optional; an empty object is a valid payload.
+      const metadata: SeoMetadata = {};
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          documentId: 'doc-2',
+          metadata,
+          path: 'minimal',
+          data: {},
+          branchId: 'branch-1',
+          branchName: 'main',
+          isMainBranch: true,
+          versionNumber: 1,
+          versionCreatedAt: '2026-01-01T00:00:00Z',
+          etag: '"def456"',
+        }),
+      });
+
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId });
+      const result = await client.getPage('minimal');
+
+      expect(result?.metadata).toEqual({});
+      expect(result?.metadata?.siteName).toBeUndefined();
     });
   });
 

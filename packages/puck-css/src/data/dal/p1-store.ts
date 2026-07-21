@@ -5,6 +5,7 @@
  * No data is cached in memory — the backend is the source of truth.
  */
 
+import type { SeoMetadata } from "@pantheon-systems/css-client";
 import type { PageStore, PageSetOptions, DocumentMeta } from "./types";
 import { getRequestAuthToken } from "./request-auth";
 
@@ -28,7 +29,10 @@ export interface P1StoreClient {
 
 /** Minimal subset of P1ContentClient used for published-only reads. */
 export interface P1ContentClientInterface {
-  getPage(path: string): Promise<{ data: Record<string, unknown> } | null>;
+  getPage(path: string): Promise<{
+    data: Record<string, unknown>;
+    metadata?: SeoMetadata;
+  } | null>;
 }
 
 export interface P1StoreConfig {
@@ -147,7 +151,19 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
       if (contentClient && !getRequestAuthToken()) {
         try {
           const result = await contentClient.getPage(toDocPath(path));
-          return result?.data ?? undefined;
+          const data = result?.data;
+          if (!data) return undefined;
+          // Fold SEO metadata onto root.props._seo so it flows through the Data
+          // pipeline to generateMetadata. Public reads only (PCC-3407).
+          if (result?.metadata) {
+            const root = (data.root ?? {}) as Record<string, unknown>;
+            const props = (root.props ?? {}) as Record<string, unknown>;
+            return {
+              ...data,
+              root: { ...root, props: { ...props, _seo: result.metadata } },
+            };
+          }
+          return data;
         } catch (err) {
           console.info("[css-store] get(%s) failed:", path, (err as Error).message);
           return undefined;

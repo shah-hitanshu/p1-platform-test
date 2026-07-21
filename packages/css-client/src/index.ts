@@ -138,6 +138,7 @@ export { P1ContentClient } from './content.js';
 export type {
   P1ContentClientConfig,
   PageContent,
+  SeoMetadata,
   PageListEntry,
   PageListResult,
 } from './content.js';
