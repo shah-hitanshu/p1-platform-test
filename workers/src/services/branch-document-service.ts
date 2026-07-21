@@ -58,7 +58,10 @@ export async function listDocumentsOnBranch(
         false AS inherited,
         pub.document_version_id AS published_version_id,
         pub.published_at,
-        snap.snapshot_title
+        snap.snapshot_title,
+        snap.latest_version_at,
+        snap.last_modified_by_id,
+        snap.last_modified_by_type
       FROM app.documents d
       ${TEMPLATE_RELATION_JOIN}
       INNER JOIN app.document_versions dv ON dv.document_id = d.id
@@ -72,9 +75,13 @@ export async function listDocumentsOnBranch(
         LIMIT 1
       ) pub ON true
       LEFT JOIN LATERAL (
-        SELECT dv_snap.snapshot->>'title' AS snapshot_title
+        SELECT dv_snap.snapshot->>'title' AS snapshot_title,
+          dv_snap.created_at AS latest_version_at,
+          dv_snap.created_by_id AS last_modified_by_id,
+          dv_snap.created_by_type AS last_modified_by_type
         FROM app.document_versions dv_snap
         WHERE dv_snap.document_id = d.id AND dv_snap.branch_id = $1
+          AND dv_snap.is_tombstone = false
         ORDER BY dv_snap.version_number DESC
         LIMIT 1
       ) snap ON true
@@ -110,7 +117,10 @@ export async function listDocumentsOnBranch(
         true AS inherited,
         pub.document_version_id AS published_version_id,
         pub.published_at,
-        snap.snapshot_title
+        snap.snapshot_title,
+        snap.latest_version_at,
+        snap.last_modified_by_id,
+        snap.last_modified_by_type
       FROM app.documents d
       ${TEMPLATE_RELATION_JOIN}
       INNER JOIN app.document_versions dv ON dv.document_id = d.id
@@ -126,9 +136,13 @@ export async function listDocumentsOnBranch(
         LIMIT 1
       ) pub ON true
       LEFT JOIN LATERAL (
-        SELECT dv_snap.snapshot->>'title' AS snapshot_title
+        SELECT dv_snap.snapshot->>'title' AS snapshot_title,
+          dv_snap.created_at AS latest_version_at,
+          dv_snap.created_by_id AS last_modified_by_id,
+          dv_snap.created_by_type AS last_modified_by_type
         FROM app.document_versions dv_snap
         WHERE dv_snap.document_id = d.id AND dv_snap.branch_id = $2
+          AND dv_snap.is_tombstone = false
         ORDER BY dv_snap.version_number DESC
         LIMIT 1
       ) snap ON true
@@ -171,7 +185,10 @@ export async function listDocumentsOnBranch(
       false AS inherited,
       pub.document_version_id AS published_version_id,
       pub.published_at,
-      snap.snapshot_title
+      snap.snapshot_title,
+      snap.latest_version_at,
+      snap.last_modified_by_id,
+      snap.last_modified_by_type
     FROM app.documents d
     ${TEMPLATE_RELATION_JOIN}
     INNER JOIN app.document_versions dv ON dv.document_id = d.id
@@ -185,9 +202,13 @@ export async function listDocumentsOnBranch(
       LIMIT 1
     ) pub ON true
     LEFT JOIN LATERAL (
-      SELECT dv_snap.snapshot->>'title' AS snapshot_title
+      SELECT dv_snap.snapshot->>'title' AS snapshot_title,
+        dv_snap.created_at AS latest_version_at,
+        dv_snap.created_by_id AS last_modified_by_id,
+        dv_snap.created_by_type AS last_modified_by_type
       FROM app.document_versions dv_snap
       WHERE dv_snap.document_id = d.id AND dv_snap.branch_id = $1
+        AND dv_snap.is_tombstone = false
       ORDER BY dv_snap.version_number DESC
       LIMIT 1
     ) snap ON true

@@ -51,6 +51,9 @@ export interface DocumentOnBranchRow extends DocumentRow {
   published_version_id: string | null;
   published_at: string | null;
   snapshot_title: string | null;
+  latest_version_at: string | null;
+  last_modified_by_id: string | null;
+  last_modified_by_type: string | null;
 }
 
 /**
@@ -69,6 +72,9 @@ export interface DocumentOnBranch extends DocumentWithArchive {
   publishedVersionId?: string;
   publishedAt?: string;
   snapshotTitle?: string;
+  updatedAt?: string;
+  lastModifiedById?: string;
+  lastModifiedByType?: string;
 }
 
 /**
@@ -257,6 +263,15 @@ export function mapRowToDocumentOnBranch(row: DocumentOnBranchRow): DocumentOnBr
   }
   if (row.snapshot_title !== null) {
     doc.snapshotTitle = row.snapshot_title;
+  }
+  if (row.latest_version_at !== null) {
+    doc.updatedAt = row.latest_version_at;
+  }
+  if (row.last_modified_by_id !== null) {
+    doc.lastModifiedById = row.last_modified_by_id;
+  }
+  if (row.last_modified_by_type !== null) {
+    doc.lastModifiedByType = row.last_modified_by_type;
   }
   return doc;
 }
