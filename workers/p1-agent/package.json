@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
-    "@pantheon-systems/p1-content-validator": "^2.0.0",
+    "@pantheon-systems/p1-content-validator": "workspace:*",
     "agents": "^0.11.0",
     "openai": "^6.45.0"
   },

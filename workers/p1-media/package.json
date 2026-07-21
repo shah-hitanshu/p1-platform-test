@@ -1,5 +1,5 @@
 {
-  "name": "worker",
+  "name": "p1-media-worker",
   "private": true,
   "scripts": {
     "dev": "wrangler dev",

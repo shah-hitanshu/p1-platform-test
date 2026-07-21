@@ -1,0 +1,89 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+*.local
+.envrc
+.dev.vars*
+!.dev.vars.example
+
+# Node / pnpm
+node_modules/
+.pnpm-store/
+pnpm-debug.log*
+npm-debug.log*
+
+# Build outputs
+dist/
+build/
+.next/
+*.tsbuildinfo
+.turbo/
+
+# Wrangler
+.wrangler/
+worker-configuration.d.ts
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfplan
+tfplan
+
+# Generated template (built from apps/p1-starter)
+packages/create-p1-starter-kit/template/
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+.playwright-mcp/
+playwright-report/
+test-results/
+playwright/.cache/
+
+# IDE & editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker local overrides
+docker-compose.override.yml
+docker-compose.override.yaml
+
+# Logs
+logs/
+*.log
+
+# Misc
+*.bak
+*.tmp
+*.temp
+*.png
+*.tgz
+*.dump
+.cache/
+*.cache
+.worktrees/
+.npmrc.local

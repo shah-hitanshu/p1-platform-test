@@ -1,0 +1,41 @@
+packages:
+  - 'packages/*'
+  - 'apps/*'
+  - 'workers/*'
+  - 'examples/*'
+
+confirmModulesPurge: false
+
+# Union of the four source repos' overrides. Where the same package was pinned
+# differently, the strictest spec that satisfies every repo's intent was kept.
+overrides:
+  esbuild: '^0.28.1'
+  undici: '^7.28.0'
+  minimatch: '>=10.2.5'
+  markdown-it: '>=14.1.1'
+  rollup: '>=4.59.0'
+  flatted: '>=3.4.2'
+  postcss: '>=8.5.10'
+  uuid: '>=14.0.0'
+  happy-dom: '>=20.8.9'
+  lodash: '>=4.18.0'
+  ajv: '>=6.14.0'
+  form-data: '^4.0.6'
+  hono: '^4.12.26'
+  # p1-chatbot pinned vitest's vite exactly; revisit once the tree is green
+  vite: '8.0.16'
+  ws: '^8.21.0'
+
+allowBuilds:
+  browser-tabs-lock: true
+  core-js-pure: true
+  esbuild: true
+  sharp: true
+  workerd: true
+
+ignoredOptionalDependencies:
+  - '@fortawesome/free-brands-svg-icons'
+  - '@fortawesome/fontawesome-common-types'
+
+minimumReleaseAgeExclude:
+  - '@anthropic-ai/sdk@0.112.3'
