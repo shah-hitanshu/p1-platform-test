@@ -330,6 +330,13 @@ export interface P1PuckContextValue {
   isViewingHistoricalVersion: boolean;
 
   /**
+   * True while returnToLatest is fetching the latest version from the server.
+   * Surfaced so the historical-version banner can show progress during the
+   * network round trip.
+   */
+  isReturningToLatest: boolean;
+
+  /**
    * Load a specific version by ID into the editor.
    */
   loadVersion: (version: DocumentVersion) => Promise<void>;

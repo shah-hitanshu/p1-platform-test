@@ -422,7 +422,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     if (css.isViewingHistoricalVersion) {
       return { delete: false, drag: false, duplicate: false, edit: false, insert: false };
     }
-    return undefined;
+    return { delete: true, drag: true, duplicate: true, edit: true, insert: true };
   }, [css.isViewingHistoricalVersion]);
 
   // =========================================================================
@@ -556,7 +556,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
       plugins,
       overrides: mergedOverrides,
       ...(Object.keys(initialSidebarUi).length > 0 ? { ui: initialSidebarUi } : {}),
-      ...(permissions ? { permissions } : {}),
+      permissions,
       onAction: css.handleAction,
     }),
     [configWithPermissions, css.safeData, onChange, plugins, mergedOverrides, initialSidebarUi, permissions, css.handleAction]

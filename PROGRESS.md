@@ -18,6 +18,24 @@ puck-css-integration/
 
 ## Completed Work
 
+### Exit preview re-enables drag + fixes return-to-latest data loss (PCC-3421, 2026-07-17) ✅
+
+**Branch:** `hs-PCC-3421`.
+
+**Bug 1 (reported):** After viewing an older version and clicking "Return to current", drag-and-drop of components stayed disabled until a full page refresh.
+
+- **Cause:** `useP1Editor` passed the top-level Puck `permissions` prop only while viewing a historical version and omitted it otherwise. Puck retains the last non-empty global permissions, so the locked-down `{ drag:false, … }` persisted on exit until a remount.
+- **Fix:** always pass an explicit permissions object — all-enabled when not viewing history, locked-down while viewing it. (`packages/puck-css/src/editor/useP1Editor.ts`)
+
+**Bug 2 (found while fixing — data loss):** Re-enabling instant drag exposed a latent bug the forced refresh had masked. Add a component (autosave → v4) → view an older version → Return to current → editor reverted to the pre-session snapshot and the next autosave wrote that stale content as a new version (v5), silently discarding v4.
+
+- **Cause:** `returnToLatest` restored the in-memory `latestVersionData` cache, captured only once at document open and never refreshed as autosave created versions during the session.
+- **Fix (`packages/puck-css/src/editor/P1PuckProvider.tsx`):** `returnToLatest` re-fetches the true latest from the server when no live Yjs snapshot is available, and suppresses the echo-save so returning does not itself create a duplicate version. `latestVersionData` is also kept in sync at both persistence points (REST `performSave` and realtime `saveData`).
+
+**Tests:** `useP1Editor-historical-permissions.test.tsx`, `returnToLatest-stale-data.test.tsx`. Reproduced both bugs end-to-end with Playwright, then confirmed fixed. Full puck-css suite green (1945 passed), clean build.
+
+**Decision (scope):** Bug 2 was outside the original ticket scope; user approved fixing it within PCC-3421 and updating the ticket description accordingly.
+
 ### Publish button UI — fuse Workstream switcher + Publish button reliably (2026-07-14) ✅
 
 **Branch:** `minor-publish-button-ui-fix` (plain branch off `main`). Commit `9ddf341`.

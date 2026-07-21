@@ -20,6 +20,7 @@ export function VersionBannerOverride({
   const p1Context = useP1Puck();
   const isViewingOld = !!selectedVersionId && versions.length > 0 && selectedVersionId !== versions[0]?.id;
   const hasDocument = p1Context.currentDocument !== null;
+  const isReturning = p1Context.isReturningToLatest;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -40,8 +41,10 @@ export function VersionBannerOverride({
               type="button"
               className="pds-button pds-button--sm pds-button--secondary pds-section-message__cta"
               onClick={() => versions[0] && onVersionSelect?.(versions[0])}
+              disabled={isReturning}
+              aria-busy={isReturning}
             >
-              Return to current
+              {isReturning ? 'Returning…' : 'Return to current'}
             </button>
           </div>
         </div>
@@ -51,7 +54,16 @@ export function VersionBannerOverride({
           the root stays at opacity:0 and our overlay would be invisible too,
           while the Puck spinner (a sibling outside our wrapper) shows. */}
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-        {children}
+        <div
+          style={{
+            height: '100%',
+            opacity: isReturning ? 0.5 : 1,
+            transition: 'opacity 120ms ease',
+            pointerEvents: isReturning ? 'none' : undefined,
+          }}
+        >
+          {children}
+        </div>
         {!hasDocument && (
           <div
             style={{

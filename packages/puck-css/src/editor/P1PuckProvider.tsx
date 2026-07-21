@@ -242,7 +242,15 @@ function P1PuckProviderInner({
 
   // Version viewing state
   const [viewingVersion, setViewingVersion] = useState<DocumentVersion | null>(null);
-  const [latestVersionData, setLatestVersionData] = useState<PuckData | null>(null);
+  // True while returnToLatest is fetching the latest version from the server,
+  // so the banner can show progress during the round trip.
+  const [isReturningToLatest, setIsReturningToLatest] = useState(false);
+  // Last known "latest" snapshot — a write-only internal fallback for
+  // returnToLatest when no live Yjs snapshot is available and the server
+  // re-fetch fails. Backed by a ref (not state): nothing renders from it, so
+  // making it state would add a setState on every autosave and churn the
+  // context memo / returnToLatest identity for no consumer benefit.
+  const latestVersionDataRef = useRef<PuckData | null>(null);
 
   // Remote sync key - changes when remote updates arrive to trigger Puck sync
   const [remoteSyncKey, setRemoteSyncKey] = useState<string | null>(null);
@@ -713,6 +721,10 @@ function P1PuckProviderInner({
       pendingDataRef.current = null;
       setSaveStatus('saved');
       setLastSaved(new Date());
+      // Keep the "latest" cache in sync with what was just persisted (REST
+      // success = confirmed persistence) so returning from a historical preview
+      // restores the correct content even if the on-return re-fetch fails.
+      latestVersionDataRef.current = dataToSave;
     } catch (error) {
       setSaveStatus('error');
       const saveErr = error instanceof Error ? error : new Error(String(error));
@@ -873,6 +885,11 @@ function P1PuckProviderInner({
           // Update save status directly (skip debouncedSave/performSave chain).
           setSaveStatus('saved');
           setLastSaved(new Date());
+          // NOTE: intentionally do NOT update latestVersionDataRef here. This
+          // is the optimistic local send, before the DO confirms persistence —
+          // caching it would assert content that may never be saved. Realtime
+          // returns use the live Yjs snapshot (or the server re-fetch), not
+          // this cache (PCC-3421).
           return;
         }
       }
@@ -1032,7 +1049,7 @@ function P1PuckProviderInner({
         currentDataDocumentPathRef.current = doc.path;
         suppressNextSaveRef.current = puckData;
         setCurrentData(puckData);
-        setLatestVersionData(puckData);
+        latestVersionDataRef.current = puckData;
         setViewingVersion(null);
         // Clear remoteSyncKey so document sync takes priority
         setRemoteSyncKey(null);
@@ -1127,9 +1144,38 @@ function P1PuckProviderInner({
       }
     }
 
-    // Fall back to latestVersionData if Yjs snapshot not available
+    // Re-fetch the true latest from the server when no live Yjs snapshot is
+    // available. The cached latestVersionDataRef is only a last-resort fallback
+    // (e.g. no current document); it is NOT used on fetch failure — silently
+    // editing on a possibly-stale snapshot and resuming autosave is the exact
+    // data-loss path from PCC-3421. On failure we notify and abort instead,
+    // keeping the user in read-only preview so nothing is overwritten.
     if (!dataToRestore) {
-      dataToRestore = latestVersionData;
+      const doc = currentDocumentRef.current;
+      if (doc) {
+        // Surface a loading state for the round trip — the editor is otherwise
+        // frozen on the historical snapshot with no indication.
+        setIsReturningToLatest(true);
+        try {
+          const version = await userClient.versions.getLatest(siteId, branchId, doc.id);
+          dataToRestore = version.snapshot as unknown as PuckData;
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error));
+          console.error('[P1PuckProvider] Failed to fetch latest version on return:', err);
+          if (showErrorNotifications) {
+            notificationContext.addError(
+              `Couldn't load the latest version. Staying on the previewed version — try again.`,
+              () => void returnToLatest()
+            );
+          }
+          return;
+        } finally {
+          setIsReturningToLatest(false);
+        }
+      }
+    }
+    if (!dataToRestore) {
+      dataToRestore = latestVersionDataRef.current;
     }
 
     if (dataToRestore) {
@@ -1137,11 +1183,19 @@ function P1PuckProviderInner({
       // Setting to null allows remote updates to resume
       viewingVersionRef.current = null;
 
-      // Increment counter to skip onChange that will fire
-      pendingRemoteUpdatesRef.current += 1;
+      // Suppress the echo save so returning to latest does not itself create a
+      // duplicate version from the data we just loaded back in. 
+      suppressNextSaveRef.current = dataToRestore;
+      if (enableRealtime) {
+        pendingRemoteUpdatesRef.current += 1;
+        setTimeout(() => {
+          pendingRemoteUpdatesRef.current = 0;
+        }, 100);
+      }
 
       currentDataDocumentPathRef.current = currentDocumentRef.current?.path ?? null;
       setCurrentData(dataToRestore);
+      latestVersionDataRef.current = dataToRestore;
       setViewingVersion(null);
       // Clear remoteSyncKey so latest version sync takes priority
       setRemoteSyncKey(null);
@@ -1151,7 +1205,7 @@ function P1PuckProviderInner({
       pendingDataRef.current = null;
       setSaveStatus('idle');
     }
-  }, [latestVersionData, debouncedSave, cancelPendingRemoteSync, enableRealtime, realtime]);
+  }, [debouncedSave, cancelPendingRemoteSync, enableRealtime, realtime, userClient, siteId, branchId, showErrorNotifications, notificationContext]);
 
   // Computed property for whether viewing historical version
   const isViewingHistoricalVersion = viewingVersion !== null;
@@ -1945,8 +1999,12 @@ function P1PuckProviderInner({
       pauseAutoSave: stablePauseAutoSave,
       resumeAutoSave: stableResumeAutoSave,
       viewingVersion,
-      latestVersionData,
+      // Exposed for type/back-compat only — nothing renders from it. Read from
+      // the ref; the memo already recomputes each save (via lastSaved), so this
+      // stays adequately fresh without being a reactive dependency.
+      latestVersionData: latestVersionDataRef.current,
       isViewingHistoricalVersion,
+      isReturningToLatest,
       loadVersion: stableLoadVersion,
       returnToLatest: stableReturnToLatest,
       realtimeEnabled: enableRealtime,
@@ -2023,8 +2081,8 @@ function P1PuckProviderInner({
       stablePauseAutoSave,
       stableResumeAutoSave,
       viewingVersion,
-      latestVersionData,
       isViewingHistoricalVersion,
+      isReturningToLatest,
       stableLoadVersion,
       stableReturnToLatest,
       enableRealtime,
