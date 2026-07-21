@@ -9,6 +9,10 @@ confirmModulesPurge: false
 # Union of the four source repos' overrides. Where the same package was pinned
 # differently, the strictest spec that satisfies every repo's intent was kept.
 overrides:
+  # Source repos all resolved 0.21.1; fresh resolution drifted to a split 0.21.3/0.22.2
+  # (puck-css declares it as peer >=0.21.0, so auto-install grabbed latest). Revisit
+  # as a deliberate upgrade once the tree is stable.
+  '@puckeditor/core': '0.21.1'
   esbuild: '^0.28.1'
   undici: '^7.28.0'
   minimatch: '>=10.2.5'
@@ -19,11 +23,13 @@ overrides:
   uuid: '>=14.0.0'
   happy-dom: '>=20.8.9'
   lodash: '>=4.18.0'
-  ajv: '>=6.14.0'
+  # Scoped: an unscoped '>=6.14.0' collapses @eslint/eslintrc's ajv@6 to ajv@8,
+  # which crashes ESLint. ajv@8 consumers already resolve >=8.20 naturally.
+  'ajv@<7': '^6.15.0'
   form-data: '^4.0.6'
   hono: '^4.12.26'
-  # p1-chatbot pinned vitest's vite exactly; revisit once the tree is green
-  vite: '8.0.16'
+  # Scoped: p1-chatbot pinned vitest's vite@8 exactly; puck-css legitimately uses vite@6.
+  'vite@^8.0.0': '8.0.16'
   ws: '^8.21.0'
 
 allowBuilds:
@@ -36,6 +42,23 @@ allowBuilds:
 ignoredOptionalDependencies:
   - '@fortawesome/free-brands-svg-icons'
   - '@fortawesome/fontawesome-common-types'
+
+# The workspace legitimately contains both @types/react 18 (css-frontend) and 19
+# (everything else). These libs' .d.ts import react types without declaring a
+# @types/react peer, so they'd otherwise resolve via pnpm's arbitrary fallback dir.
+packageExtensions:
+  '@puckeditor/core':
+    peerDependencies:
+      '@types/react': '*'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+  '@tanstack/react-query':
+    peerDependencies:
+      '@types/react': '*'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
 
 minimumReleaseAgeExclude:
   - '@anthropic-ai/sdk@0.112.3'

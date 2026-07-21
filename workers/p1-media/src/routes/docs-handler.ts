@@ -6,7 +6,7 @@
  * surface is publicly browseable.
  */
 
-import OPENAPI_SPEC from '../../../docs/openapi.yaml';
+import OPENAPI_SPEC from '../../docs/openapi.yaml';
 
 // Pinned exact version (not a floating "@5") so the SRI hashes below stay valid —
 // a floating tag would resolve to a different file on the next patch release and

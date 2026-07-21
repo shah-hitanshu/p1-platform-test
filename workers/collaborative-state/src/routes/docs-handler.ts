@@ -6,7 +6,7 @@
  * surface is publicly browseable.
  */
 
-import OPENAPI_SPEC from '../../../docs/openapi.yaml';
+import OPENAPI_SPEC from '../../docs/openapi.yaml';
 
 const SWAGGER_UI_VERSION = '5';
 

@@ -55,7 +55,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "partysocket": "^1.1.10",
+    "partysocket": "1.1.10",
     "yjs": "^13.6.29"
   }
 }

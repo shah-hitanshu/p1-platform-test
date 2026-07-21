@@ -6,7 +6,7 @@
  */
 
 import { z } from 'zod';
-import type { ApiClient, EditOperation } from './api-client.js';
+import type { ApiClient } from './api-client.js';
 
 // =============================================================================
 // Tool Definition Types
@@ -461,7 +461,7 @@ export function createToolHandlers(apiClient: ApiClient): ToolHandlers {
           branchId: input.branch_id,
           documentPath: input.document_path,
           editSessionId: input.edit_session_id,
-          operations: normalizedOperations as EditOperation[],
+          operations: normalizedOperations,
         });
 
         return formatResult({
