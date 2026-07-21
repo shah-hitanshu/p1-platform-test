@@ -1,7 +1,24 @@
 # Monorepo migration status
 
-Phase 1 (import) and most of Phase 2 (workspace unification) completed 2026-07-21, local only — **nothing pushed**.
+Phase 1 (import) and Phase 2 (workspace unification + sbx1/sandbox retirement) **complete** 2026-07-21, local only — **nothing pushed**.
 Plan of record: `~/pantheon/monorepo-feasibility-report.html`.
+
+## Phase 2 completion (second pass)
+
+- **sbx1/sandbox retirement executed:** env blocks deleted from all five wrangler configs
+  (incl. the chris-801 URLs and the chatbot's unpinned-account env), `deploy:sbx1`/`deploy:sandbox`
+  scripts removed, `terraform/environments/sbx1` deleted, setup/teardown-sandbox scripts deleted,
+  Makefile lanes and stale comments updated. Supported lanes: local, staging, production.
+  Chatbot's local `MEDIA_WORKER_URL` now points at `http://localhost:8788` (media worker in-repo).
+- **Makefile + scripts/css re-pointed** at monorepo paths (`workers/collaborative-state`,
+  `apps/css-frontend`, `scripts/css/*`); `sync-terraform-to-wrangler.sh` root-resolution fixed.
+- **Root README.md and CLAUDE.md** written (frozen-worker-names rule, lanes, parity-pin policy).
+- css-mcp-server's `wrangler-validation.spec.ts` `DEPLOYABLE_ENVS` updated to
+  `['staging','production']` — all 226 mcp tests green.
+- **All five workers validated** with `wrangler deploy --dry-run --env staging` (bundle + config parse).
+- **Known flake:** collaborative-state-worker's suite (3,379 tests) is green standalone and
+  cache-warm, but can fail under a full cold `--force` parallel run (DB-mock timing under load).
+  Phase 3 CI should cap turbo `--concurrency` or vitest workers for that suite.
 
 ## Import baseline (for delta sync)
 

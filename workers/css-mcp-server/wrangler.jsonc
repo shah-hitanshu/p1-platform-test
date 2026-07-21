@@ -16,14 +16,14 @@
   // PCC-3192 — Rate Limiting bindings (red-team Finding 4).
   // Four bindings per env, each with a unique namespace_id so counters
   // do NOT collide ACROSS BINDINGS (within an env) and so the three envs
-  // (local dev / sbx1 / production) do NOT share counters either.
+  // (local dev / staging / production) do NOT share counters either.
   //
   // Cloudflare's Rate Limiting namespaces are ACCOUNT-scoped: any two
   // bindings sharing a namespace_id share the same counters even across
-  // different workers. So if we used "3192100" for sbx1 AND production,
-  // a CI load-test against sbx1 from a runner IP would burn the prod
+  // different workers. So if staging AND production shared "3192100",
+  // a CI load-test against staging from a runner IP would burn the prod
   // OAuth bucket for that same IP, and a runaway agent in prod would
-  // poison the sbx1 bucket. Disjoint per-env series prevents that:
+  // poison the staging bucket. Disjoint per-env series prevents that:
   //   31923xx → top level (wrangler dev)
   //   31924xx → staging
   //   31922xx → production
@@ -62,39 +62,6 @@
 
   // Environment overrides
   "env": {
-    "sandbox": {
-      "name": "css-mcp-server-sandbox",
-      "vars": {
-        "ENVIRONMENT": "sandbox",
-        "CSS_BACKEND_URL": "REPLACE_WITH_SANDBOX_WORKER_URL",
-        "MCP_SERVER_NAME": "collaborative-state-mcp",
-        "MCP_SERVER_VERSION": "0.1.0",
-        "PUBLIC_ORIGIN": "REPLACE_WITH_SANDBOX_MCP_WORKER_URL",
-        "AUTH0_CLIENT_ID": "fTmdrlsHK0HJ75WMSqWTLrUgDiBR5VG4",
-        "AUTH0_ISSUER_BASE_URL": "https://auth-staging.pantheon.io",
-        "AUTH0_AUDIENCE": "https://addonapi-cxog5ytt4a-uc.a.run.app"
-      },
-      "kv_namespaces": [
-        { "binding": "OAUTH_KV", "id": "REPLACE_WITH_SANDBOX_OAUTH_KV_ID" }
-      ],
-      "services": [
-        { "binding": "CSS_BACKEND", "service": "collaborative-state-worker-sandbox" }
-      ],
-      // PCC-3192 — Rate Limiting bindings. sandbox uses the 31921xx namespace series.
-      "ratelimits": [
-        { "name": "RL_TOOLS_READ",     "namespace_id": "3192110", "simple": { "limit": 120, "period": 60 } },
-        { "name": "RL_TOOLS_MUTATION", "namespace_id": "3192120", "simple": { "limit": 30,  "period": 60 } },
-        { "name": "RL_OAUTH",          "namespace_id": "3192130", "simple": { "limit": 20,  "period": 60 } },
-        { "name": "RL_TOOLS_ANON",     "namespace_id": "3192140", "simple": { "limit": 60,  "period": 60 } }
-      ],
-      "observability": {
-        "logs": {
-          "enabled": true,
-          "invocation_logs": false
-        }
-      }
-    },
-
     "staging": {
       "name": "css-mcp-server-staging",
       "vars": {
@@ -153,7 +120,7 @@
       ],
       // PCC-3192 — Rate Limiting bindings (red-team Finding 4). Re-declared
       // per-env (see top-level ratelimits comment for rationale). Production
-      // uses the 31922xx namespace series — disjoint from sbx1 (31921xx)
+      // uses the 31922xx namespace series — disjoint from staging (31924xx)
       // and dev (31923xx) so the three envs do NOT share counters.
       "ratelimits": [
         { "name": "RL_TOOLS_READ",     "namespace_id": "3192210", "simple": { "limit": 120, "period": 60 } },
@@ -161,7 +128,7 @@
         { "name": "RL_OAUTH",          "namespace_id": "3192230", "simple": { "limit": 20,  "period": 60 } },
         { "name": "RL_TOOLS_ANON",     "namespace_id": "3192240", "simple": { "limit": 60,  "period": 60 } }
       ],
-      // Workers Logs — same rationale as sbx1.
+      // Workers Logs — same rationale as staging.
       "observability": {
         "logs": {
           "enabled": true,

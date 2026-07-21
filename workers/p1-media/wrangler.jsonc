@@ -59,33 +59,6 @@
   "env": {
 
     // sandbox — shared Pantheon sandbox
-    "sandbox": {
-      "name": "p1-media-worker-sandbox",
-      "account_id": "b64d7635bcad811044d61491827b4040",
-      "r2_buckets": [
-        { "binding": "MEDIA_BUCKET", "bucket_name": "p1-media-sandbox" }
-      ],
-      "d1_databases": [
-        { "binding": "MEDIA_DB", "database_name": "p1-media-sandbox", "database_id": "REPLACE_WITH_TF_d1_database_id" }
-      ],
-      "images": { "binding": "IMAGES" },
-      "services": [
-        { "binding": "CSS_SERVICE", "service": "collaborative-state-worker-sandbox" }
-      ],
-      "vars": {
-        "CSS_BASE_URL": "https://sandbox.ccr.p1.pantheon.io",
-        "CDN_BASE_URL": "https://media.sandbox.p1.pantheon.io/image",
-        "MAX_UPLOAD_BYTES": "10485760",
-        "R2_ACCOUNT_ID": "b64d7635bcad811044d61491827b4040",
-        "R2_BUCKET_NAME": "p1-media-sandbox",
-        "RECONCILE_DRY_RUN": "true"
-      },
-      "observability": {
-        "logs": { "enabled": true, "invocation_logs": true }
-      }
-    },
-
-    // staging
     "staging": {
       "name": "p1-media-worker-staging",
       "account_id": "69bc76f4866aaaa3400ea7fbbd9d7da2",

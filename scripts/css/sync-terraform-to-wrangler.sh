@@ -6,7 +6,7 @@
 #
 # Usage:
 #   ./scripts/sync-terraform-to-wrangler.sh <environment>
-#   make tf-sync ENV=sbx1
+#   make tf-sync ENV=staging
 #
 # Prerequisites:
 #   - Terraform initialized and applied for the target environment
@@ -23,7 +23,6 @@ NC='\033[0m'
 
 # Supported environments and their wrangler placeholder prefixes
 declare -A ENV_PREFIXES=(
-  [sbx1]="SBX1"
   [production]="PROD"
   [staging]="STAGING"
 )
@@ -50,10 +49,10 @@ fi
 
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 TF_DIR="${PROJECT_ROOT}/terraform/environments/${ENV}"
-WRANGLER_FILE="${PROJECT_ROOT}/workers/wrangler.jsonc"
-MCP_WRANGLER_FILE="${PROJECT_ROOT}/workers/mcp-server/wrangler.jsonc"
+WRANGLER_FILE="${PROJECT_ROOT}/workers/collaborative-state/wrangler.jsonc"
+MCP_WRANGLER_FILE="${PROJECT_ROOT}/workers/css-mcp-server/wrangler.jsonc"
 
 if [[ ! -d "$TF_DIR" ]]; then
   echo -e "${RED}Error: Terraform directory not found: ${TF_DIR}${NC}"

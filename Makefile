@@ -36,7 +36,7 @@ version: ## Show version information for all tools
 	@echo "Terraform: $$(terraform version -json 2>/dev/null | jq -r '.terraform_version' || echo 'not installed')"
 	@echo "Container: $$($(CONTAINER_ENGINE) --version 2>/dev/null || echo 'not installed')"
 	@echo "Compose:   $$($(COMPOSE_CMD) version 2>/dev/null || echo 'not installed')"
-	@echo "Wrangler:  $$(cd workers && pnpm exec wrangler --version 2>/dev/null || echo 'not installed')"
+	@echo "Wrangler:  $$(cd workers/collaborative-state && pnpm exec wrangler --version 2>/dev/null || echo 'not installed')"
 
 ##@ Local Development - Full Stack
 
@@ -74,7 +74,7 @@ docker-up: ## Start containers (PostgreSQL)
 	@printf "$(GREEN)Starting containers...$(NC)\n"
 	@$(COMPOSE_CMD) -f docker/docker-compose.local.yaml up -d
 	@printf "$(GREEN)Waiting for services to be healthy...$(NC)\n"
-	@CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/wait-for-services.sh
+	@CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/css/wait-for-services.sh
 
 .PHONY: docker-down
 docker-down: ## Stop containers
@@ -103,39 +103,39 @@ docker-logs-postgres: ## Show PostgreSQL logs
 .PHONY: worker-install
 worker-install: ## Install worker dependencies
 	@printf "$(GREEN)Installing worker dependencies...$(NC)\n"
-	@cd workers && pnpm install
+	@cd workers/collaborative-state && pnpm install
 
 .PHONY: worker-dev
 worker-dev: ## Start Cloudflare Worker in local mode (Miniflare)
-	@if [ ! -f workers/.dev.vars ]; then \
+	@if [ ! -f workers/collaborative-state/.dev.vars ]; then \
 		printf "$(YELLOW)No .dev.vars found. Generating...$(NC)\n"; \
 		$(MAKE) worker-generate-secrets; \
 	fi
 	@printf "$(GREEN)Starting Miniflare local development server...$(NC)\n"
 	@printf "$(BLUE)Hotkeys: L=toggle local/edge, X=exit$(NC)\n"
-	@cd workers && pnpm dev
+	@cd workers/collaborative-state && pnpm dev
 
 .PHONY: worker-generate-secrets
 worker-generate-secrets: ## Generate mock secrets for .dev.vars
 	@printf "$(GREEN)Generating local development secrets...$(NC)\n"
-	@./scripts/generate-dev-vars.sh
+	@./scripts/css/generate-dev-vars.sh
 
 .PHONY: worker-login
 worker-login: ## Login to Cloudflare (for integration testing)
 	@printf "$(YELLOW)Logging into Cloudflare...$(NC)\n"
 	@printf "$(YELLOW)Note: Sessions expire after ~1 hour$(NC)\n"
-	@cd workers && pnpm exec wrangler login
+	@cd workers/collaborative-state && pnpm exec wrangler login
 
 .PHONY: metrics-receiver
 metrics-receiver: ## Start local metrics receiver with macOS notifications
 	@printf "$(GREEN)Starting local metrics receiver...$(NC)\n"
 	@printf "$(BLUE)This will send macOS notifications for issues$(NC)\n"
-	@node scripts/local-metrics-receiver.js
+	@node scripts/css/local-metrics-receiver.js
 
 ##@ Terraform - Infrastructure Management
 
 .PHONY: tf-init
-tf-init: ## Initialize Terraform (ENV=local|sbx1|production)
+tf-init: ## Initialize Terraform (ENV=local|staging|production)
 	@printf "$(GREEN)Initializing Terraform for $(ENV)...$(NC)\n"
 ifeq ($(ENV),local)
 	@cd $(TF_DIR) && terraform init -backend=false
@@ -177,9 +177,9 @@ tf-output: ## Show Terraform outputs
 	@cd $(TF_DIR) && terraform output
 
 .PHONY: tf-sync
-tf-sync: ## Sync Terraform outputs to wrangler.jsonc (ENV=sbx1|production)
+tf-sync: ## Sync Terraform outputs to wrangler.jsonc (ENV=staging|production)
 	@printf "$(GREEN)Syncing Terraform outputs to wrangler.jsonc...$(NC)\n"
-	@./scripts/sync-terraform-to-wrangler.sh $(ENV)
+	@./scripts/css/sync-terraform-to-wrangler.sh $(ENV)
 
 ##@ Database Utilities
 
@@ -199,8 +199,8 @@ db-reset: ## Reset database (drop and recreate all tables)
 .PHONY: clean
 clean: ## Clean generated files (keeps Docker volumes)
 	@printf "$(YELLOW)Cleaning generated files...$(NC)\n"
-	@rm -rf workers/node_modules
-	@rm -rf workers/dist
+	@rm -rf workers/collaborative-state/node_modules
+	@rm -rf workers/collaborative-state/dist
 	@rm -rf terraform/environments/*/.terraform
 	@rm -f terraform/environments/*/tfplan
 	@rm -f terraform/environments/*/.terraform.lock.hcl
@@ -208,7 +208,7 @@ clean: ## Clean generated files (keeps Docker volumes)
 
 .PHONY: clean-all
 clean-all: docker-clean clean ## Clean everything including Docker volumes
-	@rm -f workers/.dev.vars
+	@rm -f workers/collaborative-state/.dev.vars
 	@printf "$(GREEN)Full clean complete.$(NC)\n"
 
 ##@ CI/CD Targets
@@ -222,7 +222,7 @@ ci-lint: tf-fmt ## Run infrastructure linting
 .PHONY: ci-validate
 ci-validate: ## Validate all Terraform configurations
 	@printf "$(GREEN)Validating Terraform configurations...$(NC)\n"
-	@for env in local sbx1 production; do \
+	@for env in local staging production; do \
 		echo "  Validating $$env..."; \
 		cd terraform/environments/$$env && terraform init -backend=false > /dev/null && terraform validate || exit 1; \
 		cd ../../..; \
@@ -234,42 +234,37 @@ ci-validate: ## Validate all Terraform configurations
 .PHONY: frontend-install
 frontend-install: ## Install frontend dependencies
 	@printf "$(GREEN)Installing frontend dependencies...$(NC)\n"
-	@cd frontend && pnpm install
+	@cd apps/css-frontend && pnpm install
 
 .PHONY: frontend-dev
 frontend-dev: ## Start frontend development server
 	@printf "$(GREEN)Starting frontend development server...$(NC)\n"
 	@printf "$(BLUE)Frontend will be available at http://localhost:5173$(NC)\n"
-	@cd frontend && pnpm dev
+	@cd apps/css-frontend && pnpm dev
 
 .PHONY: frontend-build
 frontend-build: ## Build frontend for production
 	@printf "$(GREEN)Building frontend...$(NC)\n"
-	@cd frontend && pnpm build
+	@cd apps/css-frontend && pnpm build
 
 .PHONY: frontend-lint
 frontend-lint: ## Lint frontend code
 	@printf "$(GREEN)Linting frontend code...$(NC)\n"
-	@cd frontend && pnpm lint
+	@cd apps/css-frontend && pnpm lint
 
 .PHONY: frontend-test
 frontend-test: ## Run frontend E2E tests
 	@printf "$(GREEN)Running frontend E2E tests...$(NC)\n"
-	@cd frontend && pnpm test:e2e
+	@cd apps/css-frontend && pnpm test:e2e
 
 ##@ Frontend Deployment
-
-.PHONY: frontend-deploy-sbx1
-frontend-deploy-sbx1: ## Build and deploy frontend to sbx1
-	@printf "$(GREEN)Building and deploying frontend to sbx1...$(NC)\n"
-	@cd frontend && pnpm deploy:sbx1
 
 .PHONY: frontend-deploy-prod
 frontend-deploy-prod: ## Build and deploy frontend to production (with confirmation)
 	@printf "$(RED)WARNING: This will deploy the frontend to PRODUCTION!$(NC)\n"
 	@read -p "Are you sure? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	@printf "$(GREEN)Building and deploying frontend to production...$(NC)\n"
-	@cd frontend && pnpm deploy:production
+	@cd apps/css-frontend && pnpm deploy:production
 
 ##@ Full Stack Development
 
@@ -280,14 +275,14 @@ dev-full: ## Start full stack (Docker + Worker + Frontend)
 	@echo ""
 	@printf "$(GREEN)Starting backend worker and frontend...$(NC)\n"
 	@printf "$(YELLOW)Press Ctrl+C to stop all services.$(NC)\n"
-	@cd workers && pnpm dev & WORKER_PID=$$!; \
-	trap "kill $$WORKER_PID 2>/dev/null; cd workers && pnpm cleanup:dev; exit 0" INT TERM EXIT; \
+	@cd workers/collaborative-state && pnpm dev & WORKER_PID=$$!; \
+	trap "kill $$WORKER_PID 2>/dev/null; cd workers/collaborative-state && pnpm cleanup:dev; exit 0" INT TERM EXIT; \
 	sleep 3; \
 	printf "\n"; \
 	printf "$(GREEN)Starting frontend...$(NC)\n"; \
-	cd frontend && pnpm dev; \
+	cd apps/css-frontend && pnpm dev; \
 	kill $$WORKER_PID 2>/dev/null; \
-	cd workers && pnpm cleanup:dev
+	cd workers/collaborative-state && pnpm cleanup:dev
 
 .PHONY: install-all
 install-all: worker-install frontend-install ## Install all dependencies

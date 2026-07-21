@@ -14,7 +14,7 @@ YELLOW='\033[0;33m'
 NC='\033[0m'
 
 # Output file
-DEV_VARS_FILE="workers/.dev.vars"
+DEV_VARS_FILE="workers/collaborative-state/.dev.vars"
 
 # Default configuration (matches docker/docker-compose.local.yaml)
 POSTGRES_USER="${POSTGRES_USER:-cssuser}"

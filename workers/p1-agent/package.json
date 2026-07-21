@@ -5,7 +5,6 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy:sbx1": "wrangler deploy --env sbx1",
     "deploy:staging": "wrangler deploy --env staging",
     "test": "vitest run",
     "type-check": "tsc --noEmit",

@@ -28,27 +28,10 @@
     // -> /chat/completions (automatic prompt caching). Providers bill through the
     // gateway's unified billing — no per-provider key needed.
     "AGENT_MODEL": "@cf/moonshotai/kimi-k2.7-code",
-    "MEDIA_WORKER_URL": "https://p1-media.chris-801.workers.dev"
+    // Local dev: the media worker now lives in this repo (workers/p1-media, dev port 8788)
+    "MEDIA_WORKER_URL": "http://localhost:8788"
   },
   "env": {
-    "sbx1": {
-      "vars": {
-        "ENVIRONMENT": "sbx1",
-        "CSS_BACKEND_URL": "https://collaborative-state-worker-sbx1.chris-801.workers.dev",
-        "AI_GATEWAY_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
-        "AI_GATEWAY_NAME": "p1-chatbot",
-        "AGENT_MODEL": "@cf/moonshotai/kimi-k2.7-code",
-        "MEDIA_WORKER_URL": "https://p1-media.chris-801.workers.dev"
-      },
-      "durable_objects": {
-        "bindings": [
-          { "name": "CHAT_AGENT", "class_name": "ChatAgent" }
-        ]
-      },
-      "migrations": [
-        { "tag": "v1", "new_sqlite_classes": ["ChatAgent"] }
-      ]
-    },
     "staging": {
       "account_id": "69bc76f4866aaaa3400ea7fbbd9d7da2",
       "vars": {

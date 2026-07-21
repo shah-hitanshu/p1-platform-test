@@ -39,7 +39,7 @@ const REQUIRED_RATE_LIMIT_BINDINGS = [
   'RL_TOOLS_ANON',
 ] as const;
 
-const DEPLOYABLE_ENVS = ['sandbox', 'staging', 'production'] as const;
+const DEPLOYABLE_ENVS = ['staging', 'production'] as const;
 
 describe('Wrangler Configuration', () => {
   const wranglerPath = resolve(__dirname, '../../wrangler.jsonc');
