@@ -1,4 +1,5 @@
 import React from 'react';
+import type { Plugin } from '@puckeditor/core';
 import { ChatPanel } from './ChatPanel.js';
 import type { AIChatPluginOptions } from './types.js';
 
@@ -12,16 +13,12 @@ export type {
 } from './types.js';
 export { createDraftRequestChannel } from './draftRequestChannel.js';
 
-// Puck plugin shape (matches @puckeditor/core Plugin interface)
-export interface PuckPlugin {
-  name: string;
-  label?: string;
-  icon?: React.ReactNode;
-  render: () => React.ReactElement;
-  mobilePanelHeight?: 'toggle' | 'full';
-}
+// Reuse the real Puck plugin type instead of a hand-maintained local copy, so
+// this can never drift from what @puckeditor/core actually consumes (see PCC-3399).
+// Kept as a named export for backward compatibility with existing importers.
+export type PuckPlugin = Plugin;
 
-export function createAIChatPlugin(options: AIChatPluginOptions): PuckPlugin {
+export function createAIChatPlugin(options: AIChatPluginOptions): Plugin {
   return {
     name: 'ai-chat',
     label: 'AI Builder',
