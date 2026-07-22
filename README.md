@@ -30,7 +30,7 @@ Common patterns:
 
 | Concept | Command |
 |---|---|
-| Full P1 stack locally (CSS with mock auth + starter app on the local backend) | `pnpm dev:stack` — brings up Postgres, then runs the CSS worker (:8787), admin frontend (:5173), and starter app (:3000) together via turbo. One-time setup: copy `.env.fullstack.example` → `.env.fullstack.local` (both at repo root) and fill in your local site id + token. Ctrl-C stops the servers; `make docker-down` stops Postgres |
+| Full P1 stack locally (CSS with mock auth + starter app on the local backend) | `pnpm dev:stack` — brings up Postgres, then runs the CSS worker (:8787), admin frontend (:5173), and starter app (:3000) together via turbo. One-time setup: copy `.env.fullstack.example` → `.env.fullstack.local` (both at repo root). On a fresh database, first log in at :5173 (mock user), create a site and an API token there, then put that site id + token in the profile. Ctrl-C stops the servers; `make docker-down` stops Postgres |
 | Run p1-starter against staging | `pnpm dev:starter:staging` — one-time setup: copy `.env.staging.example` → `.env.staging.local` (both at repo root) with staging site id + `CSS_API_KEY` |
 | CSS admin UI against the local backend | `make dev`, then `pnpm dev:css-frontend` (mock login at :5173) |
 | Chat agent against the local stack | `pnpm dev:stack:full` — one command for all five services; uncomment `NEXT_PUBLIC_AGENT_URL` in the fullstack profile to surface the chatbot in the editor |
