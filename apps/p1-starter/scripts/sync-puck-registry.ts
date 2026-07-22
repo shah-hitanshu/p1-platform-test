@@ -22,6 +22,7 @@ import { pathToFileURL } from "node:url";
 import { P1Client } from "@pantheon-systems/css-client";
 import type { Branch } from "@pantheon-systems/css-client";
 import { extractDescriptors, syncComponentRegistryWriteOnly } from "@pantheon-systems/puck-css/registry-sync";
+import { ASSET_STUB_MARKER } from "./asset-stub-hooks.mjs";
 
 export interface ValidatedEnv {
   baseUrl: string;
@@ -82,6 +83,42 @@ export function resolveConfigModule(mod: unknown): unknown {
  */
 export class NoBranchMatchError extends Error {}
 
+type Descriptor = ReturnType<typeof extractDescriptors>[number];
+
+function containsAssetStubValue(value: unknown, seen = new Set<object>()): boolean {
+  if (typeof value === "string") return value.includes(ASSET_STUB_MARKER);
+  if (typeof value !== "object" || value === null) return false;
+  if (seen.has(value)) return false;
+  seen.add(value);
+  if ((value as Record<string, unknown>).__p1AssetStub === true) return true;
+  return Object.values(value).some((nested) => containsAssetStubValue(nested, seen));
+}
+
+/**
+ * Partitions descriptors into those this script can faithfully write and
+ * those it must skip. Under the asset-stub loader, any config
+ * value derived from an asset import is a branded sentinel — the browser
+ * bundler resolves the same import to a real URL this script cannot know.
+ * Writing such a descriptor stores wrong default values and an index hash
+ * the editor will disagree with on every load (a perpetual re-register
+ * flip-flop between CI and editor). Skipped components stay editor-owned:
+ * one writer per component, no disagreement.
+ *
+ * Scans the whole descriptor, not just defaultProps, so a stub value that
+ * reaches any future descriptor field is still caught.
+ */
+export function filterAssetStubbedDescriptors(descriptors: Descriptor[]): {
+  writable: Descriptor[];
+  skipped: Descriptor[];
+} {
+  const writable: Descriptor[] = [];
+  const skipped: Descriptor[] = [];
+  for (const descriptor of descriptors) {
+    (containsAssetStubValue(descriptor) ? skipped : writable).push(descriptor);
+  }
+  return { writable, skipped };
+}
+
 export function resolveBranchId(branches: Branch[], siteId: string, override?: string): string {
   if (override !== undefined && override !== "") {
     const match = branches.find((b) => b.id === override || b.name === override);
@@ -111,6 +148,15 @@ async function main(): Promise<void> {
   const puckConfig = resolveConfigModule(mod);
 
   const descriptors = extractDescriptors(puckConfig);
+  const { writable, skipped } = filterAssetStubbedDescriptors(descriptors);
+
+  for (const descriptor of skipped) {
+    console.warn(
+      `[sync-puck-registry] SKIPPED ${descriptor.name}: its defaults use bundler-resolved asset imports ` +
+        `this script cannot faithfully compute — it will register from the editor instead. ` +
+        `To include it in CI sync, replace imported assets in defaultProps with plain string paths.`,
+    );
+  }
 
   const client = new P1Client({ baseUrl, apiKey });
   const branches = await client.branches.list(siteId);
@@ -118,15 +164,17 @@ async function main(): Promise<void> {
 
   if (dryRun) {
     console.log(
-      `[sync-puck-registry] Dry run: ${String(descriptors.length)} component descriptor(s) found for site ${siteId}, branch ${branchId}. No writes performed.`,
+      `[sync-puck-registry] Dry run: ${String(writable.length)} component descriptor(s) to write ` +
+        `(${String(skipped.length)} skipped) for site ${siteId}, branch ${branchId}. No writes performed.`,
     );
     return;
   }
 
-  const result = await syncComponentRegistryWriteOnly(client, siteId, branchId, descriptors);
+  const result = await syncComponentRegistryWriteOnly(client, siteId, branchId, writable);
   console.log(
     `[sync-puck-registry] Synced site ${siteId}, branch ${branchId}: ` +
-      `wrote ${String(result.total)} component descriptor(s) + registry index`,
+      `wrote ${String(result.total)} component descriptor(s) + registry index` +
+      (skipped.length > 0 ? ` (${String(skipped.length)} asset-bearing component(s) left to the editor)` : ""),
   );
 }
 

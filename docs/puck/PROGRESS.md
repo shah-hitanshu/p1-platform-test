@@ -2770,6 +2770,45 @@ Real local end-to-end testing (running the actual `sync-puck-registry.ts` script
 - `REGISTRY_INDEX_PATH` cross-check (noted in the prior phase's follow-up) remains open, though now backed by more confidence: this session's real end-to-end run exercised both sides of that literal together for the first time and it matched correctly.
 - Rebased onto `main` after PCC-3430's self-heal fix (#116, see the entry above) landed there first: `runRegistration`'s extraction into `syncComponentRegistry.ts` was reconciled to carry the `verifiedAt` self-heal logic forward rather than dropping it in a naive conflict resolution, and `syncComponentRegistryWriteOnly` was given its own `verifiedAt` stamp — an unconditional full rewrite of every descriptor is itself the strongest possible verification, so it can legitimately claim one instead of forcing the next editor load into an unnecessary per-component fetch.
 
+## PCC-3435: Branded Asset Stub + CI Skip for Asset-Bearing Components (2026-07-21)
+
+### Commits
+
+- `3972227` — Integration tests demonstrating stub/bundler hash divergence (green demonstration tests)
+- `d9913b8` — Failing tests for branded sentinel + CI skip filter (red state)
+- `7a79bfa` — Brand the asset stub and skip stub-carrying components in CI sync (green state)
+
+### Context
+
+Reproduced live on a local site: a component whose `defaultProps` uses a bundler-resolved asset import (`import placeholder from "./x.png"`; `src: placeholder.src`) hashes differently in the editor (real `/_next/static/media/...` URL) than in the CI sync (asset-stub loader → `{}` / `undefined`). Each writer rewrites the shared index with its own hash, so after every CI run the editor re-registers the component on every load and vice versa — a perpetual flip-flop. Worse, the CI-written descriptor content was simply wrong (the default value missing entirely). CI fundamentally cannot know the bundler-resolved value, so reconciling the hashes would still store wrong content — the honest fix is for CI to skip what it can't faithfully compute.
+
+### What was done
+
+- **Demonstration tests first** (green on pre-fix code): same config, two loaders, two hashes — both usage patterns plus a plain-string control, evaluating the loader's actual emitted source via a `data:` import rather than assuming its shape.
+- **`asset-stub-hooks.mjs`**: the stub is now a branded Proxy sentinel instead of a bare `{}` — `__p1AssetStub: true`, and every unknown property read (`placeholder.src`) returns `ASSET_STUB_MARKER` (`__p1_asset_stub__`), so "this value came from a stubbed asset import" survives into descriptor extraction instead of collapsing into `undefined`.
+- **`sync-puck-registry.ts`**: new exported `filterAssetStubbedDescriptors` partitions descriptors; stub-carrying components are skipped with a loud per-component `console.warn` (naming the component and the plain-string-path escape hatch) and left editor-owned. Dry-run and completion logs report write/skip counts.
+- Package code untouched — this is entirely within the starter kit's CI tooling; no hash-algorithm change, so nothing mass-re-registers on deploy.
+
+### Decisions made along the way
+
+- **Option A (skip-in-CI) over Option B (replicate Next's asset-URL scheme in the loader)**: B gives full CI coverage but couples to Next's internal media-URL naming and needs StaticImageData reconstruction (image parsing) for whole-import defaults. A is small, honest, and B remains open as a future enhancement.
+- One pre-existing test assertion adapted (exact stub-source equality — it pinned the literal `export default {};` this change intentionally replaces); disclosed in the red-state commit message.
+
+### Verification
+
+- TDD: 10 red (new sentinel/filter tests + adapted assertion) → green; script suites 59/59; full starter-app suite 105/105; lint clean on touched files; full `pnpm build` clean.
+- **Real end-to-end proof**: dry-run against the actual repro config (imageBlock with an imported PNG default) detects and skips exactly that component (`SKIPPED ImageBlock: ...`) while the 10 clean components remain writable.
+- `/security-review`: no findings — emitted stub source interpolates only a same-file constant; no untrusted input reaches the loader or the descriptor walk; the change strictly reduces what CI writes.
+
+### Known behavior (documented, accepted)
+
+- Asset-bearing components register on the next **editor** open, not on git push: CI can't see an asset rename/content change at all (both stub identically) — the editor catches it because the bundler URL changes.
+- A CI run rebuilds the index from only the writable descriptors, so a skipped component's index entry is dropped each CI run and restored by the next editor load's re-registration — one extra write per skipped component per deploy (vs. per page-load before). Eliminating even that requires index merging, which the read-less `write:registry` token cannot do by design.
+
+### Follow-up
+
+- Option B (loader computes real Next asset URLs) if full CI coverage for asset-bearing components is ever needed.
+- Starter-kit README/docs note about the plain-string-path escape hatch for teams that want asset-bearing components CI-covered.
 ## PCC-3437: Case-Insensitive Registry Document Matching (2026-07-21)
 
 ### Commits

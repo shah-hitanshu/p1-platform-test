@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { validateEnv, resolveConfigModule, resolveBranchId, NoBranchMatchError } from "../sync-puck-registry.js";
+import {
+  validateEnv,
+  resolveConfigModule,
+  resolveBranchId,
+  filterAssetStubbedDescriptors,
+  NoBranchMatchError,
+} from "../sync-puck-registry.js";
+import { ASSET_STUB_MARKER } from "../asset-stub-hooks.mjs";
 
 function baseEnv(overrides: Record<string, string | undefined> = {}): Record<string, string | undefined> {
   return {
@@ -120,5 +127,57 @@ describe("resolveBranchId", () => {
 
   it("throws NoBranchMatchError when an explicit override matches no branch by id or name", () => {
     expect(() => resolveBranchId(branches as never, "site-123", "nonexistent")).toThrow(NoBranchMatchError);
+  });
+});
+
+describe("filterAssetStubbedDescriptors", () => {
+  // CI loads puck.config.tsx under the asset-stub loader, so any defaultProps
+  // value derived from an asset import is a branded sentinel, not the real
+  // bundler-resolved value. CI cannot faithfully describe those components —
+  // it skips them (loudly) and leaves them to the editor path.
+
+  const descriptor = (name: string, defaultProps: Record<string, unknown>) =>
+    ({ name, label: name, fields: [], defaultProps, descriptorHash: "h" }) as never;
+
+  it("keeps descriptors whose defaults are plain values", () => {
+    const clean = descriptor("heroBlock", { title: "Hello", count: 3, nested: { a: [1, "x"] } });
+    const { writable, skipped } = filterAssetStubbedDescriptors([clean]);
+    expect(writable).toEqual([clean]);
+    expect(skipped).toEqual([]);
+  });
+
+  it("skips a descriptor whose default carries the asset-stub marker string (placeholder.src pattern)", () => {
+    const stubbed = descriptor("imageBlock", { src: ASSET_STUB_MARKER, alt: "Mountain" });
+    const { writable, skipped } = filterAssetStubbedDescriptors([stubbed]);
+    expect(writable).toEqual([]);
+    expect(skipped.map((d: { name: string }) => d.name)).toEqual(["imageBlock"]);
+  });
+
+  it("skips a descriptor whose default is a branded stub object (whole-import pattern)", () => {
+    const stubbed = descriptor("imageBlock", { src: { __p1AssetStub: true } });
+    const { skipped } = filterAssetStubbedDescriptors([stubbed]);
+    expect(skipped).toHaveLength(1);
+  });
+
+  it("detects the marker arbitrarily deep in defaultProps", () => {
+    const stubbed = descriptor("gallery", { items: [{ media: { src: `prefix ${ASSET_STUB_MARKER}` } }] });
+    const { skipped } = filterAssetStubbedDescriptors([stubbed]);
+    expect(skipped).toHaveLength(1);
+  });
+
+  it("partitions a mixed list preserving order of writable descriptors", () => {
+    const a = descriptor("a", { t: "1" });
+    const b = descriptor("b", { src: ASSET_STUB_MARKER });
+    const c = descriptor("c", { t: "2" });
+    const { writable, skipped } = filterAssetStubbedDescriptors([a, b, c]);
+    expect(writable.map((d: { name: string }) => d.name)).toEqual(["a", "c"]);
+    expect(skipped.map((d: { name: string }) => d.name)).toEqual(["b"]);
+  });
+
+  it("does not hang on circular defaultProps", () => {
+    const circular: Record<string, unknown> = { title: "ok" };
+    circular.self = circular;
+    const { skipped } = filterAssetStubbedDescriptors([descriptor("looper", circular)]);
+    expect(skipped).toEqual([]);
   });
 });
