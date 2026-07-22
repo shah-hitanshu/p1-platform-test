@@ -4,6 +4,11 @@
   "private": true,
   "description": "P1 platform monorepo: collaborative state system, Puck CSS SDK, AI chat, and media",
   "scripts": {
+    "dev:starter": "pnpm --filter @pantheon-systems/p1-starter dev",
+    "dev:css-frontend": "pnpm --filter css-frontend dev",
+    "dev:agent": "pnpm --filter @p1/agent dev",
+    "dev:media": "pnpm --filter p1-media-worker dev",
+    "dev:mcp": "pnpm --filter css-mcp-server dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",

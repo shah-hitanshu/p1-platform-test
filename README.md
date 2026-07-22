@@ -2,6 +2,38 @@
 
 Monorepo for Pantheon's P1 platform: the collaborative state system (CSS), the Puck/CSS editor SDK, the AI chat agent, and media handling. Merged from four repos — `collaborative-state-system`, `puck-css-integration`, `p1-chatbot`, `p1-media-r2` — with full history (see [docs/migration/STATUS.md](docs/migration/STATUS.md)).
 
+## TL;DR — what this repo can and can't do today
+
+All commands run from repo root.
+
+| Feature | Supported | Command |
+|---|---|---|
+| Run p1-starter app | [x] | `pnpm dev:starter` (:3000, needs `apps/p1-starter/.env.local`) |
+| Run CSS backend (Postgres + worker) | [x] | `make dev` (:8787; or `make docker-up` + `make worker-dev`) |
+| Run CSS admin frontend | [x] | `pnpm dev:css-frontend` (:5173) |
+| Run chat agent worker | [x] | `pnpm dev:agent` (needs secrets in `workers/p1-agent/.env`) |
+| Run media worker | [x] | `pnpm dev:media` (:8788) |
+| Run MCP server | [x] | `pnpm dev:mcp` (:8788 — clashes with media, run one at a time) |
+| Build / test / lint / typecheck everything | [x] | `pnpm build` / `pnpm test` / `pnpm lint` / `pnpm typecheck` |
+| e2e (starter app vs mock backend) | [x] | `pnpm test:e2e` (first run: `pnpm exec playwright install chromium`) |
+| Database migrations (local) | [x] | `POSTGRES_CONNECTION_STRING=... pnpm --filter collaborative-state-worker db:migrate` |
+| Create a changeset | [x] | `pnpm exec changeset` |
+| Terraform plan/apply (with local GCP creds) | [x] | `make tf-plan ENV=staging` |
+| CI on pull requests | [ ] | — (Phase 3: workflows not yet written) |
+| Publish packages to npm | [ ] | — (Phase 4: npm trusted-publisher config still points at the old repos) |
+| Deploy workers to staging/production | [ ] | — (Phase 3/4: no deploy workflows yet; GCP WIF doesn't trust this repo yet) |
+
+Common patterns:
+
+| Concept | Command |
+|---|---|
+| Full P1 stack locally (CSS with mock auth + starter app on the local backend) | `make dev`, then `pnpm dev:starter` with `.env.local`: `NEXT_PUBLIC_CSS_BASE_URL=http://localhost:8787`, `NEXT_PUBLIC_CSS_AUTH_MODE=mock`, `NEXT_PUBLIC_CSS_SITE_ID=<site id>`, `CSS_API_KEY=<site token>` |
+| Run p1-starter against staging | `pnpm dev:starter` with `.env.local`: `NEXT_PUBLIC_CSS_BASE_URL=https://staging.ccr.p1.pantheon.io` + staging `CSS_API_KEY`/site id |
+| CSS admin UI against the local backend | `make dev`, then `pnpm dev:css-frontend` (mock login at :5173) |
+| Chat agent against the local stack | `make dev`, then `pnpm dev:media` and `pnpm dev:agent` |
+| One package's tests/build | `pnpm --filter <package-name> test` (etc.) |
+| Raw wrangler command for a worker | `pnpm --filter <worker-package> exec wrangler <cmd> --env staging` |
+
 ## Layout
 
 | Path | What it is |
