@@ -218,7 +218,7 @@ function EditorContent({
   const additionalPlugins = React.useMemo(
     () => (aiPlugin ? [...p1Plugins, aiPlugin] : p1Plugins),
     [p1Plugins, aiPlugin],
-  ) as typeof p1Plugins;
+  );
 
   const [redirecting, setRedirecting] = React.useState(false);
 
