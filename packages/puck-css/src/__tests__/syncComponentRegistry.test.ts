@@ -602,3 +602,135 @@ describe('syncComponentRegistry', () => {
     expect(fields.map((f) => f.name)).toEqual(['title', 'subtitle', 'mediaSrc', 'mediaAlt']);
   });
 });
+
+describe('syncComponentRegistry — server lowercases document paths', () => {
+  // The server's normalizePath lowercases every document path on write, so a
+  // component registered as HeroBlock lists back at _registry/components/heroblock.
+  // Earlier tests in this file mock list() with original-case paths, which is
+  // exactly why this bug wasn't caught — these tests mock what the server
+  // actually returns.
+
+  it('fast path: skips an unchanged PascalCase component whose doc lists at a lowercased path', async () => {
+    const client = makeMockClient();
+    const [descriptor] = extractDescriptors(simplePuckConfig); // HeroBlock
+
+    client.documents.list.mockResolvedValue([
+      { id: 'doc-hero', path: '_registry/components/heroblock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+      { id: 'doc-index', path: '_registry/index', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+    ]);
+    client.versions.getLatest.mockImplementation((_siteId: string, _branchId: string, docId: string) => {
+      if (docId === 'doc-index') {
+        return Promise.resolve({
+          id: 'ver-index', versionNumber: 1,
+          snapshot: {
+            siteId: 'site-1', branchId: 'branch-1',
+            componentNames: ['HeroBlock'],
+            provenance: { HeroBlock: 'site' },
+            updatedAt: '',
+            verifiedAt: new Date().toISOString(),
+            hashes: { HeroBlock: descriptor.descriptorHash },
+          },
+        });
+      }
+      return Promise.resolve({ id: 'ver-1', versionNumber: 1, snapshot: { ...descriptor } });
+    });
+
+    const result = await syncComponentRegistry(client as never, 'site-1', 'branch-1', [descriptor]);
+
+    expect(result.skipped).toBe(1);
+    expect(result.registered).toBe(0);
+    expect(client.versions.create).not.toHaveBeenCalled();
+    expect(client.documents.create).not.toHaveBeenCalled();
+  });
+
+  it('legacy path: skips an unchanged PascalCase component when the stored hash comes from the doc version', async () => {
+    const client = makeMockClient();
+    const [descriptor] = extractDescriptors(simplePuckConfig); // HeroBlock
+
+    // No index doc → legacy per-component fetch, keyed by the lowercased path-derived name.
+    client.documents.list.mockResolvedValue([
+      { id: 'doc-hero', path: '_registry/components/heroblock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+    ]);
+    client.versions.getLatest.mockResolvedValue({
+      id: 'ver-1', versionNumber: 1,
+      snapshot: { ...descriptor },
+    });
+    client.documents.create.mockResolvedValue({ id: 'doc-index', path: '_registry/index' });
+
+    const result = await syncComponentRegistry(client as never, 'site-1', 'branch-1', [descriptor]);
+
+    expect(result.skipped).toBe(1);
+    expect(result.registered).toBe(0);
+    // The index is still (re)written on the legacy path, but never the component doc.
+    const versionCalls = client.versions.create.mock.calls as unknown[][];
+    const heroVersionCall = versionCalls.find((args) => (args[1] as Record<string, string>).documentId === 'doc-hero');
+    expect(heroVersionCall).toBeUndefined();
+  });
+
+  it('still re-registers a changed PascalCase component onto its existing lowercased doc without documents.create', async () => {
+    const client = makeMockClient();
+    const [descriptor] = extractDescriptors(simplePuckConfig); // HeroBlock
+
+    client.documents.list.mockResolvedValue([
+      { id: 'doc-hero', path: '_registry/components/heroblock', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+      { id: 'doc-index', path: '_registry/index', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+    ]);
+    client.versions.getLatest.mockResolvedValue({
+      id: 'ver-index', versionNumber: 1,
+      snapshot: {
+        siteId: 'site-1', branchId: 'branch-1',
+        componentNames: ['HeroBlock'],
+        provenance: { HeroBlock: 'site' },
+        updatedAt: '',
+        verifiedAt: new Date().toISOString(),
+        hashes: { HeroBlock: 'stale-hash-000' },
+      },
+    });
+
+    const result = await syncComponentRegistry(client as never, 'site-1', 'branch-1', [descriptor]);
+
+    expect(result.registered).toBe(1);
+    // Must reuse the listed doc id — not fall into create → 409 → getByPath recovery.
+    expect(client.documents.create).not.toHaveBeenCalled();
+    const versionCalls = client.versions.create.mock.calls as unknown[][];
+    const heroVersionCall = versionCalls.find((args) => (args[1] as Record<string, string>).documentId === 'doc-hero');
+    expect(heroVersionCall).toBeDefined();
+  });
+
+  it('warns when two component names collide case-insensitively (they share one server document)', async () => {
+    const client = makeMockClient();
+    const collidingConfig = {
+      components: {
+        HeroBlock: {
+          label: 'Hero',
+          fields: { title: { type: 'text', label: 'Title' } },
+          defaultProps: { title: '' },
+        },
+        heroblock: {
+          label: 'Hero (lowercase)',
+          fields: { body: { type: 'textarea', label: 'Body' } },
+          defaultProps: { body: '' },
+        },
+      },
+    };
+    client.documents.list.mockResolvedValue([]);
+    let docCounter = 0;
+    client.documents.create.mockImplementation(({ path }: { path: string }) =>
+      Promise.resolve({ id: `doc-${++docCounter}`, path }),
+    );
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    try {
+      const descriptors = extractDescriptors(collidingConfig);
+      const result = await syncComponentRegistry(client as never, 'site-1', 'branch-1', descriptors);
+
+      expect(result.total).toBe(2);
+      const collisionWarning = warnSpy.mock.calls.find((args) =>
+        args.some((arg) => typeof arg === 'string' && arg.includes('case-insensitively')),
+      );
+      expect(collisionWarning).toBeDefined();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+});

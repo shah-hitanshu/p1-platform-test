@@ -2742,3 +2742,39 @@ Real local end-to-end testing (running the actual `sync-puck-registry.ts` script
 - The originally-requested Cloudflare-tunnel + real-GitHub-Actions test is still not done — this phase only closed the local (`wrangler dev` + local Postgres) path. A cloud Actions runner does `npm ci` against published semver deps, but `@pantheon-systems/puck-css`'s `registry-sync` subpath only exists on this unpublished local branch, so that escalation additionally needs a decision on publishing a prerelease, vendoring a built tarball, or using a self-hosted runner — none decided or started.
 - `REGISTRY_INDEX_PATH` cross-check (noted in the prior phase's follow-up) remains open, though now backed by more confidence: this session's real end-to-end run exercised both sides of that literal together for the first time and it matched correctly.
 - Rebased onto `main` after PCC-3430's self-heal fix (#116, see the entry above) landed there first: `runRegistration`'s extraction into `syncComponentRegistry.ts` was reconciled to carry the `verifiedAt` self-heal logic forward rather than dropping it in a naive conflict resolution, and `syncComponentRegistryWriteOnly` was given its own `verifiedAt` stamp — an unconditional full rewrite of every descriptor is itself the strongest possible verification, so it can legitimately claim one instead of forcing the next editor load into an unnecessary per-component fetch.
+
+## PCC-3437: Case-Insensitive Registry Document Matching (2026-07-21)
+
+### Commits
+
+- `886f559` — Add failing tests for case-insensitive registry doc matching (red state)
+- `f0666fe` — Match registry docs case-insensitively (green state)
+
+### Context
+
+Found live while verifying PCC-3435 locally: the backend's `normalizePath` lowercases every document path on write, so a component registered as `HeroBlock` lists back at `_registry/components/heroblock`. `syncComponentRegistry` matched descriptor names against path-derived names case-sensitively, so every PascalCase component missed its own document, looked "new", and went through create → 409 → `getByPath` recovery → `versions.create` on every editor load. Observed directly in local Postgres: ~190 versions per component document accumulated since 2026-07-17 (+1 per editor mount). The registry index is keyed by original names, so hashes always "matched" — the diagnostic hash-mismatch warning reported 0 changed components while `registered = 10`, which is what exposed the document-lookup miss.
+
+### What was done
+
+- New `registryComponentKey(name)` (lowercase) in `syncComponentRegistry.ts` — the single definition of the in-memory comparison key, documented as mirroring the server's `normalizePath` lowercasing. All name-based matching now goes through it: `docByName` construction, index-hash reads into `storedHashByName`, the skip lookup, and the hash-instability warning. The legacy per-component path inherits normalized keys by iterating `docByName`.
+- Case-insensitive name collisions (`Foo` vs `foo` → one server document, last write wins) now emit a `console.warn` naming the colliding set — previously fully silent.
+- Stored formats unchanged: index `hashes`/`componentNames` stay keyed by original names, `componentPath` still sends the original name. No migration.
+- `syncComponentRegistryWriteOnly` (CI path) confirmed unaffected — it does no name-based lookups.
+
+### Decisions made along the way
+
+- Client-side normalization over server-side case preservation (user decision): the server fix is the "proper" one but needs a schema/behavior change plus migration of every existing lowercase registry doc; client-side is small, migration-free, and unblocks now. Server-side case preservation recorded as a follow-up on PCC-3437.
+- Collision handling stays warn-only in the editor (a hard throw would take down registration for a whole site over one bad name). A hard-fail gate in the CI script was proposed and deferred by user decision — recorded as a PCC-3437 follow-up.
+
+### Verification
+
+- TDD: 4 new tests (fast-path skip, legacy-path skip, changed-hash re-register onto the existing doc without `documents.create`, collision warning) mock `documents.list` with the lowercased paths the server actually returns — the earlier tests mocked original-case paths, which is exactly why this bug survived. Red state confirmed (4/4 fail on unfixed code), then green: registry suites 53/53, `useComponentRegistry.test.tsx` 20/20 unmodified. Full package suite 1967 passed / 14 failed — the identical pre-existing `localStorage` auth-test failures documented in the PCC-3430 baseline.
+- Lint 0 errors (no warnings in touched files); full `pnpm build` clean.
+- `/security-review`: no findings. Unicode case-fold divergence and prototype-pollution vectors examined and ruled out (developer-authored names, same-site auth boundary, Map not object).
+- **Real end-to-end proof**: rebuilt the package, reloaded the local editor against the local CSS backend — `registered = 0, skipped = 11, indexNeedsWrite = false` on every load (was `registered = 10` on every load), and local Postgres version counts stopped climbing.
+
+### Follow-up
+
+- Server-side "proper fix": preserve original path casing for `_registry/*` (schema + migration), which also enables a true server-side 409 on case-colliding creates. Tracked on PCC-3437.
+- Optional hard-fail on case collisions in the CI sync script (non-zero exit before any write) — deferred.
+- Sibling PCC-3430 subtasks remain open: PCC-3434 (revert-side checkpoint filter + historical row purge, collaborative-state-system), PCC-3435 (asset-stub hash divergence), PCC-3436 (CI branch resolution silent skip).

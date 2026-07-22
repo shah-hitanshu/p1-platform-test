@@ -47,6 +47,21 @@ export function componentPath(name: string): string {
   return `${COMPONENT_PREFIX}${name}`;
 }
 
+/**
+ * Comparison key for matching a component name against server state.
+ *
+ * The server's normalizePath lowercases every document path on write, so a
+ * component registered as HeroBlock lists back at _registry/components/heroblock.
+ * Every in-memory lookup that matches descriptor names against path-derived
+ * names (or index hash keys) must go through this key, or PascalCase components
+ * never match their own documents and re-register on every load. Stored
+ * formats are unchanged — index hashes stay keyed by original names, and
+ * componentPath still sends the original name (the server normalizes it).
+ */
+function registryComponentKey(name: string): string {
+  return name.toLowerCase();
+}
+
 // =============================================================================
 // Core sync logic (pure async — outside React)
 // =============================================================================
@@ -76,7 +91,23 @@ export async function syncComponentRegistry(
       indexDoc = doc;
     } else if (doc.path.startsWith(COMPONENT_PREFIX)) {
       const name = doc.path.slice(COMPONENT_PREFIX.length);
-      docByName.set(name, doc);
+      docByName.set(registryComponentKey(name), doc);
+    }
+  }
+
+  // Names that collide case-insensitively share one server document (the
+  // server lowercases paths) and will silently overwrite each other.
+  const namesByKey = new Map<string, string[]>();
+  for (const descriptor of descriptors) {
+    const key = registryComponentKey(descriptor.name);
+    namesByKey.set(key, [...(namesByKey.get(key) ?? []), descriptor.name]);
+  }
+  for (const names of namesByKey.values()) {
+    if (names.length > 1) {
+      console.warn(
+        '[syncComponentRegistry] Component names collide case-insensitively and will share one registry document (last write wins):',
+        names,
+      );
     }
   }
 
@@ -106,7 +137,7 @@ export async function syncComponentRegistry(
       if (indexSnapshot.hashes !== undefined && typeof indexSnapshot.hashes === 'object' && !verificationIsStale) {
         for (const [name, hash] of Object.entries(indexSnapshot.hashes)) {
           if (typeof hash === 'string') {
-            storedHashByName.set(name, hash);
+            storedHashByName.set(registryComponentKey(name), hash);
           }
         }
         gotHashesFromIndex = true;
@@ -154,8 +185,8 @@ export async function syncComponentRegistry(
 
   await Promise.all(
     descriptors.map(async (descriptor) => {
-      const storedHash = storedHashByName.get(descriptor.name);
-      const existingDoc = docByName.get(descriptor.name);
+      const storedHash = storedHashByName.get(registryComponentKey(descriptor.name));
+      const existingDoc = docByName.get(registryComponentKey(descriptor.name));
 
       // Skip only when the hash is unchanged AND the component document still
       // exists on this branch. A hash-only check is unsafe: the index can drift
@@ -216,11 +247,11 @@ export async function syncComponentRegistry(
   // Detect hash instability: if we got hashes from the index but still had to register
   // components, log which components had mismatched hashes.
   if (gotHashesFromIndex && registered > 0) {
-    const changed = descriptors.filter(d => storedHashByName.get(d.name) !== d.descriptorHash);
+    const changed = descriptors.filter(d => storedHashByName.get(registryComponentKey(d.name)) !== d.descriptorHash);
     console.warn(
       '[syncComponentRegistry] Hash mismatch detected for', changed.length, 'component(s) despite index being present.',
       'These components will trigger a full re-registration on every load if their hashes are unstable:',
-      changed.map(d => ({ name: d.name, stored: storedHashByName.get(d.name), computed: d.descriptorHash })),
+      changed.map(d => ({ name: d.name, stored: storedHashByName.get(registryComponentKey(d.name)), computed: d.descriptorHash })),
     );
   }
 
