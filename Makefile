@@ -44,6 +44,7 @@ version: ## Show version information for all tools
 dev: ## Start all local services (containers + Miniflare)
 	@printf "$(GREEN)Starting local development environment...$(NC)\n"
 	@$(MAKE) docker-up
+	@$(MAKE) db-ready
 	@echo ""
 	@printf "$(GREEN)Services ready. Starting Miniflare...$(NC)\n"
 	@printf "$(YELLOW)Press Ctrl+C to stop the worker. Run 'make docker-down' to stop containers.$(NC)\n"
@@ -75,6 +76,11 @@ docker-up: ## Start containers (PostgreSQL)
 	@$(COMPOSE_CMD) -f docker/docker-compose.local.yaml up -d
 	@printf "$(GREEN)Waiting for services to be healthy...$(NC)\n"
 	@CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/css/wait-for-services.sh
+
+.PHONY: db-ready
+db-ready: ## Ensure .dev.vars exists and the local DB schema is migrated
+	@[ -f workers/collaborative-state/.dev.vars ] || ./scripts/css/generate-dev-vars.sh
+	@POSTGRES_CONNECTION_STRING=postgresql://cssuser:csspass@localhost:5432/cssdb pnpm --filter collaborative-state-worker db:migrate
 
 .PHONY: docker-down
 docker-down: ## Stop containers
