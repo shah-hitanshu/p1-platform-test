@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "css-frontend",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "css-frontend", "dev"],
+      "port": 5173
+    }
+  ]
+}
