@@ -40,6 +40,9 @@
   "devDependencies": {
     "@pantheon-systems/css-client": "workspace:*",
     "@pantheon-systems/puck-css": "workspace:*",
+    "@vitejs/plugin-react": "^4.7.0",
+    "isomorphic-dompurify": "^3.18.0",
+    "react": "^19.2.5",
     "vitest": "^4.1.5"
   },
   "dependencies": {

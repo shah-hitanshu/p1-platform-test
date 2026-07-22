@@ -2625,6 +2625,33 @@ When backend implements:
 **Key Achievement:**
 Content Type Templates MVP is **feature-complete** on the frontend. All P0/P1 functionality implemented with comprehensive test coverage. Template selection, permission enforcement, and action capture are working. Ready for backend integration and end-to-end testing.
 
+---
+
+### PCC-3361: Richtext Field Factory + ParagraphBlock Migration (2026-07-09) ✅
+
+Two components completed on branch `feat/paragraph-block-richtext` (stacked on `feat/richtext-field-factory` / PR #91).
+
+#### Component A: `richtextField` factory in `@pantheon-systems/puck-css/fields` ✅
+
+- New `packages/puck-css/src/data/fields.tsx` exports `richtextField`, `createRichtextField`, and `inlineTextField`
+- `richtextField`: `type: "richtext"`, `contentEditable: true`, Bold/Italic/Underline/BulletList/OrderedList menu, AI instructions baked in
+- `createRichtextField(overrides?)`: factory for per-block customization without losing defaults
+- `inlineTextField`: `type: "text"`, `contentEditable: true`, AI instructions for concise plain text
+- Exported via new `@pantheon-systems/puck-css/fields` subpath
+- 14 tests all passing — commits: tests `4be5f05`, impl `4761735`
+- PR #91 created
+
+#### Component B: ParagraphBlock → richtextField migration ✅
+
+- Resolved Vite 8 OXC pipeline incompatibility: `@vitejs/plugin-react` (Babel) set esbuild jsx options that were silently ignored by Vite 8's OXC transform, causing `vite:import-analysis` to fail on JSX. Fixed by switching to `@vitejs/plugin-react-oxc`.
+- Added `apps/p1-starter/tsconfig.test.json` to override `jsx: preserve` for typecheck phase.
+- 6 new tests in `apps/p1-starter/__tests__/paragraph-block.test.ts` — red commit `c89e31d`
+- `paragraph-block.tsx`: removed `textarea` field + `ReactMarkdown`; now uses `richtextField` and `dangerouslySetInnerHTML` (richtext outputs HTML, not markdown) — impl commit `73eb0ec`
+- All 26 tests passing; 0 lint errors; clean build
+
+#### Next: Component C
+
+Canonical `.claude/skills/create-block/SKILL.md` documenting baseline block authoring rules (richtext, contentEditable, AI instructions, `blockPaddingClass`, `Connectable` HOC).
 ## PCC-3430: Periodic Self-Heal Verification for the Registry Fast Path (2026-07-19)
 
 **Status:** Complete
