@@ -161,11 +161,15 @@ describe('useDocuments', () => {
         await result.current.create('page2');
       });
 
+      // The initial content is written in the SAME create call (a single
+      // version), not via a separate versions.create.
       expect(mockClient.documents.create).toHaveBeenCalledWith({
         siteId: 'site1',
         branchId: 'branch1',
         path: 'page2',
+        snapshot: { content: [], root: { props: {} } },
       });
+      expect(mockClient.versions.create).not.toHaveBeenCalled();
 
       expect(result.current.documents).toEqual(updatedDocs);
     });
@@ -192,9 +196,10 @@ describe('useDocuments', () => {
         await result.current.create('/about', undefined, { title: 'My New Page' });
       });
 
-      const snapshot = (mockClient.versions.create as ReturnType<typeof vi.fn>).mock
-        .calls[0][1].snapshot;
+      const snapshot = (mockClient.documents.create as ReturnType<typeof vi.fn>).mock
+        .calls[0][0].snapshot;
       expect(snapshot.root.props.title).toBe('My New Page');
+      expect(mockClient.versions.create).not.toHaveBeenCalled();
     });
 
     it('does not set a title when none is provided', async () => {
@@ -214,8 +219,8 @@ describe('useDocuments', () => {
         await result.current.create('/about');
       });
 
-      const snapshot = (mockClient.versions.create as ReturnType<typeof vi.fn>).mock
-        .calls[0][1].snapshot;
+      const snapshot = (mockClient.documents.create as ReturnType<typeof vi.fn>).mock
+        .calls[0][0].snapshot;
       expect(snapshot.root.props.title).toBeUndefined();
     });
 
@@ -244,17 +249,23 @@ describe('useDocuments', () => {
         });
       });
 
-      // Template binding still flows through to documents.create.
+      // Template binding AND the content snapshot now flow through the single
+      // documents.create call (no separate versions.create).
       expect(mockClient.documents.create).toHaveBeenCalledWith({
         siteId: 'site1',
         branchId: 'branch1',
         path: '/about',
         templateId: 't1',
         templateVersion: 2,
+        snapshot: {
+          content: scaffold.content,
+          root: { props: { foo: 'bar', title: 'Blog Post' } },
+        },
       });
+      expect(mockClient.versions.create).not.toHaveBeenCalled();
 
-      const snapshot = (mockClient.versions.create as ReturnType<typeof vi.fn>).mock
-        .calls[0][1].snapshot;
+      const snapshot = (mockClient.documents.create as ReturnType<typeof vi.fn>).mock
+        .calls[0][0].snapshot;
       expect(snapshot.content).toEqual(scaffold.content);
       expect(snapshot.root.props).toEqual({ foo: 'bar', title: 'Blog Post' });
     });

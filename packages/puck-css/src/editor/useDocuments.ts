@@ -138,21 +138,8 @@ export function useDocuments({
       initialData?: PuckData,
       options?: { templateId?: string; templateVersion?: number; title?: string },
     ): Promise<Document> => {
-      const doc = await client.documents.create({
-        siteId,
-        branchId,
-        path,
-        ...(options?.templateId ? {
-          templateId: options.templateId,
-          templateVersion: options.templateVersion ?? 1,
-        } : {}),
-      });
-
-      // Create initial version with default or provided data. When a title is
-      // given, seed it into the Puck root props (root.props.title) — the same
-      // field Puck's root "title" input reads/writes — so it persists in the
-      // initial snapshot. This composes with template scaffolding: the title is
-      // merged into whatever initialData was passed (default or scaffolded).
+      // Build the initial content. When a title is given, seed it into the Puck
+      // root props (root.props.title) so it persists in the initial snapshot.
       const baseData = initialData ?? DEFAULT_PUCK_DATA;
       const data: PuckData = options?.title
         ? {
@@ -163,9 +150,19 @@ export function useDocuments({
             },
           }
         : baseData;
-      await client.versions.create(siteId, {
-        documentId: doc.id,
+
+      // Create the document and its initial version in a SINGLE call by passing
+      // the content inline as `snapshot`. Previously this was two calls
+      // (documents.create with no snapshot, then a separate versions.create),
+      // which produced two version rows for a brand-new page.
+      const doc = await client.documents.create({
+        siteId,
         branchId,
+        path,
+        ...(options?.templateId ? {
+          templateId: options.templateId,
+          templateVersion: options.templateVersion ?? 1,
+        } : {}),
         snapshot: data as unknown as Record<string, unknown>,
       });
 

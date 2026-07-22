@@ -479,13 +479,15 @@ describe('useDocuments.create with template binding', () => {
       });
     });
 
-    // Verify client.documents.create was called with template fields
+    // Verify client.documents.create was called with template fields and the
+    // initial content snapshot in the same call (single version).
     expect(client.documents.create).toHaveBeenCalledWith({
       siteId: 'site-1',
       branchId: 'branch-1',
       path: '/test-page',
       templateId: 'template-1',
       templateVersion: 1,
+      snapshot: { content: [], root: { props: {} } },
     });
   });
 
@@ -504,11 +506,13 @@ describe('useDocuments.create with template binding', () => {
       await result.current.create('/test-page');
     });
 
-    // Verify client.documents.create was called without template fields
+    // Verify client.documents.create was called without template fields, with
+    // the initial content snapshot in the same call (single version).
     expect(client.documents.create).toHaveBeenCalledWith({
       siteId: 'site-1',
       branchId: 'branch-1',
       path: '/test-page',
+      snapshot: { content: [], root: { props: {} } },
     });
   });
 
@@ -527,11 +531,13 @@ describe('useDocuments.create with template binding', () => {
       await result.current.create('/test-page', undefined, {});
     });
 
-    // Verify client.documents.create was called without template fields
+    // Verify client.documents.create was called without template fields, with
+    // the initial content snapshot in the same call (single version).
     expect(client.documents.create).toHaveBeenCalledWith({
       siteId: 'site-1',
       branchId: 'branch-1',
       path: '/test-page',
+      snapshot: { content: [], root: { props: {} } },
     });
   });
 });
@@ -585,10 +591,10 @@ describe('P1PuckProvider.createDocument with template', () => {
       await result.current.createDocument('/test-page', mockTemplateSummary);
     });
 
-    // Verify versions.create was called with scaffolded data
-    expect(client.versions.create).toHaveBeenCalled();
-    const createCall = (client.versions.create as any).mock.calls[0];
-    const snapshot = createCall[1].snapshot;
+    // Verify the scaffolded content is written in the single documents.create call
+    expect(client.documents.create).toHaveBeenCalled();
+    const createCall = (client.documents.create as any).mock.calls[0];
+    const snapshot = createCall[0].snapshot;
 
     // Should have content scaffolded from the template
     expect(snapshot.content).toBeDefined();
@@ -661,9 +667,9 @@ describe('P1PuckProvider.createDocument with template', () => {
       await result.current.createDocument('/test-page', mockTemplateSummary);
     });
 
-    expect(client.versions.create).toHaveBeenCalled();
-    const createCall = vi.mocked(client.versions.create).mock.calls[0];
-    const snapshot = (createCall[1] as { snapshot: { content: unknown[] } }).snapshot;
+    expect(client.documents.create).toHaveBeenCalled();
+    const createCall = vi.mocked(client.documents.create).mock.calls[0];
+    const snapshot = (createCall[0] as { snapshot: { content: unknown[] } }).snapshot;
     expect(snapshot.content).toEqual([]);
   });
 
@@ -698,10 +704,10 @@ describe('P1PuckProvider.createDocument with template', () => {
       await result.current.createDocument('/test-page', null);
     });
 
-    // Verify versions.create was called with empty content
-    expect(client.versions.create).toHaveBeenCalled();
-    const createCall = (client.versions.create as any).mock.calls[0];
-    const snapshot = createCall[1].snapshot;
+    // Verify the empty content is written in the single documents.create call
+    expect(client.documents.create).toHaveBeenCalled();
+    const createCall = (client.documents.create as any).mock.calls[0];
+    const snapshot = createCall[0].snapshot;
     expect(snapshot.content).toEqual([]);
     expect(snapshot.root).toEqual({ props: {} });
   });
@@ -737,10 +743,10 @@ describe('P1PuckProvider.createDocument with template', () => {
       await result.current.createDocument('/test-page');
     });
 
-    // Verify versions.create was called with empty content
-    expect(client.versions.create).toHaveBeenCalled();
-    const createCall = (client.versions.create as any).mock.calls[0];
-    const snapshot = createCall[1].snapshot;
+    // Verify the empty content is written in the single documents.create call
+    expect(client.documents.create).toHaveBeenCalled();
+    const createCall = (client.documents.create as any).mock.calls[0];
+    const snapshot = createCall[0].snapshot;
     expect(snapshot.content).toEqual([]);
     expect(snapshot.root).toEqual({ props: {} });
   });

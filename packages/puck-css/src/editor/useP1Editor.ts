@@ -418,7 +418,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // Permissions (read-only for historical versions)
   // =========================================================================
 
-  const permissions = useMemo(() => {
+  const permissions = useMemo((): Record<string, boolean> => {
     if (css.isViewingHistoricalVersion) {
       // Omit edit:false so page/root fields are never locked by Puck's own
       // readonly rendering. Interaction is blocked by ReadOnlyFieldsGuard
