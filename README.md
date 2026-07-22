@@ -8,7 +8,9 @@ All commands run from repo root.
 
 | Feature | Supported | Command |
 |---|---|---|
+| **Run the full P1 stack locally** (Postgres + CSS worker + admin frontend + starter app) | [x] | `pnpm dev:stack` (one command; starter app uses the `.env.fullstack.local` profile) |
 | Run p1-starter app | [x] | `pnpm dev:starter` (:3000, needs `apps/p1-starter/.env.local`) |
+| Run p1-starter against staging | [x] | `pnpm dev:starter:staging` (uses the `.env.staging.local` profile) |
 | Run CSS backend (Postgres + worker) | [x] | `make dev` (:8787; or `make docker-up` + `make worker-dev`) |
 | Run CSS admin frontend | [x] | `pnpm dev:css-frontend` (:5173) |
 | Run chat agent worker | [x] | `pnpm dev:agent` (needs secrets in `workers/p1-agent/.env`) |
@@ -27,8 +29,9 @@ Common patterns:
 
 | Concept | Command |
 |---|---|
-| Full P1 stack locally (CSS with mock auth + starter app on the local backend) | `make dev`, then `pnpm dev:starter`. In `apps/p1-starter/.env.local` (gitignored; copy from `.env.example`) set: `NEXT_PUBLIC_CSS_BASE_URL=http://localhost:8787`, `NEXT_PUBLIC_CSS_AUTH_MODE=mock`, `NEXT_PUBLIC_CSS_SITE_ID=<site id>`, `CSS_API_KEY=<site token>` |
-| Run p1-starter against staging | Same file, different values: `NEXT_PUBLIC_CSS_BASE_URL=https://staging.ccr.p1.pantheon.io` + staging `CSS_API_KEY`/site id, then `pnpm dev:starter` |
+| Full P1 stack locally (CSS with mock auth + starter app on the local backend) | `pnpm dev:stack` — brings up Postgres, then runs the CSS worker (:8787), admin frontend (:5173), and starter app (:3000) together via turbo. One-time setup: copy `apps/p1-starter/.env.fullstack.example` → `.env.fullstack.local` and fill in your local site id + token. Ctrl-C stops the servers; `make docker-down` stops Postgres |
+| Run p1-starter against staging | `pnpm dev:starter:staging` — one-time setup: copy `apps/p1-starter/.env.staging.example` → `.env.staging.local` with staging site id + `CSS_API_KEY`. A profile must set every key (even blank, e.g. `NEXT_PUBLIC_CSS_AUTH_MODE=`) so values from a plain `.env.local` can't leak in |
+| Ad-hoc starter env (no profile) | `pnpm dev:starter` with `apps/p1-starter/.env.local` (gitignored; copy from `.env.example`) |
 | CSS admin UI against the local backend | `make dev`, then `pnpm dev:css-frontend` (mock login at :5173) |
 | Chat agent against the local stack | `make dev`, then `pnpm dev:media` and `pnpm dev:agent` |
 | One package's tests/build | `pnpm --filter <package-name> test` (etc.) |
