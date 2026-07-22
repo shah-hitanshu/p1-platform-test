@@ -27,8 +27,8 @@ Common patterns:
 
 | Concept | Command |
 |---|---|
-| Full P1 stack locally (CSS with mock auth + starter app on the local backend) | `make dev`, then `pnpm dev:starter` with `.env.local`: `NEXT_PUBLIC_CSS_BASE_URL=http://localhost:8787`, `NEXT_PUBLIC_CSS_AUTH_MODE=mock`, `NEXT_PUBLIC_CSS_SITE_ID=<site id>`, `CSS_API_KEY=<site token>` |
-| Run p1-starter against staging | `pnpm dev:starter` with `.env.local`: `NEXT_PUBLIC_CSS_BASE_URL=https://staging.ccr.p1.pantheon.io` + staging `CSS_API_KEY`/site id |
+| Full P1 stack locally (CSS with mock auth + starter app on the local backend) | `make dev`, then `pnpm dev:starter`. In `apps/p1-starter/.env.local` (gitignored; copy from `.env.example`) set: `NEXT_PUBLIC_CSS_BASE_URL=http://localhost:8787`, `NEXT_PUBLIC_CSS_AUTH_MODE=mock`, `NEXT_PUBLIC_CSS_SITE_ID=<site id>`, `CSS_API_KEY=<site token>` |
+| Run p1-starter against staging | Same file, different values: `NEXT_PUBLIC_CSS_BASE_URL=https://staging.ccr.p1.pantheon.io` + staging `CSS_API_KEY`/site id, then `pnpm dev:starter` |
 | CSS admin UI against the local backend | `make dev`, then `pnpm dev:css-frontend` (mock login at :5173) |
 | Chat agent against the local stack | `make dev`, then `pnpm dev:media` and `pnpm dev:agent` |
 | One package's tests/build | `pnpm --filter <package-name> test` (etc.) |
