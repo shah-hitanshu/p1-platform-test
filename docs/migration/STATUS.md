@@ -3,6 +3,12 @@
 Phase 1 (import) and Phase 2 (workspace unification + sbx1/sandbox retirement) **complete** 2026-07-21, local only — **nothing pushed**.
 Plan of record: `~/pantheon/monorepo-feasibility-report.html`.
 
+**Branch structure:** all migration work lives on `migration/monorepo-import`; local `main`
+holds only the initial commit. When publishing: push `main` first (protect it), then push the
+branch and open a PR. **Merge with a merge commit or fast-forward — NEVER squash or rebase:**
+the subtree-import commits carry the four source repos' histories as merge parents, and
+squash/rebase would sever them, losing all imported history.
+
 ## Phase 2 completion (second pass)
 
 - **sbx1/sandbox retirement executed:** env blocks deleted from all five wrangler configs
