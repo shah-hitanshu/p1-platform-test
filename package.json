@@ -4,13 +4,13 @@
   "private": true,
   "description": "P1 platform monorepo: collaborative state system, Puck CSS SDK, AI chat, and media",
   "scripts": {
-    "dev:starter": "pnpm --filter @pantheon-systems/p1-starter dev",
+    "dev:starter": "dotenv -e .env.fullstack.local -- pnpm --filter @pantheon-systems/p1-starter dev",
     "dev:css-frontend": "pnpm --filter css-frontend dev",
     "dev:agent": "pnpm --filter @p1/agent dev",
     "dev:media": "pnpm --filter p1-media-worker dev",
     "dev:mcp": "pnpm --filter css-mcp-server dev",
-    "dev:stack": "make docker-up && turbo run dev:stack",
-    "dev:starter:staging": "pnpm --filter @pantheon-systems/p1-starter dev:staging",
+    "dev:stack": "make docker-up && dotenv -e .env.fullstack.local -- turbo run dev:stack",
+    "dev:starter:staging": "dotenv -e .env.staging.local -- pnpm --filter @pantheon-systems/p1-starter dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
@@ -33,7 +33,8 @@
     "turbo": "^2.9.14",
     "typescript": "^5.9.3",
     "vitest": "^4.1.5",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "dotenv-cli": "^11.0.0"
   },
   "packageManager": "pnpm@11.7.0",
   "engines": {

@@ -19,7 +19,8 @@
     },
     "dev:stack": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "passThroughEnv": ["NEXT_PUBLIC_*", "CSS_API_KEY", "PCC_SITE_ID", "PCC_TOKEN"]
     },
     "lint": {
       "dependsOn": ["^build"]

@@ -85,6 +85,8 @@ function transformPackageJson(destPath) {
   }
 
   pkg.name = 'PLACEHOLDER_PROJECT_NAME';
+  // Monorepo-internal script (run via the repo root's dev:stack); not for scaffolded apps.
+  delete pkg.scripts['dev:stack'];
   pkg.version = '0.1.0';
   delete pkg.private;
 
