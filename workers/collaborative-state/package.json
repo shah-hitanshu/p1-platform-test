@@ -10,7 +10,7 @@
     "cleanup:all": "pnpm cleanup:dev && pnpm cleanup:test",
     "predev": "pnpm cleanup:dev",
     "dev": "wrangler dev --local",
-    "dev:stack": "wrangler dev --local",
+    "dev:stack": "wrangler dev --local --inspector-port 9229",
     "dev:watch": "node scripts/dev-watch.js",
     "dev:remote": "wrangler dev",
     "deploy:production": "wrangler deploy --env production",

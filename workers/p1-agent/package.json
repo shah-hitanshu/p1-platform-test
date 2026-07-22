@@ -5,6 +5,7 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev",
+    "dev:stack": "wrangler dev --port 8790 --inspector-port 9231",
     "deploy:staging": "wrangler deploy --env staging",
     "test": "vitest run",
     "type-check": "tsc --noEmit",

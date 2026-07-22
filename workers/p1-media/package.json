@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
+    "dev:stack": "wrangler dev --local --inspector-port 9230",
     "deploy": "wrangler deploy",
     "test": "vitest run",
     "lint": "tsc --noEmit"
