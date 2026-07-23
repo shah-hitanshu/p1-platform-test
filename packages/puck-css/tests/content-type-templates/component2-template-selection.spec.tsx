@@ -6,7 +6,8 @@
  * 2. PageNavigator skips template step when no templates available
  * 3. Template selection flows through to document creation
  * 4. useDocuments.create accepts template options parameter
- * 5. P1PuckProvider.stableCreateDocument scaffolds from template
+ * 5. P1PuckProvider.createDocument delegates a template page's initial version
+ *    to the backend
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -479,15 +480,14 @@ describe('useDocuments.create with template binding', () => {
       });
     });
 
-    // Verify client.documents.create was called with template fields and the
-    // initial content snapshot in the same call (single version).
+    // The template binding is the whole payload: the backend builds version 1
+    // from the template, so no client snapshot rides along.
     expect(client.documents.create).toHaveBeenCalledWith({
       siteId: 'site-1',
       branchId: 'branch-1',
       path: '/test-page',
       templateId: 'template-1',
       templateVersion: 1,
-      snapshot: { content: [], root: { props: {} } },
     });
   });
 
@@ -557,7 +557,7 @@ describe('P1PuckProvider.createDocument with template', () => {
     vi.clearAllMocks();
   });
 
-  it('uses scaffoldFromTemplate for initial data when template is provided', async () => {
+  it('delegates the initial version to the backend when a template is provided', async () => {
     const mockDoc = {
       id: 'doc-new',
       siteId: 'site-1',
@@ -591,17 +591,15 @@ describe('P1PuckProvider.createDocument with template', () => {
       await result.current.createDocument('/test-page', mockTemplateSummary);
     });
 
-    // Verify the scaffolded content is written in the single documents.create call
-    expect(client.documents.create).toHaveBeenCalled();
-    const createCall = (client.documents.create as any).mock.calls[0];
-    const snapshot = createCall[0].snapshot;
-
-    // Should have content scaffolded from the template
-    expect(snapshot.content).toBeDefined();
-    expect(snapshot.content.length).toBe(2);
-    expect(snapshot.content[0].type).toBe('Hero');
-    expect(snapshot.content[0].props.title).toBe('Default Hero');
-    expect(snapshot.content[1].type).toBe('RichText');
+    // The template binding flows through; the backend builds version 1 from it.
+    expect(client.documents.create).toHaveBeenCalledWith({
+      siteId: 'site-1',
+      branchId: 'branch-1',
+      path: '/test-page',
+      templateId: 'template-1',
+      templateVersion: 1,
+    });
+    expect(client.versions.create).not.toHaveBeenCalled();
   });
 
   it('rejects creation when the fetched template has no content array', async () => {
@@ -634,7 +632,7 @@ describe('P1PuckProvider.createDocument with template', () => {
     expect(client.versions.create).not.toHaveBeenCalled();
   });
 
-  it('creates an empty page when the template content is an empty array', async () => {
+  it('accepts a template whose layout is an empty array', async () => {
     const mockDoc = {
       id: 'doc-new',
       siteId: 'site-1',
@@ -663,14 +661,20 @@ describe('P1PuckProvider.createDocument with template', () => {
       expect(result.current.createDocument).toBeDefined();
     });
 
+    // An empty array is a valid layout: it passes the guard and binds to the
+    // template, letting the backend build the (empty) initial version.
     await act(async () => {
       await result.current.createDocument('/test-page', mockTemplateSummary);
     });
 
-    expect(client.documents.create).toHaveBeenCalled();
-    const createCall = vi.mocked(client.documents.create).mock.calls[0];
-    const snapshot = (createCall[0] as { snapshot: { content: unknown[] } }).snapshot;
-    expect(snapshot.content).toEqual([]);
+    expect(client.documents.create).toHaveBeenCalledWith({
+      siteId: 'site-1',
+      branchId: 'branch-1',
+      path: '/test-page',
+      templateId: 'template-1',
+      templateVersion: 1,
+    });
+    expect(client.versions.create).not.toHaveBeenCalled();
   });
 
   it('creates blank document when no template is provided', async () => {

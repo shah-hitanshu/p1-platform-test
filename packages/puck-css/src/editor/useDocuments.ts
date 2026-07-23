@@ -138,8 +138,34 @@ export function useDocuments({
       initialData?: PuckData,
       options?: { templateId?: string; templateVersion?: number; title?: string },
     ): Promise<Document> => {
-      // Build the initial content. When a title is given, seed it into the Puck
-      // root props (root.props.title) so it persists in the initial snapshot.
+      // Template pages get their initial version built by the backend from the
+      // template, which preserves each component's durable slot id. A
+      // client-built snapshot would be layered on top as a second version and
+      // bury those ids, so it is rejected here.
+      if (options?.templateId) {
+        if (initialData !== undefined) {
+          throw new Error(
+            'Cannot supply initialData when creating a document from a template; the backend builds the initial version from the template.',
+          );
+        }
+
+        const doc = await client.documents.create({
+          siteId,
+          branchId,
+          path,
+          templateId: options.templateId,
+          templateVersion: options.templateVersion ?? 1,
+          ...(options.title ? { title: options.title } : {}),
+        });
+
+        await refresh();
+
+        return doc;
+      }
+
+      // Blank pages build their initial version on the client. A title seeds
+      // root.props.title (the same field Puck's root "title" input
+      // reads/writes) so it persists in the initial snapshot.
       const baseData = initialData ?? DEFAULT_PUCK_DATA;
       const data: PuckData = options?.title
         ? {
@@ -159,14 +185,9 @@ export function useDocuments({
         siteId,
         branchId,
         path,
-        ...(options?.templateId ? {
-          templateId: options.templateId,
-          templateVersion: options.templateVersion ?? 1,
-        } : {}),
         snapshot: data as unknown as Record<string, unknown>,
       });
 
-      // Refresh the list
       await refresh();
 
       return doc;

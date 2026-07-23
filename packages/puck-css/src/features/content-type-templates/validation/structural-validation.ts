@@ -26,70 +26,177 @@ export interface ValidationResult {
 }
 
 /**
- * Validate that document data conforms to template structure.
- *
- * A document conforms if:
- * - All pinned components from template are present
- * - Pinned components appear in the same relative order
- * - Extra non-pinned components are allowed
+ * Read a component instance's slot id (`props.id`) if it is a string.
  */
-export function validateStructure(data: Data, template: Template): ValidationResult {
+function slotId(item: unknown): string | undefined {
+  const id = (item as { props?: { id?: unknown } })?.props?.id;
+  return typeof id === 'string' ? id : undefined;
+}
+
+/**
+ * Read a component instance's type if it is a string.
+ */
+function componentTypeOf(item: unknown): string | undefined {
+  const type = (item as { type?: unknown })?.type;
+  return typeof type === 'string' ? type : undefined;
+}
+
+/**
+ * A pinned slot the template requires, tagged with the list that holds it
+ * ('content' or a zone key).
+ */
+interface PinnedSlot {
+  id: string;
+  type: string;
+  list: string;
+}
+
+/**
+ * A document's component slot ids: per list, and flattened for membership tests.
+ */
+interface DocumentSlots {
+  all: Set<string>;
+  byList: Map<string, string[]>;
+}
+
+/**
+ * Pinned slots held by one list, in list order.
+ */
+function pinnedSlotsIn(
+  items: unknown,
+  list: string,
+  pinMap: Record<string, boolean>
+): PinnedSlot[] {
+  if (!Array.isArray(items)) return [];
+
+  const slots: PinnedSlot[] = [];
+  for (const item of items) {
+    const id = slotId(item);
+    const type = componentTypeOf(item);
+    if (id !== undefined && type !== undefined && pinMap[id] === true) {
+      slots.push({ id, type, list });
+    }
+  }
+  return slots;
+}
+
+/**
+ * Every pinned slot a template requires, content first, then zones.
+ */
+function collectPinnedSlots(template: Template): PinnedSlot[] {
+  const pinMap = template.root?.props?._pinMap ?? {};
+
+  const slots = pinnedSlotsIn(template.content, 'content', pinMap);
+  for (const [zoneKey, zoneItems] of Object.entries(template.zones ?? {})) {
+    slots.push(...pinnedSlotsIn(zoneItems, zoneKey, pinMap));
+  }
+  return slots;
+}
+
+/**
+ * Slot ids held by one list, in list order.
+ */
+function slotIdsIn(items: unknown): string[] {
+  if (!Array.isArray(items)) return [];
+
+  const ids: string[] = [];
+  for (const item of items) {
+    const id = slotId(item);
+    if (id !== undefined) ids.push(id);
+  }
+  return ids;
+}
+
+/**
+ * Index a document's slot ids by the list that holds them.
+ */
+function collectDocumentSlots(data: Data): DocumentSlots {
+  const byList = new Map<string, string[]>();
+  byList.set('content', slotIdsIn(data.content));
+
+  const zones = (data.zones ?? {}) as Record<string, unknown>;
+  for (const [zoneKey, zoneItems] of Object.entries(zones)) {
+    byList.set(zoneKey, slotIdsIn(zoneItems));
+  }
+
+  const all = new Set<string>();
+  for (const ids of byList.values()) {
+    for (const id of ids) all.add(id);
+  }
+
+  return { all, byList };
+}
+
+/**
+ * Presence: a pinned slot may sit in any list, but its id must appear
+ * somewhere in the document.
+ */
+function findMissingSlots(pinnedSlots: PinnedSlot[], documentIds: Set<string>): ValidationError[] {
+  return pinnedSlots
+    .filter((slot) => !documentIds.has(slot.id))
+    .map((slot) => ({
+      code: 'MISSING_PINNED_COMPONENT' as const,
+      message: `Missing required pinned component: ${slot.type}`,
+      componentType: slot.type,
+    }));
+}
+
+/**
+ * Order: within each list, the pinned slots found in that list keep the
+ * template's relative order. A slot found in a different list than the
+ * template placed it in does not advance that list's chain.
+ */
+function findOutOfOrderSlots(
+  pinnedSlots: PinnedSlot[],
+  idsByList: Map<string, string[]>
+): ValidationError[] {
   const errors: ValidationError[] = [];
 
-  // Pinned component types in template content order: an instance is pinned
-  // when its id maps to true in root.props._pinMap.
-  const pinMap = template.root?.props?._pinMap ?? {};
-  const expectedTypes = (template.content ?? [])
-    .filter((c) => pinMap[c.props.id] === true)
-    .map((c) => c.type);
+  for (const list of new Set(pinnedSlots.map((slot) => slot.list))) {
+    const documentListIds = idsByList.get(list) ?? [];
+    let lastIndex = -1;
 
-  if (expectedTypes.length === 0) {
-    // No structural requirements
+    for (const slot of pinnedSlots) {
+      if (slot.list !== list) continue;
+
+      const index = documentListIds.indexOf(slot.id);
+      if (index === -1) continue;
+
+      if (index < lastIndex) {
+        errors.push({
+          code: 'PINNED_COMPONENT_OUT_OF_ORDER',
+          message: `Pinned component out of order: ${slot.type}`,
+          componentType: slot.type,
+          actualIndex: index,
+        });
+      } else {
+        lastIndex = index;
+      }
+    }
+  }
+
+  return errors;
+}
+
+/**
+ * Validate that document data conforms to template structure.
+ *
+ * Conformance resolves by slot-id membership: every pinned slot must be
+ * present somewhere in the document, and the pinned slots that share a list
+ * must hold the template's relative order there. Components carrying non-slot
+ * ids are allowed anywhere. A template with no pinned slots imposes nothing.
+ */
+export function validateStructure(data: Data, template: Template): ValidationResult {
+  const pinnedSlots = collectPinnedSlots(template);
+  if (pinnedSlots.length === 0) {
     return { valid: true, errors: [] };
   }
 
-  const documentTypes = data.content.map((c) => c.type);
-  const foundIndices: number[] = [];
-  const usedIndices = new Set<number>();
-
-  for (const expectedType of expectedTypes) {
-    let idx = -1;
-    for (let j = 0; j < documentTypes.length; j++) {
-      if (documentTypes[j] === expectedType && !usedIndices.has(j)) {
-        idx = j;
-        break;
-      }
-    }
-    if (idx !== -1) usedIndices.add(idx);
-    foundIndices.push(idx);
-  }
-
-  // Check for missing components and order
-  for (let i = 0; i < expectedTypes.length; i++) {
-    const expectedType = expectedTypes[i];
-    const foundIndex = foundIndices[i];
-
-    if (foundIndex === undefined || foundIndex === -1) {
-      errors.push({
-        code: 'MISSING_PINNED_COMPONENT',
-        message: `Missing required pinned component: ${expectedType}`,
-        componentType: expectedType,
-        expectedIndex: i,
-      });
-    } else {
-      const prevIndex = foundIndices[i - 1];
-      if (i > 0 && prevIndex !== undefined && prevIndex !== -1 && foundIndex < prevIndex) {
-        // Current component found before previous one - out of order
-        errors.push({
-          code: 'PINNED_COMPONENT_OUT_OF_ORDER',
-          message: `Pinned component out of order: ${expectedType}`,
-          componentType: expectedType,
-          expectedIndex: i,
-          actualIndex: foundIndex,
-        });
-      }
-    }
-  }
+  const { all, byList } = collectDocumentSlots(data);
+  const errors = [
+    ...findMissingSlots(pinnedSlots, all),
+    ...findOutOfOrderSlots(pinnedSlots, byList),
+  ];
 
   return {
     valid: errors.length === 0,

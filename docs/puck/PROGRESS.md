@@ -2844,3 +2844,14 @@ Found live while verifying PCC-3435 locally: the backend's `normalizePath` lower
 - Server-side "proper fix": preserve original path casing for `_registry/*` (schema + migration), which also enables a true server-side 409 on case-colliding creates. Tracked on PCC-3437.
 - Optional hard-fail on case collisions in the CI sync script (non-zero exit before any write) — deferred.
 - Sibling PCC-3430 subtasks remain open: PCC-3434 (revert-side checkpoint filter + historical row purge, collaborative-state-system), PCC-3435 (asset-stub hash divergence), PCC-3436 (CI branch resolution silent skip).
+
+---
+
+## Durable Slot Identity: Client (2026-07-10)
+
+**Branch:** `ag-pcc-3239-client-slot-identity` (stacked on `ag-pcc-3357-template-content-shape`)
+**Backend counterpart:** collaborative-state-system PROPOSAL-015 (PRs #184, #190, #192, #193)
+
+Pinning and structural conformance resolve by slot-id membership: a canvas component is pinned when its own `props.id` maps to `true` in the bound template's `root.props._pinMap` (content and zones), so a same-typed local or duplicated component is never locked and cannot satisfy a pinned slot. Creating a page from a template delegates the initial version to the backend (`documents.create` carries `templateId`, `templateVersion`, `title`; no client snapshot follows), which preserves the template's slot ids on the new page. The local template scaffold and its non-deterministic id minter are deleted; blank pages keep the client-built initial version. The per-component permission wrapper forwards the item's `props` so the id-membership resolver applies in the live editor.
+
+Suites green: puck-css 2010, css-client 306. Review findings fixed: the permission wrapper narrowed items to their type (template pins unenforced on pages), and the two create paths disagreed on empty titles.

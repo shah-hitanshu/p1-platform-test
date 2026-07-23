@@ -621,7 +621,10 @@ export interface P1PuckContextValue {
    * Puck permissions resolver function based on template and user role.
    * Pass this to <Puck resolvePermissions={...} /> to enforce template restrictions.
    */
-  resolvePermissions?: (item: { type: string }, appState: any) => {
+  resolvePermissions?: (
+    item: { type: string; props?: { id?: string; [key: string]: unknown } },
+    appState: unknown,
+  ) => {
     edit: boolean;
     drag: boolean;
     delete: boolean;

@@ -1,8 +1,8 @@
 /**
  * useP1Editor pin permissions: the per-component resolvePermissions wrapper
- * reads `root.props._pinMap` from the live app state (the loaded snapshot), so
- * a component pinned in a saved snapshot is locked (no drag/delete) after a
- * reload.
+ * reads `root.props._pinMap` from the live app state only when authoring a
+ * template document. On a bound page the context resolver reads the live
+ * template and is authoritative, so the page's own snapshot pinMap is ignored.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -148,7 +148,7 @@ describe('useP1Editor pin permissions', () => {
     mockCssContext.resolvePermissions = () => ({ ...ALL_ALLOWED });
   });
 
-  it('locks drag and delete for a component pinned in the loaded snapshot', async () => {
+  it('locks drag and delete for a snapshot-pinned component when authoring a template', async () => {
     const { result } = renderHook(() =>
       useP1Editor({
         documentPath: '_registry/templates/blog-post',
@@ -173,5 +173,70 @@ describe('useP1Editor pin permissions', () => {
     const unpinned = resolve({ props: { id: 'comp-2' } }, { permissions: ALL_ALLOWED, appState });
     expect(unpinned.drag).toBe(true);
     expect(unpinned.delete).toBe(true);
+  });
+
+  it('ignores the document snapshot pinMap on a bound page', async () => {
+    mockCssContext.currentDocument = {
+      id: 'doc-p',
+      path: 'blog/my-post',
+      siteId: 'site-test',
+    };
+
+    const { result } = renderHook(() =>
+      useP1Editor({
+        documentPath: 'blog/my-post',
+        puckConfig: { components: { HeadingBlock: {} } },
+      }),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const config = result.current.puckProps.config as {
+      components: Record<string, { resolvePermissions: WrappedResolver }>;
+    };
+    const resolve = config.components.HeadingBlock.resolvePermissions;
+    const appState = {
+      data: { root: { props: { _pinMap: { 'comp-1': true } } } },
+    };
+
+    const perms = resolve({ props: { id: 'comp-1' } }, { permissions: ALL_ALLOWED, appState });
+    expect(perms.drag).toBe(true);
+    expect(perms.delete).toBe(true);
+  });
+
+  it('forwards the component id to the context resolver so slot-id pinning applies', async () => {
+    // Slot-id pinning resolves against the bound template inside the context
+    // resolver, so the wrapper must hand it the component's own props.id.
+    mockCssContext.resolvePermissions = ((item: { type: string; props?: { id?: string } }) =>
+      item.props?.id === 'HeadingBlock-slot-1'
+        ? { ...ALL_ALLOWED, drag: false, delete: false }
+        : { ...ALL_ALLOWED }) as typeof mockCssContext.resolvePermissions;
+
+    const { result } = renderHook(() =>
+      useP1Editor({
+        documentPath: 'blog/my-post',
+        puckConfig: { components: { HeadingBlock: {} } },
+      }),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const config = result.current.puckProps.config as {
+      components: Record<string, { resolvePermissions: WrappedResolver }>;
+    };
+    const resolve = config.components.HeadingBlock.resolvePermissions;
+    const appState = { data: { root: { props: {} } } };
+
+    const pinnedSlot = resolve(
+      { props: { id: 'HeadingBlock-slot-1' } },
+      { permissions: ALL_ALLOWED, appState },
+    );
+    expect(pinnedSlot.drag).toBe(false);
+    expect(pinnedSlot.delete).toBe(false);
+
+    const localCopy = resolve(
+      { props: { id: 'HeadingBlock-local-1' } },
+      { permissions: ALL_ALLOWED, appState },
+    );
+    expect(localCopy.drag).toBe(true);
+    expect(localCopy.delete).toBe(true);
   });
 });

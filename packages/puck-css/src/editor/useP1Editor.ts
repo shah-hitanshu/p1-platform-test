@@ -526,13 +526,21 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
           ) => {
             const resolver = resolvePermsRef.current;
             if (!resolver) return params.permissions;
-            const basePerms = resolver({ type: name }, {});
+            const basePerms = resolver({ type: name, props: data?.props }, {});
 
-            const pinMap = (params.appState?.data?.root?.props?._pinMap ?? {}) as Record<string, boolean>;
-            const compId = data?.props?.id;
+            // Template-authoring mode: the context resolver only sees a
+            // metadata summary (no pins), so the document's live _pinMap is the
+            // pin source. On a bound page the resolver reads the live template
+            // and already governs pins, so the page's own snapshot pinMap is
+            // ignored — otherwise a stale pin would stay locked after the
+            // template unpins it.
+            if (isTemplateMode) {
+              const pinMap = (params.appState?.data?.root?.props?._pinMap ?? {}) as Record<string, boolean>;
+              const compId = data?.props?.id;
 
-            if (compId && pinMap[compId]) {
-              return { ...basePerms, drag: false, delete: false };
+              if (compId && pinMap[compId]) {
+                return { ...basePerms, drag: false, delete: false };
+              }
             }
 
             return basePerms;

@@ -1,11 +1,20 @@
 /**
  * createPuckPermissions Tests
+ *
+ * Pinning resolves by slot-id membership: a canvas component is pinned when
+ * its own props.id maps to true in the template's root.props._pinMap, so a
+ * same-typed component with a different id (a local copy or duplicate) is
+ * never locked.
  */
 
 import { describe, it, expect } from 'vitest';
 import type { Item as PuckItem, Data as PuckData } from '@puckeditor/core';
 import { createPuckPermissions } from '../../../features/content-type-templates/permissions/createPuckPermissions.js';
 import type { Template, TemplateSummary } from '../../../features/content-type-templates/types.js';
+
+function item(type: string, id: string): PuckItem {
+  return { type, props: { id } } as PuckItem;
+}
 
 describe('createPuckPermissions', () => {
   const mockTemplate: Template = {
@@ -32,10 +41,10 @@ describe('createPuckPermissions', () => {
   };
 
   describe('with template (templated document)', () => {
-    it('should lock drag/delete for pinned components (all roles)', () => {
+    it('locks drag/delete for a pinned slot instance (all roles)', () => {
       const resolver = createPuckPermissions(mockTemplate, 'admin', false);
 
-      const pinnedPerms = resolver({ type: 'HeadingBlock' } as PuckItem, {} as PuckData);
+      const pinnedPerms = resolver(item('HeadingBlock', 'HeadingBlock-a1b2'), {} as PuckData);
       expect(pinnedPerms.drag).toBe(false);
       expect(pinnedPerms.delete).toBe(false);
       expect(pinnedPerms.edit).toBe(true);
@@ -43,51 +52,81 @@ describe('createPuckPermissions', () => {
       expect(pinnedPerms.duplicate).toBe(true);
     });
 
-    it('should allow drag/delete for non-pinned components (admin)', () => {
-      const resolver = createPuckPermissions(mockTemplate, 'admin', false);
-
-      const nonPinnedPerms = resolver({ type: 'ImageBlock' } as PuckItem, {} as PuckData);
-      expect(nonPinnedPerms.drag).toBe(true);
-      expect(nonPinnedPerms.delete).toBe(true);
-      expect(nonPinnedPerms.edit).toBe(true);
-      expect(nonPinnedPerms.insert).toBe(true);
-      expect(nonPinnedPerms.duplicate).toBe(true);
-    });
-
-    it('should restrict all structural ops for junior-editor on non-pinned components', () => {
-      const resolver = createPuckPermissions(mockTemplate, 'junior-editor', false);
-
-      const nonPinnedPerms = resolver({ type: 'ImageBlock' } as PuckItem, {} as PuckData);
-      expect(nonPinnedPerms.drag).toBe(false);
-      expect(nonPinnedPerms.delete).toBe(false);
-      expect(nonPinnedPerms.edit).toBe(true);
-      expect(nonPinnedPerms.insert).toBe(false);
-      expect(nonPinnedPerms.duplicate).toBe(false);
-    });
-
-    it('should allow structural permissions for editor on non-pinned components', () => {
+    it('does not lock a same-typed component with a different id', () => {
       const resolver = createPuckPermissions(mockTemplate, 'editor', false);
 
-      const nonPinnedPerms = resolver({ type: 'ImageBlock' } as PuckItem, {} as PuckData);
-      expect(nonPinnedPerms.drag).toBe(true);
-      expect(nonPinnedPerms.delete).toBe(true);
-      expect(nonPinnedPerms.edit).toBe(true);
-      expect(nonPinnedPerms.insert).toBe(true);
-      expect(nonPinnedPerms.duplicate).toBe(true);
+      const perms = resolver(item('HeadingBlock', 'HeadingBlock-local-copy'), {} as PuckData);
+      expect(perms.drag).toBe(true);
+      expect(perms.delete).toBe(true);
     });
 
-    it('should lock junior-editor on pinned components', () => {
+    it('does not lock the unpinned slot instance', () => {
+      const resolver = createPuckPermissions(mockTemplate, 'admin', false);
+
+      const perms = resolver(item('ImageBlock', 'ImageBlock-e5f6'), {} as PuckData);
+      expect(perms.drag).toBe(true);
+      expect(perms.delete).toBe(true);
+      expect(perms.edit).toBe(true);
+      expect(perms.insert).toBe(true);
+      expect(perms.duplicate).toBe(true);
+    });
+
+    it('locks a pinned slot that lives in a template zone', () => {
+      const template: Template = {
+        ...mockTemplate,
+        zones: {
+          'HeadingBlock-a1b2:aside': [
+            { type: 'CtaBlock', props: { id: 'CtaBlock-z1' } },
+          ],
+        },
+        root: {
+          props: {
+            _template: { label: 'Blog Post' },
+            _pinMap: { 'CtaBlock-z1': true },
+          },
+        },
+      };
+      const resolver = createPuckPermissions(template, 'editor', false);
+
+      const perms = resolver(item('CtaBlock', 'CtaBlock-z1'), {} as PuckData);
+      expect(perms.drag).toBe(false);
+      expect(perms.delete).toBe(false);
+    });
+
+    it('restricts all structural ops for junior-editor on unpinned components', () => {
       const resolver = createPuckPermissions(mockTemplate, 'junior-editor', false);
 
-      const pinnedPerms = resolver({ type: 'HeadingBlock' } as PuckItem, {} as PuckData);
-      expect(pinnedPerms.drag).toBe(false);
-      expect(pinnedPerms.delete).toBe(false);
-      expect(pinnedPerms.edit).toBe(true);
-      expect(pinnedPerms.insert).toBe(false);
-      expect(pinnedPerms.duplicate).toBe(false);
+      const perms = resolver(item('ImageBlock', 'ImageBlock-e5f6'), {} as PuckData);
+      expect(perms.drag).toBe(false);
+      expect(perms.delete).toBe(false);
+      expect(perms.edit).toBe(true);
+      expect(perms.insert).toBe(false);
+      expect(perms.duplicate).toBe(false);
     });
 
-    it('treats a component instance without a pin map entry as unpinned', () => {
+    it('allows structural permissions for editor on unpinned components', () => {
+      const resolver = createPuckPermissions(mockTemplate, 'editor', false);
+
+      const perms = resolver(item('ImageBlock', 'ImageBlock-e5f6'), {} as PuckData);
+      expect(perms.drag).toBe(true);
+      expect(perms.delete).toBe(true);
+      expect(perms.edit).toBe(true);
+      expect(perms.insert).toBe(true);
+      expect(perms.duplicate).toBe(true);
+    });
+
+    it('locks junior-editor on pinned slot instances', () => {
+      const resolver = createPuckPermissions(mockTemplate, 'junior-editor', false);
+
+      const perms = resolver(item('HeadingBlock', 'HeadingBlock-a1b2'), {} as PuckData);
+      expect(perms.drag).toBe(false);
+      expect(perms.delete).toBe(false);
+      expect(perms.edit).toBe(true);
+      expect(perms.insert).toBe(false);
+      expect(perms.duplicate).toBe(false);
+    });
+
+    it('treats a component without a pin map entry as unpinned', () => {
       const template: Template = {
         ...mockTemplate,
         root: {
@@ -99,7 +138,15 @@ describe('createPuckPermissions', () => {
       };
       const resolver = createPuckPermissions(template, 'editor', false);
 
-      const perms = resolver({ type: 'HeadingBlock' } as PuckItem, {} as PuckData);
+      const perms = resolver(item('HeadingBlock', 'HeadingBlock-a1b2'), {} as PuckData);
+      expect(perms.drag).toBe(true);
+      expect(perms.delete).toBe(true);
+    });
+
+    it('treats an item without an id as unpinned', () => {
+      const resolver = createPuckPermissions(mockTemplate, 'editor', false);
+
+      const perms = resolver({ type: 'HeadingBlock', props: {} } as unknown as PuckItem, {} as PuckData);
       expect(perms.drag).toBe(true);
       expect(perms.delete).toBe(true);
     });
@@ -117,7 +164,7 @@ describe('createPuckPermissions', () => {
     it('should allow full structural permissions for editor', () => {
       const resolver = createPuckPermissions(summary, 'editor', false);
 
-      const perms = resolver({ type: 'HeadingBlock' } as PuckItem, {} as PuckData);
+      const perms = resolver(item('HeadingBlock', 'HeadingBlock-a1b2'), {} as PuckData);
       expect(perms.drag).toBe(true);
       expect(perms.delete).toBe(true);
       expect(perms.edit).toBe(true);
@@ -128,7 +175,7 @@ describe('createPuckPermissions', () => {
     it('should restrict structural ops for junior-editor', () => {
       const resolver = createPuckPermissions(summary, 'junior-editor', false);
 
-      const perms = resolver({ type: 'HeadingBlock' } as PuckItem, {} as PuckData);
+      const perms = resolver(item('HeadingBlock', 'HeadingBlock-a1b2'), {} as PuckData);
       expect(perms.drag).toBe(false);
       expect(perms.delete).toBe(false);
       expect(perms.edit).toBe(true);
@@ -141,7 +188,7 @@ describe('createPuckPermissions', () => {
     it('should return all-true permissions for admin', () => {
       const resolver = createPuckPermissions(null, 'admin', false);
 
-      const perms = resolver({ type: 'AnyBlock' } as PuckItem, {} as PuckData);
+      const perms = resolver(item('AnyBlock', 'AnyBlock-1'), {} as PuckData);
       expect(perms.drag).toBe(true);
       expect(perms.delete).toBe(true);
       expect(perms.edit).toBe(true);
@@ -152,7 +199,7 @@ describe('createPuckPermissions', () => {
     it('should return all-true permissions for editor', () => {
       const resolver = createPuckPermissions(null, 'editor', false);
 
-      const perms = resolver({ type: 'AnyBlock' } as PuckItem, {} as PuckData);
+      const perms = resolver(item('AnyBlock', 'AnyBlock-1'), {} as PuckData);
       expect(perms.drag).toBe(true);
       expect(perms.delete).toBe(true);
       expect(perms.edit).toBe(true);
@@ -163,7 +210,7 @@ describe('createPuckPermissions', () => {
     it('should restrict all structural ops for junior-editor on blank pages', () => {
       const resolver = createPuckPermissions(null, 'junior-editor', false);
 
-      const perms = resolver({ type: 'AnyBlock' } as PuckItem, {} as PuckData);
+      const perms = resolver(item('AnyBlock', 'AnyBlock-1'), {} as PuckData);
       expect(perms.drag).toBe(false);
       expect(perms.delete).toBe(false);
       expect(perms.edit).toBe(true);
@@ -178,9 +225,9 @@ describe('createPuckPermissions', () => {
       const editorResolver = createPuckPermissions(mockTemplate, 'editor', true);
       const juniorResolver = createPuckPermissions(mockTemplate, 'junior-editor', true);
 
-      const adminPerms = adminResolver({ type: 'ImageBlock' } as PuckItem, {} as PuckData);
-      const editorPerms = editorResolver({ type: 'ImageBlock' } as PuckItem, {} as PuckData);
-      const juniorPerms = juniorResolver({ type: 'HeadingBlock' } as PuckItem, {} as PuckData);
+      const adminPerms = adminResolver(item('ImageBlock', 'ImageBlock-e5f6'), {} as PuckData);
+      const editorPerms = editorResolver(item('ImageBlock', 'ImageBlock-e5f6'), {} as PuckData);
+      const juniorPerms = juniorResolver(item('HeadingBlock', 'HeadingBlock-a1b2'), {} as PuckData);
 
       // Admin
       expect(adminPerms.drag).toBe(false);
@@ -209,7 +256,7 @@ describe('createPuckPermissions', () => {
     it('should allow full permissions for admin/editor on unknown components', () => {
       const resolver = createPuckPermissions(mockTemplate, 'editor', false);
 
-      const perms = resolver({ type: 'UnknownBlock' } as PuckItem, {} as PuckData);
+      const perms = resolver(item('UnknownBlock', 'UnknownBlock-1'), {} as PuckData);
       expect(perms.drag).toBe(true);
       expect(perms.delete).toBe(true);
       expect(perms.edit).toBe(true);
@@ -220,7 +267,7 @@ describe('createPuckPermissions', () => {
     it('should restrict all structural ops for junior-editor on unknown components', () => {
       const resolver = createPuckPermissions(mockTemplate, 'junior-editor', false);
 
-      const perms = resolver({ type: 'UnknownBlock' } as PuckItem, {} as PuckData);
+      const perms = resolver(item('UnknownBlock', 'UnknownBlock-1'), {} as PuckData);
       expect(perms.drag).toBe(false);
       expect(perms.delete).toBe(false);
       expect(perms.edit).toBe(true);

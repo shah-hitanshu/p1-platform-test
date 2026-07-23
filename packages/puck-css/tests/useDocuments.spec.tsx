@@ -174,11 +174,10 @@ describe('useDocuments', () => {
       expect(result.current.documents).toEqual(updatedDocs);
     });
 
-    // Component #2: the Create Page modal collects a page title. On create it
-    // must be persisted into the new page's INITIAL version snapshot at
-    // root.props.title (the same field Puck's root "title" input reads/writes),
-    // and must compose with template scaffolding (options.templateId) rather
-    // than replace it.
+    // Component #2: the Create Page modal collects a page title. On the blank
+    // page path it must be persisted into the new page's INITIAL version
+    // snapshot at root.props.title (the same field Puck's root "title" input
+    // reads/writes).
     it('seeds root.props.title into the initial version snapshot when a title is provided', async () => {
       (mockClient.documents.list as ReturnType<typeof vi.fn>).mockResolvedValue([]);
       (mockClient.documents.create as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -224,8 +223,8 @@ describe('useDocuments', () => {
       expect(snapshot.root.props.title).toBeUndefined();
     });
 
-    it('merges the title into provided initialData (template scaffold) without dropping content', async () => {
-      const scaffold = {
+    it('merges the title into provided initialData without dropping content', async () => {
+      const initialData = {
         content: [{ type: 'Heading', props: { id: 'h1' } }],
         root: { props: { foo: 'bar' } },
       };
@@ -242,23 +241,17 @@ describe('useDocuments', () => {
       await waitFor(() => expect(result.current.loading).toBe(false));
 
       await act(async () => {
-        await result.current.create('/about', scaffold as never, {
+        await result.current.create('/about', initialData as never, {
           title: 'Blog Post',
-          templateId: 't1',
-          templateVersion: 2,
         });
       });
 
-      // Template binding AND the content snapshot now flow through the single
-      // documents.create call (no separate versions.create).
       expect(mockClient.documents.create).toHaveBeenCalledWith({
         siteId: 'site1',
         branchId: 'branch1',
         path: '/about',
-        templateId: 't1',
-        templateVersion: 2,
         snapshot: {
-          content: scaffold.content,
+          content: initialData.content,
           root: { props: { foo: 'bar', title: 'Blog Post' } },
         },
       });
@@ -266,7 +259,7 @@ describe('useDocuments', () => {
 
       const snapshot = (mockClient.documents.create as ReturnType<typeof vi.fn>).mock
         .calls[0][0].snapshot;
-      expect(snapshot.content).toEqual(scaffold.content);
+      expect(snapshot.content).toEqual(initialData.content);
       expect(snapshot.root.props).toEqual({ foo: 'bar', title: 'Blog Post' });
     });
 
@@ -328,6 +321,87 @@ describe('useDocuments', () => {
       expect(result.current.getByPath('page1')).toEqual({ id: 'doc1', path: 'page1' });
       expect(result.current.getByPath('page2')).toEqual({ id: 'doc2', path: 'page2' });
       expect(result.current.getByPath('nonexistent')).toBeUndefined();
+    });
+  });
+
+  describe('create from template', () => {
+    it('delegates the initial version to the backend, preserving slot ids', async () => {
+      (mockClient.documents.list as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (mockClient.documents.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'doc-1',
+        path: 'page-1',
+      });
+
+      const { result } = renderHook(() =>
+        useDocuments({ client: mockClient, siteId: 'site1', branchId: 'branch1' }),
+      );
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      await act(async () => {
+        await result.current.create('page-1', undefined, {
+          templateId: 'tpl-1',
+          templateVersion: 3,
+          title: 'My page',
+        });
+      });
+
+      expect(mockClient.documents.create).toHaveBeenCalledWith({
+        siteId: 'site1',
+        branchId: 'branch1',
+        path: 'page-1',
+        templateId: 'tpl-1',
+        templateVersion: 3,
+        title: 'My page',
+      });
+      expect(mockClient.versions.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a client snapshot combined with a template', async () => {
+      (mockClient.documents.list as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+      const { result } = renderHook(() =>
+        useDocuments({ client: mockClient, siteId: 'site1', branchId: 'branch1' }),
+      );
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      await expect(
+        result.current.create(
+          'page-1',
+          { content: [], root: { props: {} }, zones: {} } as never,
+          { templateId: 'tpl-1' },
+        ),
+      ).rejects.toThrow(/template/i);
+      expect(mockClient.documents.create).not.toHaveBeenCalled();
+      expect(mockClient.versions.create).not.toHaveBeenCalled();
+    });
+
+    it('still builds the initial version locally for a blank page', async () => {
+      (mockClient.documents.list as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (mockClient.documents.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'doc-2',
+        path: 'page-2',
+      });
+      (mockClient.versions.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'v1' });
+
+      const { result } = renderHook(() =>
+        useDocuments({ client: mockClient, siteId: 'site1', branchId: 'branch1' }),
+      );
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      await act(async () => {
+        await result.current.create('page-2', undefined, { title: 'Blank' });
+      });
+
+      expect(mockClient.versions.create).not.toHaveBeenCalled();
+      const snapshot = (mockClient.documents.create as ReturnType<typeof vi.fn>).mock.calls[0][0]
+        .snapshot as { root: { props: { title?: string } } };
+      expect(snapshot.root.props.title).toBe('Blank');
     });
   });
 });

@@ -527,16 +527,16 @@ function P1PuckProviderInner({
           siteId, branchIdRef.current, template.id
         );
         // A template without a content array has no stored layout snapshot;
-        // scaffolding from it would silently create a blank page. An empty
+        // creating a page from it would silently produce a blank page. An empty
         // array is a legitimate empty layout and passes.
         if (!fullTemplate.content) {
           throw new Error(
             `Template "${template.label || template.name}" has no layout yet. Open it in the editor and add components before creating pages from it.`
           );
         }
-        const { scaffoldFromTemplate } = await import('../features/content-type-templates/editor/useTemplateScaffold.js');
-        const initialData = scaffoldFromTemplate(fullTemplate) as unknown as PuckData;
-        await createDocumentRawRef.current(path, initialData, {
+        // The backend builds the initial version from the template, preserving
+        // each component's durable slot id; no client snapshot is sent.
+        await createDocumentRawRef.current(path, undefined, {
           templateId: fullTemplate.id,
           templateVersion: fullTemplate.version,
           title,

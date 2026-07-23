@@ -236,15 +236,21 @@ describe('P1PuckProvider - Template Integration', () => {
       expect(result.current.currentTemplate).toEqual(mockTemplate);
     });
 
-    // Test that resolvePermissions locks pinned components
+    // Test that resolvePermissions locks pinned slot instances
     const resolvePerms = result.current.resolvePermissions;
     if (!resolvePerms) throw new Error('resolvePermissions not available');
-    const pinnedPerms = resolvePerms({ type: 'HeadingBlock' } as PuckItem, {} as PuckData);
+    const pinnedPerms = resolvePerms(
+      { type: 'HeadingBlock', props: { id: 'HeadingBlock-a1b2' } } as PuckItem,
+      {} as PuckData,
+    );
     expect(pinnedPerms.drag).toBe(false);
     expect(pinnedPerms.delete).toBe(false);
 
-    // Test that non-pinned components are allowed
-    const nonPinnedPerms = resolvePerms({ type: 'TextBlock' } as PuckItem, {} as PuckData);
+    // Test that unpinned slot instances are allowed
+    const nonPinnedPerms = resolvePerms(
+      { type: 'TextBlock', props: { id: 'TextBlock-c3d4' } } as PuckItem,
+      {} as PuckData,
+    );
     expect(nonPinnedPerms.drag).toBe(true);
     expect(nonPinnedPerms.delete).toBe(true);
   });

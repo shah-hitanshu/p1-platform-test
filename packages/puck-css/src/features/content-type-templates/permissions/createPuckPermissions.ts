@@ -27,6 +27,7 @@ export interface PuckPermissions {
  */
 export interface PuckItem {
   type: string;
+  props?: { id?: string; [key: string]: unknown };
 }
 
 /**
@@ -42,15 +43,16 @@ export interface PuckAppState {
  */
 export type PuckPermissionResolver = (
   item: PuckItem,
-  appState: PuckAppState
+  appState: unknown
 ) => PuckPermissions;
 
 /**
  * Create a Puck permissions resolver based on template and user role.
  *
- * A component type counts as pinned when the template's content has an
- * instance whose id maps to `true` in `root.props._pinMap`. Pages correlate
- * to the template by component type (durable per-instance ids are PCC-3358).
+ * A canvas component is pinned when its own `props.id` is a slot id that maps
+ * to `true` in `root.props._pinMap` and has a matching component instance in
+ * the template's content or zones. A same-typed component with a different id
+ * (a local copy or duplicate) is never locked.
  *
  * Permission logic:
  * - **Pinned components**: drag=false, delete=false for all roles
@@ -84,12 +86,29 @@ export function createPuckPermissions(
   role: ContentRole,
   isHistoricalVersion: boolean
 ): PuckPermissionResolver {
-  const pinnedTypes = new Set<string>();
+  const pinnedSlotIds = new Set<string>();
   if (template && 'content' in template) {
     const pinMap = template.root?.props?._pinMap ?? {};
+    const instanceIds = new Set<string>();
     for (const item of template.content ?? []) {
-      if (pinMap[item.props.id] === true) {
-        pinnedTypes.add(item.type);
+      if (typeof item?.props?.id === 'string') {
+        instanceIds.add(item.props.id);
+      }
+    }
+    const zones = template.zones ?? {};
+    for (const zoneItems of Object.values(zones)) {
+      if (Array.isArray(zoneItems)) {
+        for (const item of zoneItems) {
+          const id = (item as { props?: { id?: unknown } })?.props?.id;
+          if (typeof id === 'string') {
+            instanceIds.add(id);
+          }
+        }
+      }
+    }
+    for (const [id, pinned] of Object.entries(pinMap)) {
+      if (pinned === true && instanceIds.has(id)) {
+        pinnedSlotIds.add(id);
       }
     }
   }
@@ -108,8 +127,9 @@ export function createPuckPermissions(
 
     const juniorEditorRestricted = role === 'junior-editor';
 
-    // Pinned component: locked for all roles
-    if (pinnedTypes.has(item.type)) {
+    // Pinned slot: locked for all roles when the item carries a pinned slot id
+    const itemId = item.props?.id;
+    if (typeof itemId === 'string' && pinnedSlotIds.has(itemId)) {
       return {
         edit: true,
         drag: false,

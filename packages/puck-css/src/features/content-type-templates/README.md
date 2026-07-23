@@ -1,13 +1,13 @@
 # Content Type Templates
 
-Structural templates that content editors scaffold new documents from, with role-based permissions that keep a page's required components in place.
+Structural templates that content editors create new documents from, with role-based permissions that keep a page's required components in place.
 
 ## What it does
 
 - Templates are stored and edited as Puck-shaped snapshots, the same shape as a document.
 - `_registry/templates/{name}` documents hold a template's layout; editing one in the canvas is how a template's content is authored.
-- Creating a document from a template copies its content into a fresh page (`scaffoldFromTemplate`).
-- Pinning a component in a template (`root.props._pinMap`) marks it structurally required; pages scaffolded from that template can't have the pinned component moved or removed, regardless of editor role.
+- Creating a document from a template binds the page to the template; the backend builds the initial version from the template snapshot, preserving each component's durable slot id (`props.id`).
+- Pinning a component in a template (`root.props._pinMap`) marks its slot structurally required; a page can't have the pinned slot instance moved or removed, regardless of editor role. A same-typed component with a different id is never locked.
 - `ContentRole` (`admin` / `editor` / `junior-editor`) gates coarser editing capabilities such as adding components or overriding a page's URL pattern.
 
 ## Template shape
@@ -68,16 +68,22 @@ await client.templates.update(siteId, branchId, template.id, {
 
 A `TemplateStore` (`createInMemoryTemplateStore`, `createApiTemplateStore`) wraps the same operations plus document-to-template bindings (`getBinding` / `setBinding` / `listBindings` / `removeBinding`); the API-backed store's binding methods are managed server-side through the documents API and are not implemented on the store itself.
 
-## Scaffolding a page
+## Creating a page from a template
 
 ```typescript
-import { scaffoldFromTemplate } from '@pantheon-systems/puck-css';
-
 const template = await client.templates.get(siteId, branchId, templateId);
-const initialData = scaffoldFromTemplate(template); // Puck Data for a new document
+
+await client.documents.create({
+  siteId,
+  branchId,
+  path,
+  templateId: template.id,
+  templateVersion: template.version,
+  title,
+});
 ```
 
-Each content item is copied with a fresh component id, so a scaffolded page's components are independent of the template's.
+The backend builds the page's initial version from the template snapshot, keeping each component's `props.id`. Those slot ids are what pin locking and structural validation resolve against, so the page stays correlated to the template per instance rather than per type.
 
 ## Validating structure
 
@@ -91,7 +97,7 @@ if (!result.valid) {
 }
 ```
 
-A document conforms when every pinned component type from the template is present in the document, in the same relative order. Non-pinned components can be added freely.
+A document conforms when every pinned slot id from the template is present among the document's component ids (across `content` and `zones`), and the pinned slots found in a list keep the template's relative order within that list. Components carrying other ids can be added freely.
 
 ## Permissions
 
@@ -118,7 +124,7 @@ The backend serves a top-level `label` and a `components` array (with `pinned` a
 - `types.ts` - `ContentRole`, `TemplateBinding`, and re-exports of the `@pantheon-systems/css-client` template types
 - `stores/` - `TemplateStore` interface, in-memory and API-backed implementations
 - `permissions/` - role-based `ComponentPermissions`, the `useContentRole` / `useResolveContentRole` hooks, and the Puck `resolvePermissions` resolver
-- `editor/` - scaffolding (`scaffoldFromTemplate`) and role/history permission merging
+- `editor/` - role/history permission merging (`useTemplatePermissions`)
 - `validation/` - `validateStructure` and its error codes
 - `ui/` - template picker, the template metadata panel, and the pin-toggle action bar button used by the editor
 - `hooks/useTemplateList.ts` - fetches and refreshes a branch's `TemplateSummary[]`

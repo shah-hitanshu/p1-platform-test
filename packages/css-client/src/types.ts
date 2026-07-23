@@ -239,6 +239,8 @@ export interface CreateDocumentParams {
   templateVersion?: number;
   /** Optional initial version content, written in the same call as the create */
   snapshot?: Record<string, unknown>;
+  /** Optional page title seeded into the initial version's root.props.title */
+  title?: string;
 }
 
 /**
