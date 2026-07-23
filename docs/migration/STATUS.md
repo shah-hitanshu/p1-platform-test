@@ -95,6 +95,26 @@ new depth; puck-css's pds-core.css copy step verified under merged hoisting.
   Activation checklist and diffs-vs-originals in that directory's README.
   Nothing in Phase 3 can publish, deploy, or authenticate anywhere.
 
+## Merge blockers on PR #1 (org ruleset 17414165 — needs a bypass)
+
+An org-level ruleset applies two rules to main that the migration PR is structurally
+incapable of satisfying — by design, not by defect:
+
+1. **required_signatures** — Nick's commits are all signed/verified (SSH signing was
+   already configured). The unsigned commits are the four `git subtree add` merge
+   commits and the imported source-repo histories (thousands of pre-existing commits).
+   Retroactively signing them means rewriting history, which changes every SHA and
+   severs the subtree merge parents — it would destroy the history preservation that
+   is the point of the migration.
+2. **required_linear_history** — forbids merge commits, but this PR must merge as a
+   merge commit (squash/rebase sever the imported histories).
+
+Resolution: someone on the ruleset's bypass list (org admin / EM) merges the PR, or an
+org admin temporarily exempts p1-platform from ruleset 17414165 for this one merge.
+Same governance conversation as the Wiz exception. After the merge, normal PRs comply
+fully: commits are signed automatically, and ordinary (non-subtree) branches can be
+squashed safely if linear history is desired going forward.
+
 ## Wiz IaC scanner note (PR #1)
 
 The org-injected Wiz IaC check fails on PR #1. The flagged terraform is byte-identical
