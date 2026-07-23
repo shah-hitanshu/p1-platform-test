@@ -621,6 +621,7 @@ async function handleAgentCheckpointRollback(request: Request): Promise<Response
       rolledBack: true,
       checkpointId: result.checkpoint.id,
       documentsReverted: result.documentsReverted,
+      documentsSkipped: result.documentsSkipped,
     });
   } catch (error) {
     if (error instanceof CheckpointNotFoundError) {

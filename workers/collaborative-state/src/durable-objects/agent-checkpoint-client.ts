@@ -188,6 +188,11 @@ export async function rollbackToAgentCheckpoint(
       );
       const reverted = String(result.documentsReverted);
       console.log(`Rolled back to checkpoint ${checkpointId}, reverted ${reverted} docs (direct DB)`);
+      if (result.documentsSkipped > 0) {
+        console.warn(
+          `Rollback to checkpoint ${checkpointId} skipped ${String(result.documentsSkipped)} registry document(s)`,
+        );
+      }
       return true;
     } catch (error) {
       console.warn('Direct DB rollback failed, falling back to HTTP:', error);
@@ -223,9 +228,18 @@ export async function rollbackToAgentCheckpoint(
     }
 
     const rawResult: unknown = await response.json();
-    const result = rawResult as { rolledBack: boolean; documentsReverted: number };
-    const { rolledBack, documentsReverted } = result;
+    const result = rawResult as {
+      rolledBack: boolean;
+      documentsReverted: number;
+      documentsSkipped?: number;
+    };
+    const { rolledBack, documentsReverted, documentsSkipped } = result;
     console.log(`Rolled back to checkpoint ${checkpointId}, reverted ${String(documentsReverted)} documents`);
+    if (documentsSkipped !== undefined && documentsSkipped > 0) {
+      console.warn(
+        `Rollback to checkpoint ${checkpointId} skipped ${String(documentsSkipped)} registry document(s)`,
+      );
+    }
     return rolledBack;
   } catch (error) {
     console.error('Error rolling back to checkpoint:', error);

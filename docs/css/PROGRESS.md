@@ -5240,6 +5240,40 @@ Both gaps trace back to a design decision recorded in §0 itself ("no read scope
 - Re-run the full local end-to-end test (seed a fresh token, run the actual `sync-puck-registry.ts` CI script from `puck-css-integration` against this local backend) now that both gaps are closed — this was in progress when Phase 2 was discovered to be necessary, and resumes next.
 - A real Cloudflare-tunnel + GitHub-Actions test (the originally-requested "test end to end ... using cloudflare tunnel") is a separate, larger escalation: a cloud Actions runner does `npm ci` against published semver deps, but the CI script's `@pantheon-systems/puck-css` subpath export only exists on an unpublished local branch — so that path additionally needs a decision on publishing a prerelease, vendoring a built tarball, or using a self-hosted runner, none of which have been decided or started.
 - Not part of this phase, found incidentally by the security review and left unfixed as out of scope: `templateId`/`templateVersion` on the document-create endpoint aren't scoped to the caller's site before being used in a `document_relations` FK lookup. Pre-existing (predates `write:registry` entirely, affects every caller), low real-world impact (requires guessing an unguessable UUID, discloses no content), but worth a cheap defensive fix at some point — mirror the existing `path` scoping check onto `templateId`.
+
+## PCC-3434: Filter `_registry/*` from Checkpoint Revert + Purge Historical Rows (2026-07-22)
+
+### Commits
+
+- `88fbd30` — Failing tests for registry filtering in checkpoint revert (red state)
+- `153b630` — Implementation + migration 044 (green state)
+
+### Context
+
+PR #205 excluded `_registry/*` (except `_registry/templates/*`) from checkpoint **capture** only. `revertToCheckpoint` restored every `checkpoint_documents` row unfiltered, and no migration cleaned pre-#205 rows — so reverting any pre-#205 checkpoint replayed stale registry descriptors out-of-band (index never told), the exact PCC-3430 desync. Reachable via three live triggers: expired-session cleanup alarm (`rollbackToAgentCheckpoint`), the user revert endpoint, and template-migration rollback (whose `pre_migration` checkpoints were full snapshots — maximally contaminated).
+
+### What was done
+
+- `revertToCheckpoint`: JS prefilter on `documentsAtCheckpoint` (drop `_registry/*` except `_registry/templates/*`), used for the batch-vs-loop threshold, the per-document loop, and the `documentsReverted` count. The batch `INSERT...SELECT` additionally joins `app.documents` and applies the same escaped, parameterized `NOT LIKE / LIKE` predicate as capture — defense in depth so the SQL path is safe on its own.
+- Result gains `documentsSkipped` (flows through the revert API response automatically), and a `console.warn` names the checkpoint whenever registry rows are skipped — observable, never blocking.
+- Migration `044_purge_registry_checkpoint_documents.sql`: hard-deletes `checkpoint_documents` rows referencing non-template `_registry/*` documents, so historical checkpoints are clean at the source rather than relying on the runtime filter forever.
+
+### Decisions made along the way
+
+- Filter + purge over erroring on poisoned checkpoints (user decision after discussion): an error would break the two unattended triggers (cleanup alarm would fail repeatedly; admin migration rollback blocked mid-incident) and make pre-#205 content history permanently unrevertable — the registry rows are incidental contamination, not something callers asked for. Loudness handled via `documentsSkipped` + warning instead.
+- Hard-delete over reversible neutralization for the purge (user decision): the rows are poison, and old checkpoints' `documentCount` was already inflated by them.
+
+### Verification
+
+- TDD: 6 new tests (batch-path filtering with SQL predicate + escaped params, templates exception, threshold-on-filtered-count with per-document survivor check, registry-only checkpoint still restores structures, warn-on-skip, no-warn-when-clean). Red confirmed (5 fail pre-fix), then green: spec 24/24; full services+routes suites 2334/2334.
+- Migration validated against local Postgres (podman `css-postgres`) with seeded poison in a rolled-back transaction: 4 seeded registry rows → 3 deleted, template row survives, all content rows intact.
+- Lint: 2 new errors auto-fixed; touched files clean (repo carries ~480 pre-existing unrelated errors, confirmed via stash-diff baseline).
+- Security review (manual): patterns parameterized via `escapeLikePattern` identical to capture; migration is static SQL with no inputs; `documentsSkipped` discloses only a count. No findings.
+
+### Follow-up
+
+- The two-writer race between CI write-only registry sync and a concurrent editor session (consequence #3 on the ticket) remains open as a separate design concern.
+- Machine note: this host runs the `css-postgres` container under podman (`/opt/podman/bin/podman`), not docker, despite CLAUDE.md's docker instructions.
 ---
 
 ### PROPOSAL-015 Phase 1: Document-Side Slot Identity Plumbing

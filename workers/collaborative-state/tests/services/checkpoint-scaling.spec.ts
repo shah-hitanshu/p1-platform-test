@@ -886,4 +886,201 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
       ).rejects.toThrow(InvalidCheckpointParamsError);
     });
   });
+
+  // =========================================================================
+  // Revert registry filtering
+  // =========================================================================
+
+  describe('revert registry filtering', () => {
+    // Checkpoints created before capture excluded _registry/* still contain
+    // registry rows. Reverting them must not restore those rows: registry
+    // documents are sync-owned metadata, and restoring them out-of-band
+    // desyncs them from the registry index. _registry/templates/* documents
+    // are user-authored content and must keep reverting normally — the same
+    // exception capture applies.
+
+    function mockRevertFlow(
+      db: { query: unknown },
+      docs: MockVersionWithDocumentRow[],
+      documentInsertCount: number,
+    ): void {
+      let chain = vi
+        .mocked(db.query as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({ rows: [createMockCheckpointRow({ id: 'cp-old', parent_checkpoint_id: null })] }) // getCheckpoint
+        .mockResolvedValueOnce({ rows: docs }) // getDocumentsAtCheckpoint
+        .mockResolvedValueOnce({ rows: [] }); // BEGIN
+      for (let i = 0; i < documentInsertCount; i++) {
+        chain = chain.mockResolvedValueOnce({ rows: [] }); // document_versions INSERT(s)
+      }
+      chain
+        .mockResolvedValueOnce({ rows: [] }) // getStructuresAtCheckpoint
+        .mockResolvedValueOnce({ rows: [] }) // DELETE structures
+        .mockResolvedValueOnce({ rows: [] }) // INSERT structures
+        .mockResolvedValueOnce({ rows: [] }) // DELETE metadata
+        .mockResolvedValueOnce({ rows: [] }) // INSERT metadata
+        .mockResolvedValueOnce({ rows: [] }) // UPDATE checkpoint status
+        .mockResolvedValueOnce({ rows: [] }) // COMMIT
+        .mockResolvedValueOnce({ rows: [] }) // createCheckpoint BEGIN
+        .mockResolvedValueOnce({ rows: [createMockInsertRow({ id: 'cp-after-revert' })] }) // INSERT with CTE
+        .mockResolvedValueOnce({ rows: [] }) // get latest versions
+        .mockResolvedValueOnce({ rows: [] }) // INSERT structures
+        .mockResolvedValueOnce({ rows: [] }) // INSERT metadata
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    }
+
+    function documentVersionInsertCalls(db: { query: unknown }): unknown[][] {
+      return vi
+        .mocked(db.query as ReturnType<typeof vi.fn>)
+        .mock.calls.filter(
+          (call) =>
+            typeof call[0] === 'string' && (call[0]).includes('INSERT INTO app.document_versions'),
+        );
+    }
+
+    it('excludes registry documents from a batch revert and reports them as skipped', async () => {
+      const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
+      const db = await import('../../src/db');
+
+      const docs = [
+        createMockVersionWithDocument({ document_id: 'doc-1', document_path: 'pages/home' }),
+        createMockVersionWithDocument({ document_id: 'doc-2', document_path: 'pages/about' }),
+        createMockVersionWithDocument({ document_id: 'doc-3', document_path: 'pages/contact' }),
+        createMockVersionWithDocument({ document_id: 'doc-4', document_path: '_registry/components/heroblock' }),
+        createMockVersionWithDocument({ document_id: 'doc-5', document_path: '_registry/index' }),
+      ];
+      mockRevertFlow(db, docs, 1);
+
+      const result = await revertToCheckpoint({
+        checkpointId: 'cp-old',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+      });
+
+      expect(result.documentsReverted).toBe(3);
+      expect(result.documentsSkipped).toBe(2);
+
+      const [bulkInsert] = documentVersionInsertCalls(db);
+      const sql = bulkInsert[0] as string;
+      expect(sql).toContain('JOIN app.documents');
+      expect(sql).toContain('NOT LIKE');
+      const params = bulkInsert[1] as unknown[];
+      expect(params).toContain('\\_registry/%');
+      expect(params).toContain('\\_registry/templates/%');
+    });
+
+    it('keeps registry template documents revertible', async () => {
+      const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
+      const db = await import('../../src/db');
+
+      const docs = [
+        createMockVersionWithDocument({ document_id: 'doc-1', document_path: 'pages/home' }),
+        createMockVersionWithDocument({ document_id: 'doc-2', document_path: 'pages/about' }),
+        createMockVersionWithDocument({ document_id: 'doc-3', document_path: '_registry/templates/press-release' }),
+        createMockVersionWithDocument({ document_id: 'doc-4', document_path: '_registry/components/heroblock' }),
+      ];
+      mockRevertFlow(db, docs, 1);
+
+      const result = await revertToCheckpoint({
+        checkpointId: 'cp-old',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+      });
+
+      expect(result.documentsReverted).toBe(3);
+      expect(result.documentsSkipped).toBe(1);
+    });
+
+    it('applies the batch threshold to the filtered count, not the raw row count', async () => {
+      const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
+      const db = await import('../../src/db');
+
+      // 4 raw rows would take the batch path; only 2 survive filtering, so
+      // the per-document path must be used, inserting exactly the survivors.
+      const docs = [
+        createMockVersionWithDocument({ document_id: 'doc-1', document_path: 'pages/home' }),
+        createMockVersionWithDocument({ document_id: 'doc-2', document_path: 'pages/about' }),
+        createMockVersionWithDocument({ document_id: 'doc-3', document_path: '_registry/components/heroblock' }),
+        createMockVersionWithDocument({ document_id: 'doc-4', document_path: '_registry/index' }),
+      ];
+      mockRevertFlow(db, docs, 2);
+
+      const result = await revertToCheckpoint({
+        checkpointId: 'cp-old',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+      });
+
+      expect(result.documentsReverted).toBe(2);
+      expect(result.documentsSkipped).toBe(2);
+
+      const inserts = documentVersionInsertCalls(db);
+      expect(inserts).toHaveLength(2);
+      const insertedDocIds = inserts.map((call) => (call[1] as unknown[])[0]);
+      expect(insertedDocIds).toEqual(['doc-1', 'doc-2']);
+    });
+
+    it('restores structures but writes no document versions when a checkpoint holds only registry documents', async () => {
+      const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
+      const db = await import('../../src/db');
+
+      const docs = [
+        createMockVersionWithDocument({ document_id: 'doc-1', document_path: '_registry/components/heroblock' }),
+        createMockVersionWithDocument({ document_id: 'doc-2', document_path: '_registry/index' }),
+      ];
+      mockRevertFlow(db, docs, 0);
+
+      const result = await revertToCheckpoint({
+        checkpointId: 'cp-old',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+      });
+
+      expect(result.documentsReverted).toBe(0);
+      expect(result.documentsSkipped).toBe(2);
+      expect(documentVersionInsertCalls(db)).toHaveLength(0);
+      expect(result.checkpoint.id).toBe('cp-after-revert');
+    });
+
+    it('warns when registry documents are skipped', async () => {
+      const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
+      const db = await import('../../src/db');
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const docs = [
+        createMockVersionWithDocument({ document_id: 'doc-1', document_path: 'pages/home' }),
+        createMockVersionWithDocument({ document_id: 'doc-2', document_path: '_registry/index' }),
+      ];
+      mockRevertFlow(db, docs, 1);
+
+      await revertToCheckpoint({
+        checkpointId: 'cp-old',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+      });
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('_registry'));
+      warnSpy.mockRestore();
+    });
+
+    it('does not warn when nothing is skipped', async () => {
+      const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
+      const db = await import('../../src/db');
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const docs = [
+        createMockVersionWithDocument({ document_id: 'doc-1', document_path: 'pages/home' }),
+        createMockVersionWithDocument({ document_id: 'doc-2', document_path: 'pages/about' }),
+      ];
+      mockRevertFlow(db, docs, 2);
+
+      await revertToCheckpoint({
+        checkpointId: 'cp-old',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+      });
+
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+  });
 });

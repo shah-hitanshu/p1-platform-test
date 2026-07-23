@@ -845,6 +845,44 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
     });
 
+    it('should forward documentsSkipped from the revert result', async () => {
+      const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+      const checkpointService = await import('../../src/services/checkpoint-service');
+
+      const mockCheckpoint = {
+        id: 'checkpoint-uuid-reverted',
+        branchId: 'branch-uuid-123',
+        checkpointType: 'manual' as const,
+        createdById: 'agent-uuid-456',
+        createdByType: 'agent' as const,
+        createdAt: '2026-01-28T10:10:00.000Z',
+        status: 'completed' as const,
+      };
+
+      vi.mocked(checkpointService.revertToCheckpoint).mockResolvedValue({
+        checkpoint: mockCheckpoint,
+        documentsReverted: 2,
+        documentsSkipped: 3,
+      });
+
+      const request = new Request('http://localhost/internal/agent-checkpoint-rollback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'correct-secret',
+        },
+        body: JSON.stringify(createValidRollbackBody()),
+      });
+
+      const response = await handleInternalRoutes(request, {
+        internalSecret: 'correct-secret',
+      });
+
+      expect(response.status).toBe(200);
+      const responseBody = await response.json();
+      expect(responseBody.documentsSkipped).toBe(3);
+    });
+
     it('should require checkpointId', async () => {
       const { handleInternalRoutes } = await import('../../src/routes/internal-api');
 

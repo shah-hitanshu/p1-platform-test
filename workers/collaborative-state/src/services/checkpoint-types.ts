@@ -80,6 +80,12 @@ export interface RevertToCheckpointParams {
 export interface RevertToCheckpointResult {
   checkpoint: Checkpoint;
   documentsReverted: number;
+  /**
+   * _registry/* rows (except _registry/templates/*) found in the checkpoint
+   * and excluded from the revert. Non-zero only for checkpoints captured
+   * before registry documents were filtered out of capture.
+   */
+  documentsSkipped: number;
 }
 
 /**

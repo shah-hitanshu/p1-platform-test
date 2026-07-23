@@ -327,6 +327,24 @@ export async function revertToCheckpoint(
   // Get documents at the checkpoint (before transaction, for verification)
   const documentsAtCheckpoint = await getDocumentsAtCheckpoint(params.checkpointId);
 
+  // Checkpoints captured before _registry/* was excluded from capture still
+  // carry registry rows. Restoring them would desync sync-owned registry
+  // documents from the registry index, so the revert applies the same filter
+  // capture does: skip _registry/* except user-authored _registry/templates/*.
+  const revertableDocuments = documentsAtCheckpoint.filter(
+    (doc) =>
+      !doc.documentPath.startsWith('_registry/') ||
+      doc.documentPath.startsWith('_registry/templates/'),
+  );
+  const documentsSkipped = documentsAtCheckpoint.length - revertableDocuments.length;
+  if (documentsSkipped > 0) {
+    console.warn(
+      `[revertToCheckpoint] Skipping ${String(documentsSkipped)} _registry/* document(s) in checkpoint ` +
+        `${params.checkpointId}: registry documents are sync-owned and are not restored by revert. ` +
+        'This checkpoint predates registry filtering in checkpoint capture.',
+    );
+  }
+
   try {
     // Use transaction for the revert operations
     await query('BEGIN');
@@ -336,8 +354,15 @@ export async function revertToCheckpoint(
     // For small counts, use the per-document loop (simpler, negligible overhead).
     const BATCH_REVERT_THRESHOLD = 3;
 
-    if (documentsAtCheckpoint.length >= BATCH_REVERT_THRESHOLD) {
-      // Batch INSERT: single query for all documents at once
+    // Same escaped patterns as capture: '_' is a LIKE wildcard, so the
+    // literal underscore must be escaped and the pattern parameterized.
+    const registryPathPattern = escapeLikePattern('_registry/') + '%';
+    const registryTemplatesPathPattern = escapeLikePattern('_registry/templates/') + '%';
+
+    if (revertableDocuments.length >= BATCH_REVERT_THRESHOLD) {
+      // Batch INSERT: single query for all documents at once. The path
+      // predicate mirrors the JS filter above so the SQL path stays safe on
+      // its own.
       await query(
         `INSERT INTO app.document_versions (
           document_id, branch_id, version_number, snapshot,
@@ -353,17 +378,26 @@ export async function revertToCheckpoint(
           $3
         FROM app.checkpoint_documents cd
         JOIN app.document_versions dv ON cd.document_version_id = dv.id
+        JOIN app.documents d ON cd.document_id = d.id
         JOIN LATERAL (
           SELECT COALESCE(MAX(version_number), 0) as max_version
           FROM app.document_versions
           WHERE document_id = cd.document_id AND branch_id = $1
         ) lv ON true
-        WHERE cd.checkpoint_id = $4`,
-        [checkpoint.branchId, params.createdById, params.createdByType, params.checkpointId],
+        WHERE cd.checkpoint_id = $4
+          AND (d.path NOT LIKE $5 ESCAPE '\\' OR d.path LIKE $6 ESCAPE '\\')`,
+        [
+          checkpoint.branchId,
+          params.createdById,
+          params.createdByType,
+          params.checkpointId,
+          registryPathPattern,
+          registryTemplatesPathPattern,
+        ],
       );
     } else {
       // Per-document INSERT for small counts
-      for (const doc of documentsAtCheckpoint) {
+      for (const doc of revertableDocuments) {
         await query(
           `INSERT INTO app.document_versions (
             document_id, branch_id, version_number, snapshot,
@@ -455,6 +489,7 @@ export async function revertToCheckpoint(
 
   return {
     checkpoint: newCheckpoint,
-    documentsReverted: documentsAtCheckpoint.length,
+    documentsReverted: revertableDocuments.length,
+    documentsSkipped,
   };
 }
