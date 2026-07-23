@@ -8,6 +8,11 @@
  *
  * Required env vars (see validateEnv below for the full fallback contract):
  *   CSS_BASE_URL, CSS_SITE_ID, CSS_REGISTRY_API_KEY
+ * Optional:
+ *   CSS_BRANCH_ID — CSS branch to target (in CI: the pushed git ref's name)
+ *   CSS_DEFAULT_BRANCH — the repo's default branch name (defaults to "main");
+ *   when CSS_BRANCH_ID equals it, the site's isMain branch is targeted
+ *   regardless of naming (see resolveBranchId for the resolution contract)
  *
  * CSS_REGISTRY_API_KEY must be a sat_ site token scoped to write:registry
  * only — do not reuse a read-scoped token (P1_CSS_API_KEY). Because that
@@ -29,6 +34,7 @@ export interface ValidatedEnv {
   siteId: string;
   apiKey: string;
   branchOverride?: string;
+  defaultBranchName?: string;
   puckConfigPath: string;
 }
 
@@ -37,6 +43,11 @@ export function validateEnv(env: Record<string, string | undefined>): ValidatedE
   const siteId = env.CSS_SITE_ID ?? env.NEXT_PUBLIC_CSS_SITE_ID;
   const apiKey = env.CSS_REGISTRY_API_KEY;
   const branchOverride = env.CSS_BRANCH_ID ?? env.NEXT_PUBLIC_CSS_BRANCH_ID;
+  // Defaults to "main": the CSS main content branch is always literally
+  // named "main", so for repos whose default git branch is also "main" this
+  // resolves to the same branch it would have matched by name. Repos with a
+  // differently-named default branch (master, trunk) must set it explicitly.
+  const defaultBranchName = env.CSS_DEFAULT_BRANCH ?? "main";
   const puckConfigPath = env.PUCK_CONFIG_PATH ?? "puck.config.tsx";
 
   const missing: string[] = [];
@@ -66,6 +77,7 @@ export function validateEnv(env: Record<string, string | undefined>): ValidatedE
     siteId: siteId as string,
     apiKey: apiKey as string,
     branchOverride,
+    defaultBranchName,
     puckConfigPath,
   };
 }
@@ -119,8 +131,24 @@ export function filterAssetStubbedDescriptors(descriptors: Descriptor[]): {
   return { writable, skipped };
 }
 
-export function resolveBranchId(branches: Branch[], siteId: string, override?: string): string {
-  if (override !== undefined && override !== "") {
+/**
+ * Resolution contract: an override (in CI, always the pushed git ref's name)
+ * matches a CSS branch by id or name — EXCEPT when it equals the repo's
+ * default branch name, which always resolves the site's isMain branch. CSS
+ * main is always literally named "main", so without that rule a repo whose
+ * default branch is "master"/"trunk" would silently skip on every push. The
+ * default branch means the main registry, even over a coincidental CSS
+ * branch named e.g. "master".
+ */
+export function resolveBranchId(
+  branches: Branch[],
+  siteId: string,
+  override?: string,
+  defaultBranchName?: string,
+): string {
+  const isDefaultBranch =
+    override !== undefined && override !== "" && override === defaultBranchName;
+  if (override !== undefined && override !== "" && !isDefaultBranch) {
     const match = branches.find((b) => b.id === override || b.name === override);
     if (match === undefined) {
       throw new NoBranchMatchError(`No branch matching "${override}" found for site ${siteId}`);
@@ -141,7 +169,8 @@ async function main(): Promise<void> {
   // never installs a process-wide loader hook.
   register("./asset-stub-hooks.mjs", import.meta.url);
 
-  const { baseUrl, siteId, apiKey, branchOverride, puckConfigPath } = validateEnv(process.env);
+  const { baseUrl, siteId, apiKey, branchOverride, defaultBranchName, puckConfigPath } =
+    validateEnv(process.env);
 
   const configUrl = pathToFileURL(path.resolve(process.cwd(), puckConfigPath)).href;
   const mod: unknown = await import(configUrl);
@@ -160,7 +189,7 @@ async function main(): Promise<void> {
 
   const client = new P1Client({ baseUrl, apiKey });
   const branches = await client.branches.list(siteId);
-  const branchId = resolveBranchId(branches, siteId, branchOverride);
+  const branchId = resolveBranchId(branches, siteId, branchOverride, defaultBranchName);
 
   if (dryRun) {
     console.log(

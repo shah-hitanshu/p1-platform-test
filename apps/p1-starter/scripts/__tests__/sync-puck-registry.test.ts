@@ -50,6 +50,19 @@ describe("validateEnv", () => {
     expect(result.branchOverride).toBe("explicit");
   });
 
+  it("reads CSS_DEFAULT_BRANCH into defaultBranchName, overriding the default", () => {
+    const result = validateEnv(baseEnv({ CSS_DEFAULT_BRANCH: "master" }));
+    expect(result.defaultBranchName).toBe("master");
+  });
+
+  it("defaults defaultBranchName to 'main' when CSS_DEFAULT_BRANCH is not set", () => {
+    // Safe because the CSS main content branch is always literally named
+    // "main": a push override of "main" resolves to the same branch either
+    // by name match or by isMain, so the default only adds semantics.
+    const result = validateEnv(baseEnv());
+    expect(result.defaultBranchName).toBe("main");
+  });
+
   it("defaults PUCK_CONFIG_PATH to puck.config.tsx", () => {
     const result = validateEnv(baseEnv());
     expect(result.puckConfigPath).toBe("puck.config.tsx");
@@ -127,6 +140,40 @@ describe("resolveBranchId", () => {
 
   it("throws NoBranchMatchError when an explicit override matches no branch by id or name", () => {
     expect(() => resolveBranchId(branches as never, "site-123", "nonexistent")).toThrow(NoBranchMatchError);
+  });
+});
+
+describe("resolveBranchId default-branch semantics", () => {
+  // In CI the override is always the pushed git ref's name, so a repo whose
+  // default branch is not literally named "main" would never match the CSS
+  // main branch (whose name is always "main") — the sync silently skips on
+  // every default-branch push. When the caller also supplies the repo's
+  // default branch name, an override equal to it must resolve via isMain.
+  const branches = [
+    { id: "b-1", siteId: "site-123", name: "main", isMain: true },
+    { id: "b-2", siteId: "site-123", name: "staging", isMain: false },
+  ];
+
+  it("resolves the isMain branch when the override is the repo's default branch name", () => {
+    expect(resolveBranchId(branches as never, "site-123", "master", "master")).toBe("b-1");
+  });
+
+  it("prefers isMain over a coincidental name match for the default branch", () => {
+    const withDecoy = [...branches, { id: "b-3", siteId: "site-123", name: "master", isMain: false }];
+    expect(resolveBranchId(withDecoy as never, "site-123", "master", "master")).toBe("b-1");
+  });
+
+  it("throws NoBranchMatchError for a default-branch override when no isMain branch exists", () => {
+    const noMain = [{ id: "b-2", siteId: "site-123", name: "staging", isMain: false }];
+    expect(() => resolveBranchId(noMain as never, "site-123", "master", "master")).toThrow(NoBranchMatchError);
+  });
+
+  it("keeps plain name matching for overrides that are not the default branch", () => {
+    expect(resolveBranchId(branches as never, "site-123", "staging", "master")).toBe("b-2");
+  });
+
+  it("keeps the silent-skip path for non-default refs that match nothing", () => {
+    expect(() => resolveBranchId(branches as never, "site-123", "feature-x", "master")).toThrow(NoBranchMatchError);
   });
 });
 

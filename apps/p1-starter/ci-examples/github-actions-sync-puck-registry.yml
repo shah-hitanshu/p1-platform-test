@@ -12,10 +12,15 @@
 #   3. Copy this file to .github/workflows/sync-puck-registry.yml.
 #
 # Triggers on push to any branch that touches puck.config.tsx or
-# components/puck/** — the sync script resolves the CSS branch by matching
-# the pushed git branch's name (falling back to the site's main branch when
-# no CSS_BRANCH_ID is given). A push on a branch with no matching CSS branch
+# components/puck/**. The sync script resolves the CSS branch from the pushed
+# git branch's name: the repo's default branch always targets the site's main
+# CSS branch (whatever the git branch is called), any other ref matches a CSS
+# branch by name. A push on a non-default branch with no matching CSS branch
 # is not an error: the script logs a skip and exits 0.
+#
+# CSS_DEFAULT_BRANCH defaults to "main" if omitted — repos whose default
+# branch has another name (master, trunk) need the line below (or must set
+# the variable themselves) for default-branch pushes to sync at all.
 name: Sync Puck Component Registry
 
 on:
@@ -49,3 +54,4 @@ jobs:
           CSS_SITE_ID: ${{ secrets.CSS_SITE_ID }}
           CSS_REGISTRY_API_KEY: ${{ secrets.CSS_REGISTRY_API_KEY }}
           CSS_BRANCH_ID: ${{ github.event.inputs.branch_id || github.ref_name }}
+          CSS_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}

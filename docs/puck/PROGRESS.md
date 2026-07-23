@@ -2845,6 +2845,40 @@ Found live while verifying PCC-3435 locally: the backend's `normalizePath` lower
 - Optional hard-fail on case collisions in the CI sync script (non-zero exit before any write) — deferred.
 - Sibling PCC-3430 subtasks remain open: PCC-3434 (revert-side checkpoint filter + historical row purge, collaborative-state-system), PCC-3435 (asset-stub hash divergence), PCC-3436 (CI branch resolution silent skip).
 
+## PCC-3436: CI Branch Resolution — Default Branch Targets isMain (2026-07-22)
+
+### Commits
+
+- `44d949c` — Failing tests for default-branch resolution via isMain (red state)
+- (this commit) — Implementation (green state)
+
+### Context
+
+The CI sync resolves its target CSS branch by matching the pushed git ref's name (`CSS_BRANCH_ID = inputs.branch_id || github.ref_name`), while CSS main is always literally named `main`. A repo whose default branch is `master`/`trunk` therefore never matches, and the script's no-match path is a silent success (exit 0) — the registry safety net never runs, forever, while the workflow example's comment claimed a fallback to main that was dead code on push (the override is never blank). Reproduced locally: `CSS_BRANCH_ID=master` → `Skipping: No branch matching "master"` → exit 0.
+
+### What was done
+
+- `resolveBranchId` gains a `defaultBranchName` parameter: an override equal to the repo's default branch name always resolves the site's `isMain` branch — even over a coincidental CSS branch literally named e.g. `master` (user decision: default branch means the main registry, period). All other resolution unchanged: explicit ids/names still match directly, non-default refs with no match still throw `NoBranchMatchError` (benign skip in CI — correct there, since falling back to main would write feature-branch descriptors into the main registry).
+- `validateEnv` reads optional `CSS_DEFAULT_BRANCH`, defaulting to `"main"` (user decision: safe because the CSS main content branch is always literally named `main`, so for main-defaulted repos the default resolves the same branch it would have name-matched — on-by-default semantics, explicit var only needed for master/trunk repos); `main()` wires it through.
+- `ci-examples/github-actions-sync-puck-registry.yml` passes `CSS_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}` and its comment now states the actual resolution contract instead of the fictional fallback.
+- Resolution contract documented on `resolveBranchId` and in the script header.
+
+### Decisions made along the way
+
+- isMain wins over a coincidental name match for the default branch (user decision — deterministic, matches stated intent).
+- Blanket fallback-to-main rejected: it would let any feature-branch push write that code's descriptors into the main registry. The silent skip is correct for non-default refs; only the default-branch case was broken.
+- Two-writer race (CI write-only vs editor on the same branch) explicitly out of scope — design issue tracked on the ticket, not a resolution bug.
+
+### Verification
+
+- TDD: 7 new tests (isMain resolution for default-branch override, decoy-name preference, no-isMain error, unchanged non-default matching, unchanged skip path, env var read + absence). Red state confirmed (3 behavior-change tests fail pre-fix), then green: script suites 66/66. Lint 0 errors; full `pnpm build` clean.
+- Live validation against the local backend: `CSS_BRANCH_ID=master CSS_DEFAULT_BRANCH=master` now resolves the CSS main branch (dry run reports descriptors to write); `CSS_BRANCH_ID=feature-x` still benign-skips with exit 0.
+- Security review (manual): change surface is one env-var read and a string equality; no new network calls, no untrusted input beyond CI-controlled env, write targeting becomes strictly more deterministic. No findings.
+
+### Follow-up
+
+- Sites adopting the fix must copy the updated ci-example (new `CSS_DEFAULT_BRANCH` env line); without it behavior is unchanged (name matching), by design.
+- Sibling PCC-3430 subtask remains open: PCC-3434 (revert-side checkpoint filter + historical row purge, collaborative-state-system).
 ---
 
 ## Durable Slot Identity: Client (2026-07-10)
