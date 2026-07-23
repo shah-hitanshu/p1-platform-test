@@ -22,9 +22,9 @@ All commands run from repo root.
 | Database migrations (local) | [x] | `POSTGRES_CONNECTION_STRING=... pnpm --filter collaborative-state-worker db:migrate` |
 | Create a changeset | [x] | `pnpm exec changeset` |
 | Terraform plan/apply (with local GCP creds) | [x] | `make tf-plan ENV=staging` |
-| CI on pull requests | [ ] | — (Phase 3: workflows not yet written) |
-| Publish packages to npm | [ ] | — (Phase 4: npm trusted-publisher config still points at the old repos) |
-| Deploy workers to staging/production | [ ] | — (Phase 3/4: no deploy workflows yet; GCP WIF doesn't trust this repo yet) |
+| CI on pull requests | [x] | `.github/workflows/ci.yml` — read-only build/test/lint/e2e/Postgres; triggers on PRs + manual dispatch; known-red parity tasks run non-blocking |
+| Publish packages to npm | [ ] | staged draft in `docs/migration/workflows-staged/` — inert until Phase 4 (npm trusted publishers still point at the old repos) |
+| Deploy workers to staging/production | [ ] | staged drafts in `docs/migration/workflows-staged/` — inert until Phase 4 (GCP WIF doesn't trust this repo yet) |
 
 Common patterns:
 

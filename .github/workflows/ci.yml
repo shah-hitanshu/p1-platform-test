@@ -1,0 +1,119 @@
+# CI — read-only verification. No publishing, no deploys, no GCP/WIF, no write
+# permissions. Triggers on PRs and manual dispatch only (inert until a PR opens).
+#
+# Gating mirrors the source repos' effective gates at the import baseline
+# (docs/migration/STATUS.md): tasks that were red upstream run as non-blocking
+# "known-issues" so parity failures never pressure code changes here.
+name: ci
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TURBO_TELEMETRY_DISABLED: '1'
+
+jobs:
+  verify:
+    name: build / typecheck / lint / test (hard gates)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build everything
+        run: pnpm exec turbo run build
+      - name: Typecheck (except known-red collaborative-state-worker)
+        run: pnpm exec turbo run typecheck --filter='!collaborative-state-worker'
+      - name: Lint (except known-red collaborative-state-worker, css-mcp-server)
+        run: pnpm exec turbo run lint --filter='!collaborative-state-worker' --filter='!css-mcp-server'
+      - name: Test (except known-red css-frontend, puck-css; worker suite capped)
+        run: pnpm exec turbo run test --filter='!css-frontend' --filter='!@pantheon-systems/puck-css' --concurrency=4
+
+  known-issues:
+    name: known-red parity tasks (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Known-red tasks (fail identically in source repos — see STATUS.md)
+        run: |
+          pnpm exec turbo run build --filter=collaborative-state-worker --filter=css-frontend --filter=@pantheon-systems/puck-css
+          pnpm exec turbo run typecheck lint --filter=collaborative-state-worker --continue || true
+          pnpm exec turbo run lint --filter=css-mcp-server --continue || true
+          pnpm exec turbo run test --filter=css-frontend --filter=@pantheon-systems/puck-css --continue || true
+
+  integration-db:
+    name: postgres integration (CSS worker)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cssuser
+          POSTGRES_PASSWORD: csspass
+          POSTGRES_DB: cssdb
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cssuser -d cssdb"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      POSTGRES_CONNECTION_STRING: postgresql://cssuser:csspass@localhost:5432/cssdb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build worker dependencies
+        run: pnpm exec turbo run build --filter='collaborative-state-worker^...'
+      - name: Migrations (fresh schema + duplicate-number guard)
+        run: |
+          pnpm --filter collaborative-state-worker db:migrate
+          dupes=$(ls workers/collaborative-state/src/db/migrations/*.sql | sed 's|.*/||; s/_.*//' | sort | uniq -d)
+          if [ -n "$dupes" ]; then echo "Duplicate migration numbers: $dupes"; exit 1; fi
+      - name: DB + integration tests
+        run: |
+          pnpm --filter collaborative-state-worker test:db
+          pnpm --filter collaborative-state-worker test:integration
+
+  e2e:
+    name: playwright e2e (starter app vs mock backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build starter dependencies
+        run: pnpm exec turbo run build --filter='@pantheon-systems/p1-starter^...'
+      - run: pnpm exec playwright install chromium
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

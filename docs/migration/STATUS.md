@@ -80,6 +80,21 @@ new depth; puck-css's pds-core.css copy step verified under merged hoisting.
   `@types/react` peer so mixed 18/19 type majors resolve per-consumer.
 - **examples/** is now a workspace member (it wasn't in CSS); two trivial lint fixes there.
 
+## Phase 3: complete (2026-07-23)
+
+- `.github/workflows/ci.yml` — read-only verification (permissions: contents:read),
+  triggers on pull_request + workflow_dispatch only, so it is DORMANT until the
+  migration PR opens. Hard gates mirror upstream's effective gating; the five
+  known-red parity tasks run in a non-blocking job. All hard-gate commands
+  verified green locally before landing. Jobs: verify (build/typecheck/lint/test,
+  worker suite concurrency-capped), known-issues (non-blocking), integration-db
+  (postgres:16 service + migrations + duplicate-number guard), e2e (Playwright
+  vs mock server).
+- Deploy/publish workflows authored as INERT drafts in
+  `docs/migration/workflows-staged/` (GitHub only executes .github/workflows/).
+  Activation checklist and diffs-vs-originals in that directory's README.
+  Nothing in Phase 3 can publish, deploy, or authenticate anywhere.
+
 ## Phase 3/4 identity plan (per Pantheon WIF practices + A. Glago, 2026-07-23)
 
 Reference: Confluence "Workload Identity Federation (WIF)" (Catalog space, page 3630497808).
