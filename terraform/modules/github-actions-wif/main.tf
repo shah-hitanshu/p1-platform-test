@@ -53,7 +53,7 @@ variable "github_repo" {
 variable "additional_repos" {
   description = "Other repositories authorized to impersonate this service account: satellite services that deploy into the same project"
   type        = list(string)
-  default     = ["p1-media-r2"]
+  default     = ["p1-media-r2", "p1-platform"]
 }
 
 variable "sa_roles" {
