@@ -80,6 +80,36 @@ new depth; puck-css's pds-core.css copy step verified under merged hoisting.
   `@types/react` peer so mixed 18/19 type majors resolve per-consumer.
 - **examples/** is now a workspace member (it wasn't in CSS); two trivial lint fixes there.
 
+## Phase 3/4 identity plan (per Pantheon WIF practices + A. Glago, 2026-07-23)
+
+Reference: Confluence "Workload Identity Federation (WIF)" (Catalog space, page 3630497808).
+Our existing setup already conforms: the org's single WIF pool (`pantheon-global-pool`,
+project 374988255856 / `pantheon-wif`) is exactly what `terraform/modules/github-actions-wif`
+binds against. GCP projects are the grandfathered `pantheon-content-cloud` (prod) and
+`pantheon-content-cloud-staging` — **shared with live Content Publisher resources; all
+terraform changes additive, plan-reviewed, staging first.**
+
+What needs which identity:
+- **CI (build/test/lint/e2e/Postgres container): no GCP, no WIF.** Can land immediately.
+- **npm publish: no WIF either** — GitHub OIDC → npm trusted publishing. Needs per-package
+  config on npmjs.com (repo `pantheon-systems/p1-platform` + workflow `publish.yml`),
+  add-before-remove, all 7 packages.
+- **Worker deploys / terraform plan+apply: WIF.** Additive change: `additional_repos =
+  ["p1-media-r2", "p1-platform"]` in the github-actions-wif module — grants the existing
+  `css-github-actions[-plan]@` SAs' impersonation to this repo. Apply from the OLD
+  collaborative-state-system repo's deploy-infra workflow (it's still trusted; the monorepo
+  isn't until this lands — chicken-and-egg resolved by using the old lane one last time).
+  Mirror the same edit in this repo's terraform to stay in sync until cutover.
+- Then port deploy-workers/deploy-infra/terraform-plan workflows here, recreate the
+  staging/production GitHub environments (same vars as old repo), validate in order:
+  terraform-plan on a PR (read-only SA) → deploy dry-run → staging deploy.
+
+Open questions for infra (Andrew): (1) is extending the grandfathered `css-github-actions@`
+bindings acceptable, or should a new repo adopt the `ci-$REPO@` SA naming + templated
+principalsets from gce-terraform? (2) do the templated principalsets' protected-branch /
+self-hosted-runner conditions apply to us, or does plain `attribute.repository` remain OK?
+(3) worth a dry run against the `pantheon-testing-wif` pool (`testing: true` on auth-wif)?
+
 ## Next steps
 
 1. Remaining Phase 2: delete sbx1/sandbox env blocks from all wrangler configs
