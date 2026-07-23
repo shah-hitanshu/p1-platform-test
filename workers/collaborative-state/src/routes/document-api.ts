@@ -40,7 +40,9 @@ import {
   normalizePath,
   isRegistryWritePath,
   isRegistryScopedServicePrincipal,
+  type DocumentVersion,
 } from '../services/document-types';
+import { buildDocumentSkeletonFromTemplate } from '../services/document-skeleton';
 import { assertPermission, AuthorizationError, getEffectiveRole } from '../auth/authorization';
 import { templateMetadata } from './template-api';
 import { validatePagination } from './validation';
@@ -345,8 +347,21 @@ async function handleCreateDocumentOnBranch(
   // Check if template is deprecated before creating a document from it,
   // and default template_version to current version when not provided.
   let resolvedTemplateVersion = body.templateVersion;
+  let snapshotForCreate = body.title
+    ? { title: body.title, ...body.snapshot }
+    : body.snapshot;
   if (body.templateId !== undefined && body.templateId !== '') {
-    const latestTemplateVersion = await getLatestDocumentVersion(body.templateId, branchId);
+    // Templates commonly live on main and inherit into feature branches via
+    // copy-on-write fallback, so resolve the template's latest version through
+    // the fallback rather than the branch-local lookup.
+    const mainBranch = await getMainBranch(siteId);
+    let latestTemplateVersion: DocumentVersion | null = null;
+    if (mainBranch !== null) {
+      const fallback = await getLatestDocumentVersionWithFallback(
+        body.templateId, branchId, mainBranch.id,
+      );
+      latestTemplateVersion = fallback?.version ?? null;
+    }
     if (latestTemplateVersion?.snapshot !== undefined) {
       if (templateMetadata(latestTemplateVersion.snapshot).deprecated === true) {
         return errorResponse('Cannot create document from deprecated template', 400);
@@ -355,17 +370,22 @@ async function handleCreateDocumentOnBranch(
     if (resolvedTemplateVersion === undefined && latestTemplateVersion) {
       resolvedTemplateVersion = latestTemplateVersion.versionNumber;
     }
-  }
 
-  const snapshot = body.title
-    ? { title: body.title, ...body.snapshot }
-    : body.snapshot;
+    // A template-sourced document's snapshot is built from the template, not
+    // supplied by the client, so the two are mutually exclusive.
+    if (body.snapshot !== undefined) {
+      return errorResponse('Cannot supply a snapshot when creating a document from a template', 400);
+    }
+    snapshotForCreate = buildDocumentSkeletonFromTemplate(latestTemplateVersion?.snapshot, {
+      title: body.title,
+    });
+  }
 
   const result = await createDocumentOnBranch({
     siteId,
     branchId,
     path: body.path,
-    snapshot,
+    snapshot: snapshotForCreate,
     templateId: body.templateId,
     templateVersion: resolvedTemplateVersion,
     createdById: principal.dbUserId ?? principal.id,

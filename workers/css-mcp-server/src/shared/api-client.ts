@@ -939,6 +939,10 @@ export class McpApiClient {
    * `path` and creates both document and version in a single transaction.
    * This is preferred over separate create-then-version calls.
    *
+   * When `snapshot` is omitted, the backend builds the first version itself
+   * (e.g. from a template) — the key is left out of the body entirely rather
+   * than sent as `null` or `undefined`.
+   *
    * Used by create_page — bypasses agent edit workflow since the doc is new
    * (no checkpoint is needed before writing a first version).
    */
@@ -946,17 +950,24 @@ export class McpApiClient {
     siteId: string,
     branchId: string,
     path: string,
-    snapshot: unknown,
+    snapshot?: unknown,
     templateId?: string,
     templateVersion?: number,
+    title?: string,
   ): Promise<CreateDocumentResult> {
     const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents`;
-    const body: Record<string, unknown> = { path, snapshot };
+    const body: Record<string, unknown> = { path };
+    if (snapshot !== undefined) {
+      body.snapshot = snapshot;
+    }
     if (templateId !== undefined) {
       body.templateId = templateId;
     }
     if (templateVersion !== undefined) {
       body.templateVersion = templateVersion;
+    }
+    if (title !== undefined) {
+      body.title = title;
     }
     const response = await this.doFetch(url, {
       method: 'POST',

@@ -12,6 +12,7 @@ import { query } from '../db';
 import { compare as jsonPatchCompare, applyPatch } from 'fast-json-patch';
 import { classifyChange } from './action-classification';
 import type { PuckAction } from './action-classification';
+import { enforceUniqueSlotIds } from './slot-id-backstop';
 
 // =============================================================================
 // Types
@@ -244,6 +245,10 @@ export async function createDocumentVersion(
     throw new InvalidDocumentVersionParamsError('Created by ID is required');
   }
 
+  // Enforce unique slot ids before the unchanged-snapshot and forward-patch
+  // comparisons so a stored patch can never reintroduce a duplicate id.
+  const snapshot = enforceUniqueSlotIds(params.documentId, params.snapshot);
+
   // Check for duplicate snapshot unless explicitly skipped
   let latestVersion: DocumentVersion | null = null;
   if (params.skipDuplicateCheck !== true) {
@@ -251,7 +256,7 @@ export async function createDocumentVersion(
       params.documentId,
       params.branchId,
     );
-    if (latestVersion?.snapshot && deepEqual(latestVersion.snapshot, params.snapshot)) {
+    if (latestVersion?.snapshot && deepEqual(latestVersion.snapshot, snapshot)) {
       // Snapshot unchanged — but if puckActions are provided, record them
       // on the existing version so the migration system can see them.
       if (params.puckActions && params.puckActions.length > 0) {
@@ -293,7 +298,7 @@ export async function createDocumentVersion(
     try {
       const patchOps = jsonPatchCompare(
         latestVersion.snapshot,
-        params.snapshot,
+        snapshot,
       );
       if (patchOps.length > 0) {
         forwardPatch = patchOps;
@@ -348,7 +353,7 @@ export async function createDocumentVersion(
       [
         params.documentId,
         params.branchId,
-        params.snapshot,
+        snapshot,
         forwardPatch ? JSON.stringify(forwardPatch) : (params.patch ? JSON.stringify(params.patch) : null),
         finalActionType,
         finalActionMetadata ?? null,
@@ -762,7 +767,7 @@ export async function batchSyncToPostgres(
   for (const payload of payloads) {
     documentIds.push(payload.documentId);
     branchIds.push(payload.branchId);
-    snapshots.push(payload.snapshot);
+    snapshots.push(enforceUniqueSlotIds(payload.documentId, payload.snapshot));
     actorIds.push(payload.actorId);
     actorTypes.push(payload.actorType);
 

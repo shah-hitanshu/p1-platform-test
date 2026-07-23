@@ -5240,3 +5240,62 @@ Both gaps trace back to a design decision recorded in §0 itself ("no read scope
 - Re-run the full local end-to-end test (seed a fresh token, run the actual `sync-puck-registry.ts` CI script from `puck-css-integration` against this local backend) now that both gaps are closed — this was in progress when Phase 2 was discovered to be necessary, and resumes next.
 - A real Cloudflare-tunnel + GitHub-Actions test (the originally-requested "test end to end ... using cloudflare tunnel") is a separate, larger escalation: a cloud Actions runner does `npm ci` against published semver deps, but the CI script's `@pantheon-systems/puck-css` subpath export only exists on an unpublished local branch — so that path additionally needs a decision on publishing a prerelease, vendoring a built tarball, or using a self-hosted runner, none of which have been decided or started.
 - Not part of this phase, found incidentally by the security review and left unfixed as out of scope: `templateId`/`templateVersion` on the document-create endpoint aren't scoped to the caller's site before being used in a `document_relations` FK lookup. Pre-existing (predates `write:registry` entirely, affects every caller), low real-world impact (requires guessing an unguessable UUID, discloses no content), but worth a cheap defensive fix at some point — mirror the existing `path` scoping check onto `templateId`.
+---
+
+### PROPOSAL-015 Phase 1: Document-Side Slot Identity Plumbing
+
+**Status:** Complete
+**Branch:** `ag-pcc-3239-slot-identity`
+**Proposal:** `proposals/PROPOSAL-015-durable-slot-identity.md`
+**Commits:**
+- `f3b0159` - PROPOSAL-015 (durable slot identity)
+- `0631e98` - Test suites: puck-data toolkit, write-time id uniqueness, MCP re-mint boundary
+- `29f53fc` - Test additions: occupant-reliability bail and deterministic id healing
+
+#### What was built
+
+- `workers/src/services/component-identity.ts` (new): shared walker over `content[]` and `zones[*][]`, Type-uuid id minting, first-occurrence-wins duplicate healing, and recursive fragment re-minting. Duplicate healing is deterministic (FNV-1a over previous id, type, and duplicate ordinal), so repeated flushes of the same duplicate converge on one id instead of churning versions.
+- `workers/src/services/slot-id-backstop.ts` (new): `enforceUniqueSlotIds` wraps the dedupe and emits a structured warning naming the document and each previous/new id pair, since a duplicate reaching the database means an upstream boundary missed re-minting.
+- Backstop wired at every content-originating write: `createDocumentVersion` (dedupe runs before the unchanged-snapshot short-circuit and the forward-patch computation), `batchSyncToPostgres`, `executeDirectSync` (CoW baseline detection stays on the raw snapshot), `createDocumentOnBranch`, and the dormant `syncCrdtToPostgresConsolidated`.
+- MCP injection boundary (`workers/mcp-server/src/shared/component-ids.ts` plus `remintOperationIds` in `tools.ts`): `add` always re-mints, nested components included; a whole-component `replace` preserves the incoming id, with its nested children untouched, only when the id matches the current occupant at that position; a whole-array `replace` keeps elements whose ids already appear in that array and re-mints the rest; a replace that cannot read its occupant reliably (snapshot fetch failed, or an earlier op in the same batch shifted the target list) rejects the whole request with guidance to split the batch.
+
+#### Tests
+
+`component-identity.spec.ts` (34), `document-version-service.id-uniqueness.spec.ts` (11), `branch-document-service.id-uniqueness.spec.ts` (5), `postgres-sync-manager.id-uniqueness.spec.ts` (4), `apply-document-edits.id-remint.spec.ts` (13). Full regression sweep of touched modules: 207 backend plus 173 MCP tests passing.
+
+#### Decisions
+
+- Bail over simulate: the MCP boundary does not simulate the Durable Object's sequential op application to track index shifts; a replace whose occupant cannot be read reliably rejects the request instead (detect-and-bail).
+- Deterministic healing rather than random re-minting at the backstop, so a duplicate persisting in the live CRDT converges instead of producing a new id every flush.
+- Site import preserves ids (a bundle carries a template and its instances together); merge manual resolution relies on the write-time backstop.
+
+#### Reviews
+
+Security review: no findings. Code review (correctness and cleanup passes): 11 findings, all remediated (five mechanical cleanups, occupant-reliability bail, whole-array re-mint policy, nested-id preservation, deterministic healing, dormant-path guard).
+
+---
+
+### PROPOSAL-015 Phase 2: Backend Skeleton Generation
+
+**Status:** Complete
+**Branch:** `ag-pcc-3239-backend-skeleton` (stacked on the slot-identity base + the document_relations edges)
+**Proposal:** `proposals/PROPOSAL-015-durable-slot-identity.md`
+
+#### What was built
+
+- `workers/src/services/document-skeleton.ts` (new): `buildDocumentSkeletonFromTemplate` deep-copies a content-shaped template's content and zones with each component's slot id preserved and seeds a fresh root from document metadata, so a document created from a template inherits the template's slot ids. Template-authoring root props (the pin map and template descriptor) are not carried onto the created document.
+- `handleCreateDocumentOnBranch` (`workers/src/routes/document-api.ts`): when a create request carries a template reference, the backend builds version 1 from the template rather than trusting a client snapshot, and rejects a client-supplied snapshot alongside a template. The template is resolved through the main-branch copy-on-write fallback, so a template authored on main builds pages on any branch. A new optional `title` on the create body seeds the built root. The template's current version is recorded as the relation edge's synced version.
+- MCP `create_page` (`workers/mcp-server/src/shared/tools.ts`) and `createDocument` (`api-client.ts`): a template-referenced `create_page` calls the backend without a client-built snapshot so instances inherit the template's slot ids, rejects a template combined with explicit components, and threads a page title. Blank-page creation is unchanged.
+
+#### Tests
+
+`document-skeleton.spec.ts` (9), `document-api.create-from-template.spec.ts` (7), `create-page-from-template.spec.ts` (4). Regression sweeps green: `document-api.spec.ts` (57), the MCP shared and handler suites (165).
+
+#### Gating and decisions
+
+- Content-shape dependency: templates on this branch are still manifest-shaped (the template content-shape cutover, PCC-3357 / PROPOSAL-014, is a separate workstream). The builder and wiring are unit-tested against the target content shape; a manifest-shaped template yields an empty skeleton, so end-to-end creation from a real stored template only produces content once the cutover lands. This branch is not for merge before that.
+- create_page rejects a template combined with explicit components (structure comes from the template; components are added afterward via apply_document_edits).
+
+#### Reviews
+
+Security review: no findings (the deep clone only sees admin-authored, branch-scoped template content; the client snapshot is rejected; title lands only as a JSON value). Code review: one high-severity correctness bug fixed (template resolved without copy-on-write fallback produced empty pages on feature branches). Two findings left open for review rather than expanded mid-phase: template-based create_page seeds only the title from root_props (other root props are dropped), and `createDocument` grew to a seven-parameter positional signature that could collapse into an options object.

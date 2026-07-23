@@ -35,6 +35,7 @@ import {
 } from './document-types';
 import type { DocumentOnBranch } from './document-types';
 import { TEMPLATE_RELATION_JOIN, DOCUMENT_WITH_TEMPLATE_COLUMNS } from './document-queries';
+import { enforceUniqueSlotIds } from './slot-id-backstop';
 
 /**
  * Lists documents that have versions on a specific branch.
@@ -378,6 +379,7 @@ export async function createDocumentOnBranch(
 
     // Create the initial version with provided snapshot or empty object
     // After deletion of tombstoned versions, this will be version 1
+    const snapshot = enforceUniqueSlotIds(document.id, params.snapshot ?? {});
     const versionResult = await query<DocumentVersionRow>(
       `INSERT INTO app.document_versions (
         document_id, branch_id, version_number, snapshot,
@@ -392,7 +394,7 @@ export async function createDocumentOnBranch(
       [
         document.id,
         params.branchId,
-        params.snapshot ?? {},
+        snapshot,
         isRecreation ? 'recreate' : 'edit',
         params.createdById,
         params.createdByType,

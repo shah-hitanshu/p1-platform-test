@@ -16,6 +16,8 @@ import {
 } from './document-session-types';
 import { applySnapshotToYMap } from './crdt-operations';
 import { reconstructVersionSnapshot } from '../services/document-version-service';
+import { enforceUniqueSlotIds } from '../services/slot-id-backstop';
+import { extractComponentIds } from '../services/component-identity';
 import { IMMEDIATE_SYNC_ACTION_TYPES } from '../constants/security-limits';
 
 /** Storage key for sync schedule (survives hibernation) */
@@ -176,7 +178,7 @@ export class PostgresSyncManager {
 
         // Store CoW baseline component IDs so detectCoWBaselineMismatch()
         // can compare them against the first sync write (Failure Mode B guard).
-        const baselineIds = this.extractComponentIds(cowSnapshot);
+        const baselineIds = extractComponentIds(cowSnapshot);
         if (baselineIds.length > 0) {
           await this.storage.put(COW_BASELINE_IDS_KEY, baselineIds);
         }
@@ -421,9 +423,12 @@ export class PostgresSyncManager {
     actorType: 'user' | 'agent',
   ): Promise<void> {
     const root = this.getYdoc().getMap('root');
-    const snapshot = root.toJSON() as Record<string, unknown>;
+    const rawSnapshot = root.toJSON() as Record<string, unknown>;
 
-    await this.detectCoWBaselineMismatch(snapshot, actorId);
+    // CoW detection compares against the raw CRDT ids, so it runs before dedupe.
+    await this.detectCoWBaselineMismatch(rawSnapshot, actorId);
+
+    const snapshot = enforceUniqueSlotIds(this.sessionInfo.documentId, rawSnapshot);
 
     // Phase 5.3: Try direct Hyperdrive path first (synchronous, no queue)
     if (this.env.HYPERDRIVE !== undefined) {
@@ -585,40 +590,6 @@ export class PostgresSyncManager {
   // =============================================================================
 
   /**
-   * Extract Puck component IDs from both the content array and all zone arrays.
-   * Returns an empty array for documents with no components.
-   */
-  private extractComponentIds(snapshot: Record<string, unknown>): string[] {
-    const ids: string[] = [];
-
-    const content = snapshot.content;
-    if (Array.isArray(content)) {
-      for (const item of content) {
-        if (typeof item === 'object' && item !== null) {
-          const props = (item as { props?: { id?: string } }).props;
-          if (typeof props?.id === 'string') ids.push(props.id);
-        }
-      }
-    }
-
-    const zones = snapshot.zones;
-    if (typeof zones === 'object' && zones !== null && !Array.isArray(zones)) {
-      for (const zone of Object.values(zones as Record<string, unknown>)) {
-        if (Array.isArray(zone)) {
-          for (const item of zone) {
-            if (typeof item === 'object' && item !== null) {
-              const props = (item as { props?: { id?: string } }).props;
-              if (typeof props?.id === 'string') ids.push(props.id);
-            }
-          }
-        }
-      }
-    }
-
-    return ids;
-  }
-
-  /**
    * Compare the outgoing sync snapshot against the stored CoW baseline IDs.
    * Fires on the first sync after a CoW-initialized DO. If the snapshot contains
    * no component IDs from the baseline, logs a structured warning so the anomaly
@@ -640,7 +611,7 @@ export class PostgresSyncManager {
       await this.storage.delete(COW_BASELINE_IDS_KEY);
       if (baselineIds.length === 0) return;
 
-      const currentIds = this.extractComponentIds(snapshot);
+      const currentIds = extractComponentIds(snapshot);
       if (currentIds.length === 0) return; // empty doc — no inference possible
 
       const baselineSet = new Set(baselineIds);

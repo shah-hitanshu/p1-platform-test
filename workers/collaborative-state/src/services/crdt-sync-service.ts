@@ -20,6 +20,7 @@ import {
   reconstructVersionSnapshot,
 } from './document-version-service';
 import { getBranch } from './branch-service';
+import { enforceUniqueSlotIds } from './slot-id-backstop';
 
 // =============================================================================
 // Types
@@ -260,6 +261,8 @@ export async function syncCrdtToPostgresConsolidated(
     throw new SyncError('Actor ID is required');
   }
 
+  const snapshot = enforceUniqueSlotIds(params.documentId, params.snapshot);
+
   const result = await query<DocumentVersionRow>(
     `WITH latest AS (
       SELECT snapshot FROM app.document_versions
@@ -281,7 +284,7 @@ export async function syncCrdtToPostgresConsolidated(
     [
       params.documentId,
       params.branchId,
-      params.snapshot,
+      snapshot,
       params.actorId,
       params.actorType,
     ],

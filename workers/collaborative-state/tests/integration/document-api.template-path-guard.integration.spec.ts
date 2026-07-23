@@ -330,9 +330,7 @@ describe('Document API - Template Path Guard', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           path: '/pages/templated-page',
-          snapshot: {
-            title: 'Templated Page',
-          },
+          title: 'Templated Page',
           templateId: templateId,
           templateVersion: 1,
         }),
