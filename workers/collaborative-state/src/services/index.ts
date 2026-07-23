@@ -540,9 +540,18 @@ export type {
   MigrationPrincipal,
   MigrationJob,
   MigrationConflict,
-  PuckAction,
+  MigrationDelta,
+  PropPatch,
   DocumentWithSnapshot,
   ConflictResult,
 } from './migration-service';
 
 export { buildPageMetadata } from './page-metadata-service';
+
+export type {
+  SlotDelta,
+  SlotAdd,
+  SlotMove,
+  SlotPlacement,
+  SlotZone,
+} from './slot-delta';

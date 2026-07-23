@@ -11,7 +11,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
+import { setDatabaseInstance, getDatabaseInstance } from '../../src/db';
 import type { DatabaseConnection, QueryResult } from '../../src/db';
 
 import { createSite } from '../../src/services/site-service';
@@ -27,6 +27,7 @@ import {
   extractTemplateDelta,
   listMigrationConflicts,
   resolveMigrationConflict,
+  ConflictAlreadyResolvedError,
 } from '../../src/services/migration-service';
 import {
   listDocumentsOnBranch,
@@ -45,19 +46,40 @@ function createRealDatabaseConnection(connectionString: string): {
     max: 1,
   });
 
+  async function runOn<T>(
+    handle: postgres.Sql,
+    sqlQuery: string,
+    params?: unknown[],
+  ): Promise<QueryResult<T>> {
+    const result = await handle.unsafe<T[]>(
+      sqlQuery,
+      params as unknown as postgres.ParameterOrJSON<never>[],
+    );
+    const rows = [...result] as T[];
+    const resultWithCount = result as unknown as { count?: number };
+    const rowCount = resultWithCount.count ?? rows.length;
+    return { rows, rowCount };
+  }
+
   const connection: DatabaseConnection = {
-    async query<T = Record<string, unknown>>(
-      sqlQuery: string,
-      params?: unknown[],
-    ): Promise<QueryResult<T>> {
-      const result = await sql.unsafe<T[]>(
-        sqlQuery,
-        params as unknown as postgres.ParameterOrJSON<never>[],
-      );
-      const rows = [...result] as T[];
-      const resultWithCount = result as unknown as { count?: number };
-      const rowCount = resultWithCount.count ?? rows.length;
-      return { rows, rowCount };
+    query: (sqlQuery, params) => runOn(sql, sqlQuery, params),
+    close: async () => { await sql.end({ timeout: 5 }); },
+    // `query` resolves against the current test instance, so a transaction
+    // swaps that instance to one bound to the BEGIN connection for the duration.
+    async transaction<T>(fn: () => Promise<T>): Promise<T> {
+      const outer = getDatabaseInstance();
+      return sql.begin(async (txSql) => {
+        setDatabaseInstance({
+          query: (q, p) => runOn(txSql as unknown as postgres.Sql, q, p),
+          close: async () => { /* the surrounding begin() owns this connection */ },
+          transaction: (nested) => nested(),
+        });
+        try {
+          return await fn();
+        } finally {
+          setDatabaseInstance(outer);
+        }
+      }) as Promise<T>;
     },
   };
 
@@ -74,6 +96,11 @@ const BUTTON = { type: 'ButtonBlock', props: { id: 'button-1', label: 'Click me'
 
 function makeSnapshot(components: unknown[]): Record<string, unknown> {
   return { content: components, root: { props: { title: 'Test' } }, zones: {} };
+}
+
+function firstHeadingProps(snapshot: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  const content = (snapshot?.content ?? []) as { props: Record<string, unknown> }[];
+  return content[0]?.props ?? {};
 }
 
 // =============================================================================
@@ -208,11 +235,11 @@ describe('Template Migration CUJ — Integration Tests', () => {
       expect(v2.actionType).toBe('structural');
     });
 
-    it('should extract the template delta with puckActions', async () => {
+    it('derives the delta from version snapshots', async () => {
       const delta = await extractTemplateDelta(templateDocId, branchId, 1, 2);
-      expect(delta.structuralActions).toHaveLength(1);
-      expect(delta.structuralActions[0].type).toBe('insert');
-      expect(delta.structuralActions[0].componentType).toBe('ButtonBlock');
+      expect(delta.slotDelta.added).toHaveLength(1);
+      expect(delta.slotDelta.added[0].component.props.id).toBe('button-1');
+      expect(delta.slotDelta.added[0].component.type).toBe('ButtonBlock');
     });
 
     it('should show migration available for 1 document', async () => {
@@ -222,6 +249,8 @@ describe('Template Migration CUJ — Integration Tests', () => {
       expect(preview.estimatedConflicts).toBe(0);
       expect(preview.documents).toHaveLength(1);
       expect(preview.documents![0].path).toBe('test-post-1');
+      expect(preview.documents![0].applied).toBe(true);
+      expect(preview.documents![0].propConflicts).toEqual([]);
     });
 
     it('should migrate document to include ButtonBlock with full props', async () => {
@@ -348,7 +377,7 @@ describe('Template Migration CUJ — Integration Tests', () => {
     let templateDocId: string;
     let conflictDocId: string;
 
-    it('should detect conflict when document has structural edits on same component type', async () => {
+    it('detects a conflict when the document and template changed the same slot', async () => {
       // Create template
       const tpl = await createDocumentOnBranch({
         siteId, branchId,
@@ -374,27 +403,28 @@ describe('Template Migration CUJ — Integration Tests', () => {
       });
       conflictDocId = page.document.id;
 
-      // Document makes a structural edit (user reorders HeadingBlock)
+      // Editor removes the HeadingBlock (slot h1).
       await createDocumentVersion({
         documentId: conflictDocId, branchId,
         snapshot: makeSnapshot([
           { type: 'TextBlock', props: { id: 't1' } },
-          { type: 'HeadingBlock', props: { id: 'h1' } },
         ]),
         source: 'edit', createdById: TEST_USER_ID, createdByType: 'user',
-        puckActions: [{ type: 'reorder', sourceIndex: 0, destinationIndex: 1, componentType: 'HeadingBlock' }],
+        puckActions: [{ type: 'remove', componentType: 'HeadingBlock' }],
       });
 
-      // Template also makes a structural edit on HeadingBlock
+      // Template also removes slot h1 and adds a fresh HeadingBlock.
       await createDocumentVersion({
         documentId: templateDocId, branchId,
         snapshot: makeSnapshot([
-          { type: 'HeadingBlock', props: { id: 'h1' } },
           { type: 'TextBlock', props: { id: 't1' } },
           { type: 'HeadingBlock', props: { id: 'h2' } },
         ]),
         source: 'edit', createdById: TEST_USER_ID, createdByType: 'user',
-        puckActions: [{ type: 'insert', componentType: 'HeadingBlock', destinationIndex: 2 }],
+        puckActions: [
+          { type: 'remove', componentType: 'HeadingBlock' },
+          { type: 'insert', componentType: 'HeadingBlock', destinationIndex: 1 },
+        ],
       });
 
       // Preview should detect conflict
@@ -402,6 +432,8 @@ describe('Template Migration CUJ — Integration Tests', () => {
       expect(preview.affectedDocuments).toBe(1);
       expect(preview.estimatedConflicts).toBe(1);
       expect(preview.documents![0].hasConflict).toBe(true);
+      expect(preview.documents![0].applied).toBe(false);
+      expect(preview.documents![0].structuralConflict).toBeDefined();
 
       // Run migration — conflicted document goes to conflicts table
       const job = await triggerMigration(siteId, branchId, templateDocId, 1, 2, { id: TEST_USER_ID, type: 'user' });
@@ -598,7 +630,9 @@ describe('Template Migration CUJ — Integration Tests', () => {
 
     it('should extract prop patches from template delta', async () => {
       const delta = await extractTemplateDelta(templateDocId, branchId, 1, 2);
-      expect(delta.structuralActions).toHaveLength(0);
+      expect(delta.slotDelta.added).toHaveLength(0);
+      expect(delta.slotDelta.removed).toHaveLength(0);
+      expect(delta.slotDelta.moved).toHaveLength(0);
       expect(delta.propPatches.length).toBeGreaterThanOrEqual(1);
 
       const btnPatch = delta.propPatches.find(p => p.componentId === 'b1');
@@ -627,71 +661,150 @@ describe('Template Migration CUJ — Integration Tests', () => {
     });
   });
 
-  describe('Prop cascade: customized document prop is preserved (conflict)', () => {
+  describe('Prop cascade: a diverged prop is applied-clean and recorded as a conflict', () => {
     let templateDocId: string;
-    let pageDocId: string;
+    let applyPageId: string;
+    let skipPageId: string;
+    let jobId: string;
 
-    it('should set up template and document, then editor customizes a prop', async () => {
+    const heading = (title: string, level: string): Record<string, unknown> => makeSnapshot([
+      { type: 'HeadingBlock', props: { id: 'h1', title, level } },
+    ]);
+
+    it('sets up a template and two documents that each customize the heading title', async () => {
       const tpl = await createDocumentOnBranch({
         siteId, branchId,
         path: '_registry/templates/test-prop-conflict',
-        snapshot: makeSnapshot([
-          { type: 'HeadingBlock', props: { id: 'h1', title: 'Default Heading', level: 'h1' } },
-        ]),
+        snapshot: heading('Default Heading', 'h1'),
         createdById: TEST_USER_ID, createdByType: 'user',
       });
       templateDocId = tpl.document.id;
 
-      const page = await createDocumentOnBranch({
-        siteId, branchId,
-        path: 'test-prop-conflict-page',
-        snapshot: makeSnapshot([
-          { type: 'HeadingBlock', props: { id: 'h1', title: 'Default Heading', level: 'h1' } },
-        ]),
-        templateId: templateDocId, templateVersion: 1,
-        createdById: TEST_USER_ID, createdByType: 'user',
-      });
-      pageDocId = page.document.id;
-
-      // Editor customizes the heading title
-      await createDocumentVersion({
-        documentId: pageDocId, branchId,
-        snapshot: makeSnapshot([
-          { type: 'HeadingBlock', props: { id: 'h1', title: 'My Custom Page Title', level: 'h1' } },
-        ]),
-        source: 'edit', createdById: TEST_USER_ID, createdByType: 'user',
-        puckActions: [{ type: 'set' }],
-      });
+      for (const path of ['test-prop-conflict-apply', 'test-prop-conflict-skip']) {
+        const page = await createDocumentOnBranch({
+          siteId, branchId, path,
+          snapshot: heading('Default Heading', 'h1'),
+          templateId: templateDocId, templateVersion: 1,
+          createdById: TEST_USER_ID, createdByType: 'user',
+        });
+        await createDocumentVersion({
+          documentId: page.document.id, branchId,
+          snapshot: heading('My Custom Page Title', 'h1'),
+          source: 'edit', createdById: TEST_USER_ID, createdByType: 'user',
+          puckActions: [{ type: 'set' }],
+        });
+        if (path.endsWith('apply')) applyPageId = page.document.id;
+        else skipPageId = page.document.id;
+      }
     });
 
-    it('should preserve editor customized prop after migration', async () => {
-      // Template admin also changes the heading title
+    it('migrates the untouched prop and records a prop conflict for the diverged one', async () => {
+      // Template changes both the customized title and the untouched level.
       await createDocumentVersion({
         documentId: templateDocId, branchId,
-        snapshot: makeSnapshot([
-          { type: 'HeadingBlock', props: { id: 'h1', title: 'Updated Default Heading', level: 'h2' } },
-        ]),
+        snapshot: heading('Updated Default Heading', 'h2'),
         source: 'edit', createdById: TEST_USER_ID, createdByType: 'user',
         puckActions: [{ type: 'set' }],
       });
 
       const job = await triggerMigration(
-        siteId, branchId, templateDocId, 1, 2,
-        { id: TEST_USER_ID, type: 'user' },
+        siteId, branchId, templateDocId, 1, 2, { id: TEST_USER_ID, type: 'user' },
       );
-
+      jobId = job.id;
       const result = await processMigration(job.id);
-      expect(result.processedDocuments).toBe(1);
 
-      const latest = await getLatestDocumentVersion(pageDocId, branchId);
-      const content = latest!.snapshot!.content as Array<{ type: string; props: Record<string, unknown> }>;
-      const heading = content.find(c => c.type === 'HeadingBlock');
-      expect(heading).toBeDefined();
+      expect(result.processedDocuments).toBe(2);
+      expect(result.conflictedDocuments).toBe(2);
 
-      // Title was customized by editor — should NOT be overwritten
-      expect(heading!.props.title).toBe('My Custom Page Title');
-      // Level was NOT customized (still matches template default) — should be updated
-      expect(heading!.props.level).toBe('h2');
+      const applied = await getLatestDocumentVersion(applyPageId, branchId);
+      const head = firstHeadingProps(applied?.snapshot);
+      // Untouched level takes the template update; customized title is kept until resolved.
+      expect(head.level).toBe('h2');
+      expect(head.title).toBe('My Custom Page Title');
+
+      const conflicts = await listMigrationConflicts(jobId);
+      expect(conflicts).toHaveLength(2);
+      const applyConflict = conflicts.find(c => c.documentId === applyPageId);
+      expect(applyConflict?.conflictType).toBe('prop');
+      expect(applyConflict?.propConflicts).toEqual([
+        expect.objectContaining({ componentId: 'h1', propPath: '/title', templateNewValue: 'Updated Default Heading' }),
+      ]);
+    });
+
+    it('takes the template value when the prop conflict is resolved with apply', async () => {
+      const conflict = (await listMigrationConflicts(jobId)).find(c => c.documentId === applyPageId);
+      expect(conflict).toBeDefined();
+      await resolveMigrationConflict(conflict?.id ?? '', 'apply', { id: TEST_USER_ID, type: 'user' });
+
+      const latest = await getLatestDocumentVersion(applyPageId, branchId);
+      const head = firstHeadingProps(latest?.snapshot);
+      expect(head.title).toBe('Updated Default Heading');
+      expect(head.level).toBe('h2');
+    });
+
+    it('keeps the local value when the prop conflict is resolved with skip', async () => {
+      const conflict = (await listMigrationConflicts(jobId)).find(c => c.documentId === skipPageId);
+      expect(conflict).toBeDefined();
+      await resolveMigrationConflict(conflict?.id ?? '', 'skip', { id: TEST_USER_ID, type: 'user' });
+
+      const latest = await getLatestDocumentVersion(skipPageId, branchId);
+      const head = firstHeadingProps(latest?.snapshot);
+      expect(head.title).toBe('My Custom Page Title');
+      expect(head.level).toBe('h2');
+    });
+  });
+
+  describe('Prop conflict preview', () => {
+    it('counts a diverged document as a conflict and reflects clean updates in the proposal', async () => {
+      const tpl = await createDocumentOnBranch({
+        siteId, branchId,
+        path: '_registry/templates/test-prop-preview',
+        snapshot: makeSnapshot([{ type: 'HeadingBlock', props: { id: 'h1', title: 'Orig', level: 'h1' } }]),
+        createdById: TEST_USER_ID, createdByType: 'user',
+      });
+
+      const diverged = await createDocumentOnBranch({
+        siteId, branchId, path: 'test-prop-preview-diverged',
+        snapshot: makeSnapshot([{ type: 'HeadingBlock', props: { id: 'h1', title: 'Orig', level: 'h1' } }]),
+        templateId: tpl.document.id, templateVersion: 1,
+        createdById: TEST_USER_ID, createdByType: 'user',
+      });
+      await createDocumentVersion({
+        documentId: diverged.document.id, branchId,
+        snapshot: makeSnapshot([{ type: 'HeadingBlock', props: { id: 'h1', title: 'Mine', level: 'h1' } }]),
+        source: 'edit', createdById: TEST_USER_ID, createdByType: 'user', puckActions: [{ type: 'set' }],
+      });
+
+      const clean = await createDocumentOnBranch({
+        siteId, branchId, path: 'test-prop-preview-clean',
+        snapshot: makeSnapshot([{ type: 'HeadingBlock', props: { id: 'h1', title: 'Orig', level: 'h1' } }]),
+        templateId: tpl.document.id, templateVersion: 1,
+        createdById: TEST_USER_ID, createdByType: 'user',
+      });
+
+      await createDocumentVersion({
+        documentId: tpl.document.id, branchId,
+        snapshot: makeSnapshot([{ type: 'HeadingBlock', props: { id: 'h1', title: 'New', level: 'h2' } }]),
+        source: 'edit', createdById: TEST_USER_ID, createdByType: 'user', puckActions: [{ type: 'set' }],
+      });
+
+      const preview = await previewMigration(siteId, branchId, tpl.document.id, 1, 2, true);
+
+      expect(preview.estimatedConflicts).toBe(1);
+      const docs = preview.documents ?? [];
+      const divergedPrev = docs.find(d => d.documentId === diverged.document.id);
+      expect(divergedPrev?.applied).toBe(true);
+      expect(divergedPrev?.hasConflict).toBe(false);
+      expect(divergedPrev?.structuralConflict).toBeUndefined();
+      expect(divergedPrev?.propConflicts).toEqual([
+        expect.objectContaining({ propPath: '/title' }),
+      ]);
+      const cleanPrev = docs.find(d => d.documentId === clean.document.id);
+      expect(cleanPrev?.applied).toBe(true);
+      expect(cleanPrev?.propConflicts).toEqual([]);
+      const cleanHead = firstHeadingProps(cleanPrev?.proposedSnapshot);
+      expect(cleanHead.title).toBe('New');
+      expect(cleanHead.level).toBe('h2');
     });
   });
 
@@ -735,7 +848,7 @@ describe('Template Migration CUJ — Integration Tests', () => {
       });
 
       const delta = await extractTemplateDelta(templateDocId, branchId, 1, 2);
-      expect(delta.structuralActions).toHaveLength(1);
+      expect(delta.slotDelta.added).toHaveLength(1);
       expect(delta.propPatches.length).toBeGreaterThanOrEqual(1);
 
       const job = await triggerMigration(
@@ -757,6 +870,55 @@ describe('Template Migration CUJ — Integration Tests', () => {
       // Prop: HeadingBlock title was updated
       const heading = content.find(c => c.type === 'HeadingBlock');
       expect(heading!.props.title).toBe('Updated Title');
+    });
+
+    it('previews a page with both a structural collision and a diverged prop as held with no prop review', async () => {
+      const tpl = await createDocumentOnBranch({
+        siteId, branchId,
+        path: '_registry/templates/test-both-conflict',
+        snapshot: makeSnapshot([
+          { type: 'HeadingBlock', props: { id: 'h1', title: 'Original', level: 'h1' } },
+          { type: 'BodyBlock', props: { id: 'b1', text: 'orig' } },
+        ]),
+        createdById: TEST_USER_ID, createdByType: 'user',
+      });
+
+      const page = await createDocumentOnBranch({
+        siteId, branchId,
+        path: 'test-both-conflict-page',
+        snapshot: makeSnapshot([
+          { type: 'HeadingBlock', props: { id: 'h1', title: 'Original', level: 'h1' } },
+          { type: 'BodyBlock', props: { id: 'b1', text: 'orig' } },
+        ]),
+        templateId: tpl.document.id, templateVersion: 1,
+        createdById: TEST_USER_ID, createdByType: 'user',
+      });
+
+      // The page removes BodyBlock (a structural edit touching slot b1) and
+      // edits the heading title (a prop divergence on h1).
+      await createDocumentVersion({
+        documentId: page.document.id, branchId,
+        snapshot: makeSnapshot([
+          { type: 'HeadingBlock', props: { id: 'h1', title: 'Mine', level: 'h1' } },
+        ]),
+        source: 'edit', createdById: TEST_USER_ID, createdByType: 'user', puckActions: [{ type: 'set' }],
+      });
+
+      // The template also removes BodyBlock (touching slot b1) and changes the
+      // heading title, so both the structural edit and the prop edit collide.
+      await createDocumentVersion({
+        documentId: tpl.document.id, branchId,
+        snapshot: makeSnapshot([
+          { type: 'HeadingBlock', props: { id: 'h1', title: 'New', level: 'h1' } },
+        ]),
+        source: 'edit', createdById: TEST_USER_ID, createdByType: 'user', puckActions: [{ type: 'set' }],
+      });
+
+      const preview = await previewMigration(siteId, branchId, tpl.document.id, 1, 2, true);
+      const held = preview.documents?.find(d => d.documentId === page.document.id);
+      expect(held?.applied).toBe(false);
+      expect(held?.structuralConflict).toBeDefined();
+      expect(held?.propConflicts).toEqual([]);
     });
   });
 
@@ -812,6 +974,9 @@ describe('Template Migration CUJ — Integration Tests', () => {
   // ===========================================================================
 
   describe('Migration conflict delta jsonb round-trip', () => {
+    // A slot-id conflict: the page moves t1 and the template removes t1, so
+    // both sides touch the same slot. This yields a stored conflict delta to
+    // round-trip through jsonb and re-apply on resolve.
     async function setUpConflict(pathSuffix: string): Promise<{
       templateDocId: string;
       pageDocId: string;
@@ -841,8 +1006,7 @@ describe('Template Migration CUJ — Integration Tests', () => {
       });
       const pageDocId = page.document.id;
 
-      // Page reorders HeadingBlock — a structural edit on the same type the
-      // template touches, which forces a conflict rather than a clean apply.
+      // Page moves t1 ahead of h1 — a structural edit on slot t1.
       await createDocumentVersion({
         documentId: pageDocId, branchId,
         snapshot: makeSnapshot([
@@ -850,19 +1014,15 @@ describe('Template Migration CUJ — Integration Tests', () => {
           { type: 'HeadingBlock', props: { id: 'h1' } },
         ]),
         source: 'edit', createdById: TEST_USER_ID, createdByType: 'user',
-        puckActions: [{ type: 'reorder', sourceIndex: 0, destinationIndex: 1, componentType: 'HeadingBlock' }],
       });
 
-      // Template v2 inserts a second HeadingBlock.
+      // Template v2 removes t1 — the same slot the page moved.
       await createDocumentVersion({
         documentId: templateDocId, branchId,
         snapshot: makeSnapshot([
           { type: 'HeadingBlock', props: { id: 'h1' } },
-          { type: 'TextBlock', props: { id: 't1' } },
-          { type: 'HeadingBlock', props: { id: 'h2' } },
         ]),
         source: 'edit', createdById: TEST_USER_ID, createdByType: 'user',
-        puckActions: [{ type: 'insert', componentType: 'HeadingBlock', destinationIndex: 2 }],
       });
 
       const job = await triggerMigration(siteId, branchId, templateDocId, 1, 2, { id: TEST_USER_ID, type: 'user' });
@@ -875,22 +1035,22 @@ describe('Template Migration CUJ — Integration Tests', () => {
       return { templateDocId, pageDocId, jobId: job.id, conflictId: conflicts[0].id };
     }
 
-    it('stores template_delta as a jsonb array and applies it on resolve', async () => {
+    it('stores template_delta as a jsonb object and applies it on resolve', async () => {
       const { pageDocId, conflictId } = await setUpConflict('test-conflict-roundtrip');
 
-      // The delta is stored as a real jsonb array, not a double-encoded string.
+      // The slot delta is stored as a real jsonb object, not a double-encoded string.
       const typeRows = await sql`
         SELECT jsonb_typeof(template_delta) as t
         FROM app.migration_conflicts WHERE id = ${conflictId}
       `;
-      expect(typeRows[0].t).toBe('array');
+      expect(typeRows[0].t).toBe('object');
 
       await resolveMigrationConflict(conflictId, 'apply', { id: TEST_USER_ID, type: 'user' });
 
       const latest = await getLatestDocumentVersion(pageDocId, branchId);
       const content = latest!.snapshot!.content as Array<{ type: string; props: { id?: string } }>;
-      expect(content.filter(c => c.type === 'HeadingBlock')).toHaveLength(2);
-      expect(content.some(c => c.props.id === 'h2')).toBe(true);
+      expect(content.some(c => c.props.id === 't1')).toBe(false);
+      expect(content.some(c => c.props.id === 'h1')).toBe(true);
 
       const relRow = await sql`
         SELECT synced_version FROM app.document_relations
@@ -921,7 +1081,37 @@ describe('Template Migration CUJ — Integration Tests', () => {
 
       const latest = await getLatestDocumentVersion(pageDocId, branchId);
       const content = latest!.snapshot!.content as Array<{ type: string; props: { id?: string } }>;
-      expect(content.some(c => c.props.id === 'h2')).toBe(true);
+      expect(content.some(c => c.props.id === 't1')).toBe(false);
+    });
+
+    it('resolving an already-resolved conflict does not apply the delta twice', async () => {
+      const { pageDocId, conflictId } = await setUpConflict('test-conflict-idempotent');
+
+      await resolveMigrationConflict(conflictId, 'apply', { id: TEST_USER_ID, type: 'user' });
+      const afterFirst = await getLatestDocumentVersion(pageDocId, branchId);
+
+      const second = await resolveMigrationConflict(conflictId, 'apply', { id: TEST_USER_ID, type: 'user' });
+      const afterSecond = await getLatestDocumentVersion(pageDocId, branchId);
+
+      // The second resolve returns the settled record and writes no new version.
+      expect(second.resolution).toBe('apply');
+      expect(afterSecond?.versionNumber).toBe(afterFirst?.versionNumber);
+
+      const versions = await sql`
+        SELECT COUNT(*)::int AS n FROM app.document_versions
+        WHERE document_id = ${pageDocId} AND branch_id = ${branchId} AND source = 'migration'
+      `;
+      expect(versions[0]?.n).toBe(1);
+    });
+
+    it('rejects re-resolving a settled conflict with a different resolution', async () => {
+      const { conflictId } = await setUpConflict('test-conflict-reresolve');
+
+      await resolveMigrationConflict(conflictId, 'skip', { id: TEST_USER_ID, type: 'user' });
+
+      await expect(
+        resolveMigrationConflict(conflictId, 'apply', { id: TEST_USER_ID, type: 'user' }),
+      ).rejects.toBeInstanceOf(ConflictAlreadyResolvedError);
     });
   });
 });

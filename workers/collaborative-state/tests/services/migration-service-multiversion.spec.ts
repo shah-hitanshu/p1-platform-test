@@ -1,18 +1,21 @@
 /**
  * Multi-version migration test (v1→v3)
  *
- * Exercises migrations that span more than one version step. With only v1→v2
- * tests, bugs where `currentVersion + 1` vs `toVersion` are confused would
- * be invisible. This test ensures extractTemplateDelta aggregates structural
- * actions across multiple version increments and that processMigration
- * applies them correctly to documents still on v1 when the template is at v3.
+ * Exercises migrations that span more than one version step. The delta between
+ * two template versions is the id-keyed diff of their endpoint snapshots, so a
+ * v1→v3 migration is the diff of the v1 and v3 snapshots regardless of how many
+ * intermediate edits occurred. These tests guard the compound cases (add plus
+ * reorder, add plus remove) and that processMigration applies a v1→v3 delta to
+ * a document still bound to v1.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { DocumentVersionSource } from '../../src/types';
+import { buildSlotDelta } from '../../src/services/slot-delta';
 
 vi.mock('../../src/db', () => ({
   query: vi.fn(),
+  withTransaction: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }));
 
 vi.mock('../../src/services/checkpoint-service', () => ({
@@ -36,31 +39,9 @@ describe('Multi-version migration (v1→v3)', () => {
   });
 
   describe('extractTemplateDelta across multiple versions', () => {
-    it('aggregates structural actions from v1→v2 and v2→v3 into a single delta', async () => {
+    it('derives the v1→v3 delta from the endpoint snapshots', async () => {
       const { extractTemplateDelta } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
       const dvs = await import('../../src/services/document-version-service');
-
-      // Two structural versions: v2 added a reorder, v3 added an insert
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            action_metadata: {
-              puckActions: [
-                { type: 'reorder', sourceIndex: 0, destinationIndex: 2 },
-              ],
-            },
-          },
-          {
-            action_metadata: {
-              puckActions: [
-                { type: 'insert', componentType: 'CTA', destinationIndex: 1 },
-              ],
-            },
-          },
-        ],
-        rowCount: 2,
-      });
 
       const v1Snap = {
         content: [
@@ -86,96 +67,108 @@ describe('Multi-version migration (v1→v3)', () => {
         .mockResolvedValueOnce(v1Snap)
         .mockResolvedValueOnce(v3Snap);
 
-      const result = await extractTemplateDelta(
-        'template-001',
-        'branch-001',
-        1,
-        3,
-      );
+      const result = await extractTemplateDelta('template-001', 'branch-001', 1, 3);
 
-      expect(result.structuralActions).toHaveLength(2);
-      expect(result.structuralActions[0].type).toBe('reorder');
-      expect(result.structuralActions[1].type).toBe('insert');
+      // CTA is added; Hero relocates to the tail while Body and Footer hold order.
+      expect(result.slotDelta.added).toHaveLength(1);
+      expect(result.slotDelta.added[0].component.props.id).toBe('cta1');
+      expect(result.slotDelta.moved.map((m) => m.id)).toEqual(['h1']);
+      expect(result.slotDelta.removed).toEqual([]);
     });
 
-    it('queries version range (1, 3] not just (1, 2]', async () => {
+    it('reconstructs the from and to endpoints, not intermediate versions', async () => {
       const { extractTemplateDelta } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
       const dvs = await import('../../src/services/document-version-service');
 
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
       vi.mocked(dvs.reconstructVersionSnapshot)
         .mockResolvedValue({ content: [], root: { props: {} }, zones: {} });
 
       await extractTemplateDelta('template-001', 'branch-001', 1, 3);
 
-      const callArgs = vi.mocked(db.query).mock.calls[0];
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      const params = callArgs[1]!;
-      // params should contain fromVersion=1 and toVersion=3
-      expect(params).toContain(1);
-      expect(params).toContain(3);
+      expect(dvs.reconstructVersionSnapshot).toHaveBeenCalledWith('template-001', 'branch-001', 1);
+      expect(dvs.reconstructVersionSnapshot).toHaveBeenCalledWith('template-001', 'branch-001', 3);
     });
   });
 
-  describe('applyDeltaToSnapshot with compound delta', () => {
-    it('applies reorder then insert in sequence (v1→v3 compound)', async () => {
+  describe('applyDeltaToSnapshot with a compound delta', () => {
+    it('adds and reorders in a single v1→v3 delta', async () => {
       const { applyDeltaToSnapshot } = await import('../../src/services/migration-service');
 
-      const snapshot = {
+      const v1 = {
         content: [
           { type: 'Hero', props: { id: 'h1' } },
           { type: 'Body', props: { id: 'b1' } },
           { type: 'Footer', props: { id: 'f1' } },
         ],
+        root: { props: {} },
+        zones: {},
+      };
+      const v3 = {
+        content: [
+          { type: 'Body', props: { id: 'b1' } },
+          { type: 'CTA', props: { id: 'cta1', label: 'Click' } },
+          { type: 'Footer', props: { id: 'f1' } },
+          { type: 'Hero', props: { id: 'h1' } },
+        ],
+        root: { props: {} },
+        zones: {},
       };
 
-      const delta = [
-        { type: 'reorder', sourceIndex: 0, destinationIndex: 2 },
-        { type: 'insert', componentType: 'CTA', destinationIndex: 1 },
-      ];
+      const docSnapshot = {
+        content: [
+          { type: 'Hero', props: { id: 'h1' } },
+          { type: 'Body', props: { id: 'b1' } },
+          { type: 'Footer', props: { id: 'f1' } },
+        ],
+        root: { props: {} },
+        zones: {},
+      };
 
-      const result = applyDeltaToSnapshot(snapshot, delta);
+      const result = applyDeltaToSnapshot(docSnapshot, buildSlotDelta(v1, v3));
 
-      const content = result.content as { type: string }[];
-      // After reorder(0→2): [Body, Footer, Hero]
-      // After insert CTA at 1: [Body, CTA, Footer, Hero]
-      expect(content).toHaveLength(4);
-      expect(content[0].type).toBe('Body');
-      expect(content[1].type).toBe('CTA');
-      expect(content[2].type).toBe('Footer');
-      expect(content[3].type).toBe('Hero');
+      const content = result.content as { type: string; props: { id: string; label?: string } }[];
+      expect(content.map((c) => c.props.id)).toEqual(['b1', 'cta1', 'f1', 'h1']);
+      expect(content[1].props.label).toBe('Click');
     });
 
-    it('applies insert then delete across versions', async () => {
+    it('adds and removes across versions', async () => {
       const { applyDeltaToSnapshot } = await import('../../src/services/migration-service');
 
-      const snapshot = {
+      const v1 = {
         content: [
           { type: 'A', props: { id: 'a1' } },
           { type: 'B', props: { id: 'b1' } },
         ],
+        root: { props: {} },
+        zones: {},
+      };
+      const v3 = {
+        content: [
+          { type: 'A', props: { id: 'a1' } },
+          { type: 'C', props: { id: 'c1', value: 'new' } },
+        ],
+        root: { props: {} },
+        zones: {},
       };
 
-      // v2 inserted C at index 1, v3 deleted the old B (now at index 2)
-      const delta = [
-        { type: 'insert', componentType: 'C', destinationIndex: 1 },
-        { type: 'delete', sourceIndex: 2 },
-      ];
+      const docSnapshot = {
+        content: [
+          { type: 'A', props: { id: 'a1' } },
+          { type: 'B', props: { id: 'b1' } },
+        ],
+        root: { props: {} },
+        zones: {},
+      };
 
-      const result = applyDeltaToSnapshot(snapshot, delta);
+      const result = applyDeltaToSnapshot(docSnapshot, buildSlotDelta(v1, v3));
 
-      const content = result.content as { type: string }[];
-      // After insert C at 1: [A, C, B]
-      // After delete at 2: [A, C]
-      expect(content).toHaveLength(2);
-      expect(content[0].type).toBe('A');
-      expect(content[1].type).toBe('C');
+      const content = result.content as { type: string; props: { id: string } }[];
+      expect(content.map((c) => c.props.id)).toEqual(['a1', 'c1']);
     });
   });
 
   describe('processMigration end-to-end v1→v3', () => {
-    it('migrates a document from template v1 to v3 with compound delta', async () => {
+    it('migrates a v1-bound document with a compound v1→v3 delta', async () => {
       const { processMigration } = await import('../../src/services/migration-service');
       const db = await import('../../src/db');
       const {
@@ -183,7 +176,6 @@ describe('Multi-version migration (v1→v3)', () => {
         createDocumentVersion,
         reconstructVersionSnapshot,
       } = await import('../../src/services/document-version-service');
-      const { validateDocumentStructure } = await import('@pantheon-systems/p1-content-validator');
 
       const mockJob = {
         id: 'job-v1v3',
@@ -202,131 +194,75 @@ describe('Multi-version migration (v1→v3)', () => {
         completed_at: null,
       };
 
-      // getMigrationJob
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockJob], rowCount: 1 });
-
-      // Update status to 'in_progress'
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
-
-      // extractTemplateDelta: two structural versions spanning v1→v3
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            action_metadata: {
-              puckActions: [{ type: 'reorder', sourceIndex: 0, destinationIndex: 1 }],
-            },
-          },
-          {
-            action_metadata: {
-              puckActions: [{ type: 'insert', componentType: 'Banner', destinationIndex: 0 }],
-            },
-          },
-        ],
-        rowCount: 2,
-      });
-
-      // reconstructVersionSnapshot for template v1 and v3 (prop patch extraction)
-      const templateV1 = { content: [{ type: 'Hero' }, { type: 'Body' }], root: { props: {} }, zones: {} };
-      const templateV3 = {
+      const docSnapshot = {
         content: [
-          { type: 'Banner', props: { id: 'ban1', text: 'New!' } },
-          { type: 'Body' },
-          { type: 'Hero' },
+          { type: 'Hero', props: { id: 'h1', title: 'Hi' } },
+          { type: 'Body', props: { id: 'b1' } },
+          { type: 'Old', props: { id: 'o1' } },
         ],
         root: { props: {} },
         zones: {},
       };
-      vi.mocked(reconstructVersionSnapshot)
-        .mockResolvedValueOnce(templateV1)
-        .mockResolvedValueOnce(templateV3);
 
-      // reconstructVersionSnapshot for templateContent (toVersion snapshot)
-      vi.mocked(reconstructVersionSnapshot).mockResolvedValueOnce(templateV3);
+      let docsServed = false;
+      vi.mocked(db.query).mockImplementation((sql: string) => {
+        if (sql.startsWith('SELECT') && sql.includes('app.migration_jobs')) {
+          return Promise.resolve({ rows: [mockJob], rowCount: 1 });
+        }
+        if (sql.includes('FROM app.documents')) {
+          if (docsServed) return Promise.resolve({ rows: [], rowCount: 0 });
+          docsServed = true;
+          return Promise.resolve({
+            rows: [{
+              id: 'doc-001', site_id: 'site-001', path: 'pages/home',
+              template_id: 'template-001', template_version: 1, snapshot: docSnapshot,
+            }],
+            rowCount: 1,
+          });
+        }
+        if (sql.includes("source = 'migration'")) {
+          return Promise.resolve({ rows: [{ version_number: 5 }], rowCount: 1 });
+        }
+        return Promise.resolve({ rows: [], rowCount: 1 });
+      });
 
-      // findAffectedDocuments: one doc on v1
-      const docRow = {
-        id: 'doc-001',
-        site_id: 'site-001',
-        branch_id: 'branch-001',
-        path: 'pages/home',
-        template_id: 'template-001',
-        template_version: 1,
-        snapshot: { content: [{ type: 'Hero', props: { title: 'Hi' } }, { type: 'Body', props: {} }], root: {}, zones: {} },
-      };
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [docRow], rowCount: 1 });
+      // v1→v3 removes Old and adds New; the document is untouched since baseline.
+      vi.mocked(reconstructVersionSnapshot).mockImplementation((id: string, _branch: string, version: number) => {
+        if (id === 'template-001') {
+          return Promise.resolve(version === 1
+            ? { content: [{ type: 'Hero', props: { id: 'h1', title: 'Hi' } }, { type: 'Body', props: { id: 'b1' } }, { type: 'Old', props: { id: 'o1' } }], root: { props: {} }, zones: {} }
+            : { content: [{ type: 'Hero', props: { id: 'h1', title: 'Hi' } }, { type: 'Body', props: { id: 'b1' } }, { type: 'New', props: { id: 'n1', text: 'New!' } }], root: { props: {} }, zones: {} });
+        }
+        return Promise.resolve(docSnapshot);
+      });
 
-      // detectDocumentConflicts: no structural changes in doc since v1
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ version_number: 0 }], rowCount: 1 });
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
-
-      // applyDeltaToDocument flow
       vi.mocked(getLatestDocumentVersion).mockResolvedValueOnce({
-        id: 'v-100',
-        documentId: 'doc-001',
-        branchId: 'branch-001',
-        versionNumber: 5,
-        snapshot: { content: [{ type: 'Hero', props: { title: 'Hi' } }, { type: 'Body', props: {} }], root: {}, zones: {} },
-        source: 'edit' as DocumentVersionSource,
-        createdById: 'user-001',
-        createdByType: 'user',
-        createdAt: '2026-06-20T00:00:00Z',
+        id: 'v-100', documentId: 'doc-001', branchId: 'branch-001', versionNumber: 5,
+        snapshot: docSnapshot, source: 'edit' as DocumentVersionSource,
+        createdById: 'user-001', createdByType: 'user', createdAt: '2026-06-20T00:00:00Z',
       });
-
-      vi.mocked(validateDocumentStructure).mockReturnValueOnce({ errors: [] });
-
       vi.mocked(createDocumentVersion).mockResolvedValueOnce({
-        id: 'v-101',
-        documentId: 'doc-001',
-        branchId: 'branch-001',
-        versionNumber: 6,
-        snapshot: {
-          content: [
-            { type: 'Banner', props: { id: 'ban1', text: 'New!' } },
-            { type: 'Body', props: {} },
-            { type: 'Hero', props: { title: 'Hi' } },
-          ],
-          root: {},
-          zones: {},
-        },
-        source: 'migration',
-        createdById: 'user-001',
-        createdByType: 'user',
-        createdAt: '2026-06-20T00:01:00Z',
+        id: 'v-101', documentId: 'doc-001', branchId: 'branch-001', versionNumber: 6,
+        snapshot: docSnapshot, source: 'migration' as DocumentVersionSource,
+        createdById: 'user-001', createdByType: 'user', createdAt: '2026-06-20T00:01:00Z',
       });
-
-      // Update documents.template_version to v3
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
-
-      // Update progress
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
-
-      // findAffectedDocuments: second batch empty
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
-
-      // Mark completed
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
       const result = await processMigration('job-v1v3');
 
       expect(result.processedDocuments).toBe(1);
       expect(result.conflictedDocuments).toBe(0);
 
-      // createDocumentVersion should have been called with migration source
-      expect(createDocumentVersion).toHaveBeenCalledWith(
-        expect.objectContaining({
-          source: 'migration',
-          documentId: 'doc-001',
-        }),
-      );
+      const persisted = vi.mocked(createDocumentVersion).mock.calls[0][0];
+      expect(persisted.source).toBe('migration');
+      const content = (persisted.snapshot as { content: { props: { id: string } }[] }).content;
+      expect(content.map((c) => c.props.id)).toEqual(['h1', 'b1', 'n1']);
 
-      // The synced_version batch update should reference toVersion=3
-      const updateCalls = vi.mocked(db.query).mock.calls.filter(
-        (call) => {
-          const sql = (call[0]).toUpperCase();
-          return sql.includes('UPDATE') && sql.includes('SYNCED_VERSION') && sql.includes('DOCUMENT_RELATIONS');
-        },
-      );
-      expect(updateCalls.length).toBeGreaterThanOrEqual(1);
+      const syncedVersionUpdates = vi.mocked(db.query).mock.calls.filter((call) => {
+        const sql = (call[0]).toUpperCase();
+        return sql.includes('UPDATE') && sql.includes('SYNCED_VERSION') && sql.includes('DOCUMENT_RELATIONS');
+      });
+      expect(syncedVersionUpdates.length).toBeGreaterThanOrEqual(1);
+      expect(syncedVersionUpdates[0][1]).toContain(3);
     });
   });
 });

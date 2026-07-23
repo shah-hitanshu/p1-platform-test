@@ -46,6 +46,12 @@ export interface DatabaseConnection {
     params?: unknown[]
   ): Promise<QueryResult<T>>;
   close(): Promise<void>;
+  /**
+   * Run `fn` inside a single database transaction. Queries issued from within
+   * `fn` (via the module-level `query`) run on the transaction's connection and
+   * roll back together if `fn` throws.
+   */
+  transaction?<T>(fn: () => Promise<T>): Promise<T>;
 }
 
 /**
@@ -158,33 +164,7 @@ export function createDatabaseConnection(
       sqlQuery: string,
       params?: unknown[],
     ): Promise<QueryResult<T>> {
-      // Race the query against a 20-second timeout. If Hyperdrive hangs (no response),
-      // we fail fast with an error rather than hanging the Worker indefinitely.
-      // Without this, a stuck Hyperdrive connection causes Cloudflare to kill the Worker
-      // with a bare 500 that has no CORS headers, making errors opaque to the client.
-      const QUERY_TIMEOUT_MS = 20_000;
-      const queryPromise = sql.unsafe<T[]>(
-        sqlQuery,
-        params as unknown as postgres.ParameterOrJSON<never>[],
-      );
-      const timeoutPromise = new Promise<never>((_resolve, reject) => {
-        setTimeout(() => {
-          reject(new Error('Database query timed out after 20 seconds'));
-        }, QUERY_TIMEOUT_MS);
-      });
-      const result = await Promise.race([queryPromise, timeoutPromise]);
-
-      // The postgres package returns a Result object that extends Array
-      const rows = [...result] as T[];
-
-      // Get row count - for DELETE/UPDATE, use result.count; for SELECT, use rows.length
-      const resultWithCount = result as unknown as { count?: number };
-      const rowCount = resultWithCount.count ?? rows.length;
-
-      return {
-        rows,
-        rowCount,
-      };
+      return runSqlUnsafe<T>(sql, sqlQuery, params);
     },
     async close(): Promise<void> {
       // For Hyperdrive connections, closing is optional as Hyperdrive manages lifecycle
@@ -198,6 +178,62 @@ export function createDatabaseConnection(
         // Ignore errors - connection may already be closed or in different request context
       }
     },
+    async transaction<T>(fn: () => Promise<T>): Promise<T> {
+      return sql.begin(async (txSql) => {
+        const txConnection: DatabaseConnection = {
+          query: <U = Record<string, unknown>>(q: string, p?: unknown[]) =>
+            runSqlUnsafe<U>(txSql as unknown as postgres.Sql, q, p),
+          close: async () => { /* the surrounding begin() owns this connection */ },
+          // Already inside a transaction; a nested call reuses it rather than
+          // opening a second one.
+          transaction: (nested) => nested(),
+        };
+        return connectionStorage.run(txConnection, fn);
+      }) as Promise<T>;
+    },
+  };
+}
+
+/**
+ * Execute a query on a given postgres handle, failing fast on a hung connection.
+ *
+ * The 20-second race guards against a stuck Hyperdrive connection: without it a
+ * hung query lets Cloudflare kill the Worker with a bare 500 that carries no CORS
+ * headers, making the failure opaque to the client.
+ */
+async function runSqlUnsafe<T = Record<string, unknown>>(
+  sqlHandle: postgres.Sql,
+  sqlQuery: string,
+  params?: unknown[],
+): Promise<QueryResult<T>> {
+  const QUERY_TIMEOUT_MS = 20_000;
+  const queryPromise = sqlHandle.unsafe<T[]>(
+    sqlQuery,
+    params as unknown as postgres.ParameterOrJSON<never>[],
+  );
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error('Database query timed out after 20 seconds'));
+    }, QUERY_TIMEOUT_MS);
+  });
+  let result: Awaited<typeof queryPromise>;
+  try {
+    result = await Promise.race([queryPromise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+
+  // The postgres package returns a Result object that extends Array
+  const rows = [...result] as T[];
+
+  // Get row count - for DELETE/UPDATE, use result.count; for SELECT, use rows.length
+  const resultWithCount = result as unknown as { count?: number };
+  const rowCount = resultWithCount.count ?? rows.length;
+
+  return {
+    rows,
+    rowCount,
   };
 }
 
@@ -239,6 +275,26 @@ export async function query<T = Record<string, unknown>>(
     throw new Error('Database not initialized. Wrap request handler with runWithConnection().');
   }
   return connection.query<T>(sql, params);
+}
+
+/**
+ * Run `fn` inside a database transaction, using the request-scoped connection.
+ * Every `query` call made within `fn` runs on the transaction and commits or
+ * rolls back atomically with it.
+ *
+ * A connection without transaction support (a test double exposing only
+ * `query`) runs `fn` directly, so callers get atomicity in production while
+ * staying testable against a plain query mock.
+ */
+export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  const connection = testConnection ?? connectionStorage.getStore();
+  if (!connection) {
+    throw new Error('Database not initialized. Wrap request handler with runWithConnection().');
+  }
+  if (typeof connection.transaction === 'function') {
+    return connection.transaction(fn);
+  }
+  return fn();
 }
 
 /**

@@ -137,6 +137,7 @@ describe('DocumentSession WebSocket publish handler', () => {
   let originalFetch: typeof globalThis.fetch;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.resetAllMocks();
     originalFetch = globalThis.fetch;
 
@@ -177,6 +178,7 @@ describe('DocumentSession WebSocket publish handler', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     globalThis.fetch = originalFetch;
   });
 

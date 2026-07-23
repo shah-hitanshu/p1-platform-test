@@ -31,6 +31,8 @@
     "db:cleanup:execute": "tsx src/db/cleanup-test-data.ts --execute",
     "db:backfill-template-content-shape": "tsx src/db/backfill-template-content-shape.ts",
     "db:backfill-template-content-shape:execute": "tsx src/db/backfill-template-content-shape.ts --execute",
+    "db:adopt-slot-ids": "tsx src/db/adopt-slot-ids.ts",
+    "db:adopt-slot-ids:execute": "tsx src/db/adopt-slot-ids.ts --execute",
     "cf:login": "wrangler login",
     "cf:whoami": "wrangler whoami",
     "cf:tail": "wrangler tail",

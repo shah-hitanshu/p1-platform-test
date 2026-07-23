@@ -11,6 +11,8 @@ import {
   listMigrationConflicts,
   resolveMigrationConflict,
   MigrationJobNotFoundError,
+  LegacyConflictDeltaError,
+  ConflictAlreadyResolvedError,
 } from '../services/migration-service';
 import { getEffectiveRole, assertPermission, AuthorizationError } from '../auth/authorization';
 import { getBranch, getBranchByName } from '../services';
@@ -206,6 +208,12 @@ export async function handleMigrationRoutes(
     }
     if (error instanceof MigrationJobNotFoundError) {
       return errorResponse(error.message, 404);
+    }
+    if (error instanceof LegacyConflictDeltaError) {
+      return errorResponse(error.message, 409);
+    }
+    if (error instanceof ConflictAlreadyResolvedError) {
+      return errorResponse(error.message, 409);
     }
 
     if (error instanceof SyntaxError) {

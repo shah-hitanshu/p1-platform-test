@@ -384,12 +384,27 @@ Requires **ADMIN** role.
       "templateId": "uuid",
       "fromVersion": 2,
       "toVersion": 5,
-      "templateDelta": [
-        { "type": "reorder", "sourceIndex": 2, "destinationIndex": 0, "componentType": "HeroBlock" }
-      ],
-      "documentActions": [
-        { "type": "reorder", "sourceIndex": 2, "destinationIndex": 3, "componentType": "HeroBlock" }
-      ],
+      "templateDelta": {
+        "added": [
+          {
+            "component": { "type": "CtaBlock", "props": { "id": "CtaBlock-c3d4", "label": "Sign up" } },
+            "placement": { "zone": null, "precedingIds": ["BodyBlock-b2c3"] }
+          }
+        ],
+        "removed": ["PromoBlock-p9q8"],
+        "moved": [
+          { "id": "HeroBlock-a1b2", "placement": { "zone": null, "precedingIds": [] } }
+        ],
+        "templateIds": ["HeroBlock-a1b2", "BodyBlock-b2c3", "CtaBlock-c3d4", "PromoBlock-p9q8"]
+      },
+      "documentDelta": {
+        "added": [],
+        "removed": [],
+        "moved": [
+          { "id": "HeroBlock-a1b2", "placement": { "zone": null, "precedingIds": ["BodyBlock-b2c3"] } }
+        ],
+        "templateIds": ["HeroBlock-a1b2", "BodyBlock-b2c3"]
+      },
       "resolution": null,
       "createdAt": "2026-06-12T10:00:01.000Z",
       "resolvedAt": null
@@ -398,7 +413,7 @@ Requires **ADMIN** role.
 }
 ```
 
-`templateDelta` shows the structural changes the template made. `documentActions` shows the structural changes editors made to the document since its last migration. When both touch the same component type, it's a conflict.
+Both `templateDelta` and `documentDelta` are slot-delta objects: an id-keyed diff of two snapshots. `added` carries new components with their placement (destination `zone`, and the `precedingIds` that sit before them there); `removed` lists slot ids; `moved` repositions surviving slot ids; `templateIds` is the union of slot ids in either snapshot. `templateDelta` is the template's diff between its two versions; `documentDelta` is the document's own diff since its last migration baseline. When both deltas touch the same slot id, it's a conflict.
 
 ### Resolve Conflict
 

@@ -179,15 +179,15 @@ describe('Template Type Extensions', () => {
         templateId: 'template-def',
         fromVersion: 1,
         toVersion: 2,
-        templateDelta: { operations: ['insert'] },
-        documentActions: { actions: ['reorder'] },
+        templateDelta: { added: [], removed: ['CtaBlock-cccc'], moved: [], templateIds: ['CtaBlock-cccc'] },
+        documentDelta: { added: [], removed: [], moved: [], templateIds: [] },
         createdAt: '2026-01-01T00:00:00Z',
       };
 
       expect(conflict.migrationJobId).toBe('job-456');
       expect(conflict.documentId).toBe('doc-789');
-      expect(conflict.templateDelta).toEqual({ operations: ['insert'] });
-      expect(conflict.documentActions).toEqual({ actions: ['reorder'] });
+      expect(conflict.templateDelta).toEqual({ added: [], removed: ['CtaBlock-cccc'], moved: [], templateIds: ['CtaBlock-cccc'] });
+      expect(conflict.documentDelta).toEqual({ added: [], removed: [], moved: [], templateIds: [] });
     });
 
     it('should allow resolution and resolvedAt for resolved conflicts', () => {
@@ -199,8 +199,8 @@ describe('Template Type Extensions', () => {
         templateId: 'template-def',
         fromVersion: 1,
         toVersion: 2,
-        templateDelta: { operations: ['insert'] },
-        documentActions: { actions: ['reorder'] },
+        templateDelta: { added: [], removed: ['CtaBlock-cccc'], moved: [], templateIds: ['CtaBlock-cccc'] },
+        documentDelta: { added: [], removed: [], moved: [], templateIds: [] },
         resolution: 'apply',
         createdAt: '2026-01-01T00:00:00Z',
         resolvedAt: '2026-01-01T00:05:00Z',

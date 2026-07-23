@@ -341,10 +341,10 @@ export interface MigrationConflict {
   templateId: string;
   fromVersion: number;
   toVersion: number;
-  /** Template's structural changes (extracted from action_metadata) */
+  /** The template's slot delta between the migration's from and to versions. */
   templateDelta: Record<string, unknown>;
-  /** Document's own structural changes since last template version */
-  documentActions: Record<string, unknown>;
+  /** The document's own slot delta since its last migration baseline. */
+  documentDelta: Record<string, unknown>;
   /** How conflict was resolved */
   resolution?: import('./enums').MigrationResolution;
   createdAt: string;

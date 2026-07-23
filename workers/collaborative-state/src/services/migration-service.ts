@@ -1,23 +1,37 @@
 /**
- * Phase 5: Migration Service
+ * Migration service keyed by slot id.
  *
- * Handles automatic document updates when templates change (PROPOSAL-010).
- * Provides conflict detection and rollback capabilities for template migrations.
+ * A template's delta between two versions is an id-keyed diff of the two
+ * version snapshots: components added (carried with their full props),
+ * removed, moved, plus per-slot prop patches. Applying a delta to a document
+ * matches components by slot id, so document-local components keep their
+ * place. A document conflicts with a template change only where the template
+ * delta and the document's own edits since its last migration touch the same
+ * slot id, structurally or on the same prop.
  *
  * Key operations:
  * - Trigger migration jobs with pre-migration checkpoints
- * - Detect structural conflicts between template changes and document edits
+ * - Detect slot-id conflicts between template changes and document edits
  * - Apply template deltas to document snapshots
  * - Rollback failed migrations using checkpoints
  *
+ * @see proposals/PROPOSAL-015-durable-slot-identity.md Design 5
  * @see proposals/PROPOSAL-010-content-types-and-template-migration.md
  */
 
 import { compare as jsonPatchCompare, type Operation } from 'fast-json-patch';
-import { query } from '../db';
+import { query, withTransaction } from '../db';
 import { createCheckpoint, revertToCheckpoint } from './checkpoint-service';
 import { getLatestDocumentVersion, createDocumentVersion, reconstructVersionSnapshot } from './document-version-service';
 import { TEMPLATE_RELATION_INNER_JOIN } from './document-queries';
+import { walkComponents } from './component-identity';
+import {
+  buildSlotDelta,
+  applySlotDelta,
+  touchedSlotIds,
+  isSlotDelta,
+  type SlotDelta,
+} from './slot-delta';
 
 // =============================================================================
 // Types
@@ -63,25 +77,12 @@ export interface MigrationConflict {
   fromVersion: number;
   toVersion: number;
   templateDelta: unknown;
-  documentActions: unknown;
+  documentDelta: unknown;
+  propConflicts: PropConflict[];
+  conflictType: 'structural' | 'prop';
   resolution: 'apply' | 'skip' | 'manual' | null;
   createdAt: Date;
   resolvedAt: Date | null;
-}
-
-/**
- * Puck action from action_metadata.puckActions.
- * Represents structural changes (reorder, move, insert, delete).
- */
-export interface PuckAction {
-  type: 'reorder' | 'move' | 'insert' | 'delete' | 'migration' | 'snapshot_sync';
-  sourceIndex?: number;
-  destinationIndex?: number;
-  componentType?: string;
-  zone?: string;
-  fromVersion?: number;
-  toVersion?: number;
-  [key: string]: unknown;
 }
 
 /**
@@ -94,10 +95,10 @@ export interface PropPatch {
 }
 
 /**
- * Combined migration delta: structural actions plus prop-level patches.
+ * Combined migration delta: the id-keyed structural diff plus prop patches.
  */
 export interface MigrationDelta {
-  structuralActions: PuckAction[];
+  slotDelta: SlotDelta;
   propPatches: PropPatch[];
 }
 
@@ -136,28 +137,40 @@ export interface DocumentWithSnapshot {
 }
 
 /**
- * Conflict detection result.
+ * Conflict detection result. `hasConflict` marks structural conflicts, which
+ * hold the whole document. `propConflicts` lists props the template changed
+ * that the document locally edited; the migration applies the document's clean
+ * changes and records these for resolution rather than dropping them.
  */
 export interface ConflictResult {
   hasConflict: boolean;
-  templateDelta: PuckAction[];
-  documentActions: PuckAction[];
+  templateDelta: SlotDelta;
+  documentDelta: SlotDelta;
   propConflicts?: PropConflict[];
 }
 
 /**
- * Per-document preview result for migration preview.
+ * Per-document preview result for migration preview. `applied` is whether the
+ * migration would advance this document's `synced_version`; `propConflicts`
+ * lists the props held for review and `structuralConflict` is present only when
+ * the document's own structural edit collided with the template's, holding the
+ * whole document. A clean document is `applied` with no review detail; a prop
+ * conflict is `applied` with props to review; a structural conflict is not
+ * applied and carries `structuralConflict`.
  */
 export interface MigrationPreviewDocument {
   documentId: string;
   path: string;
   currentTemplateVersion: number | null;
-  hasConflict: boolean;
+  applied: boolean;
+  propConflicts: PropConflict[];
   proposedSnapshot?: Record<string, unknown>;
-  conflictDetails?: {
-    templateDelta: PuckAction[];
-    documentActions: PuckAction[];
+  structuralConflict?: {
+    templateDelta: SlotDelta;
+    documentDelta: SlotDelta;
   };
+  /** Equals `!applied`; retained for the contract's compatibility window. */
+  hasConflict: boolean;
 }
 
 /**
@@ -168,9 +181,9 @@ export interface MigrationPreview {
   templateId: string;
   fromVersion: number;
   toVersion: number;
-  templateDelta: PuckAction[];
-  // Count of prop-level default changes, which are applied but not represented
-  // in templateDelta (that carries structural actions only).
+  templateDelta: SlotDelta;
+  // Count of prop-level default changes, applied during migration but not
+  // part of the structural templateDelta.
   propChangeCount: number;
   affectedDocuments: number;
   estimatedConflicts: number;
@@ -206,6 +219,30 @@ export class InvalidVersionRangeError extends Error {
   }
 }
 
+export class LegacyConflictDeltaError extends Error {
+  public readonly name = 'LegacyConflictDeltaError';
+  constructor(public readonly conflictId: string) {
+    super(
+      `Migration conflict "${conflictId}" holds a legacy action-array delta that predates the ` +
+        'id-keyed engine; re-run the migration to regenerate its conflicts.',
+    );
+    Object.setPrototypeOf(this, LegacyConflictDeltaError.prototype);
+  }
+}
+
+export class ConflictAlreadyResolvedError extends Error {
+  public readonly name = 'ConflictAlreadyResolvedError';
+  constructor(
+    public readonly conflictId: string,
+    public readonly existingResolution: string,
+  ) {
+    super(
+      `Migration conflict "${conflictId}" is already resolved as "${existingResolution}".`,
+    );
+    Object.setPrototypeOf(this, ConflictAlreadyResolvedError.prototype);
+  }
+}
+
 // =============================================================================
 // Row Mappers
 // =============================================================================
@@ -237,6 +274,8 @@ interface MigrationConflictRow {
   to_version: number;
   template_delta: unknown;
   document_actions: unknown;
+  prop_conflicts: unknown;
+  conflict_type: string;
   resolution: string | null;
   created_at: string;
   resolved_at: string | null;
@@ -261,6 +300,15 @@ function mapRowToJob(row: MigrationJobRow): MigrationJob {
   };
 }
 
+/**
+ * jsonb columns can surface as a parsed value or, after a double-encode, as a
+ * JSON string; coerce prop-conflict payloads back to an array either way.
+ */
+function parsePropConflictsColumn(value: unknown): PropConflict[] {
+  const parsed = typeof value === 'string' ? (JSON.parse(value) as unknown) : value;
+  return Array.isArray(parsed) ? (parsed as PropConflict[]) : [];
+}
+
 function mapRowToConflict(row: MigrationConflictRow): MigrationConflict {
   return {
     id: row.id,
@@ -271,7 +319,9 @@ function mapRowToConflict(row: MigrationConflictRow): MigrationConflict {
     fromVersion: row.from_version,
     toVersion: row.to_version,
     templateDelta: row.template_delta,
-    documentActions: row.document_actions,
+    documentDelta: row.document_actions,
+    propConflicts: parsePropConflictsColumn(row.prop_conflicts),
+    conflictType: row.conflict_type as MigrationConflict['conflictType'],
     resolution: row.resolution as MigrationConflict['resolution'],
     createdAt: new Date(row.created_at),
     resolvedAt: row.resolved_at !== null && row.resolved_at !== '' ? new Date(row.resolved_at) : null,
@@ -283,269 +333,118 @@ function mapRowToConflict(row: MigrationConflictRow): MigrationConflict {
 // =============================================================================
 
 /**
- * Apply structural actions to a document snapshot.
- *
- * @param snapshot - The document's current snapshot
- * @param delta - Structural puckActions to replay
- * @param templateContent - The template's content array at toVersion, used to
- *   look up full component data for insert actions (type + props + defaults).
- *   Without this, inserts create empty shell components.
+ * Applies a slot delta to a document snapshot without mutating the input.
+ * Structural changes match by slot id through `applySlotDelta`; prop patches
+ * then merge three-way, applying only where the document value still equals
+ * the template's old value so local edits survive.
  */
 export function applyDeltaToSnapshot(
   snapshot: Record<string, unknown> | null | undefined,
-  delta: PuckAction[],
-  templateContent?: unknown[],
+  delta: SlotDelta,
   propMigration?: PropMigrationOptions,
 ): Record<string, unknown> {
   if (!snapshot) {
     return {};
   }
-  const content = Array.isArray(snapshot.content)
-    ? [...(snapshot.content as unknown[])]
-    : [];
 
-  // Index template components by type+index for insert lookups
-  const templateByTypeIndex = new Map<string, unknown>();
-  if (templateContent) {
-    templateContent.forEach((c, i) => {
-      const comp = c as { type?: string };
-      if (comp.type !== undefined && comp.type !== '') {
-        templateByTypeIndex.set(`${comp.type}:${String(i)}`, c);
+  const result = applySlotDelta(snapshot, delta);
+
+  if (!propMigration || propMigration.propPatches.length === 0) {
+    return result;
+  }
+
+  const content = Array.isArray(result.content) ? result.content as unknown[] : [];
+  const root = result.root as { props?: Record<string, unknown> } | undefined;
+  const zones = result.zones as Record<string, unknown[]> | undefined;
+
+  const fromContentMap = new Map<string, Record<string, unknown>>();
+  for (const c of propMigration.fromTemplateContent) {
+    const id = c.props?.id;
+    if (typeof id === 'string') {
+      fromContentMap.set(id, { ...c.props });
+    }
+  }
+
+  const fromZonesMap = new Map<string, Record<string, unknown>>();
+  if (propMigration.fromZones) {
+    for (const zoneComps of Object.values(propMigration.fromZones)) {
+      for (const c of zoneComps) {
+        const id = c.props?.id;
+        if (typeof id === 'string') {
+          fromZonesMap.set(id, { ...c.props });
+        }
       }
-    });
+    }
   }
 
-  // Index existing component IDs to prevent duplicate inserts
-  const existingIds = new Set<string>();
-  for (const c of content) {
-    const comp = c as { props?: { id?: string } };
-    if (comp.props?.id !== undefined && comp.props.id !== '') existingIds.add(comp.props.id);
-  }
+  for (const patch of propMigration.propPatches) {
+    if (patch.componentId === '__root__') {
+      if (!root?.props || !propMigration.fromRootProps) continue;
+      for (const op of patch.operations) {
+        const propKey = op.path.replace(/^\//, '');
+        const docValue = root.props[propKey];
+        const templateOldValue = propMigration.fromRootProps[propKey];
+        if (op.op === 'replace' && deepEqual(docValue, templateOldValue)) {
+          root.props[propKey] = (op as { value: unknown }).value;
+        }
+      }
+      continue;
+    }
 
-  for (const action of delta) {
-    if (action.type === 'reorder' && action.sourceIndex != null && action.destinationIndex != null) {
-      if (action.sourceIndex < 0 || action.sourceIndex >= content.length) continue;
-      const [item] = content.splice(action.sourceIndex, 1);
-      content.splice(action.destinationIndex, 0, item);
-    } else if (action.type === 'insert') {
-      // Look up the full component from the template snapshot
-      const componentType = action.componentType ?? 'Unknown';
-      const destIndex = action.destinationIndex;
-      const templateComponent = destIndex != null
-        ? templateByTypeIndex.get(`${componentType}:${String(destIndex)}`)
-        : undefined;
-
-      const newComponent = templateComponent ?? {
-        type: componentType,
-        props: { id: 'migrated-' + crypto.randomUUID() },
-      };
-
-      // Skip if this component already exists in the document
-      const compId = (newComponent as { props?: { id?: string } }).props?.id;
-      if (compId !== undefined && compId !== '' && existingIds.has(compId)) {
+    let applied = false;
+    for (const entry of content) {
+      const comp = entry as ComponentLike;
+      if (comp.props?.id !== patch.componentId) {
         continue;
       }
-      if (compId !== undefined && compId !== '') existingIds.add(compId);
-
-      if (destIndex != null) {
-        content.splice(destIndex, 0, newComponent);
-      } else {
-        content.push(newComponent);
+      const fromProps = fromContentMap.get(patch.componentId) ?? fromZonesMap.get(patch.componentId);
+      if (fromProps) {
+        mergePropPatch(comp.props, fromProps, patch.operations);
+        applied = true;
       }
-    } else if (action.type === 'delete' && action.sourceIndex != null) {
-      content.splice(action.sourceIndex, 1);
-    } else if (action.type === 'move' && action.sourceIndex != null && action.destinationIndex != null) {
-      if (action.sourceIndex < 0 || action.sourceIndex >= content.length) continue;
-      const [item] = content.splice(action.sourceIndex, 1);
-      content.splice(action.destinationIndex, 0, item);
-    } else if (action.type === 'snapshot_sync') {
-      const fromContent = action.fromContent as ComponentLike[] | undefined;
-      const toContent = action.toContent as ComponentLike[] | undefined;
-      if (fromContent && toContent) {
-        const fromIds = new Set(fromContent.map(c => c.props?.id).filter(Boolean));
-        const toIds = new Set(toContent.map(c => c.props?.id).filter(Boolean));
-
-        for (let i = content.length - 1; i >= 0; i--) {
-          const comp = content[i] as ComponentLike;
-          const compId = comp.props?.id;
-          if (typeof compId === 'string' && fromIds.has(compId) && !toIds.has(compId)) {
-            content.splice(i, 1);
-          }
-        }
-
-        const getCompId = (comp: unknown): string | undefined =>
-          (comp as ComponentLike).props?.id as string | undefined;
-
-        const anchors = new Map<string, string | null>();
-        let lastTemplateId: string | null = null;
-        for (const comp of content) {
-          const compId = getCompId(comp);
-          if (typeof compId === 'string' && (toIds.has(compId) || fromIds.has(compId))) {
-            lastTemplateId = compId;
-          } else {
-            const anchorKey = compId ?? `__noId_${String(content.indexOf(comp))}`;
-            anchors.set(anchorKey, lastTemplateId);
-          }
-        }
-
-        const docById = new Map<string, unknown>();
-        for (const comp of content) {
-          const compId = getCompId(comp);
-          if (typeof compId === 'string') docById.set(compId, comp);
-        }
-
-        const reordered: unknown[] = [];
-        const placed = new Set<string>();
-
-        for (const comp of content) {
-          const compId = getCompId(comp);
-          const anchorKey = compId ?? `__noId_${String(content.indexOf(comp))}`;
-          const isDocSpecific = typeof compId !== 'string'
-            || (!toIds.has(compId) && !fromIds.has(compId));
-          if (isDocSpecific && anchors.get(anchorKey) === null) {
-            reordered.push(comp);
-            if (typeof compId === 'string') placed.add(compId);
-            placed.add(anchorKey);
-          }
-        }
-
-        for (const toComp of toContent) {
-          const toId = toComp.props?.id;
-          if (typeof toId !== 'string') continue;
-
-          const docComp = docById.get(toId);
-          if (docComp !== undefined) {
-            reordered.push(docComp);
-            placed.add(toId);
-          } else if (!fromIds.has(toId)) {
-            reordered.push(toComp);
-            placed.add(toId);
-          }
-
-          for (const comp of content) {
-            const cId = getCompId(comp);
-            const anchorKey = cId ?? `__noId_${String(content.indexOf(comp))}`;
-            if (!placed.has(anchorKey) && anchors.get(anchorKey) === toId) {
-              reordered.push(comp);
-              if (typeof cId === 'string') placed.add(cId);
-              placed.add(anchorKey);
-            }
-          }
-        }
-
-        for (const comp of content) {
-          const cId = getCompId(comp);
-          const anchorKey = cId ?? `__noId_${String(content.indexOf(comp))}`;
-          if (!placed.has(anchorKey)
-            && (typeof cId === 'string' ? !placed.has(cId) : true)) {
-            reordered.push(comp);
-          }
-        }
-
-        content.length = 0;
-        content.push(...reordered);
-      }
+      break;
     }
-  }
+    if (applied) continue;
 
-  // Apply prop patches (three-way merge)
-  let resultRoot = snapshot.root as { props?: Record<string, unknown> } | undefined;
-  let resultZones = snapshot.zones as Record<string, unknown[]> | undefined;
-
-  if (propMigration && propMigration.propPatches.length > 0) {
-    const fromContentMap = new Map<string, Record<string, unknown>>();
-    for (const c of propMigration.fromTemplateContent) {
-      const id = c.props?.id;
-      if (typeof id === 'string') {
-        fromContentMap.set(id, { ...c.props });
-      }
-    }
-
-    const fromZonesMap = new Map<string, Record<string, unknown>>();
-    if (propMigration.fromZones) {
-      for (const zoneComps of Object.values(propMigration.fromZones)) {
-        for (const c of zoneComps) {
-          const id = c.props?.id;
-          if (typeof id === 'string') {
-            fromZonesMap.set(id, { ...c.props });
+    if (zones) {
+      for (const zoneContent of Object.values(zones)) {
+        if (!Array.isArray(zoneContent)) continue;
+        for (const entry of zoneContent) {
+          const comp = entry as ComponentLike;
+          if (comp.props?.id !== patch.componentId) {
+            continue;
           }
-        }
-      }
-    }
-
-    for (const patch of propMigration.propPatches) {
-      if (patch.componentId === '__root__') {
-        if (!resultRoot?.props || !propMigration.fromRootProps) continue;
-        const rootProps = { ...resultRoot.props };
-        for (const op of patch.operations) {
-          const propKey = op.path.replace(/^\//, '');
-          const docValue = rootProps[propKey];
-          const templateOldValue = propMigration.fromRootProps[propKey];
-          if (deepEqual(docValue, templateOldValue) && op.op === 'replace') {
-            rootProps[propKey] = (op as { value: unknown }).value;
+          const fromProps = fromZonesMap.get(patch.componentId) ?? fromContentMap.get(patch.componentId);
+          if (fromProps) {
+            mergePropPatch(comp.props, fromProps, patch.operations);
           }
-        }
-        resultRoot = { ...resultRoot, props: rootProps };
-        continue;
-      }
-
-      // Find component in content[]
-      let found = false;
-      for (let i = 0; i < content.length; i++) {
-        const comp = content[i] as ComponentLike;
-        if (comp.props?.id === patch.componentId) {
-          const fromProps = fromContentMap.get(patch.componentId) ?? fromZonesMap.get(patch.componentId);
-          if (!fromProps) break;
-          const props = { ...comp.props };
-          for (const op of patch.operations) {
-            const docValue = getNestedValue(props, op.path);
-            const templateOldValue = getNestedValue(fromProps, op.path);
-            if (deepEqual(docValue, templateOldValue)) {
-              applyPropOp(props, op);
-            }
-          }
-          content[i] = { ...comp, props };
-          found = true;
+          applied = true;
           break;
         }
-      }
-
-      if (found) continue;
-
-      // Find component in zones
-      if (resultZones) {
-        const zonesCopy = { ...resultZones };
-        for (const [zoneKey, zoneContent] of Object.entries(zonesCopy)) {
-          const zoneArr = [...zoneContent] as ComponentLike[];
-          for (let i = 0; i < zoneArr.length; i++) {
-            if (zoneArr[i].props?.id === patch.componentId) {
-              const fromProps = fromZonesMap.get(patch.componentId) ?? fromContentMap.get(patch.componentId);
-              if (!fromProps) break;
-              const props = { ...(zoneArr[i].props ?? {}) };
-              for (const op of patch.operations) {
-                const docValue = getNestedValue(props, op.path);
-                const templateOldValue = getNestedValue(fromProps, op.path);
-                if (deepEqual(docValue, templateOldValue)) {
-                  applyPropOp(props, op);
-                }
-              }
-              zoneArr[i] = { ...zoneArr[i], props };
-              zonesCopy[zoneKey] = zoneArr;
-              found = true;
-              break;
-            }
-          }
-          if (found) break;
-        }
-        if (found) resultZones = zonesCopy;
+        if (applied) break;
       }
     }
   }
 
-  const result: Record<string, unknown> = { ...snapshot, content };
-  if (resultRoot !== undefined) result.root = resultRoot;
-  if (resultZones !== undefined) result.zones = resultZones;
   return result;
+}
+
+/**
+ * Overwrites each op's target only where the document value still equals the
+ * template's old value, leaving diverged props for the caller to flag.
+ */
+function mergePropPatch(
+  props: Record<string, unknown>,
+  fromProps: Record<string, unknown>,
+  operations: Operation[],
+): void {
+  for (const op of operations) {
+    const docValue = getNestedValue(props, op.path);
+    const templateOldValue = getNestedValue(fromProps, op.path);
+    if (deepEqual(docValue, templateOldValue)) {
+      applyPropOp(props, op);
+    }
+  }
 }
 
 function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
@@ -579,7 +478,22 @@ function applyPropOp(props: Record<string, unknown>, op: Operation): void {
     if (!key.includes('/')) {
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete props[key];
+    } else {
+      deleteNestedValue(props, key);
     }
+  }
+}
+
+function deleteNestedValue(obj: Record<string, unknown>, path: string): void {
+  const segments = path.split('/');
+  let current: unknown = obj;
+  for (let i = 0; i < segments.length - 1; i++) {
+    if (current === null || current === undefined || typeof current !== 'object') return;
+    current = (current as Record<string, unknown>)[segments[i]];
+  }
+  if (current !== null && current !== undefined && typeof current === 'object') {
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+    delete (current as Record<string, unknown>)[segments[segments.length - 1]];
   }
 }
 
@@ -595,14 +509,6 @@ function setNestedValue(obj: Record<string, unknown>, path: string, value: unkno
   if (current !== null && current !== undefined && typeof current === 'object') {
     (current as Record<string, unknown>)[segments[segments.length - 1]] = value;
   }
-}
-
-function extractComponentTypes(action: PuckAction): string[] {
-  const types: string[] = [];
-  if (typeof action.componentType === 'string') {
-    types.push(action.componentType);
-  }
-  return types;
 }
 
 // =============================================================================
@@ -738,54 +644,21 @@ export async function extractTemplateDelta(
   fromVersion: number,
   toVersion: number,
 ): Promise<MigrationDelta> {
-  // Query structural versions for explicit puckActions
-  const result = await query<{ action_metadata: { puckActions?: PuckAction[] } | null }>(
-    `SELECT action_metadata
-     FROM app.document_versions
-     WHERE document_id = $1
-       AND branch_id = $2
-       AND version_number > $3
-       AND version_number <= $4
-       AND action_type = 'structural'
-     ORDER BY version_number ASC`,
-    [templateId, branchId, fromVersion, toVersion],
-  );
-
-  const puckActions = result.rows.flatMap(
-    (r) => r.action_metadata?.puckActions ?? [],
-  );
-
-  // Always reconstruct snapshots to extract prop patches
   const fromSnapshot = await reconstructVersionSnapshot(templateId, branchId, fromVersion);
   const toSnapshot = await reconstructVersionSnapshot(templateId, branchId, toVersion);
 
-  const propPatches = extractPropPatches(fromSnapshot, toSnapshot);
-
-  // Determine structural actions
-  let structuralActions: PuckAction[];
-
-  if (puckActions.length > 0) {
-    structuralActions = puckActions;
-  } else if (result.rows.length > 0) {
-    // Structural versions exist but had no explicit puckActions (derived);
-    // fall back to snapshot_sync if content actually changed
-    const fromContent = Array.isArray(fromSnapshot?.content)
-      ? fromSnapshot.content as unknown[]
-      : [];
-    const toContent = Array.isArray(toSnapshot?.content)
-      ? toSnapshot.content as unknown[]
-      : [];
-
-    if (JSON.stringify(fromContent) !== JSON.stringify(toContent)) {
-      structuralActions = [{ type: 'snapshot_sync', fromContent, toContent }];
-    } else {
-      structuralActions = [];
-    }
-  } else {
-    structuralActions = [];
+  // A from-version without a content array predates the content-shape
+  // conversion. Diffing a manifest against the content shape would read every
+  // component as added; the conversion is a representation change, so the
+  // delta across that boundary is empty.
+  if (!Array.isArray((fromSnapshot as { content?: unknown } | null)?.content)) {
+    return { slotDelta: buildSlotDelta(null, null), propPatches: [] };
   }
 
-  return { structuralActions, propPatches };
+  const slotDelta = buildSlotDelta(fromSnapshot, toSnapshot);
+  const propPatches = extractPropPatches(fromSnapshot, toSnapshot);
+
+  return { slotDelta, propPatches };
 }
 
 export async function getMigrationJob(jobId: string): Promise<MigrationJob> {
@@ -859,61 +732,52 @@ export async function findAffectedDocuments(
 export async function detectDocumentConflicts(
   documentId: string,
   branchId: string,
-  templateDelta: PuckAction[],
-  _fromTemplateVersion: number,
-  _toVersion: number,
+  templateDelta: SlotDelta,
+  documentSnapshot: Record<string, unknown>,
   propConflictOptions?: {
     propPatches: PropPatch[];
     fromTemplateContent: { type?: string; props?: Record<string, unknown> }[];
-    documentSnapshot: Record<string, unknown>;
+    fromZones?: Record<string, { type?: string; props?: Record<string, unknown> }[]>;
   },
 ): Promise<ConflictResult | null> {
-  // Find the document's own version_number at which the last migration was applied.
-  // This is distinct from the template version — document version_number tracks
-  // the document's edit counter, not which template version it's bound to.
-  const lastMigResult = await query<{ version_number: number }>(
-    `SELECT COALESCE(MAX(version_number), 0) as version_number
-     FROM app.document_versions
-     WHERE document_id = $1 AND branch_id = $2 AND source = 'migration'`,
-    [documentId, branchId],
-  );
-  const sinceDocVersion = lastMigResult.rows[0]?.version_number ?? 0;
+  const baselineVersion = await resolveBaselineVersion(documentId, branchId);
+  const baselineSnapshot = await reconstructVersionSnapshot(documentId, branchId, baselineVersion);
+  const documentDelta = buildSlotDelta(baselineSnapshot, documentSnapshot);
 
-  const result = await query<{ action_metadata: { puckActions?: PuckAction[] } | null }>(
-    `SELECT action_metadata
-     FROM app.document_versions
-     WHERE document_id = $1
-       AND branch_id = $2
-       AND version_number > $3
-       AND action_type = 'structural'
-     ORDER BY version_number ASC`,
-    [documentId, branchId, sinceDocVersion],
-  );
+  const templateTouched = new Set(touchedSlotIds(templateDelta));
+  const hasStructuralConflict = touchedSlotIds(documentDelta).some((id) => templateTouched.has(id));
 
-  const documentActions: PuckAction[] = result.rows.flatMap(
-    (r) => r.action_metadata?.puckActions ?? [],
-  );
-
-  // Detect prop conflicts
   const propConflicts: PropConflict[] = [];
   if (propConflictOptions) {
-    const fromContentMap = new Map<string, Record<string, unknown>>();
+    const fromMap = new Map<string, Record<string, unknown>>();
     for (const c of propConflictOptions.fromTemplateContent) {
       const id = c.props?.id;
       if (typeof id === 'string') {
-        fromContentMap.set(id, { ...c.props });
+        fromMap.set(id, { ...c.props });
+      }
+    }
+    if (propConflictOptions.fromZones) {
+      for (const zoneComps of Object.values(propConflictOptions.fromZones)) {
+        for (const c of zoneComps) {
+          const id = c.props?.id;
+          if (typeof id === 'string') {
+            fromMap.set(id, { ...c.props });
+          }
+        }
       }
     }
 
-    const docContentMap = buildIdMap(
-      Array.isArray(propConflictOptions.documentSnapshot.content)
-        ? propConflictOptions.documentSnapshot.content as unknown[]
-        : [],
-    );
+    const docMap = new Map<string, Record<string, unknown>>();
+    for (const ref of walkComponents(documentSnapshot)) {
+      const id = ref.component.props.id;
+      if (typeof id === 'string' && !docMap.has(id)) {
+        docMap.set(id, ref.component.props);
+      }
+    }
 
     for (const patch of propConflictOptions.propPatches) {
-      const fromProps = fromContentMap.get(patch.componentId);
-      const docProps = docContentMap.get(patch.componentId);
+      const fromProps = fromMap.get(patch.componentId);
+      const docProps = docMap.get(patch.componentId);
       if (!fromProps || !docProps) continue;
 
       for (const op of patch.operations) {
@@ -932,36 +796,54 @@ export async function detectDocumentConflicts(
     }
   }
 
-  if (documentActions.length === 0 && propConflicts.length === 0) {
+  const documentUnchanged =
+    documentDelta.added.length === 0 &&
+    documentDelta.removed.length === 0 &&
+    documentDelta.moved.length === 0;
+
+  if (documentUnchanged && propConflicts.length === 0) {
     return null;
   }
-
-  const templateTypes = new Set(
-    templateDelta.flatMap((a) => extractComponentTypes(a)),
-  );
-
-  const hasStructuralConflict = documentActions.length > 0 && (
-    templateTypes.size === 0
-      ? true
-      : documentActions.some((a) =>
-        extractComponentTypes(a).some((t) => templateTypes.has(t)),
-      )
-  );
 
   return {
     hasConflict: hasStructuralConflict,
     templateDelta,
-    documentActions,
+    documentDelta,
     propConflicts: propConflicts.length > 0 ? propConflicts : undefined,
   };
+}
+
+/**
+ * The document version_number to diff a document's own edits against: the last
+ * migration-sourced version, or the document's earliest version when it has
+ * never been migrated.
+ */
+async function resolveBaselineVersion(documentId: string, branchId: string): Promise<number> {
+  const lastMigration = await query<{ version_number: number }>(
+    `SELECT COALESCE(MAX(version_number), 0) as version_number
+     FROM app.document_versions
+     WHERE document_id = $1 AND branch_id = $2 AND source = 'migration'`,
+    [documentId, branchId],
+  );
+  const lastMigrationVersion = lastMigration.rows[0]?.version_number ?? 0;
+  if (lastMigrationVersion > 0) {
+    return lastMigrationVersion;
+  }
+
+  const earliest = await query<{ version_number: number }>(
+    `SELECT MIN(version_number) as version_number
+     FROM app.document_versions
+     WHERE document_id = $1 AND branch_id = $2`,
+    [documentId, branchId],
+  );
+  return earliest.rows[0]?.version_number ?? 1;
 }
 
 export async function applyDeltaToDocument(
   documentId: string,
   branchId: string,
-  delta: PuckAction[],
+  delta: SlotDelta,
   principal: MigrationPrincipal,
-  templateContent?: unknown[],
   propMigration?: PropMigrationOptions,
 ): Promise<{ versionId: string; snapshot: Record<string, unknown> }> {
   const latestVersion = await getLatestDocumentVersion(documentId, branchId);
@@ -978,11 +860,12 @@ export async function applyDeltaToDocument(
     throw new Error(`No snapshot found for document ${documentId} on branch ${branchId}`);
   }
 
-  const newSnapshot = applyDeltaToSnapshot(snapshot, delta, templateContent, propMigration);
+  const newSnapshot = applyDeltaToSnapshot(snapshot, delta, propMigration);
 
-  const migrationActions = delta.length > 0
-    ? delta.map(d => ({ type: 'migration' as const, ...d }))
-    : [{ type: 'migration' as const, propPatchCount: propMigration?.propPatches.length ?? 0 }];
+  const addedIds = delta.added
+    .map((add) => add.component.props.id)
+    .filter((id): id is string => typeof id === 'string');
+  const movedIds = delta.moved.map((move) => move.id);
 
   const version = await createDocumentVersion({
     documentId,
@@ -991,7 +874,13 @@ export async function applyDeltaToDocument(
     source: 'migration',
     createdById: principal.id,
     createdByType: principal.type,
-    puckActions: migrationActions,
+    puckActions: [{
+      type: 'migration',
+      addedIds,
+      removedIds: [...delta.removed],
+      movedIds,
+      propPatchCount: propMigration?.propPatches.length ?? 0,
+    }],
   });
 
   return { versionId: version.id, snapshot: newSnapshot };
@@ -1050,6 +939,35 @@ export async function triggerMigration(
   return mapRowToJob(jobResult.rows[0]);
 }
 
+/**
+ * Builds the prop-migration options from the template's `from` version, or
+ * `undefined` when the version range changed no props.
+ */
+async function buildPropMigrationOptions(
+  templateId: string,
+  branchId: string,
+  fromVersion: number,
+  propPatches: PropPatch[],
+): Promise<PropMigrationOptions | undefined> {
+  if (propPatches.length === 0) {
+    return undefined;
+  }
+  const fromTemplateSnapshot = await reconstructVersionSnapshot(templateId, branchId, fromVersion);
+  const fromContent = Array.isArray(fromTemplateSnapshot?.content)
+    ? fromTemplateSnapshot.content as { type?: string; props?: Record<string, unknown> }[]
+    : [];
+  const fromRootProps = (fromTemplateSnapshot?.root as { props?: Record<string, unknown> } | undefined)?.props;
+  type ZoneComponents = { type?: string; props?: Record<string, unknown> }[];
+  const fromZones = fromTemplateSnapshot?.zones as Record<string, ZoneComponents> | undefined;
+
+  return {
+    propPatches,
+    fromTemplateContent: fromContent,
+    fromRootProps,
+    fromZones,
+  };
+}
+
 export async function processMigration(
   jobId: string,
   onDocumentsMigrated?: (siteId: string, branchId: string, documentIds: string[]) => Promise<void>,
@@ -1067,37 +985,11 @@ export async function processMigration(
   const migrationDelta = await extractTemplateDelta(
     job.templateId, job.branchId, job.fromVersion, job.toVersion,
   );
-  const templateDelta = migrationDelta.structuralActions;
+  const templateDelta = migrationDelta.slotDelta;
 
-  // Fetch template snapshot at toVersion so insert actions can pull full component data
-  const templateSnapshot = await reconstructVersionSnapshot(
-    job.templateId, job.branchId, job.toVersion,
+  const propMigration = await buildPropMigrationOptions(
+    job.templateId, job.branchId, job.fromVersion, migrationDelta.propPatches,
   );
-  const templateContent = Array.isArray(templateSnapshot?.content)
-    ? templateSnapshot.content as unknown[]
-    : undefined;
-
-  // Build prop migration options when prop patches exist
-  let propMigration: PropMigrationOptions | undefined;
-  if (migrationDelta.propPatches.length > 0) {
-    const fromTemplateSnapshot = await reconstructVersionSnapshot(
-      job.templateId, job.branchId, job.fromVersion,
-    );
-    const fromContent = Array.isArray(fromTemplateSnapshot?.content)
-      ? fromTemplateSnapshot.content as { type?: string; props?: Record<string, unknown> }[]
-      : [];
-    const fromRootProps = (fromTemplateSnapshot?.root as { props?: Record<string, unknown> } | undefined)?.props;
-    type ZoneComponents = { type?: string; props?: Record<string, unknown> }[];
-    const fromZones = fromTemplateSnapshot?.zones as
-      Record<string, ZoneComponents> | undefined;
-
-    propMigration = {
-      propPatches: migrationDelta.propPatches,
-      fromTemplateContent: fromContent,
-      fromRootProps,
-      fromZones,
-    };
-  }
 
   let processedDocuments = 0;
   let conflictedDocuments = 0;
@@ -1116,45 +1008,74 @@ export async function processMigration(
 
     for (const doc of docs) {
       const conflict = await detectDocumentConflicts(
-        doc.id, job.branchId, templateDelta, doc.templateVersion ?? 0, job.toVersion,
+        doc.id, job.branchId, templateDelta, doc.snapshot,
         propMigration ? {
           propPatches: propMigration.propPatches,
           fromTemplateContent: propMigration.fromTemplateContent,
-          documentSnapshot: doc.snapshot,
+          fromZones: propMigration.fromZones,
         } : undefined,
       );
 
-      const hasConflict = conflict?.hasConflict ?? false;
-      if (hasConflict) {
+      if (conflict?.hasConflict === true) {
         await query(
           `INSERT INTO app.migration_conflicts (
              migration_job_id, document_id, branch_id, template_id,
-             from_version, to_version, template_delta, document_actions
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+             from_version, to_version, template_delta, document_actions, conflict_type
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           [jobId, doc.id, job.branchId, job.templateId,
             job.fromVersion, job.toVersion,
-            templateDelta, conflict.documentActions],
+            templateDelta, conflict.documentDelta, 'structural'],
         );
         conflictedDocuments++;
       } else {
         try {
-          await applyDeltaToDocument(
-            doc.id, job.branchId, templateDelta,
-            { id: job.createdById, type: job.createdByType },
-            templateContent,
-            propMigration,
-          );
+          // The delta application, any prop-divergence record, and the
+          // synced_version advance commit together: a document is never left
+          // migrated-but-unadvanced, so a re-run can never apply the delta twice.
+          await withTransaction(async () => {
+            await applyDeltaToDocument(
+              doc.id, job.branchId, templateDelta,
+              { id: job.createdById, type: job.createdByType },
+              propMigration,
+            );
+
+            // The document's clean changes are applied; a diverged prop is left
+            // local and recorded so the operator decides template vs. local.
+            if (conflict?.propConflicts && conflict.propConflicts.length > 0) {
+              await query(
+                `INSERT INTO app.migration_conflicts (
+                   migration_job_id, document_id, branch_id, template_id,
+                   from_version, to_version, template_delta, document_actions,
+                   prop_conflicts, conflict_type
+                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)`,
+                [jobId, doc.id, job.branchId, job.templateId,
+                  job.fromVersion, job.toVersion,
+                  templateDelta, conflict.documentDelta,
+                  JSON.stringify(conflict.propConflicts), 'prop'],
+              );
+            }
+
+            await query(
+              `UPDATE app.document_relations SET synced_version = $1
+               WHERE source_document_id = $2 AND relation_type = 'template'`,
+              [job.toVersion, doc.id],
+            );
+          });
+
+          if (conflict?.propConflicts && conflict.propConflicts.length > 0) {
+            conflictedDocuments++;
+          }
           cleanDocumentIds.push(doc.id);
         } catch (applyErr: unknown) {
           console.error(`Migration: failed to apply delta to document ${doc.id}:`, applyErr);
           await query(
             `INSERT INTO app.migration_conflicts (
                migration_job_id, document_id, branch_id, template_id,
-               from_version, to_version, template_delta, document_actions
-             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+               from_version, to_version, template_delta, document_actions, conflict_type
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
             [jobId, doc.id, job.branchId, job.templateId,
               job.fromVersion, job.toVersion,
-              templateDelta, { error: String(applyErr) }],
+              templateDelta, { error: String(applyErr) }, 'structural'],
           );
           conflictedDocuments++;
         }
@@ -1163,21 +1084,12 @@ export async function processMigration(
       processedDocuments++;
     }
 
-    // Advance the template edge's synced_version for all clean documents in this batch
-    if (cleanDocumentIds.length > 0) {
-      await query(
-        `UPDATE app.document_relations SET synced_version = $1
-         WHERE source_document_id = ANY($2) AND relation_type = 'template'`,
-        [job.toVersion, cleanDocumentIds],
-      );
-
-      // Notify DOs to reload from Postgres so they pick up the migrated snapshots
-      if (onDocumentsMigrated) {
-        try {
-          await onDocumentsMigrated(job.siteId, job.branchId, cleanDocumentIds);
-        } catch (notifyErr: unknown) {
-          console.error('Migration: failed to notify DOs:', notifyErr);
-        }
+    // Notify DOs to reload from Postgres so they pick up the migrated snapshots
+    if (cleanDocumentIds.length > 0 && onDocumentsMigrated) {
+      try {
+        await onDocumentsMigrated(job.siteId, job.branchId, cleanDocumentIds);
+      } catch (notifyErr: unknown) {
+        console.error('Migration: failed to notify DOs:', notifyErr);
       }
     }
 
@@ -1281,7 +1193,10 @@ export async function previewMigration(
   }
 
   const migrationDelta = await extractTemplateDelta(templateId, branchId, fromVersion, toVersion);
-  const templateDelta = migrationDelta.structuralActions;
+  const templateDelta = migrationDelta.slotDelta;
+  const propMigration = await buildPropMigrationOptions(
+    templateId, branchId, fromVersion, migrationDelta.propPatches,
+  );
 
   const previewDocuments: MigrationPreviewDocument[] = [];
   let affectedDocuments = 0;
@@ -1301,12 +1216,18 @@ export async function previewMigration(
       affectedDocuments++;
 
       const conflict = await detectDocumentConflicts(
-        doc.id, branchId, templateDelta, doc.templateVersion ?? 0, toVersion,
+        doc.id, branchId, templateDelta, doc.snapshot,
+        propMigration ? {
+          propPatches: propMigration.propPatches,
+          fromTemplateContent: propMigration.fromTemplateContent,
+          fromZones: propMigration.fromZones,
+        } : undefined,
       );
 
-      const hasConflict = conflict?.hasConflict ?? false;
+      const hasStructuralConflict = conflict?.hasConflict ?? false;
+      const propConflicts = conflict?.propConflicts ?? [];
 
-      if (hasConflict) {
+      if (hasStructuralConflict || propConflicts.length > 0) {
         estimatedConflicts++;
       }
 
@@ -1315,16 +1236,21 @@ export async function previewMigration(
           documentId: doc.id,
           path: doc.path,
           currentTemplateVersion: doc.templateVersion,
-          hasConflict,
+          applied: !hasStructuralConflict,
+          // A structural conflict holds the whole document, so its diverged
+          // props are not applied and not offered for review, matching the
+          // migration itself.
+          propConflicts: hasStructuralConflict ? [] : propConflicts,
+          hasConflict: hasStructuralConflict,
         };
 
-        if (hasConflict && conflict) {
-          previewDoc.conflictDetails = {
+        if (hasStructuralConflict && conflict) {
+          previewDoc.structuralConflict = {
             templateDelta: conflict.templateDelta,
-            documentActions: conflict.documentActions,
+            documentDelta: conflict.documentDelta,
           };
         } else {
-          previewDoc.proposedSnapshot = applyDeltaToSnapshot(doc.snapshot, templateDelta);
+          previewDoc.proposedSnapshot = applyDeltaToSnapshot(doc.snapshot, templateDelta, propMigration);
         }
 
         previewDocuments.push(previewDoc);
@@ -1476,65 +1402,170 @@ async function getActiveMigration(
   };
 }
 
+/**
+ * Resolves a prop conflict by taking the template value: sets each diverged
+ * prop to its `templateNewValue` on the document's current snapshot and writes
+ * a migration-sourced version. The structural delta was applied at migration
+ * time, so it is not replayed here.
+ */
+async function applyPropConflictResolution(
+  conflict: MigrationConflictRow,
+  principal: MigrationPrincipal,
+): Promise<void> {
+  const propConflicts = parsePropConflictsColumn(conflict.prop_conflicts);
+  if (propConflicts.length === 0) {
+    return;
+  }
+
+  const latest = await getLatestDocumentVersion(conflict.document_id, conflict.branch_id);
+  let snapshot = latest?.snapshot ?? null;
+  if (!snapshot && latest) {
+    snapshot = await reconstructVersionSnapshot(
+      conflict.document_id, conflict.branch_id, latest.versionNumber,
+    );
+  }
+  if (!snapshot) {
+    throw new Error(`No snapshot found for document ${conflict.document_id} on branch ${conflict.branch_id}`);
+  }
+
+  const updated = structuredClone(snapshot);
+  const refs = walkComponents(updated);
+  for (const pc of propConflicts) {
+    const ref = refs.find((r) => r.component.props.id === pc.componentId);
+    if (ref) {
+      applyPropOp(ref.component.props, { op: 'replace', path: pc.propPath, value: pc.templateNewValue });
+    }
+  }
+
+  await createDocumentVersion({
+    documentId: conflict.document_id,
+    branchId: conflict.branch_id,
+    snapshot: updated,
+    source: 'migration',
+    createdById: principal.id,
+    createdByType: principal.type,
+    puckActions: [{ type: 'migration', addedIds: [], removedIds: [], movedIds: [], propPatchCount: propConflicts.length }],
+  });
+}
+
 export async function resolveMigrationConflict(
   conflictId: string,
   resolution: 'apply' | 'skip' | 'manual',
   principal: MigrationPrincipal,
   expectedJobId?: string,
 ): Promise<MigrationConflict> {
-  const conflictResult = await query<MigrationConflictRow>(
-    'SELECT * FROM app.migration_conflicts WHERE id = $1',
-    [conflictId],
-  );
-
-  if (conflictResult.rows.length === 0) {
-    throw new Error(`Migration conflict with ID "${conflictId}" not found.`);
-  }
-
-  const conflict = conflictResult.rows[0];
-
-  if (expectedJobId !== undefined && conflict.migration_job_id !== expectedJobId) {
-    throw new MigrationJobNotFoundError(expectedJobId);
-  }
-
+  // Reconstruct the structural-apply inputs before locking. Template versions
+  // are immutable history, so building the delta and prop migration outside the
+  // transaction keeps the conflict-row lock scoped to the read-guard-write path
+  // instead of spanning version reconstruction.
+  let structuralPlan: { delta: SlotDelta; propMigration?: PropMigrationOptions } | undefined;
   if (resolution === 'apply') {
-    // Tolerate a delta stored as a JSON string, not just a jsonb array.
-    const rawDelta = typeof conflict.template_delta === 'string'
-      ? (JSON.parse(conflict.template_delta) as unknown)
-      : conflict.template_delta;
-    const delta = Array.isArray(rawDelta)
-      ? rawDelta as PuckAction[]
-      : [];
-
-    const tplSnapshot = await reconstructVersionSnapshot(
-      conflict.template_id, conflict.branch_id, conflict.to_version,
+    const initial = await query<MigrationConflictRow>(
+      'SELECT * FROM app.migration_conflicts WHERE id = $1',
+      [conflictId],
     );
-    const tplContent = Array.isArray(tplSnapshot?.content)
-      ? tplSnapshot.content as unknown[]
-      : undefined;
+    const conflict = initial.rows[0];
+    if (conflict === undefined) {
+      throw new Error(`Migration conflict with ID "${conflictId}" not found.`);
+    }
 
-    await applyDeltaToDocument(
-      conflict.document_id,
-      conflict.branch_id,
-      delta,
-      principal,
-      tplContent,
-    );
+    if (conflict.conflict_type !== 'prop') {
+      // A delta can come back from jsonb as a JSON string rather than a parsed
+      // value; parse it before validating.
+      const rawDelta: unknown = typeof conflict.template_delta === 'string'
+        ? JSON.parse(conflict.template_delta)
+        : conflict.template_delta;
+      if (!isSlotDelta(rawDelta)) {
+        throw new LegacyConflictDeltaError(conflictId);
+      }
 
-    await query(
-      `UPDATE app.document_relations SET synced_version = $1
-       WHERE source_document_id = $2 AND relation_type = 'template'`,
-      [conflict.to_version, conflict.document_id],
-    );
+      const fromSnapshot = await reconstructVersionSnapshot(
+        conflict.template_id, conflict.branch_id, conflict.from_version,
+      );
+      const toSnapshot = await reconstructVersionSnapshot(
+        conflict.template_id, conflict.branch_id, conflict.to_version,
+      );
+      const propPatches = extractPropPatches(fromSnapshot, toSnapshot);
+
+      let propMigration: PropMigrationOptions | undefined;
+      if (propPatches.length > 0) {
+        const fromContent = Array.isArray(fromSnapshot?.content)
+          ? fromSnapshot.content as { type?: string; props?: Record<string, unknown> }[]
+          : [];
+        const fromRootProps = (fromSnapshot?.root as { props?: Record<string, unknown> } | undefined)?.props;
+        type ZoneComponents = { type?: string; props?: Record<string, unknown> }[];
+        const fromZones = fromSnapshot?.zones as Record<string, ZoneComponents> | undefined;
+
+        propMigration = {
+          propPatches,
+          fromTemplateContent: fromContent,
+          fromRootProps,
+          fromZones,
+        };
+      }
+
+      structuralPlan = { delta: rawDelta, propMigration };
+    }
   }
 
-  const updateResult = await query<MigrationConflictRow>(
-    `UPDATE app.migration_conflicts
-     SET resolution = $1, resolved_at = NOW()
-     WHERE id = $2
-     RETURNING *`,
-    [resolution, conflictId],
-  );
+  return withTransaction(async () => {
+    const conflictResult = await query<MigrationConflictRow>(
+      'SELECT * FROM app.migration_conflicts WHERE id = $1 FOR UPDATE',
+      [conflictId],
+    );
 
-  return mapRowToConflict(updateResult.rows[0]);
+    const conflict = conflictResult.rows[0];
+    if (conflict === undefined) {
+      throw new Error(`Migration conflict with ID "${conflictId}" not found.`);
+    }
+
+    if (expectedJobId !== undefined && expectedJobId !== '' && conflict.migration_job_id !== expectedJobId) {
+      throw new MigrationJobNotFoundError(expectedJobId);
+    }
+
+    // The row lock above serialises concurrent resolutions. A repeat of the same
+    // resolution is an idempotent no-op returning the settled record; a request
+    // for a different resolution is rejected rather than silently discarded or
+    // applied on top of the prior outcome.
+    if (conflict.resolution !== null && conflict.resolution !== '') {
+      if (conflict.resolution === resolution) {
+        return mapRowToConflict(conflict);
+      }
+      throw new ConflictAlreadyResolvedError(conflictId, conflict.resolution);
+    }
+
+    if (resolution === 'apply' && conflict.conflict_type === 'prop') {
+      // The structural changes were already applied at migration time; taking the
+      // template value here only sets the diverged props on the current snapshot.
+      await applyPropConflictResolution(conflict, principal);
+    } else if (resolution === 'apply' && structuralPlan) {
+      await applyDeltaToDocument(
+        conflict.document_id,
+        conflict.branch_id,
+        structuralPlan.delta,
+        principal,
+        structuralPlan.propMigration,
+      );
+
+      await query(
+        `UPDATE app.document_relations SET synced_version = $1
+         WHERE source_document_id = $2 AND relation_type = 'template'`,
+        [conflict.to_version, conflict.document_id],
+      );
+    }
+
+    const updateResult = await query<MigrationConflictRow>(
+      `UPDATE app.migration_conflicts
+       SET resolution = $1, resolved_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [resolution, conflictId],
+    );
+
+    const resolved = updateResult.rows[0];
+    if (resolved === undefined) {
+      throw new Error(`Migration conflict with ID "${conflictId}" not found.`);
+    }
+    return mapRowToConflict(resolved);
+  });
 }

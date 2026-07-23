@@ -5299,3 +5299,61 @@ Security review: no findings. Code review (correctness and cleanup passes): 11 f
 #### Reviews
 
 Security review: no findings (the deep clone only sees admin-authored, branch-scoped template content; the client snapshot is rejected; title lands only as a JSON value). Code review: one high-severity correctness bug fixed (template resolved without copy-on-write fallback produced empty pages on feature branches). Two findings left open for review rather than expanded mid-phase: template-based create_page seeds only the title from root_props (other root props are dropped), and `createDocument` grew to a seven-parameter positional signature that could collapse into an options object.
+
+---
+
+### PROPOSAL-015 Phase 3: Migration Engine on Slot Ids
+
+**Status:** Complete
+**Branch:** `ag-pcc-3239-migration-slot-ids` (stacked on `ag-pcc-3239-backend-skeleton`)
+**Proposal:** `proposals/PROPOSAL-015-durable-slot-identity.md`
+
+#### What was built
+
+- `workers/src/services/slot-delta.ts` (new): the id-keyed template delta. `buildSlotDelta` diffs two snapshots by slot id over content and zones: adds carry the full template component, removes are ids, and moves are minimal (longest-increasing-subsequence over each list's shared ids) with placement anchored on the preceding slot ids, nearest first. `applySlotDelta` matches by slot id, resolves anchors with nearest-surviving fallback, keeps document-local components beside their anchors, and never inserts an id the document already holds.
+- `workers/src/services/migration-service.ts` (reworked): `extractTemplateDelta` derives the delta from the two version snapshots instead of replayed editor puckActions, so inconsistent action capture can no longer starve a migration. Apply inserts template components with their full props (the bare-shell `migrated-` fallback is gone). Conflicts exist only where the template delta and the document's own changes since its last migration baseline touch the same slot id; document-local components never conflict. Prop-conflict detection now sees zone components. Stored conflict payloads hold slot deltas (`documentDelta` field); applying a pre-rework action-array conflict answers 409 via `LegacyConflictDeltaError`, and applying a conflict carries the version range's prop patches through the three-way merge.
+- `workers/src/services/slot-id-adoption.ts` + `workers/src/db/adopt-slot-ids.ts` (new): the one-time adoption pass. Matches template-bound documents' components to template slots by type and relative order per list, rewrites matched ids to slot ids, re-keys zones through the parent correspondence, and persists each adoption as a migration-sourced version under the system actor, which also resets the document's conflict baseline. Non-conformant documents (a pinned slot with no occurrence) and rewrites that would duplicate an id are recorded and skipped. Runs as a dry-run-by-default script (`pnpm db:adopt-slot-ids[:execute] [--site id]`); the run is idempotent and site-scopable. Live editing sessions should be quiescent during an execute run.
+
+#### Tests
+
+New: `slot-delta.spec.ts` (41), `slot-id-adoption.spec.ts` (16), `migration-service.slot-engine.spec.ts` (19), `migration-api.spec.ts` (2), `slot-id-adoption.integration.spec.ts` (5). Adapted to the id-keyed engine: `migration-service.spec.ts` (blocks asserting index/type-keyed replay and type-overlap conflicts deleted with the mechanics they tested; DB-flow and prop-merge blocks adapted), `migration-service-multiversion.spec.ts` (multi-version delta is the endpoint snapshot diff), `template-migration.integration.spec.ts` (delta-shape and conflict-payload assertions). `template-migration-e2e.integration.spec.ts` passed unmodified. Sweep: 225 unit plus 34 integration tests green.
+
+#### Gating and decisions
+
+- Adoption as a system script rather than an admin endpoint (user decision), following the repo's db-script pattern; it executes after the content-shape cutover (PCC-3357) converts stored templates, since a manifest-shaped template is skipped as not content-shaped.
+- Conflict payload shape change approved: `migration_conflicts.template_delta`/`document_actions` columns now store slot deltas, and the REST field is `documentDelta`. Pre-rework conflict rows cannot be re-applied (409 with re-run guidance).
+- Engine unit tests run against content-shaped fixtures; end-to-end migration against real stored templates gates on the cutover, like Phase 2.
+
+#### Reviews
+
+Security review: no findings (new queries parameterized; stored-delta round-trip scoped to the conflict's own document; endpoint authorization untouched). Code review (two finder passes): conflict apply dropped the migration's prop patches (fixed), legacy payload apply surfaced as an opaque 500 (fixed, typed 409), stale API-reference payload docs and domain-type naming (fixed), adoption runner skipped null-snapshot latest versions instead of reconstructing (fixed). Noted, not changed: the adoption runner scans a site's edges unbounded; acceptable for a one-time idempotent script.
+
+#### Follow-up: prop divergence surfaced as a resolvable conflict
+
+Live verification found that a template prop change to a component whose prop a document had locally edited reached clean documents but was dropped without notice on the edited one, with no conflict recorded. The migration now keeps applying each document's clean changes and records the diverged props as a conflict, so nothing is decided silently. Granularity is hybrid (user decision over holding the whole document): `resolveMigrationConflict` takes the template value on `apply` by setting the diverged props on the already-migrated snapshot, and keeps the local value on `skip`. Structural conflicts are unchanged.
+
+- Migration `043_migration_prop_conflicts.sql`: `migration_conflicts` gains `prop_conflicts` (jsonb) and `conflict_type` (`structural` | `prop`); resolution branches on `conflict_type`.
+- `previewMigration` applies prop patches to proposed snapshots and counts prop divergences, so a preview reflects both the template updates a clean document receives and the divergences an edited one must resolve.
+
+---
+
+### PROPOSAL-015 Phase 4: Conformance and Pinning by Membership
+
+**Status:** Complete
+**Branch:** `ag-pcc-3239-membership-conformance` (stacked on `ag-pcc-3239-migration-slot-ids`)
+**Proposal:** `proposals/PROPOSAL-015-durable-slot-identity.md`
+
+#### What was built
+
+- `packages/p1-content-validator` (rewritten `structure-validator.ts`, `types.ts`): `validateDocumentStructure` matches by slot-id membership. A pinned slot is a template component whose `props.id` maps to `true` in `root.props._pinMap`, read from the content-shaped template's content and zones. Presence is id membership across the document's lists, so a same-typed local component never satisfies a pinned slot and a duplicated type cannot mask a missing one; order is checked per list against the template's relative order, with slots that changed lists exempt. Error codes unchanged. `ValidateStructureInput.templateSnapshot` is `unknown`: the validator narrows defensively and a template that is not content-shaped pins nothing.
+- MCP `apply_document_edits` (`workers/mcp-server/src/shared/tools.ts`): the advisory structural check passes the fetched template through unchanged; the manifest-shaped cast wrapper is gone.
+
+This subsumes the validator hunk in the content-shape cutover PR (#185), which converted the input shape but kept type matching (user decision: write the final form).
+
+#### Tests
+
+`structure-validator.spec.ts` rewritten to the membership contract (21 tests, including membership-vs-type cases, per-list order, zone slots, and a robustness suite). Package suite 74 green; full mcp-server suite 242 green.
+
+#### Reviews
+
+Combined correctness/security review: clean on correctness, consumer audit, and security (strict `=== true` pin checks defeat prototype-chain lookups; membership via Set). One test gap fixed (order error index values now pinned). Noted by design: a manifest-shaped template pins nothing, so conformance activates once the content-shape cutover lands, the same gate Phases 2 and 3 carry; the manifest-typed `getTemplate` client signature is reconciled by the cutover PR.
