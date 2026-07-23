@@ -32,7 +32,7 @@ import { applyOperation, initializeFromSnapshot } from './crdt-operations';
 import { validateActorId, validateOperation } from './session-validators';
 import { errorResponse } from './websocket-utils';
 import { SYNC_SCHEDULE_KEY } from './postgres-sync-manager';
-import type { PostgresSyncManager } from './postgres-sync-manager';
+import type { PostgresSyncManager, SyncSchedule } from './postgres-sync-manager';
 import { getAllConnections } from './session-id-parser';
 
 // =============================================================================
@@ -264,8 +264,16 @@ export async function handleApplyOperations(
     }
   }
 
-  // Schedule sync to PostgreSQL after idle timeout
-  await deps.syncManager.scheduleSync(body.actorId, actorType as 'user' | 'agent');
+  // Schedule sync to PostgreSQL after idle timeout. PCC-3457: carry the
+  // verified identity (worker-set headers — inbound forgeries are stripped at
+  // the route boundary) so unprovisioned OAuth principals editing over HTTP
+  // JIT-provision at sync time like websocket editors do.
+  const verifiedEmail = request.headers.get('X-Verified-Email') ?? undefined;
+  const verifiedName = request.headers.get('X-Verified-Name') ?? undefined;
+  await deps.syncManager.scheduleSync(body.actorId, actorType as 'user' | 'agent', {
+    ...(verifiedEmail !== undefined ? { actorEmail: verifiedEmail } : {}),
+    ...(verifiedName !== undefined ? { actorName: verifiedName } : {}),
+  });
 
   const root = ydoc.getMap('root');
   const response: ApplyResponse & { agentConflicts?: typeof agentConflicts } = {
@@ -350,15 +358,22 @@ export async function handleFlush(
   // Get actor info from sync schedule (or default)
   let actorId = '00000000-0000-0000-0000-000000000001';
   let actorType: 'user' | 'agent' = 'user';
-  const schedule = await deps.storage.get<{ dueAt: number; actorId: string; actorType: 'user' | 'agent' }>(SYNC_SCHEDULE_KEY);
+  let actorEmail: string | undefined;
+  let actorName: string | undefined;
+  const schedule = await deps.storage.get<SyncSchedule>(SYNC_SCHEDULE_KEY);
   if (schedule !== undefined) {
     actorId = schedule.actorId;
     actorType = schedule.actorType;
+    actorEmail = schedule.actorEmail;
+    actorName = schedule.actorName;
   }
 
   // Perform synchronous direct sync (bypasses queue)
   try {
-    await deps.syncManager.performDirectSync(internalApiUrl, internalSecret, actorId, actorType);
+    await deps.syncManager.performDirectSync(internalApiUrl, internalSecret, actorId, actorType, {
+      actorEmail,
+      actorName,
+    });
     return new Response(
       JSON.stringify({ flushed: true }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },

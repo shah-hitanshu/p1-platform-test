@@ -28,7 +28,7 @@ import type {
 } from './document-session-types';
 import { rollbackToAgentCheckpoint } from './agent-checkpoint-client';
 import { SYNC_SCHEDULE_KEY } from './postgres-sync-manager';
-import type { PostgresSyncManager } from './postgres-sync-manager';
+import type { PostgresSyncManager, SyncSchedule } from './postgres-sync-manager';
 
 // =============================================================================
 // Dependencies interface
@@ -105,9 +105,12 @@ export async function handleAlarm(deps: AlarmCleanupDeps): Promise<void> {
   }
 
   // Process sync schedule if due
-  const syncSchedule = await deps.storage.get<{ dueAt: number; actorId: string; actorType: 'user' | 'agent' }>(SYNC_SCHEDULE_KEY);
+  const syncSchedule = await deps.storage.get<SyncSchedule>(SYNC_SCHEDULE_KEY);
   if (syncSchedule !== undefined && Date.now() >= syncSchedule.dueAt) {
-    await deps.syncManager.syncToPostgres(syncSchedule.actorId, syncSchedule.actorType);
+    await deps.syncManager.syncToPostgres(syncSchedule.actorId, syncSchedule.actorType, {
+      actorEmail: syncSchedule.actorEmail,
+      actorName: syncSchedule.actorName,
+    });
   }
 
   // Run cleanup (async — may roll back orphaned edit sessions)

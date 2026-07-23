@@ -39,6 +39,7 @@ vi.mock('../../src/durable-objects/crdt-operations', () => ({
 }));
 
 const MINTED_ID = /-[0-9a-f]{8}-/;
+const ACTOR_UUID = '00000000-0000-4000-a000-000000000001';
 
 interface Comp {
   type: string;
@@ -155,7 +156,7 @@ describe('executeDirectSync within-document id uniqueness', () => {
     ]);
 
     const manager = await buildManager(createEnv(), ydoc, storage);
-    await manager.performDirectSync('http://localhost:8787', 'test-secret', 'user-1', 'user');
+    await manager.performDirectSync('http://localhost:8787', 'test-secret', ACTOR_UUID, 'user');
 
     const persisted = insertVersionParams(queryMock)[2] as { content: Comp[] };
     expect(persisted.content).toHaveLength(2);
@@ -177,7 +178,7 @@ describe('executeDirectSync within-document id uniqueness', () => {
     });
 
     const manager = await buildManager(createEnv(), ydoc, storage);
-    await manager.performDirectSync('http://localhost:8787', 'test-secret', 'user-1', 'user');
+    await manager.performDirectSync('http://localhost:8787', 'test-secret', ACTOR_UUID, 'user');
 
     const persisted = insertVersionParams(queryMock)[2] as {
       content: Comp[];
@@ -199,7 +200,7 @@ describe('executeDirectSync within-document id uniqueness', () => {
     ]);
 
     const manager = await buildManager(createEnv(), ydoc, storage);
-    await manager.performDirectSync('http://localhost:8787', 'test-secret', 'user-1', 'user');
+    await manager.performDirectSync('http://localhost:8787', 'test-secret', ACTOR_UUID, 'user');
 
     const newId = (insertVersionParams(queryMock)[2] as { content: Comp[] }).content[1].props.id;
     expect(warnSpy).toHaveBeenCalled();
@@ -228,7 +229,7 @@ describe('executeDirectSync within-document id uniqueness', () => {
     root.set('zones', structuredClone(snapshot.zones));
 
     const manager = await buildManager(createEnv(), ydoc, storage);
-    await manager.performDirectSync('http://localhost:8787', 'test-secret', 'user-1', 'user');
+    await manager.performDirectSync('http://localhost:8787', 'test-secret', ACTOR_UUID, 'user');
 
     const persisted = insertVersionParams(queryMock)[2];
     expect(persisted).toEqual(snapshot);

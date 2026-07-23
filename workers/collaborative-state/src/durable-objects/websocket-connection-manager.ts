@@ -168,19 +168,19 @@ export function handleWebSocket(
 ): Response {
   const url = new URL(request.url);
 
-  // Auth Phase 4: Prefer verified identity from worker over client-supplied headers
-  const verifiedActorId = request.headers.get('X-Verified-Actor-Id')
-    ?? url.searchParams.get('_verifiedActorId');
-  const verifiedActorType = request.headers.get('X-Verified-Actor-Type')
-    ?? url.searchParams.get('_verifiedActorType');
-  const verifiedAuthProvider = request.headers.get('X-Verified-Auth-Provider')
-    ?? url.searchParams.get('_verifiedAuthProvider');
-  const verifiedEmail = request.headers.get('X-Verified-Email')
-    ?? url.searchParams.get('_verifiedEmail');
-  const verifiedName = request.headers.get('X-Verified-Name')
-    ?? url.searchParams.get('_verifiedName');
-  const verifiedAvatarUrl = request.headers.get('X-Verified-Avatar-Url')
-    ?? url.searchParams.get('_verifiedAvatarUrl');
+  // Auth Phase 4 / PCC-3457 (B1 hardening): WebSocket upgrades forward the
+  // ORIGINAL client headers, so X-Verified-* headers on this path are
+  // client-forgeable. The worker injects verified identity exclusively via
+  // _verified* query params (after stripping any client-supplied ones), so
+  // params are the ONLY trusted channel here. Identity now feeds JIT user
+  // provisioning — a forged X-Verified-Email would be a row-claiming
+  // credential, not just a display name.
+  const verifiedActorId = url.searchParams.get('_verifiedActorId');
+  const verifiedActorType = url.searchParams.get('_verifiedActorType');
+  const verifiedAuthProvider = url.searchParams.get('_verifiedAuthProvider');
+  const verifiedEmail = url.searchParams.get('_verifiedEmail');
+  const verifiedName = url.searchParams.get('_verifiedName');
+  const verifiedAvatarUrl = url.searchParams.get('_verifiedAvatarUrl');
 
   let actorId: string | null;
   let actorType: string | null;
@@ -433,8 +433,13 @@ export async function handleWebSocketMessage(
     // Phase 1.1: Debounced persistence — mark pending instead of persisting directly
     await deps.markPersistPending();
 
-    // Schedule sync to PostgreSQL after idle timeout
-    await deps.syncManager.scheduleSync(meta.actorId, meta.actorType);
+    // Schedule sync to PostgreSQL after idle timeout.
+    // Pass the connection's verified identity (PCC-3457) so OAuth-subject
+    // actors can be resolved/JIT-provisioned at persistence time.
+    await deps.syncManager.scheduleSync(meta.actorId, meta.actorType, {
+      actorEmail: meta.email,
+      actorName: meta.name,
+    });
   } catch (error) {
     console.error('Error handling WebSocket message:', error);
   }

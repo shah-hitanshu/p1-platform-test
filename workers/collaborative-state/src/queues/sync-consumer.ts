@@ -59,6 +59,8 @@ export async function handleSyncQueue(
       snapshot: msg.snapshot,
       actorId: msg.actorId,
       actorType: msg.actorType,
+      actorEmail: msg.actorEmail,
+      actorName: msg.actorName,
       actionType: msg.actionType,
       actionMetadata: msg.actionMetadata,
       puckActions: msg.puckActions,

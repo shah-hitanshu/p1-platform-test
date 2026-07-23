@@ -12,6 +12,10 @@ export interface SyncQueueMessage {
   snapshot: Record<string, unknown>;
   actorId: string;
   actorType: 'user' | 'agent';
+  /** Verified email of the actor (PCC-3457) — enables JIT user provisioning for OAuth subjects */
+  actorEmail?: string;
+  /** Verified display name of the actor (PCC-3457) */
+  actorName?: string;
   timestamp: number;
   actionType?: string; // Puck action type (e.g., "insert", "reorder", "set")
   actionMetadata?: Record<string, unknown>; // Additional Puck action context

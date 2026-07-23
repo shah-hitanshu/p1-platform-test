@@ -12,6 +12,7 @@ import { query } from '../db';
 import { compare as jsonPatchCompare, applyPatch } from 'fast-json-patch';
 import { classifyChange } from './action-classification';
 import type { PuckAction } from './action-classification';
+import { createActorResolver } from './persistence-actor-service';
 import { enforceUniqueSlotIds } from './slot-id-backstop';
 
 // =============================================================================
@@ -672,6 +673,10 @@ export interface BatchSyncPayload {
   snapshot: Record<string, unknown>;
   actorId: string;
   actorType: 'user' | 'agent';
+  /** Verified email of the actor (PCC-3457) — enables JIT user provisioning for OAuth subjects */
+  actorEmail?: string;
+  /** Verified display name of the actor (PCC-3457) */
+  actorName?: string;
   patch?: unknown[]; // RFC 6902 JSON Patch operations
   actionType?: string; // Puck action type
   actionMetadata?: Record<string, unknown>; // Puck action context
@@ -686,6 +691,12 @@ export interface BatchSyncResult {
   inserted: DocumentVersion[];
   /** Number of items that were skipped due to deduplication */
   skippedCount: number;
+  /**
+   * Payloads excluded because their actor could not be resolved to a users
+   * row (PCC-3457). Always present; empty when every actor resolved. An
+   * unresolvable actor skips ONLY its own payload — it never fails the batch.
+   */
+  unresolved: { documentId: string; branchId: string; actorId: string; reason: string }[];
 }
 
 // =============================================================================
@@ -752,7 +763,41 @@ export async function batchSyncToPostgres(
   payloads: BatchSyncPayload[],
 ): Promise<BatchSyncResult> {
   if (payloads.length === 0) {
-    return { inserted: [], skippedCount: 0 };
+    return { inserted: [], skippedCount: 0, unresolved: [] };
+  }
+
+  // PCC-3457: resolve actor identities FIRST — OAuth subjects (`auth0|…`)
+  // must never reach the uuid created_by_id cast below. An unresolvable
+  // actor excludes ONLY its own payload; the rest of the batch persists.
+  // uuid actorIds resolve without any database queries.
+  const resolveActor = createActorResolver();
+  const resolvedPayloads: BatchSyncPayload[] = [];
+  const unresolved: BatchSyncResult['unresolved'] = [];
+  for (const payload of payloads) {
+    const resolution = await resolveActor(payload);
+    if (resolution.resolved) {
+      resolvedPayloads.push(
+        resolution.actorId === payload.actorId
+          ? payload
+          : { ...payload, actorId: resolution.actorId },
+      );
+    } else {
+      unresolved.push({
+        documentId: payload.documentId,
+        branchId: payload.branchId,
+        actorId: payload.actorId,
+        reason: resolution.reason,
+      });
+      console.error(
+        `PCC-3457: skipping sync payload for document ${payload.documentId} `
+        + `on branch ${payload.branchId} — unresolvable actor "${payload.actorId}" `
+        + `(${resolution.reason})`,
+      );
+    }
+  }
+
+  if (resolvedPayloads.length === 0) {
+    return { inserted: [], skippedCount: 0, unresolved };
   }
 
   // Build arrays for each column to use with unnest()
@@ -764,7 +809,7 @@ export async function batchSyncToPostgres(
   const actionTypes: (string | null)[] = [];
   const actionMetadatas: (Record<string, unknown> | null)[] = [];
 
-  for (const payload of payloads) {
+  for (const payload of resolvedPayloads) {
     documentIds.push(payload.documentId);
     branchIds.push(payload.branchId);
     snapshots.push(enforceUniqueSlotIds(payload.documentId, payload.snapshot));
@@ -879,6 +924,7 @@ export async function batchSyncToPostgres(
 
   return {
     inserted,
-    skippedCount: payloads.length - inserted.length,
+    skippedCount: resolvedPayloads.length - inserted.length,
+    unresolved,
   };
 }

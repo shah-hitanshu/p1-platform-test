@@ -46,6 +46,10 @@ interface CrdtSyncBody {
   snapshot: Record<string, unknown>;
   actorId: string;
   actorType: 'user' | 'agent';
+  /** Verified email of the actor (PCC-3457) — enables JIT user provisioning for OAuth subjects */
+  actorEmail?: string;
+  /** Verified display name of the actor (PCC-3457) */
+  actorName?: string;
 }
 
 /**
@@ -164,6 +168,14 @@ function validateCrdtSyncBody(body: unknown): { valid: false; error: string } | 
     return { valid: false, error: 'actorType must be "user" or "agent"' };
   }
 
+  // Validate optional verified identity fields (PCC-3457)
+  if (data.actorEmail !== undefined && typeof data.actorEmail !== 'string') {
+    return { valid: false, error: 'actorEmail must be a string when provided' };
+  }
+  if (data.actorName !== undefined && typeof data.actorName !== 'string') {
+    return { valid: false, error: 'actorName must be a string when provided' };
+  }
+
   return {
     valid: true,
     data: {
@@ -173,6 +185,8 @@ function validateCrdtSyncBody(body: unknown): { valid: false; error: string } | 
       snapshot: data.snapshot as Record<string, unknown>,
       actorId: data.actorId,
       actorType: data.actorType,
+      ...(data.actorEmail !== undefined ? { actorEmail: data.actorEmail } : {}),
+      ...(data.actorName !== undefined ? { actorName: data.actorName } : {}),
     },
   };
 }
@@ -210,6 +224,8 @@ async function handleCrdtSync(request: Request): Promise<Response> {
       snapshot: data.snapshot,
       actorId: data.actorId,
       actorType: data.actorType,
+      ...(data.actorEmail !== undefined ? { actorEmail: data.actorEmail } : {}),
+      ...(data.actorName !== undefined ? { actorName: data.actorName } : {}),
     });
 
     return jsonResponse({ version });

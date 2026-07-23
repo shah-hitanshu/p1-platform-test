@@ -20,6 +20,7 @@ import {
   reconstructVersionSnapshot,
 } from './document-version-service';
 import { getBranch } from './branch-service';
+import { resolveActor } from './persistence-actor-service';
 import { enforceUniqueSlotIds } from './slot-id-backstop';
 
 // =============================================================================
@@ -42,6 +43,10 @@ export interface ConsolidatedSyncParams {
   actorId: string;
   /** Type of actor (user or agent) */
   actorType: 'user' | 'agent';
+  /** Verified email of the actor (PCC-3457) — enables JIT user provisioning for OAuth subjects */
+  actorEmail?: string;
+  /** Verified display name of the actor (PCC-3457) */
+  actorName?: string;
 }
 
 /**
@@ -60,6 +65,10 @@ export interface SyncCrdtToPostgresParams {
   actorId: string;
   /** Type of actor (user or agent) */
   actorType: 'user' | 'agent';
+  /** Verified email of the actor (PCC-3457) — enables JIT user provisioning for OAuth subjects */
+  actorEmail?: string;
+  /** Verified display name of the actor (PCC-3457) */
+  actorName?: string;
 }
 
 /**
@@ -130,6 +139,22 @@ export async function syncCrdtToPostgres(
     throw new DocumentNotFoundError(params.documentId);
   }
 
+  // PCC-3457: resolve the actor to a users-row uuid before persisting —
+  // OAuth subjects (`auth0|…`) must never reach the uuid created_by_id cast.
+  // uuid actorIds pass through without extra queries.
+  const resolution = await resolveActor({
+    actorId: params.actorId,
+    actorType: params.actorType,
+    actorEmail: params.actorEmail,
+    actorName: params.actorName,
+  });
+  if (!resolution.resolved) {
+    throw new SyncError(
+      `PCC-3457: cannot attribute sync for document ${params.documentId}: `
+      + `unresolvable actor "${params.actorId}" (${resolution.reason})`,
+    );
+  }
+
   // Create a new document version with the CRDT state
   // Deduplication is handled by createDocumentVersion
   const version = await createDocumentVersion({
@@ -137,7 +162,7 @@ export async function syncCrdtToPostgres(
     branchId: params.branchId,
     snapshot: params.snapshot,
     source: 'realtime',
-    createdById: params.actorId,
+    createdById: resolution.actorId,
     createdByType: params.actorType,
   });
 
@@ -261,6 +286,21 @@ export async function syncCrdtToPostgresConsolidated(
     throw new SyncError('Actor ID is required');
   }
 
+  // PCC-3457: resolve the actor to a users-row uuid before persisting —
+  // OAuth subjects (`auth0|…`) must never reach the uuid created_by_id cast.
+  // uuid actorIds pass through without extra queries.
+  const resolution = await resolveActor({
+    actorId: params.actorId,
+    actorType: params.actorType,
+    actorEmail: params.actorEmail,
+    actorName: params.actorName,
+  });
+  if (!resolution.resolved) {
+    throw new SyncError(
+      `PCC-3457: cannot attribute sync for document ${params.documentId}: `
+      + `unresolvable actor "${params.actorId}" (${resolution.reason})`,
+    );
+  }
   const snapshot = enforceUniqueSlotIds(params.documentId, params.snapshot);
 
   const result = await query<DocumentVersionRow>(
@@ -285,7 +325,7 @@ export async function syncCrdtToPostgresConsolidated(
       params.documentId,
       params.branchId,
       snapshot,
-      params.actorId,
+      resolution.actorId,
       params.actorType,
     ],
   );

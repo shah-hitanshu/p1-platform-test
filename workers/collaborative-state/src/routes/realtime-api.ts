@@ -447,6 +447,16 @@ export async function handleRealtimeRoutes(
     // For WebSocket: pass verified identity and session ID via query params
     // (headers cannot be modified on cloned WebSocket requests)
     const urlWithVerified = new URL(forwardedRequest.url);
+    // PCC-3457 (B1 hardening): strip any client-supplied verified-identity
+    // params before setting worker values — these are the DO's only trusted
+    // identity channel on the WS path and now feed JIT user provisioning.
+    for (const p of [
+      '_sessionId', '_verifiedActorId', '_verifiedActorType',
+      '_verifiedAuthProvider', '_verifiedEmail', '_verifiedName',
+      '_verifiedAvatarUrl',
+    ]) {
+      urlWithVerified.searchParams.delete(p);
+    }
     urlWithVerified.searchParams.set('_sessionId', sessionId);
     urlWithVerified.searchParams.set('_verifiedActorId', context.principal.id);
     urlWithVerified.searchParams.set('_verifiedActorType', context.principal.type);
@@ -466,8 +476,20 @@ export async function handleRealtimeRoutes(
     urlWithVerified.searchParams.delete('apiKey');
     requestWithSessionId = new Request(urlWithVerified.toString(), forwardedRequest);
   } else {
-    // For regular HTTP requests: add verified headers and session ID
+    // For regular HTTP requests: add verified headers and session ID.
+    // PCC-3457 (B1 hardening): delete ALL inbound X-Verified-* headers first —
+    // conditional set() calls below would otherwise let a client-forged header
+    // survive when the principal lacks that field (same idiom as the
+    // X-Agent-Name spoofing guard above). Verified identity now feeds JIT
+    // user provisioning, so a forged email is a row-claiming credential.
     const headersWithVerified = new Headers(forwardedRequest.headers);
+    for (const h of [
+      'X-Verified-Actor-Id', 'X-Verified-Actor-Type',
+      'X-Verified-Auth-Provider', 'X-Verified-Email',
+      'X-Verified-Name', 'X-Verified-Avatar-Url',
+    ]) {
+      headersWithVerified.delete(h);
+    }
     headersWithVerified.set('X-Session-Id', sessionId);
     headersWithVerified.set('X-Verified-Actor-Id', context.principal.id);
     headersWithVerified.set('X-Verified-Actor-Type', context.principal.type);

@@ -23,6 +23,28 @@ import { IMMEDIATE_SYNC_ACTION_TYPES } from '../constants/security-limits';
 /** Storage key for sync schedule (survives hibernation) */
 export const SYNC_SCHEDULE_KEY = 'syncSchedule';
 
+/**
+ * Sync schedule persisted in DO storage (survives hibernation).
+ * actorEmail/actorName are optional (PCC-3457) — schedules persisted before
+ * the fields existed keep working.
+ */
+export interface SyncSchedule {
+  dueAt: number;
+  actorId: string;
+  actorType: 'user' | 'agent';
+  /** Verified email of the actor (PCC-3457) — enables JIT user provisioning for OAuth subjects */
+  actorEmail?: string;
+  /** Verified display name of the actor (PCC-3457) */
+  actorName?: string;
+  puckActions?: { type: string; [key: string]: unknown }[];
+}
+
+/** Verified actor identity carried alongside actorId/actorType (PCC-3457) */
+export interface ActorIdentity {
+  actorEmail?: string;
+  actorName?: string;
+}
+
 /** Action metadata captured from the Puck client's WebSocket text messages */
 export interface PendingActionMetadata {
   actionType: string;
@@ -254,8 +276,13 @@ export class PostgresSyncManager {
    *
    * @param actorId - Actor ID for sync attribution (from stored schedule or caller)
    * @param actorType - Actor type for sync attribution
+   * @param identity - Verified actor identity (PCC-3457), when the caller has it
    */
-  async syncToPostgres(actorId?: string, actorType?: 'user' | 'agent'): Promise<void> {
+  async syncToPostgres(
+    actorId?: string,
+    actorType?: 'user' | 'agent',
+    identity?: ActorIdentity,
+  ): Promise<void> {
     // If a sync is already in progress, wait for it to complete and return.
     if (this.syncInProgress !== null) {
       console.log('Sync skipped: another sync is already in progress');
@@ -266,17 +293,16 @@ export class PostgresSyncManager {
     // Read sync schedule from storage if no actor info provided
     let syncActorId = actorId;
     let syncActorType = actorType ?? 'user' as const;
+    let syncActorEmail = identity?.actorEmail;
+    let syncActorName = identity?.actorName;
     let syncPuckActions: { type: string; [key: string]: unknown }[] | undefined;
     if (syncActorId === undefined) {
-      const schedule = await this.storage.get<{
-        dueAt: number;
-        actorId: string;
-        actorType: 'user' | 'agent';
-        puckActions?: { type: string; [key: string]: unknown }[];
-      }>(SYNC_SCHEDULE_KEY);
+      const schedule = await this.storage.get<SyncSchedule>(SYNC_SCHEDULE_KEY);
       if (schedule !== undefined) {
         syncActorId = schedule.actorId;
         syncActorType = schedule.actorType;
+        syncActorEmail = schedule.actorEmail;
+        syncActorName = schedule.actorName;
         syncPuckActions = schedule.puckActions;
       }
     }
@@ -302,6 +328,7 @@ export class PostgresSyncManager {
     // Set the lock before starting the sync
     this.syncInProgress = this.performSync(
       internalApiUrl, internalSecret, syncActorId, syncActorType, syncPuckActions,
+      { actorEmail: syncActorEmail, actorName: syncActorName },
     );
 
     try {
@@ -319,6 +346,7 @@ export class PostgresSyncManager {
    * @param actorId - Actor ID for sync attribution
    * @param actorType - Actor type for sync attribution
    * @param puckActions - Optional array of Puck actions
+   * @param identity - Verified actor identity (PCC-3457)
    */
   private async performSync(
     internalApiUrl: string,
@@ -326,6 +354,7 @@ export class PostgresSyncManager {
     actorId: string,
     actorType: 'user' | 'agent',
     puckActions?: { type: string; [key: string]: unknown }[],
+    identity?: ActorIdentity,
   ): Promise<void> {
     try {
       const root = this.getYdoc().getMap('root');
@@ -343,6 +372,8 @@ export class PostgresSyncManager {
           actorId,
           actorType,
           timestamp: Date.now(),
+          ...(identity?.actorEmail !== undefined ? { actorEmail: identity.actorEmail } : {}),
+          ...(identity?.actorName !== undefined ? { actorName: identity.actorName } : {}),
           ...(puckActions !== undefined ? { puckActions } : {}),
         });
         this.lastSyncedStateVectorHash = this.computeStateVectorHash();
@@ -368,6 +399,8 @@ export class PostgresSyncManager {
           snapshot,
           actorId,
           actorType,
+          ...(identity?.actorEmail !== undefined ? { actorEmail: identity.actorEmail } : {}),
+          ...(identity?.actorName !== undefined ? { actorName: identity.actorName } : {}),
           ...(puckActions !== undefined ? { puckActions } : {}),
         }),
       });
@@ -397,6 +430,7 @@ export class PostgresSyncManager {
     internalSecret: string,
     actorId: string,
     actorType: 'user' | 'agent',
+    identity?: ActorIdentity,
   ): Promise<void> {
     // If another sync is in progress, wait for it
     if (this.syncInProgress !== null) {
@@ -404,7 +438,7 @@ export class PostgresSyncManager {
     }
 
     // Set the lock so concurrent syncs (e.g. alarm-driven) wait for us
-    const directSyncPromise = this.executeDirectSync(internalApiUrl, internalSecret, actorId, actorType);
+    const directSyncPromise = this.executeDirectSync(internalApiUrl, internalSecret, actorId, actorType, identity);
     this.syncInProgress = directSyncPromise;
     try {
       await directSyncPromise;
@@ -421,6 +455,7 @@ export class PostgresSyncManager {
     internalSecret: string,
     actorId: string,
     actorType: 'user' | 'agent',
+    identity?: ActorIdentity,
   ): Promise<void> {
     const root = this.getYdoc().getMap('root');
     const rawSnapshot = root.toJSON() as Record<string, unknown>;
@@ -430,8 +465,13 @@ export class PostgresSyncManager {
 
     const snapshot = enforceUniqueSlotIds(this.sessionInfo.documentId, rawSnapshot);
 
-    // Phase 5.3: Try direct Hyperdrive path first (synchronous, no queue)
-    if (this.env.HYPERDRIVE !== undefined) {
+    // Phase 5.3: Try direct Hyperdrive path first (synchronous, no queue).
+    // PCC-3457: the direct INSERT writes actorId raw into the uuid
+    // created_by_id column with no resolver — a non-uuid actor (OAuth
+    // subject) is a guaranteed cast failure, so skip straight to the HTTP
+    // path, which resolves identity server-side.
+    const isUuidActor = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorId);
+    if (this.env.HYPERDRIVE !== undefined && isUuidActor) {
       try {
         await runWithConnection(
           this.env.HYPERDRIVE.connectionString,
@@ -486,6 +526,8 @@ export class PostgresSyncManager {
         snapshot,
         actorId,
         actorType,
+        ...(identity?.actorEmail !== undefined ? { actorEmail: identity.actorEmail } : {}),
+        ...(identity?.actorName !== undefined ? { actorName: identity.actorName } : {}),
       }),
     });
 
@@ -510,11 +552,12 @@ export class PostgresSyncManager {
    *
    * @param actorId - ID of the actor making the edit
    * @param actorType - Type of actor ('user' or 'agent')
-   * @param actionMetadata - Optional action metadata from the Puck client
+   * @param identity - Verified actor identity from the connection (PCC-3457)
    */
   async scheduleSync(
     actorId: string,
     actorType: 'user' | 'agent',
+    identity?: ActorIdentity,
   ): Promise<void> {
     // Check if the document has actually changed by comparing state vectors.
     // Still schedule when pendingPuckActions exist — the actions need to be
@@ -541,6 +584,7 @@ export class PostgresSyncManager {
           this.env.INTERNAL_SECRET,
           actorId,
           actorType,
+          identity,
         );
         this.pendingActionMetadata = null;
         return;
@@ -558,6 +602,8 @@ export class PostgresSyncManager {
       dueAt,
       actorId,
       actorType,
+      ...(identity?.actorEmail !== undefined ? { actorEmail: identity.actorEmail } : {}),
+      ...(identity?.actorName !== undefined ? { actorName: identity.actorName } : {}),
       ...(this.pendingPuckActions.length > 0 ? {
         puckActions: this.pendingPuckActions,
       } : {}),
