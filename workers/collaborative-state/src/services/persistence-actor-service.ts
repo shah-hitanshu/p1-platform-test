@@ -23,6 +23,7 @@
  */
 
 import { query } from '../db';
+import { providerSubToUuid } from '../auth/uuid-v5';
 import { UUID_RE } from '../utils/branch-ref';
 
 // =============================================================================
@@ -96,10 +97,15 @@ export async function resolveActor(actor: ResolvableActor): Promise<ActorResolut
     };
   }
 
+  // principal_id is stored as a UUIDv5 derived from the full OAuth subject
+  // (see providerSubToUuid('auth0', sub) in auth0-identity-provider.ts and
+  // the login-enrichment write in index.ts). Convert before lookup/write.
+  const principalUuid = await providerSubToUuid('auth0', actorId);
+
   // Look up an already-provisioned user by principal.
   const existing = await query<{ id: string }>(
     'SELECT id FROM app.users WHERE principal_id = $1',
-    [actorId],
+    [principalUuid],
   );
   const existingId = existing.rows[0]?.id;
   if (existingId !== undefined) {
@@ -155,7 +161,7 @@ export async function resolveActor(actor: ResolvableActor): Promise<ActorResolut
        WHERE app.users.principal_id IS NULL
           OR app.users.principal_id = EXCLUDED.principal_id
        RETURNING id`,
-      [normalizedEmail, actorName ?? null, actorId, authProvider],
+      [normalizedEmail, actorName ?? null, principalUuid, authProvider],
     );
     const upsertedId = upserted.rows[0]?.id;
     if (upsertedId !== undefined) {
@@ -171,7 +177,7 @@ export async function resolveActor(actor: ResolvableActor): Promise<ActorResolut
       // our lookup and insert. The row exists now — re-run the lookup.
       const retry = await query<{ id: string }>(
         'SELECT id FROM app.users WHERE principal_id = $1',
-        [actorId],
+        [principalUuid],
       );
       const retryId = retry.rows[0]?.id;
       if (retryId !== undefined) {

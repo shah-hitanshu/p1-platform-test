@@ -49,6 +49,7 @@ import {
 } from '../../src/services/document-version-service';
 import type { BatchSyncPayload } from '../../src/services/document-version-service';
 import { syncCrdtToPostgres } from '../../src/services/crdt-sync-service';
+import { providerSubToUuid } from '../../src/auth/uuid-v5';
 
 const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
 const RUN = `pcc3457-${String(Date.now())}`;
@@ -178,10 +179,12 @@ describe('PCC-3457: batchSyncToPostgres actor resolution (queue path)', () => {
   it('resolves an OAuth subject to an existing user via principal_id', async () => {
     // The one production principal that WAS provisioned (andrew@cellar-door.io
     // analog): a users row exists with matching principal_id.
+    // principal_id is stored as UUIDv5 by the login enrichment path (index.ts).
     const email = `existing-${RUN}@example.test`;
+    const principalUuid = await providerSubToUuid('auth0', AUTH0_SUBJECT);
     const [existing] = await sql<{ id: string }[]>`
       INSERT INTO app.users (email, name, principal_id, auth_provider)
-      VALUES (${email}, 'Existing User', ${AUTH0_SUBJECT}, 'auth0')
+      VALUES (${email}, 'Existing User', ${principalUuid}, 'auth0')
       RETURNING id`;
 
     const docId = await freshDoc();
@@ -203,7 +206,8 @@ describe('PCC-3457: batchSyncToPostgres actor resolution (queue path)', () => {
     ]);
 
     expect(result.inserted).toHaveLength(1);
-    const user = await userByPrincipal(AUTH0_SUBJECT_2);
+    const principalUuid2 = await providerSubToUuid('auth0', AUTH0_SUBJECT_2);
+    const user = await userByPrincipal(principalUuid2);
     expect(user).toBeDefined();
     expect(user?.email).toBe(email);
     expect(user?.name).toBe('Danny Test');
@@ -219,7 +223,7 @@ describe('PCC-3457: batchSyncToPostgres actor resolution (queue path)', () => {
       }),
     ]);
     const count = await sql<{ n: string }[]>`
-      SELECT COUNT(*) AS n FROM app.users WHERE principal_id = ${AUTH0_SUBJECT_2}`;
+      SELECT COUNT(*) AS n FROM app.users WHERE principal_id = ${principalUuid2}`;
     expect(Number(count[0].n)).toBe(1);
     expect(await versionCreator(docId2)).toBe(user?.id);
   });
@@ -232,7 +236,8 @@ describe('PCC-3457: batchSyncToPostgres actor resolution (queue path)', () => {
         actorName: 'Google Person',
       }),
     ]);
-    const user = await userByPrincipal(GOOGLE_SUBJECT);
+    const googleUuid = await providerSubToUuid('auth0', GOOGLE_SUBJECT);
+    const user = await userByPrincipal(googleUuid);
     expect(user?.auth_provider).toBe('google-oauth2');
   });
 
@@ -251,9 +256,10 @@ describe('PCC-3457: batchSyncToPostgres actor resolution (queue path)', () => {
 
     expect(result.inserted).toHaveLength(1);
     expect(await versionCreator(docId)).toBe(pre.id);
+    const subjectUuid = await providerSubToUuid('auth0', subject);
     const linked = await sql<{ principal_id: string | null }[]>`
       SELECT principal_id FROM app.users WHERE id = ${pre.id}`;
-    expect(linked[0].principal_id).toBe(subject);
+    expect(linked[0].principal_id).toBe(subjectUuid);
   });
 
   it('links a pre-provisioned row even when the IdP email differs in case (review fix S2)', async () => {
@@ -284,9 +290,10 @@ describe('PCC-3457: batchSyncToPostgres actor resolution (queue path)', () => {
   it('never hijacks a users row already claimed by a different principal', async () => {
     const email = `claimed-${RUN}@example.test`;
     const otherPrincipal = `auth0|pn-${RUN}-owner`;
+    const ownerUuid = await providerSubToUuid('auth0', otherPrincipal);
     await sql`
       INSERT INTO app.users (email, name, principal_id, auth_provider)
-      VALUES (${email}, 'Claimed User', ${otherPrincipal}, 'auth0')`;
+      VALUES (${email}, 'Claimed User', ${ownerUuid}, 'auth0')`;
     const intruder = `auth0|pn-${RUN}-intruder`;
 
     const docId = await freshDoc();
@@ -301,7 +308,7 @@ describe('PCC-3457: batchSyncToPostgres actor resolution (queue path)', () => {
     expect(await versionCreator(docId)).toBeUndefined();
     const owner = await sql<{ principal_id: string | null }[]>`
       SELECT principal_id FROM app.users WHERE email = ${email}`;
-    expect(owner[0].principal_id).toBe(otherPrincipal);
+    expect(owner[0].principal_id).toBe(ownerUuid);
   });
 
   it('isolates an unresolvable actor to its own payload — the rest of the batch persists (no batch poisoning)', async () => {
@@ -325,7 +332,8 @@ describe('PCC-3457: batchSyncToPostgres actor resolution (queue path)', () => {
     expect(await versionCreator(goodDoc)).toBe(UUID_ACTOR);
     expect(await versionCreator(badDoc)).toBeUndefined();
     // No user row invented without an email (email is NOT NULL by schema).
-    expect(await userByPrincipal(AUTH0_SUBJECT_3)).toBeUndefined();
+    const subject3Uuid = await providerSubToUuid('auth0', AUTH0_SUBJECT_3);
+    expect(await userByPrincipal(subject3Uuid)).toBeUndefined();
   });
 
   it('never JIT-provisions agent principals as users', async () => {
@@ -339,7 +347,8 @@ describe('PCC-3457: batchSyncToPostgres actor resolution (queue path)', () => {
 
     expect(result.inserted).toHaveLength(0);
     expect(result.unresolved).toHaveLength(1);
-    expect(await userByPrincipal(AGENT_NON_UUID)).toBeUndefined();
+    const agentUuid = await providerSubToUuid('auth0', AGENT_NON_UUID);
+    expect(await userByPrincipal(agentUuid)).toBeUndefined();
   });
 });
 
@@ -360,7 +369,8 @@ describe('PCC-3457: syncCrdtToPostgres actor resolution (HTTP path, used by DO /
       actorName: 'Flush User',
     });
 
-    const user = await userByPrincipal(subject);
+    const subjectUuid = await providerSubToUuid('auth0', subject);
+    const user = await userByPrincipal(subjectUuid);
     expect(user).toBeDefined();
     expect(version.createdById).toBe(user?.id);
   });
