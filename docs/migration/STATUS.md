@@ -95,6 +95,16 @@ new depth; puck-css's pds-core.css copy step verified under merged hoisting.
   Activation checklist and diffs-vs-originals in that directory's README.
   Nothing in Phase 3 can publish, deploy, or authenticate anywhere.
 
+## Wiz IaC scanner note (PR #1)
+
+The org-injected Wiz IaC check fails on PR #1. The flagged terraform is byte-identical
+to the source repo's; the same findings were already reviewed and ignored (EM approval)
+when they first appeared in collaborative-state-system PR #24
+(https://github.com/pantheon-systems/collaborative-state-system/pull/24). That ignore
+was applied in the Wiz dashboard, so it's scoped to the old repo — the exception needs
+re-applying against p1-platform's findings (dashboard action, no code change). Not a
+migration regression; not a Phase 3 gate.
+
 ## Phase 3/4 identity plan (per Pantheon WIF practices + A. Glago, 2026-07-23)
 
 Reference: Confluence "Workload Identity Federation (WIF)" (Catalog space, page 3630497808).
