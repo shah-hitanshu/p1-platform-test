@@ -53,7 +53,7 @@ interface MockDurableObjectState {
 /**
  * Create a mock DurableObjectState for testing
  */
-function createMockState(sessionId = 'site-1:doc-1:branch-1'): MockDurableObjectState {
+function createMockState(sessionId = 'aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001'): MockDurableObjectState {
   const storage: MockDurableObjectStorage = {
     get: vi.fn().mockResolvedValue(undefined),
     put: vi.fn().mockResolvedValue(undefined),

@@ -11,6 +11,24 @@ import type { ConnectionMeta } from '../types';
  */
 export const SESSION_INFO_KEY = 'sessionInfo';
 
+// Local copy of the UUID shape check (see UUID_RE in ../utils/branch-ref) —
+// kept local so this DO leaf module does not pull in the services barrel.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * PCC-3458: a DO session identity is valid only when siteId, documentId and
+ * branchId are all UUID-shaped. A DO keyed by e.g. a branch NAME cannot load
+ * from Postgres (uuid casts fail), initializes empty, and becomes an orphan
+ * unreachable by post-publish /reload — so it must be refused, never served.
+ */
+export function isValidSessionInfo(info: SessionInfo): boolean {
+  return (
+    UUID_RE.test(info.siteId)
+    && UUID_RE.test(info.documentId)
+    && UUID_RE.test(info.branchId)
+  );
+}
+
 /**
  * Parse session identifier from Durable Object ID name.
  * Format: {siteId}:{documentId}:{branchId}
@@ -82,6 +100,13 @@ export function updateSessionInfoFromRequest(
         documentId,
         branchId,
       };
+      // PCC-3458: refuse non-UUID session ids on the header/query path too —
+      // otherwise the Miniflare fallback would adopt (and persist) an
+      // identity the production idFromName path is required to reject.
+      if (!isValidSessionInfo(updated)) {
+        console.error(`Rejected non-UUID session ID from request (PCC-3458): ${sessionId}`);
+        return { updated: currentInfo, changed: false };
+      }
       console.log(`Session info updated from request: ${JSON.stringify(updated)}`);
       return { updated, changed: true };
     } else {

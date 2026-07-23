@@ -57,7 +57,7 @@ interface MockDurableObjectState {
  * The in-memory Map simulates both KV and SQLite-backed storage behavior,
  * since both backends expose the same put/get API.
  */
-function createMockState(sessionId = 'site-1:doc-1:branch-1'): MockDurableObjectState {
+function createMockState(sessionId = 'aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001'): MockDurableObjectState {
   const storageData = new Map<string, unknown>();
 
   const storage: MockDurableObjectStorage = {
@@ -180,16 +180,16 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
     });
 
     it('should parse session ID correctly from state.id.name', async () => {
-      const sessionId = 'test-site:test-doc:test-branch';
+      const sessionId = 'aaaaaaaa-0000-4000-8000-000000000004:bbbbbbbb-0000-4000-8000-000000000004:cccccccc-0000-4000-8000-000000000004';
       const state = createMockState(sessionId);
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const session = new DocumentSession(state as unknown, mockEnv);
 
       // Verify session info is parsed correctly
       const info = session.getSessionInfo();
-      expect(info.siteId).toBe('test-site');
-      expect(info.documentId).toBe('test-doc');
-      expect(info.branchId).toBe('test-branch');
+      expect(info.siteId).toBe('aaaaaaaa-0000-4000-8000-000000000004');
+      expect(info.documentId).toBe('bbbbbbbb-0000-4000-8000-000000000004');
+      expect(info.branchId).toBe('cccccccc-0000-4000-8000-000000000004');
     });
 
     it('should respond to /snapshot after initialization (storage API compatible)', async () => {
@@ -287,7 +287,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
       expect(encoded.byteLength).toBeGreaterThan(128 * 1024);
 
       // Pre-populate the mock storage with the large encoded state
-      const state = createMockState('site-1:doc-1:branch-1');
+      const state = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
       const storageData = new Map<string, unknown>();
       storageData.set('ydoc', encoded);
       state.storage.get.mockImplementation((key: string) =>
@@ -323,7 +323,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
       expect(encoded.byteLength).toBeLessThan(2 * 1024 * 1024);
 
       // Pre-populate storage
-      const state = createMockState('site-1:doc-1:branch-1');
+      const state = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
       const storageData = new Map<string, unknown>();
       storageData.set('ydoc', encoded);
       state.storage.get.mockImplementation((key: string) =>
@@ -356,7 +356,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
       const originalComponentCount = originalRoot.get('componentCount') as number;
 
       // Pre-populate storage and create a new DO that restores from it
-      const state = createMockState('site-1:doc-1:branch-1');
+      const state = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
       const storageData = new Map<string, unknown>();
       storageData.set('ydoc', encoded);
       state.storage.get.mockImplementation((key: string) =>

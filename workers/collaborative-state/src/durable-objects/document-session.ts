@@ -23,6 +23,7 @@ import type { AgentEditSession, SessionInfo, DocumentSessionEnv } from './docume
 import { YDOC_STORAGE_KEY, EDIT_SESSIONS_STORAGE_KEY, BRANCH_VERSION_STORAGE_KEY } from './document-session-types';
 import { PostgresSyncManager } from './postgres-sync-manager';
 import {
+  isValidSessionInfo,
   parseSessionId,
   updateSessionInfoFromRequest,
   restoreSessionInfoFromStorage,
@@ -184,6 +185,21 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
     try {
       this.updateSessionInfoFromRequest(request);
+
+      // PCC-3458: refuse to serve a DO whose session identity is not fully
+      // UUID-shaped (e.g. keyed by a branch NAME, or never resolvable at
+      // all). Such a DO cannot load from Postgres, would initialize empty,
+      // and would accept writes into an orphan the rest of the system can
+      // never reach — so reject BEFORE any state initialization.
+      if (!isValidSessionInfo(this.sessionInfo)) {
+        return new Response(
+          JSON.stringify({
+            error: 'Invalid session identity (PCC-3458): DO session key must be '
+              + `uuid siteId:documentId:branchId, got ${JSON.stringify(this.sessionInfo)}`,
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
 
       switch (path) {
         // CRDT endpoints — full Y.Doc initialization + branch check

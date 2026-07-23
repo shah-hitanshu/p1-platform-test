@@ -67,7 +67,7 @@ interface MockDurableObjectState {
 /**
  * Create a mock DurableObjectState for testing
  */
-function createMockState(sessionId = 'site-1:doc-1:branch-1'): MockDurableObjectState {
+function createMockState(sessionId = 'aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001'): MockDurableObjectState {
   const storage: MockDurableObjectStorage = {
     get: vi.fn().mockResolvedValue(undefined),
     put: vi.fn().mockResolvedValue(undefined),
@@ -136,7 +136,7 @@ describe('Phase 5: Organization Settings Integration', () => {
         updatedAt: new Date().toISOString(),
       });
 
-      const state = createMockState('site-1:doc-1:branch-1');
+      const state = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
       const env = createMockEnv();
       const session = new DocumentSession(state, env);
 
@@ -162,7 +162,7 @@ describe('Phase 5: Organization Settings Integration', () => {
       // Mock no organization
       (getOrganizationForSite as Mock).mockResolvedValue(null);
 
-      const state = createMockState('site-1:doc-1:branch-1');
+      const state = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
       const env = createMockEnv();
       const session = new DocumentSession(state, env);
 
@@ -193,7 +193,7 @@ describe('Phase 5: Organization Settings Integration', () => {
         updatedAt: new Date().toISOString(),
       });
 
-      const state = createMockState('site-1:doc-1:branch-1');
+      const state = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
       const env = createMockEnv();
       const session = new DocumentSession(state, env);
 
@@ -225,7 +225,7 @@ describe('Phase 5: Organization Settings Integration', () => {
         updatedAt: new Date().toISOString(),
       });
 
-      const state = createMockState('site-1:doc-1:branch-1');
+      const state = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
       const env = createMockEnv();
       const session = new DocumentSession(state, env);
 
@@ -248,14 +248,14 @@ describe('Phase 5: Organization Settings Integration', () => {
 
       (getOrganizationForSite as Mock).mockResolvedValue(null);
 
-      const state = createMockState('my-site-id:doc-1:branch-1');
+      const state = createMockState('aaaaaaaa-0000-4000-8000-000000000007:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
       const env = createMockEnv();
       const session = new DocumentSession(state, env);
 
       await session.fetch(new Request('http://localhost/activity-state'));
 
       // Should be called with the correct siteId
-      expect(getOrganizationForSite).toHaveBeenCalledWith('my-site-id');
+      expect(getOrganizationForSite).toHaveBeenCalledWith('aaaaaaaa-0000-4000-8000-000000000007');
     });
 
     it('should handle organization service errors gracefully', async () => {
@@ -271,7 +271,7 @@ describe('Phase 5: Organization Settings Integration', () => {
         new Error('Database connection failed'),
       );
 
-      const state = createMockState('site-1:doc-1:branch-1');
+      const state = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
       const env = createMockEnv();
       const session = new DocumentSession(state, env);
 
@@ -305,7 +305,7 @@ describe('Phase 5: Organization Settings Integration', () => {
         updatedAt: new Date().toISOString(),
       });
 
-      const state = createMockState('site-1:doc-1:branch-1');
+      const state = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
       const env = createMockEnv();
       const session = new DocumentSession(state, env);
 
@@ -366,7 +366,7 @@ describe('Phase 5: Organization Settings Integration', () => {
         updatedAt: new Date().toISOString(),
       });
 
-      const state = createMockState('site-1:doc-1:branch-1');
+      const state = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
       const env = createMockEnv();
       const session = new DocumentSession(state, env);
 
@@ -411,7 +411,7 @@ describe('Phase 5: Organization Settings Integration', () => {
         updatedAt: new Date().toISOString(),
       });
 
-      const state = createMockState('site-1:doc-1:branch-1');
+      const state = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
       const env = createMockEnv();
       const session = new DocumentSession(state, env);
 
@@ -436,7 +436,7 @@ describe('Phase 5: Organization Settings Integration', () => {
 
       (getOrganizationForSite as Mock).mockResolvedValue(null);
 
-      const state = createMockState('site-1:doc-1:branch-1');
+      const state = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
       const env = createMockEnv();
       const session = new DocumentSession(state, env);
 
@@ -472,7 +472,7 @@ describe('Phase 5: Organization Settings Integration', () => {
         updatedAt: new Date().toISOString(),
       });
 
-      const state = createMockState('site-1:doc-1:branch-1');
+      const state = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
       const env = createMockEnv();
       const session = new DocumentSession(state, env);
 

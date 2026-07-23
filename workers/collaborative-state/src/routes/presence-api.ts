@@ -24,8 +24,10 @@ import {
   SiteNotFoundError,
   AgentNotFoundError,
 } from '../services/presence-rollup-service';
-import { getBranch, getMainBranch } from '../services/branch-service';
+import { getBranch, getBranchByName, getMainBranch } from '../services/branch-service';
 import { hasPermission } from '../auth/authorization';
+import { UUID_RE } from '../utils/branch-ref';
+import type { Branch } from '../types';
 
 // =============================================================================
 // Types
@@ -140,6 +142,26 @@ async function canViewSite(
 }
 
 /**
+ * PCC-3458: Resolve a branch ref (UUID or name) to the canonical branch,
+ * verifying it belongs to the requested site. Presence lookups keyed by the
+ * raw ref read the wrong side (~960 name-based presence requests/week were
+ * silently answered as "nobody editing" while editors were active). Mirrors
+ * the resolution in realtime-api.ts and content-api's resolveBranch.
+ */
+async function resolveBranchRef(
+  siteId: string,
+  branchRef: string,
+): Promise<Branch | null> {
+  const branch = UUID_RE.test(branchRef)
+    ? await getBranch(branchRef)
+    : await getBranchByName(siteId, branchRef);
+  if (branch?.siteId !== siteId) {
+    return null;
+  }
+  return branch;
+}
+
+/**
  * Check if principal has access to view a specific branch.
  */
 async function canViewBranch(
@@ -196,21 +218,22 @@ async function handleGetBranchPresence(
     return errorResponse('Site ID and Branch ID are required', 400);
   }
 
-  // Verify branch exists and belongs to the correct site
-  const branch = await getBranch(context.branchId);
-  if (branch?.siteId !== context.siteId) {
+  // PCC-3458: resolve name-or-UUID ref to the canonical branch, then use the
+  // UUID everywhere downstream so presence reads the side real sessions use.
+  const branch = await resolveBranchRef(context.siteId, context.branchId);
+  if (branch === null) {
     return errorResponse('Branch not found', 404);
   }
 
   // Authorization check
-  const hasAccess = await canViewBranch(context, context.siteId, context.branchId);
+  const hasAccess = await canViewBranch(context, context.siteId, branch.id);
   if (!hasAccess) {
     throw new PresenceAuthorizationError(
       'Access denied: You do not have permission to view presence on this branch',
     );
   }
 
-  const presence = await getBranchPresence(env, context.siteId, context.branchId);
+  const presence = await getBranchPresence(env, context.siteId, branch.id);
   return jsonResponse(presence);
 }
 
@@ -271,14 +294,15 @@ async function handleGetDocumentPresence(
     return errorResponse('Site ID, Branch ID, and Document Path are required', 400);
   }
 
-  // Verify branch exists and belongs to the correct site
-  const docBranch = await getBranch(context.branchId);
-  if (docBranch?.siteId !== context.siteId) {
+  // PCC-3458: resolve name-or-UUID ref to the canonical branch (see
+  // resolveBranchRef) and use the UUID for auth + presence lookups.
+  const docBranch = await resolveBranchRef(context.siteId, context.branchId);
+  if (docBranch === null) {
     return errorResponse('Branch not found', 404);
   }
 
   // Authorization check (same as branch-level — if you can view the branch, you can see document presence)
-  const hasAccess = await canViewBranch(context, context.siteId, context.branchId);
+  const hasAccess = await canViewBranch(context, context.siteId, docBranch.id);
   if (!hasAccess) {
     throw new PresenceAuthorizationError(
       'Access denied: You do not have permission to view presence on this document',
@@ -286,7 +310,7 @@ async function handleGetDocumentPresence(
   }
 
   const decodedPath = decodeURIComponent(context.documentPath);
-  const presences = await queryDocumentPresence(env, context.siteId, decodedPath, context.branchId);
+  const presences = await queryDocumentPresence(env, context.siteId, decodedPath, docBranch.id);
 
   return jsonResponse({ presences });
 }

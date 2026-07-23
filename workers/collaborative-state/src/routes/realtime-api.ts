@@ -48,10 +48,12 @@ import {
   validateFocusRegionsBody,
 } from './realtime-validators';
 import { getDocumentByPath } from '../services/document-service';
+import { getBranch, getBranchByName } from '../services/branch-service';
 import { hasPermission } from '../auth/authorization';
 import { getAgentById } from '../services/agent-service';
 import { getCachedSiteAllowedOrigins } from '../services/site-service';
 import { buildCorsPatterns } from '../utils/cors';
+import { UUID_RE } from '../utils/branch-ref';
 
 // Re-export for consumers
 export type { RealtimeRouteContext } from './realtime-utils';
@@ -130,11 +132,30 @@ export async function handleRealtimeRoutes(
   }
 
   // ==========================================================================
+  // PCC-3458: Resolve the branch ref (UUID or name) to the canonical branch
+  // BEFORE any permission check or DO key generation. Keying the DocumentState
+  // DO with the raw ref means a branch NAME like "main" creates an orphan DO
+  // divergent from the UUID-keyed one used by the rest of the system
+  // (post-publish /reload, CRDT loading, presence rollup). Mirrors
+  // content-api's resolveBranch and the route-dispatch resolve-then-authorize
+  // pattern; all realtime actions flow through this exactly once.
+  // ==========================================================================
+  const branch = UUID_RE.test(params.branchId)
+    ? await getBranch(params.branchId)
+    : await getBranchByName(params.siteId, params.branchId);
+  if (branch?.siteId !== params.siteId) {
+    return errorResponse(404, `Branch not found: ${params.branchId}`, origin, patterns);
+  }
+
+  // ==========================================================================
   // Auth Phase 4: Authorization check using effective role
   // ==========================================================================
+  // Pass the resolved branch UUID: the branch_grants lookup inside
+  // getEffectiveRole compares against the UUID-typed branch_id column, so the
+  // canonical UUID is the form its semantics have always assumed.
   const requiredPermission = getRequiredPermission(params.action);
   const permitted = await hasPermission(
-    context.principal, params.siteId, params.branchId, requiredPermission,
+    context.principal, params.siteId, branch.id, requiredPermission,
   );
   if (!permitted) {
     return errorResponse(403, `Missing permission: ${requiredPermission}`, origin, patterns);
@@ -410,8 +431,9 @@ export async function handleRealtimeRoutes(
     return errorResponse(404, `Document not found: ${params.documentPath}`, origin, patterns);
   }
 
-  // Generate Durable Object ID and get stub using document UUID
-  const sessionId = generateSessionId(params.siteId, document.id, params.branchId);
+  // Generate Durable Object ID and get stub using document UUID and the
+  // canonical branch UUID (PCC-3458: never the raw client-supplied ref)
+  const sessionId = generateSessionId(params.siteId, document.id, branch.id);
   const durableObjectId = env.DOCUMENT_STATE.idFromName(sessionId);
   const stub = env.DOCUMENT_STATE.get(durableObjectId);
 

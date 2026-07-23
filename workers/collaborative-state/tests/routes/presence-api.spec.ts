@@ -40,9 +40,10 @@ vi.mock('../../src/services/presence-rollup-service', () => ({
 
 // Mock the branch service for authorization checks
 vi.mock('../../src/services/branch-service', () => ({
+  getBranchByName: vi.fn().mockResolvedValue(null),
   getBranch: vi.fn().mockImplementation((branchId: string) => {
-    if (branchId === 'branch-uuid-123') return Promise.resolve({ id: 'branch-uuid-123', siteId: 'site-uuid-123', name: 'main', isMain: true });
-    if (branchId === 'branch-1') return Promise.resolve({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true });
+    if (branchId === 'bbbbbbbb-2222-4222-8222-222222222222') return Promise.resolve({ id: 'bbbbbbbb-2222-4222-8222-222222222222', siteId: 'aaaaaaaa-1111-4111-8111-111111111111', name: 'main', isMain: true });
+    if (branchId === 'bbbbbbbb-4444-4444-8444-444444444444') return Promise.resolve({ id: 'bbbbbbbb-4444-4444-8444-444444444444', siteId: 'aaaaaaaa-3333-4333-8333-333333333333', name: 'main', isMain: true });
     return Promise.resolve(null);
   }),
   getMainBranch: vi.fn(),
@@ -64,9 +65,9 @@ describe('Phase 8: Presence API Routes', () => {
     overrides: Partial<BranchPresence> = {},
   ): BranchPresence {
     return {
-      branchId: 'branch-uuid-123',
+      branchId: 'bbbbbbbb-2222-4222-8222-222222222222',
       branchName: 'main',
-      siteId: 'site-uuid-123',
+      siteId: 'aaaaaaaa-1111-4111-8111-111111111111',
       summary: {
         totalActors: 2,
         humanCount: 1,
@@ -113,7 +114,7 @@ describe('Phase 8: Presence API Routes', () => {
     overrides: Partial<SitePresence> = {},
   ): SitePresence {
     return {
-      siteId: 'site-uuid-123',
+      siteId: 'aaaaaaaa-1111-4111-8111-111111111111',
       siteName: 'Test Site',
       summary: {
         totalActors: 3,
@@ -123,7 +124,7 @@ describe('Phase 8: Presence API Routes', () => {
       },
       branches: [
         {
-          branchId: 'branch-1',
+          branchId: 'bbbbbbbb-4444-4444-8444-444444444444',
           branchName: 'main',
           actorCount: 2,
           hasHumans: true,
@@ -151,9 +152,9 @@ describe('Phase 8: Presence API Routes', () => {
       organizationId: 'org-1',
       locations: [
         {
-          siteId: 'site-1',
+          siteId: 'aaaaaaaa-3333-4333-8333-333333333333',
           siteName: 'Site 1',
-          branchId: 'branch-1',
+          branchId: 'bbbbbbbb-4444-4444-8444-444444444444',
           branchName: 'main',
           documentId: 'doc-1',
           documentPath: 'content/home',
@@ -186,7 +187,7 @@ describe('Phase 8: Presence API Routes', () => {
       vi.mocked(presenceService.getBranchPresence).mockResolvedValueOnce(mockPresence);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/branches/branch-uuid-123/presence',
+        'https://api.example.com/api/sites/aaaaaaaa-1111-4111-8111-111111111111/branches/bbbbbbbb-2222-4222-8222-222222222222/presence',
         { method: 'GET' },
       );
 
@@ -194,12 +195,12 @@ describe('Phase 8: Presence API Routes', () => {
       const response = await handlePresenceRoutes(
         request,
         {
-          siteId: 'site-uuid-123',
-          branchId: 'branch-uuid-123',
+          siteId: 'aaaaaaaa-1111-4111-8111-111111111111',
+          branchId: 'bbbbbbbb-2222-4222-8222-222222222222',
           principal: {
             id: 'user-1',
             type: 'user',
-            pantheonSiteRoles: { 'site-uuid-123': 'developer' },
+            pantheonSiteRoles: { 'aaaaaaaa-1111-4111-8111-111111111111': 'developer' },
           },
         },
         {} as unknown,
@@ -207,9 +208,9 @@ describe('Phase 8: Presence API Routes', () => {
 
       expect(response.status).toBe(200);
       const body = await response.json();
-      expect(body.branchId).toBe('branch-uuid-123');
+      expect(body.branchId).toBe('bbbbbbbb-2222-4222-8222-222222222222');
       expect(body.branchName).toBe('main');
-      expect(body.siteId).toBe('site-uuid-123');
+      expect(body.siteId).toBe('aaaaaaaa-1111-4111-8111-111111111111');
       expect(body.summary.totalActors).toBe(2);
       expect(body.actors).toHaveLength(2);
       expect(body.documentSummary).toHaveLength(1);
@@ -224,19 +225,19 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/branches/non-existent/presence',
+        'https://api.example.com/api/sites/aaaaaaaa-1111-4111-8111-111111111111/branches/non-existent/presence',
         { method: 'GET' },
       );
 
       const response = await handlePresenceRoutes(
         request,
         {
-          siteId: 'site-uuid-123',
+          siteId: 'aaaaaaaa-1111-4111-8111-111111111111',
           branchId: 'non-existent',
           principal: {
             id: 'user-1',
             type: 'user',
-            pantheonSiteRoles: { 'site-uuid-123': 'developer' },
+            pantheonSiteRoles: { 'aaaaaaaa-1111-4111-8111-111111111111': 'developer' },
           },
         },
         {} as unknown,
@@ -251,19 +252,19 @@ describe('Phase 8: Presence API Routes', () => {
       const { handlePresenceRoutes } = await import('../../src/routes/presence-api');
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/branches/branch-uuid-123/presence',
+        'https://api.example.com/api/sites/aaaaaaaa-1111-4111-8111-111111111111/branches/bbbbbbbb-2222-4222-8222-222222222222/presence',
         { method: 'POST' },
       );
 
       const response = await handlePresenceRoutes(
         request,
         {
-          siteId: 'site-uuid-123',
-          branchId: 'branch-uuid-123',
+          siteId: 'aaaaaaaa-1111-4111-8111-111111111111',
+          branchId: 'bbbbbbbb-2222-4222-8222-222222222222',
           principal: {
             id: 'user-1',
             type: 'user',
-            pantheonSiteRoles: { 'site-uuid-123': 'developer' },
+            pantheonSiteRoles: { 'aaaaaaaa-1111-4111-8111-111111111111': 'developer' },
           },
         },
         {} as unknown,
@@ -286,7 +287,7 @@ describe('Phase 8: Presence API Routes', () => {
       vi.mocked(presenceService.getSitePresence).mockResolvedValueOnce(mockPresence);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/presence',
+        'https://api.example.com/api/sites/aaaaaaaa-1111-4111-8111-111111111111/presence',
         { method: 'GET' },
       );
 
@@ -294,11 +295,11 @@ describe('Phase 8: Presence API Routes', () => {
       const response = await handlePresenceRoutes(
         request,
         {
-          siteId: 'site-uuid-123',
+          siteId: 'aaaaaaaa-1111-4111-8111-111111111111',
           principal: {
             id: 'user-1',
             type: 'user',
-            pantheonSiteRoles: { 'site-uuid-123': 'developer' },
+            pantheonSiteRoles: { 'aaaaaaaa-1111-4111-8111-111111111111': 'developer' },
           },
         },
         {} as unknown,
@@ -306,7 +307,7 @@ describe('Phase 8: Presence API Routes', () => {
 
       expect(response.status).toBe(200);
       const body = await response.json();
-      expect(body.siteId).toBe('site-uuid-123');
+      expect(body.siteId).toBe('aaaaaaaa-1111-4111-8111-111111111111');
       expect(body.siteName).toBe('Test Site');
       expect(body.summary.totalActors).toBe(3);
       expect(body.summary.activeBranches).toBe(2);
@@ -379,7 +380,7 @@ describe('Phase 8: Presence API Routes', () => {
       expect(body.agentName).toBe('Test Agent');
       expect(body.organizationId).toBe('org-1');
       expect(body.locations).toHaveLength(1);
-      expect(body.locations[0].siteId).toBe('site-1');
+      expect(body.locations[0].siteId).toBe('aaaaaaaa-3333-4333-8333-333333333333');
     });
 
     it('should return 404 for non-existent agent', async () => {
@@ -462,20 +463,20 @@ describe('Phase 8: Presence API Routes', () => {
       vi.mocked(presenceService.queryDocumentPresence).mockResolvedValueOnce(mockPresences);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-1/branches/branch-1/documents/home/presence',
+        'https://api.example.com/api/sites/aaaaaaaa-3333-4333-8333-333333333333/branches/bbbbbbbb-4444-4444-8444-444444444444/documents/home/presence',
         { method: 'GET' },
       );
 
       const response = await handlePresenceRoutes(
         request,
         {
-          siteId: 'site-1',
-          branchId: 'branch-1',
+          siteId: 'aaaaaaaa-3333-4333-8333-333333333333',
+          branchId: 'bbbbbbbb-4444-4444-8444-444444444444',
           documentPath: 'home',
           principal: {
             id: 'user-1',
             type: 'user',
-            pantheonSiteRoles: { 'site-1': 'developer' },
+            pantheonSiteRoles: { 'aaaaaaaa-3333-4333-8333-333333333333': 'developer' },
           },
         },
         {} as unknown,
@@ -494,20 +495,20 @@ describe('Phase 8: Presence API Routes', () => {
       vi.mocked(presenceService.queryDocumentPresence).mockResolvedValueOnce([]);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-1/branches/branch-1/documents/home/presence',
+        'https://api.example.com/api/sites/aaaaaaaa-3333-4333-8333-333333333333/branches/bbbbbbbb-4444-4444-8444-444444444444/documents/home/presence',
         { method: 'GET' },
       );
 
       const response = await handlePresenceRoutes(
         request,
         {
-          siteId: 'site-1',
-          branchId: 'branch-1',
+          siteId: 'aaaaaaaa-3333-4333-8333-333333333333',
+          branchId: 'bbbbbbbb-4444-4444-8444-444444444444',
           documentPath: 'home',
           principal: {
             id: 'user-1',
             type: 'user',
-            pantheonSiteRoles: { 'site-1': 'developer' },
+            pantheonSiteRoles: { 'aaaaaaaa-3333-4333-8333-333333333333': 'developer' },
           },
         },
         {} as unknown,
@@ -525,20 +526,20 @@ describe('Phase 8: Presence API Routes', () => {
       vi.mocked(presenceService.queryDocumentPresence).mockResolvedValueOnce([]);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-1/branches/branch-1/documents/products%2Fwidgets/presence',
+        'https://api.example.com/api/sites/aaaaaaaa-3333-4333-8333-333333333333/branches/bbbbbbbb-4444-4444-8444-444444444444/documents/products%2Fwidgets/presence',
         { method: 'GET' },
       );
 
       const response = await handlePresenceRoutes(
         request,
         {
-          siteId: 'site-1',
-          branchId: 'branch-1',
+          siteId: 'aaaaaaaa-3333-4333-8333-333333333333',
+          branchId: 'bbbbbbbb-4444-4444-8444-444444444444',
           documentPath: 'products%2Fwidgets',
           principal: {
             id: 'user-1',
             type: 'user',
-            pantheonSiteRoles: { 'site-1': 'developer' },
+            pantheonSiteRoles: { 'aaaaaaaa-3333-4333-8333-333333333333': 'developer' },
           },
         },
         {} as unknown,
@@ -548,9 +549,9 @@ describe('Phase 8: Presence API Routes', () => {
       // Verify queryDocumentPresence was called with decoded path
       expect(presenceService.queryDocumentPresence).toHaveBeenCalledWith(
         expect.anything(),
-        'site-1',
+        'aaaaaaaa-3333-4333-8333-333333333333',
         'products/widgets',
-        'branch-1',
+        'bbbbbbbb-4444-4444-8444-444444444444',
       );
     });
 
@@ -561,15 +562,15 @@ describe('Phase 8: Presence API Routes', () => {
       vi.mocked(authModule.hasPermission).mockResolvedValueOnce(false);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-1/branches/branch-1/documents/home/presence',
+        'https://api.example.com/api/sites/aaaaaaaa-3333-4333-8333-333333333333/branches/bbbbbbbb-4444-4444-8444-444444444444/documents/home/presence',
         { method: 'GET' },
       );
 
       const response = await handlePresenceRoutes(
         request,
         {
-          siteId: 'site-1',
-          branchId: 'branch-1',
+          siteId: 'aaaaaaaa-3333-4333-8333-333333333333',
+          branchId: 'bbbbbbbb-4444-4444-8444-444444444444',
           documentPath: 'home',
           principal: { id: 'user-1', type: 'user' },
         },
@@ -596,18 +597,18 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/presence',
+        'https://api.example.com/api/sites/aaaaaaaa-1111-4111-8111-111111111111/presence',
         { method: 'GET' },
       );
 
       const response = await handlePresenceRoutes(
         request,
         {
-          siteId: 'site-uuid-123',
+          siteId: 'aaaaaaaa-1111-4111-8111-111111111111',
           principal: {
             id: 'user-1',
             type: 'user',
-            pantheonSiteRoles: { 'site-uuid-123': 'developer' },
+            pantheonSiteRoles: { 'aaaaaaaa-1111-4111-8111-111111111111': 'developer' },
           },
         },
         {} as unknown,
@@ -652,7 +653,7 @@ describe('Phase 8: Presence API Routes', () => {
       // Mock getMainBranch to return a branch
       vi.mocked(branchService.getMainBranch).mockResolvedValueOnce({
         id: 'main-branch-id',
-        siteId: 'site-uuid-123',
+        siteId: 'aaaaaaaa-1111-4111-8111-111111111111',
         name: 'main',
         isMain: true,
         status: 'active',
@@ -664,7 +665,7 @@ describe('Phase 8: Presence API Routes', () => {
       vi.mocked(authModule.hasPermission).mockResolvedValueOnce(false);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/presence',
+        'https://api.example.com/api/sites/aaaaaaaa-1111-4111-8111-111111111111/presence',
         { method: 'GET' },
       );
 
@@ -672,7 +673,7 @@ describe('Phase 8: Presence API Routes', () => {
       const response = await handlePresenceRoutes(
         request,
         {
-          siteId: 'site-uuid-123',
+          siteId: 'aaaaaaaa-1111-4111-8111-111111111111',
           principal: { id: 'user-1', type: 'user' },
         },
         {} as unknown,
@@ -691,7 +692,7 @@ describe('Phase 8: Presence API Routes', () => {
       vi.mocked(authModule.hasPermission).mockResolvedValueOnce(false);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/branches/branch-uuid-123/presence',
+        'https://api.example.com/api/sites/aaaaaaaa-1111-4111-8111-111111111111/branches/bbbbbbbb-2222-4222-8222-222222222222/presence',
         { method: 'GET' },
       );
 
@@ -699,8 +700,8 @@ describe('Phase 8: Presence API Routes', () => {
       const response = await handlePresenceRoutes(
         request,
         {
-          siteId: 'site-uuid-123',
-          branchId: 'branch-uuid-123',
+          siteId: 'aaaaaaaa-1111-4111-8111-111111111111',
+          branchId: 'bbbbbbbb-2222-4222-8222-222222222222',
           principal: { id: 'user-1', type: 'user' },
         },
         {} as unknown,
@@ -743,7 +744,7 @@ describe('Phase 8: Presence API Routes', () => {
       vi.mocked(presenceService.getSitePresence).mockResolvedValueOnce(mockPresence);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-uuid-123/presence',
+        'https://api.example.com/api/sites/aaaaaaaa-1111-4111-8111-111111111111/presence',
         { method: 'GET' },
       );
 
@@ -751,11 +752,11 @@ describe('Phase 8: Presence API Routes', () => {
       const response = await handlePresenceRoutes(
         request,
         {
-          siteId: 'site-uuid-123',
+          siteId: 'aaaaaaaa-1111-4111-8111-111111111111',
           principal: {
             id: 'user-1',
             type: 'user',
-            pantheonSiteRoles: { 'site-uuid-123': 'viewer' },
+            pantheonSiteRoles: { 'aaaaaaaa-1111-4111-8111-111111111111': 'viewer' },
           },
         },
         {} as unknown,
@@ -813,19 +814,19 @@ describe('Phase 8: Presence API Routes', () => {
       } as never);
 
       const request = new Request(
-        'https://api.example.com/api/sites/site-1/branches/branch-from-other-site/presence',
+        'https://api.example.com/api/sites/aaaaaaaa-3333-4333-8333-333333333333/branches/branch-from-other-site/presence',
         { method: 'GET' },
       );
 
       const response = await handlePresenceRoutes(
         request,
         {
-          siteId: 'site-1',
+          siteId: 'aaaaaaaa-3333-4333-8333-333333333333',
           branchId: 'branch-from-other-site',
           principal: {
             id: 'user-1',
             type: 'user',
-            pantheonSiteRoles: { 'site-1': 'developer' },
+            pantheonSiteRoles: { 'aaaaaaaa-3333-4333-8333-333333333333': 'developer' },
           },
         },
         {} as unknown,

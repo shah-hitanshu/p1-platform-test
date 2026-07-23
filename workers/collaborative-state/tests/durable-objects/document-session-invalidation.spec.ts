@@ -41,7 +41,7 @@ interface MockDurableObjectState {
   getWebSockets: Mock;
 }
 
-function createMockState(sessionId = 'site-1:doc-1:branch-1'): MockDurableObjectState {
+function createMockState(sessionId = 'aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001'): MockDurableObjectState {
   const storageData = new Map<string, unknown>();
 
   const storage: MockDurableObjectStorage = {
@@ -105,7 +105,7 @@ describe('DocumentSession pull-based KV invalidation', () => {
     vi.resetAllMocks();
     vi.resetModules();
 
-    mockState = createMockState('site-1:doc-1:branch-1');
+    mockState = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
 
     // Mock global fetch for internal API calls (Hyperdrive/HTTP init)
     mockFetch = vi.fn().mockImplementation(() =>
@@ -146,7 +146,7 @@ describe('DocumentSession pull-based KV invalidation', () => {
     await session.fetch(new Request('http://localhost/snapshot'));
 
     // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(mockKV.get).toHaveBeenCalledWith('branch-version:branch-1');
+    expect(mockKV.get).toHaveBeenCalledWith('branch-version:cccccccc-0000-4000-8000-000000000001');
     // No additional initializeFromPostgres calls beyond the initial one
     expect(mockFetch.mock.calls.length).toBe(fetchCountBeforeSecond);
   });
@@ -165,7 +165,7 @@ describe('DocumentSession pull-based KV invalidation', () => {
     // Now simulate a merge by setting a KV timestamp
     const mergeTimestamp = Date.now().toString();
     (mockKV.get as Mock).mockImplementation((key: string) => {
-      if (key === 'branch-version:branch-1') return Promise.resolve(mergeTimestamp);
+      if (key === 'branch-version:cccccccc-0000-4000-8000-000000000001') return Promise.resolve(mergeTimestamp);
       return Promise.resolve(null);
     });
 
@@ -191,7 +191,7 @@ describe('DocumentSession pull-based KV invalidation', () => {
 
   it('should not reload twice for the same KV timestamp', async () => {
     const mergeTimestamp = Date.now().toString();
-    const mockKV = createMockKV({ 'branch-version:branch-1': mergeTimestamp });
+    const mockKV = createMockKV({ 'branch-version:cccccccc-0000-4000-8000-000000000001': mergeTimestamp });
     const mockEnv = createMockEnv(mockKV);
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
     const session = new DocumentSession(mockState, mockEnv);
@@ -237,7 +237,7 @@ describe('DocumentSession pull-based KV invalidation', () => {
     // Simulate merge: set KV timestamp
     const mergeTimestamp = (Date.now() + 1000).toString();
     (mockKV.get as Mock).mockImplementation((key: string) => {
-      if (key === 'branch-version:branch-1') return Promise.resolve(mergeTimestamp);
+      if (key === 'branch-version:cccccccc-0000-4000-8000-000000000001') return Promise.resolve(mergeTimestamp);
       return Promise.resolve(null);
     });
 
@@ -277,7 +277,7 @@ describe('DocumentSession pull-based KV invalidation', () => {
     // Now simulate a merge by setting a KV timestamp
     const mergeTimestamp = (Date.now() + 1000).toString();
     (mockKV.get as Mock).mockImplementation((key: string) => {
-      if (key === 'branch-version:branch-1') return Promise.resolve(mergeTimestamp);
+      if (key === 'branch-version:cccccccc-0000-4000-8000-000000000001') return Promise.resolve(mergeTimestamp);
       return Promise.resolve(null);
     });
 
@@ -305,7 +305,7 @@ describe('DocumentSession pull-based KV invalidation', () => {
 
   it('should NOT check KV for branch invalidation on /reload endpoint (avoids circular reload)', async () => {
     const mergeTimestamp = Date.now().toString();
-    const mockKV = createMockKV({ 'branch-version:branch-1': mergeTimestamp });
+    const mockKV = createMockKV({ 'branch-version:cccccccc-0000-4000-8000-000000000001': mergeTimestamp });
     const mockEnv = createMockEnv(mockKV);
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
     const session = new DocumentSession(mockState, mockEnv);

@@ -26,15 +26,43 @@ vi.mock('../../src/services/document-service', () => ({
   getDocumentByPath: vi.fn(),
 }));
 
+// PCC-3458: realtime routes resolve the branch ref via branch-service before
+// keying the DO session; mocked so route tests don't hit the database.
+vi.mock('../../src/services/branch-service', () => ({
+  getBranch: vi.fn(),
+  getBranchByName: vi.fn(),
+}));
+
 vi.mock('../../src/auth/authorization', () => ({
   hasPermission: vi.fn().mockResolvedValue(true),
 }));
 
 // Import mocked module for test setup
 import * as documentService from '../../src/services/document-service';
+import * as branchService from '../../src/services/branch-service';
 import { hasPermission } from '../../src/auth/authorization';
 import type { RealtimeRouteContext } from '../../src/routes/realtime-api';
-import type { AuthenticatedPrincipal } from '../../src/types';
+import type { AuthenticatedPrincipal, Branch } from '../../src/types';
+
+/**
+ * PCC-3458: build a branch whose id/siteId mirror the requested ref, so the
+ * route's branch resolution succeeds and existing session-id fixtures keep
+ * their exact original values.
+ */
+function branchForRef(siteId: string, ref: string): Branch {
+  return {
+    id: ref,
+    siteId,
+    name: ref,
+    status: 'active',
+    isMain: false,
+    createdById: 'test-user',
+    createdByType: 'user',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    archivedAt: null,
+  };
+}
 
 // Mock types for Cloudflare Durable Objects
 interface MockDurableObjectStub {
@@ -77,6 +105,11 @@ describe('Real-Time API: Focus Regions Endpoint', () => {
     vi.resetAllMocks();
 
     vi.mocked(hasPermission).mockResolvedValue(true);
+
+    // PCC-3458: resolve any branch ref to a branch matching the fixtures
+    vi.mocked(branchService.getBranchByName).mockImplementation(
+      (siteId: string, name: string) => Promise.resolve(branchForRef(siteId, name)),
+    );
 
     // Mock getDocumentByPath to return a document by default
     vi.mocked(documentService.getDocumentByPath).mockResolvedValue({

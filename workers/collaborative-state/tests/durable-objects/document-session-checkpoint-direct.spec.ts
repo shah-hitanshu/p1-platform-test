@@ -82,7 +82,7 @@ interface MockDurableObjectState {
 }
 
 function createMockState(
-  sessionId = 'site-1:doc-1:branch-1',
+  sessionId = 'aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001',
 ): MockDurableObjectState {
   const storageData = new Map<string, unknown>();
 
@@ -232,7 +232,7 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
       );
       expect(checkpointService.createCheckpoint).toHaveBeenCalledWith(
         expect.objectContaining({
-          branchId: 'branch-1',
+          branchId: 'cccccccc-0000-4000-8000-000000000001',
           checkpointType: 'agent_pre_edit',
           createdById: 'agent-1',
           createdByType: 'agent',
