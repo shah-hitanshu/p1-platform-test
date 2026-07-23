@@ -112,7 +112,7 @@
       { "binding": "SCREENSHOT_QUEUE", "queue": "css-screenshot-queue" }
     ],
     "consumers": [
-      { "queue": "css-sync-queue", "max_batch_size": 100, "max_batch_timeout": 30 },
+      { "queue": "css-sync-queue", "max_batch_size": 100, "max_batch_timeout": 30, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "css-sync-dlq" },
       { "queue": "css-screenshot-queue", "max_batch_size": 5, "max_batch_timeout": 30 }
     ]
   },
@@ -200,7 +200,7 @@
           { "binding": "SCREENSHOT_QUEUE", "queue": "css-screenshot-queue-staging" }
         ],
         "consumers": [
-          { "queue": "css-sync-queue-staging", "max_batch_size": 100, "max_batch_timeout": 30 },
+          { "queue": "css-sync-queue-staging", "max_batch_size": 100, "max_batch_timeout": 30, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "css-sync-dlq-staging" },
           { "queue": "css-screenshot-queue-staging", "max_batch_size": 5, "max_batch_timeout": 30 }
         ]
       },
@@ -276,7 +276,7 @@
           { "binding": "SCREENSHOT_QUEUE", "queue": "css-screenshot-queue-production" }
         ],
         "consumers": [
-          { "queue": "css-sync-queue-production", "max_batch_size": 100, "max_batch_timeout": 30 },
+          { "queue": "css-sync-queue-production", "max_batch_size": 100, "max_batch_timeout": 30, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "css-sync-dlq-production" },
           { "queue": "css-screenshot-queue-production", "max_batch_size": 5, "max_batch_timeout": 30 }
         ]
       },

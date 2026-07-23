@@ -134,6 +134,23 @@ resource "cloudflare_queue" "sync_queue" {
   queue_name = "css-sync-queue-${var.environment}"
 }
 
+# Dead-letter queue for css-sync-queue. Messages that exhaust max_retries land
+# here instead of being dropped, so failed DO→Postgres sync payloads stay
+# recoverable (PCC-3460; before this, the 2026-07 PCC-3464 incident's failed
+# sync payloads were unrecoverable from the queue layer). No consumer is
+# attached by design — messages persist for the retention period below
+# awaiting inspection/replay. Retention is pinned to the 14-day maximum
+# (default is 4 days) because this queue exists precisely for failures nobody
+# noticed promptly.
+resource "cloudflare_queue" "sync_dlq" {
+  account_id = var.cloudflare_account_id
+  queue_name = "css-sync-dlq-${var.environment}"
+
+  settings = {
+    message_retention_period = 1209600 # 14 days, in seconds
+  }
+}
+
 resource "cloudflare_queue" "screenshot_queue" {
   account_id = var.cloudflare_account_id
   queue_name = "css-screenshot-queue-${var.environment}"
@@ -225,6 +242,16 @@ output "queue_id" {
 output "queue_name" {
   description = "Sync queue name"
   value       = cloudflare_queue.sync_queue.queue_name
+}
+
+output "sync_dlq_id" {
+  description = "Sync dead-letter queue ID"
+  value       = cloudflare_queue.sync_dlq.id
+}
+
+output "sync_dlq_name" {
+  description = "Sync dead-letter queue name (referenced by dead_letter_queue in wrangler.jsonc consumers)"
+  value       = cloudflare_queue.sync_dlq.queue_name
 }
 
 output "screenshot_queue_id" {
