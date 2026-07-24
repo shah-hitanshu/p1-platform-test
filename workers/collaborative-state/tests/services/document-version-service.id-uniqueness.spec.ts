@@ -409,11 +409,7 @@ describe('batchSyncToPostgres within-document id uniqueness', () => {
       },
     ]);
 
-    // PCC-3468: batchSyncToPostgres binds jsonb[] as JSON strings (object arrays
-    // crash postgres.js 3.4.9's array serializer); parse to inspect content.
-    const snapshots = (insertCallParams(queryMock)[2] as string[]).map(
-      (s) => JSON.parse(s) as { content: Comp[] },
-    );
+    const snapshots = insertCallParams(queryMock)[2] as { content: Comp[] }[];
     expect(snapshots).toHaveLength(2);
 
     expect(snapshots[0].content[0].props.id).toBe('HeroBlock-dup');
@@ -453,7 +449,7 @@ describe('batchSyncToPostgres within-document id uniqueness', () => {
     ]);
 
     const newId = (
-      JSON.parse((insertCallParams(queryMock)[2] as string[])[0]) as { content: Comp[] }
+      (insertCallParams(queryMock)[2] as { content: Comp[] }[])[0]
     ).content[1].props.id;
     expect(warnSpy).toHaveBeenCalled();
     const output = warnOutput(warnSpy);
@@ -489,9 +485,7 @@ describe('batchSyncToPostgres within-document id uniqueness', () => {
       },
     ]);
 
-    const snapshots = (insertCallParams(queryMock)[2] as string[]).map(
-      (s) => JSON.parse(s) as Record<string, unknown>,
-    );
+    const snapshots = insertCallParams(queryMock)[2] as Record<string, unknown>[];
     expect(snapshots[0]).toEqual(snapshot);
     expect(warnSpy).not.toHaveBeenCalled();
   });

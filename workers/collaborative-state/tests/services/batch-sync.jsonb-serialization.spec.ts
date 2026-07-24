@@ -1,18 +1,13 @@
 /**
- * PCC-3468: batchSyncToPostgres must pre-serialize the object arrays it binds
- * to jsonb[] parameters.
+ * batchSyncToPostgres binds raw objects (not pre-stringified JSON) to its
+ * jsonb[] params. postgres.js's jsonb[] encoder serializes each element
+ * itself, so a pre-stringified element is JSON-encoded twice and Postgres
+ * stores a jsonb string scalar of escaped JSON instead of the object.
  *
- * postgres.js 3.4.9 regressed its array serializer: an array of JS objects
- * passed to a jsonb[] bind (`unnest($N::jsonb[])`) throws
- * `TypeError: Cannot read properties of undefined (reading 'replace')` in
- * arrayEscape — crashing the WHOLE sync batch before any insert (the queue
- * consumer dead-letters; realtime edits never persist). The committed lockfile
- * pins 3.4.9, so a fresh CI/staging/prod build hits this.
- *
- * Fix: bind pre-stringified JSON. Postgres parses each text element into jsonb,
- * which is correct on every driver version. These tests guard the serialization
- * mechanism regardless of the installed driver (a mocked-query unit test cannot
- * observe the driver crash directly, so it asserts the shape that avoids it).
+ * This test mocks query(), so it sees only the value handed to the driver,
+ * never what Postgres stores — it cannot observe the double-encoding directly.
+ * The database-backed guard is
+ * tests/integration/batch-sync.jsonb-serialization.integration.spec.ts.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -50,7 +45,7 @@ describe('PCC-3468: batchSyncToPostgres jsonb[] serialization', () => {
     };
   }
 
-  it('binds snapshots ($3) and action_metadata ($7) as JSON strings, never raw objects', async () => {
+  it('binds snapshots ($3) and action_metadata ($7) as raw objects, never JSON strings', async () => {
     const { batchSyncToPostgres } = await import('../../src/services/document-version-service');
     const { getParams } = await captureInsertParams();
 
@@ -58,8 +53,6 @@ describe('PCC-3468: batchSyncToPostgres jsonb[] serialization', () => {
       {
         documentId: 'doc-001',
         branchId: 'branch-001',
-        // A production-shaped nested object — the exact thing that crashes the
-        // 3.4.9 array serializer when passed raw to a jsonb[] bind.
         snapshot: { root: { props: { title: 'Doc 1' } }, content: [] },
         // Non-uuid, no `|` -> actor resolver passes through with zero DB calls,
         // so the batch INSERT is the only query issued.
@@ -78,18 +71,16 @@ describe('PCC-3468: batchSyncToPostgres jsonb[] serialization', () => {
       throw new Error('expected snapshots and action_metadata binds to be arrays');
     }
 
-    // Every jsonb[] element must be a JSON string (a raw object crashes 3.4.9).
+    // A pre-stringified element here double-encodes once Postgres's own
+    // jsonb[] driver serialization runs on top of it.
     for (const snapshot of snapshots) {
-      expect(typeof snapshot).toBe('string');
+      expect(typeof snapshot).toBe('object');
     }
-    // ...and it must be valid JSON round-tripping to the original shape.
-    const parsed = JSON.parse(snapshots[0] as string) as { root?: { props?: { title?: string } } };
-    expect(parsed.root?.props?.title).toBe('Doc 1');
-
-    expect(actionMetadatas[0]).toBe(JSON.stringify({ componentType: 'Hero', zone: 'root' }));
+    expect(snapshots[0]).toEqual({ root: { props: { title: 'Doc 1' } }, content: [] });
+    expect(actionMetadatas[0]).toEqual({ componentType: 'Hero', zone: 'root' });
   });
 
-  it('serializes absent action_metadata as SQL null, not the string "null"', async () => {
+  it('binds absent action_metadata as SQL null, not the string "null"', async () => {
     const { batchSyncToPostgres } = await import('../../src/services/document-version-service');
     const { getParams } = await captureInsertParams();
 

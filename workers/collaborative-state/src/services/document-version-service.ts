@@ -827,16 +827,12 @@ export async function batchSyncToPostgres(
     }
   }
 
-  // PCC-3468: pre-serialize the object arrays bound to jsonb[] params. postgres.js
-  // 3.4.9 regressed its array serializer and throws on an array of JS objects
-  // passed to a jsonb[] bind (`unnest($N::jsonb[])`), crashing the whole batch
-  // before any insert. Passing pre-stringified JSON is serialized as text and
-  // parsed to jsonb by Postgres — correct on every driver version. jsonb
-  // comparison in the dedup below is unaffected (text -> jsonb parse is lossless).
-  const snapshotsJson = snapshots.map((snapshot) => JSON.stringify(snapshot));
-  const actionMetadatasJson = actionMetadatas.map((metadata) =>
-    metadata === null ? null : JSON.stringify(metadata),
-  );
+  // Bind the raw object arrays to the jsonb[] params directly. postgres.js's
+  // jsonb[] encoder serializes each element itself, so pre-stringifying here
+  // would double-encode: Postgres would store a jsonb string scalar of escaped
+  // JSON rather than the object.
+  const snapshotsJson = snapshots;
+  const actionMetadatasJson = actionMetadatas;
 
   // Use a CTE-based approach: for each input row, check if the latest snapshot
   // matches. If it does, skip the insert (dedup). Otherwise, compute the next
