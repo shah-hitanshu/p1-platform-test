@@ -8,6 +8,7 @@
 
 import type { AuthenticatedPrincipal } from '../types';
 import { query } from '../db';
+import { normalizePrincipalIdForDb } from '../auth/principal-id-normalization';
 
 /**
  * Request context for user admin routes
@@ -72,10 +73,13 @@ async function isSystemAdmin(principal: AuthenticatedPrincipal): Promise<boolean
     return true;
   }
 
-  // Check if the principal has admin role
+  // Check if the principal has admin role.
+  // PCC-3457: principal_id is stored normalized (UUIDv5) — look it up by the
+  // same key the writers stamp, or a broker-authenticated admin (raw
+  // `provider|subject` principal.id) can never match its own row.
   const adminResult = await query<{ system_role: string }>(
     'SELECT system_role FROM app.users WHERE principal_id = $1 AND is_active = true',
-    [principal.id],
+    [await normalizePrincipalIdForDb(principal.id)],
   );
 
   const adminRow = adminResult.rows[0];
@@ -128,11 +132,14 @@ async function handleAddUser(
   if (currentCount === 0 && context.principal.email !== undefined) {
     const principalEmail = context.principal.email.toLowerCase();
     if (principalEmail !== email) {
+      // PCC-3457: stamp the normalized (UUIDv5) form, never a raw OAuth
+      // subject — the persistence actor resolver looks principal_id up by
+      // UUIDv5 (see auth/principal-id-normalization.ts).
       await query(
         `INSERT INTO app.users (email, principal_id, auth_provider, system_role)
          VALUES ($1, $2, $3, 'admin')
          ON CONFLICT (email) DO NOTHING`,
-        [principalEmail, context.principal.id, context.principal.authProvider ?? 'unknown'],
+        [principalEmail, await normalizePrincipalIdForDb(context.principal.id), context.principal.authProvider ?? 'unknown'],
       );
     }
   }

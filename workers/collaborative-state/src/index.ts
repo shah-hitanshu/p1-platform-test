@@ -13,6 +13,7 @@ import type { AuthenticatedPrincipal } from './types';
 import { AuthorizationError } from './auth/authorization';
 import { isServicePrincipalAllowed } from './auth/service-principal';
 import { extractActingUser } from './auth/acting-user';
+import { normalizePrincipalIdForDb } from './auth/principal-id-normalization';
 
 // Extracted modules
 import { parseRoute } from './routes/route-parser';
@@ -426,11 +427,15 @@ async function checkUserAllowlist(
       return null;
     }
 
-    // Link principal_id on first login, and update name/avatar_url
+    // Link principal_id on first login, and update name/avatar_url.
+    // PCC-3457: stamp the normalized (UUIDv5) form, never a raw OAuth
+    // subject — the persistence actor resolver looks this column up by
+    // UUIDv5, and a raw stamp recreates the unmatchable rows migration 045
+    // backfills (incident PCC-3464).
     if (userRow.principal_id === null) {
       await query(
         'UPDATE app.users SET principal_id = $1, auth_provider = $2, name = COALESCE($3, name), avatar_url = COALESCE($4, avatar_url), updated_at = NOW() WHERE id = $5',
-        [principal.id, principal.authProvider ?? 'unknown', principal.name ?? null, principal.avatarUrl ?? null, userRow.id],
+        [await normalizePrincipalIdForDb(principal.id), principal.authProvider ?? 'unknown', principal.name ?? null, principal.avatarUrl ?? null, userRow.id],
       );
 
       // Self-heal orphan user_site_roles rows from before dbUserId was used.
