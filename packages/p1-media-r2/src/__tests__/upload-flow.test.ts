@@ -148,6 +148,26 @@ describe("runUpload — new asset", () => {
   });
 });
 
+describe("runUpload — workstreamId omitted", () => {
+  it("omits workstreamId from the query string entirely rather than sending it empty/undefined", async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(PRESIGN_RESULT))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(jsonResponse(FINALIZED_ASSET, 201));
+
+    const targetWithoutWorkstream: UploadTarget = {
+      workerUrl: "https://worker.example.com",
+      siteId: "site-1",
+      getAuthHeaders: async () => ({ Authorization: "Bearer test-token" }),
+    };
+    await runUpload(targetWithoutWorkstream, makeFile(), undefined, undefined, {}, () => {});
+
+    const [presignUrl] = fetchMock.mock.calls[0];
+    expect(String(presignUrl)).toBe("https://worker.example.com/media/presign?siteId=site-1");
+  });
+});
+
 describe("runUpload — replace version", () => {
   it("hits the versions presign/finalize endpoints and omits metadata (a replace never touches metadata)", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;

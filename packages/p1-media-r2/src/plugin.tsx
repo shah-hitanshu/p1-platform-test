@@ -6,13 +6,20 @@ import { MediaFieldRender } from "./components/media-field";
 import { MediaObjectFieldRender } from "./components/media-object-field";
 import type { MediaFieldValue, MetadataFieldDef } from "./types";
 
+/** Production Worker/CDN host — same origin serves both the `/media` API and `/image` delivery. */
+const DEFAULT_WORKER_URL = "https://media.p1.pantheon.io";
+
 export interface MediaPluginOptions {
-  /** The base URL of the Cloudflare Worker media API */
-  workerUrl: string;
+  /** The base URL of the Cloudflare Worker media API. Defaults to the production host. */
+  workerUrl?: string;
   /** Site identifier used to scope media to a specific site */
   siteId: string;
-  /** Workstream (branch) identifier — scopes media to this workstream, preventing cross-branch leakage */
-  workstreamId: string;
+  /**
+   * Workstream (branch) identifier. Currently accepted for forward-compat but not
+   * read by the Worker for any scoping decision — omit unless a future release
+   * documents otherwise.
+   */
+  workstreamId?: string;
   /** Function that returns the current auth token, or null if unauthenticated. May be async (e.g. useP1Auth().getToken). */
   getAuthToken: () => Promise<string | null> | string | null;
   /** Field name patterns that trigger the media picker (defaults to common image URL patterns) */
@@ -37,7 +44,6 @@ export interface MediaPluginOptions {
  * @example
  * ```tsx
  * const mediaPlugin = createMediaPlugin({
- *   workerUrl: "https://p1-media-worker-staging.pantheon-content-publisher.workers.dev",
  *   siteId: "my-site",
  *   getAuthToken: () => localStorage.getItem("token"),
  * });
@@ -48,7 +54,7 @@ export interface MediaPluginOptions {
 export function createMediaPlugin(options: MediaPluginOptions) {
   const patterns = options.fieldNamePatterns ?? DEFAULT_MEDIA_PATTERNS;
   const config: MediaConfig = {
-    workerUrl: options.workerUrl,
+    workerUrl: options.workerUrl ?? DEFAULT_WORKER_URL,
     siteId: options.siteId,
     workstreamId: options.workstreamId,
     getAuthToken: options.getAuthToken,
@@ -56,7 +62,7 @@ export function createMediaPlugin(options: MediaPluginOptions) {
   };
 
   return {
-    name: "p1-media-r2",
+    name: "p1-media",
     overrides: {
       fieldTypes: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

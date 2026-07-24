@@ -1,4 +1,4 @@
-# @pantheon-systems/p1-media-r2
+# @pantheon-systems/p1-media
 
 A Puck editor plugin that adds a media library, a rich `p1-media` field type, and render
 helpers for Puck-based P1 sites. Backed by a Cloudflare Worker + R2 + D1 media store — see
@@ -38,7 +38,7 @@ Navigation URL patterns (`buttonUrl`, `linkUrl`, `ctaUrl`) and alt text fields a
 The quickest integration is the ready-made component the plugin ships:
 
 ```tsx
-import { createMediaFigureBlock } from "@pantheon-systems/p1-media-r2";
+import { createMediaFigureBlock } from "@pantheon-systems/p1-media";
 
 const config = {
   components: {
@@ -53,7 +53,7 @@ const config = {
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `mediaBaseUrl` | (required) | CDN image origin used to validate value URLs — NOT the Worker API URL |
+| `mediaBaseUrl` | `"https://media.p1.pantheon.io"` (production) | CDN image origin used to validate value URLs — NOT the Worker API URL. Override for sandbox/staging/local dev |
 | `transform` | `{ width: 1200, height: 630, format: "auto" }` | Render-time transform; keep both dimensions (see crop note below) |
 | `label` | `"Media Figure"` | Component label in the Puck sidebar |
 | `fieldLabel` | `"Photo"` | Label of the media field |
@@ -67,7 +67,7 @@ union — cast the declaration:
 
 ```tsx
 import type { Field } from "@puckeditor/core";
-import { MediaImage, type MediaFieldValue } from "@pantheon-systems/p1-media-r2";
+import { MediaImage, type MediaFieldValue } from "@pantheon-systems/p1-media";
 
 const heroBlock = {
   fields: {
@@ -124,7 +124,7 @@ in the API reference for everything the `/image` route accepts.
 The stored value is a clean CDN URL. Use `buildImageUrl` to add size, format, and quality at render time; it preserves the editor's crop intent (`?fit=…&gravity=…`).
 
 ```tsx
-import { buildImageUrl } from "@pantheon-systems/p1-media-r2";
+import { buildImageUrl } from "@pantheon-systems/p1-media";
 
 <img src={buildImageUrl(data.heroImage, { width: 1200, height: 630, format: "webp" })} />
 <img src={buildImageUrl(data.thumbnail, { width: 150, height: 150, format: "webp", quality: 80 })} />
@@ -141,7 +141,7 @@ local-dev exception: when the configured base is itself `http` on a loopback hos
 allowed so rich values render locally. Production is unaffected (real CDN bases are `https`).
 
 ```tsx
-import { MediaImage, MediaFigure, getMediaProps } from "@pantheon-systems/p1-media-r2";
+import { MediaImage, MediaFigure, getMediaProps } from "@pantheon-systems/p1-media";
 
 const MEDIA_BASE = "https://media.p1.pantheon.io";
 
@@ -223,12 +223,12 @@ Legacy documents may still hold the old `{siteId}/{workstreamId}/media/{timestam
 
 ## For site developers enabling the media library
 
-If you are building a P1-powered site and want editors to have a media library in the Puck sidebar, install this package and add the media plugin alongside the standard CCR editor setup. The values required by `createMediaPlugin` — site ID, workstream ID, and auth token — are all available from CCR context, so no additional configuration is needed beyond wiring them through.
+If you are building a P1-powered site and want editors to have a media library in the Puck sidebar, install this package and add the media plugin alongside the standard CCR editor setup. The values `createMediaPlugin` needs — site ID and auth token — are available from CCR context, so no additional configuration is needed beyond wiring them through. `workerUrl` and `workstreamId` are both optional (see the options table below).
 
 ### Install
 
 ```sh
-pnpm add @pantheon-systems/p1-media-r2
+pnpm add @pantheon-systems/p1-media
 ```
 
 ### Integration with puck-css
@@ -238,21 +238,20 @@ Pass the media plugin via `additionalPlugins` in `useP1Editor`. The hook handles
 ```tsx
 import { useMemo } from "react";
 import { Puck } from "@puckeditor/core";
-import { createMediaPlugin } from "@pantheon-systems/p1-media-r2";
+import { createMediaPlugin } from "@pantheon-systems/p1-media";
 import { useP1Editor, useP1Auth } from "@pantheon-systems/puck-css";
 
-function Editor({ siteId, workstreamId, documentPath, config }) {
+function Editor({ siteId, documentPath, config }) {
   const { getToken } = useP1Auth();
 
   const mediaPlugin = useMemo(
     () =>
       createMediaPlugin({
-        workerUrl: "https://staging.media.p1.pantheon.io",
+        workerUrl: "https://staging.media.p1.pantheon.io", // omit entirely for production
         siteId,       // from CCR context
-        workstreamId, // from CCR context
         getAuthToken: getToken, // from useP1Auth — always returns the current token
       }),
-    [siteId, workstreamId, getToken],
+    [siteId, getToken],
   );
 
   const { loading, error, puckKey, puckProps } = useP1Editor({
@@ -271,9 +270,9 @@ function Editor({ siteId, workstreamId, documentPath, config }) {
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `workerUrl` | `string` | Base URL of the deployed p1-media Worker |
+| `workerUrl` | `string` (optional) | Base URL of the deployed p1-media Worker. Defaults to the production host (`https://media.p1.pantheon.io`) — override for sandbox/staging/local dev |
 | `siteId` | `string` | Site UUID — from CCR context |
-| `workstreamId` | `string` | Workstream UUID — from CCR context. **Legacy:** still sent but the site-scoped worker ignores it |
+| `workstreamId` | `string` (optional) | Accepted for forward-compat; the site-scoped worker doesn't read it for any scoping decision today, so there's no need to pass it |
 | `getAuthToken` | `() => Promise<string \| null> \| string \| null` | Returns the CCR auth bearer token — pass `useP1Auth().getToken` directly |
 | `fieldNamePatterns` | `RegExp[]` | Override the default field name patterns |
 | `metadataFields` | `MetadataFieldDef[]` | Fallback metadata schema for the `p1-media` field when `GET /media/schema` is unavailable (defaults to `[{ name: "alt", label: "Alt text", type: "string" }]`) |
@@ -293,7 +292,7 @@ import {
   makeMediaValue,              // build a MediaValue (enforces the assetId+versionId invariant)
   isMediaValue,                // narrow string | MediaValue
   DEFAULT_MEDIA_PATTERNS,      // default field-name patterns
-} from "@pantheon-systems/p1-media-r2";
+} from "@pantheon-systems/p1-media";
 
 import type {
   MediaPluginOptions,          // createMediaPlugin config shape
@@ -305,7 +304,7 @@ import type {
   MediaProps,                  // getMediaProps return shape
   MetadataFieldDef,            // { name, label, type, required? }
   GetMediaPropsOptions,        // { mediaBaseUrl, transform? }
-} from "@pantheon-systems/p1-media-r2";
+} from "@pantheon-systems/p1-media";
 ```
 
 The server-safe subset (`buildImageUrl`, `getMediaProps`, `MediaImage`, `MediaFigure`, `createMediaFigureBlock`, `makeMediaValue`, `isMediaValue`, and the types) is also exported from the package's `react-server` entry for use in RSC. The interactive cropper (`react-image-crop`) is bundled into the client entry with its styles injected at runtime — consumers install nothing extra.

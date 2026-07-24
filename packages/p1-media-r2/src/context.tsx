@@ -6,7 +6,7 @@ import type { MetadataFieldDef } from "./types";
 export interface MediaConfig {
   workerUrl: string;
   siteId: string;
-  workstreamId: string;
+  workstreamId?: string;
   getAuthToken: () => Promise<string | null> | string | null;
   /**
    * Fallback metadata field schema for the rich `p1-media` field, used when

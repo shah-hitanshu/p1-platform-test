@@ -1,6 +1,6 @@
 # Task: Add editor-controlled alt text to Puck image components
 
-These instructions are for the repo that **consumes** the `@pantheon-systems/p1-media-r2`
+These instructions are for the repo that **consumes** the `@pantheon-systems/p1-media`
 Puck plugin (a site/editor codebase — not the plugin repo). Do not modify the plugin
 package or the media Worker.
 
@@ -47,7 +47,7 @@ them before proceeding.
 
 1. Do NOT rename, remove, or retype any existing field — stored Puck documents
    reference fields by name and would break.
-2. Do NOT modify `@pantheon-systems/p1-media-r2` or the media Worker.
+2. Do NOT modify `@pantheon-systems/p1-media` or the media Worker.
 3. Existing documents have no alt values. Renders must tolerate `undefined`:
    always emit `alt={value ?? ""}`. An empty `alt=""` (decorative image) is correct
    HTML; an **omitted** alt attribute is an accessibility failure. Never omit it.

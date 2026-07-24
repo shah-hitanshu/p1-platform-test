@@ -1,5 +1,30 @@
 import { describe, it, expect } from "vitest";
+import { isValidElement } from "react";
 import { createMediaPlugin } from "../plugin";
+import type { MediaConfig } from "../context";
+
+// `text` field-type overrides return `<MediaConfigProvider config={...}>` as
+// their outermost element — no renderer needed to read the resolved config
+// straight off its props (same element-tree inspection approach used in
+// render.test.ts / media-figure-block.test.ts; react-dom is intentionally
+// absent from this package).
+function resolvedConfig(
+  plugin: ReturnType<typeof createMediaPlugin>,
+  fieldName: string,
+): MediaConfig {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const element = (plugin.overrides.fieldTypes.text as (p: any) => unknown)({
+    name: fieldName,
+    field: { label: fieldName },
+    value: "",
+    onChange: () => {},
+    readOnly: false,
+    id: fieldName,
+    children: null,
+  });
+  if (!isValidElement(element)) throw new Error("expected a MediaConfigProvider element");
+  return (element.props as { config: MediaConfig }).config;
+}
 
 describe("createMediaPlugin", () => {
   const defaultOptions = {
@@ -11,7 +36,34 @@ describe("createMediaPlugin", () => {
 
   it("returns a plugin with the correct name", () => {
     const plugin = createMediaPlugin(defaultOptions);
-    expect(plugin.name).toBe("p1-media-r2");
+    expect(plugin.name).toBe("p1-media");
+  });
+
+  it("works without workerUrl or workstreamId — both are now optional", () => {
+    const plugin = createMediaPlugin({
+      siteId: "test-site",
+      getAuthToken: () => "test-token",
+    });
+    expect(plugin.name).toBe("p1-media");
+    expect(plugin.overrides.fieldTypes.text).toBeTypeOf("function");
+    expect(plugin.overrides.fieldTypes["p1-media"]).toBeTypeOf("function");
+  });
+
+  it("defaults workerUrl to the production host when omitted, and leaves workstreamId unset", () => {
+    const plugin = createMediaPlugin({
+      siteId: "test-site",
+      getAuthToken: () => "test-token",
+    });
+    const config = resolvedConfig(plugin, "heroImageUrl");
+    expect(config.workerUrl).toBe("https://media.p1.pantheon.io");
+    expect(config.workstreamId).toBeUndefined();
+  });
+
+  it("does not override an explicitly-passed workerUrl with the production default", () => {
+    const plugin = createMediaPlugin(defaultOptions);
+    const config = resolvedConfig(plugin, "heroImageUrl");
+    expect(config.workerUrl).toBe("https://media.example.com");
+    expect(config.workstreamId).toBe("test-workstream");
   });
 
   it("returns a plugin with fieldTypes.text override", () => {

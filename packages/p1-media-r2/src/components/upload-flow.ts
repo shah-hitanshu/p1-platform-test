@@ -35,7 +35,7 @@ export interface UploadProgress {
 export interface UploadTarget {
   workerUrl: string;
   siteId: string;
-  workstreamId: string;
+  workstreamId?: string;
   getAuthHeaders: () => Promise<HeadersInit>;
 }
 
@@ -50,7 +50,9 @@ export class UploadFlowError extends Error {
 }
 
 function targetParams(target: UploadTarget): string {
-  return new URLSearchParams({ siteId: target.siteId, workstreamId: target.workstreamId }).toString();
+  const params = new URLSearchParams({ siteId: target.siteId });
+  if (target.workstreamId) params.set("workstreamId", target.workstreamId);
+  return params.toString();
 }
 
 async function postJson(target: UploadTarget, path: string, body: unknown): Promise<Response> {

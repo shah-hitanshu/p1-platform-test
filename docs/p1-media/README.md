@@ -15,7 +15,7 @@ p1-media-r2/
                     metadata PATCH, soft-delete) + on-demand image transforms
     migrations/     D1 schema migrations (assets + asset_versions)
   packages/
-    plugin/         @pantheon-systems/p1-media-r2 — Puck editor plugin + render helpers
+    plugin/         @pantheon-systems/p1-media — Puck editor plugin + render helpers
   terraform/
     modules/
       cloudflare-media/   Terraform module — R2 bucket + D1 database

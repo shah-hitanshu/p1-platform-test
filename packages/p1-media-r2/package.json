@@ -1,6 +1,6 @@
 {
-  "name": "@pantheon-systems/p1-media-r2",
-  "version": "0.2.0",
+  "name": "@pantheon-systems/p1-media",
+  "version": "0.3.0",
   "description": "Puck media library plugin backed by Cloudflare R2",
   "license": "UNLICENSED",
   "repository": {

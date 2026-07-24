@@ -68,6 +68,23 @@ describe("createMediaFigureBlock", () => {
     expect(imgs[0].alt).toBe("A cat");
   });
 
+  it("defaults mediaBaseUrl to the production origin when omitted", () => {
+    const prodBlock = createMediaFigureBlock({});
+    const photo: MediaValue = {
+      assetId: "a",
+      versionId: "v",
+      url: "https://media.p1.pantheon.io/site/assets/a/v-photo.jpg",
+      alt: "prod photo",
+    };
+    const imgs: Array<Record<string, unknown>> = [];
+    collectImgs(renderBlock(prodBlock, photo), imgs);
+    // Origin validation only passes if mediaBaseUrl actually resolved to the
+    // production host — if the default were dropped, mediaBaseUrl would be
+    // undefined and this would render the placeholder (0 imgs) instead.
+    expect(imgs).toHaveLength(1);
+    expect(imgs[0].alt).toBe("prod photo");
+  });
+
   it("honors option overrides (label, transform, placeholder)", () => {
     const custom = createMediaFigureBlock({
       mediaBaseUrl: CDN,

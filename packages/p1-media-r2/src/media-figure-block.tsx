@@ -12,10 +12,11 @@ export interface MediaFigureBlockProps {
 
 export interface MediaFigureBlockOptions {
   /**
-   * The CDN image origin (e.g. "https://media.p1.pantheon.io") used to
-   * validate value URLs — NOT the Worker API URL. See GetMediaPropsOptions.
+   * The CDN image origin used to validate value URLs — NOT the Worker API
+   * URL. See GetMediaPropsOptions. Defaults to the production origin
+   * ("https://media.p1.pantheon.io"); override for sandbox/staging/local dev.
    */
-  mediaBaseUrl: string;
+  mediaBaseUrl?: string;
   /**
    * Render-time transform. Include BOTH width and height — the editor's crop
    * intent only changes the output when there is a target aspect ratio.
@@ -35,6 +36,9 @@ export interface MediaFigureBlockOptions {
 }
 
 const DEFAULT_TRANSFORM: ImageTransformParams = { width: 1200, height: 630, format: "auto" };
+
+/** Same production default as createMediaPlugin's workerUrl — same host serves both. */
+const DEFAULT_MEDIA_BASE_URL = "https://media.p1.pantheon.io";
 
 const placeholderStyle: CSSProperties = {
   display: "flex",
@@ -64,7 +68,7 @@ export function createMediaFigureBlock(
   options: MediaFigureBlockOptions,
 ): ComponentConfig<MediaFigureBlockProps> {
   const {
-    mediaBaseUrl,
+    mediaBaseUrl = DEFAULT_MEDIA_BASE_URL,
     transform = DEFAULT_TRANSFORM,
     label = "Media Figure",
     fieldLabel = "Photo",

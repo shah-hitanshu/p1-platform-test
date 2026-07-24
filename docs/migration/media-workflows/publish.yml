@@ -42,7 +42,7 @@ jobs:
           mv tmp.json packages/plugin/package.json
 
       - name: Build plugin
-        run: pnpm --filter @pantheon-systems/p1-media-r2 build
+        run: pnpm --filter @pantheon-systems/p1-media build
 
       - name: Publish
         working-directory: packages/plugin

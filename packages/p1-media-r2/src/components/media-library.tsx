@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useMediaConfig } from "../context";
+import { useMediaConfig, type MediaConfig } from "../context";
 import { useMediaSchema, orderAltFirst } from "./use-media-schema";
 import { buildPatchBody, keepIncompleteRows } from "./staging";
 import { parseMediaList, type MediaItem } from "./media-item";
@@ -37,6 +37,14 @@ interface MediaLibraryProps {
 // The Worker caps list responses at 500; ask for the max rather than its
 // 200 default so large libraries are actually reachable by scrolling.
 const LIST_LIMIT = "500";
+
+// workstreamId is accepted for forward-compat but not read by the Worker —
+// omit it entirely rather than sending a meaningless placeholder value.
+function siteParams(config: Pick<MediaConfig, "siteId" | "workstreamId">): URLSearchParams {
+  const params = new URLSearchParams({ siteId: config.siteId });
+  if (config.workstreamId) params.set("workstreamId", config.workstreamId);
+  return params;
+}
 
 export function MediaLibrary({ isOpen, onClose, onSelect, onSelectItem }: MediaLibraryProps) {
   const config = useMediaConfig();
@@ -76,7 +84,7 @@ export function MediaLibrary({ isOpen, onClose, onSelect, onSelectItem }: MediaL
     async (search?: string) => {
       setLoading(true);
       try {
-        const params = new URLSearchParams({ siteId: config.siteId, workstreamId: config.workstreamId });
+        const params = siteParams(config);
         params.set("limit", LIST_LIMIT);
         if (search) params.set("search", search);
         const response = await fetch(
@@ -231,7 +239,7 @@ export function MediaLibrary({ isOpen, onClose, onSelect, onSelectItem }: MediaL
       // Flat map per the PATCH contract; empty cells clear via null. Built
       // from the edit-time field snapshot, never the live schema.
       const body = buildPatchBody(editFields, editValues[0] ?? []);
-      const params = new URLSearchParams({ siteId: config.siteId, workstreamId: config.workstreamId });
+      const params = siteParams(config);
       const response = await fetch(
         config.workerUrl + "/media/" + encodeURIComponent(editing.assetId) + "?" + params.toString(),
         {
@@ -300,7 +308,7 @@ export function MediaLibrary({ isOpen, onClose, onSelect, onSelectItem }: MediaL
     if (!item.assetId) return; // soft delete is by assetId (frozen contract)
     (async () => {
       try {
-        const params = new URLSearchParams({ siteId: config.siteId, workstreamId: config.workstreamId });
+        const params = siteParams(config);
         const response = await fetch(
           config.workerUrl + "/media/" + encodeURIComponent(item.assetId!) + "?" + params.toString(),
           {
