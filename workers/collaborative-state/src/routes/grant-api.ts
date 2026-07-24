@@ -100,7 +100,7 @@ async function handleCreateGrant(
     actorId: body.actorId,
     actorType: body.actorType,
     role: body.role,
-    grantedById: context.principal.id,
+    grantedById: context.principal.dbUserId ?? context.principal.id,
     grantedByType: context.principal.type as 'user' | 'agent',
     reason: body.reason,
   });
