@@ -124,6 +124,8 @@ export interface EditOperation {
 export interface ConnectionMeta {
   actorId: string;
   actorType: 'user' | 'agent';
+  /** app.users.id resolved at the auth boundary; persistence attributes to it. */
+  dbUserId?: string;
   authProvider?: AuthProvider;
   email?: string;
   /** Display name for presence */

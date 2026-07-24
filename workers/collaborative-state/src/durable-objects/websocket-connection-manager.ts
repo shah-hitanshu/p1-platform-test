@@ -181,6 +181,7 @@ export function handleWebSocket(
   const verifiedEmail = url.searchParams.get('_verifiedEmail');
   const verifiedName = url.searchParams.get('_verifiedName');
   const verifiedAvatarUrl = url.searchParams.get('_verifiedAvatarUrl');
+  const verifiedDbUserId = url.searchParams.get('_verifiedDbUserId');
 
   let actorId: string | null;
   let actorType: string | null;
@@ -189,6 +190,7 @@ export function handleWebSocket(
   let email: string | undefined;
   let actorName: string | undefined;
   let actorAvatar: string | undefined;
+  let dbUserId: string | undefined;
 
   if (verifiedActorId !== null && verifiedActorId !== '') {
     // Use verified identity from worker
@@ -199,6 +201,7 @@ export function handleWebSocket(
     email = verifiedEmail ?? undefined;
     actorName = verifiedName ?? undefined;
     actorAvatar = verifiedAvatarUrl ?? undefined;
+    dbUserId = verifiedDbUserId ?? undefined;
   } else {
     // Legacy/test path: use client-supplied headers
     actorId = request.headers.get('X-Actor-Id') ?? url.searchParams.get('actorId');
@@ -249,6 +252,7 @@ export function handleWebSocket(
   const meta: ConnectionMeta = {
     actorId,
     actorType,
+    dbUserId,
     verified: isVerified,
     authProvider: authProvider as ConnectionMeta['authProvider'],
     email,
@@ -433,10 +437,12 @@ export async function handleWebSocketMessage(
     // Phase 1.1: Debounced persistence — mark pending instead of persisting directly
     await deps.markPersistPending();
 
-    // Schedule sync to PostgreSQL after idle timeout.
-    // Pass the connection's verified identity (PCC-3457) so OAuth-subject
-    // actors can be resolved/JIT-provisioned at persistence time.
-    await deps.syncManager.scheduleSync(meta.actorId, meta.actorType, {
+    // Schedule sync to PostgreSQL after idle timeout. Attribution uses the
+    // resolved dbUserId (app.users.id) when present; actorId (the OAuth
+    // subject) is the fallback for agents and unresolved principals, which
+    // the persistence-layer resolver still handles. actorEmail/actorName let
+    // that fallback JIT-provision.
+    await deps.syncManager.scheduleSync(meta.dbUserId ?? meta.actorId, meta.actorType, {
       actorEmail: meta.email,
       actorName: meta.name,
     });

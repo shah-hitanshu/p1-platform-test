@@ -76,6 +76,15 @@ function isUniqueViolation(error: unknown): boolean {
 export async function resolveActor(actor: ResolvableActor): Promise<ActorResolution> {
   const { actorId, actorType, actorEmail, actorName } = actor;
 
+  // A missing or empty actorId means a caller wired the wrong param — every
+  // persistence write supplies one. Return unresolved so the caller skips it
+  // as an unresolvable actor, instead of crashing on actorId.indexOf('|')
+  // below with a TypeError. Log it: an empty id is a server-side defect.
+  if (typeof actorId !== 'string' || actorId === '') {
+    console.warn('resolveActor received a missing or empty actorId', { actorType });
+    return { resolved: false, reason: 'actor id is missing or empty' };
+  }
+
   // Fast path: already a uuid — passthrough regardless of actorType,
   // with ZERO database queries.
   if (UUID_RE.test(actorId)) {

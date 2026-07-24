@@ -176,8 +176,10 @@ export async function handleWsPublishRequest(
   }
 
   try {
-    // Step 1: Flush CRDT state to Postgres
-    let actorId = meta.actorId;
+    // Step 1: Flush CRDT state to Postgres. Attribution uses the resolved
+    // dbUserId (app.users.id) when present, falling back to actorId (the OAuth
+    // subject) for agents and unresolved principals.
+    let actorId = meta.dbUserId ?? meta.actorId;
     let actorType: 'user' | 'agent' = meta.actorType;
     const schedule = await deps.storage.get<{ dueAt: number; actorId: string; actorType: 'user' | 'agent' }>(SYNC_SCHEDULE_KEY);
     if (schedule !== undefined) {
@@ -200,7 +202,7 @@ export async function handleWsPublishRequest(
         siteId,
         branchId,
         documentId,
-        createdById: meta.actorId,
+        createdById: meta.dbUserId ?? meta.actorId,
         createdByType: meta.actorType,
       }),
     });

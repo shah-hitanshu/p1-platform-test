@@ -270,7 +270,11 @@ export async function handleApplyOperations(
   // JIT-provision at sync time like websocket editors do.
   const verifiedEmail = request.headers.get('X-Verified-Email') ?? undefined;
   const verifiedName = request.headers.get('X-Verified-Name') ?? undefined;
-  await deps.syncManager.scheduleSync(body.actorId, actorType as 'user' | 'agent', {
+  // Attribution uses the resolved dbUserId (app.users.id) when present; body
+  // actorId (the OAuth subject, cross-checked against the verified id above)
+  // is the fallback for agents and unresolved principals.
+  const verifiedDbUserId = request.headers.get('X-Verified-Db-User-Id') ?? undefined;
+  await deps.syncManager.scheduleSync(verifiedDbUserId ?? body.actorId, actorType as 'user' | 'agent', {
     ...(verifiedEmail !== undefined ? { actorEmail: verifiedEmail } : {}),
     ...(verifiedName !== undefined ? { actorName: verifiedName } : {}),
   });

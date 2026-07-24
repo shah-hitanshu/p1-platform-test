@@ -453,13 +453,18 @@ export async function handleRealtimeRoutes(
     for (const p of [
       '_sessionId', '_verifiedActorId', '_verifiedActorType',
       '_verifiedAuthProvider', '_verifiedEmail', '_verifiedName',
-      '_verifiedAvatarUrl',
+      '_verifiedAvatarUrl', '_verifiedDbUserId',
     ]) {
       urlWithVerified.searchParams.delete(p);
     }
     urlWithVerified.searchParams.set('_sessionId', sessionId);
     urlWithVerified.searchParams.set('_verifiedActorId', context.principal.id);
     urlWithVerified.searchParams.set('_verifiedActorType', context.principal.type);
+    // _verifiedActorId is the presence identity (the OAuth subject); dbUserId
+    // is the app.users.id persistence attributes to, written to created_by_id.
+    if (context.principal.dbUserId !== undefined) {
+      urlWithVerified.searchParams.set('_verifiedDbUserId', context.principal.dbUserId);
+    }
     if (context.principal.authProvider !== undefined) {
       urlWithVerified.searchParams.set('_verifiedAuthProvider', context.principal.authProvider);
     }
@@ -486,13 +491,16 @@ export async function handleRealtimeRoutes(
     for (const h of [
       'X-Verified-Actor-Id', 'X-Verified-Actor-Type',
       'X-Verified-Auth-Provider', 'X-Verified-Email',
-      'X-Verified-Name', 'X-Verified-Avatar-Url',
+      'X-Verified-Name', 'X-Verified-Avatar-Url', 'X-Verified-Db-User-Id',
     ]) {
       headersWithVerified.delete(h);
     }
     headersWithVerified.set('X-Session-Id', sessionId);
     headersWithVerified.set('X-Verified-Actor-Id', context.principal.id);
     headersWithVerified.set('X-Verified-Actor-Type', context.principal.type);
+    if (context.principal.dbUserId !== undefined) {
+      headersWithVerified.set('X-Verified-Db-User-Id', context.principal.dbUserId);
+    }
     if (context.principal.authProvider !== undefined) {
       headersWithVerified.set('X-Verified-Auth-Provider', context.principal.authProvider);
     }
