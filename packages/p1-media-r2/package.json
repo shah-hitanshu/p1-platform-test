@@ -1,6 +1,6 @@
 {
   "name": "@pantheon-systems/p1-media",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Puck media library plugin backed by Cloudflare R2",
   "license": "UNLICENSED",
   "repository": {
@@ -37,10 +37,12 @@
     "lint": "tsc --noEmit"
   },
   "peerDependencies": {
+    "@pantheon-systems/puck-css": ">=0.4.0",
     "@puckeditor/core": ">=0.18",
     "react": ">=18"
   },
   "devDependencies": {
+    "@pantheon-systems/puck-css": "^0.7.0",
     "@puckeditor/core": "^0.22.0",
     "@types/react": "^19.0.0",
     "react": "^19.0.0",

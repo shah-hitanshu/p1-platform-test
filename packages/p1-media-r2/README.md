@@ -223,7 +223,7 @@ Legacy documents may still hold the old `{siteId}/{workstreamId}/media/{timestam
 
 ## For site developers enabling the media library
 
-If you are building a P1-powered site and want editors to have a media library in the Puck sidebar, install this package and add the media plugin alongside the standard CCR editor setup. The values `createMediaPlugin` needs — site ID and auth token — are available from CCR context, so no additional configuration is needed beyond wiring them through. `workerUrl` and `workstreamId` are both optional (see the options table below).
+If you are building a P1-powered site and want editors to have a media library in the Puck sidebar, install this package and add the media plugin alongside the standard CCR editor setup. `siteId` and `getAuthToken` are read automatically from the ambient `@pantheon-systems/puck-css` context (`P1PuckProvider` / `P1AuthProvider`) when the plugin is rendered inside a standard CCR editor — no wiring needed for those two. `workerUrl` and `workstreamId` are both optional too (see the options table below).
 
 ### Install
 
@@ -236,24 +236,15 @@ pnpm add @pantheon-systems/p1-media
 Pass the media plugin via `additionalPlugins` in `useP1Editor`. The hook handles stable plugin merging internally — no manual override wiring needed.
 
 ```tsx
-import { useMemo } from "react";
 import { Puck } from "@puckeditor/core";
 import { createMediaPlugin } from "@pantheon-systems/p1-media";
-import { useP1Editor, useP1Auth } from "@pantheon-systems/puck-css";
+import { useP1Editor } from "@pantheon-systems/puck-css";
 
-function Editor({ siteId, documentPath, config }) {
-  const { getToken } = useP1Auth();
+// siteId and getAuthToken are read from the ambient P1PuckProvider /
+// P1AuthProvider automatically — no need to pass or memoize them yourself.
+const mediaPlugin = createMediaPlugin({});
 
-  const mediaPlugin = useMemo(
-    () =>
-      createMediaPlugin({
-        workerUrl: "https://staging.media.p1.pantheon.io", // omit entirely for production
-        siteId,       // from CCR context
-        getAuthToken: getToken, // from useP1Auth — always returns the current token
-      }),
-    [siteId, getToken],
-  );
-
+function Editor({ documentPath, config }) {
   const { loading, error, puckKey, puckProps } = useP1Editor({
     documentPath,
     puckConfig: config,
@@ -266,16 +257,37 @@ function Editor({ siteId, documentPath, config }) {
 }
 ```
 
+Rendering outside a `P1PuckProvider`/`P1AuthProvider` (or overriding either value) still works — pass `siteId`/`getAuthToken` explicitly and they take precedence over the ambient context:
+
+```tsx
+import { useMemo } from "react";
+import { createMediaPlugin } from "@pantheon-systems/p1-media";
+import { useP1Auth } from "@pantheon-systems/puck-css";
+
+function Editor({ siteId }) {
+  const { getToken } = useP1Auth();
+  const mediaPlugin = useMemo(
+    () => createMediaPlugin({ siteId, getAuthToken: getToken }),
+    [siteId, getToken],
+  );
+  // ...
+}
+```
+
 ### `createMediaPlugin` options
 
 | Option | Type | Description |
 |--------|------|-------------|
 | `workerUrl` | `string` (optional) | Base URL of the deployed p1-media Worker. Defaults to the production host (`https://media.p1.pantheon.io`) — override for sandbox/staging/local dev |
-| `siteId` | `string` | Site UUID — from CCR context |
+| `siteId` | `string` (optional) | Site UUID. Defaults to the ambient puck-css `P1PuckProvider` context — pass explicitly only to override it, or when rendering outside that provider |
 | `workstreamId` | `string` (optional) | Accepted for forward-compat; the site-scoped worker doesn't read it for any scoping decision today, so there's no need to pass it |
-| `getAuthToken` | `() => Promise<string \| null> \| string \| null` | Returns the CCR auth bearer token — pass `useP1Auth().getToken` directly |
+| `getAuthToken` | `() => Promise<string \| null> \| string \| null` (optional) | Returns the CCR auth bearer token. Defaults to the ambient puck-css `P1AuthProvider` context's `getToken` — pass explicitly only to override it, or when rendering outside that provider |
 | `fieldNamePatterns` | `RegExp[]` | Override the default field name patterns |
 | `metadataFields` | `MetadataFieldDef[]` | Fallback metadata schema for the `p1-media` field when `GET /media/schema` is unavailable (defaults to `[{ name: "alt", label: "Alt text", type: "string" }]`) |
+
+`@pantheon-systems/puck-css` (`>=0.4.0`) is a required peer dependency as of this
+version, matching `@pantheon-systems/p1-ai-chat`'s convention — every real
+consumer of this plugin is already a P1/CCR site that depends on it.
 
 ---
 

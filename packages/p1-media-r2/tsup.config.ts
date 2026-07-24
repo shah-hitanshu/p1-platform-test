@@ -12,7 +12,7 @@ export default defineConfig([
     splitting: false,
     sourcemap: true,
     clean: true,
-    external: ["react", "@puckeditor/core"],
+    external: ["react", "@puckeditor/core", "@pantheon-systems/puck-css"],
     noExternal: ["react-image-crop"],
     injectStyle: true,
     banner: { js: '"use client";' },

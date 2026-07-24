@@ -1,27 +1,33 @@
 "use client";
 
 import { DEFAULT_MEDIA_PATTERNS } from "./patterns";
-import { MediaConfigProvider, type MediaConfig } from "./context";
 import { MediaFieldRender } from "./components/media-field";
 import { MediaObjectFieldRender } from "./components/media-object-field";
+import { MediaConfigResolver, type GetAuthToken } from "./puck-css-bridge";
 import type { MediaFieldValue, MetadataFieldDef } from "./types";
-
-/** Production Worker/CDN host — same origin serves both the `/media` API and `/image` delivery. */
-const DEFAULT_WORKER_URL = "https://media.p1.pantheon.io";
 
 export interface MediaPluginOptions {
   /** The base URL of the Cloudflare Worker media API. Defaults to the production host. */
   workerUrl?: string;
-  /** Site identifier used to scope media to a specific site */
-  siteId: string;
+  /**
+   * Site identifier used to scope media to a specific site. Defaults to the
+   * ambient puck-css site context (`P1PuckProvider`) when omitted — pass this
+   * explicitly only when rendering outside that provider, or to override it.
+   */
+  siteId?: string;
   /**
    * Workstream (branch) identifier. Currently accepted for forward-compat but not
    * read by the Worker for any scoping decision — omit unless a future release
    * documents otherwise.
    */
   workstreamId?: string;
-  /** Function that returns the current auth token, or null if unauthenticated. May be async (e.g. useP1Auth().getToken). */
-  getAuthToken: () => Promise<string | null> | string | null;
+  /**
+   * Function that returns the current auth token, or null if unauthenticated.
+   * May be async. Defaults to the ambient puck-css auth context's `getToken`
+   * (`P1AuthProvider`) when omitted — pass this explicitly only when rendering
+   * outside that provider, or to override it.
+   */
+  getAuthToken?: GetAuthToken;
   /** Field name patterns that trigger the media picker (defaults to common image URL patterns) */
   fieldNamePatterns?: RegExp[];
   /**
@@ -43,6 +49,11 @@ export interface MediaPluginOptions {
  *
  * @example
  * ```tsx
+ * // Inside a P1 site (rendered within P1PuckProvider + P1AuthProvider):
+ * // siteId and getAuthToken are read from context automatically.
+ * const mediaPlugin = createMediaPlugin({});
+ *
+ * // Outside a P1 site, or to override the ambient context, pass explicitly:
  * const mediaPlugin = createMediaPlugin({
  *   siteId: "my-site",
  *   getAuthToken: () => localStorage.getItem("token"),
@@ -53,13 +64,6 @@ export interface MediaPluginOptions {
  */
 export function createMediaPlugin(options: MediaPluginOptions) {
   const patterns = options.fieldNamePatterns ?? DEFAULT_MEDIA_PATTERNS;
-  const config: MediaConfig = {
-    workerUrl: options.workerUrl ?? DEFAULT_WORKER_URL,
-    siteId: options.siteId,
-    workstreamId: options.workstreamId,
-    getAuthToken: options.getAuthToken,
-    metadataFields: options.metadataFields,
-  };
 
   return {
     name: "p1-media",
@@ -78,7 +82,7 @@ export function createMediaPlugin(options: MediaPluginOptions) {
           }
 
           return (
-            <MediaConfigProvider config={config}>
+            <MediaConfigResolver options={options}>
               <MediaFieldRender
                 field={{
                   type: "custom" as const,
@@ -91,7 +95,7 @@ export function createMediaPlugin(options: MediaPluginOptions) {
                 onChange={onChange}
                 readOnly={readOnly}
               />
-            </MediaConfigProvider>
+            </MediaConfigResolver>
           );
         },
         // Rich mode: a first-class `p1-media` field whose value is an object.
@@ -100,7 +104,7 @@ export function createMediaPlugin(options: MediaPluginOptions) {
         "p1-media": (props: any) => {
           const { name, field, value, onChange, readOnly, id } = props;
           return (
-            <MediaConfigProvider config={config}>
+            <MediaConfigResolver options={options}>
               <MediaObjectFieldRender
                 label={field?.label ?? name}
                 name={name}
@@ -109,7 +113,7 @@ export function createMediaPlugin(options: MediaPluginOptions) {
                 onChange={onChange}
                 readOnly={readOnly}
               />
-            </MediaConfigProvider>
+            </MediaConfigResolver>
           );
         },
       },
