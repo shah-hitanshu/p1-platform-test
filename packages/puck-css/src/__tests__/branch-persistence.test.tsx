@@ -7,6 +7,8 @@
  * - On remount, provider restores branch from sessionStorage
  * - Persisted branch is ignored if it doesn't exist in the fetched branch list
  * - initialBranchId prop takes priority over sessionStorage
+ * - Rapid re-selection during an in-flight save-flush does not save the same
+ *   outgoing edit twice to two different branches (PCC-3428 follow-up)
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, act, waitFor } from '@testing-library/react';
@@ -62,15 +64,29 @@ vi.mock('../editor/useDocuments', () => ({
   }),
 }));
 
-// Mock debounce to pass through
+// Mock debounce as a no-op timer: none of these tests rely on the real
+// delayed auto-save firing on its own, so the debounced function only acts
+// when explicitly flushed. This keeps saveData()'s effect limited to setting
+// pendingDataRef, letting tests control exactly when a flush (switchBranch,
+// saveNow, etc.) is triggered instead of racing an immediately-invoked save.
 vi.mock('../core/utils/debounce', () => ({
   debounce: (fn: (...args: unknown[]) => unknown) => {
-    const debounced = fn as ((...args: unknown[]) => unknown) & {
+    const debounced = (() => {
+      /* no-op: tests trigger flushes explicitly */
+    }) as ((...args: unknown[]) => unknown) & {
       cancel: () => void;
       flush: () => void;
+      pause: () => void;
+      resume: () => void;
+      isPaused: () => boolean;
     };
     debounced.cancel = vi.fn();
-    debounced.flush = vi.fn();
+    debounced.flush = vi.fn(() => {
+      fn();
+    });
+    debounced.pause = vi.fn();
+    debounced.resume = vi.fn();
+    debounced.isPaused = vi.fn(() => false);
     return debounced;
   },
 }));
@@ -90,6 +106,7 @@ function createMockClient(branchList = testBranches) {
     documents: {
       list: vi.fn().mockResolvedValue([]),
       get: vi.fn(),
+      getByPath: vi.fn(),
       getOrCreate: vi.fn(),
       update: vi.fn(),
     },
@@ -98,6 +115,8 @@ function createMockClient(branchList = testBranches) {
     },
     versions: {
       list: vi.fn().mockResolvedValue([]),
+      getLatest: vi.fn(),
+      create: vi.fn(),
     },
   };
 
@@ -135,6 +154,39 @@ function BranchConsumer() {
         onClick={() => void switchBranch(mainBranch.id)}
       >
         Switch to main
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Helper: consumer component exercising loadDocument/saveData/switchBranch
+// for the rapid re-selection regression test below.
+// ---------------------------------------------------------------------------
+
+function RaceConsumer() {
+  const { switchBranch, loadDocument, saveData } = useP1Puck();
+  return (
+    <div>
+      <button data-testid="load-doc" onClick={() => void loadDocument('home')}>
+        Load
+      </button>
+      <button
+        data-testid="edit"
+        onClick={() =>
+          saveData({
+            content: [{ type: 'Text', props: { id: 'edit-1' } }],
+            root: { props: {} },
+          } as never)
+        }
+      >
+        Edit
+      </button>
+      <button data-testid="switch-feature" onClick={() => void switchBranch(featureBranch.id)}>
+        Switch feature
+      </button>
+      <button data-testid="switch-other" onClick={() => void switchBranch('branch-other')}>
+        Switch other
       </button>
     </div>
   );
@@ -340,5 +392,102 @@ describe('Branch persistence via sessionStorage', () => {
       expect(screen.getByTestId('branch-id').textContent).toBe(mainBranch.id);
       expect(screen.getByTestId('branch-name').textContent).toBe('main');
     });
+  });
+
+  it('serializes rapid re-selection so an in-flight save-flush is not duplicated onto an intermediate branch (PCC-3428 follow-up)', async () => {
+    const otherBranch = {
+      id: 'branch-other',
+      name: 'other',
+      isMain: false,
+      siteId: TEST_SITE_ID,
+      createdAt: '2026-01-03T00:00:00Z',
+    };
+    const client = createMockClient([mainBranch, featureBranch, otherBranch]);
+    const principal = client._principalClient;
+
+    principal.documents.getByPath = vi.fn().mockResolvedValue({
+      id: 'doc-1',
+      path: 'home',
+      siteId: TEST_SITE_ID,
+      title: 'Home',
+    });
+    principal.versions.getLatest = vi.fn().mockResolvedValue({
+      id: 'v1',
+      snapshot: { content: [], root: { props: {} } },
+    });
+
+    // Records every versions.create call's target branch. The first call is
+    // gated behind a manually-resolved promise so the test can hold a save
+    // "in flight" while additional switchBranch calls fire, reproducing the
+    // rapid re-selection race. Later calls resolve immediately.
+    const versionsCreateCalls: { branchId: string }[] = [];
+    let resolveFirstCreate: ((value: { id: string }) => void) | null = null;
+    principal.versions.create = vi.fn((_siteId: string, params: { branchId: string }) => {
+      versionsCreateCalls.push({ branchId: params.branchId });
+      if (versionsCreateCalls.length === 1) {
+        return new Promise((resolve) => {
+          resolveFirstCreate = resolve;
+        });
+      }
+      return Promise.resolve({ id: `version-${versionsCreateCalls.length}` });
+    });
+
+    render(
+      <P1PuckProvider client={client as never} siteId={TEST_SITE_ID} userId="user-1">
+        <RaceConsumer />
+      </P1PuckProvider>
+    );
+
+    // Wait for the initial branch load (defaults to main) before loading a document.
+    await waitFor(() => {
+      expect(principal.branches.list).toHaveBeenCalled();
+    });
+
+    await act(async () => {
+      screen.getByTestId('load-doc').click();
+    });
+    await waitFor(() => {
+      expect(principal.versions.getLatest).toHaveBeenCalled();
+    });
+
+    // Make a local edit — this only sets the pending-save ref; the mocked
+    // debounce is a no-op so nothing auto-flushes yet.
+    act(() => {
+      screen.getByTestId('edit').click();
+    });
+
+    // Click 1: switch to the feature branch. This starts the outgoing
+    // save-flush (versions.create #1, targeting branch-main) and suspends
+    // on it, mirroring switchBranch's real, un-awaited call site
+    // (startTransition(() => onSwitch(branch.id))).
+    act(() => {
+      screen.getByTestId('switch-feature').click();
+    });
+
+    // Click 2: rapid re-selection to another branch while click 1's flush is
+    // still in flight (its versions.create call has not resolved).
+    act(() => {
+      screen.getByTestId('switch-other').click();
+    });
+
+    // Only the first flush should have started a save so far. Without the
+    // serialization fix, click 2 immediately grabs its own performSave
+    // closure (already pointed at the intermediate feature branch) and
+    // issues a second versions.create call here — this assertion is what
+    // fails against the unfixed switchBranch.
+    expect(versionsCreateCalls).toHaveLength(1);
+    expect(versionsCreateCalls[0]).toEqual({ branchId: mainBranch.id });
+
+    // Resolve the in-flight save and let both switchBranch calls settle.
+    await act(async () => {
+      resolveFirstCreate?.({ id: 'version-1' });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // The serialized second switch sees pendingDataRef already cleared by
+    // the first flush, so it never issues a redundant save. Exactly one
+    // versions.create call should have landed, on the originating branch.
+    expect(versionsCreateCalls).toEqual([{ branchId: mainBranch.id }]);
   });
 });

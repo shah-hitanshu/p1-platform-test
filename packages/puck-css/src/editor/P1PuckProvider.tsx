@@ -1723,36 +1723,79 @@ function P1PuckProviderInner({
     [userClient, siteId, branchId, debouncedSave, performSave, enableRealtime, realtime]
   );
 
+  // Tracks the currently in-flight switchBranch flush (everything after the
+  // synchronous branch-selection commit), so a rapid re-selection can await
+  // the prior call instead of racing it. See switchBranch below.
+  const switchBranchInFlightRef = useRef<Promise<void> | null>(null);
+
   // Switch branch
   const switchBranch = useCallback(
     async (newBranchId: string) => {
-      // Cancel any pending remote sync - we're switching to a different branch
-      cancelPendingRemoteSync();
-
-      // Save any pending changes first
-      if (pendingDataRef.current) {
-        debouncedSave.cancel();
-        await performSave();
-      }
-
-      // IMPORTANT: Update the ref BEFORE state updates
-      viewingVersionRef.current = null;
-
+      // Commit the new workstream selection FIRST, synchronously, before the
+      // async save-flush below. The UI (WorkstreamSwitcher) fires this inside
+      // startTransition without awaiting it, so its "Switching..." busy state
+      // clears as soon as this function's synchronous portion returns — well
+      // before a save-flush of the outgoing document would resolve. If the
+      // user navigates to a different document in that window, this provider
+      // can remount (the editor route has no layout.tsx to shield it across
+      // param changes), and its branchId initializer re-reads sessionStorage.
+      // Persisting here — before the flush, not after — guarantees that read
+      // always sees the newly selected branch instead of a stale one,
+      // preventing the workstream selector from snapping back to Live/main.
       setBranchId(newBranchId);
       persistBranchId(newBranchId);
-      setCurrentDocument(null);
-      currentDataDocumentPathRef.current = null;
-      setCurrentData(null);
-      setViewingVersion(null);
-      // Clear remoteSyncKey so new branch document sync takes priority
-      setRemoteSyncKey(null);
-      pendingDataRef.current = null;
-      setSaveStatus('idle');
-      setSaveError(null);
-
-      // Update current branch
       const branch = branches.find((b) => b.id === newBranchId);
       setCurrentBranch(branch ?? null);
+
+      // Serialize the flush portion below against any switchBranch call
+      // still in flight. Because the branch commit above is synchronous but
+      // the flush is not, a rapid second call (the switcher fires onSwitch
+      // fire-and-forget, so its busy state clears well before the flush
+      // resolves) can otherwise start its own flush while pendingDataRef
+      // still holds the first call's outgoing edit — grabbing a performSave
+      // closure already pointed at the intermediate branch and saving that
+      // same edit a second time, to the wrong branch. Awaiting the prior
+      // in-flight flush first guarantees only one flush ever reads/clears
+      // pendingDataRef at a time, and that each flush's performSave targets
+      // the branch that was current when that flush actually started.
+      const previousSwitch = switchBranchInFlightRef.current;
+      const thisSwitch = (async () => {
+        if (previousSwitch) {
+          // A prior switch's flush failure shouldn't block this one.
+          await previousSwitch.catch(() => undefined);
+        }
+
+        // Cancel any pending remote sync - we're switching to a different branch
+        cancelPendingRemoteSync();
+
+        // Save any pending changes on the outgoing document/branch first
+        if (pendingDataRef.current) {
+          debouncedSave.cancel();
+          await performSave();
+        }
+
+        // IMPORTANT: Update the ref BEFORE state updates
+        viewingVersionRef.current = null;
+
+        setCurrentDocument(null);
+        currentDataDocumentPathRef.current = null;
+        setCurrentData(null);
+        setViewingVersion(null);
+        // Clear remoteSyncKey so new branch document sync takes priority
+        setRemoteSyncKey(null);
+        pendingDataRef.current = null;
+        setSaveStatus('idle');
+        setSaveError(null);
+      })();
+
+      switchBranchInFlightRef.current = thisSwitch;
+      try {
+        await thisSwitch;
+      } finally {
+        if (switchBranchInFlightRef.current === thisSwitch) {
+          switchBranchInFlightRef.current = null;
+        }
+      }
     },
     [branches, debouncedSave, performSave, cancelPendingRemoteSync, persistBranchId]
   );
