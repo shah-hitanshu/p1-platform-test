@@ -170,12 +170,15 @@ describe('Branch persistence via sessionStorage', () => {
       </P1PuckProvider>
     );
 
-    // Wait for branches to load and context to settle
+    // Wait for branches to load and context to settle. `branchId` is already
+    // correct on the very first render (it's derived synchronously from
+    // sessionStorage in useState's initializer), but `currentBranch` is only
+    // populated once the async branch list finishes loading. Asserting both
+    // inside the same waitFor avoids racing that async completion.
     await waitFor(() => {
       expect(screen.getByTestId('branch-id').textContent).toBe(featureBranch.id);
+      expect(screen.getByTestId('branch-name').textContent).toBe('feature');
     });
-
-    expect(screen.getByTestId('branch-name').textContent).toBe('feature');
 
     // sessionStorage should still hold the persisted value
     expect(sessionStorage.getItem(STORAGE_KEY)).toBe(featureBranch.id);
@@ -250,11 +253,14 @@ describe('Branch persistence via sessionStorage', () => {
       </P1PuckProvider>
     );
 
+    // Same race as the initial-mount test above: `branchId` is already
+    // correct as soon as this remount's initial state reads sessionStorage,
+    // while `currentBranch` only settles once the async branch list reload
+    // finishes. Assert both together so we wait for that to actually happen.
     await waitFor(() => {
       expect(screen.getByTestId('branch-id').textContent).toBe(featureBranch.id);
+      expect(screen.getByTestId('branch-name').textContent).toBe('feature');
     });
-
-    expect(screen.getByTestId('branch-name').textContent).toBe('feature');
   });
 
   it('falls back to main when persisted branch does not exist in the branch list', async () => {
@@ -326,11 +332,13 @@ describe('Branch persistence via sessionStorage', () => {
       </P1PuckProvider>
     );
 
-    // Should use the explicit branchId prop, not the persisted value
+    // Should use the explicit branchId prop, not the persisted value.
+    // `branchId` is already correct on the first render (it comes straight
+    // from the prop), but `currentBranch` only settles once the async branch
+    // list finishes loading. Assert both together so we wait for that.
     await waitFor(() => {
       expect(screen.getByTestId('branch-id').textContent).toBe(mainBranch.id);
+      expect(screen.getByTestId('branch-name').textContent).toBe('main');
     });
-
-    expect(screen.getByTestId('branch-name').textContent).toBe('main');
   });
 });

@@ -589,9 +589,19 @@ function P1SubheaderBridgeInner({
     setSlotEl(el);
   }, []);
 
-  // Plugin rail visibility (local state, not Puck UI state)
-  // MUST be before early return to satisfy Rules of Hooks
-  const [pluginRailVisible, setPluginRailVisible] = React.useState(false); // default hidden
+  // Plugin rail visibility (local state, not Puck UI state).
+  // MUST be before early return to satisfy Rules of Hooks.
+  // Persisted to localStorage, mirroring leftSideBarVisible/rightSideBarVisible
+  // below — otherwise it silently resets to hidden on every remount/reload.
+  const pluginRailStorageKey = `p1-plugin-rail-${siteId}`;
+  const [pluginRailVisible, setPluginRailVisible] = React.useState(() => {
+    try {
+      const stored = localStorage.getItem(pluginRailStorageKey);
+      return stored === null ? false : stored === 'true'; // default hidden when nothing persisted yet
+    } catch {
+      return false;
+    }
+  });
 
   // Toggle body class to hide/show plugin rail via CSS
   React.useEffect(() => {
@@ -604,6 +614,13 @@ function P1SubheaderBridgeInner({
       document.body.classList.remove('p1-hide-plugin-rail');
     };
   }, [pluginRailVisible]);
+
+  // Persist on every user toggle.
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(pluginRailStorageKey, String(pluginRailVisible));
+    } catch { /* ignore quota/private-browsing errors */ }
+  }, [pluginRailVisible, pluginRailStorageKey]);
 
   // Persist sidebar visibility to localStorage on every user toggle.
   // Initial state is set via the `ui` prop passed to <Puck> (see useP1Editor.ts),
