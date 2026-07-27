@@ -1,9 +1,7 @@
 # @pantheon-systems/p1-media
 
 A Puck editor plugin that adds a media library, a rich `p1-media` field type, and render
-helpers for Puck-based P1 sites. Backed by a Cloudflare Worker + R2 + D1 media store — see
-the [monorepo README](https://github.com/pantheon-systems/p1-media-r2/blob/main/README.md) for the backend and the
-[API reference](https://github.com/pantheon-systems/p1-media-r2/blob/main/docs/openapi.yaml) for calling the Worker directly.
+helpers for P1 sites.
 
 The plugin has two distinct audiences with different levels of involvement.
 
@@ -11,7 +9,7 @@ The plugin has two distinct audiences with different levels of involvement.
 
 ## For component developers
 
-If you are building a Puck component for a P1 site, you do not need to install or configure the plugin. CCR wires it up automatically when it initialises the Puck editor — `workerUrl`, `siteId`, `workstreamId`, and `getAuthToken` all come from CCR context.
+If you are building a Puck component for a P1 site, you do not need to install or configure the plugin. P1 wires it up automatically when it initialises the Puck editor — `workerUrl`, `siteId`, `workstreamId`, and `getAuthToken` all come from P1 context.
 
 There are two ways to author an image field:
 
@@ -116,7 +114,7 @@ Crop intent always lives in the value's URL query — the stored value stays a p
 
 The render-time `transform` composes on top of the crop: a `trim` region is cut from the
 source first, then resized to `width`/`height`. See the
-[image transformation params](https://github.com/pantheon-systems/p1-media-r2/blob/main/docs/openapi.yaml)
+[image transformation params](./openapi.yaml)
 in the API reference for everything the `/image` route accepts.
 
 ### Rendering — basic mode (string value)
@@ -223,7 +221,7 @@ Legacy documents may still hold the old `{siteId}/{workstreamId}/media/{timestam
 
 ## For site developers enabling the media library
 
-If you are building a P1-powered site and want editors to have a media library in the Puck sidebar, install this package and add the media plugin alongside the standard CCR editor setup. `siteId` and `getAuthToken` are read automatically from the ambient `@pantheon-systems/puck-css` context (`P1PuckProvider` / `P1AuthProvider`) when the plugin is rendered inside a standard CCR editor — no wiring needed for those two. `workerUrl` and `workstreamId` are both optional too (see the options table below).
+If you are building a P1-powered site and want editors to have a media library in the Puck sidebar, install this package and add the media plugin alongside the standard P1 editor setup. `siteId` and `getAuthToken` are read automatically from the ambient `@pantheon-systems/puck-css` context (`P1PuckProvider` / `P1AuthProvider`) when the plugin is rendered inside a standard P1 editor — no wiring needed for those two. `workerUrl` and `workstreamId` are both optional too (see the options table below).
 
 ### Install
 
@@ -281,13 +279,13 @@ function Editor({ siteId }) {
 | `workerUrl` | `string` (optional) | Base URL of the deployed p1-media Worker. Defaults to the production host (`https://media.p1.pantheon.io`) — override for sandbox/staging/local dev |
 | `siteId` | `string` (optional) | Site UUID. Defaults to the ambient puck-css `P1PuckProvider` context — pass explicitly only to override it, or when rendering outside that provider |
 | `workstreamId` | `string` (optional) | Accepted for forward-compat; the site-scoped worker doesn't read it for any scoping decision today, so there's no need to pass it |
-| `getAuthToken` | `() => Promise<string \| null> \| string \| null` (optional) | Returns the CCR auth bearer token. Defaults to the ambient puck-css `P1AuthProvider` context's `getToken` — pass explicitly only to override it, or when rendering outside that provider |
+| `getAuthToken` | `() => Promise<string \| null> \| string \| null` (optional) | Returns the P1 auth bearer token. Defaults to the ambient puck-css `P1AuthProvider` context's `getToken` — pass explicitly only to override it, or when rendering outside that provider |
 | `fieldNamePatterns` | `RegExp[]` | Override the default field name patterns |
 | `metadataFields` | `MetadataFieldDef[]` | Fallback metadata schema for the `p1-media` field when `GET /media/schema` is unavailable (defaults to `[{ name: "alt", label: "Alt text", type: "string" }]`) |
 
 `@pantheon-systems/puck-css` (`>=0.4.0`) is a required peer dependency as of this
 version, matching `@pantheon-systems/p1-ai-chat`'s convention — every real
-consumer of this plugin is already a P1/CCR site that depends on it.
+consumer of this plugin is already a P1/P1 site that depends on it.
 
 ---
 
@@ -295,7 +293,7 @@ consumer of this plugin is already a P1/CCR site that depends on it.
 
 ```ts
 import {
-  createMediaPlugin,           // Plugin factory (for CCR integration)
+  createMediaPlugin,           // Plugin factory (for P1 integration)
   createMediaFigureBlock,      // Ready-made Puck component: p1-media field + MediaFigure render
   buildImageUrl,               // Apply transform params to a CDN URL string (basic mode)
   getMediaProps,               // (value, { mediaBaseUrl, transform }) -> { src, alt, width?, height? }

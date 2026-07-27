@@ -44,6 +44,13 @@ jobs:
       - name: Build plugin
         run: pnpm --filter @pantheon-systems/p1-media build
 
+      - name: Refuse to publish a README
+        run: |
+          if [ -f packages/plugin/README.md ]; then
+            echo "packages/plugin/README.md exists — npm always bundles it regardless of the files field. Remove it (docs live in docs/plugin-usage.md) before publishing." >&2
+            exit 1
+          fi
+
       - name: Publish
         working-directory: packages/plugin
         run: npm publish --access public

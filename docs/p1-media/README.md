@@ -4,7 +4,7 @@ A monorepo providing image/media management for Puck-based P1 sites, backed by C
 
 This document covers working **on** this repo — architecture, infrastructure, local development, and deployment. If you're looking for how to **use** what it produces:
 
-- **Integrating the Puck plugin** (component and site developers) → [`packages/plugin/README.md`](packages/plugin/README.md)
+- **Integrating the Puck plugin** (component and site developers) → [`docs/plugin-usage.md`](docs/plugin-usage.md)
 - **Calling the Worker API directly** (e.g. an MCP tool or other service) → [`docs/openapi.yaml`](docs/openapi.yaml), served with an interactive Swagger UI at `/docs` on the deployed worker
 
 ## Architecture
