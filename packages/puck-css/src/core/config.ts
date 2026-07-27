@@ -16,7 +16,7 @@ export interface P1Config {
   userRole?: ContentRole;
 }
 
-export const PRODUCTION_BASE_URL = 'https://ccr.p1.pantheon';
+export const PRODUCTION_BASE_URL = 'https://ccr.p1.pantheon.io';
 
 const VALID_AUTH_MODES: AuthMode[] = ['mock', 'broker'];
 const DEFAULT_AUTH_MODE: AuthMode = 'broker';

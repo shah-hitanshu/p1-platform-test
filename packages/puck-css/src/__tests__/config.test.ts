@@ -6,6 +6,12 @@ vi.mock('@pantheon-systems/css-client', () => {
   return { P1ContentClient: MockP1ContentClient };
 });
 
+describe('PRODUCTION_BASE_URL', () => {
+  it('is a resolvable production hostname ending in .io, not a bare TLD-less string', () => {
+    expect(PRODUCTION_BASE_URL).toBe('https://ccr.p1.pantheon.io');
+  });
+});
+
 describe('createNextConfig', () => {
   const originalEnv = process.env;
 
