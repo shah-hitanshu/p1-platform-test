@@ -21,3 +21,17 @@ export const TEMPLATE_RELATION_INNER_JOIN =
  */
 export const DOCUMENT_WITH_TEMPLATE_COLUMNS =
   'd.*, dr.target_document_id AS template_id, dr.synced_version AS template_version';
+
+/**
+ * Whether a branch reads inherited state from a distinct main branch: true when
+ * `mainBranchId` is supplied and differs from `branchId`. Selects the
+ * copy-on-write query variant — inherited documents, per-branch sync overrides —
+ * over the plain single-branch query. Narrows `mainBranchId` to a string so the
+ * inheriting branch can use it as the fallback branch.
+ */
+export function branchInheritsFromMain(
+  branchId: string,
+  mainBranchId: string | undefined,
+): mainBranchId is string {
+  return mainBranchId !== undefined && mainBranchId !== branchId;
+}

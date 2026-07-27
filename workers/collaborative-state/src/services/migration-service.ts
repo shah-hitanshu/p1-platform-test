@@ -22,8 +22,13 @@
 import { compare as jsonPatchCompare, type Operation } from 'fast-json-patch';
 import { query, withTransaction } from '../db';
 import { createCheckpoint, revertToCheckpoint } from './checkpoint-service';
-import { getLatestDocumentVersion, createDocumentVersion, reconstructVersionSnapshot } from './document-version-service';
-import { TEMPLATE_RELATION_INNER_JOIN } from './document-queries';
+import {
+  getLatestDocumentVersion,
+  getLatestPublishedDocumentVersion,
+  createDocumentVersion,
+  reconstructVersionSnapshot,
+} from './document-version-service';
+import { TEMPLATE_RELATION_INNER_JOIN, branchInheritsFromMain } from './document-queries';
 import { walkComponents } from './component-identity';
 import {
   buildSlotDelta,
@@ -638,14 +643,94 @@ function extractPropPatches(
 // Service Functions
 // =============================================================================
 
+/**
+ * The branch a template's versions should be read from during migration: the
+ * given branch when it has edited the template locally, otherwise `mainBranchId`,
+ * which a non-main branch inherits the template from. Returns the given branch
+ * unchanged when no distinct main branch is supplied (copy-on-write disabled).
+ */
+async function resolveTemplateReadBranch(
+  templateId: string,
+  branchId: string,
+  mainBranchId?: string,
+): Promise<string> {
+  if (!branchInheritsFromMain(branchId, mainBranchId)) {
+    return branchId;
+  }
+
+  const local = await query(
+    `SELECT 1 FROM app.document_versions
+     WHERE document_id = $1 AND branch_id = $2 LIMIT 1`,
+    [templateId, branchId],
+  );
+  return local.rows.length > 0 ? branchId : mainBranchId;
+}
+
+/**
+ * The snapshot a page inherits from main: main's latest published version,
+ * reconstructed if stored without a full snapshot. Null when no distinct main
+ * branch is supplied or main has no published version to inherit.
+ */
+async function getInheritedPublishedSnapshot(
+  documentId: string,
+  branchId: string,
+  mainBranchId?: string,
+): Promise<Record<string, unknown> | null> {
+  if (!branchInheritsFromMain(branchId, mainBranchId)) {
+    return null;
+  }
+
+  const mainVersion = await getLatestPublishedDocumentVersion(documentId, mainBranchId);
+  if (mainVersion === null) {
+    return null;
+  }
+
+  return mainVersion.snapshot ?? await reconstructVersionSnapshot(
+    documentId, mainBranchId, mainVersion.versionNumber,
+  );
+}
+
+/**
+ * Advances a template edge's synced_version for one source document. On a branch
+ * that inherits the edge, the advance is recorded as a per-branch override so the
+ * shared base — main's version — stays put; otherwise it writes the base directly.
+ */
+async function advanceSyncedVersion(
+  documentId: string,
+  branchId: string,
+  toVersion: number,
+  useOverride: boolean,
+): Promise<void> {
+  if (useOverride) {
+    await query(
+      `INSERT INTO app.document_relation_branch_sync
+         (source_document_id, relation_type, branch_id, synced_version)
+       VALUES ($1, 'template', $2, $3)
+       ON CONFLICT (source_document_id, relation_type, branch_id)
+       DO UPDATE SET synced_version = EXCLUDED.synced_version, updated_at = NOW()`,
+      [documentId, branchId, toVersion],
+    );
+    return;
+  }
+  await query(
+    `UPDATE app.document_relations SET synced_version = $1
+     WHERE source_document_id = $2 AND relation_type = 'template'`,
+    [toVersion, documentId],
+  );
+}
+
 export async function extractTemplateDelta(
   templateId: string,
   branchId: string,
   fromVersion: number,
   toVersion: number,
+  mainBranchId?: string,
 ): Promise<MigrationDelta> {
-  const fromSnapshot = await reconstructVersionSnapshot(templateId, branchId, fromVersion);
-  const toSnapshot = await reconstructVersionSnapshot(templateId, branchId, toVersion);
+  // Read the template from main when this branch inherits it rather than having
+  // edited it locally.
+  const readBranchId = await resolveTemplateReadBranch(templateId, branchId, mainBranchId);
+  const fromSnapshot = await reconstructVersionSnapshot(templateId, readBranchId, fromVersion);
+  const toSnapshot = await reconstructVersionSnapshot(templateId, readBranchId, toVersion);
 
   // A from-version without a content array predates the content-shape
   // conversion. Diffing a manifest against the content shape would read every
@@ -683,22 +768,92 @@ export async function listMigrationConflicts(jobId: string): Promise<MigrationCo
   return result.rows.map(mapRowToConflict);
 }
 
-export async function findAffectedDocuments(
-  siteId: string,
+interface AffectedDocumentRow {
+  id: string;
+  site_id: string;
+  path: string;
+  template_id: string | null;
+  template_version: number | null;
+  snapshot: Record<string, unknown>;
+}
+
+type AffectedDocumentsQuery = [sql: string, params: unknown[]];
+
+// A page inherited from main — published there, not yet edited on this branch —
+// resolves its template edge through the branch's per-branch sync override. UNION
+// the branch-local matches with those inherited-published pages so both migrate.
+function affectedDocumentsInheritingMainQuery(
   branchId: string,
   templateId: string,
   toVersion: number,
   limit: number,
   offset: number,
-): Promise<DocumentWithSnapshot[]> {
-  const result = await query<{
-    id: string;
-    site_id: string;
-    path: string;
-    template_id: string | null;
-    template_version: number | null;
-    snapshot: Record<string, unknown>;
-  }>(
+  mainBranchId: string,
+): AffectedDocumentsQuery {
+  return [
+    `SELECT id, site_id, path, template_id, template_version, snapshot FROM (
+       SELECT d.id, d.site_id, d.path,
+         dr.target_document_id AS template_id,
+         COALESCE(brs.synced_version, dr.synced_version) AS template_version,
+         dv.snapshot
+       FROM app.documents d
+       ${TEMPLATE_RELATION_INNER_JOIN}
+       LEFT JOIN app.document_relation_branch_sync brs
+         ON brs.source_document_id = d.id AND brs.relation_type = 'template' AND brs.branch_id = $1
+       JOIN LATERAL (
+         SELECT snapshot FROM app.document_versions local_dv
+         WHERE local_dv.document_id = d.id AND local_dv.branch_id = $1
+         ORDER BY local_dv.version_number DESC LIMIT 1
+       ) dv ON true
+       WHERE dr.target_document_id = $2
+         AND (COALESCE(brs.synced_version, dr.synced_version) IS NULL
+              OR COALESCE(brs.synced_version, dr.synced_version) < $3)
+         AND d.archived_at IS NULL
+
+       UNION
+
+       SELECT d.id, d.site_id, d.path,
+         dr.target_document_id AS template_id,
+         dr.synced_version AS template_version,
+         dv.snapshot
+       FROM app.documents d
+       ${TEMPLATE_RELATION_INNER_JOIN}
+       INNER JOIN app.document_versions dv ON dv.document_id = d.id
+       INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
+       INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+       WHERE dr.target_document_id = $2
+         AND (dr.synced_version IS NULL OR dr.synced_version < $3)
+         AND d.archived_at IS NULL
+         AND dv.branch_id = $6
+         AND cp.branch_id = $6
+         AND cp.checkpoint_type = 'publish'
+         AND NOT EXISTS (
+           SELECT 1 FROM app.document_versions local_dv
+           WHERE local_dv.document_id = d.id AND local_dv.branch_id = $1
+         )
+         AND dv.version_number = (
+           SELECT MAX(pub_dv.version_number)
+           FROM app.document_versions pub_dv
+           INNER JOIN app.checkpoint_documents pub_cd ON pub_cd.document_version_id = pub_dv.id
+           INNER JOIN app.checkpoints pub_cp ON pub_cp.id = pub_cd.checkpoint_id
+           WHERE pub_dv.document_id = d.id AND pub_dv.branch_id = $6
+             AND pub_cp.branch_id = $6 AND pub_cp.checkpoint_type = 'publish'
+         )
+     ) combined
+     ORDER BY id
+     LIMIT $4 OFFSET $5`,
+    [branchId, templateId, toVersion, limit, offset, mainBranchId],
+  ];
+}
+
+function affectedDocumentsLocalQuery(
+  branchId: string,
+  templateId: string,
+  toVersion: number,
+  limit: number,
+  offset: number,
+): AffectedDocumentsQuery {
+  return [
     `SELECT d.id, d.site_id, d.path,
        dr.target_document_id AS template_id,
        dr.synced_version AS template_version,
@@ -716,7 +871,29 @@ export async function findAffectedDocuments(
      ORDER BY d.id
      LIMIT $4 OFFSET $5`,
     [branchId, templateId, toVersion, limit, offset],
-  );
+  ];
+}
+
+export async function findAffectedDocuments(
+  siteId: string,
+  branchId: string,
+  templateId: string,
+  toVersion: number,
+  limit: number,
+  offset: number,
+  mainBranchId?: string,
+): Promise<DocumentWithSnapshot[]> {
+  void siteId;
+
+  // Affected pages resolve to their latest local version on the branch. On a
+  // non-main branch, a page inherited from main and not yet edited here also
+  // counts, at main's latest published version; migrating it writes its first
+  // branch-local version.
+  const [sql, params] = branchInheritsFromMain(branchId, mainBranchId)
+    ? affectedDocumentsInheritingMainQuery(branchId, templateId, toVersion, limit, offset, mainBranchId)
+    : affectedDocumentsLocalQuery(branchId, templateId, toVersion, limit, offset);
+
+  const result = await query<AffectedDocumentRow>(sql, params);
 
   return result.rows.map((row) => ({
     id: row.id,
@@ -845,6 +1022,7 @@ export async function applyDeltaToDocument(
   delta: SlotDelta,
   principal: MigrationPrincipal,
   propMigration?: PropMigrationOptions,
+  mainBranchId?: string,
 ): Promise<{ versionId: string; snapshot: Record<string, unknown> }> {
   const latestVersion = await getLatestDocumentVersion(documentId, branchId);
   let snapshot = latestVersion?.snapshot ?? null;
@@ -856,6 +1034,14 @@ export async function applyDeltaToDocument(
       documentId, branchId, latestVersion.versionNumber,
     );
   }
+
+  // No local version: a page inherited from main, migrated for the first time
+  // here. Seed from main's latest published version so the delta applies to
+  // the content the branch serves; createDocumentVersion writes it local.
+  if (!snapshot && latestVersion === null) {
+    snapshot = await getInheritedPublishedSnapshot(documentId, branchId, mainBranchId);
+  }
+
   if (!snapshot) {
     throw new Error(`No snapshot found for document ${documentId} on branch ${branchId}`);
   }
@@ -893,6 +1079,7 @@ export async function triggerMigration(
   fromVersion: number,
   toVersion: number,
   principal: MigrationPrincipal,
+  mainBranchId?: string,
 ): Promise<MigrationJob> {
   if (fromVersion >= toVersion) {
     throw new InvalidVersionRangeError(fromVersion, toVersion);
@@ -906,14 +1093,28 @@ export async function triggerMigration(
     throw new TemplateNotFoundError(templateId);
   }
 
-  const countResult = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM app.documents d
-     ${TEMPLATE_RELATION_INNER_JOIN}
-     WHERE dr.target_document_id = $1
-       AND (dr.synced_version IS NULL OR dr.synced_version < $2)
-       AND d.archived_at IS NULL`,
-    [templateId, toVersion],
-  );
+  // Count against this branch's effective synced_version, so a page already
+  // migrated here via its per-branch override is not counted as stale again.
+  const countResult = branchInheritsFromMain(branchId, mainBranchId)
+    ? await query<{ count: string }>(
+      `SELECT COUNT(*) as count FROM app.documents d
+       ${TEMPLATE_RELATION_INNER_JOIN}
+       LEFT JOIN app.document_relation_branch_sync brs
+         ON brs.source_document_id = d.id AND brs.relation_type = 'template' AND brs.branch_id = $3
+       WHERE dr.target_document_id = $1
+         AND (COALESCE(brs.synced_version, dr.synced_version) IS NULL
+              OR COALESCE(brs.synced_version, dr.synced_version) < $2)
+         AND d.archived_at IS NULL`,
+      [templateId, toVersion, branchId],
+    )
+    : await query<{ count: string }>(
+      `SELECT COUNT(*) as count FROM app.documents d
+       ${TEMPLATE_RELATION_INNER_JOIN}
+       WHERE dr.target_document_id = $1
+         AND (dr.synced_version IS NULL OR dr.synced_version < $2)
+         AND d.archived_at IS NULL`,
+      [templateId, toVersion],
+    );
   const totalDocuments = parseInt(countResult.rows[0].count, 10);
 
   const { checkpoint } = await createCheckpoint({
@@ -971,6 +1172,7 @@ async function buildPropMigrationOptions(
 export async function processMigration(
   jobId: string,
   onDocumentsMigrated?: (siteId: string, branchId: string, documentIds: string[]) => Promise<void>,
+  mainBranchId?: string,
 ): Promise<{ processedDocuments: number; conflictedDocuments: number }> {
   const job = await getMigrationJob(jobId);
 
@@ -983,13 +1185,18 @@ export async function processMigration(
   }
 
   const migrationDelta = await extractTemplateDelta(
-    job.templateId, job.branchId, job.fromVersion, job.toVersion,
+    job.templateId, job.branchId, job.fromVersion, job.toVersion, mainBranchId,
   );
   const templateDelta = migrationDelta.slotDelta;
 
+  // Read the template from main when this branch inherits it rather than having
+  // edited it locally.
+  const templateReadBranchId = await resolveTemplateReadBranch(job.templateId, job.branchId, mainBranchId);
   const propMigration = await buildPropMigrationOptions(
-    job.templateId, job.branchId, job.fromVersion, migrationDelta.propPatches,
+    job.templateId, templateReadBranchId, job.fromVersion, migrationDelta.propPatches,
   );
+
+  const useSyncOverride = branchInheritsFromMain(job.branchId, mainBranchId);
 
   let processedDocuments = 0;
   let conflictedDocuments = 0;
@@ -999,7 +1206,7 @@ export async function processMigration(
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   while (true) {
     const docs = await findAffectedDocuments(
-      job.siteId, job.branchId, job.templateId, job.toVersion, batchSize, offset,
+      job.siteId, job.branchId, job.templateId, job.toVersion, batchSize, offset, mainBranchId,
     );
 
     if (docs.length === 0) break;
@@ -1037,6 +1244,7 @@ export async function processMigration(
               doc.id, job.branchId, templateDelta,
               { id: job.createdById, type: job.createdByType },
               propMigration,
+              mainBranchId,
             );
 
             // The document's clean changes are applied; a diverged prop is left
@@ -1055,11 +1263,7 @@ export async function processMigration(
               );
             }
 
-            await query(
-              `UPDATE app.document_relations SET synced_version = $1
-               WHERE source_document_id = $2 AND relation_type = 'template'`,
-              [job.toVersion, doc.id],
-            );
+            await advanceSyncedVersion(doc.id, job.branchId, job.toVersion, useSyncOverride);
           });
 
           if (conflict?.propConflicts && conflict.propConflicts.length > 0) {
@@ -1114,6 +1318,7 @@ export async function rollbackMigration(
   jobId: string,
   principal: MigrationPrincipal,
   ownership?: { siteId: string; branchId: string; templateId: string },
+  mainBranchId?: string,
 ): Promise<{ rolledBackDocuments: number }> {
   const job = await getMigrationJob(jobId);
 
@@ -1126,15 +1331,41 @@ export async function rollbackMigration(
     }
   }
 
+  const useSyncOverride = branchInheritsFromMain(job.branchId, mainBranchId);
   let rolledBackDocuments = 0;
 
   if (job.checkpointId !== null && job.checkpointId !== '') {
+    // A page inherited from main gains its first local version during the
+    // migration, so it is absent from the pre-migration checkpoint and the
+    // revert below leaves it untouched. Drop those migration versions before
+    // the revert snapshots the branch — afterwards the revert's own checkpoint
+    // would reference them — so the page falls back to inheriting main.
+    let inheritedReverted = 0;
+    if (useSyncOverride) {
+      const inheritedRevert = await query(
+        `DELETE FROM app.document_versions dv
+         WHERE dv.branch_id = $2
+           AND dv.source = 'migration'
+           AND dv.created_at >= $3
+           AND dv.document_id IN (
+             SELECT source_document_id FROM app.document_relations
+             WHERE target_document_id = $1 AND relation_type = 'template'
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM app.checkpoint_documents cd
+             WHERE cd.checkpoint_id = $4 AND cd.document_id = dv.document_id
+           )`,
+        [job.templateId, job.branchId, job.createdAt.toISOString(), job.checkpointId],
+      );
+      inheritedReverted = inheritedRevert.rowCount ?? 0;
+    }
+
     const result = await revertToCheckpoint({
       checkpointId: job.checkpointId,
       createdById: principal.id,
       createdByType: principal.type,
     });
-    rolledBackDocuments = result.documentsReverted;
+    rolledBackDocuments = result.documentsReverted + inheritedReverted;
   } else {
     const deleteResult = await query(
       `DELETE FROM app.document_versions
@@ -1150,14 +1381,29 @@ export async function rollbackMigration(
     rolledBackDocuments = deleteResult.rowCount ?? 0;
   }
 
-  await query(
-    `UPDATE app.document_relations dr SET synced_version = $1
-     FROM app.documents d
-     WHERE dr.source_document_id = d.id
-       AND dr.target_document_id = $2 AND dr.synced_version = $3
-       AND dr.relation_type = 'template' AND d.archived_at IS NULL`,
-    [job.fromVersion, job.templateId, job.toVersion],
-  );
+  // Reset only what the migration advanced: a branch that inherits the edge
+  // advanced its per-branch override, so roll that back and leave the shared
+  // base — main's version — untouched.
+  if (useSyncOverride) {
+    await query(
+      `UPDATE app.document_relation_branch_sync brs SET synced_version = $1, updated_at = NOW()
+       FROM app.document_relations dr
+       WHERE brs.source_document_id = dr.source_document_id
+         AND brs.relation_type = 'template' AND dr.relation_type = 'template'
+         AND dr.target_document_id = $2
+         AND brs.branch_id = $4 AND brs.synced_version = $3`,
+      [job.fromVersion, job.templateId, job.toVersion, job.branchId],
+    );
+  } else {
+    await query(
+      `UPDATE app.document_relations dr SET synced_version = $1
+       FROM app.documents d
+       WHERE dr.source_document_id = d.id
+         AND dr.target_document_id = $2 AND dr.synced_version = $3
+         AND dr.relation_type = 'template' AND d.archived_at IS NULL`,
+      [job.fromVersion, job.templateId, job.toVersion],
+    );
+  }
 
   await query(
     'UPDATE app.migration_jobs SET status = \'failed\' WHERE id = $1',
@@ -1179,6 +1425,7 @@ export async function previewMigration(
   fromVersion: number,
   toVersion: number,
   detail = false,
+  mainBranchId?: string,
 ): Promise<MigrationPreview> {
   if (fromVersion >= toVersion) {
     throw new InvalidVersionRangeError(fromVersion, toVersion);
@@ -1192,10 +1439,13 @@ export async function previewMigration(
     throw new TemplateNotFoundError(templateId);
   }
 
-  const migrationDelta = await extractTemplateDelta(templateId, branchId, fromVersion, toVersion);
+  const migrationDelta = await extractTemplateDelta(templateId, branchId, fromVersion, toVersion, mainBranchId);
   const templateDelta = migrationDelta.slotDelta;
+  // Read the template from main when this branch inherits it rather than having
+  // edited it locally.
+  const templateReadBranchId = await resolveTemplateReadBranch(templateId, branchId, mainBranchId);
   const propMigration = await buildPropMigrationOptions(
-    templateId, branchId, fromVersion, migrationDelta.propPatches,
+    templateId, templateReadBranchId, fromVersion, migrationDelta.propPatches,
   );
 
   const previewDocuments: MigrationPreviewDocument[] = [];
@@ -1207,7 +1457,7 @@ export async function previewMigration(
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   while (true) {
     const docs = await findAffectedDocuments(
-      siteId, branchId, templateId, toVersion, batchSize, offset,
+      siteId, branchId, templateId, toVersion, batchSize, offset, mainBranchId,
     );
 
     if (docs.length === 0) break;
@@ -1312,13 +1562,16 @@ export interface MigrationStatus {
 export async function getMigrationStatus(
   templateId: string,
   branchId: string,
+  mainBranchId?: string,
 ): Promise<MigrationStatus> {
-  // Get the latest version number of the template document
+  // Get the latest version number of the template document, resolving against
+  // main when this branch inherits the template rather than editing it locally.
+  const templateReadBranchId = await resolveTemplateReadBranch(templateId, branchId, mainBranchId);
   const versionResult = await query<{ version_number: number }>(
     `SELECT version_number FROM app.document_versions
      WHERE document_id = $1 AND branch_id = $2
      ORDER BY version_number DESC LIMIT 1`,
-    [templateId, branchId],
+    [templateId, templateReadBranchId],
   );
 
   if (versionResult.rows.length === 0) {
@@ -1327,16 +1580,30 @@ export async function getMigrationStatus(
 
   const currentVersion = versionResult.rows[0].version_number;
 
-  // Count stale documents and find the oldest version
-  const staleResult = await query<{ count: string; oldest_version: number | null }>(
-    `SELECT COUNT(*) as count, MIN(COALESCE(dr.synced_version, 0)) as oldest_version
-     FROM app.documents d
-     ${TEMPLATE_RELATION_INNER_JOIN}
-     WHERE dr.target_document_id = $1
-       AND (dr.synced_version IS NULL OR dr.synced_version < $2)
-       AND d.archived_at IS NULL`,
-    [templateId, currentVersion],
-  );
+  // Count stale documents and find the oldest version, resolving each edge's
+  // synced_version against this branch's override when it inherits the edge.
+  const staleResult = branchInheritsFromMain(branchId, mainBranchId)
+    ? await query<{ count: string; oldest_version: number | null }>(
+      `SELECT COUNT(*) as count, MIN(COALESCE(brs.synced_version, dr.synced_version, 0)) as oldest_version
+       FROM app.documents d
+       ${TEMPLATE_RELATION_INNER_JOIN}
+       LEFT JOIN app.document_relation_branch_sync brs
+         ON brs.source_document_id = d.id AND brs.relation_type = 'template' AND brs.branch_id = $3
+       WHERE dr.target_document_id = $1
+         AND (COALESCE(brs.synced_version, dr.synced_version) IS NULL
+              OR COALESCE(brs.synced_version, dr.synced_version) < $2)
+         AND d.archived_at IS NULL`,
+      [templateId, currentVersion, branchId],
+    )
+    : await query<{ count: string; oldest_version: number | null }>(
+      `SELECT COUNT(*) as count, MIN(COALESCE(dr.synced_version, 0)) as oldest_version
+       FROM app.documents d
+       ${TEMPLATE_RELATION_INNER_JOIN}
+       WHERE dr.target_document_id = $1
+         AND (dr.synced_version IS NULL OR dr.synced_version < $2)
+         AND d.archived_at IS NULL`,
+      [templateId, currentVersion],
+    );
 
   const staleDocumentCount = parseInt(staleResult.rows[0].count, 10);
   const oldestDocumentVersion = staleResult.rows[0].oldest_version;
@@ -1453,6 +1720,7 @@ export async function resolveMigrationConflict(
   resolution: 'apply' | 'skip' | 'manual',
   principal: MigrationPrincipal,
   expectedJobId?: string,
+  mainBranchId?: string,
 ): Promise<MigrationConflict> {
   // Reconstruct the structural-apply inputs before locking. Template versions
   // are immutable history, so building the delta and prop migration outside the
@@ -1545,12 +1813,14 @@ export async function resolveMigrationConflict(
         structuralPlan.delta,
         principal,
         structuralPlan.propMigration,
+        mainBranchId,
       );
 
-      await query(
-        `UPDATE app.document_relations SET synced_version = $1
-         WHERE source_document_id = $2 AND relation_type = 'template'`,
-        [conflict.to_version, conflict.document_id],
+      await advanceSyncedVersion(
+        conflict.document_id,
+        conflict.branch_id,
+        conflict.to_version,
+        branchInheritsFromMain(conflict.branch_id, mainBranchId),
       );
     }
 

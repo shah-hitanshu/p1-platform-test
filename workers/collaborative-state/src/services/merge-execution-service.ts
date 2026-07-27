@@ -30,7 +30,7 @@ import {
 } from './document-version-service';
 import { createCheckpoint } from './checkpoint-service';
 import { getMainBranch } from './branch-service';
-import { TEMPLATE_RELATION_INNER_JOIN } from './document-queries';
+import { TEMPLATE_RELATION_INNER_JOIN, branchInheritsFromMain } from './document-queries';
 import { publishMergedVersions } from './merge-publish';
 import { query } from '../db';
 import {
@@ -825,6 +825,37 @@ async function autoPublishIfTargetIsMain(
  */
 const POST_MERGE_MIGRATION_TIMEOUT_MS = 10_000;
 
+// Count pages still deriving from an older template version, which a template
+// bump leaves stale and needing migration. On a branch that inherits the edge
+// from main, resolve each page's synced version through its per-branch override.
+async function getStaleTemplateCountByBranch(
+  templateId: string,
+  targetVersion: number,
+  branchId: string,
+  inheritsFromMain: boolean,
+): Promise<number> {
+  const [sql, params]: [string, unknown[]] = inheritsFromMain
+    ? [
+      `SELECT COUNT(*) as count FROM app.documents d
+       ${TEMPLATE_RELATION_INNER_JOIN}
+       LEFT JOIN app.document_relation_branch_sync brs
+         ON brs.source_document_id = d.id AND brs.relation_type = 'template' AND brs.branch_id = $3
+       WHERE dr.target_document_id = $1
+         AND COALESCE(brs.synced_version, dr.synced_version) < $2
+         AND d.archived_at IS NULL`,
+      [templateId, targetVersion, branchId],
+    ]
+    : [
+      `SELECT COUNT(*) as count FROM app.documents d
+       ${TEMPLATE_RELATION_INNER_JOIN}
+       WHERE dr.target_document_id = $1 AND dr.synced_version < $2 AND d.archived_at IS NULL`,
+      [templateId, targetVersion],
+    ];
+
+  const result = await query<{ count: string }>(sql, params);
+  return parseInt(result.rows[0].count, 10);
+}
+
 async function triggerPostMergeTemplateMigrations(
   mergeRequest: MergeRequest,
   detectionResult: ConflictDetectionResult,
@@ -839,6 +870,12 @@ async function triggerPostMergeTemplateMigrations(
     return;
   }
 
+  // Merging into a non-main branch migrates through that branch's sync override
+  // rather than the shared edge; resolve main so the migration can target it.
+  const mainBranch = await getMainBranch(mergeRequest.siteId);
+  const mainBranchId = mainBranch?.id;
+  const inheritsFromMain = branchInheritsFromMain(mergeRequest.targetBranchId, mainBranchId);
+
   for (const templateChange of mergedTemplates) {
     try {
       const latestVersion = await getLatestDocumentVersion(
@@ -849,13 +886,12 @@ async function triggerPostMergeTemplateMigrations(
         continue;
       }
 
-      const staleDocsResult = await query<{ count: string }>(
-        `SELECT COUNT(*) as count FROM app.documents d
-         ${TEMPLATE_RELATION_INNER_JOIN}
-         WHERE dr.target_document_id = $1 AND dr.synced_version < $2 AND d.archived_at IS NULL`,
-        [templateChange.documentId, latestVersion.versionNumber],
+      const staleCount = await getStaleTemplateCountByBranch(
+        templateChange.documentId,
+        latestVersion.versionNumber,
+        mergeRequest.targetBranchId,
+        inheritsFromMain,
       );
-      const staleCount = parseInt(staleDocsResult.rows[0].count, 10);
       if (staleCount === 0) {
         continue;
       }
@@ -868,12 +904,13 @@ async function triggerPostMergeTemplateMigrations(
         fromVersion,
         latestVersion.versionNumber,
         { id: mergedById, type: mergedByType },
+        mainBranchId,
       );
 
       // Time-box migration so a large stale set doesn't block the merge response.
       // If it times out, the job stays in 'in_progress' and can be retried.
       await Promise.race([
-        processMigration(job.id),
+        processMigration(job.id, undefined, mainBranchId),
         new Promise<never>((_, reject) => {
           setTimeout(() => { reject(new Error('Post-merge migration timed out')); }, POST_MERGE_MIGRATION_TIMEOUT_MS);
         }),

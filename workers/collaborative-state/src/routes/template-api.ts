@@ -10,14 +10,14 @@ import type { Env } from '../index';
 import { runWithConnection } from '../db';
 import {
   createDocumentOnBranch,
-  getLatestDocumentVersion,
-  listDocumentsOnBranch,
+  getLatestTemplateVersionWithFallback,
+  listTemplatesOnBranch,
   createDocumentVersion,
   getDocument,
   getBranch,
   getBranchByName,
+  getMainBranch,
   deleteDocumentOnBranch,
-  documentExistsOnBranch,
   DuplicateDocumentPathError,
 } from '../services';
 import { assertPermission, getEffectiveRole, AuthorizationError } from '../auth/authorization';
@@ -278,36 +278,31 @@ function extractTemplateName(path: string): string | null {
  */
 async function handleListTemplates(
   branchId: string,
+  mainBranchId: string,
 ): Promise<Response> {
-  const documents = await listDocumentsOnBranch(branchId, {
-    pathPrefix: '_registry/templates/',
-  });
+  const templatesOnBranch = await listTemplatesOnBranch(branchId, mainBranchId);
 
-  const templates = await Promise.all(
-    documents.map(async (doc) => {
-      const version = await getLatestDocumentVersion(doc.id, branchId);
-      const templateName = extractTemplateName(doc.path);
-
-      if (version?.snapshot && templateName !== null) {
-        const canonical: Record<string, unknown> = isManifestShapedSnapshot(version.snapshot)
-          ? convertManifestToContent(version.snapshot)
-          : version.snapshot;
-        return {
-          id: doc.id,
-          name: templateName,
-          version: version.versionNumber,
-          updatedAt: version.createdAt,
-          ...templateMetadata(canonical),
-          components: legacyTemplateProjection(canonical).components,
-        };
+  const templates = templatesOnBranch
+    .map((tpl) => {
+      const templateName = extractTemplateName(tpl.path);
+      if (tpl.snapshot === null || templateName === null) {
+        return null;
       }
-      return null;
-    }),
-  );
+      const canonical: Record<string, unknown> = isManifestShapedSnapshot(tpl.snapshot)
+        ? convertManifestToContent(tpl.snapshot)
+        : tpl.snapshot;
+      return {
+        id: tpl.id,
+        name: templateName,
+        version: tpl.versionNumber,
+        updatedAt: tpl.createdAt,
+        ...templateMetadata(canonical),
+        components: legacyTemplateProjection(canonical).components,
+      };
+    })
+    .filter((t): t is NonNullable<typeof t> => t !== null);
 
-  return jsonResponse({
-    templates: templates.filter((t): t is NonNullable<typeof t> => t !== null),
-  });
+  return jsonResponse({ templates });
 }
 
 /**
@@ -316,6 +311,7 @@ async function handleListTemplates(
 async function handleGetTemplate(
   templateId: string,
   branchId: string,
+  mainBranchId: string,
 ): Promise<Response> {
   // Check if template exists
   const document = await getDocument(templateId);
@@ -328,10 +324,11 @@ async function handleGetTemplate(
     return errorResponse('Document is not a template', 400);
   }
 
-  const version = await getLatestDocumentVersion(templateId, branchId);
-  if (!version) {
+  const fallback = await getLatestTemplateVersionWithFallback(templateId, branchId, mainBranchId);
+  if (!fallback) {
     return errorResponse('Template version not found', 404);
   }
+  const version = fallback.version;
 
   const templateName = extractTemplateName(document.path);
 
@@ -437,15 +434,10 @@ async function handleUpdateTemplate(
   request: Request,
   templateId: string,
   branchId: string,
+  mainBranchId: string,
   principal: AuthenticatedPrincipal,
 ): Promise<Response> {
   const body = await parseJsonBody<UpdateTemplateBody>(request);
-
-  // Check if template exists
-  const exists = await documentExistsOnBranch(templateId, branchId);
-  if (!exists) {
-    return errorResponse('Template not found', 404);
-  }
 
   const document = await getDocument(templateId);
   if (!document) {
@@ -457,11 +449,14 @@ async function handleUpdateTemplate(
     return errorResponse('Document is not a template', 400);
   }
 
-  // Get current version to merge with updates
-  const currentVersion = await getLatestDocumentVersion(templateId, branchId);
-  if (!currentVersion) {
-    return errorResponse('Template version not found', 404);
+  // Resolve the version to merge into. Editing an inherited template seeds the
+  // base from main; this write materializes the first branch-local version. A
+  // template the branch has deleted (local tombstone) is treated as not found.
+  const fallback = await getLatestTemplateVersionWithFallback(templateId, branchId, mainBranchId);
+  if (!fallback) {
+    return errorResponse('Template not found', 404);
   }
+  const currentVersion = fallback.version;
 
   // Metadata update: replaces root.props._template, folds legacy pin flags
   // into _pinMap when the body carries a manifest, and leaves content and
@@ -564,14 +559,9 @@ async function handleUpdateTemplate(
 async function handleDeleteTemplate(
   templateId: string,
   branchId: string,
+  mainBranchId: string,
   principal: AuthenticatedPrincipal,
 ): Promise<Response> {
-  // Check if template exists
-  const exists = await documentExistsOnBranch(templateId, branchId);
-  if (!exists) {
-    return errorResponse('Template not found', 404);
-  }
-
   const document = await getDocument(templateId);
   if (!document) {
     return errorResponse('Template not found', 404);
@@ -580,6 +570,13 @@ async function handleDeleteTemplate(
   // Verify it's actually a template
   if (!document.path.startsWith('_registry/templates/')) {
     return errorResponse('Document is not a template', 400);
+  }
+
+  // Deleting an inherited template writes a local tombstone, hiding it on this
+  // branch while main keeps it. A template already deleted here is not found.
+  const fallback = await getLatestTemplateVersionWithFallback(templateId, branchId, mainBranchId);
+  if (!fallback) {
+    return errorResponse('Template not found', 404);
   }
 
   // Check if any documents reference this template
@@ -615,8 +612,9 @@ async function handleDeleteTemplate(
 async function handleMigrationStatus(
   templateId: string,
   branchId: string,
+  mainBranchId: string,
 ): Promise<Response> {
-  const status = await getMigrationStatus(templateId, branchId);
+  const status = await getMigrationStatus(templateId, branchId, mainBranchId);
   return jsonResponse(status);
 }
 
@@ -627,6 +625,7 @@ async function handleMigratePreview(
   request: Request,
   siteId: string,
   branchId: string,
+  mainBranchId: string,
   templateId: string,
 ): Promise<Response> {
   const url = new URL(request.url);
@@ -636,16 +635,18 @@ async function handleMigratePreview(
 
   let toVersion = body.toVersion;
   if (toVersion === undefined) {
-    const latest = await getLatestDocumentVersion(templateId, branchId);
+    const latest = await getLatestTemplateVersionWithFallback(templateId, branchId, mainBranchId);
     if (!latest) {
       return errorResponse('Template version not found', 404);
     }
-    toVersion = latest.versionNumber;
+    toVersion = latest.version.versionNumber;
   }
 
   const fromVersion = body.fromVersion ?? Math.max(toVersion - 1, 0);
 
-  const preview = await previewMigration(siteId, branchId, templateId, fromVersion, toVersion, detail);
+  const preview = await previewMigration(
+    siteId, branchId, templateId, fromVersion, toVersion, detail, mainBranchId,
+  );
   return jsonResponse(preview);
 }
 
@@ -656,6 +657,7 @@ async function handleMigrateTemplate(
   request: Request,
   siteId: string,
   branchId: string,
+  mainBranchId: string,
   templateId: string,
   principal: AuthenticatedPrincipal,
   ctx?: ExecutionContext,
@@ -665,21 +667,26 @@ async function handleMigrateTemplate(
 
   let toVersion = body.toVersion;
   if (toVersion === undefined) {
-    const latest = await getLatestDocumentVersion(templateId, branchId);
+    const latest = await getLatestTemplateVersionWithFallback(templateId, branchId, mainBranchId);
     if (!latest) {
       return errorResponse('Template version not found', 404);
     }
-    toVersion = latest.versionNumber;
+    toVersion = latest.version.versionNumber;
   }
 
   const fromVersion = body.fromVersion ?? Math.max(toVersion - 1, 0);
 
+  const actorType = toPrincipalType(principal.type);
   const migrationPrincipal = {
     id: principal.dbUserId ?? principal.id,
-    type: toPrincipalType(principal.type),
+    // A service principal migrates as a system actor — the only non-human type
+    // the migration audit trail records.
+    type: actorType === 'service' ? 'system' : actorType,
   };
 
-  const job = await triggerMigration(siteId, branchId, templateId, fromVersion, toVersion, migrationPrincipal);
+  const job = await triggerMigration(
+    siteId, branchId, templateId, fromVersion, toVersion, migrationPrincipal, mainBranchId,
+  );
 
   // Process migration asynchronously — return the job immediately so the
   // HTTP request doesn't timeout for large document sets.
@@ -691,7 +698,7 @@ async function handleMigrateTemplate(
     const connectionString = env.HYPERDRIVE?.connectionString ?? env.POSTGRES_CONNECTION_STRING ?? '';
     ctx.waitUntil(
       runWithConnection(connectionString, { isHyperdrive: env.HYPERDRIVE !== undefined }, () =>
-        processMigration(job.id, reloadDOs),
+        processMigration(job.id, reloadDOs, mainBranchId),
       ).catch(async (err: unknown) => {
         console.error('Background migration failed:', err);
         try {
@@ -707,7 +714,7 @@ async function handleMigrateTemplate(
   }
 
   // Fallback for environments without ExecutionContext (tests, local dev without wrangler)
-  const result = await processMigration(job.id, reloadDOs);
+  const result = await processMigration(job.id, reloadDOs, mainBranchId);
   return jsonResponse({ job, ...result });
 }
 
@@ -719,20 +726,24 @@ async function handleRollbackTemplate(
   siteId: string,
   templateId: string,
   branchId: string,
+  mainBranchId: string,
   principal: AuthenticatedPrincipal,
 ): Promise<Response> {
   const body = await parseJsonBody<{ jobId: string }>(request);
 
+  const actorType = toPrincipalType(principal.type);
   const migrationPrincipal = {
     id: principal.dbUserId ?? principal.id,
-    type: toPrincipalType(principal.type),
+    // A service principal migrates as a system actor — the only non-human type
+    // the migration audit trail records.
+    type: actorType === 'service' ? 'system' : actorType,
   };
 
   const result = await rollbackMigration(body.jobId, migrationPrincipal, {
     siteId,
     branchId,
     templateId,
-  });
+  }, mainBranchId);
 
   return jsonResponse(result);
 }
@@ -762,13 +773,19 @@ export async function handleTemplateRequest(
 
     const branchId = branch.id;
 
+    // Non-main branches inherit templates from main via copy-on-write; resolve
+    // main so reads can fall back to it. On main, mainBranchId === branchId
+    // disables the fallback.
+    const mainBranch = branch.isMain ? null : await getMainBranch(context.siteId);
+    const mainBranchId = mainBranch?.id ?? branchId;
+
     // Handle migration-status action
     if (context.action === 'migration-status' && context.templateId !== undefined && context.templateId !== '') {
       if (method !== 'GET') {
         return errorResponse('Method not allowed', 405);
       }
       await assertPermission(context.principal, context.siteId, branchId, 'canView');
-      return await handleMigrationStatus(context.templateId, branchId);
+      return await handleMigrationStatus(context.templateId, branchId, mainBranchId);
     }
 
     // Handle migrate-preview action
@@ -780,7 +797,7 @@ export async function handleTemplateRequest(
       if (roleName !== 'ADMIN') {
         throw new AuthorizationError('Template migration preview requires ADMIN role', 'canEditDocuments', roleName);
       }
-      return await handleMigratePreview(request, context.siteId, branchId, context.templateId);
+      return await handleMigratePreview(request, context.siteId, branchId, mainBranchId, context.templateId);
     }
 
     // Handle migrate action
@@ -794,7 +811,7 @@ export async function handleTemplateRequest(
         throw new AuthorizationError('Template migration requires ADMIN role', 'canEditDocuments', roleName);
       }
       return await handleMigrateTemplate(
-        request, context.siteId, branchId, context.templateId,
+        request, context.siteId, branchId, mainBranchId, context.templateId,
         context.principal, context.ctx, context.env,
       );
     }
@@ -809,7 +826,9 @@ export async function handleTemplateRequest(
       if (roleName !== 'ADMIN') {
         throw new AuthorizationError('Template rollback requires ADMIN role', 'canEditDocuments', roleName);
       }
-      return await handleRollbackTemplate(request, context.siteId, context.templateId, branchId, context.principal);
+      return await handleRollbackTemplate(
+        request, context.siteId, context.templateId, branchId, mainBranchId, context.principal,
+      );
     }
 
     // Authorization for standard CRUD operations
@@ -830,11 +849,11 @@ export async function handleTemplateRequest(
     if (context.templateId !== undefined && context.templateId !== '') {
       switch (method) {
         case 'GET':
-          return await handleGetTemplate(context.templateId, branchId);
+          return await handleGetTemplate(context.templateId, branchId, mainBranchId);
         case 'PATCH':
-          return await handleUpdateTemplate(request, context.templateId, branchId, context.principal);
+          return await handleUpdateTemplate(request, context.templateId, branchId, mainBranchId, context.principal);
         case 'DELETE':
-          return await handleDeleteTemplate(context.templateId, branchId, context.principal);
+          return await handleDeleteTemplate(context.templateId, branchId, mainBranchId, context.principal);
         default:
           return errorResponse('Method not allowed', 405);
       }
@@ -843,7 +862,7 @@ export async function handleTemplateRequest(
     // Collection routes
     switch (method) {
       case 'GET':
-        return await handleListTemplates(branchId);
+        return await handleListTemplates(branchId, mainBranchId);
       case 'POST':
         return await handleCreateTemplate(request, context.siteId, branchId, context.principal);
       default:

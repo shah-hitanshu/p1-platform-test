@@ -50,6 +50,7 @@ export {
   restoreDocument,
   // Branch-scoped document operations
   listDocumentsOnBranch,
+  listTemplatesOnBranch,
   createDocumentOnBranch,
   documentExistsOnBranch,
   deleteDocumentOnBranch,
@@ -114,6 +115,7 @@ export {
   listDocumentVersions,
   getDocumentVersionByNumber,
   getLatestDocumentVersionWithFallback,
+  getLatestTemplateVersionWithFallback,
   reconstructVersionSnapshot,
   // Note: DocumentNotFoundError already exported from document-service
   InvalidDocumentVersionParamsError,

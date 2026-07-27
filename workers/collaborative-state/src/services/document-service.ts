@@ -66,6 +66,7 @@ export type {
 // Re-export everything from branch-document-service
 export {
   listDocumentsOnBranch,
+  listTemplatesOnBranch,
   createDocumentOnBranch,
   documentExistsOnBranch,
   deleteDocumentOnBranch,

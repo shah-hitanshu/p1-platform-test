@@ -30,6 +30,7 @@ vi.mock('../../src/auth/authorization', async (importOriginal) => {
 vi.mock('../../src/services', () => ({
   getBranch: vi.fn(),
   getBranchByName: vi.fn(),
+  getMainBranch: vi.fn(),
 }));
 
 import { handleMigrationRoutes } from '../../src/routes/migration-api';

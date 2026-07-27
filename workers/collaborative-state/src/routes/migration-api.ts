@@ -15,7 +15,7 @@ import {
   ConflictAlreadyResolvedError,
 } from '../services/migration-service';
 import { getEffectiveRole, assertPermission, AuthorizationError } from '../auth/authorization';
-import { getBranch, getBranchByName } from '../services';
+import { getBranch, getBranchByName, getMainBranch } from '../services';
 
 const VALID_PRINCIPAL_TYPES = new Set(['user', 'agent', 'system', 'service']);
 
@@ -106,6 +106,7 @@ async function handleResolveConflict(
   request: Request,
   jobId: string,
   conflictId: string,
+  mainBranchId: string,
   principal: AuthenticatedPrincipal,
 ): Promise<Response> {
   const body = await parseJsonBody<{ resolution: 'apply' | 'skip' | 'manual' }>(request);
@@ -114,9 +115,12 @@ async function handleResolveConflict(
     return errorResponse('resolution must be one of: apply, skip, manual', 400);
   }
 
+  const actorType = toPrincipalType(principal.type);
   const migrationPrincipal = {
     id: principal.dbUserId ?? principal.id,
-    type: toPrincipalType(principal.type),
+    // A service principal migrates as a system actor — the only non-human type
+    // the migration audit trail records.
+    type: actorType === 'service' ? 'system' : actorType,
   };
 
   // Treat a blank path segment as "no expected job" rather than an id to match.
@@ -126,6 +130,7 @@ async function handleResolveConflict(
     body.resolution,
     migrationPrincipal,
     expectedJobId,
+    mainBranchId,
   );
 
   return jsonResponse(conflict);
@@ -156,6 +161,11 @@ export async function handleMigrationRoutes(
 
     const branchId = branch.id;
 
+    // A conflict resolved on a non-main branch advances that branch's sync
+    // override, not the shared edge; resolve main so the write can target it.
+    const mainBranch = branch.isMain ? null : await getMainBranch(context.siteId);
+    const mainBranchId = mainBranch?.id ?? branchId;
+
     // All migration operations require ADMIN role
     if (context.principal.type === 'service') {
       await assertPermission(context.principal, context.siteId, branchId, 'canEditDocuments');
@@ -179,7 +189,7 @@ export async function handleMigrationRoutes(
       if (method !== 'POST') {
         return errorResponse('Method not allowed', 405);
       }
-      return await handleResolveConflict(request, context.jobId, context.conflictId, context.principal);
+      return await handleResolveConflict(request, context.jobId, context.conflictId, mainBranchId, context.principal);
     }
 
     // List conflicts

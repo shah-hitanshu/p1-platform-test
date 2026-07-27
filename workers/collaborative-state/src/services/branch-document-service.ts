@@ -34,7 +34,11 @@ import {
   DocumentNotFoundError,
 } from './document-types';
 import type { DocumentOnBranch } from './document-types';
-import { TEMPLATE_RELATION_JOIN, DOCUMENT_WITH_TEMPLATE_COLUMNS } from './document-queries';
+import {
+  TEMPLATE_RELATION_JOIN,
+  DOCUMENT_WITH_TEMPLATE_COLUMNS,
+  branchInheritsFromMain,
+} from './document-queries';
 import { enforceUniqueSlotIds } from './slot-id-backstop';
 
 /**
@@ -51,7 +55,7 @@ export async function listDocumentsOnBranch(
 ): Promise<DocumentOnBranch[]> {
   const { pathPrefix, mainBranchId } = options;
 
-  if (mainBranchId !== undefined && mainBranchId !== '') {
+  if (branchInheritsFromMain(branchId, mainBranchId)) {
     // Copy-on-write query: include documents from branch + inherited from main
     // Includes publish state via LEFT JOIN LATERAL on checkpoint_documents
     let sql = `
@@ -239,6 +243,95 @@ export async function listDocumentsOnBranch(
   const result = await query<DocumentOnBranchRow>(sql, params);
 
   return result.rows.map(mapRowToDocumentOnBranch);
+}
+
+const TEMPLATES_PATH_PREFIX = '_registry/templates/';
+
+/** A template resolved for a branch, carrying the version served there. */
+export interface TemplateOnBranch {
+  id: string;
+  path: string;
+  inherited: boolean;
+  snapshot: Record<string, unknown> | null;
+  versionNumber: number;
+  createdAt: string;
+}
+
+interface TemplateOnBranchRow {
+  id: string;
+  path: string;
+  inherited: boolean;
+  snapshot: Record<string, unknown> | null;
+  version_number: number;
+  created_at: string;
+}
+
+/**
+ * Lists templates visible on a branch, each carrying the version served there:
+ * templates with a local version (at that version), plus templates inherited
+ * from main — a version on main and none on the branch — at main's latest.
+ * Templates inherit main's latest version with no publish gate, unlike page
+ * listing whose inherited arm requires a publish checkpoint. A template whose
+ * latest version on the resolving branch is a tombstone is excluded. The
+ * inherited arm is inert when no distinct main branch is given.
+ *
+ * @param branchId - The branch to list templates for
+ * @param mainBranchId - The main branch to inherit from; omit or equal to
+ *   branchId to list a single branch without inheritance
+ */
+export async function listTemplatesOnBranch(
+  branchId: string,
+  mainBranchId?: string,
+): Promise<TemplateOnBranch[]> {
+  const likePrefix = escapeLikePattern(TEMPLATES_PATH_PREFIX) + '%';
+  const inheritFrom = branchInheritsFromMain(branchId, mainBranchId) ? mainBranchId : branchId;
+
+  const sql = `
+    SELECT id, path, inherited, snapshot, version_number, created_at FROM (
+      SELECT d.id, d.path, false AS inherited,
+        v.snapshot, v.version_number, v.created_at
+      FROM app.documents d
+      JOIN LATERAL (
+        SELECT dv.snapshot, dv.version_number, dv.created_at, dv.is_tombstone
+        FROM app.document_versions dv
+        WHERE dv.document_id = d.id AND dv.branch_id = $1
+        ORDER BY dv.version_number DESC LIMIT 1
+      ) v ON true
+      WHERE d.path LIKE $3 ESCAPE '\\'
+        AND d.archived_at IS NULL
+        AND v.is_tombstone = false
+
+      UNION
+
+      SELECT d.id, d.path, true AS inherited,
+        v.snapshot, v.version_number, v.created_at
+      FROM app.documents d
+      JOIN LATERAL (
+        SELECT dv.snapshot, dv.version_number, dv.created_at, dv.is_tombstone
+        FROM app.document_versions dv
+        WHERE dv.document_id = d.id AND dv.branch_id = $2
+        ORDER BY dv.version_number DESC LIMIT 1
+      ) v ON true
+      WHERE $1 <> $2
+        AND d.path LIKE $3 ESCAPE '\\'
+        AND d.archived_at IS NULL
+        AND v.is_tombstone = false
+        AND NOT EXISTS (
+          SELECT 1 FROM app.document_versions dv_branch
+          WHERE dv_branch.document_id = d.id AND dv_branch.branch_id = $1
+        )
+    ) combined
+    ORDER BY path ASC`;
+
+  const result = await query<TemplateOnBranchRow>(sql, [branchId, inheritFrom, likePrefix]);
+  return result.rows.map((row) => ({
+    id: row.id,
+    path: row.path,
+    inherited: row.inherited,
+    snapshot: row.snapshot,
+    versionNumber: row.version_number,
+    createdAt: row.created_at,
+  }));
 }
 
 /**

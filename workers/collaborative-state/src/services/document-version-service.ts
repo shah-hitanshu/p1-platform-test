@@ -749,6 +749,47 @@ export async function getLatestDocumentVersionWithFallback(
 }
 
 /**
+ * Gets the latest template version on a branch, falling back to the latest
+ * version on main if the branch has none.
+ *
+ * Templates are served at their latest version on main with no publish gate, so
+ * a branch inherits main's latest template version — not its latest published
+ * one, unlike page content ({@link getLatestDocumentVersionWithFallback}).
+ *
+ * A tombstoned latest version means the template is deleted and returns null. A
+ * branch-local tombstone does not fall through to main: deleting a template on a
+ * branch removes it there rather than resurrecting main's copy.
+ *
+ * @param templateId - The template document ID
+ * @param branchId - The branch ID to check first
+ * @param mainBranchId - The main branch ID for fallback
+ * @returns The template version with inheritance flag, or null if deleted or not found
+ */
+export async function getLatestTemplateVersionWithFallback(
+  templateId: string,
+  branchId: string,
+  mainBranchId: string,
+): Promise<DocumentVersionWithFallback | null> {
+  const branchVersion = await getLatestDocumentVersion(templateId, branchId);
+  if (branchVersion !== null) {
+    return branchVersion.isTombstone === true
+      ? null
+      : { version: branchVersion, inherited: false };
+  }
+
+  if (branchId === mainBranchId) {
+    return null;
+  }
+
+  const mainVersion = await getLatestDocumentVersion(templateId, mainBranchId);
+  if (mainVersion !== null && mainVersion.isTombstone !== true) {
+    return { version: mainVersion, inherited: true };
+  }
+
+  return null;
+}
+
+/**
  * Batch sync multiple document versions to PostgreSQL in a single query (Phase 5.2).
  *
  * Designed for future Queue consumer use (Phase 5.1) where batches of up to
