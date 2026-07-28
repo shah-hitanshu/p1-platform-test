@@ -33,11 +33,6 @@
     "vitest": "^4.1.8",
     "wrangler": "^4.92.0"
   },
-  "pnpm": {
-    "overrides": {
-      "wrangler>path-to-regexp": "^8.4.0"
-    }
-  },
   "engines": {
     "node": ">=20.0.0"
   }
