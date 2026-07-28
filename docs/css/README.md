@@ -815,18 +815,16 @@ The system deploys three Cloudflare Workers. OAuth and broker authentication are
 | Worker | Production name | Deploy from |
 |--------|----------------|-------------|
 | API, realtime, broker auth | `collaborative-state-worker-production` | `workers/` |
-| Frontend SPA | `collaborative-state-frontend-production` | `frontend/` |
 | Remote MCP server | `css-mcp-server-production` | `workers/mcp-server/` |
 
 ### Standard deploy (existing environments)
 
 ```bash
 cd workers && pnpm deploy:production            # API worker (--env production)
-cd frontend && pnpm deploy:production           # Frontend SPA
 cd workers/mcp-server && pnpm wrangler deploy --env production
 ```
 
-In CI, trigger the **Deploy Workers** GitHub Action (`workflow_dispatch`), choose the environment, and optionally enable migrations — it builds and deploys the API and frontend, running DB migrations through the Cloud SQL Auth Proxy when requested.
+In CI, trigger the **Deploy Workers** GitHub Action (`workflow_dispatch`), choose the environment, and optionally enable migrations — it builds and deploys the API worker, running DB migrations through the Cloud SQL Auth Proxy when requested. The frontend UI has been migrated to publish-builder.
 
 ### First-time production rollout (runbook)
 
@@ -862,9 +860,9 @@ Protected `production` (and `staging`) environment, created with required review
 make tf-sync ENV=production   # patches the REPLACE_WITH_PROD_*_ID placeholders
 ```
 
-Then replace the remaining placeholders by hand — `REPLACE_WITH_PROD_*_ORIGIN` (custom-domain origins) in `workers/wrangler.jsonc`, `workers/mcp-server/wrangler.jsonc`, and `frontend/wrangler.jsonc`; `REPLACE_WITH_PROD_AUTH0_*` in `frontend/wrangler.jsonc`; and `REPLACE_WITH_PROD_AUTH0_CLIENT_ID` in `workers/wrangler.jsonc`.
+Then replace the remaining placeholders by hand — `REPLACE_WITH_PROD_*_ORIGIN` (custom-domain origins) in `workers/wrangler.jsonc` and `workers/mcp-server/wrangler.jsonc`; and `REPLACE_WITH_PROD_AUTH0_CLIENT_ID` in `workers/wrangler.jsonc`.
 
-**5. Custom domains + DNS.** In the prod Cloudflare account, attach Worker custom domains for the frontend, API, and MCP workers on your zone and add the matching DNS records. Add the frontend and API origins as allowed callback/redirect URIs on the prod Auth0 application.
+**5. Custom domains + DNS.** In the prod Cloudflare account, attach Worker custom domains for the API and MCP workers on your zone and add the matching DNS records. Add the API origin as an allowed callback/redirect URI on the prod Auth0 application.
 
 **6. Config and secrets.** Production auth is Auth0 plus GCP-KMS-signed broker tokens.
 
@@ -887,11 +885,11 @@ gcloud iam service-accounts keys create p1-backend.json \
 wrangler secret put MAS_GCP_SERVICE_ACCOUNT_KEY --env production < p1-backend.json
 ```
 
-MCP worker (`css-mcp-server-production`) reaches the API over the `CSS_BACKEND` service binding; set its agent/server secret if one is required. The frontend has no secrets. The database password is carried by Hyperdrive, not stored as a worker secret.
+MCP worker (`css-mcp-server-production`) reaches the API over the `CSS_BACKEND` service binding; set its agent/server secret if one is required. The database password is carried by Hyperdrive, not stored as a worker secret.
 
 **7. Migrations + deploy.** Run **Deploy Workers** → `production` with `run_migrations: true` and `dry_run: true` first to validate the build and bindings, then re-run with `dry_run: false`. Deploy the MCP worker manually.
 
-**8. Verify.** `GET https://<api-origin>/health`; load the frontend, complete Auth0 login, open a document and confirm a live WebSocket; trigger a screenshot and confirm the object lands in `css-screenshots-production`; watch `wrangler tail --env production` for binding or secret errors.
+**8. Verify.** `GET https://<api-origin>/health`; open a document via publish-builder and confirm a live WebSocket; trigger a screenshot and confirm the object lands in `css-screenshots-production`; watch `wrangler tail --env production` for binding or secret errors.
 
 ---
 
@@ -969,7 +967,7 @@ pnpm test:all
 - [Cloudflare Workers](https://developers.cloudflare.com/workers/)
 - [Durable Objects](https://developers.cloudflare.com/durable-objects/)
 - [Yjs CRDT](https://docs.yjs.dev/)
-- [Puck Editor](https://puckeditor.com) - Future frontend integration
+- [Puck Editor](https://puckeditor.com) - Frontend integration (via publish-builder)
 
 ---
 

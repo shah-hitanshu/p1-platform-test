@@ -235,61 +235,6 @@ ci-validate: ## Validate all Terraform configurations
 	done
 	@printf "$(GREEN)All configurations valid.$(NC)\n"
 
-##@ Frontend Development
-
-.PHONY: frontend-install
-frontend-install: ## Install frontend dependencies
-	@printf "$(GREEN)Installing frontend dependencies...$(NC)\n"
-	@cd apps/css-frontend && pnpm install
-
-.PHONY: frontend-dev
-frontend-dev: ## Start frontend development server
-	@printf "$(GREEN)Starting frontend development server...$(NC)\n"
-	@printf "$(BLUE)Frontend will be available at http://localhost:5173$(NC)\n"
-	@cd apps/css-frontend && pnpm dev
-
-.PHONY: frontend-build
-frontend-build: ## Build frontend for production
-	@printf "$(GREEN)Building frontend...$(NC)\n"
-	@cd apps/css-frontend && pnpm build
-
-.PHONY: frontend-lint
-frontend-lint: ## Lint frontend code
-	@printf "$(GREEN)Linting frontend code...$(NC)\n"
-	@cd apps/css-frontend && pnpm lint
-
-.PHONY: frontend-test
-frontend-test: ## Run frontend E2E tests
-	@printf "$(GREEN)Running frontend E2E tests...$(NC)\n"
-	@cd apps/css-frontend && pnpm test:e2e
-
-##@ Frontend Deployment
-
-.PHONY: frontend-deploy-prod
-frontend-deploy-prod: ## Build and deploy frontend to production (with confirmation)
-	@printf "$(RED)WARNING: This will deploy the frontend to PRODUCTION!$(NC)\n"
-	@read -p "Are you sure? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
-	@printf "$(GREEN)Building and deploying frontend to production...$(NC)\n"
-	@cd apps/css-frontend && pnpm deploy:production
-
-##@ Full Stack Development
-
-.PHONY: dev-full
-dev-full: ## Start full stack (Docker + Worker + Frontend)
-	@printf "$(GREEN)Starting full stack development environment...$(NC)\n"
-	@$(MAKE) docker-up
-	@echo ""
-	@printf "$(GREEN)Starting backend worker and frontend...$(NC)\n"
-	@printf "$(YELLOW)Press Ctrl+C to stop all services.$(NC)\n"
-	@cd workers/collaborative-state && pnpm dev & WORKER_PID=$$!; \
-	trap "kill $$WORKER_PID 2>/dev/null; cd workers/collaborative-state && pnpm cleanup:dev; exit 0" INT TERM EXIT; \
-	sleep 3; \
-	printf "\n"; \
-	printf "$(GREEN)Starting frontend...$(NC)\n"; \
-	cd apps/css-frontend && pnpm dev; \
-	kill $$WORKER_PID 2>/dev/null; \
-	cd workers/collaborative-state && pnpm cleanup:dev
-
 .PHONY: install-all
-install-all: worker-install frontend-install ## Install all dependencies
+install-all: worker-install ## Install all dependencies
 	@printf "$(GREEN)All dependencies installed.$(NC)\n"

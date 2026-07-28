@@ -86,9 +86,7 @@ variable "hyperdrive_cached_caching_disabled" {
 
 locals {
   # Worker names follow Pantheon naming convention
-  worker_name          = "collaborative-state-worker-${var.environment}"
-  frontend_worker_name = "collaborative-state-frontend-${var.environment}"
-
+  worker_name = "collaborative-state-worker-${var.environment}"
   # Environment-specific configuration
   # CORS_ORIGINS is "*" because arbitrary frontend origins (Pantheon sites,
   # ephemeral dev envs) need access. JWT authentication is the security boundary.
@@ -283,21 +281,6 @@ output "worker_name" {
   description = "Cloudflare Worker name (API)"
   value       = local.worker_name
 }
-
-output "frontend_worker_name" {
-  description = "Cloudflare Worker name (frontend)"
-  value       = local.frontend_worker_name
-}
-
-# TODO: Custom domain for frontend Worker
-# Uncomment and configure when a custom domain is available:
-#
-# resource "cloudflare_workers_custom_domain" "frontend" {
-#   account_id = var.cloudflare_account_id
-#   zone_id    = var.zone_id
-#   hostname   = "css.${var.domain}"
-#   service    = local.frontend_worker_name
-# }
 
 output "config" {
   description = "Environment configuration"

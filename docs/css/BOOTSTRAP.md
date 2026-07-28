@@ -22,11 +22,6 @@ Before starting, ensure you have:
    # Or from root: make dev
    ```
 
-4. **Frontend dev server running** (optional, for UI testing):
-   ```bash
-   cd frontend && pnpm dev
-   ```
-
 ---
 
 ## Step 1: Add Yourself as an Admin User
@@ -131,29 +126,7 @@ You should see your site details returned.
 
 ---
 
-## Step 4: Set Up Frontend Environment (Optional)
-
-If you're using the frontend, configure it to use your site:
-
-1. **Copy the example env file:**
-   ```bash
-   cp frontend/.env.example frontend/.env
-   ```
-
-2. **Edit `frontend/.env`** to configure authentication:
-   - For **mock auth**: Set `VITE_ENABLE_MOCK_LOGIN=true`
-   - For **Auth0**: Set the Auth0 credentials (see `frontend/.env.example`)
-
-3. **Start the frontend:**
-   ```bash
-   cd frontend && pnpm dev
-   ```
-
-4. **Access the UI** at http://localhost:5173
-
----
-
-## Step 5: Create Your First Document
+## Step 4: Create Your First Document
 
 With a site and authentication set up, you can create documents:
 
@@ -182,7 +155,7 @@ curl -X POST http://localhost:8787/api/sites/${SITE_ID}/branches/${MAIN_BRANCH_I
 
 ---
 
-## Step 6: Verify Everything Works
+## Step 5: Verify Everything Works
 
 Run a quick verification:
 

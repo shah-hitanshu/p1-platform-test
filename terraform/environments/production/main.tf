@@ -224,11 +224,6 @@ output "worker_name" {
   value       = module.cloudflare.worker_name
 }
 
-output "frontend_worker_name" {
-  description = "Cloudflare Worker name (frontend)"
-  value       = module.cloudflare.frontend_worker_name
-}
-
 # MCP Server outputs
 output "mcp_oauth_kv_id" {
   description = "MCP OAuth KV namespace ID for wrangler.jsonc"
