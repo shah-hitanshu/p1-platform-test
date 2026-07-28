@@ -2881,6 +2881,47 @@ The CI sync resolves its target CSS branch by matching the pushed git ref's name
 - Sibling PCC-3430 subtask remains open: PCC-3434 (revert-side checkpoint filter + historical row purge, collaborative-state-system).
 ---
 
+## PCC-3439: Include p1-media Plugin by Default in p1-starter (2026-07-27)
+
+### Commits
+
+- `c27a874` — Red tests for default p1-media plugin wiring in p1-starter
+- (this commit) — Implementation (green state)
+
+### Context
+
+`apps/p1-starter` shipped only a plain "Media" category built on a manual `ImageBlock` (raw URL text field, no library/picker/metadata). `@pantheon-systems/p1-media` (renamed from `p1-media-r2`, republished at 0.4.1 per PCC-3427) provides a real versioned media library and asset picker built for exactly this gap, but nothing in the starter referenced it. The ticket was in "Ready for Grooming" with three open questions; resolved with the user before implementation:
+1. On by default, no feature flag (unlike the existing `p1-ai-chat` precedent in this same file, which stays LaunchDarkly-gated).
+2. Coexist with the existing `ImageBlock`, not replace it.
+3. `mediaBaseUrl` uses the package's own built-in production default; checked the upstream `p1-media-r2` repo for the actual override convention rather than inventing one.
+
+### What was done
+
+- Added `@pantheon-systems/p1-media@^0.4.1` as a real dependency of `apps/p1-starter`.
+- New `components/puck/media-figure-block.tsx` wraps `createMediaFigureBlock()`, with `mediaBaseUrl` sourced from `NEXT_PUBLIC_MEDIA_BASE_URL` (unset falls through to the package's built-in production default — verified this is a genuine destructuring default, not a nullish-coalesce that would behave differently on `undefined`).
+- `puck.config.tsx` registers `MediaFigureBlock` in both `components` and the existing `media` category alongside `ImageBlock`. Verified no collision: `ImageBlock`'s field is named `src`, which doesn't match any of the plugin's `DEFAULT_MEDIA_PATTERNS` (`image`, `logo`, `media`, `icon`, `thumbnail`), so wiring in the plugin doesn't retrofit `ImageBlock`'s plain URL field into a picker.
+- `editor-client.tsx` instantiates `createMediaPlugin({})` unconditionally via `useMemo`, always spliced into `additionalPlugins` in both branches of the existing `aiPlugin` ternary. `siteId`/`getAuthToken` auto-resolve from the ambient `P1PuckProvider`/`P1AuthProvider` context (a documented upstream feature, not new plumbing).
+- `.env.example` documents the optional `NEXT_PUBLIC_MEDIA_BASE_URL` override.
+- `vitest.config.ts` inlines `@pantheon-systems/p1-media` + `@pantheon-systems/puck-css` + `@pantheon-systems/pds-toolkit-react` — importing p1-media's single bundled entry transitively pulls a raw `.css` import from pds-toolkit-react, which Vitest's default node_modules externalization can't handle. Mirrors the identical fix already present in the upstream `p1-media-r2` repo's own vitest config, for the same reason.
+- Added a changeset against `@pantheon-systems/create-p1-starter-kit` (minor) — matches this repo's established convention of targeting the scaffolder package, not the private `p1-starter` app itself, for template-facing changes (precedent: `.changeset/starter-kit-no-forced-oauth-prompt.md`).
+
+### Decisions made along the way
+
+- No flag gating for the media plugin (user decision) — deliberately asymmetric with the chatbot's LaunchDarkly gate.
+- Left `createMediaPlugin({})`'s `workerUrl` unconfigured (defaults to the production Worker) rather than adding a matching `NEXT_PUBLIC_MEDIA_WORKER_URL` override — out of scope of the agreed plan (grooming decision #3 covered only `mediaBaseUrl`). Flagged by both the security review and the independent code-review agent as a legitimate configuration-completeness gap, not a demonstrated vulnerability (the production Worker validates tokens against its own environment-specific CCR backend, so a non-prod token would most likely fail closed rather than grant cross-tenant access). Recorded as a follow-up, not fixed here.
+
+### Verification
+
+- TDD: red state confirmed (9 failing tests, scoped correctly to `apps/p1-starter` — an initial run accidentally executed from the repo root and recursively hit unrelated pre-existing failures in `packages/puck-css`'s own test suite, unrelated to this change). Green: 136/136 passing after implementation, including a strengthened wiring assertion (added after independent review) that the `additionalPlugins` ternary includes `mediaPlugin` in both the with- and without-`aiPlugin` branches.
+- Lint: 0 errors. `pnpm build`: exit 0, clean production build.
+- `/security-review`: no confirmed high-confidence findings. One candidate (the `workerUrl` gap above) was raised, independently traced through the Worker's actual auth flow, and filtered below the confidence threshold.
+- Independent code-review agent (fresh context, no prior conversation history): confirmed all three grooming decisions are correctly and fully implemented with cited evidence, ran the test/lint/build suite itself to verify claims rather than trusting the summary, found no bugs or deviations. Flagged the `workerUrl` gap (see above) and the pre-existing weak-assertion pattern in wiring-style tests (addressed for this PR's own test).
+
+### Follow-up
+
+- Add `NEXT_PUBLIC_MEDIA_WORKER_URL` (or equivalent) so non-production `apps/p1-starter` deployments can point the media plugin's Worker API calls away from production, mirroring the override already added for `mediaBaseUrl`.
+---
+
 ## Durable Slot Identity: Client (2026-07-10)
 
 **Branch:** `ag-pcc-3239-client-slot-identity` (stacked on `ag-pcc-3357-template-content-shape`)

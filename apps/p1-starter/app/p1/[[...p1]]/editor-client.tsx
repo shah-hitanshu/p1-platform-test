@@ -15,6 +15,7 @@ import {
 } from "@pantheon-systems/puck-css";
 import { P1NextRouterProvider } from "@pantheon-systems/p1-next-sdk";
 import { createAIChatPlugin } from "@pantheon-systems/p1-ai-chat";
+import { createMediaPlugin } from "@pantheon-systems/p1-media";
 import { useFlags } from "launchdarkly-react-client-sdk";
 import type { Checkpoint } from "@pantheon-systems/puck-css";
 import type { ContentRole } from "@pantheon-systems/puck-css";
@@ -205,6 +206,7 @@ function EditorContent({
   const router = useRouter();
   const { getToken } = useP1Auth();
   const p1Plugins = useP1Plugins(path, config);
+  const mediaPlugin = React.useMemo(() => createMediaPlugin({}), []);
   const flags = useFlags();
   const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL;
   const chatbotEnabled = shouldShowChatbot(flags[CHATBOT_FLAG_KEY], agentUrl);
@@ -216,8 +218,8 @@ function EditorContent({
     [chatbotEnabled, agentUrl],
   );
   const additionalPlugins = React.useMemo(
-    () => (aiPlugin ? [...p1Plugins, aiPlugin] : p1Plugins),
-    [p1Plugins, aiPlugin],
+    () => (aiPlugin ? [...p1Plugins, mediaPlugin, aiPlugin] : [...p1Plugins, mediaPlugin]),
+    [p1Plugins, mediaPlugin, aiPlugin],
   );
 
   const [redirecting, setRedirecting] = React.useState(false);
