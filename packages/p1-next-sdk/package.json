@@ -40,8 +40,6 @@
     "server-only": "^0.0.1"
   },
   "peerDependencies": {
-    "@pantheon-systems/css-client": "workspace:*",
-    "@pantheon-systems/puck-css": "workspace:*",
     "@puckeditor/core": ">=0.21.0",
     "next": ">=14.0.0",
     "react": ">=18.0.0",
