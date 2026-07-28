@@ -10,6 +10,7 @@ import { useRef, useMemo } from 'react';
 import { useP1Puck } from '../core/P1PuckContext.js';
 import { createP1Plugin } from './plugin/P1Plugin.js';
 import type { P1PluginOptions, PuckPlugin } from './plugin/P1Plugin.js';
+import type { DocumentSyncStore } from './plugin/document-sync-plugin.js';
 import type { DocumentVersion, ActorPresence, RegisteredAgent } from '@pantheon-systems/css-client';
 import type { SiteMenuItem, CurrentUser } from '../pds/components/P1EditorHeader.js';
 
@@ -84,6 +85,11 @@ export interface UseP1PluginOptions {
   onCreateWorkstream?: () => void;
   /** Called when the user creates a new workstream. Receives the branch name. */
   onCreateBranch?: (name: string) => Promise<void>;
+  /**
+   * Document-sync store shared with the document-sync plugin, so context-based
+   * sync can leave document switches to it.
+   */
+  documentSyncStore?: Pick<DocumentSyncStore, 'getAppliedKey'>;
 }
 
 /**
@@ -150,6 +156,7 @@ export function useP1Plugin(options: UseP1PluginOptions = {}): PuckPlugin {
     onVersionSelect: fc.enableVersionHistory ? options.onVersionSelect : undefined,
     // Context-based sync is the default — no need for getter or legacy sync
     useContextSync: true,
+    documentSyncStore: options.documentSyncStore,
     // Selection tracking
     onSelectionChange: options.onSelectionChange,
     // Merge comparison — gated by enableMergeControl

@@ -23,6 +23,7 @@ import { debounce } from '../core/utils/debounce.js';
 import { withRetry } from '../core/utils/retry.js';
 import { useRealtime } from './useRealtime.js';
 import { useDocuments } from './useDocuments.js';
+import { snapshotToPuckData } from './utils/snapshotToPuckData.js';
 import type { UseAgentEditReturn } from '../agent/useAgentEdit.js';
 import type { UseAgentTriggerReturn } from '../agent/useAgentTrigger.js';
 import type { ConflictNotification } from '../merge/components/conflict-notifications/index.js';
@@ -195,6 +196,10 @@ function P1PuckProviderInner({
   // Document state
   const [currentDocument, setCurrentDocument] = useState<Document | null>(null);
   const [currentData, setCurrentData] = useState<PuckData | null>(null);
+  // True while loadDocument is in flight. Consumers use it to distinguish
+  // "no document while switching" (keep showing the old canvas) from
+  // "genuinely no document" (show the empty state).
+  const [documentLoading, setDocumentLoading] = useState(false);
 
   // Template state (PROPOSAL-010)
   const [currentTemplate, setCurrentTemplate] = useState<Template | null>(null);
@@ -973,9 +978,11 @@ function P1PuckProviderInner({
       // will no longer match — signaling that our response is stale.
       loadRequestIdRef.current += 1;
       const thisRequestId = loadRequestIdRef.current;
+      setDocumentLoading(true);
 
-      // Pre-clear the current document immediately so the preview shows the
-      // empty state right away rather than stale content during the fetch.
+      // Pre-clear the current document so nothing can save against the old
+      // one while the fetch is in flight. The canvas keeps showing the
+      // previous document — documentLoading suppresses the empty state.
       currentDataDocumentPathRef.current = null;
       setCurrentData(null);
       setCurrentDocument(null);
@@ -1021,7 +1028,7 @@ function P1PuckProviderInner({
 
         // Get latest version
         const version = await userClient.versions.getLatest(siteId, branchId, doc.id);
-        const puckData = version.snapshot as unknown as PuckData;
+        const puckData = snapshotToPuckData(version.snapshot);
 
         // Staleness check: a newer loadDocument call has started
         if (thisRequestId !== loadRequestIdRef.current) {
@@ -1083,6 +1090,12 @@ function P1PuckProviderInner({
         setCurrentData(null);
         setCurrentDocument(null);
         throw error;
+      } finally {
+        // Guarded so a stale call's completion can't clear the flag while a
+        // newer load is still in flight.
+        if (thisRequestId === loadRequestIdRef.current) {
+          setDocumentLoading(false);
+        }
       }
     },
     [userClient, siteId, branchId, cancelPendingRemoteSync, enableRealtime, debouncedSave, performSave]
@@ -1113,13 +1126,9 @@ function P1PuckProviderInner({
           }
         }
 
-        let puckData = versionToUse.snapshot as unknown as PuckData;
-
-        // If snapshot is empty or invalid, use blank Puck data
-        // This is expected for version 1 which represents the initial blank state
-        if (!puckData || (!puckData.content && !puckData.root)) {
-          puckData = { content: [], root: { props: {} } };
-        }
+        // Parses a JSON-string snapshot and falls back to blank Puck data for
+        // an empty/invalid snapshot (e.g. version 1's initial blank state).
+        const puckData = snapshotToPuckData(versionToUse.snapshot);
 
         // IMPORTANT: Update the ref BEFORE state updates to block any incoming remote updates
         // The effect that syncs viewingVersionRef runs AFTER render, which is too late
@@ -2034,6 +2043,7 @@ function P1PuckProviderInner({
       userId,
       currentDocument,
       currentData,
+      documentLoading,
       saveStatus,
       lastSaved,
       saveError,
@@ -2121,6 +2131,7 @@ function P1PuckProviderInner({
       userId,
       currentDocument,
       currentData,
+      documentLoading,
       saveStatus,
       lastSaved,
       saveError,

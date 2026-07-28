@@ -388,6 +388,18 @@ git commit -m "chore(pds): upgrade pds-toolkit-react to <version>"
 
 If you skip the rebuild, the embedded CSS stays at the old version even though the package.json reference is updated.
 
+## Upgrading to 0.8 (persistent editor)
+
+`@pantheon-systems/p1-next-sdk@0.8` renders the P1 editor from a persistent layout in an `(editor)` route group instead of the catch-all page, so navigating between documents no longer remounts the whole editor. This is a breaking change for existing apps — an upgraded app that keeps the old page-only route renders a blank editor.
+
+A codemod restructures an existing app for you:
+
+```bash
+npx @pantheon-systems/p1-next-sdk p1-migrate
+```
+
+See [docs/MIGRATION-EDITOR-LAYOUT.md](docs/MIGRATION-EDITOR-LAYOUT.md) for the full guide, the `--dry-run`/`--force` options, and the manual steps.
+
 ## Development
 
 ### Prerequisites

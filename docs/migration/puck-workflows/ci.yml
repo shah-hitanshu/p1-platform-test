@@ -93,8 +93,8 @@ jobs:
         run: npx playwright install chromium
 
       # demo-ui tests require a running CSS backend (not available in CI yet)
-      - name: Run E2E tests (p1-starter)
-        run: npx playwright test --project p1-starter
+      - name: Run E2E tests (p1-starter, p1-editor)
+        run: npx playwright test --project p1-starter --project p1-editor
         env:
           CSS_API_KEY: ${{ secrets.CSS_API_KEY }}
           CSS_BASE_URL: ${{ secrets.CSS_BASE_URL }}

@@ -183,16 +183,18 @@ export function puckDataToYMap(data: PuckData, root: Y.Map<unknown>): void {
       // Incremental update – only touch what changed
       patchYMap(root, data as unknown as Record<string, unknown>);
     } else {
-      // Full creation – first time populating the map
-      // Convert content array
+      // Full creation – first time populating the map.
+      // Tolerate partial data (missing content/root) the same way
+      // yMapToPuckData does on the read path: a document switch can seed a
+      // fresh Y.Doc from a page object that has no content array yet.
       const contentArray = new Y.Array();
-      for (const item of data.content) {
+      for (const item of data.content ?? []) {
         contentArray.push([toYjsValue(item)]);
       }
       root.set('content', contentArray);
 
       // Convert root data
-      root.set('root', toYjsValue(data.root));
+      root.set('root', toYjsValue(data.root ?? { props: {} }));
 
       // Convert zones if present
       if (data.zones) {

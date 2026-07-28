@@ -15,6 +15,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "p1-migrate": "./bin/p1-migrate.js"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -26,7 +29,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "bin"
   ],
   "scripts": {
     "build": "tsc",

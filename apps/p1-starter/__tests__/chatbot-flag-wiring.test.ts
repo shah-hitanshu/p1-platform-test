@@ -8,7 +8,7 @@ const appDir = resolve(__dirname, "..");
 
 describe("editor-client gates the chatbot behind the p1-chatbot flag", () => {
   const content = readFileSync(
-    resolve(appDir, "app/p1/[[...p1]]/editor-client.tsx"),
+    resolve(appDir, "app/p1/(editor)/[[...p1]]/editor-client.tsx"),
     "utf-8",
   );
 

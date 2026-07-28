@@ -19,6 +19,8 @@ import type {
   ActorPresence,
 } from '@pantheon-systems/css-client';
 import { PuckDataSynchronizer } from '../components/PuckDataSynchronizer.js';
+import { resolveContextSyncKey } from './context-sync-key.js';
+import type { DocumentSyncStore } from './document-sync-plugin.js';
 import { AgentActivityBanner } from '../../collaboration/components/AgentActivityBanner.js';
 import { PuckSelectionTracker } from '../components/PuckSelectionTracker.js';
 import { PuckDataCapture } from '../components/PuckDataCapture.js';
@@ -34,7 +36,7 @@ import type { SubheaderActor } from '../../pds/components/P1EditorSubheader.js';
 import { deriveDocState } from '../../pds/utils/deriveDocState.js';
 import { deriveLiveDocState } from '../../pds/utils/deriveLiveDocState.js';
 import type { Template } from '../../features/content-type-templates/types.js';
-import { useEditorContext } from '../../p1/editor/hooks.js';
+import { useEditorContext } from '../../p1/editor/index.js';
 
 // Module-level usePuck hook for reading history state inside the plugin render tree
 const usePluginPuckHistory = createUsePuck();
@@ -359,23 +361,26 @@ function SyncDataPoller({
  * module-level tracking. This component simply passes through the current sync key
  * without any side effects during render.
  */
-function ContextSyncBridge(): React.ReactElement | null {
+function ContextSyncBridge({
+  documentSyncStore,
+}: {
+  documentSyncStore?: Pick<DocumentSyncStore, 'getAppliedKey'>;
+}): React.ReactElement | null {
   const context = useP1PuckOptional();
   if (!context) return null;
 
-  const { currentData, remoteSyncKey, currentDocument, viewingVersion } = context;
+  const { currentData, remoteSyncKey, currentDocument, viewingVersion, branchId } = context;
 
-  // Compute the sync key from context values
-  // - remoteSyncKey takes priority for real-time updates (changes with each remote update)
-  // - viewingVersion for viewing historical versions
-  // - currentDocument for initial document load
-  const syncKey = remoteSyncKey
-    ? remoteSyncKey // Remote updates take priority - unique per update via Date.now()
-    : viewingVersion
-      ? `version-${viewingVersion.id}`
-      : currentDocument
-        ? `doc-${currentDocument.id}-latest`
-        : null;
+  // See resolveContextSyncKey: remote updates win, then historical versions,
+  // then doc-latest — which stands down for document switches the
+  // document-sync plugin owns.
+  const syncKey = resolveContextSyncKey({
+    remoteSyncKey,
+    viewingVersion,
+    currentDocument,
+    branchId,
+    documentSyncStore,
+  });
 
   if (!currentData || !syncKey) {
     return null;
@@ -477,6 +482,12 @@ export interface P1PluginOptions {
    * @default true
    */
   useContextSync?: boolean;
+  /**
+   * Document-sync store shared with the document-sync plugin. When present,
+   * context-based sync leaves document switches to that plugin — see
+   * resolveContextSyncKey.
+   */
+  documentSyncStore?: Pick<DocumentSyncStore, 'getAppliedKey'>;
   // Presence/Agent Features
   /** Whether to show presence indicator in the plugin panel */
   showPresenceIndicator?: boolean;
@@ -953,7 +964,9 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
       <>
         {/* Sync data to Puck - context-based is preferred (most reliable),
             falls back to getter-based or direct props for backwards compatibility */}
-        {useContextSync && <ContextSyncBridge />}
+        {useContextSync && (
+          <ContextSyncBridge documentSyncStore={stableOptions.documentSyncStore} />
+        )}
         {useGetterSync && options.getSyncData && options.getDataSyncKey && (
           <SyncDataPoller
             getSyncData={options.getSyncData}

@@ -228,6 +228,13 @@ export interface P1PuckContextValue {
   currentData: PuckData | null;
 
   /**
+   * True while loadDocument is fetching a document. Distinguishes "no
+   * document because a switch is in flight" (keep the canvas as-is) from
+   * "genuinely no document" (show the empty state).
+   */
+  documentLoading: boolean;
+
+  /**
    * Save status.
    */
   saveStatus: SaveStatus;

@@ -14,7 +14,7 @@ import { stripTrailingSlash } from "../../../data/paths";
 
 import { buildConnectPreviewConfig, ConnectPreviewHitStyles } from "./connect-preview-config";
 import { backdrop, ghostButton, modalPanel, mono, muted, secondaryButton } from "../../../data/styles";
-import { useLoadPageData } from "../hooks";
+import { useLoadPageData } from "../hooks/api-hooks";
 
 function normalizeRoutePath(p: string): string {
   return stripTrailingSlash(p);

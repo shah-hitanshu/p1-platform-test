@@ -20,6 +20,14 @@ export default defineConfig({
         baseURL: 'http://localhost:3001',
       },
     },
+    {
+      name: 'p1-editor',
+      testMatch: /p1-editor\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:3001',
+      },
+    },
   ],
 
   webServer: [
@@ -41,6 +49,11 @@ export default defineConfig({
         NEXT_PUBLIC_CSS_BASE_URL: 'http://localhost:4444',
         NEXT_PUBLIC_CSS_SITE_ID: 'test-site',
         CSS_API_KEY: 'test-api-key',
+        // Editor specs sign in against the mock server's /api/auth/* routes.
+        NEXT_PUBLIC_CSS_AUTH_MODE: 'mock',
+        // The mock server speaks HTTP only — no websocket for Yjs sync or presence.
+        NEXT_PUBLIC_CSS_ENABLE_REALTIME: 'false',
+        NEXT_PUBLIC_CSS_ENABLE_PRESENCE: 'false',
       },
     },
   ],

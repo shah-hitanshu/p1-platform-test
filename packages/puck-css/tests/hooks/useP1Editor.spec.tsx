@@ -298,9 +298,10 @@ describe('useP1Editor', () => {
       await vi.advanceTimersByTimeAsync(100);
     });
 
-    expect(result.current.puckProps.plugins.length).toBe(2);
+    expect(result.current.puckProps.plugins.length).toBe(3);
     expect(result.current.puckProps.plugins[0].name).toBe('css');
-    expect(result.current.puckProps.plugins[1].name).toBe('test-plugin');
+    expect(result.current.puckProps.plugins[1].name).toBe('p1-document-sync');
+    expect(result.current.puckProps.plugins[2].name).toBe('test-plugin');
   });
 
   it('puckProps.overrides should have headerActions', async () => {

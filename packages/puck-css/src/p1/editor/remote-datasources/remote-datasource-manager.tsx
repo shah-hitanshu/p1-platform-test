@@ -22,7 +22,7 @@ import {
   useRemoteDatasources,
   useRemoveRemoteDatasource,
   useSaveRemoteDatasource,
-} from "../hooks";
+} from "../hooks/api-hooks";
 
 export function RemoteDatasourceManager({ editorPath }: { editorPath: string }) {
   const { data: datasourcesData } = useRemoteDatasources(editorPath);

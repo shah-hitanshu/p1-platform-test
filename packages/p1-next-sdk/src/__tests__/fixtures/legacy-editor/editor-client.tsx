@@ -13,6 +13,7 @@ import {
   P1QueryProvider,
   editorPathHref,
 } from "@pantheon-systems/puck-css";
+import { LoadingMessage } from "@pantheon-systems/puck-css/pds";
 import { P1NextRouterProvider } from "@pantheon-systems/p1-next-sdk";
 import { createAIChatPlugin } from "@pantheon-systems/p1-ai-chat";
 import { createMediaPlugin } from "@pantheon-systems/p1-media";
@@ -287,20 +288,12 @@ function EditorContent({
   }, [loading, error, puckKey, puckProps]);
 
   if (redirecting) {
-    return (
-      <div style={{ textAlign: "center", padding: "4rem", fontFamily: "system-ui" }}>
-        Redirecting...
-      </div>
-    );
+    return <LoadingMessage message="Redirecting" data-testid="editor-redirecting" />;
   }
 
   // Show full loading screen only on first load (no previous state)
   if (loading && !lastGoodStateRef.current) {
-    return (
-      <div style={{ textAlign: "center", padding: "4rem", fontFamily: "system-ui" }}>
-        Loading editor...
-      </div>
-    );
+    return <LoadingMessage message="Loading document" data-testid="editor-loading" />;
   }
 
   // Show error only if we have no previous state to fall back to

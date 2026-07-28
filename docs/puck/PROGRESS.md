@@ -2930,3 +2930,114 @@ The CI sync resolves its target CSS branch by matching the pushed git ref's name
 Pinning and structural conformance resolve by slot-id membership: a canvas component is pinned when its own `props.id` maps to `true` in the bound template's `root.props._pinMap` (content and zones), so a same-typed local or duplicated component is never locked and cannot satisfy a pinned slot. Creating a page from a template delegates the initial version to the backend (`documents.create` carries `templateId`, `templateVersion`, `title`; no client snapshot follows), which preserves the template's slot ids on the new page. The local template scaffold and its non-deterministic id minter are deleted; blank pages keep the client-built initial version. The per-component permission wrapper forwards the item's `props` so the id-membership resolver applies in the live editor.
 
 Suites green: puck-css 2010, css-client 306. Review findings fixed: the permission wrapper narrowed items to their type (template pins unenforced on pages), and the two create paths disagreed on empty titles.
+
+## Persistent-Editor Migration Tooling (2026-07-27)
+
+**Status:** Complete
+**Branch:** `feat/editor-layout-dev-warning` → `feat/p1-migrate-codemod` → `feat/p1-migrate-docs` (stacked on `refactor/use-p1-plugins`, PR #134)
+**PRs:** #135 (dev warning), #136 (codemod), + docs branch
+**Commits:**
+- `c42e6a6` / `85e130d` — dev-mode warning: red tests, then implementation
+- `4a29251` / `f87b07f` — p1-migrate codemod: red tests, then implementation
+
+### Context
+
+PR #134 moves the P1 editor from the catch-all page to a persistent layout in an `(editor)` route group, so document switches no longer remount the editor. This breaks existing `@pantheon-systems/p1-next-sdk` consumers: an upgraded app that keeps the old page-only route renders a blank editor (TypeScript surfaces a compile error from the changed `EditorClient` prop type; JavaScript gets no signal). Pre-1.0, so it ships as a `minor` → 0.8.0. This phase delivers the migration tooling.
+
+### What was done
+
+**`packages/p1-next-sdk`** — dev-mode detection warning in `pages-handler.tsx`: `Page` warns once, dev-only, when it renders without `Layout` (the legacy setup). Added the `p1-migrate` codemod (`bin/p1-migrate.js` + `bin/lib/*`, wired via `bin`/`files`): pure string/regex transforms with template-match-or-bail that restructure an app into the `(editor)` group. Changeset added (`minor`, names the SDK).
+**`docs/`** — `MIGRATION-EDITOR-LAYOUT.md` (mirrors `MIGRATION-ENV-CONSOLIDATION.md`) and the design record `plans/2026-07-27-p1-next-sdk-0.8-migration-tooling.md`. README gains an "Upgrading to 0.8" section linking the guide.
+
+### Decisions made along the way
+
+- **Minor, not major** — pre-1.0 convention; the `fixed` group bumps all four packages to 0.8.0, and caret ranges never auto-jump a minor, so no consumer breaks on a routine install.
+- **String/regex codemod, no AST dep** — matches the `build-template.js` precedent; drift cases bail to the manual guide rather than being fuzzily rewritten.
+- **Detect-and-nudge, not install-time rewrite** — pnpm 10+ won't run a dependency `postinstall`, and a file-moving codemod needs a clean tree and a reviewable diff.
+- **Branches stack into PR #134** (user decision) so each piece is independently reviewable. The changeset rides this stack rather than #134 because its body references the `p1-migrate` command that only exists here.
+
+### Verification
+
+- TDD: red tests committed first, then implementation. Dev-warning 4/4; codemod 20/20 (unit + a byte-identical integration test that reconstructs the OLD starter layout via `git show main` and asserts the codemod reproduces the HEAD `(editor)` tree exactly). Full `p1-next-sdk` suite 94/94, lint 0 errors, `pnpm build` clean. Manual CLI smoke reproduces HEAD byte-for-byte.
+- Security review (`/security-review`): no findings — `execFileSync` with a static arg vector (no shell), sound path-traversal guard checked before every write, no `eval`/deserialization, no secrets logged.
+
+### Follow-up
+
+- Version bump (`chore: bump versions to 0.8.0`) is a separate maintainer release step (`changeset version`); this work only adds the changeset.
+- Deferred from the #134 review: the 100-line hand-mocked `mockCssContext` in the write-guard test; the empty `Page` still carries `force-dynamic`, so each navigation makes a server round-trip just for `generateMetadata`.
+---
+
+## p1-migrate Installed-Suite Version Guard (2026-07-28)
+
+**Status:** Complete
+**Branch:** `feat/p1-migrate-codemod` (PR #136)
+**Commits:** `faefff1` (red tests) / `78a7257` (implementation)
+
+### Context
+
+`npx` fetches the codemod from the registry, so `p1-migrate` runs at `latest` regardless of what the consumer has installed — 0.5.0's published SDK has no `bin` field at all, so nothing resolves locally and npx falls through to the registry. A customer still on 0.5.x therefore got their routes restructured to call `pages.Layout`, an export their installed SDK does not have.
+
+Declared ranges cannot detect this. A pre-1.0 caret is pinned to its minor, so `^0.5.0` never resolves 0.8.0 and `pnpm update` silently leaves them behind. The exact-pinned internal dep (`workspace:*` publishes as an exact version) is then satisfied by a nested private copy rather than an error, and PR #143 dropping the internal `peerDependencies` removes the last install-time signal — leaving two copies of `puck-css`, two React contexts, and no warning.
+
+### What was done
+
+`assertSuiteVersions(dir)` in `bin/lib/detect.js` (with exported `MIN_SUITE_VERSION = "0.8.0"`), called from `migrate()` before any transform so it also gates `--dry-run`. Reads the installed tree rather than declared ranges and bails on three distinct conditions: version skew across the suite, a nested duplicate copy, or a consistent suite older than 0.8.0. Adds `msg.versionsUnverified()`.
+
+### Decisions made along the way
+
+- **Root-level packages only** (user decision, option 1 of two). Simulating against a real starter-kit scaffold showed pnpm's isolated `node_modules` links only *direct* dependencies at the root — `css-client` is transitive and lives solely in the virtual store — so requiring the full suite bailed on every real app. Absence at the root now means "transitive, nothing to check"; a genuinely missing package already fails loudly at build time. The rejected alternative, `createRequire` resolution from the consumer dir, depends on packages exporting `./package.json`, which many do not.
+- **`unverified` proceeds rather than blocks** when nothing is readable, matching `git.js`'s posture for a non-git target.
+- **One test inverted with explicit permission** — the missing-package bail became `"treats a package absent from the root as transitive, not broken"`, plus a new case pinning that skew among root-level packages is still caught.
+
+### Verification
+
+- TDD: red tests committed first (12 failed / 2 passed), then implementation. Full `p1-next-sdk` suite 109/109, lint 0 errors, `pnpm build` exit 0.
+- Simulated the real customer path against a starter-kit scaffold (`nick-app1`): at 0.5.0 it bails with the version message and writes nothing; with the suite at 0.8.0 it migrates a *customized* `editor-client.tsx` correctly — relative imports deepened `../../../` → `../../../../`, `usePathname`/`editorPagePathFromUrlPath` added, wrapper signature rewritten, `puck.css` moved to the layout, `/p1/merge`+`api`+`auth` untouched, re-run a no-op.
+- Bug found and fixed en route: `manifestPath` split the absolute root on `/`, producing relative paths.
+- Security review: no findings. The guard is read-only (adds `readFileSync` and nothing else); all path segments are the trusted `--dir` or hardcoded package names, and `JSON.parse` of a `__proto__` key creates an own property rather than polluting.
+
+### Follow-up
+
+- `docs/MIGRATION-EDITOR-LAYOUT.md` still has no "upgrade the packages first" step, so the bail message points at a guide that does not yet tell the reader how to resolve it.
+- The guide's documented `npx @pantheon-systems/p1-next-sdk p1-migrate` relies on npx's single-bin fallback (the bin is `p1-migrate`, not the package name) and passes `p1-migrate` through as an ignored argv. Works today; breaks the day a second bin is added. `npx -p <pkg> p1-migrate` is unambiguous.
+
+## p1-migrate PR #136 Review Fixes (2026-07-28)
+
+**Status:** Complete
+**Branch:** `feat/p1-migrate-codemod` (PR #136)
+**Commits:** `4f515e5` (guide path) / `4b04d50` (red tests) / `0c1f486` (implementation)
+
+### Context
+
+Eight review comments, four marked blocking. All eight were verified against the branch source and all eight were real — none were dismissible. The blocking set shared a theme: the codemod's one irreversible act, `rmSync(catchAll, { recursive: true, force: true })`, was reachable through several paths that had never been validated.
+
+### What was done
+
+**Refuse to delete files it cannot move.** `detectApp` now reads the catch-all directory and returns `extra-files` when it holds anything beyond `page.tsx` and `editor-client.tsx`. Previously those two were the only files read, and everything else — co-located components, CSS modules, `loading.tsx`, `error.tsx` — was deleted under an exit-0 success message.
+
+**Distinguish "no repo" from "git failed."** The bare `catch { return }` in `assertCleanTree` swallowed git-not-installed, `dubious ownership`, and an unreadable index alongside the intended non-repo case, silently dropping the only rollback guarantee. It now probes `git rev-parse --git-dir` first: a genuine non-repo returns `{ status: "no-repo" }` and proceeds with a warning, while a git that cannot answer bails with git's own stderr and points at `--force`. The status query is scoped with `-- .` because `git status` is repo-wide regardless of `cwd`, so unrelated dirt elsewhere in a monorepo was blocking a clean subtree.
+
+**Reject unrecognized arguments.** `parseArgs` ignored anything it did not match, so `--dryrun` ran the real migration. A second variant found beyond the review: `--dir /path` with a space silently migrated the current directory instead of the named one. Both are now errors.
+
+Also: a run interrupted between the writes and the cleanup is detected as `partial` rather than reported as already migrated; the three page-level exports are stripped independently so a reordered source leaves no dead exports in `p1-pages.tsx`; `splitPageFile` bails if the `pages` factory is never exported instead of emitting a broken app as success; and the bail output no longer points at `docs/MIGRATION-EDITOR-LAYOUT.md`, a path that exists only in this repo.
+
+### Decisions made along the way
+
+- **Bail on extras rather than moving them** (user decision, after weighing three options). Moving unknown files across looks safe but is not, and the reason is not import paths: App Router special files are scoped by position, and this migration moves the editor *up* from `page.tsx` into `(editor)/layout.tsx`. An `error.tsx` relocated faithfully into the new catch-all sits below the editor, where an error boundary cannot catch a parent segment's layout — so it silently stops catching editor crashes. `loading.tsx`'s Suspense boundary has the same problem, and a user's own `layout.tsx` landing inside `[[...p1]]` would reintroduce the exact remount bug this stack exists to fix. A warning does not help: it hands the user an unresolved semantic question at the moment they feel finished, and forces a full diff audit that costs more than migrating by hand.
+- **"Warn and leave them" was not implementable.** Nothing can be left behind — the directory is deleted at the end of the run. Not deleting it leaves `app/p1/[[...p1]]` and `app/p1/(editor)/[[...p1]]` coexisting.
+- **The bail message earns the re-run.** It names every entry and separates "move these and add one `../`" from route-special files whose destination is a judgment call. Framing matters because the codemod does the error-prone parts (page split, import depth, layout content) while moving a `components/` folder is the easy part — so "you move those, then re-run" beats both a warning and a 133-line manual walkthrough.
+- **Non-repo proceeds with a warning** rather than requiring `--force` for any unverified state (the reviewer offered both). The strict rule would make the codemod fail out of the box on every non-git project, which punishes the wrong user; the silent-swallow hole is closed either way.
+- **The `#135` dev warning was left alone.** It carries the same dead `docs/` path, but it belongs to a different branch in the stack and editing it from here would land the change in the wrong PR's diff.
+
+### Verification
+
+- TDD: 24 new tests committed red first (21 failures), then implementation. Full `p1-next-sdk` suite 133/133, lint 0 errors, `pnpm build` exit 0. The byte-identical integration test still passes, which is what proves the `transform.js` rewrites did not change starter output.
+- Smoke-tested every path against a real temp app rather than only unit tests: extras present (all six files still on disk after the bail), `--dryrun`, `--dir` with a space, clean two-file app, idempotent re-run, and the half-migrated tree.
+- Security review: no HIGH or MEDIUM findings. The git shell-out remains a static arg vector with no shell and no interpolation (`dir` is `cwd`, never an argument); the new `readdirSync` path derives entirely from `--dir`; `assertWithin` still guards every write, and the new bails fire before any of it. Three of the changes are net security-positive.
+- Gotcha: `/security-review` collects its diff from the shell's current branch and cannot see across git worktrees. Run from the main checkout it reviewed the wrong stack entirely; the diff has to be supplied explicitly.
+
+### Follow-up
+
+- Reply to the eight review comments and re-request review; PR #136 is `CHANGES_REQUESTED` and is the only branch in the stack not yet approved.
+- The PR description predates both the version guard and these fixes and needs updating before re-review.
+- `packages/p1-next-sdk/src/pages-handler.tsx:112` still prints the repo-only `docs/` path in the #135 dev warning.

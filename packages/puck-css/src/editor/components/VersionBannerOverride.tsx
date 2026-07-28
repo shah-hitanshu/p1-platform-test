@@ -19,7 +19,9 @@ export function VersionBannerOverride({
 }: VersionBannerOverrideProps): React.ReactElement {
   const p1Context = useP1Puck();
   const isViewingOld = !!selectedVersionId && versions.length > 0 && selectedVersionId !== versions[0]?.id;
-  const hasDocument = p1Context.currentDocument !== null;
+  // While a switch is loading the next document, currentDocument is null but
+  // the empty state must not flash over the still-visible previous canvas.
+  const hasOrIsLoadingDocument = p1Context.currentDocument !== null || p1Context.documentLoading;
   const isReturning = p1Context.isReturningToLatest;
 
   return (
@@ -64,7 +66,7 @@ export function VersionBannerOverride({
         >
           {children}
         </div>
-        {!hasDocument && (
+        {!hasOrIsLoadingDocument && (
           <div
             style={{
               position: 'absolute',

@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * useP1Editor Hook
  *
@@ -15,6 +17,11 @@ import { useVersions } from '../versioning/useVersions.js';
 import { useComponentRegistry } from './useComponentRegistry.js';
 import { useP1Auth } from '../auth/index.js';
 import { buildThumbnailOverride } from './utils/buildThumbnailOverride.js';
+import {
+  createDocumentSyncStore,
+  createDocumentSyncPlugin,
+  documentSyncKey,
+} from './plugin/document-sync-plugin.js';
 import type { ThumbnailMap } from './utils/buildThumbnailOverride.js';
 import type { UseP1PluginOptions } from './useP1Plugin.js';
 import type { UseP1OverridesOptions } from './useP1Overrides.js';
@@ -103,7 +110,7 @@ export interface UseP1EditorReturn {
   loading: boolean;
   /** Error from document loading, if any */
   error: Error | null;
-  /** React key — pass directly as `<Puck key={puckKey} {...puckProps} />` to force clean remount on document switch */
+  /** React key — pass directly as `<Puck key={puckKey} {...puckProps} />` to force a clean remount on role change (document switches sync in place) */
   puckKey: string;
   /** Props to spread onto <Puck> */
   puckProps: PuckProps;
@@ -354,7 +361,14 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     [css, refreshVersions],
   );
 
+  // Pushes freshly loaded documents into the live Puck instance, replacing
+  // the remount-on-document-switch behavior the old document-scoped puckKey
+  // provided (see document-sync-plugin.tsx). Handed to the P1 plugin as well
+  // so its context sync defers document switches to this store.
+  const [documentSyncStore] = useState(createDocumentSyncStore);
+
   const p1Plugin = useP1Plugin({
+    documentSyncStore,
     onSelectionChange: handleSelectionChange,
     currentUser: user ? { id: user.id, name: user.name, email: user.email, avatar: user.picture } : undefined,
     onLogout: logout,
@@ -389,29 +403,65 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   const additionalPluginsRef = useRef(additionalPlugins);
   additionalPluginsRef.current = additionalPlugins;
 
+  const documentSyncPlugin = useMemo(
+    () => createDocumentSyncPlugin(documentSyncStore),
+    [documentSyncStore]
+  );
+
+  // Read through a ref so a publish happens once per settled load, not on
+  // every safeData edit.
+  const safeDataRef = useRef(css.safeData);
+  safeDataRef.current = css.safeData;
+
+  const currentDocumentId = css.currentDocument?.id;
+  useEffect(() => {
+    if (loading || error || !currentDocumentId) return;
+    documentSyncStore.publish({
+      syncKey: documentSyncKey(css.branchId, currentDocumentId),
+      data: safeDataRef.current,
+    });
+  }, [loading, error, css.branchId, currentDocumentId, documentSyncStore]);
+
   const pluginCount = additionalPlugins?.length ?? 0;
   const plugins = useMemo(() => {
-    const result: Plugin[] = [p1Plugin];
+    const result: Plugin[] = [p1Plugin, documentSyncPlugin];
     if (additionalPluginsRef.current) {
       result.push(...additionalPluginsRef.current);
     }
     return result;
-  }, [p1Plugin, pluginCount]);
+  }, [p1Plugin, documentSyncPlugin, pluginCount]);
 
   // =========================================================================
-  // Stable onChange (disabled for historical versions)
+  // Stable onChange (disabled for historical versions, guarded across
+  // document switches)
   // =========================================================================
 
   const isViewingHistoricalRef = useRef(css.isViewingHistoricalVersion);
   isViewingHistoricalRef.current = css.isViewingHistoricalVersion;
 
+  // With Puck surviving document switches, onChange can fire while the canvas
+  // still shows the previous document but css already targets the new one
+  // (load in flight, or loaded but not yet pushed by the sync plugin). Saving
+  // then would write the old page's content into the new page — drop instead.
+  const saveTargetKeyRef = useRef<string | null>(null);
+  saveTargetKeyRef.current = css.currentDocument?.id
+    ? documentSyncKey(css.branchId, css.currentDocument.id)
+    : null;
+
   const onChange = useCallback(
     (data: unknown) => {
-      if (!isViewingHistoricalRef.current) {
-        css.saveData(data as PuckData);
+      if (isViewingHistoricalRef.current) return;
+      const appliedKey = documentSyncStore.getAppliedKey();
+      if (appliedKey !== null && appliedKey !== saveTargetKeyRef.current) {
+        console.warn(
+          '[useP1Editor] save SKIPPED: canvas/document mismatch during switch.',
+          'canvas:', appliedKey, 'target:', saveTargetKeyRef.current,
+        );
+        return;
       }
+      css.saveData(data as PuckData);
     },
-    [css.saveData]
+    [css.saveData, documentSyncStore]
   );
 
   // =========================================================================
@@ -474,16 +524,16 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // Assemble puckProps
   // =========================================================================
 
-  // Key that forces Puck to remount on document switch or role change,
+  // Key that forces Puck to remount on role change (let puck internally manage the change on document change),
   // ensuring clean undo history, sidebar state, and fresh permission cache.
   // Puck caches resolvePermissions results per component instance — the
   // cache is only invalidated when component data changes, not when the
   // resolver function changes. Including userRole in the key forces a
   // clean remount with an empty cache when roles switch.
-  const puckKey = `css-${css.currentDocument?.id ?? documentPath}-${css.userRole}`;
+  const puckKey = `css-${css.userRole}`;
 
   // Read persisted sidebar visibility from localStorage each time the Puck instance
-  // changes (puckKey changes on document/branch switch). The value is passed as the
+  // changes (puckKey changes on role switch). The value is passed as the
   // initial `ui` prop so Puck never initializes with wrong defaults.
   const initialSidebarUi = useMemo<Partial<UiState>>(() => {
     try {

@@ -1,17 +1,13 @@
 "use client";
 
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useP1Router } from "../router-context";
+import { useP1Router } from "../../router-context";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Config, Data, Plugin } from "@puckeditor/core";
-import type { RemoteDatasourceContext } from "../../data/remote-datasources/loader";
-import type { RemoteDatasourceDefinition } from "../../data/remote-datasources/remote-datasource-registry";
-import type { RemoteDatasourceScope } from "../../data/remote-datasources/user-remote-datasource-types";
-import type { RouteRow } from "../../data/page-store";
-import { useP1Auth } from "../../auth/P1AuthProvider";
-import { createPreviewResolvePlugin } from "./editor-preview-resolve";
-import { createRemoteDatasourceExplorerPlugin } from "./remote-datasources/remote-datasource-explorer-plugin";
-import { createFieldConnectPlugin } from "./connect/field-connect-plugin";
+import type { Data } from "@puckeditor/core";
+import type { RemoteDatasourceContext } from "../../../data/remote-datasources/loader";
+import type { RemoteDatasourceDefinition } from "../../../data/remote-datasources/remote-datasource-registry";
+import type { RemoteDatasourceScope } from "../../../data/remote-datasources/user-remote-datasource-types";
+import { useP1Auth } from "../../../auth/P1AuthProvider";
 
 const DATASOURCES_KEY = "p1-datasources";
 const PREVIEW_KEY = "p1-preview";
@@ -178,31 +174,6 @@ export function useLoadPageData() {
   });
 }
 
-/* ── editor context ── */
-
-interface EditorContextData {
-  remoteDatasourceContext: RemoteDatasourceContext;
-  routes: RouteRow[];
-  routeTemplateKeys: string[];
-  savedPreviewParams: Record<string, string>;
-  remoteDatasourceRegistry: RemoteDatasourceDefinition[];
-}
-
-const EDITOR_CONTEXT_KEY = "p1-editor-context";
-
-export function useEditorContext(path: string) {
-  return useQuery({
-    queryKey: [EDITOR_CONTEXT_KEY, path],
-    queryFn: async () => {
-      const res = await fetch(
-        `/p1/api/editor-context?path=${encodeURIComponent(path)}`,
-      );
-      if (!res.ok) throw new Error("Failed to load editor context");
-      return (await res.json()) as EditorContextData;
-    },
-  });
-}
-
 /* ── progressive datasource context ── */
 
 const DATASOURCE_CONTEXT_KEY = "p1-datasource-context";
@@ -224,7 +195,13 @@ export function useRemoteDatasourceContext(
     })),
   });
 
-  return useMemo(() => {
+  // keepPreviousData is ignored by useQueries (observers are recreated when
+  // the path changes the query keys), so previous-path data is carried over
+  // manually: without it the context empties mid page-switch and consumers
+  // flash empty states.
+  const lastGoodRef = useRef<Record<string, Record<string, unknown>>>({});
+
+  const result = useMemo(() => {
     const context: RemoteDatasourceContext = {};
     const loadingIds = new Set<string>();
     let isLoading = false;
@@ -236,42 +213,34 @@ export function useRemoteDatasourceContext(
       if (query.isLoading || query.isFetching) {
         loadingIds.add(def.id);
         isLoading = true;
-      } else if (query.data) {
+      }
+      if (query.data) {
         context[def.id] = query.data.data;
+      } else if (!query.isError && lastGoodRef.current[def.id]) {
+        context[def.id] = lastGoodRef.current[def.id];
       }
     }
 
     return { context, loadingIds, isLoading };
   }, [registry, queries]);
-}
 
-/* ── P1 plugins ── */
+  // Written from a commit effect, not the memo factory above: useMemo is a
+  // memoization hint rather than a once-per-commit guarantee, so carrying state
+  // forward from inside it is a render-phase side effect.
+  useEffect(() => {
+    for (let i = 0; i < registry.length; i++) {
+      const def = registry[i];
+      const query = queries[i];
+      if (!def || !query) continue;
+      if (query.data) {
+        lastGoodRef.current[def.id] = query.data.data;
+      } else if (query.isError) {
+        // Settled failure: drop the carried-over entry rather than keep
+        // showing the previous path's data as if it belonged to this page.
+        delete lastGoodRef.current[def.id];
+      }
+    }
+  }, [registry, queries]);
 
-export function useP1Plugins(path: string, config: Config): Plugin[] {
-  const { data: ctx } = useEditorContext(path);
-  const {
-    context: remoteDatasourceContext,
-    loadingIds,
-    isLoading: datasourcesLoading,
-  } = useRemoteDatasourceContext(path, ctx?.remoteDatasourceRegistry ?? []);
-
-  return useMemo(() => {
-    if (!ctx) return [];
-    return [
-      createPreviewResolvePlugin(remoteDatasourceContext, { loading: datasourcesLoading }),
-      createRemoteDatasourceExplorerPlugin(remoteDatasourceContext, {
-        editorPath: path,
-        routeTemplateKeys: ctx.routeTemplateKeys,
-        savedPreviewParams: ctx.savedPreviewParams,
-        remoteDatasourceRegistry: ctx.remoteDatasourceRegistry,
-        loadingIds,
-      }),
-      createFieldConnectPlugin({
-        routes: ctx.routes,
-        config,
-        editorPath: path,
-        remoteDatasourceRegistry: ctx.remoteDatasourceRegistry,
-      }),
-    ];
-  }, [ctx, remoteDatasourceContext, loadingIds, datasourcesLoading, path, config]);
+  return result;
 }

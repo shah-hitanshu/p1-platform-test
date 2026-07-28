@@ -15,7 +15,7 @@ import {
 } from "./editor-preview-resolve";
 import { Toaster, ToastType, useToast } from "@pantheon-systems/pds-toolkit-react";
 import { P1QueryProvider } from "../../data/query-provider";
-import { usePublish } from "./hooks";
+import { usePublish } from "./hooks/api-hooks";
 import { ButtonBlockIcon } from "./icons/button-block-icon";
 import { DefaultBlockIcon } from "./icons/default-block-icon";
 import { DividerBlockIcon } from "./icons/divider-block-icon";

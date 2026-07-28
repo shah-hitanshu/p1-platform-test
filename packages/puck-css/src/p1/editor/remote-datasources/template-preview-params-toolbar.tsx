@@ -13,7 +13,7 @@ import {
   muted,
   primaryButton,
 } from "../../../data/styles";
-import { useSavePreviewMeta } from "../hooks";
+import { useSavePreviewMeta } from "../hooks/api-hooks";
 
 export function TemplatePreviewParamsToolbar({
   editorPath,

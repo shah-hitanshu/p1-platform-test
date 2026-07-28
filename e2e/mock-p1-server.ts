@@ -6,6 +6,10 @@
  *
  * Supports writes (POST for document creation, PUT for version creation)
  * so that the structure page and publish flow work in E2E tests.
+ *
+ * Also serves mock-mode auth (/api/auth/token, /api/auth/me) so editor tests
+ * can get past the AuthGate. Unlike the render paths, the editor calls this
+ * server from the browser, so every response carries permissive CORS headers.
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -39,8 +43,56 @@ function loadFixtures(): Map<string, DocRecord> {
 
 const docs = loadFixtures();
 
+// Concurrent creates (the editor's component-registry sync fires a batch)
+// would collide on ids derived from docs.size.
+let nextDocId = docs.size;
+function allocateDocId(): string {
+  return `doc-${nextDocId++}`;
+}
+
+const MOCK_TOKEN_PREFIX = "mock-token-";
+const MOCK_USER_ID = "11111111-1111-1111-1111-111111111111";
+
+function mockUser(id: string): { id: string; name: string; email: string } {
+  return { id, name: "Alice Developer", email: "alice@example.test" };
+}
+
+function version(
+  documentId: string,
+  versionNumber: number,
+  snapshot: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    id: `ver-${versionNumber}`,
+    documentId,
+    branchId: BRANCH_ID,
+    versionNumber,
+    snapshot,
+    crdtState: null,
+    source: "api",
+    createdById: "system",
+    createdByType: "user",
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function readBody(req: IncomingMessage, onDone: (body: string) => void): void {
+  let body = "";
+  req.on("data", (chunk) => { body += chunk; });
+  req.on("end", () => onDone(body));
+}
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+  // The client sends its own x-principal-* headers, so allow whatever is asked
+  // for rather than tracking the list here.
+  "Access-Control-Allow-Headers": "*",
+  "Access-Control-Max-Age": "86400",
+};
+
 function json(res: ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { "Content-Type": "application/json" });
+  res.writeHead(status, { "Content-Type": "application/json", ...CORS_HEADERS });
   res.end(JSON.stringify(body));
 }
 
@@ -69,6 +121,48 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   const method = req.method ?? "GET";
 
   console.log(`[mock] ${method} ${pathname}`);
+
+  if (method === "OPTIONS") {
+    res.writeHead(204, CORS_HEADERS);
+    res.end();
+    return;
+  }
+
+  // POST /api/auth/token — mock-mode login, mirrors the backend's local-only route
+  if (pathname === "/api/auth/token" && method === "POST") {
+    return readBody(req, (body) => {
+      const parsed = JSON.parse(body || "{}") as { userId?: string };
+      const user = mockUser(parsed.userId ?? MOCK_USER_ID);
+      return json(res, 200, { token: `${MOCK_TOKEN_PREFIX}${user.id}`, user });
+    });
+  }
+
+  // GET /api/auth/me — token validation
+  if (pathname === "/api/auth/me" && method === "GET") {
+    const token = (req.headers.authorization ?? "").replace(/^Bearer /, "");
+    if (!token.startsWith(MOCK_TOKEN_PREFIX)) {
+      return json(res, 401, { error: "unauthorized" });
+    }
+    const user = mockUser(token.slice(MOCK_TOKEN_PREFIX.length));
+    return json(res, 200, { id: user.id, type: "user", name: user.name, email: user.email });
+  }
+
+  // GET /api/sites/:siteId — site metadata
+  const siteGet = routeMatch("/api/sites/:siteId", pathname);
+  if (siteGet && method === "GET") {
+    return json(res, 200, {
+      id: SITE_ID,
+      name: "Test Site",
+      mainBranchId: BRANCH_ID,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/sites/:siteId/branches/:branchId/templates — content-type templates
+  const templateList = routeMatch("/api/sites/:siteId/branches/:branchId/templates", pathname);
+  if (templateList && method === "GET") {
+    return json(res, 200, { templates: [] });
+  }
 
   // GET /api/sites/:siteId/branches — list branches
   const branchList = routeMatch("/api/sites/:siteId/branches", pathname);
@@ -172,7 +266,7 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     req.on("end", () => {
       const parsed = JSON.parse(body) as { path?: string };
       const docPath = parsed.path ?? "";
-      const id = `doc-${docs.size}`;
+      const id = allocateDocId();
       const record: DocRecord = { id, path: docPath, snapshot: {} };
       docs.set(docPath, record);
       return json(res, 201, {
@@ -187,6 +281,28 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
       });
     });
     return;
+  }
+
+  // GET/POST /api/sites/:siteId/branches/:branchId/documents/:docId/versions
+  // — the branch-scoped version routes the css-client actually calls.
+  const branchVersions = routeMatch(
+    "/api/sites/:siteId/branches/:branchId/documents/:docId/versions",
+    pathname,
+  );
+  if (branchVersions && method === "GET") {
+    const doc = Array.from(docs.values()).find((d) => d.id === branchVersions.docId);
+    if (!doc) return notFound(res);
+    return json(res, 200, { versions: [version(doc.id, 1, doc.snapshot)] });
+  }
+  if (branchVersions && method === "POST") {
+    return readBody(req, (body) => {
+      const parsed = JSON.parse(body || "{}") as { snapshot?: Record<string, unknown> };
+      const doc = Array.from(docs.values()).find((d) => d.id === branchVersions.docId);
+      if (doc && parsed.snapshot) {
+        doc.snapshot = parsed.snapshot;
+      }
+      return json(res, 201, version(branchVersions.docId, 2, parsed.snapshot ?? {}));
+    });
   }
 
   // POST /api/sites/:siteId/documents/:docId/versions — create version

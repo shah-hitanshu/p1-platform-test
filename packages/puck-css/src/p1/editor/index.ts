@@ -19,7 +19,7 @@ export {
   useRemoveRemoteDatasource,
   useSavePreviewMeta,
   useLoadPageData,
-  useEditorContext,
   useRemoteDatasourceContext,
+  useEditorContext,
   useP1Plugins,
 } from "./hooks";

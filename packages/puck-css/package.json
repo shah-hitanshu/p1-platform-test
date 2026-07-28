@@ -78,6 +78,11 @@
       "import": "./dist/data/fields.js",
       "default": "./dist/data/fields.js",
       "types": "./dist/data/fields.d.ts"
+    },
+    "./routes": {
+      "import": "./dist/data/route-templates.js",
+      "default": "./dist/data/route-templates.js",
+      "types": "./dist/data/route-templates.d.ts"
     }
   },
   "files": [

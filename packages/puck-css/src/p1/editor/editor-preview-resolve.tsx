@@ -15,7 +15,7 @@ import {
 
 import { getBlockPropsById } from "../../data/cross-reference";
 import type { RemoteDatasourceContext } from "../../data/remote-datasources/loader";
-import { useResolvePreview } from "./hooks";
+import { useResolvePreview } from "./hooks/api-hooks";
 
 interface PreviewResolvedState {
   data: Data | null;
