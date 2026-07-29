@@ -1,6 +1,6 @@
 {
   "name": "@pantheon-systems/p1-next-sdk",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Next.js SDK for P1 editor integration",
   "publishConfig": {
     "access": "public",
