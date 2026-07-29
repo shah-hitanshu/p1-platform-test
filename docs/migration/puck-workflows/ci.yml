@@ -132,18 +132,29 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Build starter kit template
-        run: pnpm --filter @pantheon-systems/create-p1-starter-kit build
+      - name: Build packages and starter kit template
+        run: pnpm build
+
+      # No prepack hooks, so dist has to exist first — hence the full build above.
+      - name: Pack suite packages
+        run: |
+          mkdir -p /tmp/suite-tarballs
+          for pkg in css-client puck-css p1-next-sdk; do
+            (cd "packages/$pkg" && pnpm pack --pack-destination /tmp/suite-tarballs)
+          done
 
       - name: Prepare scaffolded project
         run: |
           cp -r packages/create-p1-starter-kit/template /tmp/test-starter-kit
           sed -i 's/PLACEHOLDER_PROJECT_NAME/test-p1-starter/' /tmp/test-starter-kit/package.json
+          mkdir -p /tmp/test-starter-kit/vendor
+          cp /tmp/suite-tarballs/*.tgz /tmp/test-starter-kit/vendor/
+          node .github/scripts/use-local-suite-tarballs.mjs /tmp/test-starter-kit
 
       - name: Install dependencies (${{ matrix.pm }})
         working-directory: /tmp/test-starter-kit
