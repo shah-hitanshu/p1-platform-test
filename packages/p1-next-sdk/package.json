@@ -33,7 +33,7 @@
     "bin"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "pnpm run clean && tsc",
     "clean": "rm -rf dist *.tsbuildinfo",
     "test": "vitest run",
     "lint": "eslint src"
