@@ -3,22 +3,16 @@
 Everything here is merge-independent: identity keys off the repo name, not main's content.
 Only workflow *activation* waits for the merge.
 
-## 1. WIF trust change — staged, ready to fire
+## 1. WIF trust change — PR open (2026-07-29)
 
-Branch `wif/trust-p1-platform` exists **locally** in `~/pantheon/collaborative-state-system`
-(commit `7d04b4d`, one line: `additional_repos = ["p1-media-r2", "p1-platform"]`). Not pushed.
+Fired as [collaborative-state-system#228](https://github.com/pantheon-systems/collaborative-state-system/pull/228)
+(ticket PCC-3512; branch `wif/trust-p1-platform`, rebased onto main as `ae4779d`). One line:
+`additional_repos = ["p1-media-r2", "p1-platform"]`.
 
-To fire (after Andrew confirms the convention question):
-
-```sh
-cd ~/pantheon/collaborative-state-system
-git push -u origin wif/trust-p1-platform
-gh pr create --title "feat: authorize p1-platform repo for CI service-account impersonation" \
-  --body "Additive WIF binding for the monorepo migration. Expected plan diff: IAM member additions only (p1-platform principalSet on css-github-actions + css-github-actions-plan, per project). Apply staging then production via deploy-infra."
-```
-
-Then: old repo's deploy-infra → staging plan → review (additions only!) → apply → production.
-The monorepo's copy of the module already mirrors the change (commit `5295ff3`).
+Remaining: review/merge #228, then old repo's deploy-infra → staging plan → review
+(**additions only** — expect 8 IAM member adds: workloadIdentityUser + tokenCreator × 2 SAs
+× 2 envs) → apply → production. The monorepo's copy of the module already mirrors the
+change (commit `5295ff3`).
 
 ## 2. GitHub environments — created on p1-platform ✅
 
