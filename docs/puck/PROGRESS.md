@@ -2931,6 +2931,29 @@ Pinning and structural conformance resolve by slot-id membership: a canvas compo
 
 Suites green: puck-css 2010, css-client 306. Review findings fixed: the permission wrapper narrowed items to their type (template pins unenforced on pages), and the two create paths disagreed on empty titles.
 
+---
+
+## PCC-3400: Page Redirects — SDK Client & Middleware (2026-07-28)
+
+**Branch:** `PCC-3400-page-redirects`
+
+### What was built
+
+- `packages/css-client/src/content.ts`: Added `RedirectInfo` interface and `getRedirect(path)` method to `P1ContentClient`. Calls `GET /api/sites/{siteId}/content-redirects/{path}` with site API key. Returns null on 404.
+- `packages/css-client/src/index.ts`: Added `RedirectInfo` to content.ts re-exports.
+- `packages/p1-next-sdk/src/middleware.ts` (new): `createP1Middleware(config)` factory. Skips `/p1/`, `/_next/`, `/api/` prefixes. Calls `getRedirect(pathname)`, returns `NextResponse.redirect()` with appropriate status code (301/302) or `NextResponse.next()`. Handles absolute destination URLs.
+- `packages/p1-next-sdk/src/server.ts`: Added `createP1Middleware` and `P1MiddlewareConfig` exports.
+- `apps/p1-starter/middleware.ts` (new): Starter app middleware wiring using env vars.
+
+### Tests
+
+- `packages/css-client/tests/content.spec.ts`: 5 tests for `getRedirect` (URL construction, strip slashes, 404 null, error throws, temporary redirect).
+- `packages/p1-next-sdk/src/__tests__/middleware.test.ts` (new): 8 tests covering redirect, 302, pass-through, skip /p1/, skip /_next/, skip /api/, error handling, absolute URLs.
+
+### Reviews
+
+Security review: no findings.
+
 ## Persistent-Editor Migration Tooling (2026-07-27)
 
 **Status:** Complete

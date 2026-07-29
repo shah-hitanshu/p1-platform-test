@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { P1ContentClient } from '../src/content.js';
-import type { PageContent, SeoMetadata } from '../src/content.js';
+import type { PageContent, SeoMetadata, RedirectInfo } from '../src/content.js';
 import { P1ApiError } from '../src/errors.js';
 
 // Mock fetch globally
@@ -298,6 +298,104 @@ describe('P1ContentClient', () => {
         status: 500,
         message: 'Server error',
       });
+    });
+  });
+
+  describe('getRedirect', () => {
+    it('should construct correct URL with X-API-Key header', async () => {
+      const mockRedirect: RedirectInfo = {
+        origin: '/old-page',
+        destination: '/new-page',
+        redirectType: 'permanent',
+        parenting: false,
+        statusCode: 301,
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => mockRedirect,
+      });
+
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId });
+      const result = await client.getRedirect('/old-page');
+
+      expect(result).toEqual(mockRedirect);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${baseUrl}/api/sites/${siteId}/content-redirects/old-page`,
+        expect.objectContaining({
+          headers: { 'X-API-Key': apiToken },
+        }),
+      );
+    });
+
+    it('should strip leading slashes from path', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          origin: '/about/team',
+          destination: '/team',
+          redirectType: 'permanent',
+          parenting: false,
+          statusCode: 301,
+        }),
+      });
+
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId });
+      await client.getRedirect('/about/team');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${baseUrl}/api/sites/${siteId}/content-redirects/about/team`,
+        expect.any(Object),
+      );
+    });
+
+    it('should return null on 404', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: async () => ({ error: 'No redirect found' }),
+      });
+
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId });
+      const result = await client.getRedirect('/nonexistent');
+
+      expect(result).toBeNull();
+    });
+
+    it('should throw P1ApiError on non-404 errors', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: 'Internal server error' }),
+      });
+
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId });
+
+      await expect(client.getRedirect('/old-page')).rejects.toThrow(P1ApiError);
+    });
+
+    it('should handle temporary redirect with 302 status code', async () => {
+      const mockRedirect: RedirectInfo = {
+        origin: '/temp-page',
+        destination: '/new-temp-page',
+        redirectType: 'temporary',
+        parenting: false,
+        statusCode: 302,
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => mockRedirect,
+      });
+
+      const client = new P1ContentClient({ baseUrl, apiToken, siteId });
+      const result = await client.getRedirect('/temp-page');
+
+      expect(result?.redirectType).toBe('temporary');
+      expect(result?.statusCode).toBe(302);
     });
   });
 });

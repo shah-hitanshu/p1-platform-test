@@ -52,6 +52,14 @@ export interface PageListResult {
   isMainBranch: boolean;
 }
 
+export interface RedirectInfo {
+  fromPath: string;
+  destination: string;
+  redirectType: 'permanent' | 'temporary';
+  parenting: boolean;
+  statusCode: 301 | 302 | 303 | 307 | 308;
+}
+
 function trimTrailingSlashes(value: string): string {
   let end = value.length;
   while (end > 0 && value[end - 1] === '/') end--;
@@ -99,6 +107,26 @@ export class P1ContentClient {
       );
     }
     return response.json() as Promise<PageContent>;
+  }
+
+  async getRedirect(path: string): Promise<RedirectInfo | null> {
+    const cleanPath = path === '/' ? '' : trimLeadingSlashes(path);
+    const pathSegment = cleanPath ? `/${cleanPath}` : '';
+    const url = `${this.baseUrl}/api/sites/${this.siteId}/content-redirects${pathSegment}`;
+    const response = await fetch(url, {
+      headers: { 'X-API-Key': this.apiToken },
+    });
+    if (response.status === 404) {
+      return null;
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new P1ApiError(
+        (body as { error?: string }).error || `HTTP ${response.status}`,
+        response.status
+      );
+    }
+    return response.json() as Promise<RedirectInfo>;
   }
 
   async getPagePaths(): Promise<PageListResult> {

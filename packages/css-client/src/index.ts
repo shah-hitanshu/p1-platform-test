@@ -141,6 +141,7 @@ export type {
   SeoMetadata,
   PageListEntry,
   PageListResult,
+  RedirectInfo,
 } from './content.js';
 
 // Real-time collaboration
