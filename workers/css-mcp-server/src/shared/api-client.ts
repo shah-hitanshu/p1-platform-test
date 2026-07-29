@@ -1272,4 +1272,59 @@ export class McpApiClient {
     registryCache.set(cacheKey, { cachedAt: Date.now(), schemas });
     return schemas;
   }
+
+  async listDatasources(
+    siteId: string,
+    branchId: string,
+  ): Promise<{ datasources: Record<string, unknown>[] }> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/datasources`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  async listQueries(
+    siteId: string,
+    branchId: string,
+  ): Promise<{ queries: Record<string, unknown>[] }> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/queries`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  async getQuery(
+    siteId: string,
+    branchId: string,
+    queryName: string,
+  ): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/queries/${encodeURIComponent(queryName)}`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  async getQueryResults(
+    siteId: string,
+    branchId: string,
+    queryName: string,
+    options?: { limit?: number; offset?: number },
+  ): Promise<Record<string, unknown>> {
+    const params = new URLSearchParams();
+    if (options?.limit !== undefined) params.set('limit', String(options.limit));
+    if (options?.offset !== undefined) params.set('offset', String(options.offset));
+    const qs = params.toString();
+    const url = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/queries/${encodeURIComponent(queryName)}/results${qs ? `?${qs}` : ''}`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
 }

@@ -83,6 +83,13 @@ export interface DocumentOnBranch extends DocumentWithArchive {
 export interface ListDocumentsOnBranchOptions {
   pathPrefix?: string;
   mainBranchId?: string;
+  templateId?: string;
+  limit?: number;
+  offset?: number;
+  orderBy?: {
+    field: 'path' | 'createdAt';
+    direction: 'asc' | 'desc';
+  };
 }
 
 /**
@@ -323,12 +330,6 @@ const MAX_PATH_LENGTH = 1024;
  * @throws InvalidDocumentPathError if path is empty, whitespace-only, or too long
  */
 export function normalizePath(path: string): string {
-  // Check for null/undefined
-  if (path === null || path === undefined) {
-    throw new InvalidDocumentPathError('path cannot be empty');
-  }
-
-  // Trim whitespace
   let normalized = path.trim();
 
   // Empty string represents root path "/"

@@ -557,3 +557,38 @@ export type {
   SlotPlacement,
   SlotZone,
 } from './slot-delta';
+
+// Datasource Service
+export {
+  getDatasource,
+  listDatasources,
+  createLocalDatasource,
+  deleteDatasource,
+} from './datasource-service';
+
+export type {
+  CreateLocalDatasourceParams,
+  DeleteDatasourceParams,
+} from './datasource-service';
+
+// Query Service
+export {
+  getQuery,
+  listQueries,
+  createQuery,
+  deleteQuery,
+  executeQuery,
+  QueryNotFoundError,
+  DatasourceNotFoundError,
+} from './query-service';
+
+export type {
+  CreateQueryParams,
+  DeleteQueryParams,
+  ExecuteQueryParams,
+} from './query-service';
+
+// Template Hooks
+export { onTemplateCreated } from './template-hooks';
+
+export type { OnTemplateCreatedParams, OnTemplateCreatedResult } from './template-hooks';

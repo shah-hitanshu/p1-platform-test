@@ -44,9 +44,6 @@ export const COW_BASELINE_IDS_KEY = 'cowBaselineComponentIds';
  */
 export const VALID_OPERATION_TYPES = ['set', 'delete', 'insert', 'move', 'replace'] as const;
 
-/** Regex for valid actor ID format (alphanumeric, hyphens, underscores) */
-export const ACTOR_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-
 /**
  * Idle timeout before syncing to PostgreSQL (in milliseconds)
  * Sync triggers after 5 seconds of no edits

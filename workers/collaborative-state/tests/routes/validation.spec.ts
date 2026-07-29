@@ -59,8 +59,14 @@ describe('API Route Validation', () => {
       expect(result.error).toContain('limit must be at least');
     });
 
-    it('should reject limit above maximum', () => {
+    it('should reject limit exceeding MAX_LIMIT', () => {
       const result = validatePagination('500', null);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('limit cannot exceed');
+    });
+
+    it('should reject limit at MAX_LIMIT+1', () => {
+      const result = validatePagination('101', null);
       expect(result.valid).toBe(false);
       expect(result.error).toContain('limit cannot exceed');
     });

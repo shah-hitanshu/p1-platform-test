@@ -33,6 +33,8 @@ export interface RouteParams {
   templateId?: string;
   migrationJobId?: string;
   conflictId?: string;
+  datasourceName?: string;
+  queryName?: string;
 }
 
 /**
@@ -54,6 +56,11 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
       handler: 'admin-users',
       params: { userId: adminUsersMatch[1] },
     };
+  }
+
+  // Admin backfill datasources route
+  if (normalizedPath === '/api/admin/backfill-datasources') {
+    return { handler: 'admin-backfill-datasources', params: {} };
   }
 
   // Site export route (must be before generic site routes)
@@ -662,6 +669,51 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     };
   }
 
+  // Query results route (must come before general query route)
+  // /api/sites/{siteId}/branches/{branchId}/queries/{queryName}/results
+  const queryResultsRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/queries\/([^/]+)\/results$/;
+  const queryResultsMatch = queryResultsRe.exec(normalizedPath);
+  if (queryResultsMatch) {
+    return {
+      handler: 'queries',
+      params: {
+        siteId: queryResultsMatch[1],
+        branchId: queryResultsMatch[2],
+        queryName: queryResultsMatch[3],
+        action: 'results',
+      },
+    };
+  }
+
+  // Query routes
+  // /api/sites/{siteId}/branches/{branchId}/queries/{queryName}?
+  const queryMatch = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/queries(?:\/([^/]+))?$/.exec(normalizedPath);
+  if (queryMatch) {
+    return {
+      handler: 'queries',
+      params: {
+        siteId: queryMatch[1],
+        branchId: queryMatch[2],
+        queryName: queryMatch[3],
+        action: undefined,
+      },
+    };
+  }
+
+  // Datasource routes
+  // /api/sites/{siteId}/branches/{branchId}/datasources/{datasourceName}?
+  const datasourceMatch = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/datasources(?:\/([^/]+))?$/.exec(normalizedPath);
+  if (datasourceMatch) {
+    return {
+      handler: 'datasources',
+      params: {
+        siteId: datasourceMatch[1],
+        branchId: datasourceMatch[2],
+        datasourceName: datasourceMatch[3],
+      },
+    };
+  }
+
   // Structure routes
   // /api/sites/{siteId}/branches/{branchId}/structures/{structureId}?
   const structureMatch = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/structures(?:\/([^/]+))?$/.exec(normalizedPath);
@@ -814,7 +866,7 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
       params: {
         organizationId: agentCrudMatch[1],
         agentId: agentCrudMatch[2],
-        subResource: agentCrudMatch[3] as 'status' | undefined,
+        subResource: agentCrudMatch[3],
       },
     };
   }

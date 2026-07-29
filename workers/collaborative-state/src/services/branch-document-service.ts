@@ -41,6 +41,22 @@ import {
 } from './document-queries';
 import { enforceUniqueSlotIds } from './slot-id-backstop';
 
+function appendPaginationClauses(
+  sql: string,
+  params: unknown[],
+  options: { limit?: number; offset?: number },
+): string {
+  if (options.limit !== undefined) {
+    params.push(options.limit);
+    sql += ` LIMIT $${String(params.length)}`;
+  }
+  if (options.offset !== undefined) {
+    params.push(options.offset);
+    sql += ` OFFSET $${String(params.length)}`;
+  }
+  return sql;
+}
+
 /**
  * Lists documents that have versions on a specific branch.
  * Excludes documents that have been tombstoned (deleted) on the branch.
@@ -53,7 +69,10 @@ export async function listDocumentsOnBranch(
   branchId: string,
   options: ListDocumentsOnBranchOptions = {},
 ): Promise<DocumentOnBranch[]> {
-  const { pathPrefix, mainBranchId } = options;
+  const { pathPrefix, mainBranchId, templateId, limit, offset, orderBy } = options;
+  const orderColumn = orderBy?.field === 'createdAt' ? 'created_at' : 'path';
+  const orderDir = orderBy?.direction === 'desc' ? 'DESC' : 'ASC';
+  const orderClause = `ORDER BY ${orderColumn} ${orderDir}`;
 
   if (branchInheritsFromMain(branchId, mainBranchId)) {
     // Copy-on-write query: include documents from branch + inherited from main
@@ -112,6 +131,13 @@ export async function listDocumentsOnBranch(
       const escapedPrefix = escapeLikePattern(normalizedPrefix) + '%';
       params.push(escapedPrefix);
       sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\'`;
+    }
+
+    let templateParamIdx: number | undefined;
+    if (templateId !== undefined) {
+      params.push(templateId);
+      templateParamIdx = params.length;
+      sql += ` AND dr.target_document_id = $${String(templateParamIdx)}`;
     }
 
     sql += `
@@ -176,7 +202,12 @@ export async function listDocumentsOnBranch(
       sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\'`;
     }
 
-    sql += ' ORDER BY path ASC';
+    if (templateId !== undefined && templateParamIdx !== undefined) {
+      sql += ` AND dr.target_document_id = $${String(templateParamIdx)}`;
+    }
+
+    sql += ` ${orderClause}`;
+    sql = appendPaginationClauses(sql, params, { limit, offset });
 
     const result = await query<DocumentOnBranchRow>(sql, params);
 
@@ -238,11 +269,143 @@ export async function listDocumentsOnBranch(
     sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\'`;
   }
 
-  sql += ' ORDER BY d.path ASC';
+  if (templateId !== undefined) {
+    params.push(templateId);
+    sql += ` AND dr.target_document_id = $${String(params.length)}`;
+  }
+
+  sql += ` ${orderClause}`;
+  sql = appendPaginationClauses(sql, params, { limit, offset });
 
   const result = await query<DocumentOnBranchRow>(sql, params);
 
   return result.rows.map(mapRowToDocumentOnBranch);
+}
+
+/**
+ * Counts documents on a branch, using the same filtering as listDocumentsOnBranch
+ * but without LIMIT/OFFSET.
+ */
+export async function countDocumentsOnBranch(
+  branchId: string,
+  options: Pick<ListDocumentsOnBranchOptions, 'pathPrefix' | 'mainBranchId' | 'templateId'> = {},
+): Promise<number> {
+  const { pathPrefix, mainBranchId, templateId } = options;
+
+  if (branchInheritsFromMain(branchId, mainBranchId)) {
+    let sql = `
+      SELECT COUNT(*) AS count FROM (
+        SELECT d.id
+        FROM app.documents d
+        ${TEMPLATE_RELATION_JOIN}
+        INNER JOIN app.document_versions dv ON dv.document_id = d.id
+        WHERE dv.branch_id = $1
+          AND d.archived_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM app.document_versions dv2
+            WHERE dv2.document_id = d.id AND dv2.branch_id = $1
+              AND dv2.is_tombstone = true
+              AND dv2.version_number = (
+                SELECT MAX(dv3.version_number)
+                FROM app.document_versions dv3
+                WHERE dv3.document_id = d.id AND dv3.branch_id = $1
+              )
+          )`;
+
+    const params: unknown[] = [branchId, mainBranchId];
+
+    if (pathPrefix !== undefined && pathPrefix !== '') {
+      const normalizedPrefix = normalizePath(pathPrefix);
+      const escapedPrefix = escapeLikePattern(normalizedPrefix) + '%';
+      params.push(escapedPrefix);
+      sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\'`;
+    }
+
+    let templateParamIdx: number | undefined;
+    if (templateId !== undefined) {
+      params.push(templateId);
+      templateParamIdx = params.length;
+      sql += ` AND dr.target_document_id = $${String(templateParamIdx)}`;
+    }
+
+    sql += `
+
+        UNION
+
+        SELECT d.id
+        FROM app.documents d
+        ${TEMPLATE_RELATION_JOIN}
+        INNER JOIN app.document_versions dv ON dv.document_id = d.id
+        INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
+        INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+        WHERE dv.branch_id = $2
+          AND cp.branch_id = $2
+          AND cp.checkpoint_type = 'publish'
+          AND d.archived_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM app.document_versions dv_branch
+            WHERE dv_branch.document_id = d.id AND dv_branch.branch_id = $1
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM app.document_versions dv_tomb
+            WHERE dv_tomb.document_id = d.id AND dv_tomb.branch_id = $2
+              AND dv_tomb.is_tombstone = true
+              AND dv_tomb.version_number = (
+                SELECT MAX(dv_latest.version_number)
+                FROM app.document_versions dv_latest
+                WHERE dv_latest.document_id = d.id AND dv_latest.branch_id = $2
+              )
+          )`;
+
+    if (pathPrefix !== undefined && pathPrefix !== '') {
+      sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\'`;
+    }
+
+    if (templateId !== undefined && templateParamIdx !== undefined) {
+      sql += ` AND dr.target_document_id = $${String(templateParamIdx)}`;
+    }
+
+    sql += `) counted`;
+
+    const result = await query<{ count: string }>(sql, params);
+    return parseInt(result.rows[0].count, 10);
+  }
+
+  let sql = `
+    SELECT COUNT(*) AS count FROM (
+      SELECT d.id
+      FROM app.documents d
+      ${TEMPLATE_RELATION_JOIN}
+      INNER JOIN app.document_versions dv ON dv.document_id = d.id
+      WHERE dv.branch_id = $1
+        AND d.archived_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM app.document_versions dv2
+          WHERE dv2.document_id = d.id AND dv2.branch_id = $1
+            AND dv2.is_tombstone = true
+            AND dv2.version_number = (
+              SELECT MAX(dv3.version_number)
+              FROM app.document_versions dv3
+              WHERE dv3.document_id = d.id AND dv3.branch_id = $1
+            )
+        )`;
+
+  const params: unknown[] = [branchId];
+
+  if (pathPrefix !== undefined && pathPrefix !== '') {
+    params.push(escapeLikePattern(pathPrefix) + '%');
+    sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\'`;
+  }
+
+  if (templateId !== undefined) {
+    params.push(templateId);
+    sql += ` AND dr.target_document_id = $${String(params.length)}`;
+  }
+
+  sql += `) counted`;
+
+  const result = await query<{ count: string }>(sql, params);
+  return parseInt(result.rows[0].count, 10);
 }
 
 const TEMPLATES_PATH_PREFIX = '_registry/templates/';

@@ -5391,3 +5391,151 @@ This subsumes the validator hunk in the content-shape cutover PR (#185), which c
 #### Reviews
 
 Combined correctness/security review: clean on correctness, consumer audit, and security (strict `=== true` pin checks defeat prototype-chain lookups; membership via Set). One test gap fixed (order error index values now pinned). Noted by design: a manifest-shaped template pins nothing, so conformance activates once the content-shape cutover lands, the same gate Phases 2 and 3 carry; the manifest-typed `getTemplate` client signature is reconciled by the cutover PR.
+
+---
+
+### Datasources and Pre-Made Queries for Content Type Views (PCC-3284)
+
+**Status:** Complete
+**Branch:** `PCC-3284-develop-pre-made-queries-for-internal-content-rendering-in-the-view-system`
+**Commits:**
+- `da66757` - add template filter tests for listDocumentsOnBranch
+- `7a2ac26` - add datasource/query types, templateId filtering, and query index
+- `2abdba4` - add tests for datasource, query, and template hook services
+- `981d5be` - implement datasource, query, and template hook services
+- `b50c5c8` - export datasource, query, and template hook services from barrel
+- `303dada` - add tests for datasource and query REST API routes
+- `d366a38` - implement datasource and query REST API routes
+- `2ba523c` - add MCP tools for datasources and queries
+- `b856063` - add datasource/query lifecycle integration tests
+- `89e71ae` - fix: clamp query limit and offset to prevent maxLimit bypass
+
+#### Problem
+When a developer creates a content type template, editors need a way to display dynamic lists of documents using that template. The existing `listDocumentsOnBranch` had no concept of content type filtering, and there was no standardized way to define reusable queries for the View system.
+
+#### Solution
+Implemented a two-layer model: **Datasources** define WHERE data comes from (a local content type), and **Queries** define WHAT to retrieve from a datasource (filters, sort, pagination). Both are stored as branch-versioned documents under `_registry/`.
+
+#### Implementation (5 phases, TDD)
+
+**Phase 1 — Types and Database:**
+- `workers/src/types/datasource.ts` — `LocalDatasourceSnapshot` with `type: 'local'` discriminator
+- `workers/src/types/query.ts` — `QuerySnapshot`, `QuerySortField`, `QueryFilter`, `ExecuteQueryResult`
+- Extended `listDocumentsOnBranch` with `templateId`, `limit`, `offset` across all 3 SQL paths (single-branch, COW UNION, published)
+- Migration `039_query_index.sql` — partial index on `(site_id, template_id)`
+
+**Phase 2 — Services:**
+- `workers/src/services/datasource-service.ts` — CRUD for `_registry/datasources/{name}`
+- `workers/src/services/query-service.ts` — CRUD + `executeQuery` (resolves query -> datasource -> templateId -> listDocumentsOnBranch)
+- `workers/src/services/template-hooks.ts` — `onTemplateCreated` idempotently auto-generates datasource + default query
+
+**Phase 3 — REST API:**
+- `workers/src/routes/datasource-api.ts` — GET list/single, DELETE with canView/canEdit authorization
+- `workers/src/routes/query-api.ts` — GET list/single, DELETE, POST execute
+- Route parser patterns added before structure routes to avoid regex conflicts
+
+**Phase 4 — MCP Tools:**
+- `list_datasources`, `list_queries`, `get_query`, `execute_query` tools
+- Corresponding API client methods in `api-client.ts`
+
+**Phase 5 — Lifecycle Tests:**
+- End-to-end service composition tests covering auto-generation, query execution, maxLimit enforcement, pagination, multiple queries per datasource, and idempotent creation
+
+#### Security Review
+- **Finding:** Negative `limit` values bypassed `maxLimit` guard (`Math.min(-1, 100) = -1`, PostgreSQL treats as no limit). **Fixed** by clamping limit to `Math.max(1, ...)` and offset to `Math.max(0, ...)`.
+- No SQL injection (all queries parameterized), no path traversal (`normalizePath` rejects `..`), authorization consistently applied.
+
+#### Key Decisions
+- **Flat registry paths:** `_registry/datasources/{name}` and `_registry/queries/{name}` (no nesting)
+- **Default query output:** metadata-only (`includeSnapshot: false`, `includeMetadata: true`)
+- **Query defaults:** `defaultLimit: 20`, `maxLimit: 100`
+- **Idempotent auto-generation:** Catches `DuplicateDocumentPathError` to make re-running safe
+- **MCP tools use `Record<string, unknown>`:** Avoids tight coupling between MCP layer and backend types
+
+#### Tests
+- Unit tests: 39 tests across 7 new spec files (datasource-service, query-service, template-hooks, datasource-api, query-api, route-parser-datasource-query, datasource-query-lifecycle)
+- Full test suite: 171 files, 3034 tests passing
+- Lint: 0 errors
+
+### PR #166 Code Review Fixes (2026-07-23)
+
+Addressed 11 findings from code review by `a11rew` on PR #166.
+
+#### Changes
+
+**Branch Fallback (Copy-on-Write):**
+- `getDatasource` and `getQuery` now accept optional `mainBranchId` and use `getLatestDocumentVersionWithFallback` to try the branch first, then fall back to main's published version
+- `listDatasources` and `listQueries` forward `mainBranchId` to `listDocumentsOnBranch` for COW support
+- Route handlers (`datasource-api.ts`, `query-api.ts`) resolve `mainBranchId` via `getBranch`/`getMainBranch` early in the handler, covering all code paths
+
+**Sort Application:**
+- `executeQuery` now applies JS-level sort from the query's `sort[0]` config instead of always returning SQL's default `path:asc` order
+- `sortedBy` in response accurately reflects the applied sort field and direction
+
+**Pagination Clamping:**
+- `validatePagination` now clamps `limit` to `PAGINATION.MAX_LIMIT` (100) instead of rejecting with 400
+
+**Name Validation:**
+- `createLocalDatasource` and `createQuery` reject names not matching `^[a-zA-Z0-9_-]+$`
+
+**maxLimit Ceiling:**
+- `createQuery` caps `maxLimit` at `PAGINATION.MAX_LIMIT` via `Math.min(params.maxLimit ?? 100, PAGINATION.MAX_LIMIT)`
+
+**CI Fixes:**
+- Renumbered `043_query_index.sql` to `044_query_index.sql` to resolve conflict with `043_migration_prop_conflicts.sql` from main
+- Regenerated `pnpm-lock.yaml` after merge
+
+#### Key Decisions
+- **Full plumbing for branch fallback** — route layer resolves `mainBranchId` and passes it through service calls rather than hard-coding at the service layer
+- **Sort applied in JS** — SQL returns documents in `path:asc`; sort config is applied post-query in `executeQuery`
+- **Clamp, don't reject** — pagination above max returns clamped results (200) rather than an error (400)
+- **Skipped runtime snapshot validation** — no codebase precedent for Zod/schema validation on internal `as` casts
+- **Skipped performance tests** — `listDatasources`/`listQueries` full-branch scan is a known limitation, not testable at unit level
+
+#### Tests
+- Added 19 new/modified tests across 3 spec files (red state committed at 606224c)
+- Updated 4 existing test files to account for implementation changes
+- Full test suite: 205 files, 3597 tests passing
+- Lint: 0 errors on all modified files
+
+---
+
+### QueryResultItem Metadata Population (PCC-3284 continued)
+
+**Status:** Complete
+**Commits:**
+- `dfdafad` - fix: add datasource and query handlers to service principal scope rules
+- `36c4976` - test: add red-state tests for query metadata/snapshot population
+- `5939b68` - feat: populate QueryResultItem metadata and snapshot from document versions
+
+#### Problem
+`executeQuery` returned items with only `{ documentId, path, createdAt }` even though `QueryResultItem` defines optional `metadata` and `snapshot` fields, and the query config stores `includeMetadata` (default true) and `includeSnapshot` (default false) flags. These flags were stored but never read at runtime. Template expressions like `{{ item.metadata.title }}` resolved to empty strings.
+
+Separately, service API tokens (sat_) with `read:all`/`read:published`/`read:draft` scopes were getting 403 on `/datasources` and `/queries` endpoints because those handlers were missing from `allowedHandlers` in the service principal scope rules. This caused query results to return empty objects when accessed via sat_ tokens.
+
+#### Implementation
+
+**Service Principal Scope Fix:**
+- Added `'datasources'` and `'queries'` to `allowedHandlers` for `read:published`, `read:all`, and `read:draft` scope rules in `service-principal.ts`
+
+**Metadata Extraction:**
+- Added `extractMetadataFromSnapshot(snapshot)` helper in `query-service.ts` that extracts `root.props` fields from Puck snapshots, stripping internal `_`-prefixed keys (e.g., `_contentTypeTemplateId`)
+- Added `getLatestVersionsForDocuments(documentIds, branchId)` in `document-version-service.ts` for targeted batch version lookup
+
+**executeQuery Enhancement:**
+- When `includeMetadata` or `includeSnapshot` is true, batch-fetches document version snapshots
+- Partitions documents by COW `inherited` flag: local docs fetched from `branchId`, inherited docs from `mainBranchId`
+- Populates `metadata` (via `extractMetadataFromSnapshot`) and/or `snapshot` on each `QueryResultItem`
+- When both flags are false, no version fetch occurs (zero overhead)
+
+#### Key Decisions
+- **Backend responsibility** — template authors use `{{ item.metadata.title }}` without knowing Puck's `snapshot.root.props` layout
+- **Strip internal fields** — `_`-prefixed props are Puck internals, not exposed in metadata
+- **COW-aware** — inherited documents fetch versions from mainBranchId, not the feature branch
+
+#### Tests
+- 11 new tests: 5 for `extractMetadataFromSnapshot`, 6 for `executeQuery` metadata/snapshot population
+- Tests committed at `36c4976` (red state), implementation at `5939b68` (green state)
+
+#### Security Review
+Clean — no actionable findings. All SQL queries parameterized, authorization enforced on all endpoints, name validation prevents path traversal, includeSnapshot operates under existing canView authorization.

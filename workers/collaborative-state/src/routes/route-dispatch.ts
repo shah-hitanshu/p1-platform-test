@@ -36,6 +36,9 @@ import { handleSiteSettingsRoutes } from './site-settings-api';
 import { handleContentRoutes } from './content-api';
 import { handleSiteExportRoute } from './site-export-api';
 import { handleSiteImportRoute } from './site-import-api';
+import { handleDatasourceRoutes } from './datasource-api';
+import { handleQueryRoutes } from './query-api';
+import { handleBackfillDatasources } from './backfill-datasources-api';
 import { getMainBranch } from '../services/branch-service';
 import { errorResponse } from '../utils/http-helpers';
 import { resolveBranchRef } from '../utils/branch-ref';
@@ -219,6 +222,9 @@ export async function dispatchRoute(
         principal,
       });
 
+    case 'admin-backfill-datasources':
+      return await handleBackfillDatasources(request, principal);
+
     case 'collaborators':
       return await handleCollaboratorRoutes(request, {
         siteId: route.params.siteId ?? '',
@@ -297,6 +303,23 @@ export async function dispatchRoute(
       return await handleSiteAgentRoleRoutes(request, {
         siteId: route.params.siteId,
         roleId: route.params.roleId,
+        principal,
+      });
+
+    case 'datasources':
+      return await handleDatasourceRoutes(request, {
+        siteId: route.params.siteId ?? '',
+        branchId: route.params.branchId,
+        datasourceName: route.params.datasourceName,
+        principal,
+      });
+
+    case 'queries':
+      return await handleQueryRoutes(request, {
+        siteId: route.params.siteId ?? '',
+        branchId: route.params.branchId,
+        queryName: route.params.queryName,
+        action: route.params.action,
         principal,
       });
 

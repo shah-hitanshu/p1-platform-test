@@ -489,6 +489,30 @@ const RenamePageInputSchema = z.object({
   path: z.string().min(1).describe('The new document path (e.g. "plans" or "products/widget").'),
 });
 
+const ListDatasourcesInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+});
+
+const ListQueriesInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+});
+
+const GetQueryInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  query_name: z.string().describe('The query name (from list_queries)'),
+});
+
+const QueryResultsInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  query_name: z.string().describe('The query name (from list_queries)'),
+  limit: z.number().optional().describe('Max results to return'),
+  offset: z.number().optional().describe('Number of results to skip'),
+});
+
 // =============================================================================
 // Tool Definitions
 // =============================================================================
@@ -752,6 +776,30 @@ export function getToolDefinitions(): ToolDefinition[] {
       description:
         'Change a page\'s path. This is site-scoped: the new path applies across the site, not only on your working branch. Errors if another document already occupies the new path.',
       inputSchema: RenamePageInputSchema,
+    },
+    {
+      name: 'list_datasources',
+      description:
+        'List all datasources on a branch. Datasources define WHERE data comes from (content type templates). Auto-generated when templates are created.',
+      inputSchema: ListDatasourcesInputSchema,
+    },
+    {
+      name: 'list_queries',
+      description:
+        'List all queries on a branch. Queries define WHAT to retrieve from a datasource (filters, sort, pagination). Use get_query_results to retrieve results.',
+      inputSchema: ListQueriesInputSchema,
+    },
+    {
+      name: 'get_query',
+      description:
+        'Get the full definition of a query including its datasource reference, sort order, filters, and limits.',
+      inputSchema: GetQueryInputSchema,
+    },
+    {
+      name: 'get_query_results',
+      description:
+        'Retrieve documents matching a named query. Returns document IDs, paths, and metadata. Use list_queries first to discover available queries.',
+      inputSchema: QueryResultsInputSchema,
     },
   ];
 }
@@ -1091,6 +1139,10 @@ type PublishPageInput = z.infer<typeof PublishPageInputSchema>;
 type ArchivePageInput = z.infer<typeof ArchivePageInputSchema>;
 type RestorePageInput = z.infer<typeof RestorePageInputSchema>;
 type RenamePageInput = z.infer<typeof RenamePageInputSchema>;
+type ListDatasourcesInput = z.infer<typeof ListDatasourcesInputSchema>;
+type ListQueriesInput = z.infer<typeof ListQueriesInputSchema>;
+type GetQueryInput = z.infer<typeof GetQueryInputSchema>;
+type QueryResultsInput = z.infer<typeof QueryResultsInputSchema>;
 
 export interface ToolHandlers {
   list_sites: () => Promise<ToolResult>;
@@ -1136,6 +1188,10 @@ export interface ToolHandlers {
   archive_page: (input: ArchivePageInput) => Promise<ToolResult>;
   restore_page: (input: RestorePageInput) => Promise<ToolResult>;
   rename_page: (input: RenamePageInput) => Promise<ToolResult>;
+  list_datasources: (input: ListDatasourcesInput) => Promise<ToolResult>;
+  list_queries: (input: ListQueriesInput) => Promise<ToolResult>;
+  get_query: (input: GetQueryInput) => Promise<ToolResult>;
+  get_query_results: (input: QueryResultsInput) => Promise<ToolResult>;
 }
 
 // =============================================================================
@@ -2220,6 +2276,71 @@ export function createToolHandlers(
         return formatError(error);
       }
     },
+
+    async list_datasources(input: ListDatasourcesInput): Promise<ToolResult> {
+      try {
+        const result = await apiClient.listDatasources(input.site_id, input.branch_id);
+        if (result.datasources.length === 0) {
+          return formatResult('No datasources found on this branch.');
+        }
+        const formatted = result.datasources
+          .map((ds: Record<string, unknown>) => {
+            const rawDesc = ds.description;
+            const desc = typeof rawDesc === 'string' ? ` — ${rawDesc}` : '';
+            return `- ${String(ds.name)} (template: ${String(ds.templateName)})${desc}`;
+          })
+          .join('\n');
+        return formatResult(`Datasources:\n${formatted}`);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async list_queries(input: ListQueriesInput): Promise<ToolResult> {
+      try {
+        const result = await apiClient.listQueries(input.site_id, input.branch_id);
+        if (result.queries.length === 0) {
+          return formatResult('No queries found on this branch.');
+        }
+        const formatted = result.queries
+          .map((q: Record<string, unknown>) => {
+            const auto = q.autoGenerated === true ? ' [auto]' : '';
+            const line = `datasource: ${String(q.datasource)}, limit: ${String(q.defaultLimit)}`;
+            return `- ${String(q.name)}${auto}\n  ${line}`;
+          })
+          .join('\n');
+        return formatResult(`Queries:\n${formatted}`);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async get_query(input: GetQueryInput): Promise<ToolResult> {
+      try {
+        const query = await apiClient.getQuery(
+          input.site_id,
+          input.branch_id,
+          input.query_name,
+        );
+        return formatResult(query);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async get_query_results(input: QueryResultsInput): Promise<ToolResult> {
+      try {
+        const result = await apiClient.getQueryResults(
+          input.site_id,
+          input.branch_id,
+          input.query_name,
+          { limit: input.limit, offset: input.offset },
+        );
+        return formatResult(result);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
   };
 }
 
@@ -2271,4 +2392,8 @@ export const schemas = {
   archive_page: ArchivePageInputSchema,
   restore_page: RestorePageInputSchema,
   rename_page: RenamePageInputSchema,
+  list_datasources: ListDatasourcesInputSchema,
+  list_queries: ListQueriesInputSchema,
+  get_query: GetQueryInputSchema,
+  get_query_results: QueryResultsInputSchema,
 };

@@ -524,6 +524,21 @@ export async function getLatestVersionsForBranch(branchId: string): Promise<Docu
   return result.rows.map(mapRowToDocumentVersion);
 }
 
+export async function getLatestVersionsForDocuments(
+  documentIds: string[],
+  branchId: string,
+): Promise<DocumentVersion[]> {
+  if (documentIds.length === 0) return [];
+  const result = await query<DocumentVersionRow>(
+    `SELECT DISTINCT ON (document_id) *
+     FROM app.document_versions
+     WHERE document_id = ANY($1) AND branch_id = $2
+     ORDER BY document_id, version_number DESC`,
+    [documentIds, branchId],
+  );
+  return result.rows.map(mapRowToDocumentVersion);
+}
+
 /**
  * Lists all versions for a document on a branch in descending order.
  *

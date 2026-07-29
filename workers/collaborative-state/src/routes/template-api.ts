@@ -24,6 +24,7 @@ import { assertPermission, getEffectiveRole, AuthorizationError } from '../auth/
 import { isManifestShapedSnapshot, convertManifestToContent } from '../services/template-content-backfill';
 import { query } from '../db';
 import { TEMPLATE_RELATION_INNER_JOIN } from '../services/document-queries';
+import { onTemplateCreated } from '../services/template-hooks';
 import {
   triggerMigration,
   processMigration,
@@ -414,6 +415,19 @@ async function handleCreateTemplate(
     createdByType: toActorType(principal.type),
   });
 
+  let hookWarning: string | undefined;
+  const hookResult = await onTemplateCreated({
+    siteId,
+    branchId,
+    templateName: body.name,
+    templateId: result.document.id,
+    createdById: principal.dbUserId ?? principal.id,
+  });
+  if (hookResult.errors.length > 0) {
+    console.error('onTemplateCreated partial failure:', hookResult.errors);
+    hookWarning = 'Auto-generated datasource/query creation failed. Use the backfill endpoint to retry.';
+  }
+
   return jsonResponse(
     {
       id: result.document.id,
@@ -422,6 +436,7 @@ async function handleCreateTemplate(
       updatedAt: result.version.createdAt,
       ...snapshot,
       ...legacyTemplateProjection(snapshot),
+      ...(hookWarning !== undefined ? { warning: hookWarning } : {}),
     },
     201,
   );

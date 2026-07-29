@@ -36,21 +36,21 @@ export const SCOPE_RULES: Record<string, ScopeRule[]> = {
   'read:published': [
     {
       methods: ['GET'],
-      allowedHandlers: ['content'],
+      allowedHandlers: ['content', 'datasources', 'queries'],
       mainBranchOnly: true,
     },
   ],
   'read:all': [
     {
       methods: ['GET'],
-      allowedHandlers: ['content', 'documents', 'branches', 'site-export'],
+      allowedHandlers: ['content', 'documents', 'branches', 'site-export', 'datasources', 'queries'],
       mainBranchOnly: false,
     },
   ],
   'read:draft': [
     {
       methods: ['GET'],
-      allowedHandlers: ['content', 'documents', 'branches'],
+      allowedHandlers: ['content', 'documents', 'branches', 'datasources', 'queries'],
       mainBranchOnly: false,
     },
   ],
