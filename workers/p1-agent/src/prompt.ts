@@ -1,3 +1,5 @@
+import type { ChatContext } from './types.js';
+
 // The agent's system prompt. Kept in its own module (no Workers-runtime imports) so it
 // can be imported both by the Durable Object (agent.ts) and by Node tooling such as the
 // prompt-cache smoke test, which must measure the real prefix.
@@ -76,3 +78,62 @@ Never use \`remove\` followed by \`add\` to reposition a component — array ind
 - Always use the \`site_id\` from the editor context
 - When selecting an image for a page component, show the user the filename and URL and confirm before using it — unless the filename makes the content unambiguous (e.g., \`logo.png\`, \`hero-banner.jpg\`)
 - If \`search\` is provided, it filters by filename substring (case-insensitive)`;
+
+/**
+ * The context block prepended to the user's message for the model only.
+ *
+ * Kept out of what gets persisted and displayed (see the `userContent` / `message` split
+ * at the call site): these are instructions to the model, and showing them in the
+ * transcript makes the user's own brief read as if they wrote our prompt.
+ *
+ */
+export function buildContextNote(context: ChatContext): string {
+  const isExisting = !!(context.documentId || context.puckData);
+  // A newly created page has a documentId, so it would otherwise be labelled "existing document"
+  // directly above a line saying it was just created and is empty.
+  const header = context.newPage
+    ? '[Current editor context — new empty page]'
+    : isExisting
+      ? '[Current editor context — existing document]'
+      : '[Current editor context]';
+  const lines: string[] = [header];
+  if (context.siteId) lines.push(`Site ID: ${context.siteId}`);
+  if (context.branchId) lines.push(`Branch ID: ${context.branchId}`);
+  if (context.documentPath) lines.push(`Document: ${context.documentPath}`);
+  if (context.newPage) {
+    // Seeded from Create Page. The page exists but is empty, so the generic "already
+    // exists" note below would be read as "there is something here to work around".
+    // Stated as the situation plus the expected response, because without the second
+    // half the model reliably opens with "which page would you like me to use?" on a
+    // brief as thin as "I want a pricing page" (product decision: draft, don't ask).
+    lines.push(
+      'This page was just created for this request and is empty. Build it here now:',
+      'do not create another page, and do not ask which page to use.',
+      'If the brief is thin, make reasonable, conventional choices for a page of this',
+      'kind and draft it immediately rather than asking clarifying questions. The user',
+      'refines it from here, so a first draft is more useful to them than a question.',
+      '',
+      // The Create Page dialog collects a title and sets root.props.title, but has
+      // nothing to derive a description from, so every AI-drafted page would otherwise ship
+      // with an empty meta description. The agent is the only party here that knows what
+      // the page ends up saying, so it is the right one to write it.
+      //
+      // Ordered after the content deliberately. Written first it would describe a page
+      // that does not exist yet, so a build that then fails or is stopped leaves a
+      // confidently wrong description behind — worse than an empty one, which at least
+      // reads as unfinished. Kept inside the same session because anything after
+      // complete_edit_session needs a second session and is the step most likely to be
+      // dropped.
+      'The page title is already set. The SEO meta description is empty, so write one too.',
+      'Build the content first, then, before completing the same edit session, set the',
+      'description from what you actually built: a single sentence of roughly 150',
+      'characters, as a "replace" operation on path "root.props.description".',
+      'Leave "root.props.title" alone.',
+      'Mentioning it in one short clause is fine. Do not explain what a meta description',
+      'is or why it matters.',
+    );
+  } else if (isExisting) {
+    lines.push('This document already exists. Use the edit workflow unless the user explicitly asks to create a new page.');
+  }
+  return lines.length > 1 ? lines.join('\n') : '';
+}

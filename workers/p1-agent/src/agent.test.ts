@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type OpenAI from 'openai';
 import { trimHistory, sanitizeHistory, trimForHistory, buildRestoredHistory } from './history.js';
+import { buildContextNote } from './prompt.js';
 import { injectPuckIds } from './tools.js';
 
 type Msg = OpenAI.Chat.Completions.ChatCompletionMessageParam;
@@ -303,5 +304,82 @@ describe('injectPuckIds', () => {
     expect(injectPuckIds(42)).toBe(42);
     expect(injectPuckIds(null)).toBeNull();
     expect(injectPuckIds({ notAComponent: true })).toEqual({ notAComponent: true });
+  });
+});
+
+describe('buildContextNote', () => {
+  const base = { siteId: 's1', branchId: 'b1', documentPath: '/pricing', token: 't' };
+
+  // The product decision on PCC-3440: a thin brief gets a draft, not a question. Without
+  // this the model opens with "which page would you like me to use?".
+  it('tells the agent to draft immediately for a freshly created page', () => {
+    const note = buildContextNote({ ...base, documentId: 'd1', newPage: true });
+
+    expect(note).toContain('was just created for this request and is empty');
+    expect(note).toContain('do not ask which page to use');
+    expect(note).toContain('rather than asking clarifying questions');
+  });
+
+  it('does not add the drafting instruction to an ordinary turn', () => {
+    const note = buildContextNote({ ...base, documentId: 'd1' });
+
+    expect(note).not.toContain('asking clarifying questions');
+    // The existing edit-workflow hint still applies to a document that already has content.
+    expect(note).toContain('This document already exists');
+  });
+
+  it('replaces the edit-workflow hint rather than stacking both', () => {
+    const note = buildContextNote({ ...base, documentId: 'd1', newPage: true });
+
+    // Both at once reads as a contradiction: work around what is here, and also it is empty.
+    expect(note).not.toContain('This document already exists');
+  });
+
+  // The Create Page dialog sets root.props.title but has nothing to derive a description
+  // from, so an AI-drafted page would otherwise ship with an empty meta description.
+  it('asks for an SEO description at the path the edit tool expects', () => {
+    const note = buildContextNote({ ...base, documentId: 'd1', newPage: true });
+
+    expect(note).toContain('root.props.description');
+    expect(note).toContain('Leave "root.props.title" alone.');
+  });
+
+  // Written before the content it would describe a page that does not exist yet, so a
+  // build that fails or is stopped leaves a confidently wrong description behind. Kept in
+  // the same session because anything after complete_edit_session needs a second one.
+  it('orders the description after the content, inside the same edit session', () => {
+    const note = buildContextNote({ ...base, documentId: 'd1', newPage: true });
+
+    expect(note).toContain('Build the content first');
+    expect(note).toContain('before completing the same edit session');
+    expect(note).toContain('from what you actually built');
+  });
+
+  it('allows a brief mention but not an explanation of SEO', () => {
+    const note = buildContextNote({ ...base, documentId: 'd1', newPage: true });
+
+    expect(note).toContain('one short clause is fine');
+    expect(note).toContain('Do not explain what a meta description');
+  });
+
+  it('does not ask an ordinary turn to touch the description', () => {
+    const note = buildContextNote({ ...base, documentId: 'd1' });
+
+    expect(note).not.toContain('root.props.description');
+  });
+
+  it('labels the page as new rather than existing, despite it having an id', () => {
+    const note = buildContextNote({ ...base, documentId: 'd1', newPage: true });
+
+    expect(note).toContain('[Current editor context — new empty page]');
+    expect(note).not.toContain('existing document');
+  });
+
+  it('still carries the ids the agent needs to act', () => {
+    const note = buildContextNote({ ...base, newPage: true });
+
+    expect(note).toContain('Site ID: s1');
+    expect(note).toContain('Branch ID: b1');
+    expect(note).toContain('Document: /pricing');
   });
 });

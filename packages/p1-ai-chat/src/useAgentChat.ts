@@ -1,26 +1,6 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
-import type { ChatMessage, ToolCallStatus, ServerMessage, ChatContext, RestoredMessage } from './types.js';
-
-function makeId(): string {
-  return Math.random().toString(36).slice(2, 9);
-}
-
-/**
- * Map a replayed turn into the UI message shape. Restored tool calls are always
- * terminal — they already ran — so their status is 'done'.
- */
-function restoredToChatMessage(m: RestoredMessage): ChatMessage {
-  const toolCalls: ToolCallStatus[] | undefined =
-    m.toolCalls && m.toolCalls.length > 0
-      ? m.toolCalls.map(tc => ({ name: tc.name, input: tc.input, result: tc.result, status: 'done' as const }))
-      : undefined;
-  return {
-    id: makeId(),
-    role: m.role,
-    content: m.content,
-    ...(toolCalls ? { toolCalls } : {}),
-  };
-}
+import { useState, useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
+import type { ChatMessage, ChatContext } from './types.js';
+import { acquireChatSession, type SendMessageOptions } from './chatSession.js';
 
 export interface UseAgentChatOptions {
   agentUrl: string;
@@ -34,213 +14,61 @@ export interface UseAgentChatReturn {
   input: string;
   setInput: (value: string) => void;
   submit: () => void;
+  /**
+   * Send a chat turn programmatically (without the input box). Optionally override
+   * the target `documentPath`. Shares the same send path as {@link submit}.
+   */
+  sendMessage: (text: string, opts?: SendMessageOptions) => Promise<void>;
   isLoading: boolean;
+  /** True while the WebSocket for the current scope is open and usable. */
+  ready: boolean;
   clearMessages: () => void;
 }
 
+/**
+ * Thin view over the module-level {@link acquireChatSession session store}. The
+ * socket and messages live in the store keyed by `agentId`, so the conversation and
+ * an in-progress stream survive this component remounting (Puck remounts plugin
+ * panels while a new page hydrates). Switching `agentId` attaches to a different
+ * conversation; the previous one lingers briefly then is reaped.
+ */
 export function useAgentChat({ agentUrl, agentId, getContext }: UseAgentChatOptions): UseAgentChatReturn {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-  const currentAssistantIdRef = useRef<string | null>(null);
-  // Read lazily inside getOrCreateWs so the connection always targets the latest scope.
-  const agentIdRef = useRef(agentId);
-  agentIdRef.current = agentId;
 
-  const getOrCreateWs = useCallback((): Promise<WebSocket> => {
-    return new Promise((resolve, reject) => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        resolve(wsRef.current);
-        return;
-      }
+  // Auth and ids get a new closure identity every render, but the conversation they
+  // describe doesn't — read them through a ref so the session isn't re-acquired.
+  const getContextRef = useRef(getContext);
+  getContextRef.current = getContext;
 
-      const encodedAgentId = encodeURIComponent(agentIdRef.current);
-      const wsUrl = `${agentUrl.replace(/^http/, 'ws').replace(/\/$/, '')}/agents/chat-agent/${encodedAgentId}`;
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+  // One handle per conversation scope. Memoizing it keeps subscribe/getState
+  // referentially stable, which is what stops useSyncExternalStore resubscribing
+  // (and tearing down the socket) on every render.
+  const session = useMemo(
+    () => acquireChatSession(agentId, agentUrl, () => getContextRef.current()),
+    [agentId, agentUrl],
+  );
 
-      ws.onopen = () => {
-        void (async () => {
-          // Ask the agent for any persisted history so a page reload restores the chat.
-          // The token authorizes the read (the agent scopes history to its owner); the
-          // response is applied only when the local view is empty (see 'history'), so
-          // this never clobbers an in-progress conversation. A failed token fetch still
-          // resolves the connection — chat can proceed even without restored history.
-          try {
-            const context = await getContext();
-            ws.send(JSON.stringify({ type: 'get_history', token: context.token }));
-          } catch {
-            // Non-fatal — the connection is still usable without restored history.
-          } finally {
-            resolve(ws);
-          }
-        })();
-      };
-      ws.onerror = () => reject(new Error('WebSocket connection failed'));
-      ws.onclose = () => {
-        wsRef.current = null;
-        // If a response was in-flight when the connection dropped, surface the error
-        const id = currentAssistantIdRef.current;
-        if (id) {
-          setMessages(prev =>
-            prev.map(m =>
-              m.id === id ? { ...m, error: 'Connection lost', isStreaming: false } : m,
-            ),
-          );
-          currentAssistantIdRef.current = null;
-          setIsLoading(false);
-        }
-      };
-
-      ws.onmessage = (event: MessageEvent) => {
-        let msg: ServerMessage;
-        try {
-          msg = JSON.parse(event.data as string) as ServerMessage;
-        } catch {
-          return;
-        }
-
-        switch (msg.type) {
-          case 'history':
-            // Rehydrate only when the view is empty — on fresh mount or after a
-            // scope switch (which clears messages first). Never overwrite an
-            // active conversation on a mid-session reconnect.
-            setMessages(prev => (prev.length === 0 ? msg.history.map(restoredToChatMessage) : prev));
-            break;
-
-          case 'token':
-            setMessages(prev => {
-              const id = currentAssistantIdRef.current;
-              if (!id) return prev;
-              return prev.map(m =>
-                m.id === id
-                  ? { ...m, content: m.content + msg.content, isStreaming: true }
-                  : m,
-              );
-            });
-            break;
-
-          case 'done':
-            setMessages(prev => {
-              const id = currentAssistantIdRef.current;
-              if (!id) return prev;
-              return prev.map(m => m.id === id ? { ...m, isStreaming: false } : m);
-            });
-            currentAssistantIdRef.current = null;
-            setIsLoading(false);
-            break;
-
-          case 'error':
-            setMessages(prev => {
-              const id = currentAssistantIdRef.current;
-              if (!id) return prev;
-              return prev.map(m =>
-                m.id === id ? { ...m, error: msg.error, isStreaming: false } : m,
-              );
-            });
-            currentAssistantIdRef.current = null;
-            setIsLoading(false);
-            break;
-
-          case 'tool_start':
-            setMessages(prev => {
-              const id = currentAssistantIdRef.current;
-              if (!id) return prev;
-              return prev.map(m => {
-                if (m.id !== id) return m;
-                const toolCall: ToolCallStatus = { name: msg.toolName, input: msg.toolInput, status: 'running' };
-                return { ...m, toolCalls: [...(m.toolCalls ?? []), toolCall] };
-              });
-            });
-            break;
-
-          case 'tool_end':
-            setMessages(prev => {
-              const id = currentAssistantIdRef.current;
-              if (!id) return prev;
-              return prev.map(m => {
-                if (m.id !== id) return m;
-                const toolCalls = (m.toolCalls ?? []).map(tc =>
-                  tc.name === msg.toolName && tc.status === 'running'
-                    ? { ...tc, result: msg.toolResult, status: 'done' as const }
-                    : tc,
-                );
-                return { ...m, toolCalls };
-              });
-            });
-            break;
-        }
-      };
-    });
-  }, [agentUrl, getContext]);
-
-  // Connect on mount and whenever the conversation scope changes. A scope change
-  // (different user/site/branch/document) is a different conversation, so clear
-  // the view and let the fresh connection replay that scope's history.
-  useEffect(() => {
-    if (!agentId) return;
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-    setMessages([]);
-    currentAssistantIdRef.current = null;
-    getOrCreateWs().catch(() => {
-      // A failed eager connect is non-fatal; submit() retries and surfaces errors.
-    });
-    return () => {
-      wsRef.current?.close();
-      wsRef.current = null;
-    };
-  }, [agentId, getOrCreateWs]);
+  const state = useSyncExternalStore(session.subscribe, session.getState, session.getState);
 
   const submit = useCallback(async () => {
     const text = input.trim();
-    if (!text || isLoading) return;
-
+    if (!text || state.isLoading) return;
     setInput('');
-    setIsLoading(true);
+    await session.sendMessage(text);
+  }, [input, state.isLoading, session]);
 
-    // Add user message
-    const userMsg: ChatMessage = { id: makeId(), role: 'user', content: text };
-    setMessages(prev => [...prev, userMsg]);
+  const clearMessages = useCallback(() => {
+    void session.clearMessages();
+  }, [session]);
 
-    // Add placeholder assistant message
-    const assistantId = makeId();
-    currentAssistantIdRef.current = assistantId;
-    setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '', isStreaming: true }]);
-
-    try {
-      const [ws, context] = await Promise.all([getOrCreateWs(), getContext()]);
-      ws.send(JSON.stringify({
-        type: 'chat',
-        message: text,
-        context,
-      }));
-    } catch {
-      setMessages(prev =>
-        prev.map(m =>
-          m.id === assistantId ? { ...m, error: 'Connection failed', isStreaming: false } : m,
-        ),
-      );
-      currentAssistantIdRef.current = null;
-      setIsLoading(false);
-    }
-  }, [input, isLoading, getContext, getOrCreateWs]);
-
-  const clearMessages = useCallback(async () => {
-    setMessages([]);
-    const ws = wsRef.current;
-    if (ws?.readyState === WebSocket.OPEN) {
-      try {
-        const context = await getContext();
-        ws.send(JSON.stringify({ type: 'clear', token: context.token }));
-      } catch {
-        // Non-fatal — the local view is already cleared regardless.
-      }
-    }
-  }, [getContext]);
-
-  return { messages, input, setInput, submit, isLoading, clearMessages };
+  return {
+    messages: state.messages,
+    input,
+    setInput,
+    submit,
+    sendMessage: session.sendMessage,
+    isLoading: state.isLoading,
+    ready: state.ready,
+    clearMessages,
+  };
 }

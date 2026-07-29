@@ -1,9 +1,11 @@
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { Button, Icon, Textarea, UtilityButton } from '@pantheon-systems/pds-toolkit-react';
 import { useP1Puck, useP1Auth } from '@pantheon-systems/puck-css';
+import { useGetPuck } from '@puckeditor/core';
 import { useAgentChat } from './useAgentChat.js';
+import { useDraftRequest } from './useDraftRequest.js';
 import { ChatMessage } from './ChatMessage.js';
-import type { AIChatPluginOptions } from './types.js';
+import type { AIChatPluginOptions, DraftRequest } from './types.js';
 
 interface Props {
   options: AIChatPluginOptions;
@@ -14,7 +16,9 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const css = useP1Puck();
-  const { getToken } = useP1Auth();
+  const { getToken, isAuthenticated } = useP1Auth();
+  // Non-subscribing accessor to Puck's store, used to open this panel on a request.
+  const getPuck = useGetPuck();
 
   // Stable refs so getAgentId/getContext don't change on every render
   const cssRef = useRef(css);
@@ -44,11 +48,37 @@ export function ChatPanel({ options }: Props): React.ReactElement {
     token: (await getTokenRef.current()) ?? '',
   }), []);
 
-  const { messages, input, setInput, submit, isLoading, clearMessages } = useAgentChat({
+  const { messages, input, setInput, submit, sendMessage, isLoading, ready, clearMessages } = useAgentChat({
     agentUrl: options.agentUrl,
     agentId,
     getContext,
   });
+
+  // Auto-submit a brief handed to us from elsewhere in the editor (Create Page →
+  // "Generate with AI"). Gating on `isAuthenticated` matters: the brief arrives right
+  // after a navigation, and sending before auth re-settles makes the agent's CSS tool
+  // calls 401.
+  useDraftRequest(
+    options.draftRequests,
+    { documentPath: css.currentDocument?.path, ready: ready && isAuthenticated },
+    useCallback(
+      (request: DraftRequest) => {
+        try {
+          getPuck().dispatch({
+            type: 'setUi',
+            ui: { plugin: { current: 'ai-chat' }, leftSideBarVisible: true },
+          });
+        } catch {
+          // Puck store unreachable outside the editor; opening the panel is best-effort.
+        }
+        void sendMessage(request.brief, {
+          documentPath: request.documentPath,
+          newPage: request.newPage,
+        });
+      },
+      [getPuck, sendMessage],
+    ),
+  );
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {

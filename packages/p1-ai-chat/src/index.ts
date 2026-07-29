@@ -2,7 +2,15 @@ import React from 'react';
 import { ChatPanel } from './ChatPanel.js';
 import type { AIChatPluginOptions } from './types.js';
 
-export type { AIChatPluginOptions, ChatMessage, ChatContext, ToolCallStatus } from './types.js';
+export type {
+  AIChatPluginOptions,
+  ChatMessage,
+  ChatContext,
+  ToolCallStatus,
+  DraftRequest,
+  DraftRequestChannel,
+} from './types.js';
+export { createDraftRequestChannel } from './draftRequestChannel.js';
 
 // Puck plugin shape (matches @puckeditor/core Plugin interface)
 export interface PuckPlugin {

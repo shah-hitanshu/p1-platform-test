@@ -1,12 +1,12 @@
 import { Agent } from 'agents';
 import type { Connection, WSMessage } from 'agents';
-import type { Env, IncomingMessage, OutgoingMessage, ChatContext, ValidatedUser } from './types.js';
+import type { Env, IncomingMessage, OutgoingMessage, ValidatedUser } from './types.js';
 import { McpApiClient } from './css-api.js';
 import { CSS_TOOLS, WEB_TOOLS, executeTool } from './tools.js';
 import { validateCSSToken } from './auth.js';
 import { trimHistory, sanitizeHistory, trimForHistory, buildRestoredHistory } from './history.js';
 import { createTransport, apiErrorStatus, type ChatMessage } from './model.js';
-import { SYSTEM_PROMPT } from './prompt.js';
+import { SYSTEM_PROMPT, buildContextNote } from './prompt.js';
 
 // Default model. AGENT_MODEL is "provider/model" (must contain a slash): an `anthropic/`
 // prefix routes to the Anthropic /messages endpoint; everything else — including bare
@@ -266,19 +266,4 @@ export class ChatAgent extends Agent<Env, AgentState> {
       this.send(connection, { type: 'error', error: errorMessage });
     }
   }
-}
-
-function buildContextNote(context: ChatContext): string {
-  const isExisting = !!(context.documentId || context.puckData);
-  const header = isExisting
-    ? '[Current editor context — existing document]'
-    : '[Current editor context]';
-  const lines: string[] = [header];
-  if (context.siteId) lines.push(`Site ID: ${context.siteId}`);
-  if (context.branchId) lines.push(`Branch ID: ${context.branchId}`);
-  if (context.documentPath) lines.push(`Document: ${context.documentPath}`);
-  if (isExisting) {
-    lines.push('This document already exists. Use the edit workflow unless the user explicitly asks to create a new page.');
-  }
-  return lines.length > 1 ? lines.join('\n') : '';
 }

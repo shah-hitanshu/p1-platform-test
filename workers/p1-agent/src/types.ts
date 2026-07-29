@@ -38,6 +38,12 @@ export interface ChatContext {
   token: string; // CSS auth token
   userId?: string;
   userEmail?: string;
+  /**
+   * The turn was seeded from the Create Page modal against a page that was just created
+   * empty for it. Changes the brief's contract: the user asked for a page and expects one,
+   * so the agent drafts immediately instead of asking which page to use or what to include.
+   */
+  newPage?: boolean;
 }
 
 export type IncomingMessage =
