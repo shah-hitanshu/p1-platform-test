@@ -8,12 +8,14 @@
  */
 
 import type { Document } from '../types';
-import { query } from '../db';
+import { query, withTransaction } from '../db';
 import type {
   ListDocumentsOnBranchOptions,
   CreateDocumentOnBranchParams,
   CreateDocumentOnBranchResult,
   DeleteDocumentOnBranchParams,
+  DeleteDocumentWithRedirectParams,
+  DeleteDocumentWithRedirectResult,
   DocumentVersionRow,
   DocumentOnBranchRow,
   DocumentRow,
@@ -40,6 +42,7 @@ import {
   branchInheritsFromMain,
 } from './document-queries';
 import { enforceUniqueSlotIds } from './slot-id-backstop';
+import type { RedirectSnapshot } from '../types/redirects';
 
 function appendPaginationClauses(
   sql: string,
@@ -752,4 +755,104 @@ export async function deleteDocumentOnBranch(
     }
     throw error;
   }
+}
+
+/**
+ * Atomically deletes a document on a branch and creates a redirect.
+ * Both the tombstone and redirect are created within a single transaction --
+ * if either fails, both roll back.
+ */
+export async function deleteDocumentWithRedirect(
+  params: DeleteDocumentWithRedirectParams,
+): Promise<DeleteDocumentWithRedirectResult> {
+  return withTransaction(async () => {
+    await deleteDocumentOnBranch({
+      documentId: params.documentId,
+      branchId: params.branchId,
+      deletedById: params.deletedById,
+      deletedByType: params.deletedByType,
+    });
+
+    const redirectPath = normalizePath(`_registry/redirects/${params.redirect.fromPath}`);
+    validatePath(redirectPath);
+
+    let redirectDocId: string;
+
+    await query('SAVEPOINT insert_redirect_doc');
+    try {
+      const docResult = await query<DocumentRow>(
+        `INSERT INTO app.documents (site_id, path)
+         VALUES ($1, $2)
+         RETURNING *`,
+        [params.siteId, redirectPath],
+      );
+      await query('RELEASE SAVEPOINT insert_redirect_doc');
+      const row = docResult.rows[0];
+      if (row === undefined) {
+        throw new Error('Failed to insert redirect document');
+      }
+      redirectDocId = row.id;
+    } catch (docError) {
+      if (isUniqueConstraintViolation(docError)) {
+        await query('ROLLBACK TO SAVEPOINT insert_redirect_doc');
+
+        const existingResult = await query<DocumentRow>(
+          `SELECT * FROM app.documents
+           WHERE site_id = $1 AND path = $2 AND archived_at IS NULL`,
+          [params.siteId, redirectPath],
+        );
+        const existingRow = existingResult.rows[0];
+        if (existingRow === undefined) {
+          throw new DuplicateDocumentPathError(redirectPath, params.siteId);
+        }
+        redirectDocId = existingRow.id;
+      } else {
+        throw docError;
+      }
+    }
+
+    const snapshot: RedirectSnapshot = {
+      fromPath: '/' + params.redirect.fromPath,
+      destination: params.redirect.destination,
+      redirectType: params.redirect.redirectType,
+      parenting: params.redirect.parenting,
+    };
+
+    const versionResult = await query<DocumentVersionRow>(
+      `INSERT INTO app.document_versions (
+        document_id, branch_id, version_number, snapshot,
+        source, created_by_id, created_by_type
+      )
+      SELECT $1, $2,
+        COALESCE(MAX(version_number), 0) + 1,
+        $3, $4, $5, $6
+      FROM app.document_versions
+      WHERE document_id = $1 AND branch_id = $2
+      RETURNING *`,
+      [
+        redirectDocId,
+        params.branchId,
+        snapshot,
+        'edit',
+        params.deletedById,
+        params.deletedByType,
+      ],
+    );
+
+    const version = versionResult.rows[0];
+    if (version === undefined) {
+      throw new Error('Failed to insert redirect version');
+    }
+
+    return {
+      redirect: {
+        id: redirectDocId,
+        fromPath: snapshot.fromPath,
+        destination: snapshot.destination,
+        redirectType: snapshot.redirectType,
+        parenting: snapshot.parenting,
+        updatedAt: version.created_at,
+      },
+    };
+  });
 }

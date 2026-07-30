@@ -54,6 +54,8 @@ export {
   createDocumentOnBranch,
   documentExistsOnBranch,
   deleteDocumentOnBranch,
+  deleteDocumentWithRedirect,
+  PageConflictError,
   SiteNotFoundError,
   DuplicateDocumentPathError,
   InvalidDocumentPathError,
@@ -71,6 +73,8 @@ export type {
   CreateDocumentOnBranchParams,
   CreateDocumentOnBranchResult,
   DeleteDocumentOnBranchParams,
+  DeleteDocumentWithRedirectParams,
+  DeleteDocumentWithRedirectResult,
 } from './document-service';
 
 // Branch Service

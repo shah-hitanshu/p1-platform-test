@@ -70,7 +70,17 @@ export {
   createDocumentOnBranch,
   documentExistsOnBranch,
   deleteDocumentOnBranch,
+  deleteDocumentWithRedirect,
 } from './branch-document-service';
+
+export {
+  PageConflictError,
+} from './document-types';
+
+export type {
+  DeleteDocumentWithRedirectParams,
+  DeleteDocumentWithRedirectResult,
+} from './document-types';
 
 // =============================================================================
 // Site-Level Service Functions

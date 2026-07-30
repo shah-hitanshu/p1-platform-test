@@ -31,6 +31,7 @@ export interface RouteParams {
   subResource?: string;
   roleId?: string;
   templateId?: string;
+  redirectId?: string;
   migrationJobId?: string;
   conflictId?: string;
   datasourceName?: string;
@@ -467,6 +468,33 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
       params: {
         siteId: templatesListMatch[1],
         branchId: templatesListMatch[2],
+      },
+    };
+  }
+
+  // Redirect routes
+  // /api/sites/{siteId}/branches/{branchId}/redirects/{redirectId}?
+  const redirectMatch = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/redirects(?:\/([^/]+))?$/.exec(normalizedPath);
+  if (redirectMatch) {
+    return {
+      handler: 'redirects',
+      params: {
+        siteId: redirectMatch[1],
+        branchId: redirectMatch[2],
+        redirectId: redirectMatch[3],
+      },
+    };
+  }
+
+  // Content redirect lookup (documentPath may contain slashes)
+  // /api/sites/{siteId}/content-redirects/{path}
+  const contentRedirectMatch = /^\/api\/sites\/([^/]+)\/content-redirects\/(.+)$/.exec(normalizedPath);
+  if (contentRedirectMatch) {
+    return {
+      handler: 'content-redirects',
+      params: {
+        siteId: contentRedirectMatch[1],
+        documentPath: contentRedirectMatch[2],
       },
     };
   }

@@ -6,6 +6,7 @@
  */
 
 import type { AuthenticatedPrincipal } from '../types';
+import { toDocumentActorType } from '../types';
 import type { Env } from '../index';
 import { runWithConnection } from '../db';
 import {
@@ -36,13 +37,7 @@ import {
   MigrationJobNotFoundError,
 } from '../services/migration-service';
 
-const VALID_ACTOR_TYPES = new Set(['user', 'agent', 'service']);
 const VALID_PRINCIPAL_TYPES = new Set(['user', 'agent', 'system', 'service']);
-
-function toActorType(type: string): 'user' | 'agent' | 'service' {
-  if (VALID_ACTOR_TYPES.has(type)) return type as 'user' | 'agent' | 'service';
-  throw new Error(`Invalid actor type: ${type}`);
-}
 
 function toPrincipalType(type: string): 'user' | 'agent' | 'system' | 'service' {
   if (VALID_PRINCIPAL_TYPES.has(type)) return type as 'user' | 'agent' | 'system' | 'service';
@@ -396,7 +391,7 @@ async function handleCreateTemplate(
     path: templatePath,
     snapshot: { ...snapshot },
     createdById: principal.dbUserId ?? principal.id,
-    createdByType: toActorType(principal.type),
+    createdByType: toDocumentActorType(principal.type),
   });
 
   let hookWarning: string | undefined;
@@ -532,7 +527,7 @@ async function handleUpdateTemplate(
 
   // Create new version. A manifest-to-content conversion is a representation
   // change, not an authored edit, so it is written as non-structural.
-  const actorType = toActorType(principal.type);
+  const actorType = toDocumentActorType(principal.type);
   const version = await createDocumentVersion({
     documentId: templateId,
     branchId,
@@ -600,7 +595,7 @@ async function handleDeleteTemplate(
     documentId: templateId,
     branchId,
     deletedById: principal.dbUserId ?? principal.id,
-    deletedByType: toActorType(principal.type),
+    deletedByType: toDocumentActorType(principal.type),
   });
 
   return new Response(null, { status: 204 });

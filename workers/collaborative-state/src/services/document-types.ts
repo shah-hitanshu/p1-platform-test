@@ -125,6 +125,42 @@ export interface DeleteDocumentOnBranchParams {
 }
 
 /**
+ * Parameters for atomically deleting a document and creating a redirect.
+ */
+export interface DeleteDocumentWithRedirectParams {
+  documentId: string;
+  branchId: string;
+  siteId: string;
+  deletedById: string;
+  deletedByType: 'user' | 'agent' | 'service';
+  redirect: {
+    fromPath: string;
+    destination: string;
+    redirectType: 'permanent' | 'temporary';
+    parenting: boolean;
+  };
+}
+
+export interface DeleteDocumentWithRedirectResult {
+  redirect: {
+    id: string;
+    fromPath: string;
+    destination: string;
+    redirectType: 'permanent' | 'temporary';
+    parenting: boolean;
+    updatedAt: string;
+  };
+}
+
+export class PageConflictError extends Error {
+  public readonly name = 'PageConflictError';
+  constructor(public readonly path: string) {
+    super(`A page already exists at path "${path}"`);
+    Object.setPrototypeOf(this, PageConflictError.prototype);
+  }
+}
+
+/**
  * Document version type for internal use.
  */
 export interface DocumentVersion {

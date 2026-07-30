@@ -5394,6 +5394,33 @@ Combined correctness/security review: clean on correctness, consumer audit, and 
 
 ---
 
+## PCC-3400: Page Redirects — Backend API (2026-07-28)
+
+**Branch:** `PCC-3400-page-redirects`
+
+### What was built
+
+Redirect records stored as `_registry/redirects/<origin-slug>` documents, getting branch-scoping, versioning, merge/conflict resolution for free from the existing document infrastructure.
+
+- `workers/src/types/enums.ts`: Added `RedirectType = 'permanent' | 'temporary'`
+- `workers/src/types/redirects.ts` (new): `RedirectSnapshot` interface (`origin`, `destination`, `redirectType`, `parenting`)
+- `workers/src/routes/redirect-api.ts` (new): Full CRUD handler for `/api/sites/{siteId}/branches/{branchId}/redirects[/{redirectId}]`. Auth: `canView` for GET, `canEdit` for POST/PATCH/DELETE. Create validates origin (required, starts with /), destination (required), redirectType (permanent|temporary), and checks page conflicts via `getDocumentByPath`. Update validates redirectType on PATCH to match POST validation.
+- `workers/src/routes/redirect-content-api.ts` (new): Content delivery lookup at `/api/sites/{siteId}/content-redirects/{path}`. Resolves main branch, looks up direct redirect, then walks up path hierarchy for parenting redirects. Returns computed destination with statusCode.
+- `workers/src/routes/route-parser.ts`: Added `redirectId` to `RouteParams` and regex patterns for both endpoints.
+- `workers/src/routes/route-dispatch.ts`: Added `redirects` and `content-redirects` dispatch cases.
+
+### Tests
+
+- `redirect-api.spec.ts`: 22 tests covering POST create, GET list/single, PATCH update, DELETE, authorization, method not allowed.
+- `route-parser-redirects.spec.ts`: 7 tests for URL pattern matching.
+- `redirect-content-api.spec.ts`: 9 tests covering direct lookup, parenting resolution, method not allowed.
+
+### Reviews
+
+Security review: no high-confidence findings. One code quality fix applied (redirectType validation added to PATCH handler to match POST).
+
+---
+
 ### Datasources and Pre-Made Queries for Content Type Views (PCC-3284)
 
 **Status:** Complete

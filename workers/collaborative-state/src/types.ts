@@ -34,6 +34,7 @@ export type {
   StructureConflictType,
   MigrationJobStatus,
   MigrationResolution,
+  RedirectType,
 } from './types/enums';
 
 export type {
@@ -88,6 +89,31 @@ export type {
   AuditResource,
   AuditEvent,
 } from './types/audit';
+
+export type {
+  RedirectSnapshot,
+  RedirectBody,
+} from './types/redirects';
+
+export {
+  VALID_REDIRECT_TYPES,
+  isValidRedirectType,
+  isRedirectBody,
+} from './types/redirects';
+
+import type { ActorType } from './types/enums';
+
+export type DocumentActorType = Extract<ActorType, 'user' | 'agent' | 'service'>;
+
+const VALID_DOCUMENT_ACTOR_TYPES: readonly DocumentActorType[] = ['user', 'agent', 'service'] as const;
+
+export { VALID_DOCUMENT_ACTOR_TYPES };
+
+export function toDocumentActorType(type: string): DocumentActorType {
+  if ((VALID_DOCUMENT_ACTOR_TYPES as readonly string[]).includes(type))
+    return type as DocumentActorType;
+  throw new Error(`Invalid actor type: ${type}`);
+}
 
 export type {
   ActorPresence,

@@ -19,6 +19,8 @@ import {
   createDocumentOnBranch,
   documentExistsOnBranch,
   deleteDocumentOnBranch,
+  deleteDocumentWithRedirect,
+  PageConflictError,
   getBranch,
   getMainBranch,
   // Document version operations
@@ -448,22 +450,103 @@ async function handleGetDocumentOnBranch(
   return jsonResponse(document);
 }
 
+const MAX_REDIRECT_PATH_LENGTH = 1024;
+
+function stripTrailingSlashes(s: string): string {
+  return s.replace(/\/+$/, '');
+}
+
+interface DeleteDocumentBody {
+  redirect?: {
+    fromPath?: string;
+    destination?: string;
+    redirectType?: string;
+    parenting?: boolean;
+  };
+}
+
 /**
  * Handle DELETE /api/sites/{siteId}/branches/{branchId}/documents/{documentId}
+ *
+ * Accepts an optional JSON body with a `redirect` field. When present, the
+ * document is tombstoned and a redirect is created atomically within a single
+ * database transaction. When absent, behavior is unchanged (204 with no body).
  */
 async function handleDeleteDocumentOnBranch(
+  request: Request,
   documentId: string,
   branchId: string,
+  siteId: string,
   principal: AuthenticatedPrincipal,
 ): Promise<Response> {
-  await deleteDocumentOnBranch({
+  const contentType = request.headers.get('Content-Type');
+  let body: DeleteDocumentBody | undefined;
+
+  if (contentType?.includes('application/json') === true) {
+    try {
+      body = await request.json() as DeleteDocumentBody;
+    } catch {
+      return errorResponse('Invalid JSON body', 400);
+    }
+  }
+
+  if (body === undefined && request.body !== null) {
+    return errorResponse('Content-Type must be application/json when sending a request body', 415);
+  }
+
+  if (body?.redirect === undefined) {
+    await deleteDocumentOnBranch({
+      documentId,
+      branchId,
+      deletedById: principal.dbUserId ?? principal.id,
+      deletedByType: principal.type as 'user' | 'agent',
+    });
+    return new Response(null, { status: 204 });
+  }
+
+  const r = body.redirect;
+
+  if (r.fromPath === undefined || r.fromPath === '') {
+    return errorResponse('redirect.fromPath is required', 400);
+  }
+  if (r.fromPath.length > MAX_REDIRECT_PATH_LENGTH) {
+    return errorResponse('redirect.fromPath exceeds maximum length', 400);
+  }
+  if (r.fromPath.trim() === '') {
+    return errorResponse('redirect.fromPath is required', 400);
+  }
+  if (!r.fromPath.startsWith('/')) {
+    return errorResponse('redirect.fromPath must start with /', 400);
+  }
+  const normalizedFromPath = stripTrailingSlashes(r.fromPath) || '/';
+  if (normalizedFromPath === '/') {
+    return errorResponse('redirect.fromPath must not be the root path', 400);
+  }
+  if (r.destination === undefined || r.destination.trim() === '') {
+    return errorResponse('redirect.destination is required', 400);
+  }
+  const redirectType = r.redirectType ?? 'permanent';
+  if (redirectType !== 'permanent' && redirectType !== 'temporary') {
+    return errorResponse('redirect.redirectType must be permanent or temporary', 400);
+  }
+  const parenting = r.parenting ?? false;
+  const originPath = normalizedFromPath.slice(1);
+
+  const result = await deleteDocumentWithRedirect({
     documentId,
     branchId,
+    siteId,
     deletedById: principal.dbUserId ?? principal.id,
     deletedByType: principal.type,
+    redirect: {
+      fromPath: originPath,
+      destination: r.destination,
+      redirectType: redirectType as 'permanent' | 'temporary',
+      parenting,
+    },
   });
 
-  return new Response(null, { status: 204 });
+  return jsonResponse(result.redirect, 200);
 }
 
 // =============================================================================
@@ -784,7 +867,9 @@ async function handleBranchScopedDocumentRoutes(
       case 'GET':
         return await handleGetDocumentOnBranch(context.documentId, branchId, context.siteId, branch.isMain);
       case 'DELETE':
-        return await handleDeleteDocumentOnBranch(context.documentId, branchId, context.principal);
+        return await handleDeleteDocumentOnBranch(
+          request, context.documentId, branchId, context.siteId, context.principal,
+        );
       default:
         return errorResponse('Method not allowed', 405);
     }
@@ -908,6 +993,9 @@ export async function handleDocumentRoutes(
     }
     if (error instanceof DocumentPathConflictError) {
       return errorResponse('Path is now occupied by another document', 409);
+    }
+    if (error instanceof PageConflictError) {
+      return errorResponse('A page already exists at this origin path', 409);
     }
     if (error instanceof InvalidDocumentVersionParamsError) {
       return errorResponse(error.message, 400);

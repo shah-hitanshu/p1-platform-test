@@ -17,6 +17,8 @@ import { handleBranchRoutes } from './branch-api';
 import { handleDocumentRoutes } from './document-api';
 import { handleCheckpointRoutes } from './checkpoint-api';
 import { handleTemplateRequest } from './template-api';
+import { handleRedirectRoutes } from './redirect-api';
+import { handleContentRedirectRoutes } from './redirect-content-api';
 import { handleMigrationRoutes } from './migration-api';
 import { handleMergeRoutes } from './merge-api';
 import { handleGrantRoutes } from './grant-api';
@@ -182,6 +184,21 @@ export async function dispatchRoute(
         principal,
         ctx,
         env,
+      });
+
+    case 'redirects':
+      return await handleRedirectRoutes(request, {
+        siteId: route.params.siteId ?? '',
+        branchId: route.params.branchId,
+        redirectId: route.params.redirectId,
+        principal,
+      });
+
+    case 'content-redirects':
+      return await handleContentRedirectRoutes(request, {
+        siteId: route.params.siteId ?? '',
+        documentPath: route.params.documentPath,
+        principal,
       });
 
     case 'checkpoints':

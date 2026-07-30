@@ -21,6 +21,7 @@ vi.mock('../../src/services', () => ({
   createDocumentOnBranch: vi.fn(),
   documentExistsOnBranch: vi.fn(),
   deleteDocumentOnBranch: vi.fn(),
+  deleteDocumentWithRedirect: vi.fn(),
   getBranch: vi.fn(),
   // Document version operations
   getLatestDocumentVersion: vi.fn(),
@@ -66,6 +67,12 @@ vi.mock('../../src/services', () => ({
     override name = 'BranchNotFoundError';
     constructor(public branchId: string) {
       super(`Branch with ID "${branchId}" not found.`);
+    }
+  },
+  PageConflictError: class PageConflictError extends Error {
+    override name = 'PageConflictError';
+    constructor(public path: string) {
+      super(`A page already exists at path "${path}"`);
     }
   },
   InvalidDocumentVersionParamsError: class InvalidDocumentVersionParamsError extends Error {
@@ -1563,6 +1570,412 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         });
 
         expect(response.status).toBe(404);
+      });
+
+      // Delete with optional redirect body
+
+      it('should still return 204 when no body is sent', async () => {
+        const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1', siteId: 'site-1', name: 'feature',
+          status: 'active', isMain: false,
+          createdById: 'user-1', createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.deleteDocumentOnBranch).mockResolvedValueOnce(true);
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          { method: 'DELETE' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(204);
+        expect(services.deleteDocumentOnBranch).toHaveBeenCalled();
+        expect(services.deleteDocumentWithRedirect).not.toHaveBeenCalled();
+      });
+
+      it('should delete document and create redirect atomically', async () => {
+        const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1', siteId: 'site-1', name: 'feature',
+          status: 'active', isMain: false,
+          createdById: 'user-1', createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.deleteDocumentWithRedirect).mockResolvedValueOnce({
+          redirect: {
+            id: 'redirect-doc-1',
+            fromPath: '/old-page',
+            destination: '/new-page',
+            redirectType: 'permanent',
+            parenting: false,
+            updatedAt: '2026-01-24T10:00:00.000Z',
+          },
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              redirect: {
+                fromPath: '/old-page',
+                destination: '/new-page',
+                redirectType: 'permanent',
+              },
+            }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.id).toBe('redirect-doc-1');
+        expect(body.fromPath).toBe('/old-page');
+        expect(body.destination).toBe('/new-page');
+        expect(services.deleteDocumentWithRedirect).toHaveBeenCalledWith({
+          documentId: 'doc-1',
+          branchId: 'branch-1',
+          siteId: 'site-1',
+          deletedById: 'user-1',
+          deletedByType: 'user',
+          redirect: {
+            fromPath: 'old-page',
+            destination: '/new-page',
+            redirectType: 'permanent',
+            parenting: false,
+          },
+        });
+        expect(services.deleteDocumentOnBranch).not.toHaveBeenCalled();
+      });
+
+      it('should return 400 when redirect.fromPath is missing', async () => {
+        const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1', siteId: 'site-1', name: 'feature',
+          status: 'active', isMain: false,
+          createdById: 'user-1', createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ redirect: { destination: '/new-page' } }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(400);
+      });
+
+      it('should return 400 when redirect.fromPath does not start with /', async () => {
+        const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1', siteId: 'site-1', name: 'feature',
+          status: 'active', isMain: false,
+          createdById: 'user-1', createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ redirect: { fromPath: 'no-slash', destination: '/new' } }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(400);
+      });
+
+      it('should return 400 when redirect.fromPath is root /', async () => {
+        const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1', siteId: 'site-1', name: 'feature',
+          status: 'active', isMain: false,
+          createdById: 'user-1', createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ redirect: { fromPath: '/', destination: '/new' } }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(400);
+      });
+
+      it('should return 400 when redirect.fromPath exceeds max length', async () => {
+        const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1', siteId: 'site-1', name: 'feature',
+          status: 'active', isMain: false,
+          createdById: 'user-1', createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ redirect: { fromPath: '/' + 'a'.repeat(1025), destination: '/new' } }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(400);
+      });
+
+      it('should return 400 when redirect.destination is missing', async () => {
+        const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1', siteId: 'site-1', name: 'feature',
+          status: 'active', isMain: false,
+          createdById: 'user-1', createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ redirect: { fromPath: '/old-page' } }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(400);
+      });
+
+      it('should return 400 when redirect.redirectType is invalid', async () => {
+        const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1', siteId: 'site-1', name: 'feature',
+          status: 'active', isMain: false,
+          createdById: 'user-1', createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ redirect: { fromPath: '/old', destination: '/new', redirectType: 'invalid' } }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(400);
+      });
+
+      it('should default redirectType to permanent and parenting to false', async () => {
+        const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1', siteId: 'site-1', name: 'feature',
+          status: 'active', isMain: false,
+          createdById: 'user-1', createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.deleteDocumentWithRedirect).mockResolvedValueOnce({
+          redirect: {
+            id: 'redirect-doc-1', fromPath: '/old', destination: '/new',
+            redirectType: 'permanent', parenting: false,
+            updatedAt: '2026-01-24T10:00:00.000Z',
+          },
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ redirect: { fromPath: '/old', destination: '/new' } }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(200);
+        expect(services.deleteDocumentWithRedirect).toHaveBeenCalledWith(
+          expect.objectContaining({
+            redirect: expect.objectContaining({
+              redirectType: 'permanent',
+              parenting: false,
+            }),
+          }),
+        );
+      });
+
+      it('should return 404 when document does not exist (with redirect body)', async () => {
+        const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1', siteId: 'site-1', name: 'feature',
+          status: 'active', isMain: false,
+          createdById: 'user-1', createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.deleteDocumentWithRedirect).mockRejectedValueOnce(
+          new services.DocumentNotFoundError('doc-1'),
+        );
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ redirect: { fromPath: '/old', destination: '/new' } }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(404);
+      });
+
+      it('should return 409 when a page exists at redirect origin path', async () => {
+        const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1', siteId: 'site-1', name: 'feature',
+          status: 'active', isMain: false,
+          createdById: 'user-1', createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.deleteDocumentWithRedirect).mockRejectedValueOnce(
+          new services.PageConflictError('old-page'),
+        );
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ redirect: { fromPath: '/old-page', destination: '/new' } }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(409);
+      });
+
+      it('should strip trailing slashes from redirect.fromPath', async () => {
+        const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce({
+          id: 'branch-1', siteId: 'site-1', name: 'feature',
+          status: 'active', isMain: false,
+          createdById: 'user-1', createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+        vi.mocked(services.deleteDocumentWithRedirect).mockResolvedValueOnce({
+          redirect: {
+            id: 'redirect-doc-1', fromPath: '/old-page', destination: '/new',
+            redirectType: 'permanent', parenting: false,
+            updatedAt: '2026-01-24T10:00:00.000Z',
+          },
+        });
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ redirect: { fromPath: '/old-page///', destination: '/new' } }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
+          principal: { id: 'user-1', type: 'user' },
+        });
+
+        expect(response.status).toBe(200);
+        expect(services.deleteDocumentWithRedirect).toHaveBeenCalledWith(
+          expect.objectContaining({
+            redirect: expect.objectContaining({
+              fromPath: 'old-page',
+            }),
+          }),
+        );
       });
     });
 

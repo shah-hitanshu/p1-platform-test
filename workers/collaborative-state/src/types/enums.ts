@@ -93,6 +93,11 @@ export type StructureType = 'collection' | 'hierarchy';
 export type NodeType = 'section' | 'document' | 'external';
 
 /**
+ * Types of page redirects.
+ */
+export type RedirectType = 'permanent' | 'temporary';
+
+/**
  * Schema enforcement modes for document metadata.
  */
 export type SchemaEnforcementMode = 'strict' | 'warn' | 'none';
