@@ -173,6 +173,24 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     };
   }
 
+  // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/{versionId}/restore
+  // Must appear before versionByIdRe to ensure the /restore suffix is matched first.
+  const versionRestoreRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/([^/]+)\/versions\/([^/]+)\/restore$/;
+  const versionRestoreMatch = versionRestoreRe.exec(normalizedPath);
+  if (versionRestoreMatch) {
+    return {
+      handler: 'documents',
+      params: {
+        siteId: versionRestoreMatch[1],
+        branchId: versionRestoreMatch[2],
+        documentId: versionRestoreMatch[3],
+        versionId: versionRestoreMatch[4],
+        versionsPath: 'true',
+        versionAction: 'restore',
+      },
+    };
+  }
+
   // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/{versionId}
   // Uses UUID pattern [0-9a-f-]{36} to avoid matching 'latest'
   const versionByIdRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/([^/]+)\/versions\/([0-9a-f-]{36})$/;

@@ -28,6 +28,13 @@ vi.mock('../../src/services', () => ({
   listDocumentVersions: vi.fn(),
   createDocumentVersion: vi.fn(),
   reconstructVersionSnapshot: vi.fn(),
+  restoreDocumentVersion: vi.fn(),
+  RestoreVersionNotFoundError: class RestoreVersionNotFoundError extends Error {
+    override name = 'RestoreVersionNotFoundError';
+    constructor(public versionId: string) {
+      super(`Version with ID "${versionId}" not found.`);
+    }
+  },
   SiteNotFoundError: class SiteNotFoundError extends Error {
     override name = 'SiteNotFoundError';
     constructor(public siteId: string) {
@@ -2395,6 +2402,151 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const body = await response.json();
         expect(body.snapshot).toEqual(puckSnapshot);
       });
+    });
+  });
+
+  // ===========================================================================
+  // POST /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/{versionId}/restore
+  // ===========================================================================
+
+  describe('POST /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/{versionId}/restore', () => {
+    it('should return 201 with the new restored version', async () => {
+      const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1', siteId: 'site-1', name: 'main', status: 'active',
+        isMain: true, createdById: 'user-1', createdByType: 'user',
+        createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+      });
+      vi.mocked(services.documentExistsOnBranch).mockResolvedValue(true);
+      vi.mocked(services.restoreDocumentVersion).mockResolvedValue({
+        id: 'new-version-uuid',
+        documentId: 'doc-1',
+        branchId: 'branch-1',
+        versionNumber: 5,
+        snapshot: { title: 'Restored' },
+        source: 'revert',
+        sourceVersionId: 'old-version-uuid',
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: '2026-01-24T10:00:00.000Z',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions/old-version-uuid/restore',
+        { method: 'POST' },
+      );
+
+      const response = await handleDocumentRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        documentId: 'doc-1',
+        versionId: 'old-version-uuid',
+        versionsPath: true,
+        versionAction: 'restore',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(201);
+      const body = await response.json();
+      expect(body.source).toBe('revert');
+      expect(body.sourceVersionId).toBe('old-version-uuid');
+      expect(body.versionNumber).toBe(5);
+    });
+
+    it('should return 404 when the source version does not exist', async () => {
+      const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1', siteId: 'site-1', name: 'main', status: 'active',
+        isMain: true, createdById: 'user-1', createdByType: 'user',
+        createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+      });
+      vi.mocked(services.documentExistsOnBranch).mockResolvedValue(true);
+      vi.mocked(services.restoreDocumentVersion).mockRejectedValue(
+        new services.RestoreVersionNotFoundError('old-version-uuid'),
+      );
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions/old-version-uuid/restore',
+        { method: 'POST' },
+      );
+
+      const response = await handleDocumentRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        documentId: 'doc-1',
+        versionId: 'old-version-uuid',
+        versionsPath: true,
+        versionAction: 'restore',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should return 405 for GET requests to the restore endpoint', async () => {
+      const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1', siteId: 'site-1', name: 'main', status: 'active',
+        isMain: true, createdById: 'user-1', createdByType: 'user',
+        createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+      });
+      vi.mocked(services.documentExistsOnBranch).mockResolvedValue(true);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions/old-version-uuid/restore',
+        { method: 'GET' },
+      );
+
+      const response = await handleDocumentRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        documentId: 'doc-1',
+        versionId: 'old-version-uuid',
+        versionsPath: true,
+        versionAction: 'restore',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(405);
+    });
+
+    it('should return 403 when principal lacks canEditDocuments permission', async () => {
+      const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+      const services = await import('../../src/services');
+      const auth = await import('../../src/auth/authorization');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce({
+        id: 'branch-1', siteId: 'site-1', name: 'main', status: 'active',
+        isMain: true, createdById: 'user-1', createdByType: 'user',
+        createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+      });
+      vi.mocked(services.documentExistsOnBranch).mockResolvedValue(true);
+      vi.mocked(auth.assertPermission).mockRejectedValue(
+        new auth.AuthorizationError('Forbidden', 'canEditDocuments', 'viewer'),
+      );
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions/old-version-uuid/restore',
+        { method: 'POST' },
+      );
+
+      const response = await handleDocumentRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        documentId: 'doc-1',
+        versionId: 'old-version-uuid',
+        versionsPath: true,
+        versionAction: 'restore',
+        principal: { id: 'viewer-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(403);
     });
   });
 

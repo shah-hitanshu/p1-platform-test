@@ -321,6 +321,62 @@ describe('Phase 3.3: Document Version Service', () => {
       // query should be called once (insert only, no check)
       expect(db.query).toHaveBeenCalledTimes(1);
     });
+
+    it('should persist sourceVersionId in the INSERT when provided', async () => {
+      const { createDocumentVersion } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      const snapshot = { title: 'Restored Content' };
+      const sourceVersionId = 'source-version-uuid-111';
+      const mockRow = createMockVersionRow({
+        version_number: 3,
+        snapshot,
+        source: 'revert',
+      });
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockRow] });
+
+      await createDocumentVersion({
+        documentId: 'doc-uuid-456',
+        branchId: 'branch-uuid-789',
+        snapshot,
+        source: 'revert',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+        skipDuplicateCheck: true,
+        sourceVersionId,
+      });
+
+      const insertCall = vi.mocked(db.query).mock.calls[0];
+      expect(insertCall[0]).toContain('source_version_id');
+      expect(insertCall[1]).toContain(sourceVersionId);
+    });
+
+    it('should leave source_version_id as null when sourceVersionId is omitted', async () => {
+      const { createDocumentVersion } = await import('../../src/services/document-version-service');
+      const db = await import('../../src/db');
+
+      const snapshot = { title: 'Normal Edit' };
+      const mockRow = createMockVersionRow({ version_number: 2, snapshot });
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockRow] });
+
+      await createDocumentVersion({
+        documentId: 'doc-uuid-456',
+        branchId: 'branch-uuid-789',
+        snapshot,
+        source: 'edit',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+        skipDuplicateCheck: true,
+      });
+
+      const insertCall = vi.mocked(db.query).mock.calls[0];
+      const params = insertCall[1];
+      // source_version_id is the last param ($13); confirm it is null when omitted
+      const sourceVersionIdParam = params[params.length - 1];
+      expect(sourceVersionIdParam).toBeNull();
+    });
   });
 
   describe('getDocumentVersion', () => {

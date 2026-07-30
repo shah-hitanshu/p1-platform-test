@@ -117,14 +117,17 @@ export {
   getLatestDocumentVersionWithFallback,
   getLatestTemplateVersionWithFallback,
   reconstructVersionSnapshot,
+  restoreDocumentVersion,
   // Note: DocumentNotFoundError already exported from document-service
   InvalidDocumentVersionParamsError,
+  RestoreVersionNotFoundError,
 } from './document-version-service';
 
 export type {
   CreateDocumentVersionParams,
   ListDocumentVersionsOptions,
   DocumentVersionWithFallback,
+  RestoreDocumentVersionParams,
 } from './document-version-service';
 
 // Checkpoint Service

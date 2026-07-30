@@ -28,12 +28,14 @@ import {
   listDocumentVersions,
   createDocumentVersion,
   reconstructVersionSnapshot,
+  restoreDocumentVersion,
   SiteNotFoundError,
   DuplicateDocumentPathError,
   InvalidDocumentPathError,
   DocumentNotFoundError,
   DocumentPathConflictError,
   InvalidDocumentVersionParamsError,
+  RestoreVersionNotFoundError,
   publishDocument,
 } from '../services';
 import {
@@ -57,7 +59,7 @@ export interface DocumentRouteContext {
   documentPath?: string;
   action?: 'restore' | 'publish';
   versionsPath?: boolean;
-  versionAction?: 'latest' | 'by-id';
+  versionAction?: 'latest' | 'by-id' | 'restore';
   versionId?: string;
   principal: AuthenticatedPrincipal;
 }
@@ -600,6 +602,29 @@ async function handleCreateDocumentVersion(
   return jsonResponse(version, 201);
 }
 
+async function handleRestoreDocumentVersionRoute(
+  documentId: string,
+  branchId: string,
+  versionId: string,
+  principal: AuthenticatedPrincipal,
+): Promise<Response> {
+  try {
+    const newVersion = await restoreDocumentVersion({
+      documentId,
+      branchId,
+      versionId,
+      createdById: principal.dbUserId ?? principal.id,
+      createdByType: principal.type === 'service' ? 'system' : principal.type,
+    });
+    return jsonResponse(newVersion, 201);
+  } catch (error) {
+    if (error instanceof RestoreVersionNotFoundError) {
+      return errorResponse('Version not found', 404);
+    }
+    throw error;
+  }
+}
+
 /**
  * Handle document version routes within branch scope
  */
@@ -655,6 +680,16 @@ async function handleDocumentVersionRoutes(
       return errorResponse('Method not allowed', 405);
     }
     return await handleGetDocumentVersionById(documentId, branchId, context.versionId);
+  }
+
+  // POST /versions/{versionId}/restore
+  if (context.versionAction === 'restore' && context.versionId !== undefined) {
+    if (method !== 'POST') {
+      return errorResponse('Method not allowed', 405);
+    }
+    return await handleRestoreDocumentVersionRoute(
+      documentId, branchId, context.versionId, context.principal,
+    );
   }
 
   // GET /versions - list versions

@@ -49,6 +49,8 @@ export interface CreateDocumentVersionParams {
    * @default false
    */
   forceNonStructural?: boolean;
+  /** ID of the version this version was restored from. Set when source='revert'. */
+  sourceVersionId?: string;
 }
 
 /**
@@ -108,6 +110,18 @@ export class InvalidDocumentVersionParamsError extends Error {
   constructor(message: string) {
     super(message);
     Object.setPrototypeOf(this, InvalidDocumentVersionParamsError.prototype);
+  }
+}
+
+/**
+ * Error thrown when a document version cannot be found.
+ */
+export class RestoreVersionNotFoundError extends Error {
+  public readonly name = 'RestoreVersionNotFoundError';
+
+  constructor(public readonly versionId: string) {
+    super(`Version with ID "${versionId}" not found.`);
+    Object.setPrototypeOf(this, RestoreVersionNotFoundError.prototype);
   }
 }
 
@@ -341,31 +355,34 @@ export async function createDocumentVersion(
       INSERT INTO app.document_versions (
         document_id, branch_id, version_number, snapshot,
         patch, action_type, action_metadata,
-        source, created_by_id, created_by_type, is_tombstone
+        source, created_by_id, created_by_type, is_tombstone,
+        source_version_id
       )
       SELECT $1, $2,
         COALESCE(MAX(version_number), 0) + 1,
         $3,
         $4, $5, $6,
-        $7, $8, $9, $10
+        $7, $8, $9, $10,
+        $13::uuid
       FROM app.document_versions
       WHERE document_id = $1 AND branch_id = $2
       RETURNING *`,
       [
-        params.documentId,
-        params.branchId,
-        snapshot,
-        forwardPatch ? JSON.stringify(forwardPatch) : (params.patch ? JSON.stringify(params.patch) : null),
-        finalActionType,
-        finalActionMetadata ?? null,
-        params.source,
-        params.createdById,
-        params.createdByType,
-        params.isTombstone === true,
+        params.documentId,          // $1
+        params.branchId,            // $2
+        snapshot,                   // $3
+        forwardPatch ? JSON.stringify(forwardPatch) : (params.patch ? JSON.stringify(params.patch) : null), // $4
+        finalActionType,            // $5
+        finalActionMetadata ?? null, // $6
+        params.source,              // $7
+        params.createdById,         // $8
+        params.createdByType,       // $9
+        params.isTombstone === true, // $10
         shouldNullPrevious && latestVersion
           ? latestVersion.id
-          : '00000000-0000-0000-0000-000000000000',
-        shouldNullPrevious,
+          : '00000000-0000-0000-0000-000000000000', // $11 — CTE WHERE id = $11
+        shouldNullPrevious,         // $12 — CTE WHERE $12::boolean = true
+        params.sourceVersionId ?? null, // $13
       ],
     );
 
@@ -990,4 +1007,68 @@ export async function batchSyncToPostgres(
     skippedCount: resolvedPayloads.length - inserted.length,
     unresolved,
   };
+}
+
+// =============================================================================
+// Version Restore
+// =============================================================================
+
+export interface RestoreDocumentVersionParams {
+  documentId: string;
+  branchId: string;
+  /** ID of the version to restore from. */
+  versionId: string;
+  createdById: string;
+  createdByType: 'user' | 'agent' | 'system';
+}
+
+/**
+ * Restore a document to a previous version by creating a new version that
+ * copies the snapshot of the target version, with source='revert' and
+ * source_version_id pointing to the origin.
+ *
+ * Single-document scoped — does not affect other documents on the branch.
+ */
+export async function restoreDocumentVersion(
+  params: RestoreDocumentVersionParams,
+): Promise<DocumentVersion> {
+  const { documentId, branchId, versionId, createdById, createdByType } = params;
+
+  const target = await getDocumentVersion(versionId);
+
+  if (target?.documentId !== documentId || target.branchId !== branchId) {
+    throw new RestoreVersionNotFoundError(versionId);
+  }
+
+  // Tombstone versions represent deletion events and carry no restorable content.
+  if (target.isTombstone === true) {
+    throw new RestoreVersionNotFoundError(versionId);
+  }
+
+  let snapshot: Record<string, unknown> | null | undefined = target.snapshot;
+  if (snapshot == null) {
+    snapshot = await reconstructVersionSnapshot(documentId, branchId, target.versionNumber);
+    if (snapshot == null) {
+      throw new RestoreVersionNotFoundError(versionId);
+    }
+  }
+
+  const newVersion = await createDocumentVersion({
+    documentId,
+    branchId,
+    snapshot,
+    source: 'revert',
+    sourceVersionId: versionId,
+    createdById,
+    createdByType,
+    skipDuplicateCheck: true,
+  });
+
+  // Guard against the unique-violation fallback in createDocumentVersion silently
+  // returning a pre-existing version instead of the newly created restore version.
+  if (newVersion.sourceVersionId !== versionId || newVersion.source !== 'revert') {
+    throw new DatabaseError('Concurrent write conflict during restore', 'restoreDocumentVersion');
+  }
+
+  return newVersion;
 }
