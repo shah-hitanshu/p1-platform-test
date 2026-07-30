@@ -579,7 +579,7 @@ describe('Phase 8: Presence Rollup Service', () => {
       });
 
       const mockEnv = createMockDocEnv();
-      await queryDocumentPresence(mockEnv as unknown, SITE_ID, DOC_PATH, BRANCH_ID);
+      await queryDocumentPresence(mockEnv, SITE_ID, DOC_PATH, BRANCH_ID);
 
       // The session key passed to idFromName must use the UUID, not the raw path string
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalledWith(
@@ -596,7 +596,7 @@ describe('Phase 8: Presence Rollup Service', () => {
 
       const mockEnv = createMockDocEnv();
       const result = await queryDocumentPresence(
-        mockEnv as unknown,
+        mockEnv,
         SITE_ID,
         'nonexistent/path',
         BRANCH_ID,
@@ -622,7 +622,7 @@ describe('Phase 8: Presence Rollup Service', () => {
 
       const mockEnv = createMockDocEnv();
       const result = await queryDocumentPresence(
-        mockEnv as unknown,
+        mockEnv,
         SITE_ID,
         DOC_PATH,
         BRANCH_ID,
@@ -646,7 +646,7 @@ describe('Phase 8: Presence Rollup Service', () => {
 
       const mockEnv = createMockDocEnv();
       const result = await queryDocumentPresence(
-        mockEnv as unknown,
+        mockEnv,
         SITE_ID,
         DOC_PATH,
         BRANCH_ID,

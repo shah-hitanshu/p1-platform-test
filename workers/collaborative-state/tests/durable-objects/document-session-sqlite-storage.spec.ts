@@ -173,7 +173,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
   describe('DO initialization with SQLite storage', () => {
     it('should initialize DocumentSession with valid session ID', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       expect(session).toBeDefined();
       expect(session).toBeInstanceOf(DocumentSession);
@@ -183,7 +183,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
       const sessionId = 'aaaaaaaa-0000-4000-8000-000000000004:bbbbbbbb-0000-4000-8000-000000000004:cccccccc-0000-4000-8000-000000000004';
       const state = createMockState(sessionId);
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(state as unknown, mockEnv);
+      const session = new DocumentSession(state, mockEnv);
 
       // Verify session info is parsed correctly
       const info = session.getSessionInfo();
@@ -194,7 +194,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
 
     it('should respond to /snapshot after initialization (storage API compatible)', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/snapshot');
       const response = await session.fetch(request);
@@ -208,7 +208,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
 
     it('should use ctx.storage.put for persistence after /apply', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/apply', {
         method: 'POST',
@@ -228,7 +228,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
 
     it('should use ctx.storage.get during initialization (reads stored CRDT state)', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Trigger initialization via snapshot
       await session.fetch(new Request('http://localhost/snapshot'));
@@ -241,7 +241,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
   describe('Large document persistence (> 128 KiB)', () => {
     it('should persist a document built via many /apply operations', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Apply many operations to build up a substantial document
       for (let i = 0; i < 50; i++) {
@@ -295,7 +295,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
       );
 
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(state as unknown, mockEnv);
+      const session = new DocumentSession(state, mockEnv);
 
       // Fetch snapshot to trigger initialization and CRDT restore
       const response = await session.fetch(new Request('http://localhost/snapshot'));
@@ -331,7 +331,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
       );
 
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(state as unknown, mockEnv);
+      const session = new DocumentSession(state, mockEnv);
 
       // Trigger init and verify restore works
       const response = await session.fetch(new Request('http://localhost/snapshot'));
@@ -364,7 +364,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
       );
 
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(state as unknown, mockEnv);
+      const session = new DocumentSession(state, mockEnv);
 
       const response = await session.fetch(new Request('http://localhost/snapshot'));
       expect(response.status).toBe(200);
@@ -385,7 +385,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
   describe('Storage API compatibility (KV API on SQLite backend)', () => {
     it('should use ctx.storage.put with ydoc key for CRDT persistence', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Apply an edit to trigger persist
       await session.fetch(
@@ -406,7 +406,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
 
     it('should use ctx.storage.get with ydoc key for CRDT restore', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Trigger initialization via snapshot request
       await session.fetch(new Request('http://localhost/snapshot'));

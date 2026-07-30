@@ -312,7 +312,7 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
       [params.sourceBranchId],
     );
 
-    if (sourceBranchResult.rows.length === 0 || !sourceBranchResult.rows[0].is_main) {
+    if (sourceBranchResult.rows.length === 0 || sourceBranchResult.rows[0]?.is_main !== true) {
       await query('ROLLBACK');
       throw new MainBranchOnlyError(params.sourceBranchId);
     }
@@ -373,14 +373,16 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
         [params.sourceBranchId],
       );
 
-      if (latestCheckpoint.rows.length > 0) {
+      const latestCheckpointRow = latestCheckpoint.rows[0];
+      if (latestCheckpointRow) {
         const updatedResult = await query<BranchRow>(
           'UPDATE app.branches SET source_checkpoint_id = $1 WHERE id = $2 RETURNING *',
-          [latestCheckpoint.rows[0].id, branch.id],
+          [latestCheckpointRow.id, branch.id],
         );
-        if (updatedResult.rows.length > 0) {
+        const updatedRow = updatedResult.rows[0];
+        if (updatedRow) {
           await query('COMMIT');
-          return mapRowToBranch(updatedResult.rows[0]);
+          return mapRowToBranch(updatedRow);
         }
       }
     }
@@ -554,10 +556,11 @@ export async function restoreBranch(branchId: string): Promise<Branch | null> {
       [branchId],
     );
     await query('COMMIT');
-    if (updateResult.rows.length === 0) {
+    const updatedRow = updateResult.rows[0];
+    if (!updatedRow) {
       return null;
     }
-    return mapRowToBranch(updateResult.rows[0]);
+    return mapRowToBranch(updatedRow);
   } catch (error) {
     await query('ROLLBACK');
     throw error;

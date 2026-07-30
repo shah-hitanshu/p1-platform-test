@@ -5,6 +5,8 @@
  * Structures are branch-scoped for isolation during development.
  */
 
+import type { CreateStructureParams, UpdateBranchStructureParams, ListBranchStructuresOptions } from '../services/structure-types';
+import type { StructureType } from '../types';
 import {
   createStructure,
   getBranch,
@@ -126,12 +128,12 @@ async function handleCreateStructure(
     siteId: context.siteId,
     branchId: context.branchId,
     name: body.name,
-    slug: body.slug,
+    slug: body.slug ?? '',
     description: body.description,
-    structureType: body.structureType as 'hierarchy' | 'collection' | undefined,
+    structureType: (body.structureType ?? 'hierarchy') as StructureType,
     metadataSchema: body.metadataSchema,
     schemaEnforcement: body.schemaEnforcement as 'strict' | 'warn' | 'none' | undefined,
-  });
+  } as CreateStructureParams);
 
   return jsonResponse(structure, 201);
 }
@@ -162,7 +164,7 @@ async function handleListStructures(
     structureType: structureType as 'hierarchy' | 'collection' | undefined,
     limit: pagination.limit,
     offset: pagination.offset,
-  });
+  } as ListBranchStructuresOptions);
 
   return jsonResponse({ structures });
 }
@@ -247,7 +249,7 @@ async function handleUpdateStructure(
       description: body.description,
       metadataSchema: body.metadataSchema,
       schemaEnforcement: body.schemaEnforcement as 'strict' | 'warn' | 'none' | undefined,
-    },
+    } as UpdateBranchStructureParams,
   );
 
   return jsonResponse(updatedStructure);

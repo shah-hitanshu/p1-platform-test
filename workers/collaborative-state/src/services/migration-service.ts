@@ -494,11 +494,15 @@ function deleteNestedValue(obj: Record<string, unknown>, path: string): void {
   let current: unknown = obj;
   for (let i = 0; i < segments.length - 1; i++) {
     if (current === null || current === undefined || typeof current !== 'object') return;
-    current = (current as Record<string, unknown>)[segments[i]];
+    const seg = segments[i];
+    if (seg === undefined) return;
+    current = (current as Record<string, unknown>)[seg];
   }
   if (current !== null && current !== undefined && typeof current === 'object') {
+    const lastSeg = segments[segments.length - 1];
+    if (lastSeg === undefined) return;
     // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-    delete (current as Record<string, unknown>)[segments[segments.length - 1]];
+    delete (current as Record<string, unknown>)[lastSeg];
   }
 }
 
@@ -507,12 +511,16 @@ function setNestedValue(obj: Record<string, unknown>, path: string, value: unkno
   let current: unknown = obj;
   for (let i = 0; i < segments.length - 1; i++) {
     if (current === null || current === undefined) return;
+    const seg = segments[i];
+    if (seg === undefined) return;
     if (typeof current === 'object') {
-      current = (current as Record<string, unknown>)[segments[i]];
+      current = (current as Record<string, unknown>)[seg];
     }
   }
   if (current !== null && current !== undefined && typeof current === 'object') {
-    (current as Record<string, unknown>)[segments[segments.length - 1]] = value;
+    const lastSeg = segments[segments.length - 1];
+    if (lastSeg === undefined) return;
+    (current as Record<string, unknown>)[lastSeg] = value;
   }
 }
 
@@ -756,7 +764,11 @@ export async function getMigrationJob(jobId: string): Promise<MigrationJob> {
     throw new MigrationJobNotFoundError(jobId);
   }
 
-  return mapRowToJob(result.rows[0]);
+  const jobRow = result.rows[0];
+  if (!jobRow) {
+    throw new MigrationJobNotFoundError(jobId);
+  }
+  return mapRowToJob(jobRow);
 }
 
 export async function listMigrationConflicts(jobId: string): Promise<MigrationConflict[]> {
@@ -1115,7 +1127,8 @@ export async function triggerMigration(
          AND d.archived_at IS NULL`,
       [templateId, toVersion],
     );
-  const totalDocuments = parseInt(countResult.rows[0].count, 10);
+  const countRow = countResult.rows[0];
+  const totalDocuments = parseInt(countRow?.count ?? '0', 10);
 
   const { checkpoint } = await createCheckpoint({
     branchId,
@@ -1137,7 +1150,11 @@ export async function triggerMigration(
       checkpoint.id, totalDocuments, principal.id, principal.type],
   );
 
-  return mapRowToJob(jobResult.rows[0]);
+  const triggerJobRow = jobResult.rows[0];
+  if (!triggerJobRow) {
+    throw new Error('Failed to create migration job');
+  }
+  return mapRowToJob(triggerJobRow);
 }
 
 /**
@@ -1574,11 +1591,12 @@ export async function getMigrationStatus(
     [templateId, templateReadBranchId],
   );
 
-  if (versionResult.rows.length === 0) {
+  const versionRow = versionResult.rows[0];
+  if (!versionRow) {
     throw new TemplateNotFoundError(templateId);
   }
 
-  const currentVersion = versionResult.rows[0].version_number;
+  const currentVersion = versionRow.version_number;
 
   // Count stale documents and find the oldest version, resolving each edge's
   // synced_version against this branch's override when it inherits the edge.
@@ -1605,8 +1623,9 @@ export async function getMigrationStatus(
       [templateId, currentVersion],
     );
 
-  const staleDocumentCount = parseInt(staleResult.rows[0].count, 10);
-  const oldestDocumentVersion = staleResult.rows[0].oldest_version;
+  const staleRow = staleResult.rows[0];
+  const staleDocumentCount = parseInt(staleRow?.count ?? '0', 10);
+  const oldestDocumentVersion = staleRow?.oldest_version ?? null;
 
   const activeMigration = await getActiveMigration(templateId, branchId);
 
@@ -1651,7 +1670,8 @@ async function getActiveMigration(
      WHERE migration_job_id = $1 AND resolution IS NULL`,
     [job.id],
   );
-  const unresolvedConflicts = parseInt(conflictResult.rows[0].count, 10);
+  const conflictCountRow = conflictResult.rows[0];
+  const unresolvedConflicts = parseInt(conflictCountRow?.count ?? '0', 10);
 
   const isRunning = job.status === 'pending' || job.status === 'in_progress';
   const awaitingResolution = job.status === 'completed_with_conflicts' && unresolvedConflicts > 0;

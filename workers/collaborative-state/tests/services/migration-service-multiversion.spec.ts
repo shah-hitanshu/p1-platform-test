@@ -243,7 +243,7 @@ describe('Multi-version migration (v1→v3)', () => {
       });
       vi.mocked(createDocumentVersion).mockResolvedValueOnce({
         id: 'v-101', documentId: 'doc-001', branchId: 'branch-001', versionNumber: 6,
-        snapshot: docSnapshot, source: 'migration' as DocumentVersionSource,
+        snapshot: docSnapshot, source: 'migration',
         createdById: 'user-001', createdByType: 'user', createdAt: '2026-06-20T00:01:00Z',
       });
 

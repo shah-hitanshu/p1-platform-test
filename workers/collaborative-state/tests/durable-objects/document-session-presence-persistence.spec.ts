@@ -353,7 +353,7 @@ describe('Phase 3.1: Persist Presence to DO Storage', () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState();
       const mockEnv = createMockEnv();
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize the session
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -402,7 +402,7 @@ describe('Phase 3.1: Persist Presence to DO Storage', () => {
       await mockState.storage.put('presenceState', serializedPresence);
 
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Trigger initialization
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -423,7 +423,7 @@ describe('Phase 3.1: Persist Presence to DO Storage', () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState();
       const mockEnv = createMockEnv();
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize session
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -454,7 +454,7 @@ describe('Phase 3.1: Persist Presence to DO Storage', () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState();
       const mockEnv = createMockEnv();
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize session
       const snapshotReq = new Request('http://localhost/snapshot');

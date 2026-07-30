@@ -263,11 +263,6 @@ export type {
 // Structure Service
 export {
   createStructure,
-  getStructure,
-  getStructureBySlug,
-  listStructures,
-  updateStructure,
-  deleteStructure,
   // Branch-scoped structure functions
   getBranchStructure,
   getBranchStructureBySlug,
@@ -294,8 +289,9 @@ export {
 
 export type {
   CreateStructureParams,
-  UpdateStructureParams,
+  UpdateBranchStructureParams,
   ListStructuresOptions,
+  ListBranchStructuresOptions,
   CreateNodeParams,
   UpdateNodeParams,
   ListNodesOptions,

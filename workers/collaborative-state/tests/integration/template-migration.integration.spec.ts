@@ -269,7 +269,7 @@ describe('Template Migration CUJ — Integration Tests', () => {
       expect(latest).not.toBeNull();
       expect(latest!.source).toBe('migration');
 
-      const content = latest!.snapshot!.content as Array<{ type: string; props: Record<string, unknown> }>;
+      const content = latest!.snapshot!.content as { type: string; props: Record<string, unknown> }[];
       expect(content).toHaveLength(3);
       expect(content[0].type).toBe('HeadingBlock');
       expect(content[1].type).toBe('ImageBlock');
@@ -301,7 +301,7 @@ describe('Template Migration CUJ — Integration Tests', () => {
       expect(result.processedDocuments).toBe(1);
 
       const latest = await getLatestDocumentVersion(pageDocId, branchId);
-      const content = latest!.snapshot!.content as Array<{ type: string; props: Record<string, unknown> }>;
+      const content = latest!.snapshot!.content as { type: string; props: Record<string, unknown> }[];
 
       // Should still have exactly 3 components, no duplicates
       expect(content).toHaveLength(3);
@@ -362,7 +362,7 @@ describe('Template Migration CUJ — Integration Tests', () => {
       expect(result.processedDocuments).toBe(1);
 
       const latest = await getLatestDocumentVersion(pageDocId, branchId);
-      const content = latest!.snapshot!.content as Array<{ type: string }>;
+      const content = latest!.snapshot!.content as { type: string }[];
       expect(content[0].type).toBe('C');
       expect(content[1].type).toBe('A');
       expect(content[2].type).toBe('B');
@@ -653,7 +653,7 @@ describe('Template Migration CUJ — Integration Tests', () => {
       const latest = await getLatestDocumentVersion(pageDocId, branchId);
       expect(latest).not.toBeNull();
 
-      const content = latest!.snapshot!.content as Array<{ type: string; props: Record<string, unknown> }>;
+      const content = latest!.snapshot!.content as { type: string; props: Record<string, unknown> }[];
       const button = content.find(c => c.type === 'ButtonBlock');
       expect(button).toBeDefined();
       expect(button!.props.label).toBe('Get Started');
@@ -861,7 +861,7 @@ describe('Template Migration CUJ — Integration Tests', () => {
       expect(result.conflictedDocuments).toBe(0);
 
       const latest = await getLatestDocumentVersion(pageDocId, branchId);
-      const content = latest!.snapshot!.content as Array<{ type: string; props: Record<string, unknown> }>;
+      const content = latest!.snapshot!.content as { type: string; props: Record<string, unknown> }[];
 
       // Structural: FooterBlock was inserted
       expect(content).toHaveLength(2);
@@ -1048,7 +1048,7 @@ describe('Template Migration CUJ — Integration Tests', () => {
       await resolveMigrationConflict(conflictId, 'apply', { id: TEST_USER_ID, type: 'user' });
 
       const latest = await getLatestDocumentVersion(pageDocId, branchId);
-      const content = latest!.snapshot!.content as Array<{ type: string; props: { id?: string } }>;
+      const content = latest!.snapshot!.content as { type: string; props: { id?: string } }[];
       expect(content.some(c => c.props.id === 't1')).toBe(false);
       expect(content.some(c => c.props.id === 'h1')).toBe(true);
 
@@ -1080,7 +1080,7 @@ describe('Template Migration CUJ — Integration Tests', () => {
       await resolveMigrationConflict(conflictId, 'apply', { id: TEST_USER_ID, type: 'user' });
 
       const latest = await getLatestDocumentVersion(pageDocId, branchId);
-      const content = latest!.snapshot!.content as Array<{ type: string; props: { id?: string } }>;
+      const content = latest!.snapshot!.content as { type: string; props: { id?: string } }[];
       expect(content.some(c => c.props.id === 't1')).toBe(false);
     });
 

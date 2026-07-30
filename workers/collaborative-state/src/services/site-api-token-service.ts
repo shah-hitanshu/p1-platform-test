@@ -152,9 +152,13 @@ export async function generateToken(
     [params.siteId, tokenHash, prefix, params.name, scopes, params.createdBy],
   );
 
+  const tokenRow = result.rows[0];
+  if (!tokenRow) {
+    throw new Error('Failed to generate token');
+  }
   return {
     token: rawToken,
-    metadata: mapRowToMetadata(result.rows[0]),
+    metadata: mapRowToMetadata(tokenRow),
   };
 }
 
@@ -184,6 +188,9 @@ export async function validateToken(
   }
 
   const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
   return {
     tokenId: row.id,
     siteId: row.site_id,

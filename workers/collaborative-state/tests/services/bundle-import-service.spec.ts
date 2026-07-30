@@ -132,7 +132,7 @@ describe('resolveCreatedByRefToId', () => {
   });
 
   it('resolves user email to UUID from app.users', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'user-target-uuid' }], rowCount: 1 } as never);
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'user-target-uuid' }], rowCount: 1 });
     const id = await resolveCreatedByRefToId({ type: 'user', email: 'chris@example.com' });
     expect(id).toBe('user-target-uuid');
     expect(mockQuery).toHaveBeenCalledWith(
@@ -148,13 +148,13 @@ describe('resolveCreatedByRefToId', () => {
   });
 
   it('returns system UUID when user email not found', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never);
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const id = await resolveCreatedByRefToId({ type: 'user', email: 'unknown@example.com' });
     expect(id).toBe(SYSTEM_UUID);
   });
 
   it('resolves agent name to UUID from app.agents', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'agent-target-uuid' }], rowCount: 1 } as never);
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'agent-target-uuid' }], rowCount: 1 });
     const id = await resolveCreatedByRefToId({ type: 'agent', name: 'Zappy AI' });
     expect(id).toBe('agent-target-uuid');
   });
@@ -165,7 +165,7 @@ describe('resolveCreatedByRefToId', () => {
   });
 
   it('returns system UUID when agent name not found', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never);
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const id = await resolveCreatedByRefToId({ type: 'agent', name: 'Unknown Agent' });
     expect(id).toBe(SYSTEM_UUID);
   });

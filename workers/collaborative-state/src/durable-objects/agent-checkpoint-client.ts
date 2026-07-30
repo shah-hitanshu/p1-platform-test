@@ -167,7 +167,7 @@ export async function createAgentPostEditCheckpoint(
  */
 export async function rollbackToAgentCheckpoint(
   env: DocumentSessionEnv,
-  sessionInfo: SessionInfo,
+  _sessionInfo: SessionInfo,
   checkpointId: string,
   agentId: string,
   reason?: string,

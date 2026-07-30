@@ -19,7 +19,7 @@ describe('Acting-User Integration', () => {
       id: 'agent-1',
     };
 
-    const actingUser = extractActingUser(headers, principal as { type: string });
+    const actingUser = extractActingUser(headers, principal);
     if (actingUser) {
       principal.actingUserId = actingUser.actingUserId;
       principal.actingUserEmail = actingUser.actingUserEmail;
@@ -40,7 +40,7 @@ describe('Acting-User Integration', () => {
       id: 'user-1',
     };
 
-    const actingUser = extractActingUser(headers, principal as { type: string });
+    const actingUser = extractActingUser(headers, principal);
     if (actingUser) {
       principal.actingUserId = actingUser.actingUserId;
       principal.actingUserEmail = actingUser.actingUserEmail;

@@ -157,7 +157,7 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
       });
 
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       // Trigger initialization via /snapshot
       const req = new Request('http://localhost/snapshot');
@@ -189,7 +189,7 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
       });
 
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       const req = new Request('http://localhost/snapshot');
       const response = await session.fetch(req);
@@ -216,7 +216,7 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
       });
 
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       const req = new Request('http://localhost/snapshot');
       const response = await session.fetch(req);
@@ -255,7 +255,7 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
       });
 
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       const req = new Request('http://localhost/snapshot');
       const response = await session.fetch(req);
@@ -283,7 +283,7 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
       });
 
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       const req = new Request('http://localhost/snapshot');
       await session.fetch(req);
@@ -299,7 +299,7 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
 
       // Should construct without HYPERDRIVE
       const session1 = new DocumentSession(
-        mockState as unknown,
+        mockState,
         createMockEnv({ HYPERDRIVE: undefined }),
       );
       expect(session1).toBeDefined();
@@ -307,7 +307,7 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
       // Should construct with HYPERDRIVE
       const mockState2 = createMockState();
       const session2 = new DocumentSession(
-        mockState2 as unknown,
+        mockState2,
         createMockEnv({ HYPERDRIVE: { connectionString: 'postgresql://host/db' } }),
       );
       expect(session2).toBeDefined();

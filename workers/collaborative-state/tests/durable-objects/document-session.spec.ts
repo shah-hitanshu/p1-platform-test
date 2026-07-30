@@ -120,7 +120,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
     it('should initialize with DurableObjectState and environment', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
 
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       expect(session).toBeDefined();
     });
@@ -129,7 +129,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const customState = createMockState('site-abc:doc-xyz:branch-123');
 
-      const session = new DocumentSession(customState as unknown, mockEnv);
+      const session = new DocumentSession(customState, mockEnv);
 
       // Session should be able to return its parsed identifiers
       const info = session.getSessionInfo();
@@ -142,7 +142,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
   describe('fetch routing', () => {
     it('should route /snapshot to handleSnapshot', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/snapshot');
       const response = await session.fetch(request);
@@ -156,7 +156,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should route /apply to handleApplyOperations', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/apply', {
         method: 'POST',
@@ -175,7 +175,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should return 404 for unknown paths', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/unknown');
       const response = await session.fetch(request);
@@ -185,7 +185,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should route /connect to handleWebSocket', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // For WebSocket upgrade, we need the Upgrade header
       const request = new Request('http://localhost/connect', {
@@ -206,7 +206,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
   describe('/snapshot endpoint', () => {
     it('should return empty snapshot for new session', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/snapshot');
       const response = await session.fetch(request);
@@ -219,7 +219,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should return state vector for CRDT synchronization', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/snapshot');
       const response = await session.fetch(request);
@@ -230,7 +230,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should list connected actors', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Simulate connections by calling internal method or through apply
       // For now, test that the property exists
@@ -249,7 +249,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const mockPersistedState = new Uint8Array([/* Yjs update bytes */]);
       mockState.storage.get.mockResolvedValue(mockPersistedState);
 
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/snapshot');
       const response = await session.fetch(request);
@@ -262,7 +262,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
   describe('/apply endpoint', () => {
     it('should apply set operation to document', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/apply', {
         method: 'POST',
@@ -284,7 +284,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should apply nested set operation', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/apply', {
         method: 'POST',
@@ -307,7 +307,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should apply delete operation', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // First set a value
       await session.fetch(new Request('http://localhost/apply', {
@@ -338,7 +338,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should apply insert operation to array', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // First create an array
       await session.fetch(new Request('http://localhost/apply', {
@@ -376,7 +376,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should apply move operation in array', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Set up initial array
       await session.fetch(new Request('http://localhost/apply', {
@@ -417,7 +417,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should apply replace operation', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Set initial value
       await session.fetch(new Request('http://localhost/apply', {
@@ -452,7 +452,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should apply multiple operations in order', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const operations: EditOperation[] = [
         { type: 'set', path: 'title', value: 'Document' },
@@ -478,7 +478,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should handle array index paths without corrupting arrays', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // First set up a Puck-like document structure with content array
       await session.fetch(new Request('http://localhost/apply', {
@@ -557,7 +557,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should return error for invalid operation type', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/apply', {
         method: 'POST',
@@ -577,7 +577,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should require actorId in request', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/apply', {
         method: 'POST',
@@ -597,7 +597,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should persist state after applying operations', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/apply', {
         method: 'POST',
@@ -620,7 +620,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
   describe('/connect WebSocket endpoint', () => {
     it('should require X-Actor-Id header', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/connect', {
         headers: {
@@ -636,7 +636,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should require X-Actor-Type header', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/connect', {
         headers: {
@@ -652,7 +652,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should validate X-Actor-Type is user or agent', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/connect', {
         headers: {
@@ -675,7 +675,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const storedData = new Uint8Array([1, 2, 3, 4]);
       mockState.storage.get.mockResolvedValue(storedData);
 
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Trigger initialization by making a request
       await session.fetch(new Request('http://localhost/snapshot'));
@@ -685,7 +685,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should persist state after each operation batch', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Apply operations
       await session.fetch(new Request('http://localhost/apply', {
@@ -702,7 +702,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should persist connection metadata', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // When connections are tracked, metadata should be persisted
       // This is tested indirectly through the snapshot endpoint
@@ -719,7 +719,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
       mockState.storage.get.mockResolvedValue(undefined);
 
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/snapshot');
       const response = await session.fetch(request);
@@ -736,7 +736,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       // For now, we just verify the storage is checked.
       mockState.storage.get.mockResolvedValue(undefined);
 
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
       await session.fetch(new Request('http://localhost/snapshot'));
 
       expect(mockState.storage.get).toHaveBeenCalled();
@@ -746,7 +746,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
   describe('CRDT operations', () => {
     it('should handle concurrent operations deterministically', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Apply two sets to the same key - last one wins in CRDT
       const ops1 = [{ type: 'set', path: 'value', value: 1 }] as EditOperation[];
@@ -770,7 +770,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should support deep nested paths', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/apply', {
         method: 'POST',
@@ -794,7 +794,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should handle array operations at nested paths', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Create nested structure with array
       await session.fetch(new Request('http://localhost/apply', {
@@ -837,7 +837,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
   describe('connection management', () => {
     it('should track connected actors in snapshot', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Without actual WebSocket connection, actors list should be empty
       const request = new Request('http://localhost/snapshot');
@@ -849,7 +849,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should get connection count', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const count = session.getConnectionCount();
       expect(count).toBe(0);
@@ -859,7 +859,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
   describe('error handling', () => {
     it('should handle malformed JSON in /apply request', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/apply', {
         method: 'POST',
@@ -875,7 +875,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should handle missing operations array in /apply', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/apply', {
         method: 'POST',
@@ -892,7 +892,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should handle empty operations array gracefully', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/apply', {
         method: 'POST',
@@ -912,7 +912,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
       mockState.storage.put.mockRejectedValue(new Error('Storage unavailable'));
 
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/apply', {
         method: 'POST',
@@ -931,7 +931,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
   describe('Yjs integration', () => {
     it('should use Y.Doc for document state', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // The session should internally use Yjs
       // We verify this indirectly through stateVector in snapshot
@@ -945,7 +945,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
 
     it('should encode state as Yjs update for persistence', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       await session.fetch(new Request('http://localhost/apply', {
         method: 'POST',
@@ -982,7 +982,7 @@ describe('Phase 1.3: DocumentSession Sync Triggers', () => {
   describe('/sync endpoint', () => {
     it('should expose /sync endpoint for manual sync trigger', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/sync', {
         method: 'POST',
@@ -995,7 +995,7 @@ describe('Phase 1.3: DocumentSession Sync Triggers', () => {
 
     it('should return current snapshot after sync', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // First set some data
       await session.fetch(new Request('http://localhost/apply', {
@@ -1020,7 +1020,7 @@ describe('Phase 1.3: DocumentSession Sync Triggers', () => {
 
     it('should only accept POST method for /sync', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://localhost/sync', {
         method: 'GET',
@@ -1042,7 +1042,7 @@ describe('Phase 1.3: DocumentSession Sync Triggers', () => {
         INTERNAL_SECRET: 'test-secret',
       };
 
-      const session = new DocumentSession(mockState as unknown, envWithSync);
+      const session = new DocumentSession(mockState, envWithSync);
       expect(session).toBeDefined();
     });
   });
@@ -1070,7 +1070,7 @@ describe('Phase 1.4: DocumentSession PostgreSQL Initialization', () => {
       const storedData = new Uint8Array([1, 2, 3, 4]);
       mockState.storage.get.mockResolvedValue(storedData);
 
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Trigger initialization
       await session.fetch(new Request('http://localhost/snapshot'));
@@ -1085,7 +1085,7 @@ describe('Phase 1.4: DocumentSession PostgreSQL Initialization', () => {
       // No stored data
       mockState.storage.get.mockResolvedValue(undefined);
 
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const response = await session.fetch(new Request('http://localhost/snapshot'));
       const data = await response.json();
@@ -1097,7 +1097,7 @@ describe('Phase 1.4: DocumentSession PostgreSQL Initialization', () => {
   describe('snapshot initialization', () => {
     it('should be able to initialize from a JSON snapshot', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Check if there's an endpoint to initialize from snapshot
       // This would be called by the sync service when initializing from PostgreSQL
@@ -1245,7 +1245,7 @@ describe('Phase 1.3b: DocumentSession Automatic Sync Triggers', () => {
         INTERNAL_SECRET: 'test-secret',
       };
 
-      const session = new DocumentSession(mockState as unknown, envWithSync);
+      const session = new DocumentSession(mockState, envWithSync);
 
       // Apply an edit operation
       await session.fetch(new Request('http://localhost/apply', {
@@ -1278,7 +1278,7 @@ describe('Phase 1.3b: DocumentSession Automatic Sync Triggers', () => {
         INTERNAL_SECRET: 'test-secret',
       };
 
-      const session = new DocumentSession(mockState as unknown, envWithSync);
+      const session = new DocumentSession(mockState, envWithSync);
 
       // First edit
       await session.fetch(new Request('http://localhost/apply', {
@@ -1324,7 +1324,7 @@ describe('Phase 1.3b: DocumentSession Automatic Sync Triggers', () => {
         INTERNAL_SECRET: 'test-secret',
       };
 
-      const session = new DocumentSession(mockState as unknown, envWithSync);
+      const session = new DocumentSession(mockState, envWithSync);
 
       // Apply an edit to create state worth syncing
       await session.fetch(new Request('http://localhost/apply', {
@@ -1349,7 +1349,7 @@ describe('Phase 1.3b: DocumentSession Automatic Sync Triggers', () => {
 
       // Create mock state with specific session ID format
       const customState = createMockState('aaaaaaaa-0000-4000-8000-000000000002:bbbbbbbb-0000-4000-8000-000000000002:cccccccc-0000-4000-8000-000000000002');
-      const session = new DocumentSession(customState as unknown, {
+      const session = new DocumentSession(customState, {
         API_URL: 'http://localhost:8787',
         ENVIRONMENT: 'test',
       });
@@ -1366,7 +1366,7 @@ describe('Phase 1.3b: DocumentSession Automatic Sync Triggers', () => {
     it('should track connection count for sync decisions', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
 
-      const session = new DocumentSession(mockState as unknown, {
+      const session = new DocumentSession(mockState, {
         API_URL: 'http://localhost:8787',
         ENVIRONMENT: 'test',
       });

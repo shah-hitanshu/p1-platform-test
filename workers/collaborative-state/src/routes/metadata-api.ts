@@ -6,6 +6,7 @@
  */
 
 import type { AuthenticatedPrincipal } from '../types';
+import type { ListDocumentMetadataOptions } from '../services/metadata-service';
 import {
   getBranch,
   getBranchStructureState,
@@ -152,11 +153,11 @@ async function handleGetDocumentMetadata(
     return errorResponse('Document ID is required', 400);
   }
 
-  const metadata = await getDocumentMetadata({
-    branchId: context.branchId,
-    structureId: context.structureId,
-    documentId: context.documentId,
-  });
+  const metadata = await getDocumentMetadata(
+    context.branchId,
+    context.structureId,
+    context.documentId,
+  );
 
   if (metadata === null) {
     return errorResponse('Document metadata not found', 404);
@@ -208,11 +209,11 @@ async function handleDeleteDocumentMetadata(
     return errorResponse('Document ID is required', 400);
   }
 
-  await deleteDocumentMetadata({
-    branchId: context.branchId,
-    structureId: context.structureId,
-    documentId: context.documentId,
-  });
+  await deleteDocumentMetadata(
+    context.branchId,
+    context.structureId,
+    context.documentId,
+  );
 
   return new Response(null, { status: 204 });
 }
@@ -238,7 +239,7 @@ async function handleListDocumentMetadata(
     branchId: context.branchId,
     structureId: context.structureId,
     conforming,
-  });
+  } as ListDocumentMetadataOptions);
 
   return jsonResponse({ documents });
 }

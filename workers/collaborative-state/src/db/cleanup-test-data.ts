@@ -553,7 +553,8 @@ async function main(): Promise<void> {
 }
 
 // Export for programmatic use
-export { findTestSites, deleteTestData, CleanupStats };
+export { findTestSites, deleteTestData };
+export type { CleanupStats };
 
 // Run if called directly
 void main();

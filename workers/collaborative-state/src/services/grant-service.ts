@@ -114,7 +114,12 @@ export async function createGrant(params: CreateGrantParams): Promise<Grant> {
     [branchId, actorId, actorType, role, grantedById, grantedByType, reason],
   );
 
-  return result.rows[0];
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error('Failed to insert grant');
+  }
+
+  return row;
 }
 
 /**
@@ -192,5 +197,5 @@ export async function deleteGrant(grantId: string): Promise<boolean> {
     [grantId],
   );
 
-  return result.rowCount > 0;
+  return (result.rowCount ?? 0) > 0;
 }

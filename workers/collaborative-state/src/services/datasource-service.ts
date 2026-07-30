@@ -68,7 +68,7 @@ export async function getDatasource(
 }
 
 export async function listDatasources(
-  siteId: string,
+  _siteId: string,
   branchId: string,
   mainBranchId?: string,
 ): Promise<DatasourceSnapshot[]> {

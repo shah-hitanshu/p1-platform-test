@@ -330,6 +330,7 @@ const MAX_PATH_LENGTH = 1024;
  * @throws InvalidDocumentPathError if path is empty, whitespace-only, or too long
  */
 export function normalizePath(path: string): string {
+  // Trim whitespace
   let normalized = path.trim();
 
   // Empty string represents root path "/"

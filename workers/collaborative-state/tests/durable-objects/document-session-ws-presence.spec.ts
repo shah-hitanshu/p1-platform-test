@@ -110,7 +110,7 @@ class MockWebSocket {
 
   addEventListener(event: string, handler: (event: unknown) => void): void {
     if (event === 'message') {
-      this.messageHandlers.push(handler as (event: { data: string | ArrayBuffer }) => void);
+      this.messageHandlers.push(handler);
     } else if (event === 'close' || event === 'error') {
       this.closeHandlers.push(handler as () => void);
     }
@@ -169,7 +169,7 @@ describe('DocumentSession WebSocket Presence Protocol', () => {
   describe('Text vs Binary Message Handling', () => {
     it('should route text (string) messages to presence handler', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Verify session is created (basic sanity check)
       expect(session).toBeDefined();
@@ -194,7 +194,7 @@ describe('DocumentSession WebSocket Presence Protocol', () => {
 
     it('should route binary (ArrayBuffer) messages to Yjs handler', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Verify session is created (basic sanity check)
       expect(session).toBeDefined();
@@ -493,7 +493,7 @@ describe('handleWebSocket: pushPresenceUpdate on connect', () => {
     // A constructor function returning a plain object causes `new` to use that object
     // rather than `this`, giving us control over pair[0] and pair[1].
     const pair = { 0: mockClient, 1: mockServer };
-    globalThis.WebSocketPair = function WsPairMock() { return pair; } as unknown as typeof WebSocketPair;
+    globalThis.WebSocketPair = function WsPairMock() { return pair; };
 
     const mockState = {
       id: { toString: (): string => 'site-1:doc-1:branch-1', name: 'site-1:doc-1:branch-1' },

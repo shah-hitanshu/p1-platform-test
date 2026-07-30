@@ -142,7 +142,7 @@ async function handleCreateNode(
 
   const node = await createNode({
     structureId: context.structureId,
-    parentNodeId: body.parentNodeId ?? null,
+    parentNodeId: body.parentNodeId ?? undefined,
     name: body.name,
     slug: body.slug,
     nodeType: body.nodeType as 'section' | 'document' | 'external',
@@ -211,7 +211,6 @@ async function handleUpdateNode(
   const updatedNode = await updateNode(context.nodeId, {
     name: body.name,
     slug: body.slug,
-    position: body.position,
   });
 
   return jsonResponse(updatedNode);
@@ -243,8 +242,7 @@ async function handleMoveNode(
 
   const body = await parseJsonBody<MoveNodeBody>(request);
 
-  const movedNode = await moveNode({
-    nodeId: context.nodeId,
+  const movedNode = await moveNode(context.nodeId, {
     newParentId: body.newParentId ?? null,
     newPosition: body.newPosition ?? 0,
   });

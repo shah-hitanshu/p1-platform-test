@@ -150,7 +150,7 @@ function findPutCall(
 ): unknown[] | undefined {
   return mockState.storage.put.mock.calls.find(
     (call: unknown[]) => call[0] === key,
-  ) as unknown[] | undefined;
+  );
 }
 
 /**
@@ -162,7 +162,7 @@ function findDeleteCall(
 ): unknown[] | undefined {
   return mockState.storage.delete.mock.calls.find(
     (call: unknown[]) => call[0] === key,
-  ) as unknown[] | undefined;
+  );
 }
 
 /**
@@ -217,7 +217,7 @@ describe('DO-to-PostgreSQL Sync Pipeline', () => {
     it('should set alarm after applying an edit', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
-      const session = new DocumentSession(mockState as unknown, createSyncEnv());
+      const session = new DocumentSession(mockState, createSyncEnv());
 
       const response = await session.fetch(
         applyRequest([{ type: 'set', path: 'title', value: 'Hello' }]),
@@ -235,7 +235,7 @@ describe('DO-to-PostgreSQL Sync Pipeline', () => {
       // Stale alarm from a previous worker session — timestamp is in the past
       mockState.storage.getAlarm.mockResolvedValue(Date.now() - 60_000);
 
-      const session = new DocumentSession(mockState as unknown, createSyncEnv());
+      const session = new DocumentSession(mockState, createSyncEnv());
 
       await session.fetch(
         applyRequest([{ type: 'set', path: 'title', value: 'Updated' }]),
@@ -249,7 +249,7 @@ describe('DO-to-PostgreSQL Sync Pipeline', () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
 
-      const session = new DocumentSession(mockState as unknown, createSyncEnv());
+      const session = new DocumentSession(mockState, createSyncEnv());
 
       // First edit — sets alarms (cleanup at +60s, sync at +5s)
       await session.fetch(
@@ -278,7 +278,7 @@ describe('DO-to-PostgreSQL Sync Pipeline', () => {
     it('should store sync schedule in DO storage', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
-      const session = new DocumentSession(mockState as unknown, createSyncEnv());
+      const session = new DocumentSession(mockState, createSyncEnv());
 
       await session.fetch(
         applyRequest([{ type: 'set', path: 'title', value: 'Stored' }]),
@@ -298,7 +298,7 @@ describe('DO-to-PostgreSQL Sync Pipeline', () => {
     it('should skip scheduling when state vector unchanged', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
-      const session = new DocumentSession(mockState as unknown, createSyncEnv());
+      const session = new DocumentSession(mockState, createSyncEnv());
 
       // Applying empty operations doesn't change the CRDT state
       await session.fetch(
@@ -314,7 +314,7 @@ describe('DO-to-PostgreSQL Sync Pipeline', () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
       // Env without INTERNAL_SECRET
-      const session = new DocumentSession(mockState as unknown, createEnvWithoutSecret());
+      const session = new DocumentSession(mockState, createEnvWithoutSecret());
 
       await session.fetch(
         applyRequest([{ type: 'set', path: 'title', value: 'No sync' }]),
@@ -336,7 +336,7 @@ describe('DO-to-PostgreSQL Sync Pipeline', () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
       const env = createSyncEnv();
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       // Initialize the document with some content first
       await session.fetch(
@@ -374,7 +374,7 @@ describe('DO-to-PostgreSQL Sync Pipeline', () => {
     it('should not sync when schedule is not yet due', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
-      const session = new DocumentSession(mockState as unknown, createSyncEnv());
+      const session = new DocumentSession(mockState, createSyncEnv());
 
       // Initialize
       await session.fetch(
@@ -400,7 +400,7 @@ describe('DO-to-PostgreSQL Sync Pipeline', () => {
     it('should clear sync schedule after successful sync', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
-      const session = new DocumentSession(mockState as unknown, createSyncEnv());
+      const session = new DocumentSession(mockState, createSyncEnv());
 
       // Initialize with content
       await session.fetch(
@@ -432,7 +432,7 @@ describe('DO-to-PostgreSQL Sync Pipeline', () => {
     it('should not clear sync schedule on sync failure', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
-      const session = new DocumentSession(mockState as unknown, createSyncEnv());
+      const session = new DocumentSession(mockState, createSyncEnv());
 
       // Initialize with content
       await session.fetch(
@@ -475,7 +475,7 @@ describe('DO-to-PostgreSQL Sync Pipeline', () => {
       // No name on state.id — simulates Miniflare alarm wakeup
       const mockState = createMockState(undefined);
       const env = createSyncEnv();
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       // Pre-populate storage with session info (as if a previous fetch stored it)
       await mockState.storage.put('sessionInfo', {
@@ -509,7 +509,7 @@ describe('DO-to-PostgreSQL Sync Pipeline', () => {
       // state.id.name IS available
       const mockState = createMockState('aaaaaaaa-0000-4000-8000-000000000008:bbbbbbbb-0000-4000-8000-000000000008:cccccccc-0000-4000-8000-000000000008');
       const env = createSyncEnv();
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       // Storage has different session info — should NOT be used
       await mockState.storage.put('sessionInfo', {
@@ -548,7 +548,7 @@ describe('DO-to-PostgreSQL Sync Pipeline', () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       // No name on state.id
       const mockState = createMockState(undefined);
-      const session = new DocumentSession(mockState as unknown, createSyncEnv());
+      const session = new DocumentSession(mockState, createSyncEnv());
 
       // No sessionInfo in storage — the storage.get for 'sessionInfo' returns undefined
 
@@ -573,7 +573,7 @@ describe('DO-to-PostgreSQL Sync Pipeline', () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState('aaaaaaaa-0000-4000-8000-000000000009:bbbbbbbb-0000-4000-8000-000000000009:cccccccc-0000-4000-8000-000000000009');
       const env = createSyncEnv();
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       // Step 1: Apply an edit via /apply
       const editResponse = await session.fetch(

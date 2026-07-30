@@ -89,7 +89,7 @@ describe('handleMigrationRoutes: conflict resolution', () => {
     });
 
     expect(response.status).toBe(409);
-    const body = await response.json() as { error: string };
+    const body = await response.json();
     expect(body.error).toMatch(/legacy/i);
     expect(body.error).toMatch(/re-run/i);
   });

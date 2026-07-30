@@ -163,7 +163,7 @@ export async function handleApplyOperations(
     const root = ydoc.getMap('root');
     const response: ApplyResponse = {
       success: true,
-      snapshot: root.toJSON() as Record<string, unknown>,
+      snapshot: root.toJSON(),
       operationsApplied: 0,
     };
     return new Response(
@@ -174,7 +174,7 @@ export async function handleApplyOperations(
 
   // Validate operation types and required fields
   for (const op of body.operations) {
-    if (!VALID_OPERATION_TYPES.includes(op.type as typeof VALID_OPERATION_TYPES[number])) {
+    if (!VALID_OPERATION_TYPES.includes(op.type)) {
       return errorResponse(400, `Invalid operation type: ${op.type}`);
     }
 
@@ -282,7 +282,7 @@ export async function handleApplyOperations(
   const root = ydoc.getMap('root');
   const response: ApplyResponse & { agentConflicts?: typeof agentConflicts } = {
     success: true,
-    snapshot: root.toJSON() as Record<string, unknown>,
+    snapshot: root.toJSON(),
     operationsApplied: body.operations.length,
   };
 
@@ -323,7 +323,7 @@ export async function handleSync(
   const root = ydoc.getMap('root');
   const response: SyncResponse = {
     synced: true,
-    snapshot: root.toJSON() as Record<string, unknown>,
+    snapshot: root.toJSON(),
     stateVector: Array.from(Y.encodeStateVector(ydoc)),
   };
 

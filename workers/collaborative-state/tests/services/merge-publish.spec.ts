@@ -106,7 +106,7 @@ describe('publishMergedVersions', () => {
     const db = await import('../../src/db');
     const checkpointService = await import('../../src/services/checkpoint-service');
 
-    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 } as never);
+    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 });
     vi.mocked(checkpointService.createCheckpoint).mockResolvedValueOnce({
       checkpoint: {
         id: 'cp-1',
@@ -157,7 +157,7 @@ describe('publishMergedVersions', () => {
     const db = await import('../../src/db');
     const checkpointService = await import('../../src/services/checkpoint-service');
 
-    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 } as never);
+    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 });
     vi.mocked(checkpointService.createCheckpoint).mockResolvedValueOnce({
       checkpoint: {
         id: 'cp-1',
@@ -207,7 +207,7 @@ describe('publishMergedVersions', () => {
     const db = await import('../../src/db');
     const checkpointService = await import('../../src/services/checkpoint-service');
 
-    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 } as never);
+    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 });
     vi.mocked(checkpointService.createCheckpoint).mockResolvedValueOnce({
       checkpoint: {
         id: 'cp-1',

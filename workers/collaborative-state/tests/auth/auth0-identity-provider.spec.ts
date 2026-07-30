@@ -53,7 +53,7 @@ async function createAuth0Token(
     privateKey = keyPair.privateKey,
   } = options;
 
-  return await new jose.SignJWT(claims as jose.JWTPayload)
+  return await new jose.SignJWT(claims)
     .setProtectedHeader({ alg: 'RS256' })
     .setIssuer(issuer)
     .setAudience(audience)

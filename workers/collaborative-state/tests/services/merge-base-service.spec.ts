@@ -455,7 +455,7 @@ describe('Phase 5.1b: Merge Base Service', () => {
       const { getModifiedDocumentsSince } = await import('../../src/services/merge-base-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await getModifiedDocumentsSince('branch-id', 'checkpoint-id');
 
@@ -915,7 +915,7 @@ describe('Phase 5.1b: Merge Base Service', () => {
     // is true.
     async function captureLastSql(): Promise<() => string> {
       const db = await import('../../src/db');
-      vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
       return (): string => {
         const calls = vi.mocked(db.query).mock.calls;
         const last = calls[calls.length - 1];
@@ -1002,7 +1002,7 @@ describe('Phase 5.1b: Merge Base Service', () => {
 
     async function captureLastSql(): Promise<() => string> {
       const db = await import('../../src/db');
-      vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
       return (): string => {
         const calls = vi.mocked(db.query).mock.calls;
         const last = calls[calls.length - 1];

@@ -114,6 +114,9 @@ export async function validateGuestToken(token: string): Promise<GuestPrincipal 
   }
 
   const guestLink = result.rows[0];
+  if (!guestLink) {
+    return null;
+  }
 
   // Update access tracking (fire and forget)
   await query(
@@ -191,8 +194,13 @@ export async function createGuestLink(
     ],
   );
 
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error('Failed to create guest link: no row returned');
+  }
+
   return {
-    id: result.rows[0].id,
+    id: row.id,
     token,
   };
 }

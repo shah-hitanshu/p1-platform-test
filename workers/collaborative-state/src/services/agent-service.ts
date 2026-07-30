@@ -268,7 +268,12 @@ export async function createAgent(params: CreateAgentParams): Promise<Registered
 
     const result = await query<AgentRow>(sql, queryParams);
 
-    return mapRowToAgent(result.rows[0]);
+    const row = result.rows[0];
+    if (!row) {
+      throw new Error('Failed to insert agent');
+    }
+
+    return mapRowToAgent(row);
   } catch (error) {
     if (isForeignKeyViolation(error)) {
       throw new OrganizationNotFoundError(params.organizationId);
@@ -299,11 +304,12 @@ export async function getAgentById(id: string): Promise<RegisteredAgent | null> 
     WHERE id = $1
   `, [id]);
 
-  if (result.rows.length === 0) {
+  const row = result.rows[0];
+  if (!row) {
     return null;
   }
 
-  return mapRowToAgent(result.rows[0]);
+  return mapRowToAgent(row);
 }
 
 /**
@@ -323,11 +329,12 @@ export async function getAgentByName(
     WHERE organization_id = $1 AND name = $2
   `, [organizationId, name]);
 
-  if (result.rows.length === 0) {
+  const row = result.rows[0];
+  if (!row) {
     return null;
   }
 
-  return mapRowToAgent(result.rows[0]);
+  return mapRowToAgent(row);
 }
 
 /**
@@ -390,11 +397,12 @@ export async function updateAgent(
       RETURNING id, organization_id, name, description, capabilities, status, settings, created_at, updated_at
     `, values);
 
-    if (result.rows.length === 0) {
+    const row = result.rows[0];
+    if (!row) {
       return null;
     }
 
-    return mapRowToAgent(result.rows[0]);
+    return mapRowToAgent(row);
   } catch (error) {
     if (isUniqueViolation(error)) {
       throw new DuplicateAgentNameError('unknown', params.name ?? 'unknown');
@@ -421,11 +429,12 @@ export async function updateAgentStatus(
     RETURNING id, organization_id, name, description, capabilities, status, settings, created_at, updated_at
   `, [status, id]);
 
-  if (result.rows.length === 0) {
+  const row = result.rows[0];
+  if (!row) {
     return null;
   }
 
-  return mapRowToAgent(result.rows[0]);
+  return mapRowToAgent(row);
 }
 
 /**
@@ -523,5 +532,10 @@ export async function getActiveAgentCount(organizationId: string): Promise<numbe
     WHERE organization_id = $1 AND status = 'active'
   `, [organizationId]);
 
-  return parseInt(result.rows[0].count, 10);
+  const row = result.rows[0];
+  if (!row) {
+    return 0;
+  }
+
+  return parseInt(row.count, 10);
 }

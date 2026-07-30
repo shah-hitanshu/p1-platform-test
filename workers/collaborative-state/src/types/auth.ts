@@ -164,6 +164,7 @@ export interface MockAgent {
  * Configuration for mock identity provider.
  */
 export interface MockIdentityConfig {
+  tokenExpiry?: string;
   users: MockUser[];
   agents: MockAgent[];
   defaultSiteRoles: Record<string, PantheonRole>;

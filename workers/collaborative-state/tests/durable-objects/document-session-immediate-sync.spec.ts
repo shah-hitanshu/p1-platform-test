@@ -150,7 +150,7 @@ function findPutCall(
 ): unknown[] | undefined {
   return mockState.storage.put.mock.calls.find(
     (call: unknown[]) => call[0] === key,
-  ) as unknown[] | undefined;
+  );
 }
 
 // =============================================================================
@@ -194,7 +194,7 @@ describe('Immediate Sync for Document Lifecycle Operations', () => {
   describe('immediate sync triggers', () => {
     it('should perform immediate sync for document_create action type', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       await session.fetch(new Request('http://localhost/snapshot'));
@@ -236,7 +236,7 @@ describe('Immediate Sync for Document Lifecycle Operations', () => {
 
     it('should perform immediate sync for document_delete action type', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       await session.fetch(new Request('http://localhost/snapshot'));
 
@@ -274,7 +274,7 @@ describe('Immediate Sync for Document Lifecycle Operations', () => {
   describe('non-immediate action types use normal scheduling', () => {
     it('should use alarm-based scheduling for insert action type', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       await session.fetch(new Request('http://localhost/snapshot'));
 
@@ -313,7 +313,7 @@ describe('Immediate Sync for Document Lifecycle Operations', () => {
 
     it('should use alarm-based scheduling when no action metadata is sent', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       await session.fetch(new Request('http://localhost/snapshot'));
 
@@ -348,7 +348,7 @@ describe('Immediate Sync for Document Lifecycle Operations', () => {
       });
 
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       await session.fetch(new Request('http://localhost/snapshot'));
 
@@ -381,7 +381,7 @@ describe('Immediate Sync for Document Lifecycle Operations', () => {
   describe('metadata cleanup', () => {
     it('should clear pendingActionMetadata after successful immediate sync', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       await session.fetch(new Request('http://localhost/snapshot'));
 

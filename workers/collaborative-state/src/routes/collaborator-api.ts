@@ -115,6 +115,9 @@ async function handleGrantAccess(
   }
 
   const row = result.rows[0];
+  if (!row) {
+    return errorResponse('Failed to grant access', 500);
+  }
   return jsonResponse(
     {
       id: row.id,

@@ -67,15 +67,15 @@ describe('Permission Intersection', () => {
       // First call: agent_site_roles -> ADMIN
       mockedQuery.mockResolvedValueOnce({
         rows: [{ role: 'admin' }],
-      } as never);
+      });
       // Second call: branch_grants -> no grant
       mockedQuery.mockResolvedValueOnce({
         rows: [],
-      } as never);
+      });
       // Third call: acting user site role lookup -> EDITOR (team_member maps to EDITOR)
       mockedQuery.mockResolvedValueOnce({
         rows: [{ role: 'team_member' }],
-      } as never);
+      });
 
       const { getEffectiveRole } = await import('../../src/auth/authorization');
       const result = await getEffectiveRole(
@@ -103,11 +103,11 @@ describe('Permission Intersection', () => {
       // First call: agent_site_roles -> ADMIN
       mockedQuery.mockResolvedValueOnce({
         rows: [{ role: 'admin' }],
-      } as never);
+      });
       // Second call: branch_grants -> no grant
       mockedQuery.mockResolvedValueOnce({
         rows: [],
-      } as never);
+      });
 
       const { getEffectiveRole } = await import('../../src/auth/authorization');
       const result = await getEffectiveRole(
@@ -134,15 +134,15 @@ describe('Permission Intersection', () => {
       // First call: agent_site_roles -> ADMIN
       mockedQuery.mockResolvedValueOnce({
         rows: [{ role: 'admin' }],
-      } as never);
+      });
       // Second call: branch_grants -> no grant
       mockedQuery.mockResolvedValueOnce({
         rows: [],
-      } as never);
+      });
       // Third call: acting user lookup -> no rows (user not in allowlist)
       mockedQuery.mockResolvedValueOnce({
         rows: [],
-      } as never);
+      });
 
       const { getEffectiveRole } = await import('../../src/auth/authorization');
       const result = await getEffectiveRole(
@@ -169,11 +169,11 @@ describe('Permission Intersection', () => {
       // First call: user_site_roles -> ADMIN
       mockedQuery.mockResolvedValueOnce({
         rows: [{ role: 'admin' }],
-      } as never);
+      });
       // Second call: branch_grants -> no grant
       mockedQuery.mockResolvedValueOnce({
         rows: [],
-      } as never);
+      });
 
       const { getEffectiveRole } = await import('../../src/auth/authorization');
       const result = await getEffectiveRole(

@@ -129,7 +129,7 @@ describe('DocumentSession /flush endpoint', () => {
   describe('routing', () => {
     it('should route POST /flush to the flush handler', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(createMockState() as unknown, createFlushEnv());
+      const session = new DocumentSession(createMockState(), createFlushEnv());
 
       const request = new Request('http://localhost/flush', { method: 'POST' });
       const response = await session.fetch(request);
@@ -141,7 +141,7 @@ describe('DocumentSession /flush endpoint', () => {
 
     it('should reject non-POST methods', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(createMockState() as unknown, createFlushEnv());
+      const session = new DocumentSession(createMockState(), createFlushEnv());
 
       const request = new Request('http://localhost/flush', { method: 'GET' });
       const response = await session.fetch(request);
@@ -153,7 +153,7 @@ describe('DocumentSession /flush endpoint', () => {
   describe('flush always syncs', () => {
     it('should return flushed: true even when no edits have been made', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(createMockState() as unknown, createFlushEnv());
+      const session = new DocumentSession(createMockState(), createFlushEnv());
 
       const request = new Request('http://localhost/flush', { method: 'POST' });
       const response = await session.fetch(request);
@@ -169,7 +169,7 @@ describe('DocumentSession /flush endpoint', () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState();
       const env = createFlushEnv();
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       // Apply an edit to create pending state
       const applyRequest = new Request('http://localhost/apply', {
@@ -199,7 +199,7 @@ describe('DocumentSession /flush endpoint', () => {
       const env = createFlushEnv({
         SYNC_QUEUE: { send: vi.fn().mockResolvedValue(undefined) },
       });
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       // Apply an edit
       const applyRequest = new Request('http://localhost/apply', {
@@ -233,7 +233,7 @@ describe('DocumentSession /flush endpoint', () => {
       const env = createFlushEnv({
         SYNC_QUEUE: { send: queueSend },
       });
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       // Apply edit
       const applyRequest = new Request('http://localhost/apply', {
@@ -261,7 +261,7 @@ describe('DocumentSession /flush endpoint', () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState();
       const env = createFlushEnv();
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       // Apply an edit
       const applyRequest = new Request('http://localhost/apply', {
@@ -297,7 +297,7 @@ describe('DocumentSession /flush endpoint', () => {
         API_URL: 'http://localhost:8787',
         ENVIRONMENT: 'test',
       };
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       // Apply an edit
       const applyRequest = new Request('http://localhost/apply', {
@@ -325,7 +325,7 @@ describe('DocumentSession /flush endpoint', () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
       const mockState = createMockState();
       const env = createFlushEnv();
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       // Apply edit
       const applyRequest = new Request('http://localhost/apply', {

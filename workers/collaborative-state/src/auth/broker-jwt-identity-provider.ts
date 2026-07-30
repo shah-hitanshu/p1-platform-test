@@ -78,7 +78,9 @@ export class BrokerJwtIdentityProvider implements IdentityProvider {
       if (parts.length !== 3) {
         return false;
       }
-      const payloadJson = decoder.decode(base64url.decode(parts[1]));
+      const payloadPart = parts[1];
+      if (payloadPart === undefined || payloadPart === '') return false;
+      const payloadJson = decoder.decode(base64url.decode(payloadPart));
       const payload = JSON.parse(payloadJson) as { iss?: string };
       return payload.iss === this.issuer;
     } catch {
@@ -94,8 +96,15 @@ export class BrokerJwtIdentityProvider implements IdentityProvider {
         return null;
       }
 
+      const headerPart = parts[0];
+      const payloadPart = parts[1];
+      const signaturePart = parts[2];
+      if (headerPart === undefined || headerPart === '' || payloadPart === undefined || payloadPart === '' || signaturePart === undefined || signaturePart === '') {
+        return null;
+      }
+
       // Decode header to get kid and validate alg
-      const headerJson = decoder.decode(base64url.decode(parts[0]));
+      const headerJson = decoder.decode(base64url.decode(headerPart));
       const header = JSON.parse(headerJson) as JwtHeader;
       if (header.alg !== 'HS256') {
         return null;
@@ -106,7 +115,7 @@ export class BrokerJwtIdentityProvider implements IdentityProvider {
       }
 
       // Decode payload to get claims
-      const payloadJson = decoder.decode(base64url.decode(parts[1]));
+      const payloadJson = decoder.decode(base64url.decode(payloadPart));
       const claims = JSON.parse(payloadJson) as BrokerJwtClaims;
 
       // Validate claims BEFORE calling macVerify (saves a KMS call)
@@ -145,11 +154,11 @@ export class BrokerJwtIdentityProvider implements IdentityProvider {
         `${this.keyResource}/cryptoKeyVersions/${versionNumber}`;
 
       // Reconstruct signing input
-      const signingInput = `${parts[0] ?? ''}.${parts[1] ?? ''}`;
+      const signingInput = `${headerPart}.${payloadPart}`;
       const signingInputBytes = encoder.encode(signingInput);
 
       // Decode signature
-      const signatureBytes = base64url.decode(parts[2]);
+      const signatureBytes = base64url.decode(signaturePart);
 
       // Call macVerify
       const verified = await macVerify(

@@ -203,7 +203,7 @@ describe('Phase 8: Presence API Routes', () => {
             pantheonSiteRoles: { 'aaaaaaaa-1111-4111-8111-111111111111': 'developer' },
           },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(200);
@@ -240,7 +240,7 @@ describe('Phase 8: Presence API Routes', () => {
             pantheonSiteRoles: { 'aaaaaaaa-1111-4111-8111-111111111111': 'developer' },
           },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(404);
@@ -267,7 +267,7 @@ describe('Phase 8: Presence API Routes', () => {
             pantheonSiteRoles: { 'aaaaaaaa-1111-4111-8111-111111111111': 'developer' },
           },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(405);
@@ -302,7 +302,7 @@ describe('Phase 8: Presence API Routes', () => {
             pantheonSiteRoles: { 'aaaaaaaa-1111-4111-8111-111111111111': 'developer' },
           },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(200);
@@ -337,7 +337,7 @@ describe('Phase 8: Presence API Routes', () => {
             pantheonSiteRoles: { 'non-existent': 'developer' },
           },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(404);
@@ -371,7 +371,7 @@ describe('Phase 8: Presence API Routes', () => {
           agentId: 'agent-1',
           principal: { id: 'user-1', type: 'user', organizationId: 'org-1' },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(200);
@@ -403,7 +403,7 @@ describe('Phase 8: Presence API Routes', () => {
           agentId: 'non-existent',
           principal: { id: 'user-1', type: 'user', organizationId: 'org-1' },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(404);
@@ -430,7 +430,7 @@ describe('Phase 8: Presence API Routes', () => {
           agentId: 'agent-1',
           principal: { id: 'user-1', type: 'user', organizationId: 'org-1' },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(200);
@@ -479,7 +479,7 @@ describe('Phase 8: Presence API Routes', () => {
             pantheonSiteRoles: { 'aaaaaaaa-3333-4333-8333-333333333333': 'developer' },
           },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(200);
@@ -511,7 +511,7 @@ describe('Phase 8: Presence API Routes', () => {
             pantheonSiteRoles: { 'aaaaaaaa-3333-4333-8333-333333333333': 'developer' },
           },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(200);
@@ -542,7 +542,7 @@ describe('Phase 8: Presence API Routes', () => {
             pantheonSiteRoles: { 'aaaaaaaa-3333-4333-8333-333333333333': 'developer' },
           },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(200);
@@ -574,7 +574,7 @@ describe('Phase 8: Presence API Routes', () => {
           documentPath: 'home',
           principal: { id: 'user-1', type: 'user' },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(403);
@@ -611,7 +611,7 @@ describe('Phase 8: Presence API Routes', () => {
             pantheonSiteRoles: { 'aaaaaaaa-1111-4111-8111-111111111111': 'developer' },
           },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(500);
@@ -633,7 +633,7 @@ describe('Phase 8: Presence API Routes', () => {
           // siteId missing
           principal: { id: 'user-1', type: 'user' },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(400);
@@ -676,7 +676,7 @@ describe('Phase 8: Presence API Routes', () => {
           siteId: 'aaaaaaaa-1111-4111-8111-111111111111',
           principal: { id: 'user-1', type: 'user' },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(403);
@@ -704,7 +704,7 @@ describe('Phase 8: Presence API Routes', () => {
           branchId: 'bbbbbbbb-2222-4222-8222-222222222222',
           principal: { id: 'user-1', type: 'user' },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(403);
@@ -728,7 +728,7 @@ describe('Phase 8: Presence API Routes', () => {
           agentId: 'agent-1',
           principal: { id: 'user-1', type: 'user', organizationId: 'org-2' },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(403);
@@ -759,7 +759,7 @@ describe('Phase 8: Presence API Routes', () => {
             pantheonSiteRoles: { 'aaaaaaaa-1111-4111-8111-111111111111': 'viewer' },
           },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(200);
@@ -785,7 +785,7 @@ describe('Phase 8: Presence API Routes', () => {
           agentId: 'agent-1',
           principal: { id: 'agent-2', type: 'agent', organizationId: 'org-1' },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(200);
@@ -829,7 +829,7 @@ describe('Phase 8: Presence API Routes', () => {
             pantheonSiteRoles: { 'aaaaaaaa-3333-4333-8333-333333333333': 'developer' },
           },
         },
-        {} as unknown,
+        {},
       );
 
       expect(response.status).toBe(404);

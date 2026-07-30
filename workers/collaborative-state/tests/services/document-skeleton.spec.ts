@@ -97,7 +97,7 @@ describe('buildDocumentSkeletonFromTemplate', () => {
     const template = contentTemplate();
 
     const skeleton = buildDocumentSkeletonFromTemplate(template);
-    (skeleton.content[0].props as Record<string, unknown>).title = 'mutated';
+    (skeleton.content[0].props).title = 'mutated';
 
     expect((template.content as Comp[])[0].props.title).toBe('Default hero');
   });

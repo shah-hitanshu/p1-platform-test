@@ -106,7 +106,7 @@ describe('Auth Phase 4: Document Session Auth Enforcement', () => {
   describe('Verified header consumption', () => {
     it('should prefer X-Verified-Actor-Id over X-Actor-Id for snapshot', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Request with both client-supplied and verified headers
       const request = new Request('http://internal/snapshot', {
@@ -128,7 +128,7 @@ describe('Auth Phase 4: Document Session Auth Enforcement', () => {
 
     it('should set verified flag to true when X-Verified headers are present on WebSocket', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // WebSocket connect request with verified headers via query params
       const request = new Request(
@@ -149,7 +149,7 @@ describe('Auth Phase 4: Document Session Auth Enforcement', () => {
 
     it('should include authProvider in ConnectionMeta when X-Verified-Auth-Provider is set', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://internal/snapshot', {
         method: 'GET',
@@ -166,7 +166,7 @@ describe('Auth Phase 4: Document Session Auth Enforcement', () => {
 
     it('should include email in ConnectionMeta when X-Verified-Email is set', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://internal/snapshot', {
         method: 'GET',
@@ -183,7 +183,7 @@ describe('Auth Phase 4: Document Session Auth Enforcement', () => {
 
     it('should fall back to X-Actor-Id when no X-Verified headers are present (legacy/test)', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://internal/snapshot', {
         method: 'GET',
@@ -205,7 +205,7 @@ describe('Auth Phase 4: Document Session Auth Enforcement', () => {
   describe('DO-side enforcement', () => {
     it('should reject /apply when body actorId does not match verified header', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://internal/apply', {
         method: 'POST',
@@ -229,7 +229,7 @@ describe('Auth Phase 4: Document Session Auth Enforcement', () => {
 
     it('should allow /apply when body actorId matches verified header', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const request = new Request('http://internal/apply', {
         method: 'POST',
@@ -252,7 +252,7 @@ describe('Auth Phase 4: Document Session Auth Enforcement', () => {
 
     it('should expose verified info in snapshot response when present', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // First, apply an operation with verified headers to establish an actor
       const applyRequest = new Request('http://internal/apply', {

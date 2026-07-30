@@ -402,7 +402,7 @@ describe('Phase 5: Migration Service', () => {
 
       expect(db.query).toHaveBeenCalledOnce();
       const callArgs = vi.mocked(db.query).mock.calls[0];
-      const sql = callArgs[0] as string;
+      const sql = callArgs[0];
       // Should filter by template_id and template_version < toVersion
       expect(sql).toContain('template_id');
       expect(sql).toContain('template_version');
@@ -432,11 +432,11 @@ describe('Phase 5: Migration Service', () => {
 
       expect(db.query).toHaveBeenCalledOnce();
       const callArgs = vi.mocked(db.query).mock.calls[0];
-      const sql = callArgs[0] as string;
+      const sql = callArgs[0];
       expect(sql.toUpperCase()).toContain('LIMIT');
       expect(sql.toUpperCase()).toContain('OFFSET');
       // limit and offset should be in the parameters
-      const params = callArgs[1] as unknown[];
+      const params = callArgs[1]!;
       expect(params).toContain(50);
       expect(params).toContain(100);
     });
@@ -928,7 +928,7 @@ describe('Phase 5: Migration Service', () => {
       const allCalls = vi.mocked(db.query).mock.calls;
       const progressUpdateCall = allCalls.find(
         (call) => {
-          const sql = (call[0] as string).toUpperCase();
+          const sql = (call[0]).toUpperCase();
           return sql.includes('PROCESSED_DOCUMENTS') && sql.includes('UPDATE');
         },
       );
@@ -961,7 +961,7 @@ describe('Phase 5: Migration Service', () => {
       const allCalls = vi.mocked(db.query).mock.calls;
       const completedCall = allCalls.find(
         (call) => {
-          const sql = (call[0] as string).toLowerCase();
+          const sql = (call[0]).toLowerCase();
           return sql.includes('completed') && sql.includes('update') && sql.includes('migration_jobs');
         },
       );
@@ -996,12 +996,12 @@ describe('Phase 5: Migration Service', () => {
       const allCalls = vi.mocked(db.query).mock.calls;
       const findDocsCall = allCalls.find(
         (call) => {
-          const sql = (call[0] as string).toUpperCase();
+          const sql = (call[0]).toUpperCase();
           return sql.includes('LIMIT') && sql.includes('TEMPLATE_ID');
         },
       );
       if (findDocsCall) {
-        const params = findDocsCall[1] as unknown[];
+        const params = findDocsCall[1]!;
         expect(params).toContain(50);
       }
     });
@@ -1030,7 +1030,7 @@ describe('Phase 5: Migration Service', () => {
       await processMigration('job-uuid-123');
 
       const secondCall = vi.mocked(db.query).mock.calls[1];
-      const sql = (secondCall[0] as string).toLowerCase();
+      const sql = (secondCall[0]).toLowerCase();
       expect(sql).toContain('update');
       expect(sql).toContain('in_progress');
     });
@@ -1081,7 +1081,7 @@ describe('Phase 5: Migration Service', () => {
       });
       vi.mocked(createDocumentVersion).mockResolvedValueOnce({
         id: 'v-201', documentId: 'doc-crdt', branchId: 'branch-uuid-789', versionNumber: 4,
-        snapshot: docSnapshot, source: 'migration' as DocumentVersionSource,
+        snapshot: docSnapshot, source: 'migration',
         createdById: 'user-uuid-001', createdByType: 'user', createdAt: '2026-06-18T10:01:00.000Z',
       });
 
@@ -1263,7 +1263,7 @@ describe('Phase 5: Migration Service', () => {
       const allCalls = vi.mocked(db.query).mock.calls;
       const resetCall = allCalls.find(
         (call) => {
-          const sql = (call[0] as string).toLowerCase();
+          const sql = (call[0]).toLowerCase();
           return sql.includes('synced_version') && sql.includes('update') && sql.includes('document_relations');
         },
       );
@@ -1313,7 +1313,7 @@ describe('Phase 5: Migration Service', () => {
       const allCalls = vi.mocked(db.query).mock.calls;
       const failedCall = allCalls.find(
         (call) => {
-          const sql = (call[0] as string).toLowerCase();
+          const sql = (call[0]).toLowerCase();
           return sql.includes('failed') && sql.includes('migration_jobs');
         },
       );
@@ -1515,7 +1515,7 @@ describe('Phase 5: Migration Service', () => {
       const allCalls = vi.mocked(db.query).mock.calls;
       const updateCall = allCalls.find(
         (call) => {
-          const sql = (call[0] as string).toLowerCase();
+          const sql = (call[0]).toLowerCase();
           return sql.includes('resolved_at') && sql.includes('update');
         },
       );
@@ -1577,7 +1577,7 @@ describe('Phase 5: Migration Service', () => {
       const allCalls = vi.mocked(db.query).mock.calls;
       const templateVersionCall = allCalls.find(
         (call) => {
-          const sql = (call[0] as string).toLowerCase();
+          const sql = (call[0]).toLowerCase();
           return sql.includes('synced_version') && sql.includes('update') && sql.includes('document_relations');
         },
       );
@@ -2469,7 +2469,7 @@ describe('Phase 5: Migration Service', () => {
       const { applyDeltaToSnapshot } = await import('../../src/services/migration-service');
 
       const result = applyDeltaToSnapshot(
-        null as unknown as Record<string, unknown>,
+        null,
         buildSlotDelta({ content: [] }, { content: [] }),
       );
 
@@ -2480,7 +2480,7 @@ describe('Phase 5: Migration Service', () => {
       const { applyDeltaToSnapshot } = await import('../../src/services/migration-service');
 
       const result = applyDeltaToSnapshot(
-        undefined as unknown as Record<string, unknown>,
+        undefined,
         buildSlotDelta({ content: [] }, { content: [] }),
       );
 
@@ -2524,7 +2524,7 @@ describe('Phase 5: Migration Service', () => {
         branchId: 'branch-uuid-789',
         versionNumber: 4,
         snapshot: reconstructedSnapshot,
-        source: 'migration' as DocumentVersionSource,
+        source: 'migration',
         createdById: 'user-uuid-001',
         createdByType: 'user',
         createdAt: '2026-06-18T10:01:00.000Z',
@@ -2733,7 +2733,7 @@ describe('Phase 5: Migration Service', () => {
         ],
       });
 
-      const hero = (result.content as Array<{ props: { title: string } }>)[0];
+      const hero = (result.content as { props: { title: string } }[])[0];
       expect(hero.props.title).toBe('Updated Title');
     });
 
@@ -2758,7 +2758,7 @@ describe('Phase 5: Migration Service', () => {
         ],
       });
 
-      const hero = (result.content as Array<{ props: { title: string } }>)[0];
+      const hero = (result.content as { props: { title: string } }[])[0];
       expect(hero.props.title).toBe('My Custom Title');
     });
 
@@ -2786,7 +2786,7 @@ describe('Phase 5: Migration Service', () => {
         ],
       });
 
-      const hero = (result.content as Array<{ props: { title: string; subtitle: string } }>)[0];
+      const hero = (result.content as { props: { title: string; subtitle: string } }[])[0];
       expect(hero.props.title).toBe('Custom');
       expect(hero.props.subtitle).toBe('New Sub');
     });
@@ -2813,7 +2813,7 @@ describe('Phase 5: Migration Service', () => {
       });
 
       expect(result.content).toHaveLength(1);
-      const body = (result.content as Array<{ props: { id: string } }>)[0];
+      const body = (result.content as { props: { id: string } }[])[0];
       expect(body.props.id).toBe('b1');
     });
 
@@ -2840,7 +2840,7 @@ describe('Phase 5: Migration Service', () => {
         ],
       });
 
-      const footer = (result.content as Array<{ props: { links: unknown[] } }>)[0];
+      const footer = (result.content as { props: { links: unknown[] } }[])[0];
       expect(footer.props.links).toHaveLength(2);
     });
 
@@ -2890,7 +2890,7 @@ describe('Phase 5: Migration Service', () => {
         },
       });
 
-      const zones = result.zones as { sidebar: Array<{ props: { color: string } }> };
+      const zones = result.zones as { sidebar: { props: { color: string } }[] };
       expect(zones.sidebar[0].props.color).toBe('blue');
     });
   });
@@ -3026,7 +3026,7 @@ describe('Phase 5: Migration Service', () => {
       });
       vi.mocked(createDocumentVersion).mockResolvedValueOnce({
         id: 'v-301', documentId: 'doc-custom', branchId: 'branch-uuid-789', versionNumber: 4,
-        snapshot: docSnapshot, source: 'migration' as DocumentVersionSource,
+        snapshot: docSnapshot, source: 'migration',
         createdById: 'user-uuid-001', createdByType: 'user', createdAt: '2026-06-18T10:01:00.000Z',
       });
 

@@ -70,7 +70,7 @@ export interface ApproveUserInfo {
   userName?: string;
 }
 
-type BrokerTransactionEnv = {};
+interface BrokerTransactionEnv {}
 
 // =============================================================================
 // BrokerTransaction Durable Object
@@ -101,7 +101,7 @@ export class BrokerTransaction extends DurableObject<BrokerTransactionEnv> {
     try {
       const stored = await this.state.storage.get<LoginTransaction>(TRANSACTION_STORAGE_KEY);
       if (stored !== undefined && stored !== null && typeof stored === 'object') {
-        this.transaction = stored as LoginTransaction;
+        this.transaction = stored;
       }
     } catch (error) {
       console.warn('[BrokerTransaction] Failed to restore from storage:', error);
@@ -157,12 +157,12 @@ export class BrokerTransaction extends DurableObject<BrokerTransactionEnv> {
 
     try {
       if (method === 'create' && request.method === 'POST') {
-        const body = (await request.json()) as {
+        const body: {
           txId: string;
           siteId: string;
           siteApiTokenId: string;
           options?: { redirectUrl?: string; prompt?: string };
-        };
+        } = await request.json();
         const tx = await this.create(body.txId, body.siteId, body.siteApiTokenId, body.options);
         return new Response(JSON.stringify(tx), {
           headers: { 'Content-Type': 'application/json' },
@@ -177,7 +177,7 @@ export class BrokerTransaction extends DurableObject<BrokerTransactionEnv> {
       }
 
       if (method === 'approve' && request.method === 'POST') {
-        const userInfo = (await request.json()) as ApproveUserInfo;
+        const userInfo: ApproveUserInfo = await request.json();
         const tx = await this.approve(userInfo);
         return new Response(JSON.stringify(tx), {
           headers: { 'Content-Type': 'application/json' },
@@ -275,7 +275,7 @@ export class BrokerTransaction extends DurableObject<BrokerTransactionEnv> {
       userEmail: userInfo.userEmail,
       userName: userInfo.userName,
     });
-    if (!this.transaction || this.transaction.status !== 'pending') {
+    if (this.transaction?.status !== 'pending') {
       return null;
     }
 

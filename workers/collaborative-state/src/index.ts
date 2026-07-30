@@ -286,7 +286,7 @@ async function handleRequest(
   // Broker routes (/broker/*) — brokered auth flow for third-party panels.
   // Runs before parseRoute() since broker endpoints have their own auth model.
   if (path.startsWith('/broker/') || path === '/auth/callback') {
-    const response = await handleBrokerRoutes(request, env as unknown as Record<string, unknown>, path);
+    const response = await handleBrokerRoutes(request, env, path);
     if (response !== null) {
       return cors(response);
     }

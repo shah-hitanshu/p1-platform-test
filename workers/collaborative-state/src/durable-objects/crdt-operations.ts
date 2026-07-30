@@ -132,6 +132,7 @@ export function setNestedValue(root: Y.Map<unknown>, path: string, value: unknow
   // Navigate to parent, handling both maps and arrays
   for (let i = 0; i < parts.length - 1; i++) {
     const key = parts[i];
+    if (key === undefined) continue;
     const isNumericIndex = /^\d+$/.test(key);
 
     let next: unknown;
@@ -139,7 +140,7 @@ export function setNestedValue(root: Y.Map<unknown>, path: string, value: unknow
     if (current instanceof Y.Array) {
       // Current is an array, key should be a numeric index
       if (!isNumericIndex) {
-        throw new Error(`Expected numeric index for array at path segment "${String(key)}"`);
+        throw new Error(`Expected numeric index for array at path segment "${key}"`);
       }
       const index = parseInt(key, 10);
       next = current.get(index);
@@ -177,17 +178,18 @@ export function setNestedValue(root: Y.Map<unknown>, path: string, value: unknow
     } else {
       // Value exists but is not a Y.Map or Y.Array - it's likely a plain object
       // from the JSON structure that needs to be navigated
-      throw new Error(`Cannot navigate through non-container value at path segment "${String(key)}"`);
+      throw new Error(`Cannot navigate through non-container value at path segment "${key}"`);
     }
   }
 
   // Set the final value
   const finalKey = parts[parts.length - 1];
+  if (finalKey === undefined) throw new Error('Empty path');
   const isNumericIndex = /^\d+$/.test(finalKey);
 
   if (current instanceof Y.Array) {
     if (!isNumericIndex) {
-      throw new Error(`Expected numeric index for array at final path segment "${String(finalKey)}"`);
+      throw new Error(`Expected numeric index for array at final path segment "${finalKey}"`);
     }
     const index = parseInt(finalKey, 10);
     // For arrays, we need to delete and insert to replace
@@ -211,6 +213,7 @@ export function deleteNestedValue(root: Y.Map<unknown>, path: string): void {
   // Navigate to parent, handling both maps and arrays
   for (let i = 0; i < parts.length - 1; i++) {
     const key = parts[i];
+    if (key === undefined) continue;
     const isNumericIndex = /^\d+$/.test(key);
 
     let next: unknown;
@@ -234,6 +237,7 @@ export function deleteNestedValue(root: Y.Map<unknown>, path: string): void {
 
   // Delete the final key
   const finalKey = parts[parts.length - 1];
+  if (finalKey === undefined) return;
   const isNumericIndex = /^\d+$/.test(finalKey);
 
   if (current instanceof Y.Array) {
@@ -290,6 +294,7 @@ export function getArrayAtPath(root: Y.Map<unknown>, path: string): Y.Array<unkn
   // Navigate to parent, handling both maps and arrays
   for (let i = 0; i < parts.length - 1; i++) {
     const key = parts[i];
+    if (key === undefined) continue;
     const isNumericIndex = /^\d+$/.test(key);
 
     let next: unknown;
@@ -321,6 +326,7 @@ export function getArrayAtPath(root: Y.Map<unknown>, path: string): Y.Array<unkn
 
   // Get or create the final array
   const finalKey = parts[parts.length - 1];
+  if (finalKey === undefined) return null;
   const isNumericIndex = /^\d+$/.test(finalKey);
 
   let arr: unknown;

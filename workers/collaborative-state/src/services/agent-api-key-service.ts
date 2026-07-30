@@ -139,9 +139,14 @@ export async function generateKey(
     [params.agentId, tokenHash, prefix, params.name, params.createdBy],
   );
 
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error('Failed to insert agent API key');
+  }
+
   return {
     key: rawKey,
-    metadata: mapRowToMetadata(result.rows[0]),
+    metadata: mapRowToMetadata(row),
   };
 }
 
@@ -173,6 +178,9 @@ export async function validateKey(
   }
 
   const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
 
   // Fire-and-forget: update last_used_at without blocking the response
   void query(

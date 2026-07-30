@@ -107,7 +107,7 @@ async function handleGrantRole(
   const result = await grantRole({
     agentId,
     siteId,
-    role,
+    role: role as 'viewer' | 'editor' | 'admin',
     grantedBy: principal.dbUserId ?? principal.id,
   });
 

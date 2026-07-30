@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../src/services', async () => {
   const skeleton = await vi.importActual<
     typeof import('../../src/services/document-skeleton')
-  >('../../src/services/document-skeleton');
+      >('../../src/services/document-skeleton');
   return {
     createDocument: vi.fn(),
     getDocument: vi.fn(),

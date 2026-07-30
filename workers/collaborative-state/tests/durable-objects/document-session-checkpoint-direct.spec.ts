@@ -202,7 +202,7 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
       const { DocumentSession } = await import(
         '../../src/durable-objects/document-session'
       );
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       // Initialize the session
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -262,7 +262,7 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
       const { DocumentSession } = await import(
         '../../src/durable-objects/document-session'
       );
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       // Initialize
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -357,7 +357,7 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
       const { DocumentSession } = await import(
         '../../src/durable-objects/document-session'
       );
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       // Initialize
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -431,7 +431,7 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
       const { DocumentSession } = await import(
         '../../src/durable-objects/document-session'
       );
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       const snapshotReq = new Request('http://localhost/snapshot');
       await session.fetch(snapshotReq);
@@ -473,7 +473,7 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
       const { DocumentSession } = await import(
         '../../src/durable-objects/document-session'
       );
-      const session = new DocumentSession(mockState as unknown, env);
+      const session = new DocumentSession(mockState, env);
 
       const snapshotReq = new Request('http://localhost/snapshot');
       await session.fetch(snapshotReq);

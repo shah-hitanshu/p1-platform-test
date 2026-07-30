@@ -158,7 +158,7 @@ describe('Phase 1.1: Debounce DO Storage Persistence', () => {
   describe('webSocketMessage debounced persistence', () => {
     it('should NOT persist immediately on webSocketMessage', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize the session
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -185,7 +185,7 @@ describe('Phase 1.1: Debounce DO Storage Persistence', () => {
 
     it('should schedule a persist alarm when webSocketMessage is received', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -206,7 +206,7 @@ describe('Phase 1.1: Debounce DO Storage Persistence', () => {
 
     it('should persist when alarm fires after debounce period', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -234,7 +234,7 @@ describe('Phase 1.1: Debounce DO Storage Persistence', () => {
 
     it('should batch multiple edits into a single persist', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -266,7 +266,7 @@ describe('Phase 1.1: Debounce DO Storage Persistence', () => {
   describe('immediate persistence on disconnect', () => {
     it('should persist immediately when the last client disconnects', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -298,7 +298,7 @@ describe('Phase 1.1: Debounce DO Storage Persistence', () => {
   describe('immediate persistence on /apply', () => {
     it('should persist immediately on /apply endpoint', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       const snapshotReq = new Request('http://localhost/snapshot');

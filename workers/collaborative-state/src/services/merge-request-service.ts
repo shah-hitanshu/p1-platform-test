@@ -261,7 +261,8 @@ export async function createMergeRequest(params: CreateMergeRequestParams): Prom
     [params.targetBranchId],
   );
 
-  if (targetBranchResult.rows.length === 0 || !targetBranchResult.rows[0].is_main) {
+  const targetBranch = targetBranchResult.rows[0];
+  if (targetBranch?.is_main !== true) {
     throw new TargetBranchNotMainError(params.targetBranchId);
   }
 
@@ -292,7 +293,11 @@ export async function createMergeRequest(params: CreateMergeRequestParams): Prom
       params.createdByType,
     ]);
 
-    return rowToMergeRequest(result.rows[0]);
+    const row = result.rows[0];
+    if (!row) {
+      throw new Error('Failed to create merge request');
+    }
+    return rowToMergeRequest(row);
   } catch (error) {
     // Handle foreign key violations
     if (error instanceof Error && 'code' in error && error.code === '23503') {
@@ -319,7 +324,11 @@ export async function getMergeRequest(id: string): Promise<MergeRequest | null> 
     return null;
   }
 
-  return rowToMergeRequest(result.rows[0]);
+  const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
+  return rowToMergeRequest(row);
 }
 
 /**
@@ -424,7 +433,11 @@ export async function updateMergeRequest(
     throw new MergeRequestNotFoundError(id);
   }
 
-  return rowToMergeRequest(result.rows[0]);
+  const updatedRow = result.rows[0];
+  if (!updatedRow) {
+    throw new MergeRequestNotFoundError(id);
+  }
+  return rowToMergeRequest(updatedRow);
 }
 
 /**
@@ -445,7 +458,11 @@ export async function updateMergeRequestStatus(
     throw new MergeRequestNotFoundError(id);
   }
 
-  const currentStatus = currentResult.rows[0].status;
+  const currentRow = currentResult.rows[0];
+  if (!currentRow) {
+    throw new MergeRequestNotFoundError(id);
+  }
+  const currentStatus = currentRow.status;
 
   // Validate transition
   if (!isValidStatusTransition(currentStatus, newStatus)) {
@@ -478,7 +495,11 @@ export async function updateMergeRequestStatus(
     ' RETURNING *';
 
   const result = await query<MergeRequestRow>(sql, values);
-  return rowToMergeRequest(result.rows[0]);
+  const statusRow = result.rows[0];
+  if (!statusRow) {
+    throw new MergeRequestNotFoundError(id);
+  }
+  return rowToMergeRequest(statusRow);
 }
 
 /**
@@ -512,7 +533,11 @@ export async function updateMergeRequestConflicts(
     throw new MergeRequestNotFoundError(id);
   }
 
-  return rowToMergeRequest(result.rows[0]);
+  const conflictRow = result.rows[0];
+  if (!conflictRow) {
+    throw new MergeRequestNotFoundError(id);
+  }
+  return rowToMergeRequest(conflictRow);
 }
 
 /**
@@ -529,7 +554,11 @@ export async function deleteMergeRequest(id: string): Promise<void> {
     throw new MergeRequestNotFoundError(id);
   }
 
-  if (checkResult.rows[0].status === 'merged') {
+  const checkRow = checkResult.rows[0];
+  if (!checkRow) {
+    throw new MergeRequestNotFoundError(id);
+  }
+  if (checkRow.status === 'merged') {
     throw new CannotDeleteMergedRequestError(id);
   }
 

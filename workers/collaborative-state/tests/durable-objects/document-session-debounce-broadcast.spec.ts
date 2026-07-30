@@ -152,7 +152,7 @@ describe('Phase 1.2: Debounce WebSocket Broadcasts', () => {
   describe('broadcast batching', () => {
     it('should not broadcast immediately on each webSocketMessage — updates are batched', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -190,7 +190,7 @@ describe('Phase 1.2: Debounce WebSocket Broadcasts', () => {
 
     it('should deliver all updates correctly to receiver after debounce window', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       const snapshotReq = new Request('http://localhost/snapshot');

@@ -358,7 +358,11 @@ export async function getSite(siteId: string): Promise<Site | null> {
     return null;
   }
 
-  return mapRowToSite(result.rows[0]);
+  const siteRow = result.rows[0];
+  if (!siteRow) {
+    return null;
+  }
+  return mapRowToSite(siteRow);
 }
 
 /**
@@ -379,7 +383,11 @@ export async function getSiteByPantheonId(
     return null;
   }
 
-  return mapRowToSite(result.rows[0]);
+  const pantheonRow = result.rows[0];
+  if (!pantheonRow) {
+    return null;
+  }
+  return mapRowToSite(pantheonRow);
 }
 
 /**
@@ -437,11 +445,12 @@ export async function updateSite(
       ],
     );
 
-    if (result.rows.length === 0) {
+    const updatedRow1 = result.rows[0];
+    if (!updatedRow1) {
       return null;
     }
 
-    const updated = mapRowToSite(result.rows[0]);
+    const updated = mapRowToSite(updatedRow1);
     await maybeEnqueueOnUrlChange(env, updated, priorUrl);
     return updated;
   }
@@ -468,11 +477,12 @@ export async function updateSite(
     ],
   );
 
-  if (result.rows.length === 0) {
+  const updatedRow2 = result.rows[0];
+  if (!updatedRow2) {
     return null;
   }
 
-  const updated = mapRowToSite(result.rows[0]);
+  const updated = mapRowToSite(updatedRow2);
   await maybeEnqueueOnUrlChange(env, updated, priorUrl);
   return updated;
 }
@@ -630,7 +640,12 @@ export async function archiveSite(siteId: string): Promise<boolean | 'already_ar
       await query('COMMIT');
       return exists.rows.length > 0 ? 'already_archived' : false;
     }
-    const archiveTs = result.rows[0].archived_at;
+    const archiveRow = result.rows[0];
+    if (!archiveRow) {
+      await query('COMMIT');
+      return false;
+    }
+    const archiveTs = archiveRow.archived_at;
     await query(
       'UPDATE app.branches SET archived_at = $1 WHERE site_id = $2 AND archived_at IS NULL',
       [archiveTs, siteId],
@@ -682,7 +697,11 @@ export async function restoreSite(siteId: string): Promise<Site | null> {
       [siteId, archiveTs],
     );
     await query('COMMIT');
-    return mapRowToSite(updateResult.rows[0]);
+    const restoredRow = updateResult.rows[0];
+    if (!restoredRow) {
+      return null;
+    }
+    return mapRowToSite(restoredRow);
   } catch (error) {
     await query('ROLLBACK');
     throw error;
@@ -757,10 +776,11 @@ export async function getSiteAllowedOrigins(
     'SELECT allowed_origins FROM app.sites WHERE id = $1',
     [siteId],
   );
-  if (result.rows.length === 0) {
-    return null; // Site not found
+  const originsRow = result.rows[0];
+  if (!originsRow) {
+    return null;
   }
-  return result.rows[0].allowed_origins ?? [];
+  return originsRow.allowed_origins ?? [];
 }
 
 // Module-scope cache: Worker isolates are reused across requests so this

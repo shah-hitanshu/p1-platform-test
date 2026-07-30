@@ -105,7 +105,12 @@ export async function grantRole(
     [params.agentId, params.siteId, params.role, params.grantedBy],
   );
 
-  return mapRowToRole(result.rows[0]);
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error('Failed to insert agent site role');
+  }
+
+  return mapRowToRole(row);
 }
 
 /**
@@ -201,7 +206,10 @@ export async function getRolesForAgent(
 
   const roleMap: Record<string, PantheonRole> = {};
   for (const row of result.rows) {
-    roleMap[row.site_id] = ROLE_MAP[row.role];
+    const mapped = ROLE_MAP[row.role];
+    if (mapped) {
+      roleMap[row.site_id] = mapped;
+    }
   }
   return roleMap;
 }

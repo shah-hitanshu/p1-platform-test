@@ -100,7 +100,7 @@ export async function getQuery(
 }
 
 export async function listQueries(
-  siteId: string,
+  _siteId: string,
   branchId: string,
   mainBranchId?: string,
 ): Promise<QuerySnapshot[]> {
@@ -209,7 +209,7 @@ export async function executeQuery(
   const appliedOffset = Math.max(0, params.offset ?? 0);
   const primarySort = querySnapshot.sort[0];
   const SORTABLE_FIELDS = new Set<string>(['path', 'createdAt']);
-  const sortField = primarySort && SORTABLE_FIELDS.has(primarySort.field)
+  const sortField = primarySort !== undefined && SORTABLE_FIELDS.has(primarySort.field)
     ? (primarySort.field as 'path' | 'createdAt')
     : undefined;
   const [docs, totalCount] = await Promise.all([
@@ -218,7 +218,7 @@ export async function executeQuery(
       limit: appliedLimit,
       offset: appliedOffset,
       mainBranchId: params.mainBranchId,
-      orderBy: sortField
+      orderBy: sortField !== undefined && primarySort !== undefined
         ? { field: sortField, direction: primarySort.direction }
         : undefined,
     }),

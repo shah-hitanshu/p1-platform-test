@@ -175,7 +175,7 @@ export async function backfillTemplateContentShape(
       await createDocumentVersion({
         documentId: candidate.document_id,
         branchId: candidate.branch_id,
-        snapshot: convertManifestToContent(candidate.snapshot),
+        snapshot: convertManifestToContent(candidate.snapshot) as unknown as Record<string, unknown>,
         source: 'edit',
         createdById: SYSTEM_UUID,
         createdByType: 'system',

@@ -335,7 +335,6 @@ export async function executeMerge(
 
   // 7. Update merge request status to merged
   await updateMergeRequestStatus(mergeRequestId, 'merged', {
-    mergedAt: new Date().toISOString(),
     mergedById,
     mergedByType,
   });
@@ -555,7 +554,6 @@ export async function executeMergeWithResolution(
 
   // 7. Update merge request status
   await updateMergeRequestStatus(mergeRequestId, 'merged', {
-    mergedAt: new Date().toISOString(),
     mergedById,
     mergedByType,
   });
@@ -698,6 +696,9 @@ async function copySourceChangesToTarget(
     }
 
     // Get the source version
+    if (change.latestVersionId === null) {
+      continue;
+    }
     const sourceVersion = await getDocumentVersion(change.latestVersionId);
     if (sourceVersion === null) {
       continue;
@@ -853,7 +854,9 @@ async function getStaleTemplateCountByBranch(
     ];
 
   const result = await query<{ count: string }>(sql, params);
-  return parseInt(result.rows[0].count, 10);
+  const row = result.rows[0];
+  if (!row) return 0;
+  return parseInt(row.count, 10);
 }
 
 async function triggerPostMergeTemplateMigrations(

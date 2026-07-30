@@ -177,7 +177,11 @@ export async function findMergeBase(
 
   // With main-only branching, the merge base is simply the source_checkpoint_id
   // from the source branch (the checkpoint on main when the branch was created)
-  const sourceCheckpointId = sourceBranchResult.rows[0].source_checkpoint_id;
+  const sourceBranch = sourceBranchResult.rows[0];
+  if (!sourceBranch) {
+    throw new SourceBranchNotFoundError(sourceBranchId);
+  }
+  const sourceCheckpointId = sourceBranch.source_checkpoint_id;
 
   if (sourceCheckpointId === null) {
     return null;
@@ -201,6 +205,9 @@ export async function findMergeBase(
   }
 
   const row = checkpointResult.rows[0];
+  if (!row) {
+    return null;
+  }
 
   return {
     checkpointId: row.merge_base_checkpoint_id ?? '',

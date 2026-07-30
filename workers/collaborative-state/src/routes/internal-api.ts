@@ -416,7 +416,7 @@ function validateAgentCheckpointStartBody(body: unknown): AgentCheckpointStartVa
       branchId: data.branchId,
       agentId: data.agentId,
       intent: data.intent,
-      trigger: data.trigger as CheckpointTrigger,
+      trigger: data.trigger,
       targetRegions: Array.isArray(data.targetRegions) ? data.targetRegions as string[] : undefined,
       forceFullSnapshot: data.forceFullSnapshot === true,
     },

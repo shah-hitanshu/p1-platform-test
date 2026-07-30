@@ -522,7 +522,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
       expect(mockStub.fetch).toHaveBeenCalled();
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       expect(new URL(fetchedRequest.url).pathname).toBe('/apply');
-      const forwardedBody = (await fetchedRequest.json()) as { actorId?: string };
+      const forwardedBody = (await fetchedRequest.json());
       expect(forwardedBody.actorId).toBe('user-123');
     });
 

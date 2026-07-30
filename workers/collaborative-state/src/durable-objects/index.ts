@@ -24,11 +24,6 @@ export { BrokerTransaction } from './broker-transaction';
  * Placeholder implementation for infrastructure validation.
  */
 export class SessionManager {
-  constructor(
-    private readonly state: DurableObjectState,
-    private readonly env: unknown,
-  ) {}
-
   fetch(_request: Request): Response {
     return new Response(
       JSON.stringify({

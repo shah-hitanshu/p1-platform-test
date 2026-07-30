@@ -322,7 +322,11 @@ export async function getBranchStructureState(
     return null;
   }
 
-  return mapBranchStructureStateRow(result.rows[0]);
+  const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
+  return mapBranchStructureStateRow(row);
 }
 
 /**
@@ -357,7 +361,11 @@ export async function createBranchStructureState(
     ],
   );
 
-  return mapBranchStructureStateRow(result.rows[0]);
+  const createdRow = result.rows[0];
+  if (!createdRow) {
+    throw new Error('Failed to create branch structure state');
+  }
+  return mapBranchStructureStateRow(createdRow);
 }
 
 /**
@@ -410,7 +418,11 @@ export async function updateBranchStructureState(
     throw new BranchStructureStateNotFoundError(branchId, structureId);
   }
 
-  return mapBranchStructureStateRow(result.rows[0]);
+  const updatedRow = result.rows[0];
+  if (!updatedRow) {
+    throw new BranchStructureStateNotFoundError(branchId, structureId);
+  }
+  return mapBranchStructureStateRow(updatedRow);
 }
 
 /**
@@ -450,11 +462,12 @@ export async function getDocumentMetadata(
     [branchId, structureId, documentId],
   );
 
-  if (result.rows.length === 0) {
+  const docMetaRow = result.rows[0];
+  if (!docMetaRow) {
     return null;
   }
 
-  return mapDocumentMetadataRow(result.rows[0]);
+  return mapDocumentMetadataRow(docMetaRow);
 }
 
 /**
@@ -477,17 +490,13 @@ export async function setDocumentMetadata(
   );
 
   // Default to warn mode if state doesn't exist
-  const schema =
-    stateResult.rows.length > 0
-      ? (JSON.parse(stateResult.rows[0].metadata_schema) as Record<
-          string,
-          unknown
-        >)
-      : DEFAULT_METADATA_SCHEMA;
-  const enforcement =
-    stateResult.rows.length > 0
-      ? (stateResult.rows[0].schema_enforcement as SchemaEnforcementMode)
-      : 'warn';
+  const stateRow = stateResult.rows[0];
+  const schema = stateRow
+    ? (JSON.parse(stateRow.metadata_schema) as Record<string, unknown>)
+    : DEFAULT_METADATA_SCHEMA;
+  const enforcement = stateRow
+    ? (stateRow.schema_enforcement as SchemaEnforcementMode)
+    : 'warn';
 
   // Validate metadata
   let conformsToSchema = true;
@@ -530,7 +539,11 @@ export async function setDocumentMetadata(
     ],
   );
 
-  return mapDocumentMetadataRow(result.rows[0]);
+  const metaRow = result.rows[0];
+  if (!metaRow) {
+    throw new Error('Failed to set document metadata');
+  }
+  return mapDocumentMetadataRow(metaRow);
 }
 
 /**
@@ -610,7 +623,11 @@ export async function validateAllDocuments(
     throw new BranchStructureStateNotFoundError(branchId, structureId);
   }
 
-  const schema = JSON.parse(stateResult.rows[0].metadata_schema) as Record<
+  const validationStateRow = stateResult.rows[0];
+  if (!validationStateRow) {
+    throw new BranchStructureStateNotFoundError(branchId, structureId);
+  }
+  const schema = JSON.parse(validationStateRow.metadata_schema) as Record<
     string,
     unknown
   >;
@@ -692,9 +709,13 @@ export async function getSchemaValidationSummary(
     [branchId, structureId],
   );
 
-  const totalDocuments = parseInt(result.rows[0].total_documents, 10);
+  const summaryRow = result.rows[0];
+  if (!summaryRow) {
+    throw new BranchStructureStateNotFoundError(branchId, structureId);
+  }
+  const totalDocuments = parseInt(summaryRow.total_documents, 10);
   const conformingDocuments = parseInt(
-    result.rows[0].conforming_documents,
+    summaryRow.conforming_documents,
     10,
   );
 

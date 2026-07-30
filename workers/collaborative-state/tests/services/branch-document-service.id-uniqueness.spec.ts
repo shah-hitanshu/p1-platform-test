@@ -67,7 +67,7 @@ function mockHappyPathTransaction(queryMock: Mock): void {
 /** Params array of the query call that inserts into document_versions. */
 function insertVersionParams(queryMock: Mock): unknown[] {
   const call = queryMock.mock.calls.find(
-    (c) => typeof c[0] === 'string' && (c[0] as string).includes('INSERT INTO app.document_versions'),
+    (c) => typeof c[0] === 'string' && (c[0]).includes('INSERT INTO app.document_versions'),
   );
   if (call === undefined) {
     throw new Error('No INSERT INTO app.document_versions call was captured');
@@ -80,7 +80,7 @@ describe('createDocumentOnBranch within-document id uniqueness', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined) as unknown as Mock;
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
   });
 

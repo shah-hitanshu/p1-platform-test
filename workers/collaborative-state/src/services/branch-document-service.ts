@@ -365,10 +365,11 @@ export async function countDocumentsOnBranch(
       sql += ` AND dr.target_document_id = $${String(templateParamIdx)}`;
     }
 
-    sql += `) counted`;
+    sql += ') counted';
 
     const result = await query<{ count: string }>(sql, params);
-    return parseInt(result.rows[0].count, 10);
+    const countRow = result.rows[0];
+    return countRow ? parseInt(countRow.count, 10) : 0;
   }
 
   let sql = `
@@ -402,10 +403,11 @@ export async function countDocumentsOnBranch(
     sql += ` AND dr.target_document_id = $${String(params.length)}`;
   }
 
-  sql += `) counted`;
+  sql += ') counted';
 
   const result = await query<{ count: string }>(sql, params);
-  return parseInt(result.rows[0].count, 10);
+  const countRow = result.rows[0];
+  return countRow ? parseInt(countRow.count, 10) : 0;
 }
 
 const TEMPLATES_PATH_PREFIX = '_registry/templates/';
@@ -531,7 +533,11 @@ export async function createDocumentOnBranch(
         [params.siteId, normalizedPath],
       );
       await query('RELEASE SAVEPOINT insert_doc');
-      document = mapRowToDocument(docResult.rows[0]);
+      const insertedRow = docResult.rows[0];
+      if (!insertedRow) {
+        throw new Error('Failed to insert document');
+      }
+      document = mapRowToDocument(insertedRow);
       documentCreated = true;
     } catch (docError) {
       // Rollback to savepoint to clear the error state and allow further queries
@@ -545,11 +551,12 @@ export async function createDocumentOnBranch(
            WHERE d.site_id = $1 AND d.path = $2 AND d.archived_at IS NULL`,
           [params.siteId, normalizedPath],
         );
-        if (existingResult.rows.length === 0) {
+        const existingRow = existingResult.rows[0];
+        if (!existingRow) {
           await query('ROLLBACK');
           throw new DuplicateDocumentPathError(normalizedPath, params.siteId);
         }
-        document = mapRowToDocument(existingResult.rows[0]);
+        document = mapRowToDocument(existingRow);
 
         // Check if the latest version on this branch is a tombstone
         // If so, this is a recreation - we should start fresh
@@ -562,7 +569,7 @@ export async function createDocumentOnBranch(
         );
 
         if (latestVersionResult.rows.length > 0) {
-          const latestVersion = latestVersionResult.rows[0];
+          const latestVersion = latestVersionResult.rows[0]!;
           if (isTombstoneRow(latestVersion)) {
             // This is a recreation after tombstone - delete all versions on this branch
             // to start fresh with version 1
@@ -614,11 +621,11 @@ export async function createDocumentOnBranch(
           );
         } catch (relError) {
           if (isForeignKeyViolation(relError)) {
-            throw new DocumentNotFoundError(params.templateId);
+            throw new DocumentNotFoundError(params.templateId!);
           }
           throw relError;
         }
-        document.templateId = params.templateId;
+        document.templateId = params.templateId!;
         if (params.templateVersion !== undefined && params.templateVersion !== null) {
           document.templateVersion = params.templateVersion;
         }
@@ -659,9 +666,14 @@ export async function createDocumentOnBranch(
 
     await query('COMMIT');
 
+    const versionRow = versionResult.rows[0];
+    if (!versionRow) {
+      throw new Error('Failed to insert document version');
+    }
+
     return {
       document,
-      version: mapRowToDocumentVersion(versionResult.rows[0]),
+      version: mapRowToDocumentVersion(versionRow),
     };
   } catch (error) {
     await query('ROLLBACK');

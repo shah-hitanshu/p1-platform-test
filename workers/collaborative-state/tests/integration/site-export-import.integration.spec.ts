@@ -568,7 +568,7 @@ describe('handleSiteImportRoute integration scenarios', () => {
     const resp = await handleSiteImportRoute(
       req,
       { siteId: targetSite.id, principal: createAdminPrincipal() },
-      { CONFIG_KV: createMockKV(), INTERNAL_SECRET: TEST_INTERNAL_SECRET } as never,
+      { CONFIG_KV: createMockKV(), INTERNAL_SECRET: TEST_INTERNAL_SECRET },
     );
     expect(resp.status).toBe(200);
 
@@ -615,7 +615,7 @@ describe('handleSiteImportRoute integration scenarios', () => {
     const resp = await handleSiteImportRoute(
       req,
       { siteId: targetSite.id, principal: createAdminPrincipal() },
-      { CONFIG_KV: createMockKV(), INTERNAL_SECRET: TEST_INTERNAL_SECRET } as never,
+      { CONFIG_KV: createMockKV(), INTERNAL_SECRET: TEST_INTERNAL_SECRET },
     );
     expect(resp.status).toBe(200);
 
@@ -666,7 +666,7 @@ describe('handleSiteImportRoute integration scenarios', () => {
     const resp = await handleSiteImportRoute(
       req,
       { siteId: targetSite.id, principal: createAdminPrincipal() },
-      { CONFIG_KV: createMockKV(), INTERNAL_SECRET: TEST_INTERNAL_SECRET } as never,
+      { CONFIG_KV: createMockKV(), INTERNAL_SECRET: TEST_INTERNAL_SECRET },
     );
     expect(resp.status).toBe(200);
 
@@ -730,7 +730,7 @@ describe('handleSiteImportRoute integration scenarios', () => {
     const resp = await handleSiteImportRoute(
       req,
       { siteId: targetSite.id, principal: createAdminPrincipal() },
-      { CONFIG_KV: createMockKV(), INTERNAL_SECRET: TEST_INTERNAL_SECRET } as never,
+      { CONFIG_KV: createMockKV(), INTERNAL_SECRET: TEST_INTERNAL_SECRET },
     );
     expect(resp.status).toBe(200);
 
@@ -833,7 +833,7 @@ describe('handleSiteImportRoute integration scenarios', () => {
     const resp = await handleSiteImportRoute(
       req,
       { siteId: targetSite.id, principal: createAdminPrincipal() },
-      { CONFIG_KV: mockKV, INTERNAL_SECRET: TEST_INTERNAL_SECRET } as never,
+      { CONFIG_KV: mockKV, INTERNAL_SECRET: TEST_INTERNAL_SECRET },
     );
     expect(resp.status).toBe(200);
 

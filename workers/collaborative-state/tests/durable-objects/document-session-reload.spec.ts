@@ -115,7 +115,7 @@ describe('DocumentSession /reload endpoint', () => {
 
   it('should accept POST requests to /reload', async () => {
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
-    const session = new DocumentSession(mockState as unknown, mockEnv);
+    const session = new DocumentSession(mockState, mockEnv);
 
     // Mock fetch for both the initial CRDT load and the reload
     // Each call needs a fresh Response (Response bodies are consumed on read)
@@ -140,7 +140,7 @@ describe('DocumentSession /reload endpoint', () => {
 
   it('should reject non-POST requests to /reload', async () => {
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
-    const session = new DocumentSession(mockState as unknown, mockEnv);
+    const session = new DocumentSession(mockState, mockEnv);
 
     const request = new Request('http://localhost/reload', {
       method: 'GET',
@@ -152,7 +152,7 @@ describe('DocumentSession /reload endpoint', () => {
 
   it('should reload state from PostgreSQL and update Y.Doc', async () => {
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
-    const session = new DocumentSession(mockState as unknown, mockEnv);
+    const session = new DocumentSession(mockState, mockEnv);
 
     // First, initialize with some content via /apply
     const applyRequest = new Request('http://localhost/apply', {
@@ -225,7 +225,7 @@ describe('DocumentSession /reload endpoint', () => {
     // Return the mock WebSocket from getWebSockets
     mockState.getWebSockets.mockReturnValue([mockWs]);
 
-    const session = new DocumentSession(mockState as unknown, mockEnv);
+    const session = new DocumentSession(mockState, mockEnv);
 
     // Initialize with content
     const applyRequest = new Request('http://localhost/apply', {
@@ -265,7 +265,7 @@ describe('DocumentSession /reload endpoint', () => {
 
   it('should return reloaded snapshot in response', async () => {
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
-    const session = new DocumentSession(mockState as unknown, mockEnv);
+    const session = new DocumentSession(mockState, mockEnv);
 
     // First call: initial CRDT load (empty doc)
     // Second call: reload with new content
@@ -299,7 +299,7 @@ describe('DocumentSession /reload endpoint', () => {
 
   it('should persist the reloaded state to DO storage', async () => {
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
-    const session = new DocumentSession(mockState as unknown, mockEnv);
+    const session = new DocumentSession(mockState, mockEnv);
 
     mockFetch.mockResolvedValue(
       new Response(JSON.stringify({

@@ -99,7 +99,12 @@ export async function createDocument(
       [params.siteId, normalizedPath],
     );
 
-    return mapRowToDocument(result.rows[0]);
+    const row = result.rows[0];
+    if (!row) {
+      throw new Error('Failed to insert document');
+    }
+
+    return mapRowToDocument(row);
   } catch (error) {
     if (isForeignKeyViolation(error)) {
       throw new SiteNotFoundError(params.siteId);
@@ -126,11 +131,12 @@ export async function getDocument(documentId: string): Promise<Document | null> 
     [documentId],
   );
 
-  if (result.rows.length === 0) {
+  const row = result.rows[0];
+  if (!row) {
     return null;
   }
 
-  return mapRowToDocument(result.rows[0]);
+  return mapRowToDocument(row);
 }
 
 /**
@@ -157,11 +163,12 @@ export async function getDocumentByPath(
     [siteId, normalizedPath],
   );
 
-  if (result.rows.length === 0) {
+  const row = result.rows[0];
+  if (!row) {
     return null;
   }
 
-  return mapRowToDocument(result.rows[0]);
+  return mapRowToDocument(row);
 }
 
 /**
@@ -194,11 +201,12 @@ export async function updateDocumentPath(
       [normalizedPath, documentId],
     );
 
-    if (result.rows.length === 0) {
+    const row = result.rows[0];
+    if (!row) {
       return null;
     }
 
-    return mapRowToDocument(result.rows[0]);
+    return mapRowToDocument(row);
   } catch (error) {
     if (isUniqueConstraintViolation(error)) {
       throw new DuplicateDocumentPathError(normalizedPath);
@@ -332,11 +340,10 @@ export async function restoreDocument(documentId: string): Promise<DocumentWithA
     [documentId],
   );
 
-  if (docResult.rows.length === 0) {
+  const doc = docResult.rows[0];
+  if (!doc) {
     throw new DocumentNotFoundError(documentId);
   }
-
-  const doc = docResult.rows[0];
 
   if (doc.archived_at === null) {
     throw new DocumentNotFoundError(documentId);
@@ -369,5 +376,10 @@ export async function restoreDocument(documentId: string): Promise<DocumentWithA
     [documentId],
   );
 
-  return mapRowToDocument(result.rows[0]);
+  const restoredRow = result.rows[0];
+  if (!restoredRow) {
+    throw new DocumentNotFoundError(documentId);
+  }
+
+  return mapRowToDocument(restoredRow);
 }

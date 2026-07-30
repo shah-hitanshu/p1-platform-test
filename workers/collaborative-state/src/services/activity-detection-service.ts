@@ -122,7 +122,7 @@ export class ActivityDetector {
    * Record human activity with optional regions being edited.
    * Regions are silently ignored if MAX_ACTIVE_REGIONS limit is reached.
    */
-  recordHumanActivity(actorId: string, regions?: string[]): void {
+  recordHumanActivity(_actorId: string, regions?: string[]): void {
     this.lastHumanActivityAt = Date.now();
 
     if (regions) {

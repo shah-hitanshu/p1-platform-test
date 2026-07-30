@@ -362,7 +362,18 @@ async function handleCreateDocumentOnBranch(
       const fallback = await getLatestDocumentVersionWithFallback(
         body.templateId, branchId, mainBranch.id,
       );
-      latestTemplateVersion = fallback?.version ?? null;
+      const fv = fallback?.version;
+      latestTemplateVersion = fv ? {
+        id: fv.id,
+        documentId: fv.documentId,
+        branchId: fv.branchId,
+        versionNumber: fv.versionNumber,
+        snapshot: fv.snapshot ?? {},
+        source: fv.source,
+        createdById: fv.createdById,
+        createdByType: fv.createdByType,
+        createdAt: fv.createdAt,
+      } : null;
     }
     if (latestTemplateVersion?.snapshot !== undefined) {
       if (templateMetadata(latestTemplateVersion.snapshot).deprecated === true) {
@@ -380,7 +391,7 @@ async function handleCreateDocumentOnBranch(
     }
     snapshotForCreate = buildDocumentSkeletonFromTemplate(latestTemplateVersion?.snapshot, {
       title: body.title,
-    });
+    }) as unknown as Record<string, unknown>;
   }
 
   const result = await createDocumentOnBranch({
@@ -449,7 +460,7 @@ async function handleDeleteDocumentOnBranch(
     documentId,
     branchId,
     deletedById: principal.dbUserId ?? principal.id,
-    deletedByType: principal.type as 'user' | 'agent',
+    deletedByType: principal.type,
   });
 
   return new Response(null, { status: 204 });

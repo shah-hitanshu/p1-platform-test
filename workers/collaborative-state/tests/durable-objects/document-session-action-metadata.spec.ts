@@ -171,7 +171,7 @@ describe('Action Metadata Forwarding', () => {
   describe('capturing action_metadata text messages', () => {
     it('should capture action_metadata and include it in the queue sync payload', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       await session.fetch(new Request('http://localhost/snapshot'));
@@ -213,7 +213,7 @@ describe('Action Metadata Forwarding', () => {
     it('should include action metadata in HTTP sync payload when queue is not available', async () => {
       const envNoQueue = createMockEnv({ SYNC_QUEUE: undefined });
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, envNoQueue);
+      const session = new DocumentSession(mockState, envNoQueue);
 
       // Initialize
       await session.fetch(new Request('http://localhost/snapshot'));
@@ -252,7 +252,7 @@ describe('Action Metadata Forwarding', () => {
 
     it('should accumulate action_metadata when multiple are sent before sync', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       await session.fetch(new Request('http://localhost/snapshot'));
 
@@ -293,7 +293,7 @@ describe('Action Metadata Forwarding', () => {
 
     it('should not include action metadata fields when no action_metadata message was sent', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       await session.fetch(new Request('http://localhost/snapshot'));
 
@@ -316,7 +316,7 @@ describe('Action Metadata Forwarding', () => {
 
     it('should handle action_metadata without data field', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       await session.fetch(new Request('http://localhost/snapshot'));
 
@@ -345,7 +345,7 @@ describe('Action Metadata Forwarding', () => {
 
     it('should not route action_metadata messages to presence handler', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       await session.fetch(new Request('http://localhost/snapshot'));
 
@@ -376,7 +376,7 @@ describe('Action Metadata Forwarding', () => {
   describe('action metadata in sync schedule storage', () => {
     it('should persist action metadata in the sync schedule for hibernation recovery', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       await session.fetch(new Request('http://localhost/snapshot'));
 

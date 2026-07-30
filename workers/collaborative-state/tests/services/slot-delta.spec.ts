@@ -41,7 +41,7 @@ const C = comp('CtaBlock', 'CtaBlock-cccc', { label: 'Go' });
 const D = comp('FooterBlock', 'FooterBlock-dddd', {});
 
 function contentIds(result: Record<string, unknown>): (string | undefined)[] {
-  return (result.content as Comp[]).map((c) => c.props.id as string | undefined);
+  return (result.content as Comp[]).map((c) => c.props.id);
 }
 
 describe('buildSlotDelta', () => {
@@ -98,7 +98,7 @@ describe('buildSlotDelta', () => {
       const to = snapshot([A, B]);
       const delta = buildSlotDelta(snapshot([A]), to);
 
-      (delta.added[0].component.props as Record<string, unknown>).text = 'mutated';
+      (delta.added[0].component.props).text = 'mutated';
 
       expect((to.content as Comp[])[1].props.text).toBe('Body');
     });

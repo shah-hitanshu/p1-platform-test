@@ -49,10 +49,10 @@ function getPublicOrigin(request: Request, env: Env): string {
  */
 async function handleDoResponse<T>(response: Response, fallbackError: string): Promise<T> {
   if (!response.ok) {
-    const error = (await response.json()) as { error?: string };
+    const error: { error?: string } = await response.json();
     throw new Error(error.error ?? fallbackError);
   }
-  return (await response.json()) as T;
+  return (await response.json());
 }
 
 export async function handleBrokerRoutes(
@@ -65,7 +65,7 @@ export async function handleBrokerRoutes(
   }
 
   const brokerTx = env.BROKER_TX;
-  const internalSecret = env.INTERNAL_SECRET as string;
+  const internalSecret = env.INTERNAL_SECRET!;
 
   // POST /broker/login — create a login transaction (requires sat_ token)
   if (path === '/broker/login' && request.method === 'POST') {
@@ -161,8 +161,8 @@ export async function handleBrokerRoutes(
     const signedState = await signState({ txId, nonce }, internalSecret);
 
     const authUrl = getAuth0AuthorizationUrl({
-      issuerBaseUrl: env.AUTH0_ISSUER_BASE_URL as string,
-      clientId: env.AUTH0_CLIENT_ID as string,
+      issuerBaseUrl: env.AUTH0_ISSUER_BASE_URL!,
+      clientId: env.AUTH0_CLIENT_ID!,
       redirectUri,
       state: signedState,
       scope: 'openid email profile',
@@ -207,9 +207,9 @@ export async function handleBrokerRoutes(
     const redirectUri = `${getPublicOrigin(request, env)}/auth/callback`;
     const { user } = await exchangeAuth0Code({
       code,
-      issuerBaseUrl: env.AUTH0_ISSUER_BASE_URL as string,
-      clientId: env.AUTH0_CLIENT_ID as string,
-      clientSecret: env.AUTH0_CLIENT_SECRET as string,
+      issuerBaseUrl: env.AUTH0_ISSUER_BASE_URL!,
+      clientId: env.AUTH0_CLIENT_ID!,
+      clientSecret: env.AUTH0_CLIENT_SECRET!,
       redirectUri,
     });
 
@@ -312,15 +312,15 @@ export async function handleBrokerRoutes(
       return errorResponse('Site mismatch', 403);
     }
 
-    const issuer = (env.BROKER_JWT_ISSUER as string | undefined) ?? getPublicOrigin(request, env);
+    const issuer = (env.BROKER_JWT_ISSUER) ?? getPublicOrigin(request, env);
 
     try {
       const token = await issueBrokerJwt({
-        serviceAccountKeyJson: env.MAS_GCP_SERVICE_ACCOUNT_KEY as string,
-        keyResource: env.GCP_KMS_KEY_RESOURCE as string,
+        serviceAccountKeyJson: env.MAS_GCP_SERVICE_ACCOUNT_KEY!,
+        keyResource: env.GCP_KMS_KEY_RESOURCE!,
         issuer,
         subject: tx.userId ?? '',
-        audience: (env.BROKER_JWT_AUDIENCE as string | undefined) ?? 'css-api',
+        audience: (env.BROKER_JWT_AUDIENCE) ?? 'css-api',
         ttlSeconds: 3600,
         siteId: tx.siteId,
         email: tx.userEmail ?? '',

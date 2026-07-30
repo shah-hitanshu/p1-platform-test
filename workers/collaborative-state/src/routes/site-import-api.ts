@@ -21,7 +21,7 @@
 import { unzipSync } from 'fflate';
 import type { AuthenticatedPrincipal } from '../types';
 import { getSite, updateSite } from '../services/site-service';
-import type { WorkflowSettings } from '../types';
+
 import { getMainBranch, createBranch, listBranches } from '../services/branch-service';
 import { createCheckpoint } from '../services/checkpoint-service';
 import { createDocument, listDocuments } from '../services/document-service';
@@ -86,8 +86,8 @@ export async function handleSiteImportRoute(
       return errorResponse('Expected multipart/form-data with a "file" field', 400);
     }
     const formData = await request.formData();
-    const fileField = formData.get('file');
-    if (!(fileField instanceof Blob)) {
+    const fileField = formData.get('file') as unknown;
+    if (fileField === null || typeof fileField === 'string' || !(fileField instanceof Blob)) {
       return errorResponse('Missing or invalid "file" field', 400);
     }
 
@@ -175,7 +175,7 @@ export async function handleSiteImportRoute(
       // - allowedOrigins/tokens: excluded from bundle by design (secrets/env-specific)
       await updateSite(siteId, {
         name: siteData.name,
-        workflowSettings: siteData.workflowSettings as Partial<WorkflowSettings>,
+        workflowSettings: siteData.workflowSettings,
       });
       progress = markPhaseComplete(progress, 'site');
       await saveImportProgress(env.CONFIG_KV, importKey, progress);
@@ -424,7 +424,7 @@ export async function handleSiteImportRoute(
 
     return jsonResponse({
       importKey,
-      completedPhases: progress.completedPhases,
+      completedPhases: progress?.completedPhases ?? [],
       documentCount: documentPaths.length,
       sourceSiteId: manifest.sourceSiteId,
       crossSiteImport: manifest.sourceSiteId !== siteId,

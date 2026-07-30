@@ -59,6 +59,7 @@ export const DEFAULT_MOCK_CONFIG: MockIdentityConfig = {
       },
     },
   ],
+  defaultSiteRoles: {},
   agents: [
     {
       // ID must match database: a0000000-0000-0000-0000-000000000001 (Zappy)

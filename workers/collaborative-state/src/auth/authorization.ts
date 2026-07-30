@@ -241,15 +241,6 @@ export async function getEffectiveRole(
     };
   }
 
-  // Service principals are authorized by scope enforcement in index.ts.
-  // Grant VIEWER only for the principal's bound site.
-  if (principal.type === 'service') {
-    if (principal.siteId !== siteId) {
-      return { role: ROLES.NO_ACCESS, roleName: 'NO_ACCESS' };
-    }
-    return { role: ROLES.VIEWER, roleName: 'VIEWER' };
-  }
-
   // Step 1: Get baseline role from database (with JWT fallback)
   const baselineRoleName = await getSiteRole(principal, siteId, masClient);
 

@@ -60,9 +60,12 @@ interface SiteRow {
   pantheon_site_id: string;
   organization_id: string | null;
   name: string;
+  url: string | null;
   workflow_settings: WorkflowSettings | string;
+  allowed_origins: string[] | null;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
 }
 
 // =============================================================================
@@ -176,9 +179,12 @@ function mapRowToSite(row: SiteRow): Site {
     pantheonSiteId: row.pantheon_site_id,
     organizationId: row.organization_id ?? undefined,
     name: row.name,
+    url: row.url ?? undefined,
     workflowSettings: parseWorkflowSettings(row.workflow_settings),
+    allowedOrigins: row.allowed_origins ?? [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    archivedAt: row.archived_at ?? null,
   };
 }
 
@@ -227,7 +233,11 @@ export async function createOrganization(params: CreateOrganizationParams): Prom
     RETURNING id, name, settings, created_at, updated_at, archived_at
   `, [params.name, JSON.stringify(settings)]);
 
-  return mapRowToOrganization(result.rows[0]);
+  const createdRow = result.rows[0];
+  if (!createdRow) {
+    throw new Error('Failed to create organization');
+  }
+  return mapRowToOrganization(createdRow);
 }
 
 /**
@@ -247,7 +257,11 @@ export async function getOrganizationById(id: string): Promise<Organization | nu
     return null;
   }
 
-  return mapRowToOrganization(result.rows[0]);
+  const orgRow = result.rows[0];
+  if (!orgRow) {
+    return null;
+  }
+  return mapRowToOrganization(orgRow);
 }
 
 /**
@@ -300,7 +314,11 @@ export async function updateOrganization(
     return null;
   }
 
-  return mapRowToOrganization(result.rows[0]);
+  const updatedRow = result.rows[0];
+  if (!updatedRow) {
+    return null;
+  }
+  return mapRowToOrganization(updatedRow);
 }
 
 /**
@@ -508,5 +526,9 @@ export async function getOrganizationForSite(siteId: string): Promise<Organizati
     return null;
   }
 
-  return mapRowToOrganization(result.rows[0]);
+  const siteOrgRow = result.rows[0];
+  if (!siteOrgRow) {
+    return null;
+  }
+  return mapRowToOrganization(siteOrgRow);
 }

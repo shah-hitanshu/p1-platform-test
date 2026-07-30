@@ -117,7 +117,7 @@ describe('Phase 1.3: Delta Encoding for New Connections', () => {
   describe('state vector for delta sync', () => {
     it('should return a valid state vector from /snapshot that can produce deltas', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Add initial data
       const applyReq1 = new Request('http://localhost/apply', {
@@ -219,7 +219,7 @@ describe('Phase 1.3: Delta Encoding for New Connections', () => {
   describe('periodic compaction via alarm', () => {
     it('should preserve document state after compaction via alarm', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize and add some data with multiple overwrites (creates history)
       for (let i = 0; i < 5; i++) {
@@ -256,7 +256,7 @@ describe('Phase 1.3: Delta Encoding for New Connections', () => {
 
     it('should not compact when there are active connections', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       const applyReq = new Request('http://localhost/apply', {
@@ -299,7 +299,7 @@ describe('Phase 1.3: Delta Encoding for New Connections', () => {
   describe('/connect with stateVector parameter', () => {
     it('should accept stateVector query parameter on /connect (WebSocket not available in test env)', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       await session.fetch(new Request('http://localhost/snapshot'));

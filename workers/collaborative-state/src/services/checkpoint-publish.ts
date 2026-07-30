@@ -56,6 +56,10 @@ export async function publishDocument(
   }
 
   const version = versionResult.rows[0];
+  if (!version) {
+    await query('ROLLBACK');
+    throw new Error(`Document with ID "${params.documentId}" not found`);
+  }
 
   if (version.is_tombstone) {
     await query('ROLLBACK');

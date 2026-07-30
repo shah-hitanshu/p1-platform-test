@@ -59,7 +59,7 @@ describe('Agent Politeness Phase 1.5: Agent API Routes', () => {
       name: 'Test Agent',
       description: 'A test agent',
       capabilities: ['edit', 'create'],
-      status: 'active' as AgentStatus,
+      status: 'active',
       settings: {},
       createdAt: '2026-01-26T12:00:00.000Z',
       updatedAt: '2026-01-26T12:00:00.000Z',

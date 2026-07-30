@@ -79,7 +79,7 @@ export interface WsPublishRequestMessage {
 export interface WsActionMetadataMessage {
   type: 'action_metadata';
   /** Array of Puck actions from the frontend's onAction callback */
-  puckActions: Array<{ type: string; [key: string]: unknown }>;
+  puckActions: { type: string; [key: string]: unknown }[];
   /** @deprecated Use puckActions instead */
   actionType?: string;
   /** @deprecated Use puckActions instead */

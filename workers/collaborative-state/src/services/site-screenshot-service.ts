@@ -83,7 +83,11 @@ export async function upsertSiteScreenshot(
     ],
   );
 
-  return mapRowToSiteScreenshot(result.rows[0]);
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error('Failed to upsert site screenshot');
+  }
+  return mapRowToSiteScreenshot(row);
 }
 
 /**
@@ -97,11 +101,12 @@ export async function getSiteScreenshot(
     [siteId],
   );
 
-  if (result.rows.length === 0) {
+  const screenshotRow = result.rows[0];
+  if (!screenshotRow) {
     return null;
   }
 
-  return mapRowToSiteScreenshot(result.rows[0]);
+  return mapRowToSiteScreenshot(screenshotRow);
 }
 
 /**

@@ -284,7 +284,7 @@ const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
  */
 export function normalizePathPattern(path: string): string {
   // Remove query string if present
-  const pathWithoutQuery = path.split('?')[0];
+  const pathWithoutQuery = path.split('?')[0] ?? path;
 
   // Replace UUIDs with :id placeholder
   return pathWithoutQuery.replace(UUID_PATTERN, ':id');
@@ -302,7 +302,7 @@ export function classifyError(error: unknown): string {
   }
 
   if (typeof error === 'object' && error !== null && 'name' in error) {
-    return String((error as { name: unknown }).name);
+    return String((error).name);
   }
 
   if (typeof error === 'string') {

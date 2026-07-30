@@ -76,6 +76,7 @@ export interface Env {
   DOCUMENT_STATE: DurableObjectNamespace;
   PRESENCE: DurableObjectNamespace;
   SESSION: DurableObjectNamespace;
+  BROKER_TX: DurableObjectNamespace;
 
   // KV bindings
   CONFIG_KV: KVNamespace;

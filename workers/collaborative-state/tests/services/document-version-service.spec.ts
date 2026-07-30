@@ -222,7 +222,7 @@ describe('Phase 3.3: Document Version Service', () => {
       // Should have called UPDATE to set action_metadata
       expect(db.query).toHaveBeenCalledTimes(2);
       const updateCall = vi.mocked(db.query).mock.calls[1];
-      const updateSql = updateCall[0] as string;
+      const updateSql = updateCall[0];
       expect(updateSql).toContain('UPDATE');
       expect(updateSql).toContain('action_type');
       expect(updateSql).toContain('action_metadata');

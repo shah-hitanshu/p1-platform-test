@@ -164,7 +164,9 @@ export async function resolveCheckpointDocuments(
   // so newer entries override older ones for the same documentId
   const documentMap = new Map<string, CheckpointDocumentVersion>();
   for (let i = chain.length - 1; i >= 0; i--) {
-    for (const doc of chain[i]) {
+    const chainEntry = chain[i];
+    if (!chainEntry) continue;
+    for (const doc of chainEntry) {
       documentMap.set(doc.documentId, doc);
     }
   }

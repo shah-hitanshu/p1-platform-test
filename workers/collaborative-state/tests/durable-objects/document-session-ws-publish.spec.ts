@@ -191,7 +191,7 @@ describe('DocumentSession WebSocket publish handler', () => {
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
     const mockState = createMockState(sessionId);
     const env = createPublishEnv(envOverrides);
-    const session = new DocumentSession(mockState as unknown, env);
+    const session = new DocumentSession(mockState, env);
 
     // Initialize the DO via /snapshot
     await session.fetch(new Request('http://localhost/snapshot'));
@@ -328,7 +328,7 @@ describe('DocumentSession WebSocket publish handler', () => {
     const mockState = createMockState('');
     mockState.id.name = '';
     const env = createPublishEnv();
-    const session = new DocumentSession(mockState as unknown, env);
+    const session = new DocumentSession(mockState, env);
 
     await session.fetch(new Request('http://localhost/snapshot'));
 

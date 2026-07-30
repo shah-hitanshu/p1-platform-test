@@ -116,7 +116,7 @@ describe('Phase 4.2: Lazy CRDT Initialization', () => {
   describe('/presences endpoint works without loading Yjs document', () => {
     it('should not access YDOC storage key when handling /presences', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const req = new Request('http://localhost/presences');
       const response = await session.fetch(req);
@@ -135,7 +135,7 @@ describe('Phase 4.2: Lazy CRDT Initialization', () => {
   describe('/snapshot and /apply still initialize CRDT correctly', () => {
     it('should load Yjs document state for /snapshot', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const req = new Request('http://localhost/snapshot');
       const response = await session.fetch(req);
@@ -152,7 +152,7 @@ describe('Phase 4.2: Lazy CRDT Initialization', () => {
 
     it('should load Yjs document state for /apply', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const req = new Request('http://localhost/apply', {
         method: 'POST',
@@ -181,7 +181,7 @@ describe('Phase 4.2: Lazy CRDT Initialization', () => {
   describe('mixed request patterns work correctly', () => {
     it('should handle presence query then edit request correctly', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // First: presence query (metadata only)
       const presenceReq = new Request('http://localhost/presences');
@@ -202,7 +202,7 @@ describe('Phase 4.2: Lazy CRDT Initialization', () => {
   describe('metadata-only init does not touch YDOC storage key', () => {
     it('should not read ydoc key for metadata-only endpoints', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Call multiple metadata-only endpoints
       const endpoints = ['/presences', '/activity-state', '/edit-sessions'];
@@ -224,7 +224,7 @@ describe('Phase 4.2: Lazy CRDT Initialization', () => {
   describe('/activity-state works with metadata-only init', () => {
     it('should return activity state without loading CRDT', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const req = new Request('http://localhost/activity-state');
       const response = await session.fetch(req);
@@ -246,7 +246,7 @@ describe('Phase 4.2: Lazy CRDT Initialization', () => {
   describe('/edit-sessions works with metadata-only init', () => {
     it('should return edit sessions without loading CRDT', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const req = new Request('http://localhost/edit-sessions');
       const response = await session.fetch(req);
@@ -268,7 +268,7 @@ describe('Phase 4.2: Lazy CRDT Initialization', () => {
   describe('CRDT init also initializes metadata (idempotent)', () => {
     it('should initialize metadata when CRDT init is called', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Call a CRDT endpoint first
       const snapshotReq = new Request('http://localhost/snapshot');

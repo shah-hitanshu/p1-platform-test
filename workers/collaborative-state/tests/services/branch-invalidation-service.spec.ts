@@ -22,7 +22,7 @@ function createMockKV(): KVNamespace {
     delete: vi.fn().mockResolvedValue(undefined),
     list: vi.fn().mockResolvedValue({ keys: [], list_complete: true }),
     getWithMetadata: vi.fn().mockResolvedValue({ value: null, metadata: null }),
-  } as unknown as KVNamespace;
+  };
 }
 
 describe('branch-invalidation-service', () => {

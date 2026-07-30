@@ -19,7 +19,7 @@ export interface SyncQueueMessage {
   timestamp: number;
   actionType?: string; // Puck action type (e.g., "insert", "reorder", "set")
   actionMetadata?: Record<string, unknown>; // Additional Puck action context
-  puckActions?: Array<{ type: string; [key: string]: unknown }>; // Batched Puck actions
+  puckActions?: { type: string; [key: string]: unknown }[]; // Batched Puck actions
 }
 
 /**

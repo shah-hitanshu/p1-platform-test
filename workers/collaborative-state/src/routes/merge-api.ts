@@ -5,6 +5,7 @@
  */
 
 import type { ConflictResolutionStrategy, MergeRequestStatus, AuthenticatedPrincipal } from '../types';
+import type { ExecuteMergeParams, ExecuteMergeWithResolutionParams } from '../services/merge-execution-service';
 import {
   checkMergeability,
   executeMerge,
@@ -231,7 +232,7 @@ async function handleExecuteMerge(
       resolutions: body.conflictResolutions,
       createdById: context.principal.dbUserId ?? context.principal.id,
       createdByType: context.principal.type as 'user' | 'agent',
-    });
+    } as unknown as ExecuteMergeWithResolutionParams);
   } else {
     // Otherwise execute simple merge
     result = await executeMerge({
@@ -240,7 +241,7 @@ async function handleExecuteMerge(
       message: body.message ?? 'Merge',
       createdById: context.principal.dbUserId ?? context.principal.id,
       createdByType: context.principal.type as 'user' | 'agent',
-    });
+    } as unknown as ExecuteMergeParams);
   }
 
   // Write branch invalidation signal (fire-and-forget, errors swallowed)
@@ -482,7 +483,7 @@ async function handleExecuteMergeRequest(
       resolutionStrategy: 'take-source', // Default for any conflicts without a per-document resolution
       resolutions: resolutions.map((r) => ({
         documentId: r.documentId,
-        strategy: r.strategy as 'take-source' | 'take-target' | 'manual',
+        strategy: r.strategy,
         resolvedSnapshot: r.resolvedSnapshot,
       })),
       mergedById: context.principal.dbUserId ?? context.principal.id,

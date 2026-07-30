@@ -169,7 +169,7 @@ describe('Phase 4.1: WebSocket Message Rate Limiting', () => {
   describe('normal editing passes through', () => {
     it('should allow messages below the rate limit (< 50 msgs/sec)', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize the session
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -209,7 +209,7 @@ describe('Phase 4.1: WebSocket Message Rate Limiting', () => {
   describe('rapid messages are rate limited', () => {
     it('should drop messages exceeding 50 msgs/sec with presence_error', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -248,7 +248,7 @@ describe('Phase 4.1: WebSocket Message Rate Limiting', () => {
   describe('multiple actors tracked independently', () => {
     it('should track rate limits independently per actor', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -299,7 +299,7 @@ describe('Phase 4.1: WebSocket Message Rate Limiting', () => {
   describe('rate tracking cleaned up on disconnect', () => {
     it('should clean up rate tracking data when a WebSocket disconnects', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -349,7 +349,7 @@ describe('Phase 4.1: WebSocket Message Rate Limiting', () => {
   describe('persistent abuse closes connection', () => {
     it('should close connection after 3 consecutive rate limit windows', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -411,7 +411,7 @@ describe('Phase 4.1: WebSocket Message Rate Limiting', () => {
   describe('rate limit counter resets after clean window', () => {
     it('should reset consecutive rate limit counter after a window without violations', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       const snapshotReq = new Request('http://localhost/snapshot');

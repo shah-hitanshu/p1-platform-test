@@ -49,34 +49,34 @@ describe('resolveCreatedByRefsBatch', () => {
   });
 
   it('resolves user UUIDs to emails from app.users in one query', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'user-uuid-123', email: 'chris@example.com' }], rowCount: 1 } as never);
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'user-uuid-123', email: 'chris@example.com' }], rowCount: 1 });
     const map = await resolveCreatedByRefsBatch([{ createdById: 'user-uuid-123', createdByType: 'user' }]);
     expect(map.get('user-uuid-123')).toEqual({ type: 'user', email: 'chris@example.com' });
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
   it('returns null email when user UUID not found (deleted user)', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never);
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const map = await resolveCreatedByRefsBatch([{ createdById: 'missing-uuid', createdByType: 'user' }]);
     expect(map.get('missing-uuid')).toEqual({ type: 'user', email: null });
   });
 
   it('resolves agent UUIDs to names from app.agents in one query', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'agent-uuid-456', name: 'Zappy AI Assistant' }], rowCount: 1 } as never);
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'agent-uuid-456', name: 'Zappy AI Assistant' }], rowCount: 1 });
     const map = await resolveCreatedByRefsBatch([{ createdById: 'agent-uuid-456', createdByType: 'agent' }]);
     expect(map.get('agent-uuid-456')).toEqual({ type: 'agent', name: 'Zappy AI Assistant' });
   });
 
   it('returns null name when agent UUID not found', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never);
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const map = await resolveCreatedByRefsBatch([{ createdById: 'missing-agent', createdByType: 'agent' }]);
     expect(map.get('missing-agent')).toEqual({ type: 'agent', name: null });
   });
 
   it('issues at most 2 DB queries for a mix of user, agent, and system types', async () => {
     mockQuery
-      .mockResolvedValueOnce({ rows: [{ id: 'u1', email: 'a@b.com' }], rowCount: 1 } as never)
-      .mockResolvedValueOnce({ rows: [{ id: 'ag1', name: 'Bot' }], rowCount: 1 } as never);
+      .mockResolvedValueOnce({ rows: [{ id: 'u1', email: 'a@b.com' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id: 'ag1', name: 'Bot' }], rowCount: 1 });
     await resolveCreatedByRefsBatch([
       { createdById: 'u1', createdByType: 'user' },
       { createdById: 'ag1', createdByType: 'agent' },
@@ -94,7 +94,7 @@ describe('selectVersionsForDocument', () => {
   beforeEach(() => { vi.resetAllMocks(); });
 
   it('returns empty array when document has no versions on branch', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never);
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await selectVersionsForDocument(DOC_ID, MAIN_BRANCH, true);
     expect(result).toEqual([]);
   });
@@ -107,7 +107,7 @@ describe('selectVersionsForDocument', () => {
         { id: 'v3', version_number: 3, snapshot: null, is_published: false, is_tombstone: false, created_by_id: 'u1', created_by_type: 'user', created_at: '2026-01-03T00:00:00Z' },
       ],
       rowCount: 3,
-    } as never);
+    });
     mockReconstruct.mockResolvedValueOnce({ root: { type: 'Root', props: { v: 2 } } });
     mockReconstruct.mockResolvedValueOnce({ root: { type: 'Root', props: { v: 3 } } });
 
@@ -127,7 +127,7 @@ describe('selectVersionsForDocument', () => {
         { id: 'v2', version_number: 2, snapshot: null, is_published: false, is_tombstone: false, created_by_id: 'u1', created_by_type: 'user', created_at: '2026-01-02T00:00:00Z' },
       ],
       rowCount: 2,
-    } as never);
+    });
     mockReconstruct.mockResolvedValueOnce({ root: { type: 'Root' } });
 
     const result = await selectVersionsForDocument(DOC_ID, MAIN_BRANCH, true);
@@ -141,7 +141,7 @@ describe('selectVersionsForDocument', () => {
         { id: 'v1', version_number: 1, snapshot: { root: {} }, is_published: true, is_tombstone: false, created_by_id: 'u1', created_by_type: 'user', created_at: '2026-01-01T00:00:00Z' },
       ],
       rowCount: 1,
-    } as never);
+    });
 
     const result = await selectVersionsForDocument(DOC_ID, MAIN_BRANCH, true);
     expect(result).toHaveLength(1);
@@ -155,7 +155,7 @@ describe('selectVersionsForDocument', () => {
         { id: 'v2', version_number: 2, snapshot: null, is_published: false, is_tombstone: false, created_by_id: 'u1', created_by_type: 'user', created_at: '2026-01-02T00:00:00Z' },
       ],
       rowCount: 2,
-    } as never);
+    });
     mockReconstruct.mockResolvedValueOnce({ root: { type: 'Root', props: { v: 2 } } });
 
     const result = await selectVersionsForDocument(DOC_ID, OTHER_BRANCH, false);
@@ -174,7 +174,7 @@ describe('selectVersionsForDocument', () => {
         { id: 'v2', version_number: 2, snapshot: { root: {} }, is_published: false, is_tombstone: true, created_by_id: 'u1', created_by_type: 'user', created_at: '2026-01-02T00:00:00Z' },
       ],
       rowCount: 2,
-    } as never);
+    });
 
     const result = await selectVersionsForDocument(DOC_ID, MAIN_BRANCH, true);
     // v2 is a tombstone and must be excluded; only v1 survives

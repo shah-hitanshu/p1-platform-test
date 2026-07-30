@@ -35,7 +35,9 @@ function uuidToBytes(uuid: string): Uint8Array {
 function bytesToUuid(bytes: Uint8Array): string {
   const hex: string[] = [];
   for (let i = 0; i < 16; i++) {
-    hex.push(bytes[i].toString(16).padStart(2, '0'));
+    const byte = bytes[i];
+    if (byte === undefined) throw new Error(`Missing byte at index ${String(i)}`);
+    hex.push(byte.toString(16).padStart(2, '0'));
   }
   return [
     hex.slice(0, 4).join(''),
@@ -68,10 +70,15 @@ export async function uuidV5(namespace: string, name: string): Promise<string> {
   uuid.set(hashBytes.subarray(0, 16));
 
   // Set version to 5 (bits 4-7 of byte 6)
-  uuid[6] = (uuid[6] & 0x0f) | 0x50;
+  const byte6 = uuid[6];
+  const byte8 = uuid[8];
+  if (byte6 === undefined || byte8 === undefined) {
+    throw new Error('UUID byte array too short');
+  }
+  uuid[6] = (byte6 & 0x0f) | 0x50;
 
   // Set variant to RFC 4122 (bits 6-7 of byte 8)
-  uuid[8] = (uuid[8] & 0x3f) | 0x80;
+  uuid[8] = (byte8 & 0x3f) | 0x80;
 
   return bytesToUuid(uuid);
 }
@@ -85,5 +92,8 @@ export async function providerSubToUuid(
   subjectId: string,
 ): Promise<string> {
   const namespace = PROVIDER_NAMESPACES[provider];
+  if (namespace === undefined) {
+    throw new Error(`Unknown provider: ${provider}`);
+  }
   return uuidV5(namespace, subjectId);
 }

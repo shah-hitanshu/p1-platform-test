@@ -112,9 +112,10 @@ function matchByTypeOrder(
     const queue = slotQueues.get(component.type);
     if (queue === undefined) continue;
     const index = consumed.get(component.type) ?? 0;
-    if (index >= queue.length) continue;
+    const slotId = queue[index];
+    if (index >= queue.length || slotId === undefined) continue;
     consumed.set(component.type, index + 1);
-    pairs.push({ component, slotId: queue[index] });
+    pairs.push({ component, slotId });
   }
   return pairs;
 }

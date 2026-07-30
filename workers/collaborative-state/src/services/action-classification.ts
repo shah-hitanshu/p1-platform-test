@@ -238,6 +238,9 @@ export function isStructuralPath(path: string): boolean {
   }
 
   const lastSegment = segments[segments.length - 1];
+  if (lastSegment === undefined) {
+    return false;
+  }
 
   // Check if last segment is a number (array index)
   if (/^\d+$/.test(lastSegment)) {

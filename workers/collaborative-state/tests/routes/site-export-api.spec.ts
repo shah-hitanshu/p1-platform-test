@@ -126,7 +126,7 @@ describe('handleSiteExportRoute', () => {
     const resp = await handleSiteExportRoute(
       makeRequest(),
       { siteId: undefined, principal: createPrincipal() },
-      createEnv() as never,
+      createEnv(),
     );
     expect(resp.status).toBe(400);
   });
@@ -135,7 +135,7 @@ describe('handleSiteExportRoute', () => {
     const resp = await handleSiteExportRoute(
       makeRequest('POST'),
       { siteId: 'site-1', principal: createPrincipal() },
-      createEnv() as never,
+      createEnv(),
     );
     expect(resp.status).toBe(405);
   });
@@ -147,7 +147,7 @@ describe('handleSiteExportRoute', () => {
     const resp = await handleSiteExportRoute(
       makeRequest(),
       { siteId: 'site-1', principal: createPrincipal() },
-      createEnv() as never,
+      createEnv(),
     );
     expect(resp.status).toBe(404);
   });
@@ -160,7 +160,7 @@ describe('handleSiteExportRoute', () => {
     const resp = await handleSiteExportRoute(
       makeRequest(),
       { siteId: 'site-1', principal: createPrincipal() },
-      env as never,
+      env,
     );
     expect(resp.status).toBe(503);
   });
@@ -176,7 +176,7 @@ describe('handleSiteExportRoute', () => {
     const resp = await handleSiteExportRoute(
       makeRequest(),
       { siteId: 'site-1', principal: createPrincipal() },
-      createEnv() as never,
+      createEnv(),
     );
     expect(resp.status).toBe(200);
     const body = JSON.parse(await resp.text()) as { downloadUrl: string };
@@ -189,7 +189,7 @@ describe('handleSiteExportRoute', () => {
     const resp = await handleSiteExportRoute(
       makeRequest(),
       { siteId: 'site-1', principal: createPrincipal() },
-      createEnv() as never,
+      createEnv(),
     );
     expect(resp.status).toBe(403);
   });
@@ -209,7 +209,7 @@ describe('handleSiteExportRoute', () => {
     mockListBranches.mockResolvedValueOnce([MOCK_MAIN_BRANCH] as never);
     mockListDocuments.mockResolvedValueOnce([]);
     mockSignR2.mockResolvedValueOnce({ url: 'https://r2.example.com/signed', expiresAt: '2026-06-01' });
-    await handleSiteExportRoute(makeRequest(), { siteId: 'site-1', principal: servicePrincipal }, createEnv() as never);
+    await handleSiteExportRoute(makeRequest(), { siteId: 'site-1', principal: servicePrincipal }, createEnv());
     expect(mockAssertPermission).not.toHaveBeenCalled();
   });
 
@@ -224,7 +224,7 @@ describe('handleSiteExportRoute', () => {
     const resp = await handleSiteExportRoute(
       makeRequest(),
       { siteId: 'site-1', principal: createPrincipal() },
-      createEnv() as never, // includes INTERNAL_SECRET: 'test-internal-secret'
+      createEnv(), // includes INTERNAL_SECRET: 'test-internal-secret'
     );
     expect(resp.status).toBe(200);
     const body = await resp.json();
@@ -255,7 +255,7 @@ describe('handleSiteExportRoute', () => {
     await handleSiteExportRoute(
       makeRequest(),
       { siteId: 'site-1', principal: createPrincipal() },
-      createEnv() as never,
+      createEnv(),
     );
 
     // _registry/ doc should NOT trigger selectVersionsForDocument; only 'home' should
@@ -285,7 +285,7 @@ describe('handleSiteExportRoute', () => {
     const resp = await handleSiteExportRoute(
       makeRequest(),
       { siteId: 'site-1', principal: createPrincipal() },
-      env as never,
+      env,
     );
 
     expect(resp.status).toBe(200);
@@ -379,7 +379,7 @@ describe('handleSiteExportRoute', () => {
     mockSignR2.mockResolvedValueOnce({ url: 'https://r2.example.com/signed', expiresAt: '2026-06-01T00:00:00Z' });
 
     const env = createEnv({ R2_BUNDLES: { put: mockR2Put } });
-    await handleSiteExportRoute(makeRequest(), { siteId: 'site-1', principal: createPrincipal() }, env as never);
+    await handleSiteExportRoute(makeRequest(), { siteId: 'site-1', principal: createPrincipal() }, env);
 
     expect(capturedPutArgs).toHaveLength(1);
     const firstPut = capturedPutArgs[0];
@@ -423,7 +423,7 @@ describe('handleSiteExportRoute', () => {
     mockSignR2.mockResolvedValueOnce({ url: 'https://r2.example.com/signed', expiresAt: '2026-06-01T00:00:00Z' });
 
     const env = createEnv({ R2_BUNDLES: { put: mockR2Put } });
-    await handleSiteExportRoute(makeRequest(), { siteId: 'site-1', principal: createPrincipal() }, env as never);
+    await handleSiteExportRoute(makeRequest(), { siteId: 'site-1', principal: createPrincipal() }, env);
 
     expect(capturedPutArgs).toHaveLength(1);
     const putArg = capturedPutArgs[0];
@@ -468,7 +468,7 @@ describe('handleSiteExportRoute', () => {
     mockSignR2.mockResolvedValueOnce({ url: 'https://r2.example.com/signed', expiresAt: '2026-06-01T00:00:00Z' });
 
     const env = createEnv({ R2_BUNDLES: { put: mockR2Put } });
-    await handleSiteExportRoute(makeRequest(), { siteId: 'site-1', principal: createPrincipal() }, env as never);
+    await handleSiteExportRoute(makeRequest(), { siteId: 'site-1', principal: createPrincipal() }, env);
 
     expect(capturedPutArgs).toHaveLength(1);
     const putArg16 = capturedPutArgs[0];
@@ -505,7 +505,7 @@ describe('handleSiteExportRoute', () => {
     mockSignR2.mockResolvedValueOnce({ url: 'https://r2.example.com/signed', expiresAt: '2026-06-01T00:00:00Z' });
 
     const env = createEnv({ R2_BUNDLES: { put: mockR2Put } });
-    const resp = await handleSiteExportRoute(makeRequest(), { siteId: 'site-1', principal: createPrincipal() }, env as never);
+    const resp = await handleSiteExportRoute(makeRequest(), { siteId: 'site-1', principal: createPrincipal() }, env);
 
     expect(resp.status).toBe(200);
     const body = JSON.parse(await resp.text()) as { documentCount: number; downloadUrl: string };
@@ -549,7 +549,7 @@ describe('handleSiteExportRoute', () => {
     const resp = await handleSiteExportRoute(
       makeRequest(),
       { siteId: 'site-1', principal: createPrincipal() },
-      createEnv() as never,
+      createEnv(),
     );
     const elapsed = Date.now() - start;
 

@@ -89,21 +89,6 @@ interface TemplateMetadata {
 }
 
 /**
- * A template's version snapshot: Puck data, identical in shape to a page.
- * Metadata lives at root.props._template; pin state at root.props._pinMap.
- */
-interface TemplateSnapshot {
-  content: unknown[];
-  root: {
-    props: {
-      _template: TemplateMetadata;
-      _pinMap: Record<string, boolean>;
-    };
-  };
-  zones: Record<string, unknown>;
-}
-
-/**
  * A component entry in a legacy manifest create body.
  */
 interface ManifestComponentInput {
@@ -226,7 +211,7 @@ export function legacyTemplateProjection(
 /**
  * Parse JSON body from request with type assertion
  */
-async function parseJsonBody<T extends Record<string, unknown>>(request: Request): Promise<T> {
+async function parseJsonBody<T>(request: Request): Promise<T> {
   const json: unknown = await request.json();
   if (typeof json !== 'object' || json === null || Array.isArray(json)) {
     throw new InvalidBodyError();
@@ -290,7 +275,7 @@ async function handleListTemplates(
         return null;
       }
       const canonical: Record<string, unknown> = isManifestShapedSnapshot(tpl.snapshot)
-        ? convertManifestToContent(tpl.snapshot)
+        ? convertManifestToContent(tpl.snapshot) as unknown as Record<string, unknown>
         : tpl.snapshot;
       return {
         id: tpl.id,
@@ -334,7 +319,7 @@ async function handleGetTemplate(
   const templateName = extractTemplateName(document.path);
 
   const canonicalSnapshot: Record<string, unknown> = isManifestShapedSnapshot(version.snapshot)
-    ? convertManifestToContent(version.snapshot)
+    ? convertManifestToContent(version.snapshot) as unknown as Record<string, unknown>
     : (version.snapshot ?? {});
 
   return jsonResponse({
@@ -385,9 +370,9 @@ async function handleCreateTemplate(
       ...(body.defaultUrlPattern !== undefined && { defaultUrlPattern: body.defaultUrlPattern }),
       deprecated: false,
       components: body.components,
-    });
+    }) as unknown as Record<string, unknown>;
   } else {
-    const seed: TemplateSnapshot = {
+    snapshot = {
       content: [],
       root: {
         props: {
@@ -402,7 +387,6 @@ async function handleCreateTemplate(
       },
       zones: {},
     };
-    snapshot = seed;
   }
 
   // Create template as document
@@ -482,7 +466,7 @@ async function handleUpdateTemplate(
   const currentSnapshot = currentVersion.snapshot ?? {};
   const isManifest = isManifestShapedSnapshot(currentSnapshot);
   const baseSnapshot: Record<string, unknown> = isManifest
-    ? convertManifestToContent(currentSnapshot)
+    ? convertManifestToContent(currentSnapshot) as unknown as Record<string, unknown>
     : currentSnapshot;
 
   const baseRoot = (baseSnapshot.root ?? {}) as { props?: Record<string, unknown> };
@@ -548,13 +532,14 @@ async function handleUpdateTemplate(
 
   // Create new version. A manifest-to-content conversion is a representation
   // change, not an authored edit, so it is written as non-structural.
+  const actorType = toActorType(principal.type);
   const version = await createDocumentVersion({
     documentId: templateId,
     branchId,
     snapshot: updatedSnapshot,
     source: 'edit',
     createdById: principal.dbUserId ?? principal.id,
-    createdByType: toActorType(principal.type),
+    createdByType: actorType === 'service' ? 'system' : actorType,
     forceNonStructural: isManifest,
   });
 
@@ -603,7 +588,7 @@ async function handleDeleteTemplate(
     [templateId],
   );
 
-  const refCount = parseInt(refs.rows[0].count as string, 10);
+  const refCount = parseInt((refs.rows[0]?.count ?? '0') as string, 10);
   if (refCount > 0) {
     return errorResponse(
       'Cannot delete template: ' + String(refCount) + ' document(s) still reference it',

@@ -15,7 +15,7 @@ import { roleAtLeast } from './roles';
  * Request object with principal and authorization context.
  */
 export interface AuthorizedRequest {
-  principal?: AuthenticatedPrincipal & { type: 'user' | 'agent' | 'service' | 'guest' };
+  principal?: Omit<AuthenticatedPrincipal, 'type'> & { type: 'user' | 'agent' | 'service' | 'guest' };
   params: Record<string, string>;
   effectiveRole?: RolePermissions;
   effectiveRoleName?: RoleName;
@@ -119,9 +119,9 @@ export function requirePermission(permission: keyof RolePermissions): Middleware
         return;
       }
 
-      // Calculate effective role
+      // Calculate effective role (service and guest cases already returned above)
       const { role, roleName } = await getEffectiveRole(
-        req.principal,
+        req.principal as AuthenticatedPrincipal,
         siteId,
         branchId,
       );
@@ -221,9 +221,9 @@ export function requireRole(minRole: 'VIEWER' | 'EDITOR' | 'ADMIN'): Middleware 
         return;
       }
 
-      // Calculate effective role
+      // Calculate effective role (service and guest cases already returned above)
       const { role, roleName } = await getEffectiveRole(
-        req.principal,
+        req.principal as AuthenticatedPrincipal,
         siteId,
         branchId,
       );

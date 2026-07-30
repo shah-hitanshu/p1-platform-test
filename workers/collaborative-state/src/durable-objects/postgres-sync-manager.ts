@@ -146,6 +146,7 @@ export class PostgresSyncManager {
 
         if (result.rows.length > 0) {
           const row = result.rows[0];
+          if (!row) return false;
           const snapshot = row.snapshot ?? await reconstructVersionSnapshot(documentId, branchId, row.version_number);
           if (snapshot === null) return false;
           const root = this.getYdoc().getMap('root');
@@ -169,7 +170,9 @@ export class PostgresSyncManager {
 
         if (branchResult.rows.length === 0) return false;
 
-        const sourceBranchId = branchResult.rows[0].source_branch_id;
+        const sourceRow = branchResult.rows[0];
+        if (!sourceRow) return false;
+        const sourceBranchId = sourceRow.source_branch_id;
         if (!sourceBranchId) return false;
 
         const cowResult = await dbQuery<VersionRow>(
@@ -189,6 +192,7 @@ export class PostgresSyncManager {
         if (cowResult.rows.length === 0) return false;
 
         const cowRow = cowResult.rows[0];
+        if (!cowRow) return false;
         const cowSnapshot = cowRow.snapshot
           ?? await reconstructVersionSnapshot(documentId, sourceBranchId, cowRow.version_number);
         if (cowSnapshot === null) return false;
@@ -578,6 +582,7 @@ export class PostgresSyncManager {
       this.pendingActionMetadata !== null
       && IMMEDIATE_SYNC_ACTION_TYPES.has(this.pendingActionMetadata.actionType)
     ) {
+      const actionType = this.pendingActionMetadata.actionType;
       try {
         await this.performDirectSync(
           this.env.INTERNAL_API_URL,
@@ -590,7 +595,7 @@ export class PostgresSyncManager {
         return;
       } catch (error) {
         console.error(
-          `Immediate sync failed for ${this.pendingActionMetadata.actionType}, falling back to scheduled sync:`,
+          `Immediate sync failed for ${actionType}, falling back to scheduled sync:`,
           error,
         );
       }

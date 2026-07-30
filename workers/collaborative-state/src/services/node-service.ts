@@ -54,7 +54,11 @@ export async function createNode(params: CreateNodeParams): Promise<StructureNod
       ],
     );
 
-    return mapNodeRow(result.rows[0]);
+    const row = result.rows[0];
+    if (!row) {
+      throw new StructureNotFoundError(structureId);
+    }
+    return mapNodeRow(row);
   } catch (error) {
     if (error instanceof Error && 'code' in error) {
       const pgError = error as Error & { code: string };
@@ -78,11 +82,12 @@ export async function getNode(nodeId: string): Promise<StructureNode | null> {
     [nodeId],
   );
 
-  if (result.rows.length === 0) {
+  const nodeRow = result.rows[0];
+  if (!nodeRow) {
     return null;
   }
 
-  return mapNodeRow(result.rows[0]);
+  return mapNodeRow(nodeRow);
 }
 
 /**
@@ -164,7 +169,11 @@ export async function updateNode(
     throw new NodeNotFoundError(nodeId);
   }
 
-  return mapNodeRow(result.rows[0]);
+  const updatedRow = result.rows[0];
+  if (!updatedRow) {
+    throw new NodeNotFoundError(nodeId);
+  }
+  return mapNodeRow(updatedRow);
 }
 
 /**
@@ -232,7 +241,11 @@ export async function moveNode(
     throw new NodeNotFoundError(nodeId);
   }
 
-  return mapNodeRow(result.rows[0]);
+  const movedRow = result.rows[0];
+  if (!movedRow) {
+    throw new NodeNotFoundError(nodeId);
+  }
+  return mapNodeRow(movedRow);
 }
 
 /**

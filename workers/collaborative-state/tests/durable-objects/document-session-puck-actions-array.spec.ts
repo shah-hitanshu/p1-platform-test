@@ -168,7 +168,7 @@ describe('Structural Action Capture — puckActions Array', () => {
   describe('WsActionMetadataMessage with puckActions array', () => {
     it('should capture puckActions array from action_metadata message', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       await session.fetch(new Request('http://localhost/snapshot'));
 
@@ -204,7 +204,7 @@ describe('Structural Action Capture — puckActions Array', () => {
 
     it('should handle single-action puckActions array', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       await session.fetch(new Request('http://localhost/snapshot'));
 
@@ -235,7 +235,7 @@ describe('Structural Action Capture — puckActions Array', () => {
 
     it('should accumulate puckActions when multiple action_metadata messages arrive before sync', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       await session.fetch(new Request('http://localhost/snapshot'));
 

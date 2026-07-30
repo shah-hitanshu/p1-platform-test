@@ -267,15 +267,30 @@ export async function dispatchRoute(
         principal,
       }) ?? errorResponse('Not found', 404);
 
-    case 'presence':
+    case 'presence': {
+      const presencePrincipal: import('./presence-api').PresencePrincipal = {
+        id: principal.id,
+        type: principal.type === 'service' ? 'user' : principal.type,
+        pantheonSiteRoles: principal.pantheonSiteRoles,
+        organizationId: principal.organizationId,
+        dbUserId: principal.dbUserId,
+        systemRole: principal.systemRole,
+        tokenExpiry: principal.tokenExpiry,
+        authProvider: principal.authProvider,
+        email: principal.email,
+        name: principal.name,
+        avatarUrl: principal.avatarUrl,
+        providerSubjectId: principal.providerSubjectId,
+      };
       return await handlePresenceRoutes(request, {
         siteId: route.params.siteId,
         branchId: route.params.branchId,
         documentPath: route.params.documentPath,
         organizationId: route.params.organizationId,
         agentId: route.params.agentId,
-        principal,
+        principal: presencePrincipal,
       }, env);
+    }
 
     case 'agent-keys':
       return await handleAgentKeyRoutes(request, {
@@ -286,10 +301,13 @@ export async function dispatchRoute(
 
     case 'agents':
       return await handleAgentRoutes(request, {
-        organizationId: route.params.organizationId,
+        organizationId: route.params.organizationId ?? '',
         agentId: route.params.agentId,
-        subResource: route.params.subResource,
-        principal,
+        subResource: route.params.subResource as 'status' | undefined,
+        principal: {
+          id: principal.id,
+          type: principal.type === 'service' ? 'user' : principal.type,
+        },
       });
 
     case 'agent-roles':

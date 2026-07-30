@@ -170,7 +170,7 @@ describe('Phase 5.1: Queue-Based Sync in DocumentSession', () => {
   describe('queue-based sync path', () => {
     it('should send sync message to SYNC_QUEUE instead of fetch when queue is available', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -220,7 +220,7 @@ describe('Phase 5.1: Queue-Based Sync in DocumentSession', () => {
 
     it('should include correct message structure with timestamp', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       // Initialize
       const snapshotReq = new Request('http://localhost/snapshot');
@@ -248,7 +248,7 @@ describe('Phase 5.1: Queue-Based Sync in DocumentSession', () => {
 
     it('should clear sync schedule after successful queue send', async () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, mockEnv);
+      const session = new DocumentSession(mockState, mockEnv);
 
       const snapshotReq = new Request('http://localhost/snapshot');
       await session.fetch(snapshotReq);
@@ -276,7 +276,7 @@ describe('Phase 5.1: Queue-Based Sync in DocumentSession', () => {
     it('should fall back to fetch when SYNC_QUEUE is not available', async () => {
       const envWithoutQueue = createMockEnv({ SYNC_QUEUE: undefined });
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
-      const session = new DocumentSession(mockState as unknown, envWithoutQueue);
+      const session = new DocumentSession(mockState, envWithoutQueue);
 
       const snapshotReq = new Request('http://localhost/snapshot');
       await session.fetch(snapshotReq);
@@ -305,12 +305,12 @@ describe('Phase 5.1: Queue-Based Sync in DocumentSession', () => {
       const { DocumentSession } = await import('../../src/durable-objects/document-session');
 
       // Should construct without SYNC_QUEUE
-      const sessionNoQueue = new DocumentSession(mockState as unknown, createMockEnv({ SYNC_QUEUE: undefined }));
+      const sessionNoQueue = new DocumentSession(mockState, createMockEnv({ SYNC_QUEUE: undefined }));
       expect(sessionNoQueue).toBeDefined();
 
       // Should construct with SYNC_QUEUE
       const mockState2 = createMockState();
-      const sessionWithQueue = new DocumentSession(mockState2 as unknown, createMockEnv({ SYNC_QUEUE: mockQueue }));
+      const sessionWithQueue = new DocumentSession(mockState2, createMockEnv({ SYNC_QUEUE: mockQueue }));
       expect(sessionWithQueue).toBeDefined();
     });
   });

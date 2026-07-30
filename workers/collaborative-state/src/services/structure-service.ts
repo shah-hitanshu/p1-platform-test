@@ -94,8 +94,12 @@ export async function createStructure(params: CreateStructureParams): Promise<Br
       [siteId],
     );
 
-    const structureId = defResult.rows[0].id;
-    const createdAt = defResult.rows[0].created_at;
+    const defRow = defResult.rows[0];
+    if (!defRow) {
+      throw new SiteNotFoundError(siteId);
+    }
+    const structureId = defRow.id;
+    const createdAt = defRow.created_at;
 
     // Step 2: Create the branch structure state (with identity)
     const defaultSchema = JSON.stringify({
@@ -134,7 +138,11 @@ export async function createStructure(params: CreateStructureParams): Promise<Br
       ],
     );
 
-    return mapBranchStructureRow(stateResult.rows[0]);
+    const stateRow = stateResult.rows[0];
+    if (!stateRow) {
+      throw new SiteNotFoundError(siteId);
+    }
+    return mapBranchStructureRow(stateRow);
   } catch (error) {
     if (error instanceof Error && 'code' in error) {
       const pgError = error as Error & { code: string };
@@ -179,7 +187,11 @@ export async function getBranchStructure(
     return null;
   }
 
-  return mapBranchStructureRow(result.rows[0]);
+  const branchRow = result.rows[0];
+  if (!branchRow) {
+    return null;
+  }
+  return mapBranchStructureRow(branchRow);
 }
 
 /**
@@ -213,7 +225,11 @@ export async function getBranchStructureBySlug(
     return null;
   }
 
-  return mapBranchStructureRow(result.rows[0]);
+  const slugRow = result.rows[0];
+  if (!slugRow) {
+    return null;
+  }
+  return mapBranchStructureRow(slugRow);
 }
 
 /**
@@ -350,7 +366,8 @@ export async function deleteBranchStructure(
     [structureId],
   );
 
-  const remainingRefs = parseInt(countResult.rows[0].count, 10);
+  const countRow = countResult.rows[0];
+  const remainingRefs = countRow ? parseInt(countRow.count, 10) : 0;
 
   // Step 3: If no more references, cascade delete the definition
   if (remainingRefs === 0) {
