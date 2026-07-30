@@ -21,7 +21,17 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body data-rm-theme="light">{children}</body>
+      {/* Puck's canvas-preview iframe copies this document's <body> attributes
+          onto its own iframe <body> (@puckeditor/core's CopyHostStyles
+          syncAttributes()), so a class/attribute placed directly on <body>
+          cannot be used to keep a rule out of the iframe. `.p1-app-shell` is
+          a child of <body> instead — Puck's canvas iframe never contains it
+          (the iframe only ever renders the Puck root/block tree into its own
+          #frame-root, not this layout). See styles.css for the scoped reset
+          this enables. */}
+      <body data-rm-theme="light">
+        <div className="p1-app-shell">{children}</div>
+      </body>
     </html>
   );
 }
