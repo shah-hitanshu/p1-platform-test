@@ -101,7 +101,7 @@ export function P1InspectorFields({
   }
 
   return (
-    <div className="p1-inspector-fields">
+    <div className={`p1-inspector-fields${isReadOnly ? ' p1-inspector-fields--readonly' : ''}`}>
       <InspectorTabHeader
         activeTab={activeTab}
         onTabChange={handleTabChange}

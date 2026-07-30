@@ -26,7 +26,7 @@ describe('HistoricalVersionBanner', () => {
       />
     );
 
-    expect(screen.getByText(/version 5/i)).toBeInTheDocument();
+    expect(screen.getByText('v5')).toBeInTheDocument();
   });
 
   it('should display the version date', () => {
@@ -42,7 +42,7 @@ describe('HistoricalVersionBanner', () => {
     expect(screen.getByText(/jan 15/i)).toBeInTheDocument();
   });
 
-  it('should display read-only indicator', () => {
+  it('should display previewing label', () => {
     const onReturnToLatest = vi.fn();
     render(
       <HistoricalVersionBanner
@@ -51,7 +51,7 @@ describe('HistoricalVersionBanner', () => {
       />
     );
 
-    expect(screen.getByText(/read-only/i)).toBeInTheDocument();
+    expect(screen.getByText(/previewing/i)).toBeInTheDocument();
   });
 
   it('should display return to current button', () => {

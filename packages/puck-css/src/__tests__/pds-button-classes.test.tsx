@@ -92,8 +92,8 @@ describe('SaveIndicator PDS classes', () => {
 
 import { HistoricalVersionBanner } from '../versioning/components/HistoricalVersionBanner.js';
 
-describe('HistoricalVersionBanner PDS classes', () => {
-  it('renders Return to current button with pds-button classes', () => {
+describe('HistoricalVersionBanner exit button', () => {
+  it('renders the Exit preview button with the custom exit-btn class', () => {
     render(
       <HistoricalVersionBanner
         version={{
@@ -107,9 +107,7 @@ describe('HistoricalVersionBanner PDS classes', () => {
       />
     );
     const btn = screen.getByRole('button', { name: 'Return to current' });
-    expect(btn.className).toContain('pds-button');
-    expect(btn.className).toContain('pds-button--primary');
-    expect(btn.className).toContain('pds-button--sm');
+    expect(btn.className).toContain('historical-version-banner__exit-btn');
   });
 });
 

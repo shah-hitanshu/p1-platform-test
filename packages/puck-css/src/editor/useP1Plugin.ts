@@ -34,6 +34,10 @@ export interface UseP1PluginOptions {
   selectedVersionId?: string;
   /** Callback when a version is selected */
   onVersionSelect?: (version: DocumentVersion) => void;
+  /** Callback when user reverts to a previous version. Called by the plugin panel's revert button. */
+  onRestoreVersion?: (version: DocumentVersion) => Promise<void>;
+  /** Whether the current user is allowed to revert versions. */
+  canRevert?: boolean;
   /** Override document select handler (e.g., for URL-based routing). Defaults to context loadDocument. */
   onDocumentSelect?: (path: string) => void;
   /** Override selected document path (e.g., from URL params). Defaults to context currentDocument path. */
@@ -154,6 +158,8 @@ export function useP1Plugin(options: UseP1PluginOptions = {}): PuckPlugin {
     publishedStatus: options.publishedStatus,
     selectedVersionId: fc.enableVersionHistory ? options.selectedVersionId : undefined,
     onVersionSelect: fc.enableVersionHistory ? options.onVersionSelect : undefined,
+    onRestoreVersion: fc.enableVersionHistory ? options.onRestoreVersion : undefined,
+    canRevert: fc.enableVersionHistory ? (options.canRevert ?? false) : false,
     // Context-based sync is the default — no need for getter or legacy sync
     useContextSync: true,
     documentSyncStore: options.documentSyncStore,

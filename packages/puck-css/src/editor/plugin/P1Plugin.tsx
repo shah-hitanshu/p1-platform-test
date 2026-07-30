@@ -6,8 +6,11 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Toaster } from '@pantheon-systems/pds-toolkit-react';
+import { dayLabel } from '../../versioning/utils/formatVersionDate.js';
+import { isMilestone } from '../../versioning/utils/versionKind.js';
+import { Toaster, IconButton, SegmentedButton } from '@pantheon-systems/pds-toolkit-react';
 import { VersionBannerOverride } from '../components/VersionBannerOverride.js';
+import { VersionTimeline } from '../components/VersionTimeline.js';
 import { createPortal } from 'react-dom';
 import { createUsePuck } from '@puckeditor/core';
 import type {
@@ -17,6 +20,7 @@ import type {
   PuckData,
   RegisteredAgent,
   ActorPresence,
+  ActorState,
 } from '@pantheon-systems/css-client';
 import { PuckDataSynchronizer } from '../components/PuckDataSynchronizer.js';
 import { resolveContextSyncKey } from './context-sync-key.js';
@@ -107,8 +111,6 @@ interface P1PluginPanelProps {
   selectedVersionId?: string;
   /** Callback when a version is selected */
   onVersionSelect?: (version: DocumentVersion) => void;
-  /** Callback when user restores a previous version to current. */
-  onRestoreVersion?: (version: DocumentVersion) => Promise<void>;
   /** Resolves a display name for a version author. Falls back to createdById or type label. */
   resolveAuthorName?: (id: string, type: 'user' | 'agent') => string | undefined;
   /** Currently authenticated user — used to show your own name on your edits. */
@@ -134,27 +136,38 @@ interface P1PluginPanelProps {
   showFocusRegions?: boolean;
   /** Regions being edited by agents */
   agentEditingRegions?: string[];
+  /** Collapses the plugin rail. */
+  onCollapse?: () => void;
+  /** Called whenever the displayed (filtered) version list changes. Used to sync filter state to the banner steppers. */
+  onFilteredVersionsChange?: (versions: DocumentVersion[]) => void;
 }
 
-/**
- * Formats a date string for display.
- */
-function formatVersionDate(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+const ACTOR_STATES: ActorState[] = ['active', 'idle', 'editing'];
+const ALLOWED_ACTOR_STATES = new Set<ActorState>(ACTOR_STATES);
+
+function groupVersionsByDay(
+  versions: DocumentVersion[],
+): Array<{ label: string; versions: DocumentVersion[] }> {
+  const map = new Map<string, DocumentVersion[]>();
+  const order: string[] = [];
+  for (const v of versions) {
+    const label = dayLabel(v.createdAt) || 'Unknown';
+    if (!map.has(label)) {
+      map.set(label, [v]);
+      order.push(label);
+    } else {
+      map.get(label)?.push(v);
+    }
+  }
+  return order.map((label) => ({ label, versions: map.get(label) ?? [] }));
 }
+
 
 function P1PluginPanel({
   versions = [],
   versionsLoading = false,
   selectedVersionId,
   onVersionSelect,
-  onRestoreVersion,
   resolveAuthorName,
   currentUser,
   // Presence/Agent Features
@@ -169,13 +182,53 @@ function P1PluginPanel({
   // Focus regions are shown within AgentActivityBanner
   showFocusRegions: _showFocusRegions = false,
   agentEditingRegions: _agentEditingRegions = [],
+  onCollapse,
+  onFilteredVersionsChange,
 }: P1PluginPanelProps): React.ReactElement {
   // Suppress unused variable warnings - these are passed through for future use
   void _showFocusRegions;
   void _agentEditingRegions;
 
+  const [filter, setFilter] = useState<'all' | 'milestones'>('all');
+
+  // versions are newest-first; index 0 is always the current version.
+  const currentVersionId = versions[0]?.id;
+
+  // unpublishedCount = number of versions newer than the last published one.
+  // When no version has ever been published (findIndex returns -1), suppressed.
+  const lastPublishedIdx = versions.findIndex(v => v.isPublished);
+  const unpublishedCount = lastPublishedIdx > 0 ? lastPublishedIdx : 0;
+
+  // True while previewing a historical version (a non-current version is selected).
+  const isPreviewing = !!selectedVersionId && selectedVersionId !== currentVersionId;
+
+  // Apply filter then group by calendar day.
+  const displayedVersions = React.useMemo(
+    () => filter === 'milestones' ? versions.filter(isMilestone) : versions,
+    [filter, versions],
+  );
+  const dayGroups = groupVersionsByDay(displayedVersions);
+
+  // Notify parent of filtered list so banner steppers can navigate within it.
+  useEffect(() => {
+    onFilteredVersionsChange?.(displayedVersions);
+  }, [displayedVersions, onFilteredVersionsChange]);
+
   return (
     <div className="css-plugin-panel">
+      {/* Panel-level header: bold title + collapse button */}
+      <div className="css-plugin-panel-header">
+        <span className="css-plugin-panel-title">Version history</span>
+        <IconButton
+          ariaLabel="Collapse panel"
+          iconName="anglesLeft"
+          size="s"
+          hasTooltip={true}
+          hasBorder={false}
+          onClick={onCollapse}
+        />
+      </div>
+
       {/* Version History */}
       {(versions.length > 0 || versionsLoading || onVersionSelect) && (
         <div className="css-plugin-section">
@@ -183,57 +236,38 @@ function P1PluginPanel({
             <label className="css-plugin-label">Version History</label>
           </div>
 
+          {/* All versions / Milestones filter */}
+          {versions.length > 0 && (
+            <div className="css-plugin-version-filter">
+              <SegmentedButton
+                id="version-history-filter"
+                label="Version filter"
+                value={filter}
+                onChange={(val) => setFilter(val as 'all' | 'milestones')}
+                options={[
+                  { label: 'All versions', value: 'all' },
+                  { label: 'Milestones', value: 'milestones' },
+                ]}
+              />
+            </div>
+          )}
+
           {versionsLoading ? (
             <div className="css-plugin-loading">Loading versions...</div>
           ) : versions.length === 0 ? (
             <div className="css-plugin-empty">No versions yet</div>
           ) : (
-            <ul className="css-plugin-version-list">
-              {versions.map((version, index) => {
-                const isLatest = index === 0;
-                const isSelected = version.id === selectedVersionId;
-                const authorName = resolveAuthorName?.(version.createdById, version.createdByType)
-                  ?? (version.createdById === currentUser?.id
-                    ? (currentUser?.name ?? currentUser?.email ?? 'You')
-                    : version.createdByType === 'agent'
-                      ? version.createdById
-                      : 'User');
-
-                return (
-                  <li
-                    key={version.id}
-                    className={`css-plugin-version-item ${isSelected ? 'css-plugin-version-item--selected' : ''}`}
-                    onClick={() => onVersionSelect?.(version)}
-                  >
-                    <div className="css-plugin-version-main">
-                      <span className="css-plugin-version-number">v{version.versionNumber}</span>
-                      <span className="css-plugin-version-date">
-                        {formatVersionDate(version.createdAt)}
-                      </span>
-                      {isLatest && (
-                        <span className="pds-badge pds-badge--success pds-badge--s">Current</span>
-                      )}
-                      {version.isPublished && (
-                        <span className="pds-badge pds-badge--info pds-badge--s">Published</span>
-                      )}
-                    </div>
-                    <div className="css-plugin-version-author">{authorName}</div>
-                    {isSelected && !isLatest && onRestoreVersion && (
-                      <button
-                        type="button"
-                        className="pds-button pds-button--secondary pds-button--sm css-plugin-version-restore"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void onRestoreVersion(version);
-                        }}
-                      >
-                        Restore this version
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+            <VersionTimeline
+              dayGroups={dayGroups}
+              allVersions={versions}
+              selectedVersionId={selectedVersionId}
+              currentVersionId={currentVersionId}
+              isPreviewing={isPreviewing}
+              unpublishedCount={unpublishedCount}
+              currentUser={currentUser}
+              resolveAuthorName={resolveAuthorName}
+              onVersionSelect={onVersionSelect}
+            />
           )}
         </div>
       )}
@@ -248,16 +282,19 @@ function P1PluginPanel({
             <div className="css-plugin-empty">No collaborators</div>
           ) : (
             <ul className="css-plugin-presence-list">
-              {presence.map((actor) => (
-                <li key={actor.id} className="css-plugin-presence-item">
-                  <span className="css-plugin-presence-name">{actor.name}</span>
-                  <span
-                    className={`css-plugin-presence-state css-plugin-presence-state--${actor.state}`}
-                  >
-                    {actor.state}
-                  </span>
-                </li>
-              ))}
+              {presence.map((actor) => {
+                const safeState = ALLOWED_ACTOR_STATES.has(actor.state) ? actor.state : 'idle';
+                return (
+                  <li key={actor.id} className="css-plugin-presence-item">
+                    <span className="css-plugin-presence-name">{actor.name}</span>
+                    <span
+                      className={`css-plugin-presence-state css-plugin-presence-state--${safeState}`}
+                    >
+                      {safeState}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -386,9 +423,15 @@ function ContextSyncBridge({
     return null;
   }
 
-  // PuckDataSynchronizer handles deduplication via module-level tracking
-  // in its useEffect, so we can safely pass the current sync key every time
-  return <PuckDataSynchronizer data={currentData} syncKey={syncKey} />;
+  // Puck's setData action merges: { ...state.data, ...newData }.
+  // If the snapshot has no `zones` key, Puck preserves stale zones from the
+  // prior version, which can produce duplicate-key errors in the rendered tree.
+  // Explicitly setting zones: {} ensures the dispatch replaces any stale zones.
+  const safeData = currentData.zones != null
+    ? currentData
+    : { ...currentData, zones: {} };
+
+  return <PuckDataSynchronizer data={safeData} syncKey={syncKey} />;
 }
 
 /**
@@ -448,6 +491,8 @@ export interface P1PluginOptions {
   onVersionSelect?: (version: DocumentVersion) => void;
   /** Callback when user restores a previous version to current. Calls POST .../versions/:id/restore server-side. */
   onRestoreVersion?: (version: DocumentVersion) => Promise<void>;
+  /** Whether the current user is allowed to revert versions. */
+  canRevert?: boolean;
   /** Resolves a display name for a version author. Falls back to createdById or type label. */
   resolveAuthorName?: (id: string, type: 'user' | 'agent') => string | undefined;
   /** Callback to compare two versions */
@@ -581,10 +626,12 @@ function P1SubheaderBridgeInner({
   options,
   p1Context,
   showMergeReviewRef,
+  collapsePluginRailRef,
 }: {
   options: P1PluginOptions;
   p1Context: ReturnType<typeof useP1Puck>;
   showMergeReviewRef: { current: () => void };
+  collapsePluginRailRef: { current: () => void };
 }): React.ReactElement | null {
   const { currentDocument, currentBranch, presence, publishDocument, hasActiveHumans, humanPresenceCount, siteId } = p1Context;
 
@@ -632,6 +679,14 @@ function P1SubheaderBridgeInner({
       localStorage.setItem(pluginRailStorageKey, String(pluginRailVisible));
     } catch { /* ignore quota/private-browsing errors */ }
   }, [pluginRailVisible, pluginRailStorageKey]);
+
+  // Expose collapse fn to the panel header button via ref.
+  // Dispatches leftSideBarVisible:false — same action as the subheader "Toggle left panel" button.
+  React.useEffect(() => {
+    collapsePluginRailRef.current = () => {
+      puckDispatch?.({ type: 'setUi', ui: { leftSideBarVisible: false } });
+    };
+  }, [collapsePluginRailRef, puckDispatch]);
 
   // Persist sidebar visibility to localStorage on every user toggle.
   // Initial state is set via the `ui` prop passed to <Puck> (see useP1Editor.ts),
@@ -778,14 +833,37 @@ function P1SubheaderBridgeInner({
 function P1SubheaderBridge({
   options,
   showMergeReviewRef,
+  collapsePluginRailRef,
 }: {
   options: P1PluginOptions;
   showMergeReviewRef: { current: () => void };
+  collapsePluginRailRef: { current: () => void };
 }): React.ReactElement | null {
   const p1Context = useP1PuckOptional();
   if (!p1Context) return null;
 
-  return <P1SubheaderBridgeInner options={options} p1Context={p1Context} showMergeReviewRef={showMergeReviewRef} />;
+  return <P1SubheaderBridgeInner options={options} p1Context={p1Context} showMergeReviewRef={showMergeReviewRef} collapsePluginRailRef={collapsePluginRailRef} />;
+}
+
+// Minimal pub-sub store so the preview override re-renders when the user
+// toggles the All/Milestones filter (a plain ref write is invisible to React).
+function createFilteredVersionsStore() {
+  // undefined = "not yet set" (falls back to full list via ?? in VersionBannerOverride).
+  // [] = "filter applied, nothing matched" (steppers disabled).
+  let current: DocumentVersion[] | undefined;
+  const listeners = new Set<() => void>();
+  return {
+    set(versions: DocumentVersion[]) {
+      if (current === versions) return;
+      current = versions;
+      listeners.forEach((notify) => notify());
+    },
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+    getSnapshot(): DocumentVersion[] | undefined { return current; },
+  };
 }
 
 /**
@@ -837,6 +915,33 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
   // Shared ref for merge review toggle - allows P1SubheaderBridgeInner to trigger
   // the merge review overlay that's owned by HeaderOverride
   const showMergeReviewRef = { current: () => {} };
+
+  // Shared ref for collapsing the plugin rail from the panel header button
+  const collapsePluginRailRef = { current: () => {} };
+
+  // Tracks the currently-filtered version list from P1PluginPanel so the
+  // banner steppers navigate within the active filter rather than all versions.
+  const filteredVersionsStore = createFilteredVersionsStore();
+  const handleFilteredVersionsChange = (v: DocumentVersion[]) => { filteredVersionsStore.set(v); };
+
+  function PreviewOverride({ children }: { children: React.ReactNode }): React.ReactElement {
+    const filteredVersions = React.useSyncExternalStore(
+      filteredVersionsStore.subscribe,
+      filteredVersionsStore.getSnapshot,
+    );
+    return (
+      <VersionBannerOverride
+        versions={stableOptions.versions ?? []}
+        selectedVersionId={stableOptions.selectedVersionId}
+        onVersionSelect={stableOptions.onVersionSelect}
+        onRestoreVersion={stableOptions.onRestoreVersion}
+        canRevert={stableOptions.canRevert}
+        filteredVersions={filteredVersions}
+      >
+        {children}
+      </VersionBannerOverride>
+    );
+  }
 
   /**
    * Header override component — renders P1EditorHeader plus the subheader slot anchor.
@@ -986,13 +1091,12 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
         )}
         {/* Nav tooltips are handled by PuckEditorTheme.css — labels are repositioned as hover tooltips */}
         {/* Subheader bridge — portals P1EditorSubheader into the slot placed by header override */}
-        <P1SubheaderBridge options={stableOptions} showMergeReviewRef={showMergeReviewRef} />
+        <P1SubheaderBridge options={stableOptions} showMergeReviewRef={showMergeReviewRef} collapsePluginRailRef={collapsePluginRailRef} />
         <P1PluginPanel
           versions={options.versions}
           versionsLoading={options.versionsLoading}
           selectedVersionId={options.selectedVersionId}
           onVersionSelect={options.onVersionSelect}
-          onRestoreVersion={options.onRestoreVersion}
           resolveAuthorName={options.resolveAuthorName}
           currentUser={options.currentUser}
           // Presence/Agent Features
@@ -1006,20 +1110,14 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
           onStopAgent={options.onStopAgent}
           showFocusRegions={options.showFocusRegions}
           agentEditingRegions={options.agentEditingRegions}
+          onCollapse={() => collapsePluginRailRef.current()}
+          onFilteredVersionsChange={handleFilteredVersionsChange}
         />
       </>
     ),
     overrides: {
       header: () => <HeaderOverride />,
-      preview: ({ children }: { children: React.ReactNode }) => (
-        <VersionBannerOverride
-          versions={stableOptions.versions ?? []}
-          selectedVersionId={stableOptions.selectedVersionId}
-          onVersionSelect={stableOptions.onVersionSelect}
-        >
-          {children}
-        </VersionBannerOverride>
-      ),
+      preview: ({ children }: { children: React.ReactNode }) => <PreviewOverride>{children}</PreviewOverride>,
     },
   };
 }

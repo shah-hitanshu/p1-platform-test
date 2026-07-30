@@ -1,87 +1,76 @@
-/**
- * Historical Version Banner Component
- *
- * Shows a warning banner when viewing a historical (non-latest) version.
- * Provides a button to return to the current version.
- */
-
 import React from 'react';
 import type { DocumentVersion } from '@pantheon-systems/css-client';
+import { Icon } from '@pantheon-systems/pds-toolkit-react';
+import { formatVersionDate } from '../utils/formatVersionDate.js';
+import { VersionBannerActions } from './VersionBannerActions.js';
 
 export interface HistoricalVersionBannerProps {
-  /**
-   * The historical version being viewed.
-   */
-  version: DocumentVersion;
-  /**
-   * Callback to return to the latest version.
-   */
+  /** The historical version being viewed. Omit when the version is not yet loaded — shows exit-only banner. */
+  version?: DocumentVersion;
+  /** Callback to return to the latest version. */
   onReturnToLatest: () => void;
-  /**
-   * Additional CSS class name.
-   */
+  /** Callback to revert to the viewed version (creates a new version). */
+  onRestoreVersion?: (version: DocumentVersion) => Promise<void>;
+  /** Whether the current user is allowed to revert (admin/editor only). */
+  canRevert?: boolean;
+  /** Whether a return-to-latest is in progress (shows a loading state). */
+  isReturning?: boolean;
+  /** Additional CSS class name. */
   className?: string;
+  /** Called when the user clicks the "Previous" (older) stepper. */
+  onPrevious?: () => void;
+  /** Called when the user clicks the "Next" (newer) stepper. */
+  onNext?: () => void;
+  /** Whether there is an older version to step to. */
+  hasPrevious?: boolean;
+  /** Whether there is a newer version to step to. */
+  hasNext?: boolean;
 }
 
-/**
- * Formats a date string for display.
- */
-function formatVersionDate(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-/**
- * Banner displayed when viewing a historical version.
- * Shows version info and provides a button to return to current.
- */
 export function HistoricalVersionBanner({
   version,
   onReturnToLatest,
+  onRestoreVersion,
+  canRevert = false,
+  isReturning = false,
   className = '',
+  onPrevious,
+  onNext,
+  hasPrevious = false,
+  hasNext = false,
 }: HistoricalVersionBannerProps): React.ReactElement {
   const baseClass = 'historical-version-banner';
   const classes = [baseClass, className].filter(Boolean).join(' ');
+  const formattedDate = version ? formatVersionDate(version.createdAt) : null;
 
   return (
     <div className={classes}>
-      <div className={`${baseClass}__icon`}>
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 16 16"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm9-3a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM7 7h2v5H7V7Z"
-            fill="currentColor"
-          />
-        </svg>
+      <div className={`${baseClass}__icon`} aria-hidden="true">
+        <Icon iconName="rotateLeft" iconSize="s" />
       </div>
+
       <div className={`${baseClass}__content`}>
         <span className={`${baseClass}__text`}>
-          Viewing version {version.versionNumber}
+          Previewing{version && <> <strong>v{version.versionNumber}</strong></>}
         </span>
-        <span className={`${baseClass}__date`}>
-          {formatVersionDate(version.createdAt)}
-        </span>
-        <span className={`${baseClass}__locked`}>
-          Read-only
-        </span>
+        {formattedDate && (
+          <span className={`${baseClass}__date`}>
+            · {formattedDate}
+          </span>
+        )}
       </div>
-      <button
-        type="button"
-        className={`pds-button pds-button--primary pds-button--sm ${baseClass}__button`}
-        onClick={onReturnToLatest}
-      >
-        Return to current
-      </button>
+
+      <VersionBannerActions
+        version={version}
+        onReturnToLatest={onReturnToLatest}
+        onRestoreVersion={onRestoreVersion}
+        canRevert={canRevert}
+        isReturning={isReturning}
+        onPrevious={onPrevious}
+        onNext={onNext}
+        hasPrevious={hasPrevious}
+        hasNext={hasNext}
+      />
     </div>
   );
 }

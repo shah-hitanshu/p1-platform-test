@@ -10,12 +10,12 @@ import { ActionBar } from '@puckeditor/core';
 import type { Checkpoint, DocumentVersion, PuckData, ActorPresence } from '@pantheon-systems/css-client';
 import type { SaveStatus } from '../../core/types.js';
 import { SaveIndicator } from '../components/SaveIndicator.js';
-import { HistoricalVersionBanner } from '../../versioning/components/HistoricalVersionBanner.js';
 import { CollaboratorAvatars } from '../../collaboration/components/CollaboratorAvatars.js';
 import { AgentActivityBanner } from '../../collaboration/components/AgentActivityBanner.js';
 import { PublishedStatusBadge } from '../components/PublishedStatusBadge.js';
 import { ActionBarPinButton } from '../../features/content-type-templates/ui/ActionBarPinButton.js';
 import { P1InspectorFields } from '../components/P1InspectorFields.js';
+import { PreviewPanelOverlay } from '../components/PreviewPanelOverlay.js';
 // NOTE: PuckDataSynchronizer is NOT imported here - it's used in P1Plugin instead
 // because headerActions renders outside Puck's context where usePuck() doesn't work.
 
@@ -82,18 +82,25 @@ export interface P1OverridesOptions {
   onPublishError?: (error: Error) => void;
   /** Whether to show the default Puck publish button */
   showDefaultPublish?: boolean;
-  /**
-   * Whether currently viewing a historical version (not the latest).
-   */
+  /** Whether currently viewing a historical version of a document */
   isViewingHistoricalVersion?: boolean;
-  /**
-   * The historical version being viewed.
-   */
+  /** The historical version being previewed. */
   viewingVersion?: DocumentVersion | null;
   /**
-   * Callback to return to the latest version.
+   * Callback to exit version preview and return to the latest version.
+   * Wired to the "Back to current version" button in the components/outline overlays.
    */
   onReturnToLatest?: () => void;
+  /**
+   * @deprecated Pass to VersionBannerOverride instead. The banner is no longer
+   * rendered by createP1Overrides; this prop is silently ignored.
+   */
+  onRestoreVersion?: (version: DocumentVersion) => Promise<void>;
+  /**
+   * @deprecated Pass to VersionBannerOverride instead. The banner is no longer
+   * rendered by createP1Overrides; this prop is silently ignored.
+   */
+  canRevert?: boolean;
 
   /**
    * @deprecated Pass syncData to createP1Plugin instead. The plugin renders
@@ -177,6 +184,19 @@ export interface PuckOverrides {
  * }
  * ```
  */
+
+function makePreviewOverride(options: P1OverridesOptions) {
+  return ({ children }: { children: React.ReactNode }) => (
+    <PreviewPanelOverlay
+      isViewingHistoricalVersion={options.isViewingHistoricalVersion ?? false}
+      versionNumber={options.viewingVersion?.versionNumber}
+      onExitPreview={options.onReturnToLatest}
+    >
+      {children}
+    </PreviewPanelOverlay>
+  );
+}
+
 export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
   const {
     // New getter-based API (preferred)
@@ -193,6 +213,8 @@ export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
     // Deprecated props - kept for type signature compatibility but ignored
     syncData: _syncData,
     dataSyncKey: _dataSyncKey,
+    onRestoreVersion: _onRestoreVersion,
+    canRevert: _canRevert,
     // Presence/Agent Features — NOT destructured here.
     // These are read lazily from `options` in the headerActions render function
     // so that the Proxy pattern from useP1Overrides provides live values.
@@ -202,6 +224,8 @@ export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
   // Suppress unused variable warnings for deprecated props
   void _syncData;
   void _dataSyncKey;
+  void _onRestoreVersion;
+  void _canRevert;
 
   // Determine if using getter API or direct props API
   const usingGetters = typeof getSaveStatus === 'function';
@@ -231,6 +255,8 @@ export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
     fields: ({ children }: { children: React.ReactNode }) => (
       <P1InspectorFields>{children}</P1InspectorFields>
     ),
+    components: makePreviewOverride(options),
+    outline:    makePreviewOverride(options),
     headerActions: ({ children }) => {
       // Read presence/agent values lazily from options (Proxy) each render
       // so they reflect the latest state from useP1Overrides' optionsRef.
@@ -242,8 +268,6 @@ export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
       const _onStopAgent = options.onStopAgent;
       const _showSaveIndicator = options.showSaveIndicator ?? true;
       const _isViewingHistoricalVersion = options.isViewingHistoricalVersion ?? false;
-      const _viewingVersion = options.viewingVersion;
-      const _onReturnToLatest = options.onReturnToLatest;
       const _publishedStatus = options.publishedStatus;
 
       // Find the first active agent for banner display
@@ -262,12 +286,7 @@ export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
           {_showCollaboratorAvatars && _presence.length > 0 && (
             <CollaboratorAvatars actors={_presence} maxVisible={5} />
           )}
-          {_isViewingHistoricalVersion && _viewingVersion && _onReturnToLatest ? (
-            <HistoricalVersionBanner
-              version={_viewingVersion}
-              onReturnToLatest={_onReturnToLatest}
-            />
-          ) : (
+          {!_isViewingHistoricalVersion && (
             <>
               {_showSaveIndicator && <SaveIndicator {...saveIndicatorProps} />}
               {_publishedStatus && (

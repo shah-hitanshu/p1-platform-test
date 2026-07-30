@@ -17,6 +17,7 @@ import { useVersions } from '../versioning/useVersions.js';
 import { useComponentRegistry } from './useComponentRegistry.js';
 import { useP1Auth } from '../auth/index.js';
 import { buildThumbnailOverride } from './utils/buildThumbnailOverride.js';
+import { restoreDocumentVersion } from './utils/restoreDocumentVersion.js';
 import {
   createDocumentSyncStore,
   createDocumentSyncPlugin,
@@ -289,6 +290,17 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     }
   }, [versions, css.loadVersion, css.returnToLatest]);
 
+  // Revert to a prior version.
+  const handleRestoreVersion = useCallback(
+    (version: DocumentVersion) => restoreDocumentVersion(
+      version,
+      css,
+      refreshVersions,
+      () => {},
+    ),
+    [css, refreshVersions],
+  );
+
   // =========================================================================
   // Published Status (derived from version data)
   // =========================================================================
@@ -361,6 +373,8 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     [css, refreshVersions],
   );
 
+  const canRevert = css.userRole === 'admin' || css.userRole === 'editor';
+
   // Pushes freshly loaded documents into the live Puck instance, replacing
   // the remount-on-document-switch behavior the old document-scoped puckKey
   // provided (see document-sync-plugin.tsx). Handed to the P1 plugin as well
@@ -370,7 +384,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   const p1Plugin = useP1Plugin({
     documentSyncStore,
     onSelectionChange: handleSelectionChange,
-    currentUser: user ? { id: user.id, name: user.name, email: user.email, avatar: user.picture } : undefined,
+    currentUser: user ? { id: css.userId, name: user.name, email: user.email, avatar: user.picture } : undefined,
     onLogout: logout,
     puckConfig,
     ...pluginOptions,
@@ -380,6 +394,8 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     publishedStatus,
     selectedVersionId: css.viewingVersion?.id ?? undefined,
     onVersionSelect: handleVersionSelect,
+    onRestoreVersion: handleRestoreVersion,
+    canRevert,
   });
 
   const wrappedOnPublishSuccess = useCallback(

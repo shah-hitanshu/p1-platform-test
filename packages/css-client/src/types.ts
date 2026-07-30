@@ -98,6 +98,8 @@ export interface DocumentVersion {
   createdAt: string;
   /** Whether this version has been published (exists in a checkpoint) */
   isPublished?: boolean;
+  /** For source='revert' versions: the id of the version that was restored */
+  sourceVersionId?: string;
   /** Classification of this version: 'structural' or null (prop-only) */
   actionType?: string;
   /** Action metadata including puckActions array when structural */

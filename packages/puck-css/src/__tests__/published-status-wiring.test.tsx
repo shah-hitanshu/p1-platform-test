@@ -154,9 +154,8 @@ describe('Header PublishedStatusBadge wiring', () => {
     expect(overrides.headerActions).toBeDefined();
     render((overrides.headerActions as (props: { children: unknown }) => React.ReactElement)({ children: null }));
 
-    // Should show HistoricalVersionBanner instead
+    // Banner is in the preview area (VersionBannerOverride), not headerActions
     expect(screen.queryByText('Published')).toBeNull();
-    expect(screen.getByText('Return to current')).toBeTruthy();
   });
 });
 

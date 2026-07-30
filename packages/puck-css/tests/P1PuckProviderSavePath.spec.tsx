@@ -34,6 +34,8 @@ const stableMockRealtime = {
   sendHeartbeat: mockSendHeartbeat,
   presenceViaWebSocket: false,
   connectedDocumentPath: null as string | null,
+  waitForDelivery: vi.fn().mockResolvedValue(undefined),
+  requestPublish: vi.fn().mockResolvedValue({ success: true }),
 };
 
 vi.mock('../src/editor/useRealtime.js', () => ({
@@ -386,7 +388,7 @@ describe('P1PuckProvider Save Path - Realtime vs REST', () => {
       await result.current.saveNow();
     });
 
-    // REST API should NOT be called
+    // REST API should NOT be called — realtime saveNow flushes via WebSocket only
     expect(client.versions.create).not.toHaveBeenCalled();
 
     // applyLocalChange should have been called (via throttle leading edge + saveNow flush)

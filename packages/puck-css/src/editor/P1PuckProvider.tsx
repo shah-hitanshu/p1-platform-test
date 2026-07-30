@@ -950,6 +950,34 @@ function P1PuckProviderInner({
     await performSave();
   }, [debouncedSave, performSave, enableRealtime]);
 
+  // Persist current in-memory edits as a REST version before a destructive operation.
+  // Realtime: confirms WebSocket delivery then snapshots latestLocalDataRef as a version.
+  // Non-realtime: delegates to performSave which creates a version from pendingDataRef.
+  const persistCurrentEdits = useCallback(async () => {
+    if (!enableRealtime || !realtimeConnectedRef.current) {
+      await performSave();
+      return;
+    }
+    await realtime.waitForDelivery();
+    const latestData = latestLocalDataRef.current;
+    const doc = currentDocumentRef.current;
+    if (latestData && doc && currentDataDocumentPathRef.current === doc.path) {
+      setSaveStatus('saving');
+      try {
+        await userClient.versions.create(siteId, {
+          documentId: doc.id,
+          branchId,
+          snapshot: latestData as unknown as Record<string, unknown>,
+        });
+        setSaveStatus('saved');
+        setLastSaved(new Date());
+      } catch (err) {
+        setSaveStatus('error');
+        throw err;
+      }
+    }
+  }, [enableRealtime, realtime, performSave, userClient, siteId, branchId]);
+
   // Load document by path
   const loadDocument = useCallback(
     async (path: string) => {
@@ -967,6 +995,8 @@ function P1PuckProviderInner({
       }
       debouncedSave.cancel();
       pendingDataRef.current = null;
+      // Invalidate cached local edit so returnToLatest() doesn't treat it as unsaved.
+      latestLocalDataRef.current = null;
 
       // Cancel any pending remote sync to prevent race conditions
       // where a stale remote update overrides the document we're loading
@@ -985,14 +1015,12 @@ function P1PuckProviderInner({
       // previous document — documentLoading suppresses the empty state.
       currentDataDocumentPathRef.current = null;
       setCurrentData(null);
-      setCurrentDocument(null);
 
       try {
-        // Normalize path: strip leading slash if present
-        const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
-
-        // Get document by path
-        const doc = await userClient.documents.getByPath(siteId, normalizedPath);
+        const doc = await userClient.documents.getByPath(
+          siteId,
+          path.startsWith('/') ? path.slice(1) : path,
+        );
 
         // Staleness check: a newer loadDocument call has started
         if (thisRequestId !== loadRequestIdRef.current) {
@@ -1000,14 +1028,16 @@ function P1PuckProviderInner({
           return;
         }
 
-        // Clear stale data BEFORE updating the document identity so that
-        // useRealtime's new useEffect sees initialData=null when it creates
-        // the fresh Y.Doc. Without this, currentData still holds the previous
-        // document's content when setCurrentDocument triggers the re-render,
-        // causing the new Y.Doc to be seeded with the wrong document's Yjs
-        // state — which the DO then commits as the first realtime version.
+        // Use ID not path — paths may differ by normalization, causing a false disconnect.
+        // Same-doc keeps Yjs alive; cross-doc nulls out so useRealtime seeds a fresh Y.Doc.
+        const isSameDocument = doc.id === currentDocumentRef.current?.id;
+
+        // Null data before identity update so useRealtime sees initialData=null.
         currentDataDocumentPathRef.current = null;
         setCurrentData(null);
+        if (!isSameDocument) {
+          setCurrentDocument(null);
+        }
         setCurrentDocument(doc);
 
         // Fetch template if document is bound to one (PROPOSAL-010)
@@ -1870,6 +1900,13 @@ function P1PuckProviderInner({
     []
   );
 
+  const persistCurrentEditsRef = useRef(persistCurrentEdits);
+  persistCurrentEditsRef.current = persistCurrentEdits;
+  const stablePersistCurrentEdits = useCallback(
+    () => persistCurrentEditsRef.current(),
+    []
+  );
+
   const createCheckpointRef = useRef(createCheckpoint);
   createCheckpointRef.current = createCheckpoint;
   const stableCreateCheckpoint = useCallback(
@@ -2050,6 +2087,7 @@ function P1PuckProviderInner({
       loadDocument: stableLoadDocument,
       saveData: stableSaveData,
       saveNow: stableSaveNow,
+      persistCurrentEdits: stablePersistCurrentEdits,
       createCheckpoint: stableCreateCheckpoint,
       publishDocument: stablePublishDocument,
       switchBranch: stableSwitchBranch,
@@ -2138,6 +2176,7 @@ function P1PuckProviderInner({
       stableLoadDocument,
       stableSaveData,
       stableSaveNow,
+      stablePersistCurrentEdits,
       stableCreateCheckpoint,
       stablePublishDocument,
       stableSwitchBranch,

@@ -265,6 +265,14 @@ export interface P1PuckContextValue {
   saveNow: () => Promise<void>;
 
   /**
+   * Persist the current in-memory edits as a REST version before a destructive
+   * operation (e.g. revert). In realtime mode: confirms WebSocket delivery then
+   * creates a version from the latest local snapshot. In non-realtime mode:
+   * flushes the pending debounce buffer via performSave.
+   */
+  persistCurrentEdits: () => Promise<void>;
+
+  /**
    * Create a checkpoint (publish).
    */
   createCheckpoint: (name?: string) => Promise<Checkpoint>;

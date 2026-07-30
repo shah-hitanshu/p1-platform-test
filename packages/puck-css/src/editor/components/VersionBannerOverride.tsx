@@ -1,14 +1,18 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Icon } from '@pantheon-systems/pds-toolkit-react';
 import type { DocumentVersion } from '@pantheon-systems/css-client';
 import { useP1Puck } from '../../core/P1PuckContext.js';
-import { WarningTriangleIcon } from '../icons/WarningTriangleIcon.js';
+import { HistoricalVersionBanner } from '../../versioning/components/HistoricalVersionBanner.js';
 
 export interface VersionBannerOverrideProps {
   children: React.ReactNode;
   versions: DocumentVersion[];
   selectedVersionId?: string;
   onVersionSelect?: (version: DocumentVersion) => void;
+  onRestoreVersion?: (version: DocumentVersion) => Promise<void>;
+  canRevert?: boolean;
+  /** The currently filtered version list (from the panel filter). Steppers navigate within this list. */
+  filteredVersions?: DocumentVersion[];
 }
 
 export function VersionBannerOverride({
@@ -16,40 +20,49 @@ export function VersionBannerOverride({
   versions,
   selectedVersionId,
   onVersionSelect,
+  onRestoreVersion,
+  canRevert = false,
+  filteredVersions,
 }: VersionBannerOverrideProps): React.ReactElement {
   const p1Context = useP1Puck();
+  // versions are newest-first from the API; index 0 is always the current (latest) version.
   const isViewingOld = !!selectedVersionId && versions.length > 0 && selectedVersionId !== versions[0]?.id;
+  const viewingVersion = versions.find(v => v.id === selectedVersionId);
   // While a switch is loading the next document, currentDocument is null but
   // the empty state must not flash over the still-visible previous canvas.
   const hasOrIsLoadingDocument = p1Context.currentDocument !== null || p1Context.documentLoading;
   const isReturning = p1Context.isReturningToLatest;
 
+  // Stepper: navigate within the filtered list (falls back to full list if not provided).
+  // Newest-first: lower index = newer, higher index = older.
+  const stepList = filteredVersions ?? versions;
+  const currentIdx = selectedVersionId ? stepList.findIndex(v => v.id === selectedVersionId) : -1;
+  const hasPrevious = currentIdx !== -1 && currentIdx < stepList.length - 1;
+  const hasNext = currentIdx > 0;
+  // Always provide callbacks when previewing so buttons render (disabled state controls usability).
+  const handlePrevious = useCallback(
+    () => { const t = stepList[currentIdx + 1]; if (hasPrevious && t) onVersionSelect?.(t); },
+    [stepList, currentIdx, hasPrevious, onVersionSelect],
+  );
+  const handleNext = useCallback(
+    () => { const t = stepList[currentIdx - 1]; if (hasNext && t) onVersionSelect?.(t); },
+    [stepList, currentIdx, hasNext, onVersionSelect],
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {isViewingOld && (
-        <div className="pds-section-message pds-section-message--warning" role="status" style={{ borderRadius: 0, flexShrink: 0 }}>
-          <div className="pds-section-message__content">
-            <div className="pds-section-message__icon">
-              <WarningTriangleIcon />
-            </div>
-            <div className="pds-section-message__text">
-              <div className="pds-section-message__message">
-                <p>Viewing a previous version</p>
-              </div>
-            </div>
-          </div>
-          <div className="pds-section-message__actions">
-            <button
-              type="button"
-              className="pds-button pds-button--sm pds-button--secondary pds-section-message__cta"
-              onClick={() => versions[0] && onVersionSelect?.(versions[0])}
-              disabled={isReturning}
-              aria-busy={isReturning}
-            >
-              {isReturning ? 'Returning…' : 'Return to current'}
-            </button>
-          </div>
-        </div>
+        <HistoricalVersionBanner
+          version={viewingVersion}
+          onReturnToLatest={() => { versions[0] && onVersionSelect?.(versions[0]); }}
+          onRestoreVersion={onRestoreVersion}
+          canRevert={canRevert}
+          isReturning={isReturning}
+          onPrevious={handlePrevious}
+          onNext={handleNext}
+          hasPrevious={hasPrevious}
+          hasNext={hasNext}
+        />
       )}
       {/* Always render children so Puck's iframe loads and the canvas reaches
           the --ready state (making _PuckCanvas-root visible). Without this,
@@ -78,7 +91,7 @@ export function VersionBannerOverride({
               justifyContent: 'center',
               gap: '1rem',
               color: 'var(--pds-color-text-subtle)',
-              backgroundColor: 'white',
+              backgroundColor: 'var(--pds-color-bg-default, white)',
             }}
           >
             <Icon iconName="userAstronaut" iconSize={'3xl' as never} aria-hidden="true" />
