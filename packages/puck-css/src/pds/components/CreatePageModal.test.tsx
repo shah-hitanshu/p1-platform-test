@@ -1233,4 +1233,150 @@ describe('CreatePageModal', () => {
     // Lands straight on the New-template definition form, not the starting-point grid.
     expect(screen.getByTestId('create-template-name')).toBeTruthy();
   });
+
+  // ---------------------------------------------------------------------------
+  // Generate with AI (onGenerateWithAI wired)
+  // ---------------------------------------------------------------------------
+  describe('Generate with AI', () => {
+    /** Render the modal with the AI callback wired and select the AI tile. */
+    function openAI() {
+      const onGenerateWithAI = vi.fn();
+      const onCreateDocument = vi.fn().mockResolvedValue(undefined);
+      const onNavigate = vi.fn();
+      const onClose = vi.fn();
+      render(
+        <CreatePageModal
+          {...defaultProps}
+          onCreateDocument={onCreateDocument}
+          onNavigate={onNavigate}
+          onClose={onClose}
+          onGenerateWithAI={onGenerateWithAI}
+        />,
+      );
+      fireEvent.click(screen.getByTestId('create-page-option-generate-ai'));
+      return { onGenerateWithAI, onCreateDocument, onNavigate, onClose };
+    }
+
+    it('shows the describe composer + the ai note (not the placeholder) when wired', () => {
+      openAI();
+
+      expect(screen.getByTestId('create-page-ai-brief')).toBeTruthy();
+      // The composer has an accessible name (label association, not just placeholder).
+      expect(screen.getByLabelText('Describe the page')).toBe(
+        screen.getByTestId('create-page-ai-brief'),
+      );
+      expect(screen.getByTestId('create-page-ai-note').textContent).toContain(
+        'Nothing publishes automatically',
+      );
+      // The old "still in the works" placeholder is gone once the feature is wired.
+      expect(screen.queryByTestId('create-page-generate-ai-note')).toBeNull();
+    });
+
+    it('labels the submit button "Draft with AI"', () => {
+      openAI();
+      expect(screen.getByTestId('create-page-submit').textContent).toContain('Draft with AI');
+    });
+
+    it('keeps submit disabled until both a brief and a title/slug are present', () => {
+      openAI();
+      const submit = () => screen.getByTestId('create-page-submit') as HTMLButtonElement;
+
+      expect(submit().disabled).toBe(true);
+
+      fireEvent.change(screen.getByTestId('create-page-ai-brief'), {
+        target: { value: 'a launch page for our 2026 GA' },
+      });
+      // Brief alone is not enough — still needs a title/slug.
+      expect(submit().disabled).toBe(true);
+
+      fireEvent.change(screen.getByTestId('create-page-title-input'), {
+        target: { value: 'Launch' },
+      });
+      expect(submit().disabled).toBe(false);
+    });
+
+    it('creates the blank page, navigates, hands the brief to onGenerateWithAI, then closes', async () => {
+      const { onGenerateWithAI, onCreateDocument, onNavigate, onClose } = openAI();
+
+      fireEvent.change(screen.getByTestId('create-page-ai-brief'), {
+        target: { value: 'a launch page' },
+      });
+      fireEvent.change(screen.getByTestId('create-page-title-input'), {
+        target: { value: 'Launch' },
+      });
+      fireEvent.click(screen.getByTestId('create-page-submit'));
+
+      await waitFor(() => expect(onGenerateWithAI).toHaveBeenCalled());
+
+      // The existing create path owns page + route/slug creation.
+      expect(onCreateDocument).toHaveBeenCalledWith('launch', 'Launch');
+      expect(onNavigate).toHaveBeenCalledWith('launch');
+      expect(onGenerateWithAI).toHaveBeenCalledWith('a launch page', {
+        path: 'launch',
+        title: 'Launch',
+      });
+      expect(onClose).toHaveBeenCalled();
+
+      // Page must exist before the agent is asked to draft into it.
+      expect(onCreateDocument.mock.invocationCallOrder[0]).toBeLessThan(
+        onGenerateWithAI.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('does not call onGenerateWithAI when page creation fails', async () => {
+      const onGenerateWithAI = vi.fn();
+      const onCreateDocument = vi.fn().mockRejectedValue(new Error('boom'));
+      render(
+        <CreatePageModal
+          {...defaultProps}
+          onCreateDocument={onCreateDocument}
+          onGenerateWithAI={onGenerateWithAI}
+          onNavigate={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByTestId('create-page-option-generate-ai'));
+      fireEvent.change(screen.getByTestId('create-page-ai-brief'), {
+        target: { value: 'a page' },
+      });
+      fireEvent.change(screen.getByTestId('create-page-title-input'), {
+        target: { value: 'Launch' },
+      });
+      fireEvent.click(screen.getByTestId('create-page-submit'));
+
+      await waitFor(() =>
+        expect(screen.getByTestId('create-page-error').textContent).toContain('boom'),
+      );
+      expect(onGenerateWithAI).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the placeholder note when onGenerateWithAI is not provided', () => {
+      render(<CreatePageModal {...defaultProps} />);
+      fireEvent.click(screen.getByTestId('create-page-option-generate-ai'));
+
+      expect(screen.getByTestId('create-page-generate-ai-note').textContent).toContain(
+        'still in the works',
+      );
+      expect(screen.queryByTestId('create-page-ai-brief')).toBeNull();
+    });
+
+    // Otherwise the flow creates a page and then silently never drafts into it.
+    it('stays a placeholder when onNavigate is missing, even with the handler wired', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      render(
+        <CreatePageModal
+          {...defaultProps}
+          onGenerateWithAI={vi.fn()}
+          onNavigate={undefined}
+        />,
+      );
+      fireEvent.click(screen.getByTestId('create-page-option-generate-ai'));
+
+      expect(screen.getByTestId('create-page-generate-ai-note').textContent).toContain(
+        'still in the works',
+      );
+      expect(screen.queryByTestId('create-page-ai-brief')).toBeNull();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('onNavigate'));
+      warn.mockRestore();
+    });
+  });
 });

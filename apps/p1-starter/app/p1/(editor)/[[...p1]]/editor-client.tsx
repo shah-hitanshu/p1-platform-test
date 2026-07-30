@@ -29,6 +29,8 @@ import { ChatbotFlagProvider } from "../../../../components/ChatbotFlagProvider"
 import { P1Lockup } from "../../../../components/p1-lockup";
 import config from "../../../../puck.config";
 import { shouldShowChatbot, CHATBOT_FLAG_KEY } from "../../../../lib/chatbot-flag/feature-gate";
+import { createGenerateWithAIHandler } from "../../../../lib/chatbot-flag/ai-generate";
+import { getDraftRequestChannel } from "../../../../lib/chatbot-flag/draft-request-channel";
 
 const DEFAULT_PAGE_DATA = {
   root: { props: { title: "New page" } },
@@ -215,12 +217,14 @@ function EditorContent({
   const flags = useFlags();
   const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL;
   const chatbotEnabled = shouldShowChatbot(flags[CHATBOT_FLAG_KEY], agentUrl);
+  // Singleton: survives the remount caused by navigating to the new page.
+  const draftRequests = getDraftRequestChannel();
   const aiPlugin = React.useMemo(
     () =>
       chatbotEnabled && agentUrl
-        ? createAIChatPlugin({ agentUrl })
+        ? createAIChatPlugin({ agentUrl, draftRequests })
         : null,
-    [chatbotEnabled, agentUrl],
+    [chatbotEnabled, agentUrl, draftRequests],
   );
   const additionalPlugins = React.useMemo(
     () => (aiPlugin ? [...p1Plugins, mediaPlugin, aiPlugin] : [...p1Plugins, mediaPlugin]),
@@ -268,6 +272,7 @@ function EditorContent({
     onDocumentNotFound: handleDocumentNotFound,
     pluginOptions: {
       onDocumentSelect: handleDocumentSelect,
+      onGenerateWithAI: createGenerateWithAIHandler(draftRequests, chatbotEnabled),
       selectedDocumentPath: path,
       siteId: process.env.NEXT_PUBLIC_CSS_SITE_ID,
       dashboardUrl: process.env.NEXT_PUBLIC_P1_ADMIN_DASHBOARD_URL,

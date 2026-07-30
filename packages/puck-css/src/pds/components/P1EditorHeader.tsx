@@ -48,6 +48,7 @@ export interface P1EditorHeaderProps {
   onBeforeLogoNavigate?: () => Promise<void>;
   onSelectDocument: (doc: PageNavigatorDocument) => void;
   onCreateDocument?: (path: string, template?: TemplateSummary | null, title?: string) => Promise<void>;
+  onGenerateWithAI?: (brief: string, page: { path: string; title: string }) => void;
   onLogout: () => void;
   templates?: TemplateSummary[];
   templatesLoading?: boolean;
@@ -74,6 +75,7 @@ export function P1EditorHeader({
   onBeforeLogoNavigate,
   onSelectDocument,
   onCreateDocument,
+  onGenerateWithAI,
   onLogout,
   templates,
   templatesLoading,
@@ -378,6 +380,7 @@ export function P1EditorHeader({
         initialMode={createModalMode}
         onClose={() => setCreateModalOpen(false)}
         onCreateDocument={handleModalCreateDocument}
+        onGenerateWithAI={onGenerateWithAI}
         templates={templates}
         onCreateTemplate={onCreateTemplate}
         datasources={datasources}

@@ -29,6 +29,26 @@ describe("editor-client gates the chatbot behind the p1-chatbot flag", () => {
   });
 });
 
+describe("editor-client wires Generate with AI to the chat sidebar", () => {
+  const content = readFileSync(
+    resolve(appDir, "app/p1/(editor)/[[...p1]]/editor-client.tsx"),
+    "utf-8",
+  );
+
+  it("uses the shared (singleton) agent request channel", () => {
+    expect(content).toContain("getDraftRequestChannel");
+  });
+
+  it("passes the request channel to the chat plugin", () => {
+    expect(content).toMatch(/createAIChatPlugin\(\{[^}]*draftRequests/);
+  });
+
+  it("wires onGenerateWithAI to publish onto the channel via the handler", () => {
+    expect(content).toContain("onGenerateWithAI");
+    expect(content).toContain("createGenerateWithAIHandler");
+  });
+});
+
 describe("chatbot flag provider is a client-side LaunchDarkly gate", () => {
   const content = readFileSync(
     resolve(appDir, "components/ChatbotFlagProvider.tsx"),

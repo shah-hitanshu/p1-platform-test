@@ -475,6 +475,8 @@ export interface P1PluginOptions {
   onDocumentSelect?: (path: string) => void;
   /** Callback to create a new document */
   onDocumentCreate?: (path: string, template?: import('../../features/content-type-templates/types.js').TemplateSummary | null, title?: string) => Promise<void>;
+  /** Hand a "Generate with AI" brief (+ the new page's path/title) to the chatbot. */
+  onGenerateWithAI?: (brief: string, page: { path: string; title: string }) => void;
   /** Callback to delete a document */
   onDocumentDelete?: (documentId: string, path: string) => Promise<void>;
   /** Whether documents are loading */
@@ -1020,6 +1022,7 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
           onSelectDocument={(fc.enableDocumentBrowser ?? true)
             ? (doc) => stableOptions.onDocumentSelect?.(doc.path) : () => {}}
           onCreateDocument={(fc.enableDocumentBrowser ?? true) ? stableOptions.onDocumentCreate : undefined}
+          onGenerateWithAI={stableOptions.onGenerateWithAI}
           templates={stableOptions.templates}
           templatesLoading={stableOptions.templatesLoading}
           onCreateTemplate={stableOptions.onCreateTemplate}

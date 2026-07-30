@@ -109,6 +109,11 @@ export interface CreatePageModalProps {
    * "+ New template"). `'page'` (default) shows the starting-point grid.
    */
   initialMode?: 'page' | 'new-template';
+  /**
+   * Hand a "Generate with AI" brief to the chatbot after the blank page is created and
+   * navigated to. Omit to leave the tile a placeholder. Requires `onNavigate`.
+   */
+  onGenerateWithAI?: (brief: string, page: { path: string; title: string }) => void;
 }
 
 interface StartingPoint {
@@ -319,6 +324,7 @@ export function CreatePageModal({
   onCreateTemplate,
   onNavigate,
   initialMode = 'page',
+  onGenerateWithAI,
 }: CreatePageModalProps): React.JSX.Element | null {
   const host =
     siteHost ?? (typeof window !== 'undefined' ? window.location.host : '');
@@ -334,6 +340,7 @@ export function CreatePageModal({
   const [title, setTitle] = useState('');
   const [slug, setSlug] = useState('');
   const [slugEdited, setSlugEdited] = useState(false);
+  const [brief, setBrief] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // "Plug external data" collection builder. Multi-select data sources; route
@@ -376,6 +383,7 @@ export function CreatePageModal({
       setTitle('');
       setSlug('');
       setSlugEdited(false);
+      setBrief('');
       setError(null);
       setSubmitting(false);
       setRecap(null);
@@ -400,6 +408,18 @@ export function CreatePageModal({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [open, onClose]);
+
+  // Half-wired is indistinguishable from unwired from the outside: both show the placeholder.
+  const generateAIMissingNavigate = !!onGenerateWithAI && !onNavigate;
+  useEffect(() => {
+    if (!generateAIMissingNavigate) return;
+    console.warn(
+      '[CreatePageModal] onGenerateWithAI was provided without onNavigate, so the ' +
+        '"Generate with AI" tile stays a placeholder. Pass onNavigate to enable it.',
+    );
+    // Derived boolean, not the callbacks: their identity changes each render, which would
+    // re-fire the warning on every one.
+  }, [generateAIMissingNavigate]);
 
   const handleTitleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -546,6 +566,24 @@ export function CreatePageModal({
         return;
       }
 
+      // The existing create path owns the page, slug and route; the agent only drafts
+      // content into it afterwards.
+      if (selected === 'generate-ai') {
+        if (!onGenerateWithAI || !onNavigate || !brief.trim()) return;
+        setSubmitting(true);
+        setError(null);
+        try {
+          await onCreateDocument(finalSlug, title.trim());
+          onNavigate?.(finalSlug);
+          onGenerateWithAI(brief.trim(), { path: finalSlug, title: title.trim() });
+          onClose();
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to create page');
+          setSubmitting(false);
+        }
+        return;
+      }
+
       // Content-type template: build the path from the template's URL pattern,
       // then create the page from that template — the chain scaffolds the
       // template's components and binds templateId/version.
@@ -600,6 +638,7 @@ export function CreatePageModal({
       selected,
       slug,
       title,
+      brief,
       submitting,
       pageStructure,
       datasources,
@@ -607,6 +646,7 @@ export function CreatePageModal({
       selectedDatasourceIds,
       onNavigate,
       onCreateDocument,
+      onGenerateWithAI,
       onClose,
     ],
   );
@@ -662,10 +702,17 @@ export function CreatePageModal({
   // "Plug external data" — the collection builder (data sources → child pages).
   const isPlugExternalData = selected === 'plug-external-data';
 
-  // Page title + URL (at the top) show for Blank or once a content type is
-  // picked. The Plug-external-data flow asks for the title later — in its own
-  // naming step after the data source + structure questions.
-  const showPageFields = selected === 'blank' || selectedCt !== null;
+  // "Generate with AI" — enabled only when the editor wired the callback (i.e. the
+  // chatbot is available). Without it the tile stays a placeholder.
+  const isGenerateAI = selected === 'generate-ai';
+  // `onNavigate` is required too: the sidebar only consumes a request matching the
+  // document it is showing, so without navigation nothing would ever draft.
+  const aiEnabled = isGenerateAI && !!onGenerateWithAI && !!onNavigate;
+
+  // Page title + URL (at the top) show for Blank, once a content type is picked,
+  // or for Generate with AI when wired. The Plug-external-data flow asks for the
+  // title later — in its own naming step after the data source + structure questions.
+  const showPageFields = selected === 'blank' || selectedCt !== null || aiEnabled;
 
   // Collection builder derived state.
   const availableSources = [...datasources, ...customSources];
@@ -806,6 +853,44 @@ export function CreatePageModal({
                 </button>
               </div>
             </fieldset>
+          )}
+
+          {aiEnabled && (
+            <div className={styles.aiCompose}>
+              <label htmlFor="create-page-ai-brief" className={styles.sectionLabel}>
+                Describe the page
+              </label>
+              <textarea
+                id="create-page-ai-brief"
+                data-testid="create-page-ai-brief"
+                className={styles.textarea}
+                rows={3}
+                placeholder="e.g. a launch page for our 2026 Next.js GA, hero, proof points, pricing, and a signup CTA"
+                value={brief}
+                onChange={(e) => setBrief(e.target.value)}
+              />
+              <div data-testid="create-page-ai-note" className={styles.aiNote}>
+                <svg
+                  className={styles.aiNoteIcon}
+                  width={16}
+                  height={16}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  <path d="m9 12 2 2 4-4" />
+                </svg>
+                <span>
+                  AI drafts the page from blocks in your design system, then opens it
+                  as a reviewable proposal. Nothing publishes automatically.
+                </span>
+              </div>
+            </div>
           )}
 
           {contentType === 'new-template' ? (
@@ -1329,9 +1414,11 @@ export function CreatePageModal({
                       ? !canCreateTemplate
                       : isPlugExternalData
                         ? !pageStructure || !slug.trim() || collectionNeedsParam
-                        : selectedCt
-                          ? !canCreateContentType
-                          : selected !== 'blank' || !slug.trim())
+                        : aiEnabled
+                          ? !brief.trim() || !slug.trim()
+                          : selectedCt
+                            ? !canCreateContentType
+                            : selected !== 'blank' || !slug.trim())
                   }
                   aria-busy={submitting}
                 >
@@ -1342,6 +1429,24 @@ export function CreatePageModal({
                     </>
                   ) : isTemplateScreen ? (
                     'Create template'
+                  ) : aiEnabled ? (
+                    <>
+                      <svg
+                        className={styles.submitIcon}
+                        width={15}
+                        height={15}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z" />
+                      </svg>
+                      Draft with AI
+                    </>
                   ) : isPlugExternalData && pageStructure === 'collection' ? (
                     '+ Create pages'
                   ) : (

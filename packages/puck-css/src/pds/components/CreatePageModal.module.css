@@ -702,6 +702,10 @@
 
 .cancelButton,
 .submitButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 8px 16px;
   font-size: 14px;
   font-weight: 600;
@@ -742,4 +746,34 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Generate with AI — "Describe the page" composer + the note below it. */
+.aiCompose {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.aiNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  background: var(--pds-color-bg-interactive-subtle, oklch(0.96 0.02 256));
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+}
+
+.aiNoteIcon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+}
+
+.submitIcon {
+  flex: none;
 }
