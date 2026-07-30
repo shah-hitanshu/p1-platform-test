@@ -277,3 +277,42 @@
   background-color: #000000 !important;
   color: #ffffff !important;
 }
+
+/* ── Editor chrome text/background reset (PCC-3456) ──────────────────────
+ *
+ * Root cause: recent design-library "dark-canon" token waves make the host
+ * app's own body dark (e.g. body { color: var(--color-text); background:
+ * var(--color-surface) }, resolving to white-on-black). Puck ships plenty of
+ * chrome elements — e.g. @puckeditor/core's ._DrawerItem-name_ — that declare
+ * no color of their own and simply inherit whatever the ambient text color
+ * is. Nothing between <body> and those elements (including Puck's own
+ * `._Puck_` root, which sets layout vars but no color) intercepts that
+ * inheritance, so the new dark host theme cascades straight through and
+ * turns chrome text white-on-light — unreadable.
+ *
+ * Fix: pin an explicit light foreground/background on `.puck-editor-theme`
+ * itself using the same PDS light-theme tokens already used elsewhere in
+ * this file (grey-11/12 above), matching the pds `data-rm-theme="light"`
+ * editor chrome regardless of whatever theme the host page's <body> is on.
+ * `color` inherits down through every chrome descendant that doesn't set
+ * its own, exactly reversing the leak.
+ *
+ * Scoping: this file is a real <style>/<link> stylesheet in the parent
+ * document (unlike pds-core.css, which is loaded via adoptedStyleSheets
+ * specifically to stay invisible to Puck — see P1App.tsx), so Puck's canvas
+ * iframe scanner (`collectStyles()`) DOES copy it into the preview iframe's
+ * document, same as every other rule here. Scoping to `.puck-editor-theme`
+ * (never a bare `body` selector) is what keeps that copy inert: the iframe
+ * renders the previewed page's own DOM, which has no `.puck-editor-theme`
+ * element in it, so the selector simply never matches there and the
+ * preview keeps the site's own (possibly dark) theme untouched. A bare
+ * `body { color: #111; background: #fff }` rule — as originally proposed —
+ * would instead match the iframe's own <body> directly once copied in,
+ * forcing every preview into a light theme regardless of the real site's
+ * design and reintroducing the same class of leak in the opposite
+ * direction.
+ */
+.puck-editor-theme {
+  color: var(--pds-color-fg-default, #23232d);
+  background: var(--pds-color-bg-default, #fff);
+}

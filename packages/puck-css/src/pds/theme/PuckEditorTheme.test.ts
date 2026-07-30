@@ -134,4 +134,28 @@ describe('PuckEditorTheme.css', () => {
       expect(css).toContain('var(--pds-typography-ff-code)');
     });
   });
+
+  describe('editor chrome text/background reset (PCC-3456)', () => {
+    it('pins an explicit light foreground and background on .puck-editor-theme itself', () => {
+      const css = readThemeCSS();
+      // Must be the bare `.puck-editor-theme` selector (not an attribute-scoped
+      // descendant), so `color` inherits down to every chrome element that
+      // declares no color of its own (e.g. @puckeditor/core's _DrawerItem-name_).
+      expect(css).toMatch(
+        /(?<![^\s{};])\.puck-editor-theme\s*\{[^}]*color:\s*var\(--pds-color-fg-default[^)]*\)[^}]*background:\s*var\(--pds-color-bg-default[^)]*\)[^}]*\}/,
+      );
+    });
+
+    it('does not use a bare body selector, which would leak into the preview iframe', () => {
+      const css = readThemeCSS();
+      // The preview iframe renders its own <body>. Because this stylesheet is a
+      // real <style>/<link> tag that Puck's collectStyles() copies into that
+      // iframe, a bare `body { ... }` rule here would match the iframe's body
+      // directly and force every previewed page into this light theme.
+      // Strip comments first — the file's explanatory comments intentionally
+      // quote a `body { ... }` example of what NOT to do.
+      const cssWithoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
+      expect(cssWithoutComments).not.toMatch(/(^|\s|\})body\s*\{/);
+    });
+  });
 });
