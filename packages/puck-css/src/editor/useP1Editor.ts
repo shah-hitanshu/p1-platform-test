@@ -24,6 +24,8 @@ import {
   documentSyncKey,
 } from './plugin/document-sync-plugin.js';
 import type { ThumbnailMap } from './utils/buildThumbnailOverride.js';
+import { resolveLiveThumbnailDrawer } from './thumbnails/resolveLiveThumbnailDrawer.js';
+import type { LiveThumbnailDrawerOptions } from './thumbnails/buildLiveThumbnailDrawer.js';
 import type { UseP1PluginOptions } from './useP1Plugin.js';
 import type { UseP1OverridesOptions } from './useP1Overrides.js';
 import type { PuckOverrides } from './plugin/index.js';
@@ -63,6 +65,15 @@ export interface UseP1EditorOptions {
    * ```
    */
   thumbnails?: ThumbnailMap;
+  /**
+   * Live thumbnail component drawer — replaces Puck's default component list
+   * with collapsible categories of live-rendered preview cards. Defaults to
+   * ON for every consumer (no per-app wiring needed). Pass `false` to keep
+   * Puck's default drawer, or an options object to tune scale / card height.
+   *
+   * NOTE: this changes the default drawer for all `puck-css` editors.
+   */
+  liveThumbnailDrawer?: boolean | LiveThumbnailDrawerOptions;
   /** Customization options for overrides */
   overrideOptions?: UseP1OverridesOptions;
   /** Customization options for the CSS plugin (versions are managed internally) */
@@ -159,6 +170,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     additionalPlugins,
     additionalOverrides,
     thumbnails,
+    liveThumbnailDrawer,
     overrideOptions,
     pluginOptions,
     onSelectionChange,
@@ -512,10 +524,21 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   const thumbnailsRef = useRef(thumbnails);
   thumbnailsRef.current = thumbnails;
 
+  // Live thumbnail drawer — default ON for every consumer. Uses raw puckConfig
+  // (not configWithPermissions) so previews show all components regardless of
+  // role. Because useMemo deps on p1Overrides (stable after mount), changes to
+  // puckConfig or liveThumbnailDrawer after mount are not picked up.
+  const puckConfigRef = useRef(puckConfig);
+  puckConfigRef.current = puckConfig;
+  const liveThumbnailDrawerRef = useRef(liveThumbnailDrawer);
+  liveThumbnailDrawerRef.current = liveThumbnailDrawer;
+
   const mergedOverrides = useMemo(() => {
-    // Layer order (last wins): p1Overrides → thumbnailOverride → additionalOverrides
+    // Layer order (last wins):
+    //   p1Overrides → liveThumbnailDrawer → thumbnailOverride → additionalOverrides
     const layers: (Partial<PuckOverrides> | null)[] = [
       p1Overrides,
+      resolveLiveThumbnailDrawer(puckConfigRef.current, liveThumbnailDrawerRef.current),
       thumbnailsRef.current ? buildThumbnailOverride(thumbnailsRef.current) : null,
       additionalOverridesRef.current ?? null,
     ];

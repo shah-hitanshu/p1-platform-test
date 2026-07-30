@@ -278,6 +278,22 @@
   color: #ffffff !important;
 }
 
+/* ── Canvas: grey gutter around a rounded page ────────────────────────────
+   The canvas (_PuckCanvas_) already has a grey background (grey-11), but in
+   full-screen mode Puck zeroes its padding so the page fills it edge-to-edge
+   and the grey never shows. Restoring a little padding reveals that grey as
+   a gutter around the page; rounding the inner _PuckCanvas-root_ gives the
+   floating-page look. The [class*="_PuckCanvas_"] selector matches only the
+   outer element (children use a hyphen after "Canvas"); higher specificity
+   than Puck's own ._PuckCanvas--fullScreen_ so the padding wins. */
+.puck-editor-theme [class*="_PuckCanvas_"] {
+  padding: 8px;
+}
+.puck-editor-theme [class*="_PuckCanvas-root_"] {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
 /* ── Editor chrome text/background reset (PCC-3456) ──────────────────────
  *
  * Root cause: recent design-library "dark-canon" token waves make the host

@@ -36,6 +36,51 @@ puck-css-integration/
 
 **Decision (scope):** Bug 2 was outside the original ticket scope; user approved fixing it within PCC-3421 and updating the ticket description accordingly.
 
+### Visual Component Sidebar + canvas gutter (2026-07-17) ✅
+
+**Branch:** `feat/visual-component-sidebar`. All changes in `packages/puck-css`.
+
+A live, thumbnail-driven component drawer that replaces Puck's default component list
+with collapsible category sections of live-rendered preview cards. It's the default
+drawer for every `puck-css` editor, with an opt-out (`useP1Editor`'s
+`liveThumbnailDrawer: false`). Previews are cached client-side, in-memory only, so
+identical cards aren't re-rendered on category re-expand or document switch within a
+page load.
+
+Also a small editor-canvas tweak: a grey gutter around a slightly rounded page for
+readability.
+
+- ✅ Built TDD; thumbnail + theme tests green, clean `tsc` build, security review clean.
+- Out of scope (not committed): the `p1-starter-components` library used only as a
+  local test harness — tracked for a separate PR in `FOLLOWUP-component-library.md`.
+
+**Review round (2026-07-17):** addressed reviewer feedback plus two bugs found in
+manual verification against a local test app:
+- Fixed a HIGH-severity finding: cached preview HTML was persisted to localStorage and
+  replayed via `dangerouslySetInnerHTML` — since localStorage is writable by any
+  same-origin script, a write to a `p1-thumb:*` key could plant markup that gets
+  trusted on a future load. The cache is now in-memory only; nothing is persisted or
+  read back across page loads.
+- Fixed a bug where each preview rendered the real, currently-open document's page
+  root (e.g. its title `<h1>`) instead of just the isolated component — `LiveThumbnail`
+  now renders through a config with a pass-through page root.
+- Fixed a flicker bug: Puck's own `<Drawer>`/`<Drawer.Item>` remount on unrelated editor
+  state changes (e.g. typing in any field), which remounted every visible
+  `ThumbnailCard` and reset it to its loading skeleton. `ThumbnailCard` now seeds its
+  ready state from the cache synchronously, so a remount with a cache hit renders
+  instantly instead of flashing the skeleton.
+- Removed the `droppableId` / `index` props on `Drawer` / `Drawer.Item` — both
+  deprecated and no longer required by the installed `@puckeditor/core`.
+- Added the changeset the reviewer asked for (was missing).
+- Fixed the MEDIUM-severity finding: the cache captured `innerHTML` once, right
+  after the first commit, so a component that finishes rendering asynchronously
+  (its own effect, a fetch, an image swap) could get an incomplete loading state
+  cached permanently. `LiveThumbnail` now also attaches a `MutationObserver` to
+  the live render and re-captures on every subsequent mutation, so the cache
+  converges on the settled output. (Residual, accepted: a component with
+  continuous DOM churn that never settles could still have a later cache-hit
+  inherit a non-final frame — narrower than the original bug, and no component
+  in this repo currently behaves that way.)
 ### Publish button UI — fuse Workstream switcher + Publish button reliably (2026-07-14) ✅
 
 **Branch:** `minor-publish-button-ui-fix` (plain branch off `main`). Commit `9ddf341`.

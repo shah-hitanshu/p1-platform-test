@@ -255,8 +255,7 @@ export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
     fields: ({ children }: { children: React.ReactNode }) => (
       <P1InspectorFields>{children}</P1InspectorFields>
     ),
-    components: makePreviewOverride(options),
-    outline:    makePreviewOverride(options),
+    outline: makePreviewOverride(options),
     headerActions: ({ children }) => {
       // Read presence/agent values lazily from options (Proxy) each render
       // so they reflect the latest state from useP1Overrides' optionsRef.

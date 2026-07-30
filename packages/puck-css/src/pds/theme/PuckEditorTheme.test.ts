@@ -121,6 +121,21 @@ describe('PuckEditorTheme.css', () => {
     });
   });
 
+  describe('canvas layout', () => {
+    it('reveals the canvas grey background as a gutter via padding', () => {
+      const css = readThemeCSS();
+      // Matches only the outer _PuckCanvas_ element (children use a hyphen).
+      expect(css).toMatch(/\[class\*="_PuckCanvas_"\]\s*\{[^}]*padding:\s*8px/);
+    });
+
+    it('rounds and clips the inner page (_PuckCanvas-root_)', () => {
+      const css = readThemeCSS();
+      expect(css).toMatch(
+        /\[class\*="_PuckCanvas-root_"\]\s*\{[^}]*border-radius:\s*8px[^}]*overflow:\s*hidden/,
+      );
+    });
+  });
+
   describe('typography mappings', () => {
     it('maps --puck-font-family to PDS default font family', () => {
       const css = readThemeCSS();

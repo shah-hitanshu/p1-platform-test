@@ -376,6 +376,15 @@ export { SessionExpiredError } from '@pantheon-systems/css-client';
 // Thumbnails
 export type { ThumbnailMap, ThumbnailFC } from './editor/utils/buildThumbnailOverride.js';
 
+// Live-render visual component sidebar
+export { buildLiveThumbnailDrawer } from './editor/thumbnails/buildLiveThumbnailDrawer.js';
+export type { LiveThumbnailDrawerOptions } from './editor/thumbnails/buildLiveThumbnailDrawer.js';
+export { LiveThumbnail } from './editor/thumbnails/LiveThumbnail.js';
+export type { LiveThumbnailProps } from './editor/thumbnails/LiveThumbnail.js';
+export { ThumbnailCard } from './editor/thumbnails/ThumbnailCard.js';
+export type { ThumbnailCardProps } from './editor/thumbnails/ThumbnailCard.js';
+export { humanizeComponentName } from './editor/thumbnails/humanizeComponentName.js';
+
 // P1 Client SDK — Lib Utilities (client-safe)
 export { normalizePath, stripTrailingSlash, isReservedPath, PATH_REGEX } from './data/paths.js';
 export {

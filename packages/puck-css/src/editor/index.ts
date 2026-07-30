@@ -22,6 +22,14 @@ export { createP1Plugin } from './plugin/P1Plugin.js';
 export type { P1PluginOptions, PuckPlugin } from './plugin/P1Plugin.js';
 export { createP1Overrides } from './plugin/createP1Overrides.js';
 export type { P1OverridesOptions, PuckOverrides } from './plugin/createP1Overrides.js';
+
+export { buildLiveThumbnailDrawer } from './thumbnails/buildLiveThumbnailDrawer.js';
+export type { LiveThumbnailDrawerOptions } from './thumbnails/buildLiveThumbnailDrawer.js';
+export { LiveThumbnail } from './thumbnails/LiveThumbnail.js';
+export type { LiveThumbnailProps } from './thumbnails/LiveThumbnail.js';
+export { ThumbnailCard } from './thumbnails/ThumbnailCard.js';
+export type { ThumbnailCardProps } from './thumbnails/ThumbnailCard.js';
+export { humanizeComponentName } from './thumbnails/humanizeComponentName.js';
 export { createMergePreviewPlugin } from './plugin/mergePreviewPlugin.js';
 
 export { SaveIndicator } from './components/SaveIndicator.js';
