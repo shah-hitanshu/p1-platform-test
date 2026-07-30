@@ -64,18 +64,19 @@
   "env": {
     "staging": {
       "name": "css-mcp-server-staging",
+      "account_id": "69bc76f4866aaaa3400ea7fbbd9d7da2",
       "vars": {
         "ENVIRONMENT": "staging",
         "CSS_BACKEND_URL": "https://collaborative-state-worker-staging.pantheon-content-publisher.workers.dev",
         "MCP_SERVER_NAME": "collaborative-state-mcp",
         "MCP_SERVER_VERSION": "0.1.0",
         "PUBLIC_ORIGIN": "https://staging.mcp.p1.pantheon.io",
-        "AUTH0_CLIENT_ID": "e6DAsYOze1bqstICo1JYYU40JGSjPU7k",
+        "AUTH0_CLIENT_ID": "8UmnrZACFs4LlsjK0ppCmyAXgZIChI9Q",
         "AUTH0_ISSUER_BASE_URL": "https://auth-staging.pantheon.io",
         "AUTH0_AUDIENCE": "https://staging.mcp.p1.pantheon.io"
       },
       "kv_namespaces": [
-        { "binding": "OAUTH_KV", "id": "5bdb2949f1fe453085509ecb89e0d124" }
+        { "binding": "OAUTH_KV", "id": "dc4d679e294d422d9c74c1266d44e2c5" }
       ],
       "services": [
         { "binding": "CSS_BACKEND", "service": "collaborative-state-worker-staging" }
