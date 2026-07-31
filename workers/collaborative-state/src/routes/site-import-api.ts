@@ -361,6 +361,7 @@ export async function handleSiteImportRoute(
               createdById,
               createdByType,
               skipDuplicateCheck: true,
+              skipCompaction: true,
             });
 
             // Store source version number mapping

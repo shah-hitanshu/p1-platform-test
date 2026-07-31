@@ -21,6 +21,7 @@ import {
   getLatestDocumentVersionWithFallback,
   createDocumentVersion,
   reconstructVersionSnapshot,
+  VersionReconstructionError,
 } from './document-version-service';
 
 /**
@@ -291,9 +292,16 @@ export async function runSlotIdAdoption(
       // reconstruct it from the nearest baseline before giving up.
       let documentSnapshot = documentVersion?.snapshot ?? null;
       if (!documentSnapshot && documentVersion && documentVersion.isTombstone !== true) {
-        documentSnapshot = await reconstructVersionSnapshot(
-          edge.document_id, branchId, documentVersion.versionNumber,
-        );
+        // The pass runs over every document on the site; one whose content
+        // cannot be rebuilt joins the skipped list like any other.
+        try {
+          documentSnapshot = await reconstructVersionSnapshot(
+            edge.document_id, branchId, documentVersion.versionNumber,
+          );
+        } catch (error) {
+          if (!(error instanceof VersionReconstructionError)) throw error;
+          documentSnapshot = null;
+        }
       }
       if (!documentSnapshot || documentVersion?.isTombstone === true) {
         summary.skipped.push({

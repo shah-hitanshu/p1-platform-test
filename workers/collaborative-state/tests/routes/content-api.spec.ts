@@ -14,7 +14,12 @@ import type { AuthenticatedPrincipal, Branch, Document, DocumentVersion, Site } 
 import type { SeoMetadata } from '../../src/types/page-metadata';
 
 // Mock services
-vi.mock('../../src/services', () => ({
+vi.mock('../../src/services', async () => ({
+  VersionReconstructionError: (
+    await vi.importActual<typeof import('../../src/services/document-version-service')>(
+      '../../src/services/document-version-service',
+    )
+  ).VersionReconstructionError,
   getMainBranch: vi.fn(),
   getBranch: vi.fn(),
   getBranchByName: vi.fn(),
@@ -620,6 +625,47 @@ describe('Content Delivery API Routes', () => {
       const body = await response.json();
       expect(body.data).toEqual(mockPublishedVersion.snapshot);
       expect(services.reconstructVersionSnapshot).not.toHaveBeenCalled();
+    });
+
+    it('returns 500 without leaking version identifiers when content cannot be rebuilt', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestPublishedDocumentVersion).mockResolvedValue(mockDiffOnlyVersion);
+      vi.mocked(services.reconstructVersionSnapshot).mockRejectedValue(
+        new services.VersionReconstructionError('doc-uuid-abc', 'branch-main-uuid', 16, 15),
+      );
+      setupSettingsMocks(settingsService, 120);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(500);
+      const body = await response.json();
+      expect(body.error).toBe('Internal server error');
+      expect(errorLog).toHaveBeenCalledWith(
+        '[content-api] Version reconstruction failed',
+        {
+          documentId: 'doc-uuid-abc',
+          branchId: 'branch-main-uuid',
+          requestedVersion: 16,
+          brokenVersion: 15,
+        },
+      );
+      errorLog.mockRestore();
     });
 
     it('should return null data when reconstruction fails for diff-only version', async () => {

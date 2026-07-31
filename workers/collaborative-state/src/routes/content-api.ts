@@ -20,6 +20,7 @@ import {
   getLatestDocumentVersionWithFallback,
   listDocumentsOnBranch,
   reconstructVersionSnapshot,
+  VersionReconstructionError,
   buildPageMetadata,
   getSite,
 } from '../services';
@@ -184,11 +185,26 @@ async function handleGetContent(
 
   // If snapshot is null (diff-only version), reconstruct from baseline + patches
   let snapshotData = version.snapshot ?? null;
-  snapshotData ??= await reconstructVersionSnapshot(
-    document.id,
-    branch.id,
-    version.versionNumber,
-  );
+  if (snapshotData === null) {
+    try {
+      snapshotData = await reconstructVersionSnapshot(
+        document.id,
+        branch.id,
+        version.versionNumber,
+      );
+    } catch (error) {
+      if (!(error instanceof VersionReconstructionError)) throw error;
+      // The route is public, so the response stays generic; the identifiers
+      // that pin down which version broke go to the log.
+      console.error('[content-api] Version reconstruction failed', {
+        documentId: error.documentId,
+        branchId: error.branchId,
+        requestedVersion: error.requestedVersion,
+        brokenVersion: error.brokenVersion,
+      });
+      return errorResponse('Internal server error', 500);
+    }
+  }
 
   const responseBody: PageContent = {
     documentId: document.id,

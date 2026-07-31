@@ -125,6 +125,7 @@ export {
   // Note: DocumentNotFoundError already exported from document-service
   InvalidDocumentVersionParamsError,
   RestoreVersionNotFoundError,
+  VersionReconstructionError,
 } from './document-version-service';
 
 export type {

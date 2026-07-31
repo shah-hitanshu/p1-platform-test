@@ -476,7 +476,17 @@ export async function reloadFromPostgres(
   const newDoc = new Y.Doc();
   deps.setYdoc(newDoc);
   deps.setInitialized(false);
-  await deps.syncManager.initializeFromPostgres();
+  try {
+    await deps.syncManager.initializeFromPostgres();
+    // A reload is the recovery path for a session that failed to load, so a
+    // successful one restores its ability to write.
+    deps.syncManager.contentLoadFailed = false;
+  } catch (error) {
+    // The live Y.Doc has already been replaced with the empty one above, so a
+    // failed load leaves state that must never reach Postgres.
+    deps.syncManager.contentLoadFailed = true;
+    throw error;
+  }
   deps.setInitialized(true);
 
   // Compute the diff from old state to new state

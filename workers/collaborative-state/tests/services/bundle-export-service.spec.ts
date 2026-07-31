@@ -23,12 +23,20 @@ describe('abandoned scripts cleanup (Test 36)', () => {
 });
 
 vi.mock('../../src/db', () => ({ query: vi.fn() }));
-vi.mock('../../src/services/document-version-service', () => ({
+vi.mock('../../src/services/document-version-service', async () => ({
   reconstructVersionSnapshot: vi.fn(),
+  VersionReconstructionError: (
+    await vi.importActual<typeof import('../../src/services/document-version-service')>(
+      '../../src/services/document-version-service',
+    )
+  ).VersionReconstructionError,
 }));
 
 import { query } from '../../src/db';
-import { reconstructVersionSnapshot } from '../../src/services/document-version-service';
+import {
+  reconstructVersionSnapshot,
+  VersionReconstructionError,
+} from '../../src/services/document-version-service';
 import {
   resolveCreatedByRefsBatch,
   selectVersionsForDocument,
@@ -146,6 +154,39 @@ describe('selectVersionsForDocument', () => {
     const result = await selectVersionsForDocument(DOC_ID, MAIN_BRANCH, true);
     expect(result).toHaveLength(1);
     expect(result[0].snapshot).toEqual({ root: {} });
+  });
+
+  it('omits a version that cannot be rebuilt and keeps exporting the rest', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { id: 'v1', version_number: 1, snapshot: { root: {} }, is_published: true, is_tombstone: false, created_by_id: 'u1', created_by_type: 'user', created_at: '2026-01-01T00:00:00Z' },
+        { id: 'v2', version_number: 2, snapshot: null, is_published: true, is_tombstone: false, created_by_id: 'u1', created_by_type: 'user', created_at: '2026-01-02T00:00:00Z' },
+        { id: 'v3', version_number: 3, snapshot: null, is_published: true, is_tombstone: false, created_by_id: 'u1', created_by_type: 'user', created_at: '2026-01-03T00:00:00Z' },
+      ],
+      rowCount: 3,
+    });
+    mockReconstruct.mockRejectedValueOnce(
+      new VersionReconstructionError(DOC_ID, MAIN_BRANCH, 2, 2),
+    );
+    mockReconstruct.mockResolvedValueOnce({ root: { type: 'Root', props: { v: 3 } } });
+
+    const result = await selectVersionsForDocument(DOC_ID, MAIN_BRANCH, true);
+
+    expect(result.map((v) => v.versionNumber)).toEqual([1, 3]);
+  });
+
+  it('propagates failures that are not reconstruction failures', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { id: 'v1', version_number: 1, snapshot: { root: {} }, is_published: true, is_tombstone: false, created_by_id: 'u1', created_by_type: 'user', created_at: '2026-01-01T00:00:00Z' },
+        { id: 'v2', version_number: 2, snapshot: null, is_published: true, is_tombstone: false, created_by_id: 'u1', created_by_type: 'user', created_at: '2026-01-02T00:00:00Z' },
+      ],
+      rowCount: 2,
+    });
+    mockReconstruct.mockRejectedValueOnce(new Error('connection reset'));
+
+    await expect(selectVersionsForDocument(DOC_ID, MAIN_BRANCH, true))
+      .rejects.toThrow('connection reset');
   });
 
   it('on non-main branch: returns only the latest version', async () => {

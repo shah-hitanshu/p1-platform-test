@@ -300,6 +300,7 @@ describe('selectVersionsForDocument integration', () => {
       createdById: SYSTEM_UUID,
       createdByType: 'system',
       skipDuplicateCheck: true,
+      skipCompaction: true,
     });
 
     const selected = await selectVersionsForDocument(doc.id, branch.id, true);
@@ -334,6 +335,7 @@ describe('selectVersionsForDocument integration', () => {
       createdById: SYSTEM_UUID,
       createdByType: 'system',
       skipDuplicateCheck: true,
+      skipCompaction: true,
     });
 
     // Create a publish checkpoint for v1
@@ -361,6 +363,7 @@ describe('selectVersionsForDocument integration', () => {
       createdById: SYSTEM_UUID,
       createdByType: 'system',
       skipDuplicateCheck: true,
+      skipCompaction: true,
     });
 
     // Non-main branch: should return only the latest version
@@ -386,6 +389,7 @@ describe('selectVersionsForDocument integration', () => {
       createdById: SYSTEM_UUID,
       createdByType: 'system',
       skipDuplicateCheck: true,
+      skipCompaction: true,
     });
     const v2 = await createDocumentVersion({
       documentId: doc.id,
@@ -395,6 +399,7 @@ describe('selectVersionsForDocument integration', () => {
       createdById: SYSTEM_UUID,
       createdByType: 'system',
       skipDuplicateCheck: true,
+      skipCompaction: true,
     });
 
     // Tombstone v2
@@ -426,6 +431,7 @@ describe('selectVersionsForDocument integration', () => {
       createdById: SYSTEM_UUID,
       createdByType: 'system',
       skipDuplicateCheck: true,
+      skipCompaction: true,
     });
 
     // v2: published
@@ -437,6 +443,7 @@ describe('selectVersionsForDocument integration', () => {
       createdById: SYSTEM_UUID,
       createdByType: 'system',
       skipDuplicateCheck: true,
+      skipCompaction: true,
     });
     // Create publish checkpoint for v2
     const cpResult = await sql.unsafe<{ id: string }[]>(
@@ -463,6 +470,7 @@ describe('selectVersionsForDocument integration', () => {
       createdById: SYSTEM_UUID,
       createdByType: 'system',
       skipDuplicateCheck: true,
+      skipCompaction: true,
     });
 
     const selected = await selectVersionsForDocument(doc.id, branch.id, true);

@@ -314,6 +314,7 @@ describe('Phase 3.3: Document Version Service', () => {
         createdById: 'user-uuid-001',
         createdByType: 'user',
         skipDuplicateCheck: true,
+        skipCompaction: true,
       });
 
       // Should create new version despite same snapshot
@@ -344,6 +345,7 @@ describe('Phase 3.3: Document Version Service', () => {
         createdById: 'user-uuid-001',
         createdByType: 'user',
         skipDuplicateCheck: true,
+        skipCompaction: true,
         sourceVersionId,
       });
 
@@ -369,6 +371,7 @@ describe('Phase 3.3: Document Version Service', () => {
         createdById: 'user-uuid-001',
         createdByType: 'user',
         skipDuplicateCheck: true,
+        skipCompaction: true,
       });
 
       const insertCall = vi.mocked(db.query).mock.calls[0];

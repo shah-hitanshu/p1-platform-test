@@ -100,6 +100,9 @@ import {
   compactCrdtState,
 } from './websocket-connection-manager';
 
+/** Endpoints that read or write the document's CRDT content. */
+const CONTENT_ENDPOINTS = new Set(['/snapshot', '/apply', '/connect', '/sync', '/flush']);
+
 /**
  * DocumentSession Durable Object
  *
@@ -199,6 +202,23 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
           }),
           { status: 400, headers: { 'Content-Type': 'application/json' } },
         );
+      }
+
+      // A session that could not load its content holds an empty Y.Doc. Serving
+      // that as the document invites an editor to overwrite it, so the
+      // endpoints that read or write content report the failure instead.
+      // /initialize and /reload are the recovery paths and stay open.
+      if (CONTENT_ENDPOINTS.has(path)) {
+        await this.initializeCrdtIfNeeded();
+        if (this.syncManager.contentLoadFailed) {
+          return new Response(
+            JSON.stringify({
+              error: `Content unavailable: document ${this.sessionInfo.documentId} could `
+                + 'not be loaded from storage',
+            }),
+            { status: 503, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
       }
 
       switch (path) {
@@ -425,6 +445,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
           await this.syncManager.initializeFromPostgres();
         } catch (error) {
           console.warn('Failed to initialize from PostgreSQL:', error);
+          this.syncManager.contentLoadFailed = true;
         }
       }
       this.initialized = true;
@@ -582,6 +603,18 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   // =============================================================================
 
   private async persist(): Promise<void> {
+    // Storing state the session never loaded would make the loss durable: the
+    // next instantiation restores those bytes, counts itself initialized, and
+    // never consults PostgreSQL again. Leaving storage untouched keeps the
+    // fallback to PostgreSQL in place for the next wake.
+    if (this.syncManager.contentLoadFailed) {
+      console.error(
+        `Persist refused for document ${this.sessionInfo.documentId}: session state `
+        + 'was never loaded',
+      );
+      return;
+    }
+
     const update = Y.encodeStateAsUpdate(this.ydoc);
     await this.state.storage.put(YDOC_STORAGE_KEY, update);
   }

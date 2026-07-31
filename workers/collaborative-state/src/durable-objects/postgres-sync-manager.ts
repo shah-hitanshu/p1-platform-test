@@ -67,6 +67,13 @@ export class PostgresSyncManager {
   /** Accumulated puck actions from client edits since the last sync */
   pendingPuckActions: { type: string; [key: string]: unknown }[] = [];
 
+  /**
+   * Set when the document's stored content could not be loaded. The session
+   * then holds an empty Y.Doc that does not represent the document, so syncing
+   * it would overwrite the stored content with nothing.
+   */
+  contentLoadFailed = false;
+
   constructor(
     private readonly env: DocumentSessionEnv,
     private readonly getSessionInfo: () => SessionInfo,
@@ -343,6 +350,29 @@ export class PostgresSyncManager {
   }
 
   /**
+   * Produce the snapshot a write path is about to send to PostgreSQL. Every
+   * write path obtains its snapshot here, so no writer can reach the database
+   * with state the session never loaded.
+   *
+   * @throws when the session's content failed to load
+   */
+  private async captureSnapshotForWrite(actorId: string): Promise<Record<string, unknown>> {
+    if (this.contentLoadFailed) {
+      throw new Error(
+        `Sync refused for document ${this.sessionInfo.documentId}: session state was `
+        + 'never loaded, so writing it would destroy the stored content',
+      );
+    }
+
+    const root = this.getYdoc().getMap('root');
+    const snapshot = root.toJSON() as Record<string, unknown>;
+
+    await this.detectCoWBaselineMismatch(snapshot, actorId);
+
+    return snapshot;
+  }
+
+  /**
    * Perform the actual sync operation.
    * Separated from syncToPostgres to enable proper locking.
    * @param internalApiUrl - The internal API URL (pre-validated)
@@ -361,10 +391,7 @@ export class PostgresSyncManager {
     identity?: ActorIdentity,
   ): Promise<void> {
     try {
-      const root = this.getYdoc().getMap('root');
-      const snapshot = root.toJSON() as Record<string, unknown>;
-
-      await this.detectCoWBaselineMismatch(snapshot, actorId);
+      const snapshot = await this.captureSnapshotForWrite(actorId);
 
       // Phase 5.1: Prefer queue-based sync when available
       if (this.env.SYNC_QUEUE !== undefined) {
@@ -461,12 +488,9 @@ export class PostgresSyncManager {
     actorType: 'user' | 'agent',
     identity?: ActorIdentity,
   ): Promise<void> {
-    const root = this.getYdoc().getMap('root');
-    const rawSnapshot = root.toJSON() as Record<string, unknown>;
+    const rawSnapshot = await this.captureSnapshotForWrite(actorId);
 
     // CoW detection compares against the raw CRDT ids, so it runs before dedupe.
-    await this.detectCoWBaselineMismatch(rawSnapshot, actorId);
-
     const snapshot = enforceUniqueSlotIds(this.sessionInfo.documentId, rawSnapshot);
 
     // Phase 5.3: Try direct Hyperdrive path first (synchronous, no queue).

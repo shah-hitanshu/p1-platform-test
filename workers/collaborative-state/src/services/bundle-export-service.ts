@@ -8,7 +8,7 @@
  * createdByRef: portable cross-environment user/agent references.
  */
 import { query } from '../db';
-import { reconstructVersionSnapshot } from './document-version-service';
+import { reconstructVersionSnapshot, VersionReconstructionError } from './document-version-service';
 import { hmacSha256 } from '../utils/hash';
 
 export type CreatedByRef =
@@ -192,7 +192,15 @@ export async function selectVersionsForDocument(
     if (row.snapshot !== null) {
       snapshot = row.snapshot;
     } else {
-      const reconstructed = await reconstructVersionSnapshot(documentId, branchId, row.version_number);
+      // An export covers many versions; one that cannot be rebuilt is dropped
+      // from the bundle rather than failing the whole site.
+      let reconstructed: Record<string, unknown> | null;
+      try {
+        reconstructed = await reconstructVersionSnapshot(documentId, branchId, row.version_number);
+      } catch (error) {
+        if (!(error instanceof VersionReconstructionError)) throw error;
+        reconstructed = null;
+      }
       if (reconstructed === null) {
         const vNum = String(row.version_number);
         console.error(

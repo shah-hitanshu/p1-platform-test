@@ -39,6 +39,14 @@ export interface CreateDocumentVersionParams {
    * @default false
    */
   skipDuplicateCheck?: boolean;
+  /**
+   * Write this version as a standalone baseline: no forward patch is computed
+   * and the previous version keeps its snapshot. Use where the new version is
+   * a copy of content that exists elsewhere (imports, merges, reverts) and the
+   * history either side of it should stay independently readable.
+   * @default false
+   */
+  skipCompaction?: boolean;
   /** Mark this version as a tombstone (document deletion). */
   isTombstone?: boolean;
   /**
@@ -122,6 +130,28 @@ export class RestoreVersionNotFoundError extends Error {
   constructor(public readonly versionId: string) {
     super(`Version with ID "${versionId}" not found.`);
     Object.setPrototypeOf(this, RestoreVersionNotFoundError.prototype);
+  }
+}
+
+/**
+ * Error thrown when a version cannot be rebuilt because the patch chain
+ * reaches a row holding neither a snapshot nor a patch.
+ */
+export class VersionReconstructionError extends Error {
+  public readonly name = 'VersionReconstructionError';
+
+  constructor(
+    public readonly documentId: string,
+    public readonly branchId: string,
+    public readonly requestedVersion: number,
+    public readonly brokenVersion: number,
+  ) {
+    super(
+      `Cannot reconstruct version ${String(requestedVersion)} of document `
+      + `"${documentId}" on branch "${branchId}": version ${String(brokenVersion)} `
+      + 'holds neither a snapshot nor a patch.',
+    );
+    Object.setPrototypeOf(this, VersionReconstructionError.prototype);
   }
 }
 
@@ -301,7 +331,7 @@ export async function createDocumentVersion(
   // The previous version's snapshot is nulled (unless it's v1, the permanent baseline).
   // Both operations use a single CTE for atomicity — if the INSERT fails, the
   // UPDATE rolls back too.
-  if (latestVersion === null && params.skipDuplicateCheck !== true) {
+  if (latestVersion === null && params.skipCompaction !== true) {
     latestVersion = await getLatestDocumentVersion(
       params.documentId,
       params.branchId,
@@ -340,8 +370,13 @@ export async function createDocumentVersion(
     // Use a CTE to atomically:
     // 1. Null previous version's snapshot (convert to diff-only) — skip v1 (permanent baseline)
     // 2. Insert new version as baseline with full snapshot + forward patch
+    // A row may only be nulled when it carries a patch of its own — otherwise
+    // it is left with no way to rebuild its content. Several write paths
+    // (document create, realtime sync, publish copies, merges, reverts) insert
+    // full snapshots with no patch at any version number.
     const shouldNullPrevious = latestVersion != null
       && latestVersion.versionNumber > 1
+      && latestVersion.patch != null
       && forwardPatch != null;
 
     const result = await query<DocumentVersionRow>(
@@ -350,6 +385,7 @@ export async function createDocumentVersion(
         SET snapshot = NULL
         WHERE id = $11::uuid
           AND $12::boolean = true
+          AND patch IS NOT NULL
         RETURNING id
       )
       INSERT INTO app.document_versions (
@@ -391,7 +427,9 @@ export async function createDocumentVersion(
       console.log(
         `Created v${String(newVersion.versionNumber)} with `
         + `${String(forwardPatch.length)} patch ops, `
-        + `nulled v${String(latestVersion.versionNumber)} snapshot`,
+        + (shouldNullPrevious
+          ? `nulled v${String(latestVersion.versionNumber)} snapshot`
+          : `kept v${String(latestVersion.versionNumber)} snapshot`),
       );
     }
 
@@ -680,13 +718,22 @@ export async function reconstructVersionSnapshot(
     ? JSON.parse(baseline.snapshot) as Record<string, unknown>
     : structuredClone(baseline.snapshot);
   for (const diffRow of diffsResult.rows) {
-    if (diffRow.patch) {
-      const ops = typeof diffRow.patch === 'string'
-        ? JSON.parse(diffRow.patch) as import('fast-json-patch').Operation[]
-        : diffRow.patch;
-      const patchResult = applyPatch(snapshot, ops, false, false);
-      snapshot = patchResult.newDocument;
+    // Every row above the baseline has a null snapshot by construction, so one
+    // without a patch cannot be rebuilt. Skipping it would return the content
+    // of an older version under the requested version's number.
+    if (!diffRow.patch) {
+      throw new VersionReconstructionError(
+        documentId,
+        branchId,
+        versionNumber,
+        diffRow.version_number,
+      );
     }
+    const ops = typeof diffRow.patch === 'string'
+      ? JSON.parse(diffRow.patch) as import('fast-json-patch').Operation[]
+      : diffRow.patch;
+    const patchResult = applyPatch(snapshot, ops, false, false);
+    snapshot = patchResult.newDocument;
   }
 
   return snapshot;
@@ -979,14 +1026,16 @@ export async function batchSyncToPostgres(
           insertedVersion.snapshot,
         );
         if (patchOps.length > 0) {
-          // Store forward patch on the NEW version, null previous snapshot atomically
-          const shouldNullPrev = prevRow.version_number > 1;
+          // Store forward patch on the NEW version, null previous snapshot atomically.
+          // The previous row keeps its snapshot unless it carries a patch of its
+          // own to rebuild from.
+          const shouldNullPrev = prevRow.version_number > 1 && prevRow.patch != null;
           await query(
             `WITH update_new AS (
               UPDATE app.document_versions SET patch = $1 WHERE id = $2
             )
             UPDATE app.document_versions SET snapshot = NULL
-            WHERE id = $3 AND $4::boolean = true`,
+            WHERE id = $3 AND $4::boolean = true AND patch IS NOT NULL`,
             [
               JSON.stringify(patchOps),
               insertedVersion.id,
@@ -1062,6 +1111,7 @@ export async function restoreDocumentVersion(
     createdById,
     createdByType,
     skipDuplicateCheck: true,
+    skipCompaction: true,
   });
 
   // Guard against the unique-violation fallback in createDocumentVersion silently

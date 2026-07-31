@@ -473,6 +473,7 @@ export async function executeMergeWithResolution(
           createdById: mergedById,
           createdByType: mergedByType,
           skipDuplicateCheck: true,
+          skipCompaction: true,
         });
         // No-op skip: the manual snapshot resolved to an existing target
         // version (typically via the unique-violation fallback in
@@ -727,6 +728,7 @@ async function copySourceChangesToTarget(
       createdById: mergedById,
       createdByType: mergedByType,
       skipDuplicateCheck: true,
+      skipCompaction: true,
       isTombstone: sourceVersion.isTombstone,
     });
 
