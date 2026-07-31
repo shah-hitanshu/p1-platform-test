@@ -1,0 +1,48 @@
+{
+  "name": "@pantheon-systems/p1-starter",
+  "version": "1.0.7",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "dev:stack": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "clean": "rm -rf .next out *.tsbuildinfo node_modules/.vite",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "sync:registry": "tsx scripts/sync-puck-registry.ts"
+  },
+  "dependencies": {
+    "@pantheon-systems/cpub-react-sdk": "^5.2.1",
+    "@pantheon-systems/css-client": "workspace:*",
+    "@pantheon-systems/p1-ai-chat": "workspace:*",
+    "@pantheon-systems/p1-media": "workspace:*",
+    "@pantheon-systems/p1-next-sdk": "workspace:*",
+    "@pantheon-systems/pds-toolkit-react": "2.0.0-alpha.51",
+    "@pantheon-systems/puck-css": "workspace:*",
+    "@puckeditor/core": "^0.21.1",
+    "@tailwindcss/postcss": "^4.2.2",
+    "@tailwindcss/typography": "^0.5.16",
+    "classnames": "^2.5.1",
+    "isomorphic-dompurify": "^3.18.0",
+    "launchdarkly-react-client-sdk": "^3.9.2",
+    "next": "^16.2.6",
+    "postcss": "^8.5.12",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-markdown": "^10.1.0",
+    "tailwindcss": "^4.2.2"
+  },
+  "devDependencies": {
+    "@pantheon-systems/eslint-config": "workspace:*",
+    "@types/node": "^20.19.30",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "eslint": "^9.27.0",
+    "tsx": "^4.23.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
+  }
+}

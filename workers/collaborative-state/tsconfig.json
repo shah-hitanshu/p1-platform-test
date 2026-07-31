@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    // Target and module settings for Cloudflare Workers
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+
+    // Strict type checking
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+
+    // Additional checks
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // Module interop
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+
+    // Output settings
+    "noEmit": true,
+    "skipLibCheck": true,
+
+    // Types
+    "types": ["@cloudflare/workers-types", "node"],
+
+    // Resolve `import ... from '@cloudflare/workers-types'` to a shim that
+    // re-exports the ambient globals. The package's own module entry is a full
+    // parallel copy of the global types; mixing the two copies makes tsc
+    // structurally compare two enormous type graphs and hang (PCC-3376).
+    "paths": {
+      "@cloudflare/workers-types": ["./src/types/cloudflare-workers-types.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

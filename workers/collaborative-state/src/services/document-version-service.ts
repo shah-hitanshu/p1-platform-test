@@ -1,0 +1,1124 @@
+/**
+ * Phase 3.3: Document Version Service
+ *
+ * CRUD operations for Document Versions.
+ * Document versions are snapshots of document state on a specific branch.
+ *
+ * @see collaborative-state-system-architecture-v2.2.md Section "Document Versions"
+ */
+
+import type { DocumentVersion, DocumentVersionSource } from '../types';
+import { query } from '../db';
+import { compare as jsonPatchCompare, applyPatch } from 'fast-json-patch';
+import { classifyChange } from './action-classification';
+import type { PuckAction } from './action-classification';
+import { createActorResolver } from './persistence-actor-service';
+import { enforceUniqueSlotIds } from './slot-id-backstop';
+
+// =============================================================================
+// Types
+// =============================================================================
+
+/**
+ * Parameters for creating a new document version.
+ */
+export interface CreateDocumentVersionParams {
+  documentId: string;
+  branchId: string;
+  snapshot: Record<string, unknown>;
+  patch?: unknown[]; // RFC 6902 JSON Patch operations
+  source: DocumentVersionSource;
+  createdById: string;
+  createdByType: 'user' | 'agent' | 'system';
+  actionType?: string; // Puck action type (e.g., "insert", "reorder", "set")
+  actionMetadata?: Record<string, unknown>; // Additional Puck action context
+  puckActions?: PuckAction[]; // Puck actions forwarded from the frontend
+  /**
+   * Skip duplicate snapshot check and always create a new version.
+   * Use for reverts or explicit version creation where duplicates are intentional.
+   * @default false
+   */
+  skipDuplicateCheck?: boolean;
+  /**
+   * Write this version as a standalone baseline: no forward patch is computed
+   * and the previous version keeps its snapshot. Use where the new version is
+   * a copy of content that exists elsewhere (imports, merges, reverts) and the
+   * history either side of it should stay independently readable.
+   * @default false
+   */
+  skipCompaction?: boolean;
+  /** Mark this version as a tombstone (document deletion). */
+  isTombstone?: boolean;
+  /**
+   * Persist the version with action_type null so migrations never treat it as
+   * an edit. Reserved for representation changes (the template content-shape
+   * backfill and the PATCH lazy conversion) where the stored bytes change but
+   * no authored edit occurred, so no delta must propagate to associated pages.
+   * @default false
+   */
+  forceNonStructural?: boolean;
+  /** ID of the version this version was restored from. Set when source='revert'. */
+  sourceVersionId?: string;
+}
+
+/**
+ * Options for listing document versions.
+ */
+export interface ListDocumentVersionsOptions {
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Database row format for document versions.
+ */
+interface DocumentVersionRow {
+  id: string;
+  document_id: string;
+  branch_id: string;
+  version_number: number;
+  snapshot: Record<string, unknown> | null;
+  source: DocumentVersionSource;
+  created_by_id: string;
+  created_by_type: 'user' | 'agent' | 'system';
+  created_at: string;
+  is_published?: boolean;
+  is_tombstone?: boolean;
+  source_branch_id: string | null;
+  source_version_id: string | null;
+  published_to_version_id: string | null;
+  source_branch_name?: string | null;
+  patch: import('fast-json-patch').Operation[] | null;
+  action_type: string | null;
+  action_metadata: Record<string, unknown> | null;
+}
+
+// =============================================================================
+// Error Classes
+// =============================================================================
+
+/**
+ * Error thrown when the referenced document does not exist.
+ */
+export class DocumentNotFoundError extends Error {
+  public readonly name = 'DocumentNotFoundError';
+
+  constructor(public readonly documentId: string) {
+    super(`Document with ID "${documentId}" not found.`);
+    Object.setPrototypeOf(this, DocumentNotFoundError.prototype);
+  }
+}
+
+/**
+ * Error thrown when document version creation parameters are invalid.
+ */
+export class InvalidDocumentVersionParamsError extends Error {
+  public readonly name = 'InvalidDocumentVersionParamsError';
+
+  constructor(message: string) {
+    super(message);
+    Object.setPrototypeOf(this, InvalidDocumentVersionParamsError.prototype);
+  }
+}
+
+/**
+ * Error thrown when a document version cannot be found.
+ */
+export class RestoreVersionNotFoundError extends Error {
+  public readonly name = 'RestoreVersionNotFoundError';
+
+  constructor(public readonly versionId: string) {
+    super(`Version with ID "${versionId}" not found.`);
+    Object.setPrototypeOf(this, RestoreVersionNotFoundError.prototype);
+  }
+}
+
+/**
+ * Error thrown when a version cannot be rebuilt because the patch chain
+ * reaches a row holding neither a snapshot nor a patch.
+ */
+export class VersionReconstructionError extends Error {
+  public readonly name = 'VersionReconstructionError';
+
+  constructor(
+    public readonly documentId: string,
+    public readonly branchId: string,
+    public readonly requestedVersion: number,
+    public readonly brokenVersion: number,
+  ) {
+    super(
+      `Cannot reconstruct version ${String(requestedVersion)} of document `
+      + `"${documentId}" on branch "${branchId}": version ${String(brokenVersion)} `
+      + 'holds neither a snapshot nor a patch.',
+    );
+    Object.setPrototypeOf(this, VersionReconstructionError.prototype);
+  }
+}
+
+/**
+ * Error thrown when an unexpected database error occurs.
+ */
+export class DatabaseError extends Error {
+  public readonly name = 'DatabaseError';
+
+  constructor(message: string, public readonly operation: string) {
+    super(message);
+    Object.setPrototypeOf(this, DatabaseError.prototype);
+  }
+}
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/**
+ * Maps a database row to a DocumentVersion domain object.
+ */
+function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersion {
+  const version: DocumentVersion = {
+    id: row.id,
+    documentId: row.document_id,
+    branchId: row.branch_id,
+    versionNumber: row.version_number,
+    snapshot: row.snapshot ?? undefined,
+    patch: row.patch ?? undefined,
+    actionType: row.action_type ?? undefined,
+    actionMetadata: row.action_metadata ?? undefined,
+    source: row.source,
+    createdById: row.created_by_id,
+    createdByType: row.created_by_type,
+    createdAt: row.created_at,
+  };
+  if (row.is_published !== undefined) {
+    version.isPublished = row.is_published;
+  }
+  if (row.is_tombstone !== undefined) {
+    version.isTombstone = row.is_tombstone;
+  }
+  return {
+    ...version,
+    ...(row.source_branch_id != null ? { sourceBranchId: row.source_branch_id } : {}),
+    ...(row.source_version_id != null ? { sourceVersionId: row.source_version_id } : {}),
+    ...(row.published_to_version_id != null ? { publishedToVersionId: row.published_to_version_id } : {}),
+    ...(('source_branch_name' in row && row.source_branch_name != null) ? { sourceBranchName: row.source_branch_name } : {}),
+  };
+}
+
+/**
+ * Gets the first row from a query result, throwing if not present.
+ */
+function getFirstRow<T>(rows: T[]): T {
+  const first = rows[0];
+  if (first === undefined) {
+    throw new Error('Expected query to return at least one row');
+  }
+  return first;
+}
+
+/**
+ * Checks if an error is a PostgreSQL foreign key constraint violation.
+ */
+function isForeignKeyViolation(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    (error as NodeJS.ErrnoException).code === '23503'
+  );
+}
+
+/**
+ * Checks if an error is a PostgreSQL unique constraint violation.
+ */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    (error as NodeJS.ErrnoException).code === '23505'
+  );
+}
+
+/**
+ * Deep comparison of two values for equality.
+ * Used to compare snapshots to avoid creating duplicate versions.
+ */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== 'object') return false;
+
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    return a.every((item, index) => deepEqual(item, b[index]));
+  }
+
+  const aObj = a as Record<string, unknown>;
+  const bObj = b as Record<string, unknown>;
+  const aKeys = Object.keys(aObj);
+  const bKeys = Object.keys(bObj);
+
+  if (aKeys.length !== bKeys.length) return false;
+
+  return aKeys.every(key => deepEqual(aObj[key], bObj[key]));
+}
+
+// =============================================================================
+// Service Functions
+// =============================================================================
+
+/**
+ * Creates a new document version with auto-incremented version number.
+ *
+ * @param params - Document version creation parameters
+ * @returns The created document version
+ * @throws InvalidDocumentVersionParamsError if required fields are missing
+ * @throws DocumentNotFoundError if the document does not exist
+ */
+export async function createDocumentVersion(
+  params: CreateDocumentVersionParams,
+): Promise<DocumentVersion> {
+  // Validate required fields
+  if (!params.documentId || params.documentId.trim() === '') {
+    throw new InvalidDocumentVersionParamsError('Document ID is required');
+  }
+  if (!params.branchId || params.branchId.trim() === '') {
+    throw new InvalidDocumentVersionParamsError('Branch ID is required');
+  }
+  if (!params.createdById || params.createdById.trim() === '') {
+    throw new InvalidDocumentVersionParamsError('Created by ID is required');
+  }
+
+  // Enforce unique slot ids before the unchanged-snapshot and forward-patch
+  // comparisons so a stored patch can never reintroduce a duplicate id.
+  const snapshot = enforceUniqueSlotIds(params.documentId, params.snapshot);
+
+  // Check for duplicate snapshot unless explicitly skipped
+  let latestVersion: DocumentVersion | null = null;
+  if (params.skipDuplicateCheck !== true) {
+    latestVersion = await getLatestDocumentVersion(
+      params.documentId,
+      params.branchId,
+    );
+    if (latestVersion?.snapshot && deepEqual(latestVersion.snapshot, snapshot)) {
+      // Snapshot unchanged — but if puckActions are provided, record them
+      // on the existing version so the migration system can see them.
+      if (params.puckActions && params.puckActions.length > 0) {
+        const { actionType: computedType, actionMetadata: computedMeta } =
+          classifyChange(undefined, params.puckActions);
+        if (computedType) {
+          await query(
+            `UPDATE app.document_versions SET action_type = $1, action_metadata = $2
+             WHERE id = $3 AND (action_type IS NULL OR action_type != 'structural')`,
+            [computedType, computedMeta, latestVersion.id],
+          );
+          console.log(
+            `Updated action_metadata on existing version ${latestVersion.id} (snapshot unchanged)`,
+          );
+          return { ...latestVersion, actionType: computedType, actionMetadata: computedMeta ?? undefined };
+        }
+      }
+      console.log(
+        `Version creation skipped for document ${params.documentId}: snapshot unchanged`,
+      );
+      return latestVersion;
+    }
+  }
+
+  // Compute forward diff from previous version to new version.
+  // The diff is stored on the NEW version (patch = how to get from previous to this).
+  // The previous version's snapshot is nulled (unless it's v1, the permanent baseline).
+  // Both operations use a single CTE for atomicity — if the INSERT fails, the
+  // UPDATE rolls back too.
+  if (latestVersion === null && params.skipCompaction !== true) {
+    latestVersion = await getLatestDocumentVersion(
+      params.documentId,
+      params.branchId,
+    );
+  }
+
+  let forwardPatch: unknown[] | null = null;
+  if (latestVersion?.snapshot != null) {
+    try {
+      const patchOps = jsonPatchCompare(
+        latestVersion.snapshot,
+        snapshot,
+      );
+      if (patchOps.length > 0) {
+        forwardPatch = patchOps;
+      }
+    } catch (diffError) {
+      // If diff computation fails, proceed with full baseline — no data loss
+      console.warn('Failed to compute diff, storing full baseline:', diffError);
+    }
+  }
+
+  // Classify the change as structural or prop-only
+  // Use explicit params if provided, otherwise compute from patch and puckActions
+  const { actionType: computedActionType, actionMetadata: computedActionMetadata } =
+    classifyChange(forwardPatch ?? params.patch ?? undefined, params.puckActions);
+
+  const finalActionType = params.forceNonStructural === true
+    ? null
+    : params.actionType ?? computedActionType;
+  const finalActionMetadata = params.forceNonStructural === true
+    ? null
+    : params.actionMetadata ?? computedActionMetadata;
+
+  try {
+    // Use a CTE to atomically:
+    // 1. Null previous version's snapshot (convert to diff-only) — skip v1 (permanent baseline)
+    // 2. Insert new version as baseline with full snapshot + forward patch
+    // A row may only be nulled when it carries a patch of its own — otherwise
+    // it is left with no way to rebuild its content. Several write paths
+    // (document create, realtime sync, publish copies, merges, reverts) insert
+    // full snapshots with no patch at any version number.
+    const shouldNullPrevious = latestVersion != null
+      && latestVersion.versionNumber > 1
+      && latestVersion.patch != null
+      && forwardPatch != null;
+
+    const result = await query<DocumentVersionRow>(
+      `WITH nullify_previous AS (
+        UPDATE app.document_versions
+        SET snapshot = NULL
+        WHERE id = $11::uuid
+          AND $12::boolean = true
+          AND patch IS NOT NULL
+        RETURNING id
+      )
+      INSERT INTO app.document_versions (
+        document_id, branch_id, version_number, snapshot,
+        patch, action_type, action_metadata,
+        source, created_by_id, created_by_type, is_tombstone,
+        source_version_id
+      )
+      SELECT $1, $2,
+        COALESCE(MAX(version_number), 0) + 1,
+        $3,
+        $4, $5, $6,
+        $7, $8, $9, $10,
+        $13::uuid
+      FROM app.document_versions
+      WHERE document_id = $1 AND branch_id = $2
+      RETURNING *`,
+      [
+        params.documentId,          // $1
+        params.branchId,            // $2
+        snapshot,                   // $3
+        forwardPatch ? JSON.stringify(forwardPatch) : (params.patch ? JSON.stringify(params.patch) : null), // $4
+        finalActionType,            // $5
+        finalActionMetadata ?? null, // $6
+        params.source,              // $7
+        params.createdById,         // $8
+        params.createdByType,       // $9
+        params.isTombstone === true, // $10
+        shouldNullPrevious && latestVersion
+          ? latestVersion.id
+          : '00000000-0000-0000-0000-000000000000', // $11 — CTE WHERE id = $11
+        shouldNullPrevious,         // $12 — CTE WHERE $12::boolean = true
+        params.sourceVersionId ?? null, // $13
+      ],
+    );
+
+    const newVersion = mapRowToDocumentVersion(getFirstRow(result.rows));
+    if (forwardPatch && latestVersion) {
+      console.log(
+        `Created v${String(newVersion.versionNumber)} with `
+        + `${String(forwardPatch.length)} patch ops, `
+        + (shouldNullPrevious
+          ? `nulled v${String(latestVersion.versionNumber)} snapshot`
+          : `kept v${String(latestVersion.versionNumber)} snapshot`),
+      );
+    }
+
+    return newVersion;
+  } catch (error) {
+    if (isForeignKeyViolation(error)) {
+      throw new DocumentNotFoundError(params.documentId);
+    }
+    // Unique constraint violation on (document_id, branch_id, version_number)
+    // means a concurrent sync (e.g. queue) already wrote a version with the same
+    // version_number. Return the latest version instead of failing — the data is
+    // in Postgres, which is what the caller needs.
+    if (isUniqueViolation(error)) {
+      console.warn(
+        'createDocumentVersion: unique constraint hit for document ' +
+          `${params.documentId} on branch ${params.branchId}, returning latest version`,
+      );
+      const latest = await getLatestDocumentVersion(params.documentId, params.branchId);
+      if (latest !== null) {
+        return latest;
+      }
+    }
+    throw new DatabaseError('Failed to create document version', 'createDocumentVersion');
+  }
+}
+
+/**
+ * Retrieves a document version by its ID.
+ *
+ * @param versionId - The version ID
+ * @returns The document version or null if not found
+ */
+export async function getDocumentVersion(versionId: string): Promise<DocumentVersion | null> {
+  const result = await query<DocumentVersionRow>(
+    `SELECT dv.*,
+       dv.source_branch_id, dv.source_version_id, dv.published_to_version_id,
+       b.name AS source_branch_name,
+       EXISTS(
+         SELECT 1 FROM app.checkpoint_documents cd
+         JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+         WHERE cd.document_version_id = dv.id
+           AND cp.checkpoint_type = 'publish'
+       ) AS is_published
+     FROM app.document_versions dv
+     LEFT JOIN app.branches b ON b.id = dv.source_branch_id
+     WHERE dv.id = $1`,
+    [versionId],
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return mapRowToDocumentVersion(getFirstRow(result.rows));
+}
+
+/**
+ * Retrieves the latest version of a document on a branch.
+ *
+ * @param documentId - The document ID
+ * @param branchId - The branch ID
+ * @returns The latest document version or null if none exist
+ */
+export async function getLatestDocumentVersion(
+  documentId: string,
+  branchId: string,
+): Promise<DocumentVersion | null> {
+  const result = await query<DocumentVersionRow>(
+    `SELECT dv.*,
+       dv.source_branch_id, dv.source_version_id, dv.published_to_version_id,
+       b.name AS source_branch_name,
+       EXISTS(
+         SELECT 1 FROM app.checkpoint_documents cd
+         JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+         WHERE cd.document_version_id = dv.id
+           AND cp.checkpoint_type = 'publish'
+       ) AS is_published
+     FROM app.document_versions dv
+     LEFT JOIN app.branches b ON b.id = dv.source_branch_id
+     WHERE dv.document_id = $1 AND dv.branch_id = $2
+     ORDER BY dv.version_number DESC
+     LIMIT 1`,
+    [documentId, branchId],
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return mapRowToDocumentVersion(getFirstRow(result.rows));
+}
+
+/**
+ * Retrieves the latest *published* version of a document on a branch.
+ * A published version is one that has been captured in a checkpoint.
+ * Uses the checkpoint_documents join table to find the most recent
+ * checkpoint-associated version.
+ *
+ * @param documentId - The document ID
+ * @param branchId - The branch ID
+ * @returns The latest published document version or null if none exist
+ */
+export async function getLatestPublishedDocumentVersion(
+  documentId: string,
+  branchId: string,
+): Promise<DocumentVersion | null> {
+  const result = await query<DocumentVersionRow>(
+    `SELECT dv.*,
+       dv.source_branch_id, dv.source_version_id, dv.published_to_version_id,
+       b.name AS source_branch_name
+     FROM app.document_versions dv
+     INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
+     INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+     LEFT JOIN app.branches b ON b.id = dv.source_branch_id
+     WHERE dv.document_id = $1
+       AND dv.branch_id = $2
+       AND cp.branch_id = $2
+       AND cp.checkpoint_type = 'publish'
+     ORDER BY dv.version_number DESC
+     LIMIT 1`,
+    [documentId, branchId],
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return mapRowToDocumentVersion(getFirstRow(result.rows));
+}
+
+/**
+ * Retrieves the latest version for each document on a branch.
+ * Uses a window function to efficiently get the latest version per document.
+ *
+ * @param branchId - The branch ID
+ * @returns Array of latest document versions
+ */
+export async function getLatestVersionsForBranch(branchId: string): Promise<DocumentVersion[]> {
+  const result = await query<DocumentVersionRow>(
+    `SELECT DISTINCT ON (document_id) *
+     FROM app.document_versions
+     WHERE branch_id = $1
+     ORDER BY document_id, version_number DESC`,
+    [branchId],
+  );
+
+  return result.rows.map(mapRowToDocumentVersion);
+}
+
+export async function getLatestVersionsForDocuments(
+  documentIds: string[],
+  branchId: string,
+): Promise<DocumentVersion[]> {
+  if (documentIds.length === 0) return [];
+  const result = await query<DocumentVersionRow>(
+    `SELECT DISTINCT ON (document_id) *
+     FROM app.document_versions
+     WHERE document_id = ANY($1) AND branch_id = $2
+     ORDER BY document_id, version_number DESC`,
+    [documentIds, branchId],
+  );
+  return result.rows.map(mapRowToDocumentVersion);
+}
+
+/**
+ * Lists all versions for a document on a branch in descending order.
+ *
+ * @param documentId - The document ID
+ * @param branchId - The branch ID
+ * @param options - Pagination options
+ * @returns Array of document versions
+ */
+export async function listDocumentVersions(
+  documentId: string,
+  branchId: string,
+  options: ListDocumentVersionsOptions = {},
+): Promise<DocumentVersion[]> {
+  const { limit, offset } = options;
+
+  let sql = `SELECT dv.*,
+       dv.source_branch_id, dv.source_version_id, dv.published_to_version_id,
+       b.name AS source_branch_name,
+       EXISTS(
+         SELECT 1 FROM app.checkpoint_documents cd
+         JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+         WHERE cd.document_version_id = dv.id
+           AND cp.checkpoint_type = 'publish'
+       ) AS is_published
+     FROM app.document_versions dv
+     LEFT JOIN app.branches b ON b.id = dv.source_branch_id
+     WHERE dv.document_id = $1 AND dv.branch_id = $2
+     ORDER BY dv.version_number DESC`;
+  const params: unknown[] = [documentId, branchId];
+  let paramIndex = 3;
+
+  if (limit !== undefined) {
+    sql += ` LIMIT $${String(paramIndex)}`;
+    params.push(limit);
+    paramIndex++;
+  }
+
+  if (offset !== undefined) {
+    sql += ` OFFSET $${String(paramIndex)}`;
+    params.push(offset);
+  }
+
+  const result = await query<DocumentVersionRow>(sql, params);
+
+  return result.rows.map(mapRowToDocumentVersion);
+}
+
+/**
+ * Retrieves a specific version of a document by version number.
+ *
+ * @param documentId - The document ID
+ * @param branchId - The branch ID
+ * @param versionNumber - The version number
+ * @returns The document version or null if not found
+ */
+export async function getDocumentVersionByNumber(
+  documentId: string,
+  branchId: string,
+  versionNumber: number,
+): Promise<DocumentVersion | null> {
+  const result = await query<DocumentVersionRow>(
+    `SELECT * FROM app.document_versions
+     WHERE document_id = $1 AND branch_id = $2 AND version_number = $3`,
+    [documentId, branchId, versionNumber],
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return mapRowToDocumentVersion(getFirstRow(result.rows));
+}
+
+// =============================================================================
+// Version Snapshot Reconstruction
+// =============================================================================
+
+/**
+ * Reconstructs the full snapshot for a given version by finding the nearest
+ * baseline (a version with a non-null snapshot) and applying all intermediate
+ * RFC 6902 JSON patches forward.
+ *
+ * @param documentId - The document ID
+ * @param branchId - The branch ID
+ * @param versionNumber - The version number to reconstruct
+ * @returns The reconstructed snapshot, or null if the version or baseline is not found
+ */
+export async function reconstructVersionSnapshot(
+  documentId: string,
+  branchId: string,
+  versionNumber: number,
+): Promise<Record<string, unknown> | null> {
+  // 1. Get the requested version
+  const version = await getDocumentVersionByNumber(documentId, branchId, versionNumber);
+  if (!version) return null;
+
+  // If it's a baseline (has snapshot), return directly
+  if (version.snapshot) return version.snapshot;
+
+  // 2. Find nearest baseline at or before this version
+  const baselineResult = await query<DocumentVersionRow>(
+    `SELECT * FROM app.document_versions
+     WHERE document_id = $1 AND branch_id = $2 AND version_number <= $3 AND snapshot IS NOT NULL
+     ORDER BY version_number DESC LIMIT 1`,
+    [documentId, branchId, versionNumber],
+  );
+
+  const baseline = baselineResult.rows[0];
+  if (!baseline?.snapshot) return null;
+
+  // 3. Load all diff versions between baseline and requested version (exclusive baseline, inclusive target)
+  const diffsResult = await query<DocumentVersionRow>(
+    `SELECT * FROM app.document_versions
+     WHERE document_id = $1 AND branch_id = $2
+       AND version_number > $3 AND version_number <= $4
+     ORDER BY version_number ASC`,
+    [documentId, branchId, baseline.version_number, versionNumber],
+  );
+
+  // 4. Apply patches forward — each version's patch is the forward diff from its predecessor
+  let snapshot: Record<string, unknown> = typeof baseline.snapshot === 'string'
+    ? JSON.parse(baseline.snapshot) as Record<string, unknown>
+    : structuredClone(baseline.snapshot);
+  for (const diffRow of diffsResult.rows) {
+    // Every row above the baseline has a null snapshot by construction, so one
+    // without a patch cannot be rebuilt. Skipping it would return the content
+    // of an older version under the requested version's number.
+    if (!diffRow.patch) {
+      throw new VersionReconstructionError(
+        documentId,
+        branchId,
+        versionNumber,
+        diffRow.version_number,
+      );
+    }
+    const ops = typeof diffRow.patch === 'string'
+      ? JSON.parse(diffRow.patch) as import('fast-json-patch').Operation[]
+      : diffRow.patch;
+    const patchResult = applyPatch(snapshot, ops, false, false);
+    snapshot = patchResult.newDocument;
+  }
+
+  return snapshot;
+}
+
+// =============================================================================
+// Phase 5.2: Batch Sync (for future Queue consumer use)
+// =============================================================================
+
+/**
+ * Payload for a single item in a batch sync operation.
+ */
+export interface BatchSyncPayload {
+  documentId: string;
+  branchId: string;
+  snapshot: Record<string, unknown>;
+  actorId: string;
+  actorType: 'user' | 'agent';
+  /** Verified email of the actor (PCC-3457) — enables JIT user provisioning for OAuth subjects */
+  actorEmail?: string;
+  /** Verified display name of the actor (PCC-3457) */
+  actorName?: string;
+  patch?: unknown[]; // RFC 6902 JSON Patch operations
+  actionType?: string; // Puck action type
+  actionMetadata?: Record<string, unknown>; // Puck action context
+  puckActions?: PuckAction[]; // Puck actions forwarded from the frontend
+}
+
+/**
+ * Result of a batch sync operation.
+ */
+export interface BatchSyncResult {
+  /** Document versions that were successfully inserted */
+  inserted: DocumentVersion[];
+  /** Number of items that were skipped due to deduplication */
+  skippedCount: number;
+  /**
+   * Payloads excluded because their actor could not be resolved to a users
+   * row (PCC-3457). Always present; empty when every actor resolved. An
+   * unresolvable actor skips ONLY its own payload — it never fails the batch.
+   */
+  unresolved: { documentId: string; branchId: string; actorId: string; reason: string }[];
+}
+
+// =============================================================================
+// Copy-on-Write Fallback
+// =============================================================================
+
+/**
+ * Result of getting a document version with copy-on-write fallback.
+ */
+export interface DocumentVersionWithFallback {
+  version: DocumentVersion;
+  inherited: boolean;
+}
+
+/**
+ * Gets the latest document version on a branch, falling back to the latest
+ * published version on main if no version exists on the branch.
+ *
+ * This implements copy-on-write semantics: non-main branches inherit
+ * published content from main until they create their own versions.
+ *
+ * @param documentId - The document ID
+ * @param branchId - The branch ID to check first
+ * @param mainBranchId - The main branch ID for fallback
+ * @returns The document version with inheritance flag, or null if not found
+ */
+export async function getLatestDocumentVersionWithFallback(
+  documentId: string,
+  branchId: string,
+  mainBranchId: string,
+): Promise<DocumentVersionWithFallback | null> {
+  // 1. Try getting latest version on the branch
+  const branchVersion = await getLatestDocumentVersion(documentId, branchId);
+  if (branchVersion !== null) {
+    return { version: branchVersion, inherited: false };
+  }
+
+  // 2. If branch IS main, no fallback — return null
+  if (branchId === mainBranchId) {
+    return null;
+  }
+
+  // 3. Fall back to latest published version on main
+  const mainVersion = await getLatestPublishedDocumentVersion(documentId, mainBranchId);
+  if (mainVersion !== null) {
+    return { version: mainVersion, inherited: true };
+  }
+
+  return null;
+}
+
+/**
+ * Gets the latest template version on a branch, falling back to the latest
+ * version on main if the branch has none.
+ *
+ * Templates are served at their latest version on main with no publish gate, so
+ * a branch inherits main's latest template version — not its latest published
+ * one, unlike page content ({@link getLatestDocumentVersionWithFallback}).
+ *
+ * A tombstoned latest version means the template is deleted and returns null. A
+ * branch-local tombstone does not fall through to main: deleting a template on a
+ * branch removes it there rather than resurrecting main's copy.
+ *
+ * @param templateId - The template document ID
+ * @param branchId - The branch ID to check first
+ * @param mainBranchId - The main branch ID for fallback
+ * @returns The template version with inheritance flag, or null if deleted or not found
+ */
+export async function getLatestTemplateVersionWithFallback(
+  templateId: string,
+  branchId: string,
+  mainBranchId: string,
+): Promise<DocumentVersionWithFallback | null> {
+  const branchVersion = await getLatestDocumentVersion(templateId, branchId);
+  if (branchVersion !== null) {
+    return branchVersion.isTombstone === true
+      ? null
+      : { version: branchVersion, inherited: false };
+  }
+
+  if (branchId === mainBranchId) {
+    return null;
+  }
+
+  const mainVersion = await getLatestDocumentVersion(templateId, mainBranchId);
+  if (mainVersion !== null && mainVersion.isTombstone !== true) {
+    return { version: mainVersion, inherited: true };
+  }
+
+  return null;
+}
+
+/**
+ * Batch sync multiple document versions to PostgreSQL in a single query (Phase 5.2).
+ *
+ * Designed for future Queue consumer use (Phase 5.1) where batches of up to
+ * 100 sync messages are processed together. Each item in the batch gets its
+ * own dedup check via a CTE that compares against the latest snapshot for
+ * each (document_id, branch_id) pair.
+ *
+ * @param payloads - Array of sync payloads to insert
+ * @returns Result with inserted versions and skipped count
+ */
+export async function batchSyncToPostgres(
+  payloads: BatchSyncPayload[],
+): Promise<BatchSyncResult> {
+  if (payloads.length === 0) {
+    return { inserted: [], skippedCount: 0, unresolved: [] };
+  }
+
+  // PCC-3457: resolve actor identities FIRST — OAuth subjects (`auth0|…`)
+  // must never reach the uuid created_by_id cast below. An unresolvable
+  // actor excludes ONLY its own payload; the rest of the batch persists.
+  // uuid actorIds resolve without any database queries.
+  const resolveActor = createActorResolver();
+  const resolvedPayloads: BatchSyncPayload[] = [];
+  const unresolved: BatchSyncResult['unresolved'] = [];
+  for (const payload of payloads) {
+    const resolution = await resolveActor(payload);
+    if (resolution.resolved) {
+      resolvedPayloads.push(
+        resolution.actorId === payload.actorId
+          ? payload
+          : { ...payload, actorId: resolution.actorId },
+      );
+    } else {
+      unresolved.push({
+        documentId: payload.documentId,
+        branchId: payload.branchId,
+        actorId: payload.actorId,
+        reason: resolution.reason,
+      });
+      console.error(
+        `PCC-3457: skipping sync payload for document ${payload.documentId} `
+        + `on branch ${payload.branchId} — unresolvable actor "${payload.actorId}" `
+        + `(${resolution.reason})`,
+      );
+    }
+  }
+
+  if (resolvedPayloads.length === 0) {
+    return { inserted: [], skippedCount: 0, unresolved };
+  }
+
+  // Build arrays for each column to use with unnest()
+  const documentIds: string[] = [];
+  const branchIds: string[] = [];
+  const snapshots: (Record<string, unknown>)[] = [];
+  const actorIds: string[] = [];
+  const actorTypes: string[] = [];
+  const actionTypes: (string | null)[] = [];
+  const actionMetadatas: (Record<string, unknown> | null)[] = [];
+
+  for (const payload of resolvedPayloads) {
+    documentIds.push(payload.documentId);
+    branchIds.push(payload.branchId);
+    snapshots.push(enforceUniqueSlotIds(payload.documentId, payload.snapshot));
+    actorIds.push(payload.actorId);
+    actorTypes.push(payload.actorType);
+
+    // Classify change using puckActions if available, fallback to explicit values
+    if (payload.puckActions && payload.puckActions.length > 0) {
+      const classified = classifyChange(undefined, payload.puckActions);
+      actionTypes.push(classified.actionType ?? null);
+      actionMetadatas.push(classified.actionMetadata ?? null);
+    } else {
+      actionTypes.push(payload.actionType ?? null);
+      actionMetadatas.push(payload.actionMetadata ?? null);
+    }
+  }
+
+  // Bind the raw object arrays to the jsonb[] params directly. postgres.js's
+  // jsonb[] encoder serializes each element itself, so pre-stringifying here
+  // would double-encode: Postgres would store a jsonb string scalar of escaped
+  // JSON rather than the object.
+  const snapshotsJson = snapshots;
+  const actionMetadatasJson = actionMetadatas;
+
+  // Use a CTE-based approach: for each input row, check if the latest snapshot
+  // matches. If it does, skip the insert (dedup). Otherwise, compute the next
+  // version number and insert as a baseline (full snapshot).
+  const result = await query<DocumentVersionRow>(
+    `WITH input_rows AS (
+      SELECT
+        unnest($1::uuid[]) AS document_id,
+        unnest($2::uuid[]) AS branch_id,
+        unnest($3::jsonb[]) AS snapshot,
+        unnest($4::uuid[]) AS actor_id,
+        unnest($5::text[]) AS actor_type,
+        unnest($6::text[]) AS action_type,
+        unnest($7::jsonb[]) AS action_metadata
+    ),
+    deduped AS (
+      SELECT ir.*
+      FROM input_rows ir
+      LEFT JOIN LATERAL (
+        SELECT snapshot FROM app.document_versions
+        WHERE document_id = ir.document_id AND branch_id = ir.branch_id
+        ORDER BY version_number DESC LIMIT 1
+      ) latest ON true
+      WHERE latest.snapshot IS DISTINCT FROM ir.snapshot
+    )
+    INSERT INTO app.document_versions (
+      document_id, branch_id, version_number, snapshot,
+      action_type, action_metadata,
+      source, created_by_id, created_by_type
+    )
+    SELECT
+      d.document_id,
+      d.branch_id,
+      COALESCE(
+        (SELECT MAX(version_number) FROM app.document_versions
+         WHERE document_id = d.document_id AND branch_id = d.branch_id),
+        0
+      ) + ROW_NUMBER() OVER (
+        PARTITION BY d.document_id, d.branch_id
+        ORDER BY d.document_id
+      ),
+      d.snapshot,
+      d.action_type,
+      d.action_metadata,
+      'realtime',
+      d.actor_id,
+      d.actor_type
+    FROM deduped d
+    RETURNING *`,
+    [documentIds, branchIds, snapshotsJson, actorIds, actorTypes, actionTypes, actionMetadatasJson],
+  );
+
+  const inserted = result.rows.map(mapRowToDocumentVersion);
+
+  // Post-insert: compute forward diffs and convert previous versions.
+  // For each inserted version:
+  // 1. Compute forward patch from previous version's snapshot → this version's snapshot
+  // 2. Store the forward patch on THIS version (patch = how to get from prev to this)
+  // 3. Null previous version's snapshot (unless it's v1, the permanent baseline)
+  for (const insertedVersion of inserted) {
+    try {
+      const prevResult = await query<DocumentVersionRow>(
+        `SELECT * FROM app.document_versions
+         WHERE document_id = $1 AND branch_id = $2 AND version_number = $3`,
+        [insertedVersion.documentId, insertedVersion.branchId, insertedVersion.versionNumber - 1],
+      );
+      const prevRow = prevResult.rows[0];
+      if (prevRow?.snapshot != null && insertedVersion.snapshot != null) {
+        const patchOps = jsonPatchCompare(
+          prevRow.snapshot,
+          insertedVersion.snapshot,
+        );
+        if (patchOps.length > 0) {
+          // Store forward patch on the NEW version, null previous snapshot atomically.
+          // The previous row keeps its snapshot unless it carries a patch of its
+          // own to rebuild from.
+          const shouldNullPrev = prevRow.version_number > 1 && prevRow.patch != null;
+          await query(
+            `WITH update_new AS (
+              UPDATE app.document_versions SET patch = $1 WHERE id = $2
+            )
+            UPDATE app.document_versions SET snapshot = NULL
+            WHERE id = $3 AND $4::boolean = true AND patch IS NOT NULL`,
+            [
+              JSON.stringify(patchOps),
+              insertedVersion.id,
+              prevRow.id,
+              shouldNullPrev,
+            ],
+          );
+        }
+      }
+    } catch (diffError) {
+      // If diff conversion fails, both versions keep full snapshots — no data loss
+      console.warn('batchSync: failed to convert previous version to diff:', diffError);
+    }
+  }
+
+  return {
+    inserted,
+    skippedCount: resolvedPayloads.length - inserted.length,
+    unresolved,
+  };
+}
+
+// =============================================================================
+// Version Restore
+// =============================================================================
+
+export interface RestoreDocumentVersionParams {
+  documentId: string;
+  branchId: string;
+  /** ID of the version to restore from. */
+  versionId: string;
+  createdById: string;
+  createdByType: 'user' | 'agent' | 'system';
+}
+
+/**
+ * Restore a document to a previous version by creating a new version that
+ * copies the snapshot of the target version, with source='revert' and
+ * source_version_id pointing to the origin.
+ *
+ * Single-document scoped — does not affect other documents on the branch.
+ */
+export async function restoreDocumentVersion(
+  params: RestoreDocumentVersionParams,
+): Promise<DocumentVersion> {
+  const { documentId, branchId, versionId, createdById, createdByType } = params;
+
+  const target = await getDocumentVersion(versionId);
+
+  if (target?.documentId !== documentId || target.branchId !== branchId) {
+    throw new RestoreVersionNotFoundError(versionId);
+  }
+
+  // Tombstone versions represent deletion events and carry no restorable content.
+  if (target.isTombstone === true) {
+    throw new RestoreVersionNotFoundError(versionId);
+  }
+
+  let snapshot: Record<string, unknown> | null | undefined = target.snapshot;
+  if (snapshot == null) {
+    snapshot = await reconstructVersionSnapshot(documentId, branchId, target.versionNumber);
+    if (snapshot == null) {
+      throw new RestoreVersionNotFoundError(versionId);
+    }
+  }
+
+  const newVersion = await createDocumentVersion({
+    documentId,
+    branchId,
+    snapshot,
+    source: 'revert',
+    sourceVersionId: versionId,
+    createdById,
+    createdByType,
+    skipDuplicateCheck: true,
+    skipCompaction: true,
+  });
+
+  // Guard against the unique-violation fallback in createDocumentVersion silently
+  // returning a pre-existing version instead of the newly created restore version.
+  if (newVersion.sourceVersionId !== versionId || newVersion.source !== 'revert') {
+    throw new DatabaseError('Concurrent write conflict during restore', 'restoreDocumentVersion');
+  }
+
+  return newVersion;
+}

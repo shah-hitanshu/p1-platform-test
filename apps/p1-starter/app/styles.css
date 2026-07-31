@@ -1,0 +1,35 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Scoped via :has() rather than a bare `body {...}` selector so this reset
+   stays out of Puck's canvas-preview iframe (PCC-3499 / PCC-3513).
+   Puck's collectStyles() copies every parent <style>/<link> into the canvas
+   iframe verbatim (querySelectorAll('style, link[rel="stylesheet"]'), no
+   exclusion API) — so a bare `body {...}` rule here would also match inside
+   the iframe and can override the canvas's own design-token-based body
+   styling (e.g. `color: var(--color-text-inherited); background:
+   var(--color-surface);`), as seen on the Teamworks dev site.
+   A class on <body> itself doesn't help: Puck's CopyHostStyles syncs this
+   document's <body> attributes (including class) onto the iframe's own
+   <body>, so `body.some-class` would still match there too. `.p1-app-shell`
+   (see app/layout.tsx) is a *child* of <body> instead — attributes aren't
+   synced onto descendants, and Puck's canvas iframe never renders this
+   layout's tree at all (only the Puck root/block tree, into its own
+   #frame-root) — so `body:has(> .p1-app-shell)` matches on every real
+   page/editor render but never inside the canvas iframe. */
+body:has(> .p1-app-shell) {
+  margin: 0;
+}
+
+/* Prevent Tailwind's preflight from blowing up Puck's sidebar/UI icons.
+   Puck's SVG icons rely on their inline width/height attributes;
+   Tailwind's preflight sets svg { display: block } which makes them fill their container. */
+[class*="_Drawer"] svg,
+[class*="_ComponentList"] svg,
+[class*="_ActionBar"] svg,
+[class*="_DraggableComponent"] svg,
+[class*="_SidebarSection"] svg,
+[class*="_Puck"] svg {
+  display: inline-block;
+  vertical-align: middle;
+}

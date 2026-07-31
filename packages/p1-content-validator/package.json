@@ -1,0 +1,45 @@
+{
+  "name": "@pantheon-systems/p1-content-validator",
+  "version": "2.0.0",
+  "description": "Validates Puck component edit operations against the CSS component registry",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pantheon-systems/collaborative-state-system.git",
+    "directory": "packages/p1-content-validator"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests"
+  },
+  "devDependencies": {
+    "@pantheon-systems/eslint-config": "workspace:*",
+    "eslint": "^9.27.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "provenance": false
+  },
+  "license": "MIT"
+}

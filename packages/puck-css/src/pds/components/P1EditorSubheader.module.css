@@ -1,0 +1,113 @@
+/* ── Outer shell ─────────────────────────────────────────────────────── */
+
+.subheader {
+  height: 48px;
+  background: var(--pds-color-bg-default, oklch(1 0 0));
+  border-top: 1px solid oklch(0.96 0 0); /* borderSubtle */
+  border-bottom: 1px solid oklch(0.96 0 0); /* borderSubtle */
+  display: flex;
+  align-items: center;
+  padding: 0 var(--pds-spacing-m, 1rem);
+  gap: var(--pds-spacing-m, 1rem);
+  flex-shrink: 0;
+}
+
+/* ── Panel toggles group ─────────────────────────────────────────────── */
+
+.panelToggles {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* ── History (undo/redo) group ───────────────────────────────────────── */
+
+.historyGroup {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Undo/redo size ──────────────────────────────────────────────────── */
+
+.historyGroup :global(.pds-icon-button) {
+  --icon-button-size: 1.5rem;
+  --icon-button-padding: 0.25rem;
+}
+
+/* ── Spacer ──────────────────────────────────────────────────────────── */
+
+.spacer {
+  flex: 1;
+}
+
+/* ── Divider ─────────────────────────────────────────────────────────── */
+
+.divider {
+  width: 1px;
+  height: 1.25rem;
+  background: var(--pds-color-border-default, oklch(0.9 0 0));
+  flex-shrink: 0;
+}
+
+/* ── Actors area (agents + presence) — scrollable on overflow ────────── */
+/* flex-shrink allows the spacer to collapse first, then this area scrolls
+   horizontally, keeping the divider and PublishControl always visible. */
+
+.actorsArea {
+  display: flex;
+  align-items: center;
+  gap: var(--pds-spacing-xs, 0.5rem);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 1;
+}
+
+.actorsArea::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Right panel toggle rotation ─────────────────────────────────────── */
+
+.rightPanelToggle :global(.pds-icon) {
+  transform: rotate(180deg);
+}
+
+/* ── Workstream + Publish button group ────────────────────────────────── */
+
+.workstreamPublishGroup {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Remove rounded corners and right border on workstream switcher when grouped.
+ * Match by attribute substring rather than a fixed CSS-module hash so the rule
+ * survives rebuilds (the hash changes between build tools, e.g. vbDGzq -> qeUOEG). */
+.workstreamPublishGroup
+  :global([class*='WorkstreamSwitcher-module'][class*='__trigger']) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+}
+
+/* Remove rounded corners on the left side of publish button when grouped */
+.workstreamPublishGroup :global(.pds-split-button),
+.workstreamPublishGroup :global(.pds-button) {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+/* ── Compact mobile layout (< 768px) ────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .subheader {
+    padding: 0 var(--pds-spacing-xs, 0.5rem);
+    gap: var(--pds-spacing-xs, 0.5rem);
+  }
+
+  .panelToggles {
+    display: none;
+  }
+}

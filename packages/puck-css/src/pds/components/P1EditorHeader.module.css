@@ -1,0 +1,297 @@
+/**
+ * P1EditorHeader — CSS Module
+ *
+ * Translates all inline styles from the prototype's HeaderBar component
+ * into named CSS classes. All values use var(--pds-*) with oklch/literal
+ * fallbacks drawn from the prototype's `c` and `t` objects.
+ */
+
+/* ── Outer shell ──────────────────────────────────────────────────────── */
+
+.header {
+  height: 52px;
+  background: var(--pds-color-bg-default, oklch(1 0 0));
+  border-bottom: 1px solid oklch(0.96 0 0); /* c.borderSubtle — no direct token */
+  display: flex;
+  align-items: center;
+  padding: 0 var(--pds-spacing-m, 1rem);
+  gap: var(--pds-spacing-m, 1rem);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 20;
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+}
+
+/* ── Left section: logo + divider + WorkstreamSwitcher + compare ──────── */
+
+.left {
+  display: flex;
+  align-items: center;
+  gap: 0.64rem;
+}
+
+/* ── Logo ─────────────────────────────────────────────────────────────── */
+/* Uses PDSv1 PantheonLogo displayType="sub-brand" subBrand="P1".
+   The PDS component defaults to 3.052rem icon height; we scale it down
+   to fit the compact 52px editor header. */
+
+.logoLink {
+  flex-shrink: 0;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  transition: opacity 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.logoLink:hover {
+  opacity: 0.7;
+}
+
+/* When no href (no siteId configured), suppress interactive affordances */
+.logoLink:not([href]),
+.logoLink:not([href]) .logo {
+  cursor: default;
+}
+
+.logoLink:not([href]):hover {
+  opacity: 1;
+}
+
+.logoLink .logo {
+  cursor: pointer;
+}
+
+.logo {
+  flex-shrink: 0;
+  user-select: none;
+  cursor: default;
+}
+
+/* Scale the Pantheon bolt icon to compact header size */
+.logo svg,
+img.logo {
+  height: 1.563rem;
+  width: auto;
+}
+
+/* Scale sub-brand wordmark to match compact proportions */
+.logo :global(.pds-pantheon-logo__sub-brand-wordmark) {
+  font-size: 1.2rem;
+  padding-inline-end: 0;
+}
+
+.logoLinkSaving {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: progress;
+}
+
+/* ── Site label ───────────────────────────────────────────── */
+
+.siteLabel {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  font-weight: var(--pds-typography-fw-medium, 500);
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  white-space: nowrap;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* ── Vertical divider between site selector and workstream switcher ── */
+/* Prototype: <div style={{ width: 1, height: 20, background: c.borderSubtle }} /> */
+
+.divider {
+  width: 1px;
+  height: 20px;
+  background: oklch(0.8853 0 0);
+  flex-shrink: 0;
+}
+
+/* ── Center section: page selector ──────────────────────────────────── */
+
+.center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  position: relative;
+}
+
+/* ── Page selector button group ────────────────────────────────────────────── */
+
+.pageSelectorGroup {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* ── Page selector button ────────────────────────────────────────────── */
+/* Mirrors the WorkstreamSwitcher trigger styling */
+
+.pageSelector {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pds-spacing-2xs, 0.5rem);
+  height: 2rem;
+  padding: 0.5rem 0.64rem;
+  background: transparent;
+  border: 1px solid var(--pds-color-border-input, oklch(0.8853 0 0));
+  border-radius: var(--pds-border-radius-button, 3.5rem);
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  font-weight: var(--pds-typography-fw-medium, 500);
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  cursor: pointer;
+  line-height: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    background 0.2s cubic-bezier(0.2, 0, 0, 1),
+    border-color 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.pageSelector:hover,
+.pageSelector[aria-expanded='true'] {
+  background: oklch(0.96 0 0); /* bgSubtle */
+  border-color: oklch(0.75 0 0); /* borderStrong */
+}
+
+/* When external link button follows page selector, create button group */
+.pageSelector:has(+ .externalLinkButton) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* ── External link button ──────────────────────────────────────────────── */
+
+.externalLinkButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0.5rem;
+  background: transparent;
+  border: 1px solid var(--pds-color-border-input, oklch(0.8853 0 0));
+  border-radius: var(--pds-border-radius-button, 3.5rem);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background 0.2s cubic-bezier(0.2, 0, 0, 1),
+    border-color 0.2s cubic-bezier(0.2, 0, 0, 1);
+  flex-shrink: 0;
+  margin-left: -1px;
+}
+
+.externalLinkButton:hover {
+  background: oklch(0.96 0 0); /* bgSubtle */
+  border-color: oklch(0.75 0 0); /* borderStrong */
+  position: relative;
+  z-index: 1; /* Bring to front on hover so border is visible */
+}
+
+/* ── Spacer ──────────────────────────────────────────────────────────── */
+
+.spacer {
+  flex: 1;
+}
+
+/* ── User avatar ────────────────────────────────────────────────────── */
+
+.userAvatar {
+  flex-shrink: 0;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 50%;
+}
+
+/* ── Dropdown menus (site selector + user account) ─────────────────── */
+
+.dropdownMenu {
+  min-width: 180px;
+  background: var(--pds-color-bg-default, oklch(1 0 0));
+  border: 1px solid var(--pds-color-border-default, oklch(0.9401 0 0));
+  border-radius: var(--pds-border-radius-container, 0.375rem);
+  box-shadow: var(
+    --pds-elevation-overlay,
+    0px 0px 0px 1px rgba(0, 0, 0, 0.08),
+    0px 1px 1px 0px rgba(0, 0, 0, 0.02),
+    0px 8px 16px -4px rgba(0, 0, 0, 0.04),
+    0px 24px 32px -8px rgba(0, 0, 0, 0.06)
+  );
+  padding: 0.41rem;
+}
+
+.dropdownUserInfo {
+  padding: 0.512rem 0.64rem;
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  font-weight: var(--pds-typography-fw-medium, 500);
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  border-bottom: 1px solid var(--pds-color-border-default, oklch(0.9401 0 0));
+  margin-bottom: 0.25rem;
+}
+
+.dropdownMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 0.512rem;
+  width: 100%;
+  padding: 0.512rem 0.64rem;
+  background: transparent;
+  border: none;
+  border-radius: var(--pds-border-radius-default, 0.188rem);
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  cursor: pointer;
+  text-align: left;
+}
+
+.dropdownMenuItem:hover {
+  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+}
+
+/* ── Responsive label text ──────────────────────────────────────────── */
+/* Wraps text + trailing chevron in site/page selectors; hidden on mobile */
+
+.labelText {
+  display: contents;
+}
+
+/* ── Compare with Live wrapper ──────────────────────────────────────── */
+
+.compareButton {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ── Compact mobile layout (< 768px) ────────────────────────────────── */
+/* At mobile widths: icon-only selectors, no Compare button, tighter spacing */
+
+@media (max-width: 767px) {
+  .header {
+    padding: 0 var(--pds-spacing-xs, 0.5rem);
+    gap: var(--pds-spacing-xs, 0.5rem);
+  }
+
+  .labelText {
+    display: none;
+  }
+
+  .compareButton {
+    display: none;
+  }
+}

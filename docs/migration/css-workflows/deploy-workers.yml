@@ -1,0 +1,157 @@
+name: Deploy Workers
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - staging
+          - sbx1
+          - production
+      run_migrations:
+        description: "Run DB migrations before deploy"
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: "Dry run (no actual deploy)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Authenticate to GCP
+        uses: pantheon-systems/common-gh/auth-wif@0a1dafc525b4ffa9fcfbfcf1c889dc0251c0c4e4 # main @ 2026-06
+        with:
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Fetch secrets
+        id: secrets
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+        with:
+          secrets: |-
+            cf_token:${{ vars.GCP_PROJECT_ID }}/P1_CF_DEPLOY_TOKEN
+            auth0_client_secret:${{ vars.GCP_PROJECT_ID }}/CCR_BACKEND_AUTH0_CLIENT_SECRET
+
+      - name: Start Cloud SQL Auth Proxy
+        if: inputs.run_migrations
+        run: |
+          URL="https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.21.2"
+          curl "$URL/cloud-sql-proxy.linux.amd64" -o cloud-sql-proxy
+          chmod +x cloud-sql-proxy
+          ./cloud-sql-proxy --port 5432 --auto-iam-authn "${{ vars.CLOUDSQL_INSTANCE_CONNECTION_NAME }}" &
+          for _ in $(seq 1 30); do
+            (echo > /dev/tcp/localhost/5432) >/dev/null 2>&1 && break
+            sleep 1
+          done
+
+      - name: Run migrations
+        if: inputs.run_migrations
+        env:
+          POSTGRES_SET_ROLE: cssuser
+        run: |
+          SA='${{ vars.GCP_SERVICE_ACCOUNT }}'
+          IAM_USER="${SA%.gserviceaccount.com}"
+          ENC_USER="${IAM_USER//@/%40}" # @ must be percent-encoded in the URI userinfo
+          export POSTGRES_CONNECTION_STRING="postgresql://${ENC_USER}@localhost:5432/${{ vars.CLOUDSQL_DB_NAME }}"
+          pnpm --filter collaborative-state-worker db:migrate
+
+      - name: Set Wrangler secrets
+        if: ${{ !inputs.dry_run }}
+        working-directory: workers
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          AUTH0_CLIENT_SECRET: ${{ steps.secrets.outputs.auth0_client_secret }}
+          DEPLOY_ENV: ${{ inputs.environment }}
+        run: |
+          printf '%s' "$AUTH0_CLIENT_SECRET" | pnpm exec wrangler secret put AUTH0_CLIENT_SECRET --env "$DEPLOY_ENV"
+
+      - name: Deploy
+        run: >
+          pnpm exec wrangler deploy
+          --env ${{ inputs.environment }}
+          ${{ inputs.dry_run && '--dry-run' || '' }}
+        working-directory: workers
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+  mcp-server:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build p1-content-validator
+        run: pnpm --filter @pantheon-systems/p1-content-validator build
+
+      - name: Authenticate to GCP
+        uses: pantheon-systems/common-gh/auth-wif@0a1dafc525b4ffa9fcfbfcf1c889dc0251c0c4e4 # main @ 2026-06
+        with:
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Fetch secrets
+        id: secrets
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+        with:
+          secrets: |-
+            cf_token:${{ vars.GCP_PROJECT_ID }}/P1_CF_DEPLOY_TOKEN
+            auth0_client_secret:${{ vars.GCP_PROJECT_ID }}/CCR_MCP_AUTH0_CLIENT_SECRET
+            state_signing_secret:${{ vars.GCP_PROJECT_ID }}/CCR_MCP_STATE_SIGNING_SECRET
+
+      - name: Set Wrangler secrets
+        if: ${{ !inputs.dry_run }}
+        working-directory: workers/mcp-server
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          AUTH0_CLIENT_SECRET: ${{ steps.secrets.outputs.auth0_client_secret }}
+          MCP_STATE_SIGNING_SECRET: ${{ steps.secrets.outputs.state_signing_secret }}
+          DEPLOY_ENV: ${{ inputs.environment }}
+        run: |
+          printf '%s' "$AUTH0_CLIENT_SECRET" | pnpm exec wrangler secret put AUTH0_CLIENT_SECRET --env "$DEPLOY_ENV"
+          printf '%s' "$MCP_STATE_SIGNING_SECRET" | pnpm exec wrangler secret put MCP_STATE_SIGNING_SECRET --env "$DEPLOY_ENV"
+
+      - name: Deploy
+        run: >
+          pnpm exec wrangler deploy
+          --env ${{ inputs.environment }}
+          ${{ inputs.dry_run && '--dry-run' || '' }}
+        working-directory: workers/mcp-server
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

@@ -1,0 +1,335 @@
+name: Deploy Workers
+
+# STAGED — inert until moved to .github/workflows/ in Phase 4.
+# Prerequisite: WIF binding for p1-platform (see workflows-staged/README.md).
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      run_migrations:
+        description: "Run CSS DB migrations before deploy"
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: "Dry run (no actual deploy)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+# Queue deploys per environment; never cancel one mid-flight.
+concurrency:
+  group: deploy-workers-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build worker dependencies
+        run: pnpm exec turbo run build --filter='collaborative-state-worker^...'
+
+      - name: Authenticate to GCP
+        uses: pantheon-systems/common-gh/auth-wif@0a1dafc525b4ffa9fcfbfcf1c889dc0251c0c4e4 # main @ 2026-06
+        with:
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Fetch secrets
+        id: secrets
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+        with:
+          secrets: |-
+            cf_token:${{ vars.GCP_PROJECT_ID }}/P1_CF_DEPLOY_TOKEN
+            auth0_client_secret:${{ vars.GCP_PROJECT_ID }}/CCR_BACKEND_AUTH0_CLIENT_SECRET
+
+      - name: Start Cloud SQL Auth Proxy
+        if: inputs.run_migrations
+        run: |
+          URL="https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.21.2"
+          curl "$URL/cloud-sql-proxy.linux.amd64" -o cloud-sql-proxy
+          chmod +x cloud-sql-proxy
+          ./cloud-sql-proxy --port 5432 --auto-iam-authn "${{ vars.CLOUDSQL_INSTANCE_CONNECTION_NAME }}" &
+          for _ in $(seq 1 30); do
+            (echo > /dev/tcp/localhost/5432) >/dev/null 2>&1 && break
+            sleep 1
+          done
+
+      - name: Run migrations
+        if: inputs.run_migrations
+        env:
+          POSTGRES_SET_ROLE: cssuser
+        run: |
+          SA='${{ vars.GCP_SERVICE_ACCOUNT }}'
+          IAM_USER="${SA%.gserviceaccount.com}"
+          ENC_USER="${IAM_USER//@/%40}" # @ must be percent-encoded in the URI userinfo
+          export POSTGRES_CONNECTION_STRING="postgresql://${ENC_USER}@localhost:5432/${{ vars.CLOUDSQL_DB_NAME }}"
+          pnpm --filter collaborative-state-worker db:migrate
+
+      - name: Set Wrangler secrets
+        if: ${{ !inputs.dry_run }}
+        working-directory: workers/collaborative-state
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          AUTH0_CLIENT_SECRET: ${{ steps.secrets.outputs.auth0_client_secret }}
+          DEPLOY_ENV: ${{ inputs.environment }}
+        run: |
+          printf '%s' "$AUTH0_CLIENT_SECRET" | pnpm exec wrangler secret put AUTH0_CLIENT_SECRET --env "$DEPLOY_ENV"
+
+      - name: Deploy
+        run: >
+          pnpm exec wrangler deploy
+          --env ${{ inputs.environment }}
+          ${{ inputs.dry_run && '--dry-run' || '' }}
+        working-directory: workers/collaborative-state
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+  mcp-server:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build worker dependencies
+        run: pnpm exec turbo run build --filter='css-mcp-server^...'
+
+      - name: Authenticate to GCP
+        uses: pantheon-systems/common-gh/auth-wif@0a1dafc525b4ffa9fcfbfcf1c889dc0251c0c4e4 # main @ 2026-06
+        with:
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Fetch secrets
+        id: secrets
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+        with:
+          secrets: |-
+            cf_token:${{ vars.GCP_PROJECT_ID }}/P1_CF_DEPLOY_TOKEN
+            auth0_client_secret:${{ vars.GCP_PROJECT_ID }}/CCR_MCP_AUTH0_CLIENT_SECRET
+            state_signing_secret:${{ vars.GCP_PROJECT_ID }}/CCR_MCP_STATE_SIGNING_SECRET
+
+      - name: Set Wrangler secrets
+        if: ${{ !inputs.dry_run }}
+        working-directory: workers/css-mcp-server
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          AUTH0_CLIENT_SECRET: ${{ steps.secrets.outputs.auth0_client_secret }}
+          MCP_STATE_SIGNING_SECRET: ${{ steps.secrets.outputs.state_signing_secret }}
+          DEPLOY_ENV: ${{ inputs.environment }}
+        run: |
+          printf '%s' "$AUTH0_CLIENT_SECRET" | pnpm exec wrangler secret put AUTH0_CLIENT_SECRET --env "$DEPLOY_ENV"
+          printf '%s' "$MCP_STATE_SIGNING_SECRET" | pnpm exec wrangler secret put MCP_STATE_SIGNING_SECRET --env "$DEPLOY_ENV"
+
+      - name: Deploy
+        run: >
+          pnpm exec wrangler deploy
+          --env ${{ inputs.environment }}
+          ${{ inputs.dry_run && '--dry-run' || '' }}
+        working-directory: workers/css-mcp-server
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+  frontend:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm --filter css-frontend build
+
+      - name: Authenticate to GCP
+        uses: pantheon-systems/common-gh/auth-wif@0a1dafc525b4ffa9fcfbfcf1c889dc0251c0c4e4 # main @ 2026-06
+        with:
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Fetch Cloudflare API token
+        id: secrets
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+        with:
+          secrets: |-
+            cf_token:${{ vars.GCP_PROJECT_ID }}/P1_CF_DEPLOY_TOKEN
+
+      - name: Deploy
+        run: >
+          pnpm exec wrangler deploy
+          --env ${{ inputs.environment }}
+          ${{ inputs.dry_run && '--dry-run' || '' }}
+        working-directory: apps/css-frontend
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+  # New in the monorepo: the agent worker's first CI deploy (was manual wrangler
+  # from a laptop). Its runtime secrets (CF_AIG_TOKEN, AGENT_ID, AGENT_API_KEY)
+  # are already attached to the deployed worker and persist across deploys —
+  # only the CF deploy token is fetched here. NOTE: the agent has no production
+  # env in wrangler.jsonc; selecting production for this job fails fast.
+  p1-agent:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build worker dependencies
+        run: pnpm exec turbo run build --filter='@p1/agent^...'
+
+      - name: Authenticate to GCP
+        uses: pantheon-systems/common-gh/auth-wif@0a1dafc525b4ffa9fcfbfcf1c889dc0251c0c4e4 # main @ 2026-06
+        with:
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Fetch Cloudflare API token
+        id: secrets
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+        with:
+          secrets: |-
+            cf_token:${{ vars.GCP_PROJECT_ID }}/P1_CF_DEPLOY_TOKEN
+
+      - name: Deploy
+        run: >
+          pnpm exec wrangler deploy
+          --env ${{ inputs.environment }}
+          ${{ inputs.dry_run && '--dry-run' || '' }}
+        working-directory: workers/p1-agent
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+  # Absorbed from p1-media-r2's deploy-worker.yml (sandbox lane removed).
+  p1-media:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Authenticate to GCP
+        uses: pantheon-systems/common-gh/auth-wif@0a1dafc525b4ffa9fcfbfcf1c889dc0251c0c4e4 # main @ 2026-06
+        with:
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Fetch Cloudflare API token
+        id: secrets
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+        with:
+          secrets: |-
+            cf_token:${{ vars.GCP_PROJECT_ID }}/P1_CF_DEPLOY_TOKEN
+
+      # R2 S3-API credentials for presigned-upload signing — pushed onto the
+      # WORKER ITSELF as persistent secrets (it signs presigned PUT URLs at
+      # request time), distinct from the ephemeral CF deploy token above.
+      - name: Fetch R2 API credentials
+        id: r2_secrets
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+        with:
+          secrets: |-
+            r2_access_key_id:${{ vars.GCP_PROJECT_ID }}/MEDIA_WORKER_R2_ACCESS_KEY_ID
+            r2_secret_access_key:${{ vars.GCP_PROJECT_ID }}/MEDIA_WORKER_R2_SECRET_ACCESS_KEY
+
+      # Additive-only D1 schema migrations; safe ahead of the new worker code.
+      # Requires the CF token to carry D1 edit scope.
+      - name: Apply D1 migrations
+        if: ${{ !inputs.dry_run }}
+        run: >
+          pnpm exec wrangler d1 migrations apply
+          "p1-media-${{ inputs.environment == 'production' && 'prod' || inputs.environment }}"
+          --env ${{ inputs.environment }}
+          --remote
+        working-directory: workers/p1-media
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Push R2 credentials to the Worker
+        if: ${{ !inputs.dry_run }}
+        run: |
+          echo -n "$R2_ACCESS_KEY_ID" | pnpm exec wrangler secret put R2_ACCESS_KEY_ID --env ${{ inputs.environment }}
+          echo -n "$R2_SECRET_ACCESS_KEY" | pnpm exec wrangler secret put R2_SECRET_ACCESS_KEY --env ${{ inputs.environment }}
+        working-directory: workers/p1-media
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ steps.r2_secrets.outputs.r2_access_key_id }}
+          R2_SECRET_ACCESS_KEY: ${{ steps.r2_secrets.outputs.r2_secret_access_key }}
+
+      - name: Deploy
+        run: >
+          pnpm exec wrangler deploy
+          --env ${{ inputs.environment }}
+          ${{ inputs.dry_run && '--dry-run' || '' }}
+        working-directory: workers/p1-media
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

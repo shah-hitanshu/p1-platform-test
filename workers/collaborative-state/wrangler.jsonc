@@ -1,0 +1,306 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/schemas/config.json",
+
+  // Worker identity - follows Pantheon naming convention
+  "name": "collaborative-state-worker",
+  "main": "src/index.ts",
+
+  // Treat .yaml files as raw text modules so they can be imported directly
+  // in TypeScript without a generated intermediate file.
+  "rules": [
+    { "type": "Text", "globs": ["**/*.yaml"] }
+  ],
+
+  // Compatibility settings
+  "compatibility_date": "2024-12-01",
+  "compatibility_flags": ["nodejs_compat"],
+  
+  // ==========================================================================
+  // Durable Objects Configuration
+  // Define class names here; bindings reference these classes
+  // Actual implementations will be added during application development
+  // ==========================================================================
+  "durable_objects": {
+    "bindings": [
+      // Document state management (collaborative editing)
+      { "name": "DOCUMENT_STATE", "class_name": "DocumentState" },
+      // User presence tracking (cursors, online status)
+      { "name": "PRESENCE", "class_name": "PresenceManager" },
+      // Session/auth management
+      { "name": "SESSION", "class_name": "SessionManager" },
+      // Broker OAuth transactions (strongly consistent)
+      { "name": "BROKER_TX", "class_name": "BrokerTransaction" }
+    ]
+  },
+  
+  // Durable Object migrations - required for production deployments
+  // Add new migrations when adding/renaming DO classes
+  //
+  // Migration path (Phase 2.1 - SQLite storage backend):
+  // v1: Create all DO classes with SQLite storage backend. This provides:
+  //     - Increased value size limit: 128 KiB (KV) → 2 MB (SQLite)
+  //     - Future use of ctx.storage.sql for structured queries
+  //     - Better transactional consistency
+  //     The KV API (ctx.storage.put/get) still works on SQLite-backed DOs,
+  //     so existing persist/restore code requires no changes.
+  //
+  // Note: For production environments with existing KV-backed DOs,
+  //     a delete-then-recreate migration sequence would be needed.
+  //     Since we haven't deployed to production yet, a single create suffices.
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["DocumentState", "PresenceManager", "SessionManager"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["BrokerTransaction"]
+    }
+  ],
+  
+  // ==========================================================================
+  // KV Namespaces - Used for caching and session storage
+  // For local development, we use preview_id to bypass the id requirement
+  // Production/sandbox environments specify actual KV namespace IDs
+  // ==========================================================================
+  "kv_namespaces": [
+    { "binding": "CONFIG_KV", "id": "local-config-kv", "preview_id": "local-config-kv-preview" },
+    { "binding": "SESSION_KV", "id": "local-session-kv", "preview_id": "local-session-kv-preview" }
+  ],
+  
+  // ==========================================================================
+  // Environment Variables (non-secret)
+  // Secrets go in .dev.vars (local) or Vault (production)
+  // ==========================================================================
+  "vars": {
+    "ENVIRONMENT": "local",
+    "LOG_LEVEL": "debug",
+    // CORS_ORIGINS is set in .dev.vars for local development
+    // Production environments set this in their respective env config below
+    "WEBSOCKET_HEARTBEAT_INTERVAL": "30000",
+    "DOCUMENT_SYNC_BATCH_SIZE": "50",
+    "PRESENCE_TTL_SECONDS": "120",
+    // Metrics configuration (disabled by default for local dev)
+    "METRICS_ENABLED": "false",
+    "APP_VERSION": "dev",
+    // Internal API for DO-to-PostgreSQL sync (Phase 1.3)
+    // INTERNAL_SECRET is set in .dev.vars (local) or secrets (production)
+    "INTERNAL_API_URL": "http://localhost:8787",
+    // GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET set in .dev.vars for local development
+    // INTERNAL_SECRET set in .dev.vars for local development
+    "R2_SCREENSHOTS_BUCKET": "css-screenshots",
+    "R2_BUNDLES_BUCKET": "ccr-bundles-local"
+  },
+
+  // ==========================================================================
+  // Local Development (Miniflare)
+  // ==========================================================================
+  "dev": {
+    "port": 8787,
+    "local_protocol": "http",
+    "ip": "0.0.0.0"
+  },
+
+  // ==========================================================================
+  // Queue Configuration (Phase 5.1: Queue-Based Sync Decoupling)
+  // Producers: Durable Objects send sync messages to the queue
+  // Consumers: Worker processes batches for PostgreSQL persistence
+  // ==========================================================================
+  "queues": {
+    "producers": [
+      { "binding": "SYNC_QUEUE", "queue": "css-sync-queue" },
+      { "binding": "SCREENSHOT_QUEUE", "queue": "css-screenshot-queue" }
+    ],
+    "consumers": [
+      { "queue": "css-sync-queue", "max_batch_size": 100, "max_batch_timeout": 30, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "css-sync-dlq" },
+      { "queue": "css-screenshot-queue", "max_batch_size": 5, "max_batch_timeout": 30 }
+    ]
+  },
+
+  // ==========================================================================
+  // R2 Buckets — site screenshots PNG storage
+  // ==========================================================================
+  "r2_buckets": [
+    { "binding": "R2_SCREENSHOTS", "bucket_name": "css-screenshots" },
+    { "binding": "R2_BUNDLES", "bucket_name": "ccr-bundles-local" }
+  ],
+
+  // ==========================================================================
+  // Cron Triggers — daily refresh of stale site screenshots
+  // ==========================================================================
+  "triggers": {
+    "crons": ["7 3 * * *"]
+  },
+
+  // Browser Rendering: CF_ACCOUNT_ID + CF_BROWSER_API_TOKEN secrets required per env.
+  // R2 presigning (GET /api/sites/{siteId}/screenshot): R2_ACCOUNT_ID,
+  // R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY secrets required per env.
+
+  // ==========================================================================
+  // Environment Overrides
+  // Deploy with: pnpm exec wrangler deploy --env <env>
+  // ==========================================================================
+  "env": {
+    // staging environment
+    "staging": {
+      "name": "collaborative-state-worker-staging",
+      "account_id": "69bc76f4866aaaa3400ea7fbbd9d7da2",
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "LOG_LEVEL": "info",
+        "CORS_ORIGINS": "*",
+        "METRICS_ENABLED": "true",
+        "PUBLIC_ORIGIN": "https://staging.ccr.p1.pantheon.io",
+        "INTERNAL_API_URL": "https://collaborative-state-worker-staging.pantheon-content-publisher.workers.dev",
+        "WEBSOCKET_HEARTBEAT_INTERVAL": "30000",
+        "DOCUMENT_SYNC_BATCH_SIZE": "50",
+        "PRESENCE_TTL_SECONDS": "120",
+        "APP_VERSION": "staging",
+        "R2_SCREENSHOTS_BUCKET": "css-screenshots-staging",
+        "R2_BUNDLES_BUCKET": "ccr-bundles-staging",
+        "AUTH0_ISSUER_BASE_URL": "https://auth-staging.pantheon.io",
+        "AUTH0_AUDIENCE": "https://staging.mcp.p1.pantheon.io,https://addonapi-cxog5ytt4a-uc.a.run.app",
+        "AUTH0_CLIENT_ID": "OSoPMpeflMnRL20yGgT7cbf8257edQBL",
+        "GCP_KMS_KEY_RESOURCE": "projects/pantheon-content-cloud-staging/locations/global/keyRings/p1-auth-broker/cryptoKeys/jwt-mac-signing",
+        "CF_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
+        "R2_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2"
+      },
+      "durable_objects": {
+        "bindings": [
+          { "name": "DOCUMENT_STATE", "class_name": "DocumentState" },
+          { "name": "PRESENCE", "class_name": "PresenceManager" },
+          { "name": "SESSION", "class_name": "SessionManager" },
+          { "name": "BROKER_TX", "class_name": "BrokerTransaction" }
+        ]
+      },
+      "migrations": [
+        {
+          "tag": "v1",
+          "deleted_classes": ["DocumentState", "PresenceManager", "SessionManager"]
+        },
+        {
+          "tag": "v2",
+          "new_sqlite_classes": ["DocumentState", "PresenceManager", "SessionManager"]
+        },
+        {
+          "tag": "v3",
+          "deleted_classes": ["BrokerTransaction"]
+        },
+        {
+          "tag": "v4",
+          "new_sqlite_classes": ["BrokerTransaction"]
+        }
+      ],
+      "kv_namespaces": [
+        { "binding": "CONFIG_KV", "id": "5c7138f8939e408e992d04355fb59429" },
+        { "binding": "SESSION_KV", "id": "222a92acfbca49beb6475b43d8092039" },
+      ],
+      "queues": {
+        "producers": [
+          { "binding": "SYNC_QUEUE", "queue": "css-sync-queue-staging" },
+          { "binding": "SCREENSHOT_QUEUE", "queue": "css-screenshot-queue-staging" }
+        ],
+        "consumers": [
+          { "queue": "css-sync-queue-staging", "max_batch_size": 100, "max_batch_timeout": 30, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "css-sync-dlq-staging" },
+          { "queue": "css-screenshot-queue-staging", "max_batch_size": 5, "max_batch_timeout": 30 }
+        ]
+      },
+      "r2_buckets": [
+        { "binding": "R2_SCREENSHOTS", "bucket_name": "css-screenshots-staging" },
+        { "binding": "R2_BUNDLES", "bucket_name": "ccr-bundles-staging" }
+      ],
+      "triggers": {
+        "crons": ["7 3 * * *"]
+      },
+      "hyperdrive": [
+        { "binding": "HYPERDRIVE", "id": "31d5f144f71148309aa4350e816f455f" }
+      ],
+      "observability": {
+          "logs": {
+            "enabled": true,
+            "invocation_logs": true
+          }
+        }
+    },
+
+    // Production environment
+    "production": {
+      "name": "collaborative-state-worker-production",
+      "vars": {
+        "ENVIRONMENT": "production",
+        "LOG_LEVEL": "warn",
+        "CORS_ORIGINS": "https://content.pantheon.io",
+        "METRICS_ENABLED": "true",
+        "PUBLIC_ORIGIN": "https://ccr.p1.pantheon.io",
+        "INTERNAL_API_URL": "https://collaborative-state-worker-production.pantheon-p1-production.workers.dev",
+        "WEBSOCKET_HEARTBEAT_INTERVAL": "30000",
+        "DOCUMENT_SYNC_BATCH_SIZE": "50",
+        "PRESENCE_TTL_SECONDS": "120",
+        "APP_VERSION": "production",
+        "R2_SCREENSHOTS_BUCKET": "css-screenshots-production",
+        "R2_BUNDLES_BUCKET": "ccr-bundles-production",
+        "AUTH0_ISSUER_BASE_URL": "https://pantheon.auth0.com",
+        "AUTH0_AUDIENCE": "https://mcp.p1.pantheon.io,https://addonapi-gfttxsojwq-uc.a.run.app",
+        "AUTH0_CLIENT_ID": "yNxUUz4hWpUgUJXvxmNg0tyqfxZrBo5E",
+        "GCP_KMS_KEY_RESOURCE": "projects/pantheon-content-cloud/locations/global/keyRings/p1-auth-broker/cryptoKeys/jwt-mac-signing",
+        "CF_ACCOUNT_ID": "c7357ecc2566ef9d5d555e40fccb3071",
+        "R2_ACCOUNT_ID": "c7357ecc2566ef9d5d555e40fccb3071"
+        // Genuine secrets (set out-of-band via `wrangler secret put --env production`,
+        // see README runbook): INTERNAL_SECRET, AUTH0_CLIENT_SECRET,
+        // MAS_GCP_SERVICE_ACCOUNT_KEY, CF_BROWSER_API_TOKEN, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
+      },
+      "durable_objects": {
+        "bindings": [
+          { "name": "DOCUMENT_STATE", "class_name": "DocumentState" },
+          { "name": "PRESENCE", "class_name": "PresenceManager" },
+          { "name": "SESSION", "class_name": "SessionManager" },
+          { "name": "BROKER_TX", "class_name": "BrokerTransaction" }
+        ]
+      },
+      "migrations": [
+        {
+          "tag": "v1",
+          "new_sqlite_classes": ["DocumentState", "PresenceManager", "SessionManager"]
+        },
+        {
+          "tag": "v2",
+          "new_sqlite_classes": ["BrokerTransaction"]
+        }
+      ],
+      "kv_namespaces": [
+        { "binding": "CONFIG_KV", "id": "a4c2726d648449f68de3437b78d0f580" },
+        { "binding": "SESSION_KV", "id": "abf50514ea5140ce8e083d01c1fd3546" },
+      ],
+      "queues": {
+        "producers": [
+          { "binding": "SYNC_QUEUE", "queue": "css-sync-queue-production" },
+          { "binding": "SCREENSHOT_QUEUE", "queue": "css-screenshot-queue-production" }
+        ],
+        "consumers": [
+          { "queue": "css-sync-queue-production", "max_batch_size": 100, "max_batch_timeout": 30, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "css-sync-dlq-production" },
+          { "queue": "css-screenshot-queue-production", "max_batch_size": 5, "max_batch_timeout": 30 }
+        ]
+      },
+      "r2_buckets": [
+        { "binding": "R2_SCREENSHOTS", "bucket_name": "css-screenshots-production" },
+        { "binding": "R2_BUNDLES", "bucket_name": "ccr-bundles-production" }
+      ],
+      "triggers": {
+        "crons": ["7 3 * * *"]
+      },
+      // Hyperdrive for PostgreSQL connection pooling. Two configs: cached reads
+      // (primary traffic) and a no-cache config for admin writes that must read
+      // their own writes immediately. IDs filled by sync-terraform-to-wrangler.sh.
+      "hyperdrive": [
+        { "binding": "HYPERDRIVE", "id": "a5250d151e014f72996ed54a627e0939" },
+        { "binding": "HYPERDRIVE_NOCACHE", "id": "a554c113c98c488ab201a4debca73f20" }
+      ],
+      "observability": {
+        "logs": {
+          "enabled": true,
+          "invocation_logs": true
+        }
+      }
+    }
+  }
+}

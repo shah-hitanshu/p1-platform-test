@@ -1,0 +1,51 @@
+{
+  "name": "@pantheon-systems/p1-ai-chat",
+  "version": "0.2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "provenance": false
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "react-markdown": "^10.1.0"
+  },
+  "peerDependencies": {
+    "@pantheon-systems/pds-toolkit-react": ">=2.0.0-alpha.0",
+    "@pantheon-systems/puck-css": ">=0.4.0",
+    "@puckeditor/core": "^0.21.0",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@pantheon-systems/pds-toolkit-react": "2.0.0-alpha.43",
+    "@pantheon-systems/puck-css": "workspace:*",
+    "@puckeditor/core": "^0.21.1",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "^19.2.14",
+    "happy-dom": "^20.10.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.4"
+  }
+}

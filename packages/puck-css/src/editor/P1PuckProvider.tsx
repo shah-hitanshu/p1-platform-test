@@ -1,0 +1,2255 @@
+/**
+ * P1 Puck Provider
+ *
+ * React context provider for P1 Puck integration.
+ */
+
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import type {
+  Document,
+  PuckData,
+  Checkpoint,
+  Branch,
+  DocumentVersion,
+  ActorPresence,
+} from '@pantheon-systems/css-client';
+import type { P1PuckConfig, P1PuckContextValue, SaveStatus, PresenceState } from '../core/types.js';
+import { P1PuckContext } from '../core/P1PuckContext.js';
+import { NotificationProvider, useNotifications } from '../core/NotificationContext.js';
+import { PresenceContext } from '../core/PresenceContext.js';
+import type { PresenceContextValue } from '../core/PresenceContext.js';
+import isEqual from 'lodash.isequal';
+import { debounce } from '../core/utils/debounce.js';
+import { withRetry } from '../core/utils/retry.js';
+import { useRealtime } from './useRealtime.js';
+import { useDocuments } from './useDocuments.js';
+import { snapshotToPuckData } from './utils/snapshotToPuckData.js';
+import type { UseAgentEditReturn } from '../agent/useAgentEdit.js';
+import type { UseAgentTriggerReturn } from '../agent/useAgentTrigger.js';
+import type { ConflictNotification } from '../merge/components/conflict-notifications/index.js';
+import type { P1FeaturePlugin, P1FeaturePluginDeps } from '../core/plugin-types.js';
+import type { P1FeatureConfig } from '../core/featureConfig.js';
+import { resolveFeatureConfig } from '../core/featureConfig.js';
+import { resolveActivePlugins, composeProviders } from './composePlugins.js';
+import { DEFAULT_CSS_FEATURE_PLUGINS } from './defaultPlugins.js';
+import type { Template, TemplateSummary } from '../features/content-type-templates/types.js';
+import { createPuckPermissions } from '../features/content-type-templates/permissions/createPuckPermissions.js';
+import { useTemplateList } from '../features/content-type-templates/hooks/useTemplateList.js';
+
+export interface P1PuckProviderProps extends P1PuckConfig {
+  children: React.ReactNode;
+  /**
+   * Whether to show error notifications automatically.
+   * @default true
+   */
+  showErrorNotifications?: boolean;
+  /**
+   * Optional token refresher for WebSocket reconnection with fresh tokens.
+   */
+  realtimeTokenRefresher?: () => Promise<string | null>;
+  /**
+   * Feature plugins to compose into the provider tree.
+   * Each plugin can provide a React context wrapper, Puck plugins, and overrides.
+   * Defaults to DEFAULT_CSS_FEATURE_PLUGINS when not provided.
+   */
+  featurePlugins?: P1FeaturePlugin[];
+  /**
+   * Feature configuration flags controlling which UI features are enabled.
+   * When provided, overrides boolean props (presenceEnabled, agentModeEnabled, etc.).
+   * When omitted, derived from the existing boolean props for backwards compatibility.
+   */
+  featureConfig?: P1FeatureConfig;
+}
+
+/**
+ * Provider component for P1 Puck integration.
+ *
+ * Wraps your Puck editor to provide P1 functionality including:
+ * - Auto-save with debouncing
+ * - Document loading
+ * - Checkpoint (publish) creation
+ * - Branch switching
+ * - Toast notifications for errors and success
+ *
+ * @example
+ * ```tsx
+ * import { P1PuckProvider, P1PuckEditor } from '@pantheon-systems/puck-css';
+ * import { P1Client } from '@pantheon-systems/css-client';
+ *
+ * const client = new P1Client({
+ *   baseUrl: 'http://localhost:8787',
+ *   apiKey: 'your-api-key',
+ * });
+ *
+ * function App() {
+ *   return (
+ *     <P1PuckProvider
+ *       client={client}
+ *       siteId="site-123"
+ *       branchId="branch-456"
+ *       userId="user-789"
+ *     >
+ *       <P1PuckEditor config={puckConfig} documentPath="/home" />
+ *     </P1PuckProvider>
+ *   );
+ * }
+ * ```
+ */
+export function P1PuckProvider(props: P1PuckProviderProps): React.ReactElement {
+  return (
+    <NotificationProvider>
+      <P1PuckProviderInner {...props} />
+    </NotificationProvider>
+  );
+}
+
+/**
+ * Inner provider component that has access to notification context.
+ */
+function P1PuckProviderInner({
+  client,
+  siteId,
+  branchId: initialBranchId,
+  userId,
+  autoSaveDelay = 3000,
+  maxRetries = 3,
+  showErrorNotifications = true,
+  enableRealtime = true,
+  wsBaseUrl,
+  realtimeApiKey,
+  realtimeSyncInterval: _realtimeSyncInterval = 250,
+  realtimeTokenRefresher,
+  // Phase 9: Presence props
+  presenceEnabled = true,
+  presencePollingInterval = 5000,
+  userName: _userName,
+  userAvatar: _userAvatar,
+  userNameResolver,
+  // Phase 9: Agent mode props
+  agentModeEnabled = false,
+  agentId,
+  agentTrigger: _agentTrigger,
+  // Phase 9: Callbacks
+  onPresenceChange,
+  onAgentConflict: _onAgentConflict,
+  // Plugin system props (B.4)
+  featurePlugins,
+  featureConfig,
+  // Content Type Templates (PROPOSAL-010)
+  // Consumers should resolve the role via useResolveContentRole and pass it here.
+  userRole = 'editor',
+  children,
+}: P1PuckProviderProps): React.ReactElement {
+  // Access notification context
+  const notificationContext = useNotifications();
+
+  // Persist selected branch in sessionStorage so it survives provider remounts
+  // (e.g. when P1App is rendered per-page instead of in a shared layout).
+  const branchStorageKey = `css-branch-${siteId}`;
+
+  const getPersistedBranchId = useCallback((): string => {
+    try {
+      return (typeof window !== 'undefined' && sessionStorage.getItem(branchStorageKey)) || '';
+    } catch {
+      return '';
+    }
+  }, [branchStorageKey]);
+
+  const persistBranchId = useCallback((id: string) => {
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(branchStorageKey, id);
+      }
+    } catch {
+      // sessionStorage may be unavailable (SSR, privacy mode)
+    }
+  }, [branchStorageKey]);
+
+  // Site name — fetched once on mount from the P1 API
+  const [siteName, setSiteName] = useState<string | null>(null);
+  useEffect(() => {
+    client.sites?.get(siteId)
+      ?.then((site) => setSiteName(site.name))
+      .catch(() => {});
+  }, [client, siteId]);
+
+  // Branch state - start with initialBranchId, persisted branch, or empty (will be set to main)
+  const [branchId, setBranchId] = useState(() => {
+    if (initialBranchId) return initialBranchId;
+    try {
+      return (typeof window !== 'undefined' && sessionStorage.getItem(branchStorageKey)) || '';
+    } catch {
+      return '';
+    }
+  });
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [currentBranch, setCurrentBranch] = useState<Branch | null>(null);
+  const [branchesLoading, setBranchesLoading] = useState(() => {
+    if (initialBranchId) return false;
+    try {
+      return !(typeof window !== 'undefined' && sessionStorage.getItem(branchStorageKey));
+    } catch {
+      return true;
+    }
+  });
+
+  // Document state
+  const [currentDocument, setCurrentDocument] = useState<Document | null>(null);
+  const [currentData, setCurrentData] = useState<PuckData | null>(null);
+  // True while loadDocument is in flight. Consumers use it to distinguish
+  // "no document while switching" (keep showing the old canvas) from
+  // "genuinely no document" (show the empty state).
+  const [documentLoading, setDocumentLoading] = useState(false);
+
+  // Template state (PROPOSAL-010)
+  const [currentTemplate, setCurrentTemplate] = useState<Template | null>(null);
+
+  // Save state
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [saveError, setSaveError] = useState<Error | null>(null);
+
+  // Pending data for debounced save - use ref to avoid recreating debounce
+  const pendingDataRef = useRef<PuckData | null>(null);
+  const currentDocumentRef = useRef<Document | null>(null);
+  const initializedRef = useRef(false);
+
+  // Track the latest Puck action metadata for inclusion in sync payloads.
+  // Buffered actions captured by handleAction (Puck's onAction callback)
+  // Array accumulates all structural actions during an edit session.
+  // Forwarded to backend on save for version history, then cleared.
+  const pendingActionsRef = useRef<Array<{ type: string; [key: string]: unknown }>>([]);
+
+  // Tracks the document path that the current data in state belongs to.
+  // Set alongside every setCurrentData call to record the data's origin.
+  // Checked before every write (realtime or REST) to prevent cross-document
+  // corruption during rapid document switching.
+  const currentDataDocumentPathRef = useRef<string | null>(null);
+
+  // Snapshot of the data loadDocument just loaded. The first onChange after a
+  // load echoes this back; saveData drops that echo by structural compare
+  // (not a one-shot flag, which would swallow a lone genuine first edit like a
+  // pin toggle). Structural, not string: Puck re-normalizes key order.
+  const suppressNextSaveRef = useRef<PuckData | null>(null);
+
+  // Monotonically increasing counter for stale loadDocument response detection.
+  // Each loadDocument call increments this and captures the current value.
+  // After each async operation, the captured value is compared to the current
+  // value — if they differ, a newer loadDocument call has started and the
+  // current one should bail out.
+  const loadRequestIdRef = useRef(0);
+
+  // Track realtime connection state for use in performSave (avoids stale closure)
+  const realtimeConnectedRef = useRef(false);
+
+  // Auto-save pause state
+  const [autoSavePaused, setAutoSavePaused] = useState(false);
+
+  // Version viewing state
+  const [viewingVersion, setViewingVersion] = useState<DocumentVersion | null>(null);
+  // True while returnToLatest is fetching the latest version from the server,
+  // so the banner can show progress during the round trip.
+  const [isReturningToLatest, setIsReturningToLatest] = useState(false);
+  // Last known "latest" snapshot — a write-only internal fallback for
+  // returnToLatest when no live Yjs snapshot is available and the server
+  // re-fetch fails. Backed by a ref (not state): nothing renders from it, so
+  // making it state would add a setState on every autosave and churn the
+  // context memo / returnToLatest identity for no consumer benefit.
+  const latestVersionDataRef = useRef<PuckData | null>(null);
+
+  // Remote sync key - changes when remote updates arrive to trigger Puck sync
+  const [remoteSyncKey, setRemoteSyncKey] = useState<string | null>(null);
+
+  // Counter to track pending remote updates that will trigger onChange callbacks.
+  // When we receive a remote update and sync it to Puck via setData, Puck fires onChange.
+  // We need to skip the realtime send for that onChange to prevent bounce-back loops.
+  // Using a counter is more reliable than a timeout because it's synchronized with
+  // the actual number of remote updates received.
+  const pendingRemoteUpdatesRef = useRef(0);
+
+  // Flag to track if we're currently applying a remote sync.
+  // This is set before setCurrentData and cleared after a short delay to ensure
+  // all related onChange events are skipped (there may be multiple: one from data
+  // prop change and one from setData dispatch).
+
+  // Pending remote data ref - stores latest data during debounce period
+  const pendingRemoteDataRef = useRef<PuckData | null>(null);
+  // Debounce timer for remote sync - batches rapid updates to reduce flickering
+  const remoteSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Delay for debouncing remote sync updates (ms)
+  const REMOTE_SYNC_DEBOUNCE_DELAY = 50;
+
+
+  // Ref to track viewingVersion for use in callbacks (avoids stale closure)
+  const viewingVersionRef = useRef<DocumentVersion | null>(null);
+  // Tracks the latest data seen by saveData when NOT viewing historical.
+  // Used by returnToLatest to restore unsaved edits that were in Puck's
+  // memory when the user navigated to a historical version.
+  const latestLocalDataRef = useRef<PuckData | null>(null);
+
+  // Helper to cancel any pending remote sync - used when loading documents/versions
+  // This prevents race conditions where a pending remote update overrides loaded data
+  const cancelPendingRemoteSync = useCallback(() => {
+    if (remoteSyncTimerRef.current) {
+      clearTimeout(remoteSyncTimerRef.current);
+      remoteSyncTimerRef.current = null;
+    }
+    pendingRemoteDataRef.current = null;
+  }, []);
+
+  // WebSocket presence state - used when realtime is connected for instant presence updates
+  const [wsPresenceActors, setWsPresenceActors] = useState<ActorPresence[]>([]);
+  const [wsPresenceActive, setWsPresenceActive] = useState(false);
+
+  // Helper to enrich actors with display names from the resolver
+  const enrichActorsWithNames = useCallback((actors: ActorPresence[]): ActorPresence[] => {
+    if (!userNameResolver) return actors;
+    return actors.map((actor) => {
+      const resolvedName = userNameResolver(actor.actorId);
+      return resolvedName ? { ...actor, name: resolvedName } : actor;
+    });
+  }, [userNameResolver]);
+
+  // Real-time collaboration hook
+  const realtime = useRealtime({
+    baseUrl: wsBaseUrl ?? '',
+    apiKey: realtimeApiKey,
+    tokenRefresher: realtimeTokenRefresher,
+    siteId,
+    branchId,
+    documentPath: currentDocument?.path ?? null,
+    actorId: userId,
+    actorType: 'user',
+    enabled: enableRealtime && !!wsBaseUrl,
+    initialData: currentData,
+    onServerReload: () => {
+      notificationContext.addInfo('Document is being refreshed by the server. Reconnecting...');
+    },
+    // WebSocket presence callbacks - receive instant presence updates
+    onPresenceUpdate: (actors) => {
+      // Mark WebSocket presence as active (first update received)
+      setWsPresenceActive(true);
+      // Filter out self, enrich with names, and update state
+      const filtered = actors.filter((a) => a.actorId !== userId);
+      const enriched = enrichActorsWithNames(filtered);
+      setWsPresenceActors(enriched);
+    },
+    onFocusRegionBroadcast: (actorId, focusRegions) => {
+      // Update focus regions for the specific actor
+      setWsPresenceActors((prev) =>
+        prev.map((a) => (a.actorId === actorId ? { ...a, focusRegions } : a))
+      );
+    },
+    onRemoteUpdate: (data) => {
+      if (viewingVersionRef.current !== null) {
+        return;
+      }
+
+      // Reject empty data that would overwrite real editor content.
+      // During initial Yjs sync, the remote doc may be empty, producing
+      // { content: [], root: { props: {} } }. Applying this would clear
+      // the editor and trigger a save loop.
+      const rootProps = data.root.props;
+      if (
+        data.content.length === 0 &&
+        (!rootProps || Object.keys(rootProps).length === 0) &&
+        !data.zones
+      ) {
+        return;
+      }
+
+      // Store the latest data - will be used when debounce fires
+      pendingRemoteDataRef.current = data;
+
+      // Clear any pending debounce timer
+      if (remoteSyncTimerRef.current) {
+        clearTimeout(remoteSyncTimerRef.current);
+      }
+
+      // Debounce the sync to batch rapid successive updates
+      // This prevents plugin recreation and flickering on every update
+      remoteSyncTimerRef.current = setTimeout(() => {
+        // Double-check we're still not viewing a historical version
+        // (user might have switched while debounce was pending)
+        if (viewingVersionRef.current !== null) {
+          pendingRemoteDataRef.current = null;
+          remoteSyncTimerRef.current = null;
+          return;
+        }
+
+        const dataToSync = pendingRemoteDataRef.current;
+        if (dataToSync) {
+          // Increment counter to skip the onChange echo(es) that will fire
+          // when Puck processes the setCurrentData call below.
+          // The content-based guards in puckDataToYMap and RealtimeClient
+          // prevent actual echo loops at the Y.Doc/WebSocket layer.
+          pendingRemoteUpdatesRef.current += 1;
+
+          // Update current data when remote changes arrive
+          currentDataDocumentPathRef.current = currentDocumentRef.current?.path ?? null;
+          setCurrentData(dataToSync);
+          // Update sync key to trigger Puck re-sync
+          setRemoteSyncKey(`remote-${Date.now()}`);
+
+          pendingRemoteDataRef.current = null;
+
+          // Safety net: reset counter after React has processed the state updates.
+          // If the remote data is identical to current editor state, Puck won't
+          // fire onChange and the counter would never be decremented naturally.
+          // Leaving it > 0 would cause subsequent local edits to be dropped.
+          setTimeout(() => {
+            pendingRemoteUpdatesRef.current = 0;
+          }, 100);
+        }
+        remoteSyncTimerRef.current = null;
+      }, REMOTE_SYNC_DEBOUNCE_DELAY);
+    },
+  });
+
+  // Keep a stable ref to realtime for use in callbacks without dependency churn
+  const realtimeRef = useRef(realtime);
+  realtimeRef.current = realtime;
+
+  // Cleanup remote sync timer on unmount
+  useEffect(() => {
+    return () => {
+      if (remoteSyncTimerRef.current) {
+        clearTimeout(remoteSyncTimerRef.current);
+      }
+    };
+  }, []);
+
+  // PuckDataCapture catch-up: detects data that Puck's onChange missed.
+  // Puck's onChange can miss the very last keystroke in a typing burst because
+  // createOnChange dispatches asynchronously (via resolveComponentData) and
+  // the Zustand subscriber may not fire for the final state update in time.
+  // PuckDataCapture subscribes to Puck's Zustand store independently via
+  // createUsePuck() and writes the true current data to this ref.
+  // The onDataChange callback debounces and compares with what saveData last
+  // sent — if they differ, it pushes the corrected data through realtime.
+  const realtimeDataCaptureRef = useRef<PuckData | null>(null);
+  const lastSentDataRef = useRef<string | null>(null);
+  const captureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Track the last data sent via saveData so we can detect missed updates.
+  // Updated in saveData's realtime branch (the happy path).
+  const trackSentData = useCallback((data: PuckData) => {
+    lastSentDataRef.current = JSON.stringify(data);
+  }, []);
+
+  // Callback for PuckDataCapture.onDataChange — fires when Puck's store
+  // updates (may fire for changes that onChange misses).
+  const handleRealtimeDataCapture = useCallback((data: PuckData) => {
+    if (!enableRealtime) return;
+
+    // Store the latest data in the ref for comparison when the timer fires.
+    // The ref always holds the most recent Zustand store snapshot.
+    realtimeDataCaptureRef.current = data;
+
+    // Debounce: wait 800ms after the last store update to allow onChange
+    // to process normally. When the timer fires, compare the ref's current
+    // data (not the closure's stale copy) against what was last sent.
+    if (captureTimerRef.current) clearTimeout(captureTimerRef.current);
+    captureTimerRef.current = setTimeout(() => {
+      if (!realtimeConnectedRef.current) return;
+      if (viewingVersionRef.current !== null) return;
+
+      const currentData = realtimeDataCaptureRef.current;
+      if (!currentData) return;
+
+      const dataJson = JSON.stringify(currentData);
+
+      // If saveData already sent this exact data, no catch-up needed
+      if (dataJson === lastSentDataRef.current) return;
+
+      // Data origin guard
+      const currentPath = currentDocumentRef.current?.path ?? null;
+      const dataOriginPath = currentDataDocumentPathRef.current;
+      if (dataOriginPath !== currentPath) return;
+
+      realtimeRef.current.applyLocalChange(currentData);
+      lastSentDataRef.current = dataJson;
+    }, 800);
+  }, [enableRealtime]);
+
+  // Cleanup capture timer on unmount
+  useEffect(() => {
+    return () => {
+      if (captureTimerRef.current) clearTimeout(captureTimerRef.current);
+    };
+  }, []);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    currentDocumentRef.current = currentDocument;
+  }, [currentDocument]);
+
+  useEffect(() => {
+    viewingVersionRef.current = viewingVersion;
+  }, [viewingVersion]);
+
+  // Keep realtime connection ref in sync (used by performSave to avoid stale closure)
+  useEffect(() => {
+    realtimeConnectedRef.current = realtime.connected;
+  }, [realtime.connected]);
+
+  // Create client with user principal
+  const userClient = useMemo(
+    () => client.withPrincipal({ id: userId, type: 'user' }),
+    [client, userId]
+  );
+
+  // Document list for current branch
+  const {
+    documents: branchDocuments,
+    loading: documentsLoading,
+    create: createDocumentRaw,
+    remove: removeDocumentRaw,
+    refresh: refreshDocuments,
+  } = useDocuments({ client: userClient, siteId, branchId });
+
+  // Template list for current branch
+  const {
+    templates: branchTemplates,
+    loading: templatesLoading,
+    error: templatesError,
+    refresh: refreshTemplates,
+  } = useTemplateList(userClient, siteId, branchId);
+
+  // Stable document create/delete callbacks
+  const branchIdRef = useRef(branchId);
+  branchIdRef.current = branchId;
+  const createDocumentRawRef = useRef(createDocumentRaw);
+  createDocumentRawRef.current = createDocumentRaw;
+  const stableCreateDocument = useCallback(
+    async (path: string, template?: TemplateSummary | null, title?: string): Promise<void> => {
+      if (!branchIdRef.current) {
+        throw new Error('Cannot create document: no branch selected');
+      }
+      if (template) {
+        // The list endpoint carries no layout content; fetch the full template.
+        const fullTemplate = await userClient.templates.get(
+          siteId, branchIdRef.current, template.id
+        );
+        // A template without a content array has no stored layout snapshot;
+        // creating a page from it would silently produce a blank page. An empty
+        // array is a legitimate empty layout and passes.
+        if (!fullTemplate.content) {
+          throw new Error(
+            `Template "${template.label || template.name}" has no layout yet. Open it in the editor and add components before creating pages from it.`
+          );
+        }
+        // The backend builds the initial version from the template, preserving
+        // each component's durable slot id; no client snapshot is sent.
+        await createDocumentRawRef.current(path, undefined, {
+          templateId: fullTemplate.id,
+          templateVersion: fullTemplate.version,
+          title,
+        });
+      } else {
+        await createDocumentRawRef.current(path, undefined, title ? { title } : undefined);
+      }
+    },
+    [userClient, siteId]
+  );
+
+  // Stable update-template callback (template metadata: label/description/URL
+  // pattern). Used by the editor's template-mode right sidebar to persist details
+  // to the Template record, then refresh the list so the changes propagate.
+  const refreshTemplatesRef = useRef(refreshTemplates);
+  refreshTemplatesRef.current = refreshTemplates;
+  // Create a new template (empty layout, built in the template editor
+  // afterwards). Returns the created Template so callers can navigate to its
+  // editor. Used by the Create Page modal's "New template" flow.
+  const stableCreateTemplate = useCallback(
+    async (params: {
+      name: string;
+      label: string;
+      description?: string;
+      defaultUrlPattern?: string;
+    }): Promise<Template> => {
+      if (!branchIdRef.current) {
+        throw new Error('Cannot create template: no branch selected');
+      }
+      const created = await userClient.templates.create(siteId, branchIdRef.current, params);
+      await refreshTemplatesRef.current();
+      return created;
+    },
+    [userClient, siteId],
+  );
+  const stableUpdateTemplate = useCallback(
+    async (
+      templateId: string,
+      params: {
+        label?: string;
+        description?: string;
+        defaultUrlPattern?: string;
+      },
+    ): Promise<void> => {
+      if (!branchIdRef.current) {
+        throw new Error('Cannot update template: no branch selected');
+      }
+      const updated = await userClient.templates.update(
+        siteId,
+        branchIdRef.current,
+        templateId,
+        params,
+      );
+      // Keep the in-editor template in sync if it's the one being edited.
+      setCurrentTemplate((prev) => (prev && prev.id === updated.id ? updated : prev));
+      await refreshTemplatesRef.current();
+    },
+    [userClient, siteId],
+  );
+
+  const removeDocumentRawRef = useRef(removeDocumentRaw);
+  removeDocumentRawRef.current = removeDocumentRaw;
+  const stableDeleteDocument = useCallback(
+    async (documentId: string, _path: string): Promise<void> => {
+      if (!branchIdRef.current) {
+        throw new Error('Cannot delete document: no branch selected');
+      }
+      await removeDocumentRawRef.current(documentId);
+    },
+    []
+  );
+
+  // Load branches
+  const refreshBranches = useCallback(async () => {
+    try {
+      setBranchesLoading(true);
+      const branchList = await userClient.branches.list(siteId);
+      setBranches(branchList);
+
+      let effectiveBranchId = branchIdRef.current;
+
+      // If no branchId set, try persisted branch, then default to main
+      if (!effectiveBranchId) {
+        const persisted = getPersistedBranchId();
+        if (persisted && branchList.some((b) => b.id === persisted)) {
+          effectiveBranchId = persisted;
+        }
+      }
+
+      // Validate that the branch exists in the list; fall back to main if not
+      if (effectiveBranchId && !branchList.some((b) => b.id === effectiveBranchId)) {
+        const mainBranch = branchList.find((b) => b.isMain);
+        effectiveBranchId = mainBranch?.id ?? effectiveBranchId;
+      }
+
+      // Default to main if still empty
+      if (!effectiveBranchId) {
+        const mainBranch = branchList.find((b) => b.isMain);
+        if (mainBranch) {
+          effectiveBranchId = mainBranch.id;
+        }
+      }
+
+      persistBranchId(effectiveBranchId);
+      setBranchId(effectiveBranchId);
+      setCurrentBranch(branchList.find((b) => b.id === effectiveBranchId) ?? null);
+    } catch (error) {
+      console.error('Failed to load branches:', error);
+    } finally {
+      setBranchesLoading(false);
+    }
+  }, [userClient, siteId, getPersistedBranchId, persistBranchId]);
+
+  const createBranch = useCallback(
+    async (name: string) => {
+      const branch = await userClient.branches.create({ siteId, name });
+      await refreshBranches();
+      return branch;
+    },
+    [userClient, siteId, refreshBranches],
+  );
+
+  // Initial branch load - only once
+  useEffect(() => {
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      void refreshBranches();
+    }
+  }, [refreshBranches]);
+
+  // Perform save operation - uses refs to avoid dependency issues
+  const performSave = useCallback(async (options?: { keepalive?: boolean }) => {
+    const dataToSave = pendingDataRef.current;
+    const doc = currentDocumentRef.current;
+
+    if (!dataToSave || !doc) {
+      return;
+    }
+
+    // Data origin guard: reject writes if data doesn't belong to current document
+    if (currentDataDocumentPathRef.current !== doc.path) {
+      pendingDataRef.current = null;
+      return;
+    }
+
+    // When realtime is connected, the DO handles persistence via WebSocket sync.
+    // Skip REST API save to avoid creating duplicate versions without CRDT state.
+    if (enableRealtime && realtimeConnectedRef.current) {
+      // The data is already being sent via realtime.applyLocalChange in saveData.
+      // Mark as saved since the DO will persist it.
+      pendingDataRef.current = null;
+      setSaveStatus('saved');
+      setLastSaved(new Date());
+      return;
+    }
+
+    // Fallback: REST API save when realtime is disabled or disconnected
+    setSaveStatus('saving');
+    setSaveError(null);
+
+    try {
+      await withRetry(
+        async () => {
+          const actionsToSend = pendingActionsRef.current.length > 0
+            ? [...pendingActionsRef.current]
+            : undefined;
+          const params = {
+            documentId: doc.id,
+            branchId,
+            snapshot: dataToSave as unknown as Record<string, unknown>,
+            puckActions: actionsToSend,
+          };
+          await (options?.keepalive
+            ? userClient.versions.create(siteId, params, { keepalive: true })
+            : userClient.versions.create(siteId, params));
+          pendingActionsRef.current = [];
+        },
+        { maxAttempts: maxRetries }
+      );
+
+      // Note: We intentionally do NOT call setCurrentData(dataToSave) here.
+      // The data is already in Puck's internal state (it came from Puck's onChange).
+      // Updating currentData would trigger a re-render cascade that recreates the
+      // p1Plugin, causing Puck to potentially re-render and flicker.
+      // currentData should only be updated when loading a document or switching versions.
+      pendingDataRef.current = null;
+      setSaveStatus('saved');
+      setLastSaved(new Date());
+      // Keep the "latest" cache in sync with what was just persisted (REST
+      // success = confirmed persistence) so returning from a historical preview
+      // restores the correct content even if the on-return re-fetch fails.
+      latestVersionDataRef.current = dataToSave;
+    } catch (error) {
+      setSaveStatus('error');
+      const saveErr = error instanceof Error ? error : new Error(String(error));
+      setSaveError(saveErr);
+
+      // Show error notification with retry action
+      if (showErrorNotifications) {
+        notificationContext.addError(
+          `Failed to save changes: ${saveErr.message}`,
+          () => void performSave()
+        );
+      }
+    }
+  }, [userClient, siteId, branchId, maxRetries, showErrorNotifications, notificationContext, enableRealtime]);
+
+  // Debounced save
+  const debouncedSave = useMemo(
+    () =>
+      debounce(() => {
+        void performSave();
+      }, autoSaveDelay),
+    [performSave, autoSaveDelay]
+  );
+
+  // Cleanup debounce on unmount
+  useEffect(() => {
+    return () => {
+      debouncedSave.cancel();
+    };
+  }, [debouncedSave]);
+
+  // Best-effort flush of a pending debounced save when the tab is closed,
+  // navigated away from, or hidden.
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const flushPendingSave = (): void => {
+      if (pendingDataRef.current) {
+        // keepalive lets the POST finish after the page is discarded.
+        debouncedSave.cancel();
+        void performSave({ keepalive: true });
+      }
+    };
+    const handleVisibilityChange = (): void => {
+      if (document.visibilityState === 'hidden') {
+        flushPendingSave();
+      }
+    };
+    window.addEventListener('beforeunload', flushPendingSave);
+    window.addEventListener('pagehide', flushPendingSave);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('beforeunload', flushPendingSave);
+      window.removeEventListener('pagehide', flushPendingSave);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [debouncedSave, performSave]);
+
+  // Pause auto-save
+  const pauseAutoSave = useCallback(() => {
+    debouncedSave.pause();
+    setAutoSavePaused(true);
+  }, [debouncedSave]);
+
+  // Resume auto-save
+  const resumeAutoSave = useCallback(() => {
+    debouncedSave.resume();
+    setAutoSavePaused(false);
+  }, [debouncedSave]);
+
+  // Capture Puck action metadata from the onAction callback.
+  // This captures the action type and relevant metadata fields so they
+  // can be included in the sync payload for backend version storage.
+  const handleAction = useCallback((action: Record<string, unknown>) => {
+    const puckAction: Record<string, unknown> = {
+      type: (action.type as string) || 'unknown',
+    };
+
+    if (action.componentType) puckAction.componentType = action.componentType;
+    if (action.componentId) puckAction.componentId = action.componentId;
+    if (action.zone) puckAction.zone = action.zone;
+    if (action.sourceIndex !== undefined) puckAction.sourceIndex = action.sourceIndex;
+    if (action.destinationIndex !== undefined) puckAction.destinationIndex = action.destinationIndex;
+    if (action.sourceZone) puckAction.sourceZone = action.sourceZone;
+    if (action.destinationZone) puckAction.destinationZone = action.destinationZone;
+
+    const buffer = pendingActionsRef.current;
+    buffer.push(puckAction as { type: string; [key: string]: unknown });
+    if (buffer.length > 1000) {
+      pendingActionsRef.current = buffer.slice(-500);
+    }
+  }, []);
+
+  // Public save function (triggers debounce)
+  // Also resumes auto-save if paused, per user requirement
+  // Sends changes via WebSocket when realtime is enabled (but not for remote updates)
+  const saveData = useCallback(
+    (data: PuckData) => {
+      if (suppressNextSaveRef.current !== null) {
+        const loadedSnapshot = suppressNextSaveRef.current;
+        suppressNextSaveRef.current = null;
+        // Drop only the echo; a structurally different first onChange is a real edit.
+        if (isEqual(data, loadedSnapshot)) {
+          return;
+        }
+      }
+
+      // Only genuine user edits reach here — load/restore echoes arm
+      // suppressNextSaveRef before they fire and are returned early above.
+      if (!viewingVersionRef.current) {
+        latestLocalDataRef.current = data;
+      }
+
+      // When realtime is enabled, detect whether this onChange came from a remote
+      // sync (Yjs update from another client) vs. a local user edit.
+      // Remote updates should NOT trigger a REST save — the DO handles persistence.
+      // Important: we must NOT set pendingDataRef for remote syncs, otherwise
+      // getHasUnsavedChanges() will incorrectly report unsaved changes.
+      if (enableRealtime && realtime.connected) {
+        if (pendingRemoteUpdatesRef.current > 0) {
+          pendingRemoteUpdatesRef.current -= 1;
+          return;
+        } else if (viewingVersionRef.current !== null) {
+          return;
+        } else {
+          const currentPath = currentDocumentRef.current?.path ?? null;
+
+          // Data origin guard: verify the data in state belongs to the
+          // current document. During rapid document switching, a stale
+          // loadDocument call can resolve and set data from document Y
+          // into state after currentDocument has been updated to X.
+          const dataOriginPath = currentDataDocumentPathRef.current;
+          if (dataOriginPath !== currentPath) {
+            console.warn(
+              '[P1PuckProvider] saveData SKIPPED: data origin mismatch.',
+              'dataOrigin:', dataOriginPath, 'currentDoc:', currentPath,
+            );
+            return;
+          }
+
+          // Connection identity guard: verify the realtime connection is
+          // bound to the same document we're currently editing.
+          const connectedPath = realtime.connectedDocumentPath;
+          if (currentPath !== connectedPath) {
+            console.warn(
+              '[P1PuckProvider] saveData SKIPPED: connection identity mismatch.',
+              'currentDoc:', currentPath, 'connectedDoc:', connectedPath,
+            );
+            return;
+          }
+
+          // Local user edit — send via WebSocket (DO handles persistence)
+          // Echo prevention is handled at lower layers:
+          // - puckDataToYMap no-ops when Y.Doc already has identical data
+          // - RealtimeClient.lastSentSnapshot drops sends matching last sent/received
+          const actions = pendingActionsRef.current;
+          if (actions.length > 0) {
+            realtime.applyLocalChange(data, actions);
+          } else {
+            realtime.applyLocalChange(data);
+          }
+          trackSentData(data);
+          pendingActionsRef.current = [];
+          // Data sent via WebSocket — DO handles persistence.
+          // Update save status directly (skip debouncedSave/performSave chain).
+          setSaveStatus('saved');
+          setLastSaved(new Date());
+          // NOTE: intentionally do NOT update latestVersionDataRef here. This
+          // is the optimistic local send, before the DO confirms persistence —
+          // caching it would assert content that may never be saved. Realtime
+          // returns use the live Yjs snapshot (or the server re-fetch), not
+          // this cache (PCC-3421).
+          return;
+        }
+      }
+
+      // Mirror the realtime guard: don't save when previewing a historical version.
+      // Without this, the PuckDataSynchronizer echo from loadVersion resumes the
+      // debounce and writes historical data to the server.
+      if (viewingVersionRef.current !== null) {
+        return;
+      }
+
+      pendingDataRef.current = data;
+
+      if (debouncedSave.isPaused()) {
+        debouncedSave.resume();
+        setAutoSavePaused(false);
+      }
+      debouncedSave();
+    },
+    [debouncedSave, enableRealtime, realtime.connected, trackSentData]
+  );
+
+  // Force immediate save
+  const saveNow = useCallback(async () => {
+    debouncedSave.cancel();
+
+    // When realtime is connected, ensure the latest data is sent via WebSocket
+    if (enableRealtime && realtimeConnectedRef.current && pendingDataRef.current) {
+      const currentPath = currentDocumentRef.current?.path ?? null;
+      const dataOriginPath = currentDataDocumentPathRef.current;
+      const connectedPath = realtime.connectedDocumentPath;
+      // Data origin + connection identity guards
+      if (dataOriginPath === currentPath && currentPath === connectedPath) {
+        realtime.applyLocalChange(pendingDataRef.current);
+        pendingDataRef.current = null;
+        setSaveStatus('saved');
+        setLastSaved(new Date());
+        return;
+      }
+      // Fall through to REST save if mismatch
+    }
+
+    await performSave();
+  }, [debouncedSave, performSave, enableRealtime]);
+
+  // Persist current in-memory edits as a REST version before a destructive operation.
+  // Realtime: confirms WebSocket delivery then snapshots latestLocalDataRef as a version.
+  // Non-realtime: delegates to performSave which creates a version from pendingDataRef.
+  const persistCurrentEdits = useCallback(async () => {
+    if (!enableRealtime || !realtimeConnectedRef.current) {
+      await performSave();
+      return;
+    }
+    await realtime.waitForDelivery();
+    const latestData = latestLocalDataRef.current;
+    const doc = currentDocumentRef.current;
+    if (latestData && doc && currentDataDocumentPathRef.current === doc.path) {
+      setSaveStatus('saving');
+      try {
+        await userClient.versions.create(siteId, {
+          documentId: doc.id,
+          branchId,
+          snapshot: latestData as unknown as Record<string, unknown>,
+        });
+        setSaveStatus('saved');
+        setLastSaved(new Date());
+      } catch (err) {
+        setSaveStatus('error');
+        throw err;
+      }
+    }
+  }, [enableRealtime, realtime, performSave, userClient, siteId, branchId]);
+
+  // Load document by path
+  const loadDocument = useCallback(
+    async (path: string) => {
+      // Flush any pending debounced save while the outgoing document's
+      // identity is still current, then drop the pending buffer so a late
+      // debounce can never write one document's data into another.
+      if (pendingDataRef.current) {
+        debouncedSave.cancel();
+        await performSave();
+        // performSave clears the buffer only on success; if it survived, the
+        // flush failed — abort the switch instead of discarding the edits.
+        if (pendingDataRef.current) {
+          return;
+        }
+      }
+      debouncedSave.cancel();
+      pendingDataRef.current = null;
+      // Invalidate cached local edit so returnToLatest() doesn't treat it as unsaved.
+      latestLocalDataRef.current = null;
+
+      // Cancel any pending remote sync to prevent race conditions
+      // where a stale remote update overrides the document we're loading
+      cancelPendingRemoteSync();
+
+      // Increment load request counter and capture for staleness detection.
+      // If a newer loadDocument call starts before our awaits resolve, the
+      // counter will have been incremented again and our captured value
+      // will no longer match — signaling that our response is stale.
+      loadRequestIdRef.current += 1;
+      const thisRequestId = loadRequestIdRef.current;
+      setDocumentLoading(true);
+
+      // Pre-clear the current document so nothing can save against the old
+      // one while the fetch is in flight. The canvas keeps showing the
+      // previous document — documentLoading suppresses the empty state.
+      currentDataDocumentPathRef.current = null;
+      setCurrentData(null);
+
+      try {
+        const doc = await userClient.documents.getByPath(
+          siteId,
+          path.startsWith('/') ? path.slice(1) : path,
+        );
+
+        // Staleness check: a newer loadDocument call has started
+        if (thisRequestId !== loadRequestIdRef.current) {
+          console.debug('[P1PuckProvider] Stale loadDocument — skipping (after getByPath)');
+          return;
+        }
+
+        // Use ID not path — paths may differ by normalization, causing a false disconnect.
+        // Same-doc keeps Yjs alive; cross-doc nulls out so useRealtime seeds a fresh Y.Doc.
+        const isSameDocument = doc.id === currentDocumentRef.current?.id;
+
+        // Null data before identity update so useRealtime sees initialData=null.
+        currentDataDocumentPathRef.current = null;
+        setCurrentData(null);
+        if (!isSameDocument) {
+          setCurrentDocument(null);
+        }
+        setCurrentDocument(doc);
+
+        // Fetch template if document is bound to one (PROPOSAL-010)
+        if (doc.templateId) {
+          try {
+            if (!userClient.templates) {
+              throw new Error('Templates endpoint not available on client');
+            }
+            const template = await userClient.templates.get(siteId, branchId, doc.templateId);
+            setCurrentTemplate(template);
+          } catch (templateError) {
+            console.warn('[P1PuckProvider] Failed to fetch template:', templateError);
+            setCurrentTemplate(null);
+          }
+        } else {
+          setCurrentTemplate(null);
+        }
+
+        // Get latest version
+        const version = await userClient.versions.getLatest(siteId, branchId, doc.id);
+        const puckData = snapshotToPuckData(version.snapshot);
+
+        // Staleness check: a newer loadDocument call has started
+        if (thisRequestId !== loadRequestIdRef.current) {
+          console.debug('[P1PuckProvider] Stale loadDocument — skipping (after getLatest)');
+          return;
+        }
+
+        // Mark REST data as non-local to prevent the Puck onChange handler
+        // from echoing it back through the Y.Doc via applyLocalChange.
+        // This is critical after the Hibernatable WS migration because
+        // initializeIfNeeded() latency can invert the ordering of WebSocket
+        // initial state vs REST response, causing the remote-update guard
+        // (pendingRemoteUpdatesRef) to be bypassed.
+        if (enableRealtime) {
+          pendingRemoteUpdatesRef.current += 1;
+
+          // Safety net: reset after React has processed the state updates.
+          // If Puck's data is identical to current editor state, onChange
+          // won't fire and the counter would never be decremented naturally.
+          // Leaving it > 0 would cause subsequent local edits to be dropped.
+          setTimeout(() => {
+            pendingRemoteUpdatesRef.current = 0;
+          }, 100);
+        }
+
+        // IMPORTANT: Update the ref BEFORE state updates
+        // Setting to null allows remote updates after document loads
+        viewingVersionRef.current = null;
+
+        // Cancel any pending PuckDataCapture catch-up timer and reset its
+        // ref before arming the data-origin guard below. Without this, the
+        // timer can fire in the window between currentDataDocumentPathRef
+        // being set to doc.path and the new document's first remote update
+        // arriving — passing the origin check while still carrying the
+        // previous document's Puck state.
+        if (captureTimerRef.current) {
+          clearTimeout(captureTimerRef.current);
+          captureTimerRef.current = null;
+        }
+        realtimeDataCaptureRef.current = null;
+
+        currentDataDocumentPathRef.current = doc.path;
+        suppressNextSaveRef.current = puckData;
+        setCurrentData(puckData);
+        latestVersionDataRef.current = puckData;
+        setViewingVersion(null);
+        // Clear remoteSyncKey so document sync takes priority
+        setRemoteSyncKey(null);
+        pendingDataRef.current = null;
+        setSaveStatus('idle');
+        setSaveError(null);
+      } catch (error) {
+        // Use warn, not error: callers handle this and console.error triggers
+        // the Next.js dev overlay unnecessarily.
+        console.warn('[P1PuckProvider] loadDocument failed:', error);
+        // Unload the current document so VersionBannerOverride shows the empty
+        // state instead of the previous document's content.
+        currentDataDocumentPathRef.current = null;
+        setCurrentData(null);
+        setCurrentDocument(null);
+        throw error;
+      } finally {
+        // Guarded so a stale call's completion can't clear the flag while a
+        // newer load is still in flight.
+        if (thisRequestId === loadRequestIdRef.current) {
+          setDocumentLoading(false);
+        }
+      }
+    },
+    [userClient, siteId, branchId, cancelPendingRemoteSync, enableRealtime, debouncedSave, performSave]
+  );
+
+  // Load a specific version into the editor
+  const loadVersion = useCallback(
+    async (version: DocumentVersion) => {
+      // Cancel any pending remote sync to prevent race conditions
+      // where a stale remote update overrides the version we're loading
+      cancelPendingRemoteSync();
+
+      try {
+        const doc = currentDocumentRef.current;
+        if (!doc) {
+          throw new Error('No document loaded');
+        }
+
+        let versionToUse = version;
+
+        // If the version doesn't have snapshot data, try fetching it from the API
+        if (!version.snapshot || Object.keys(version.snapshot).length === 0) {
+          try {
+            versionToUse = await userClient.versions.get(siteId, branchId, doc.id, version.id);
+          } catch (fetchError) {
+            // If fetching fails, log a warning and use the version as-is
+            console.warn('Could not fetch full version data, using version from list:', fetchError);
+          }
+        }
+
+        // Parses a JSON-string snapshot and falls back to blank Puck data for
+        // an empty/invalid snapshot (e.g. version 1's initial blank state).
+        const puckData = snapshotToPuckData(versionToUse.snapshot);
+
+        // IMPORTANT: Update the ref BEFORE state updates to block any incoming remote updates
+        // The effect that syncs viewingVersionRef runs AFTER render, which is too late
+        // Remote updates check this ref, so we need it set synchronously
+        viewingVersionRef.current = versionToUse;
+
+        currentDataDocumentPathRef.current = currentDocumentRef.current?.path ?? null;
+        setCurrentData(puckData);
+        setViewingVersion(versionToUse);
+        // Clear remoteSyncKey so version sync takes priority
+        setRemoteSyncKey(null);
+        // Pause auto-save when viewing historical version
+        debouncedSave.pause();
+        setAutoSavePaused(true);
+        pendingDataRef.current = null;
+        setSaveStatus('idle');
+      } catch (error) {
+        console.error('Failed to load version:', error);
+        throw error;
+      }
+    },
+    [userClient, siteId, branchId, debouncedSave, cancelPendingRemoteSync]
+  );
+
+  // Return to the latest version
+  const returnToLatest = useCallback(async () => {
+    // Cancel any pending remote sync to prevent race conditions
+    // The latest data will be loaded fresh, then remote sync can resume
+    cancelPendingRemoteSync();
+
+    // Get current state from Yjs if realtime is connected
+    // This ensures we get any changes made by other users while viewing history
+    let dataToRestore: PuckData | null = null;
+
+    if (enableRealtime && realtime.connected) {
+      const currentYjsData = realtime.getSnapshot();
+      if (currentYjsData) {
+        dataToRestore = currentYjsData;
+      }
+    }
+
+    // 1. Edits typed inside the debounce window — cleared from pendingDataRef by loadVersion but still live here.
+    const hadLocalEdits = !!latestLocalDataRef.current;
+    dataToRestore ??= latestLocalDataRef.current;
+    latestLocalDataRef.current = null; // consume — prevents stale ref short-circuiting server fetch on next history visit
+
+    // Re-fetch the true latest from the server when no live Yjs snapshot is
+    // available. The cached latestVersionDataRef is only a last-resort fallback
+    // (e.g. no current document); it is NOT used on fetch failure — silently
+    // editing on a possibly-stale snapshot and resuming autosave is the exact
+    // data-loss path from PCC-3421. On failure we notify and abort instead,
+    // keeping the user in read-only preview so nothing is overwritten.
+    if (!dataToRestore) {
+      const doc = currentDocumentRef.current;
+      if (doc) {
+        // 2. Authoritative server state — the only source that reflects saves from other tabs, users, or agents.
+        setIsReturningToLatest(true);
+        try {
+          const version = await userClient.versions.getLatest(siteId, branchId, doc.id);
+          dataToRestore = version.snapshot as unknown as PuckData;
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error));
+          console.error('[P1PuckProvider] Failed to fetch latest version on return:', err);
+          if (showErrorNotifications) {
+            notificationContext.addError(
+              `Couldn't load the latest version. Staying on the previewed version — try again.`,
+              () => void returnToLatest()
+            );
+          }
+          return;
+        } finally {
+          setIsReturningToLatest(false);
+        }
+      }
+      // 3. No document context — can't fetch; use last value written by performSave.
+      dataToRestore ??= latestVersionDataRef.current;
+    }
+
+    if (dataToRestore) {
+      // IMPORTANT: Update the ref BEFORE state updates
+      // Setting to null allows remote updates to resume
+      viewingVersionRef.current = null;
+
+      // Suppress the PuckDataSynchronizer echo: setCurrentData triggers a setData
+      // dispatch and Puck fires onChange → saveData. Arm the ref so saveData drops
+      // that echo; we control the save explicitly below.
+      suppressNextSaveRef.current = dataToRestore;
+      if (enableRealtime) {
+        pendingRemoteUpdatesRef.current += 1;
+        setTimeout(() => {
+          pendingRemoteUpdatesRef.current = 0;
+        }, 100);
+      }
+
+      currentDataDocumentPathRef.current = currentDocumentRef.current?.path ?? null;
+      setCurrentData(dataToRestore);
+      latestVersionDataRef.current = dataToRestore;
+      setViewingVersion(null);
+      // Clear remoteSyncKey so latest version sync takes priority
+      setRemoteSyncKey(null);
+      // Resume auto-save
+      debouncedSave.resume();
+      setAutoSavePaused(false);
+      // Only queue a save when restoring from local in-memory edits — those were
+      // never persisted. Data from the server fetch is already the latest saved
+      // version; queuing a save would create a spurious identical version.
+      if (hadLocalEdits) {
+        pendingDataRef.current = dataToRestore;
+        debouncedSave();
+      }
+      setSaveStatus('idle');
+    }
+  }, [debouncedSave, cancelPendingRemoteSync, enableRealtime, realtime, userClient, siteId, branchId, showErrorNotifications, notificationContext]);
+
+  // Computed property for whether viewing historical version
+  const isViewingHistoricalVersion = viewingVersion !== null;
+
+  // =========================================================================
+  // Content Type Templates: Permission Resolution (PROPOSAL-010)
+  // =========================================================================
+
+  // Resolve template: either from document binding or registry path
+  const resolvedTemplate = useMemo(() => {
+    if (currentTemplate) return currentTemplate;
+    const path = currentDocument?.path;
+    if (!path) return null;
+    const match = path.match(/^_registry\/templates\/(.+)$/);
+    if (!match) return null;
+    return branchTemplates.find((t) => t.name === match[1]) ?? null;
+  }, [currentTemplate, currentDocument?.path, branchTemplates]);
+
+  // Create Puck permissions resolver based on current template and user role
+  const resolvePermissions = useMemo(
+    () => createPuckPermissions(resolvedTemplate, userRole, isViewingHistoricalVersion),
+    [resolvedTemplate, userRole, isViewingHistoricalVersion]
+  );
+
+  // Show notification when template list fails to load
+  useEffect(() => {
+    if (templatesError && showErrorNotifications && notificationContext?.addError) {
+      notificationContext.addError(
+        `Failed to load templates: ${templatesError.message}`,
+        () => void refreshTemplates(),
+      );
+    }
+  }, [templatesError]);
+
+  // =========================================================================
+  // Content Type Templates: Re-fetch template on tab focus (CUJ-15a)
+  // =========================================================================
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handler = async () => {
+      if (document.visibilityState !== 'visible') return;
+      const doc = currentDocumentRef.current;
+      if (!doc?.templateId || !userClient.templates) return;
+      try {
+        const freshTemplate = await userClient.templates.get(siteId, branchId, doc.templateId);
+        setCurrentTemplate((prev) => {
+          if (prev && prev.version === freshTemplate.version) return prev;
+          return freshTemplate;
+        });
+      } catch {
+        // Silently ignore — stale template is better than no template
+      }
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, [siteId, userClient]);
+
+  // =========================================================================
+  // Phase 9: Presence & Agent Mode State
+  // =========================================================================
+
+  // Presence state (when presenceEnabled)
+  const [presenceActors, setPresenceActors] = useState<ActorPresence[]>([]);
+  const presenceInitializedRef = useRef(false);
+
+  // Track previous actors for onPresenceChange callback comparison
+  const prevActorsRef = useRef<ActorPresence[]>([]);
+
+  // Conflict notifications state
+  const [conflicts, setConflicts] = useState<ConflictNotification[]>([]);
+
+  // Agent edit session state (when agentModeEnabled && agentId)
+  const [agentSession, setAgentSession] = useState<{ sessionId: string; checkpointId?: string } | null>(null);
+  const [agentEditLoading, setAgentEditLoading] = useState(false);
+  const [agentEditError, setAgentEditError] = useState<Error | null>(null);
+
+  // Fetch presence data
+  const fetchPresence = useCallback(async () => {
+    if (!presenceEnabled || !branchId) return;
+
+    try {
+      const branchPresence = await userClient.presence.getBranchPresence(siteId, branchId);
+
+      // Filter out self and enrich with names
+      const filteredActors = branchPresence.actors.filter(
+        (actor) => actor.actorId !== userId
+      );
+      const enrichedActors = enrichActorsWithNames(filteredActors);
+
+      setPresenceActors(enrichedActors);
+
+      // Call onPresenceChange if actors changed
+      if (onPresenceChange) {
+        const actorsChanged =
+          JSON.stringify(enrichedActors.map((a) => a.id).sort()) !==
+          JSON.stringify(prevActorsRef.current.map((a) => a.id).sort());
+        if (actorsChanged) {
+          onPresenceChange(enrichedActors);
+          prevActorsRef.current = enrichedActors;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch presence:', error);
+    }
+  }, [presenceEnabled, branchId, siteId, userId, userClient, onPresenceChange, enrichActorsWithNames]);
+
+  // Keep fetchPresence in a ref to avoid restarting the interval when callback changes
+  const fetchPresenceRef = useRef(fetchPresence);
+  useEffect(() => {
+    fetchPresenceRef.current = fetchPresence;
+  }, [fetchPresence]);
+
+  // Initial presence fetch and polling
+  // HTTP polling is skipped when WebSocket presence is active and connected
+  useEffect(() => {
+    if (!presenceEnabled) return;
+
+    // Skip HTTP polling if WebSocket presence is handling updates
+    const shouldSkipPolling = wsPresenceActive && realtime.connected;
+
+    // Initial fetch (only if WS isn't active yet)
+    if (!presenceInitializedRef.current && !shouldSkipPolling) {
+      presenceInitializedRef.current = true;
+      void fetchPresenceRef.current();
+    }
+
+    // Set up polling - use ref to avoid restarting interval when callback changes
+    // Skip polling when WebSocket is handling presence
+    const intervalId = setInterval(() => {
+      // Check again at each interval - WS state may have changed
+      if (!wsPresenceActive || !realtime.connected) {
+        void fetchPresenceRef.current();
+      }
+    }, presencePollingInterval);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [presenceEnabled, presencePollingInterval, realtime.connected]);
+
+  // Reset presence when disabled
+  useEffect(() => {
+    if (!presenceEnabled) {
+      setPresenceActors([]);
+      presenceInitializedRef.current = false;
+    }
+  }, [presenceEnabled]);
+
+  // Reset WebSocket presence state when disconnected so the UI falls back
+  // to HTTP-polled presence data. Without this, wsPresenceActive stays
+  // true after disconnect and the UI shows stale WebSocket presence
+  // (e.g. an agent that already completed its edit session still appears).
+  useEffect(() => {
+    if (!realtime.connected) {
+      setWsPresenceActive(false);
+      setWsPresenceActors([]);
+    }
+  }, [realtime.connected]);
+
+  // Compute derived presence values
+  // Prefer WebSocket presence when connected for instant updates
+  const presenceState: PresenceState | null = useMemo(() => {
+    if (!presenceEnabled) return null;
+
+    // Use WebSocket presence when active and connected, otherwise fall back to HTTP polling data
+    const effectiveActors =
+      wsPresenceActive && realtime.connected ? wsPresenceActors : presenceActors;
+
+    const humans = effectiveActors.filter((actor) => actor.role === 'human');
+    const agents = effectiveActors.filter((actor) => actor.role === 'agent');
+    const hasActiveHumans = humans.some(
+      (actor) => actor.state === 'active' || actor.state === 'editing'
+    );
+    const hasActiveAgents = agents.some(
+      (actor) => actor.state === 'active' || actor.state === 'editing'
+    );
+
+    return {
+      actors: effectiveActors,
+      humans,
+      agents,
+      hasActiveHumans,
+      hasActiveAgents,
+      refresh: fetchPresence,
+    };
+  }, [presenceEnabled, presenceActors, wsPresenceActors, wsPresenceActive, realtime.connected, fetchPresence]);
+
+  // Keep presence in a ref so it can be read via getter without triggering
+  // context recreation. Presence changes frequently (focus region broadcasts)
+  // but shouldn't cause PuckDataSynchronizer or plugin re-renders.
+  const presenceStateRef = useRef(presenceState);
+  presenceStateRef.current = presenceState;
+
+  // =========================================================================
+  // Phase 9: Agent Edit Capabilities (when this client IS an agent)
+  // =========================================================================
+
+  const agentEditCapabilities: UseAgentEditReturn | null = useMemo(() => {
+    if (!agentModeEnabled || !agentId) return null;
+
+    const documentPath = currentDocument?.path ?? null;
+
+    const canEdit = async (params: {
+      trigger: 'human_requested' | 'autonomous';
+      intent: string;
+      targetRegions: string[];
+      requestedById?: string;
+    }) => {
+      if (!documentPath) {
+        throw new Error('No document loaded');
+      }
+      return userClient.agentEdit.canEdit(siteId, branchId, documentPath, {
+        agentId,
+        trigger: params.trigger,
+        intent: params.intent,
+        targetRegions: params.targetRegions,
+        requestedById: params.requestedById,
+      });
+    };
+
+    const startEdit = async (params: {
+      trigger: 'human_requested' | 'autonomous';
+      intent: string;
+      targetRegions: string[];
+      requestedById?: string;
+    }) => {
+      if (!documentPath) {
+        throw new Error('No document loaded');
+      }
+      setAgentEditLoading(true);
+      setAgentEditError(null);
+      try {
+        const session = await userClient.agentEdit.startEdit(siteId, branchId, documentPath, {
+          agentId,
+          trigger: params.trigger,
+          intent: params.intent,
+          targetRegions: params.targetRegions,
+          requestedById: params.requestedById,
+        });
+        setAgentSession(session);
+        setAgentEditLoading(false);
+        return session;
+      } catch (err) {
+        const e = err instanceof Error ? err : new Error(String(err));
+        setAgentEditError(e);
+        setAgentEditLoading(false);
+        throw e;
+      }
+    };
+
+    const completeEdit = async () => {
+      if (!agentSession) {
+        throw new Error('No active edit session');
+      }
+      if (!documentPath) {
+        throw new Error('No document loaded');
+      }
+      setAgentEditLoading(true);
+      try {
+        await userClient.agentEdit.completeEdit(siteId, branchId, documentPath, agentId);
+        setAgentSession(null);
+        setAgentEditLoading(false);
+      } catch (err) {
+        const e = err instanceof Error ? err : new Error(String(err));
+        setAgentEditError(e);
+        setAgentEditLoading(false);
+        throw e;
+      }
+    };
+
+    const abortEdit = async () => {
+      if (!agentSession) {
+        throw new Error('No active edit session');
+      }
+      if (!documentPath) {
+        throw new Error('No document loaded');
+      }
+      if (!agentSession.checkpointId) {
+        throw new Error('No checkpoint ID in session');
+      }
+      setAgentEditLoading(true);
+      try {
+        await userClient.agentEdit.abortEdit(
+          siteId,
+          branchId,
+          documentPath,
+          agentId,
+          agentSession.checkpointId
+        );
+        setAgentSession(null);
+        setAgentEditLoading(false);
+      } catch (err) {
+        const e = err instanceof Error ? err : new Error(String(err));
+        setAgentEditError(e);
+        setAgentEditLoading(false);
+        throw e;
+      }
+    };
+
+    return {
+      canEdit,
+      startEdit,
+      completeEdit,
+      abortEdit,
+      session: agentSession,
+      sessionId: agentSession?.sessionId ?? null,
+      isEditing: agentSession !== null,
+      isLoading: agentEditLoading,
+      error: agentEditError,
+    };
+  }, [
+    agentModeEnabled,
+    agentId,
+    currentDocument,
+    siteId,
+    branchId,
+    userClient,
+    agentSession,
+    agentEditLoading,
+    agentEditError,
+  ]);
+
+  // =========================================================================
+  // Phase 9: Agent Trigger (for human users to trigger agents)
+  // =========================================================================
+
+  const triggerAgentFn: UseAgentTriggerReturn['triggerAgent'] | null = useMemo(() => {
+    // Only available when agentModeEnabled but no agentId (human user)
+    if (!agentModeEnabled || agentId) return null;
+
+    const documentPath = currentDocument?.path ?? null;
+
+    return async (action: {
+      agentId: string;
+      intent: string;
+      targetRegions: string[];
+      operationType?: string;
+    }) => {
+      if (!documentPath) {
+        return { success: false, error: 'No document loaded' };
+      }
+
+      try {
+        // Check permission
+        const permission = await userClient.agentEdit.canEdit(siteId, branchId, documentPath, {
+          agentId: action.agentId,
+          trigger: 'human_requested',
+          intent: action.intent,
+          targetRegions: action.targetRegions,
+          requestedById: userId,
+        });
+
+        if (!permission.allowed) {
+          return { success: false, error: permission.reason };
+        }
+
+        // Start edit session
+        const session = await userClient.agentEdit.startEdit(siteId, branchId, documentPath, {
+          agentId: action.agentId,
+          trigger: 'human_requested',
+          intent: action.intent,
+          targetRegions: action.targetRegions,
+          requestedById: userId,
+        });
+
+        return { success: true, checkpointId: session.checkpointId };
+      } catch (err) {
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    };
+  }, [agentModeEnabled, agentId, currentDocument, siteId, branchId, userId, userClient]);
+
+  // =========================================================================
+  // Phase 9: Conflict Notifications
+  // =========================================================================
+
+  const dismissConflict = useCallback((id: string) => {
+    setConflicts((prev) => prev.filter((c) => c.id !== id));
+  }, []);
+
+  // Stop an agent's edit session (human-initiated)
+  const handleStopAgent = useCallback(
+    async (agent: ActorPresence) => {
+      const documentPath = currentDocumentRef.current?.path;
+      if (!documentPath) {
+        notificationContext.addError('Cannot stop agent: no document loaded');
+        return;
+      }
+      try {
+        await userClient.agentEdit.stopAgent(siteId, branchId, documentPath, agent.actorId);
+        notificationContext.addSuccess(`Agent "${agent.name}" has been stopped`);
+        // Refresh presence to reflect the agent's removal
+        if (presenceEnabled) {
+          void fetchPresenceRef.current();
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        notificationContext.addError(`Failed to stop agent: ${message}`);
+      }
+    },
+    [userClient, siteId, branchId, notificationContext, presenceEnabled]
+  );
+
+  // Create checkpoint
+  const createCheckpoint = useCallback(
+    async (name?: string): Promise<Checkpoint> => {
+      // Save any pending changes first
+      if (pendingDataRef.current) {
+        if (enableRealtime && realtimeConnectedRef.current) {
+          // Data origin guard: only send if data belongs to current document
+          const currentPath = currentDocumentRef.current?.path ?? null;
+          if (currentDataDocumentPathRef.current === currentPath) {
+            realtime.applyLocalChange(pendingDataRef.current);
+          }
+          pendingDataRef.current = null;
+        } else {
+          debouncedSave.cancel();
+          await performSave();
+        }
+      }
+
+      // When realtime is connected, wait for the DO to acknowledge receipt of
+      // all preceding WebSocket messages before creating the checkpoint.
+      if (enableRealtime && realtimeConnectedRef.current) {
+        try {
+          await realtime.waitForDelivery();
+        } catch {
+          console.warn('[P1PuckProvider] Delivery ack before checkpoint failed, proceeding anyway');
+        }
+      }
+
+      const checkpoint = await userClient.checkpoints.create(siteId, {
+        branchId,
+        name,
+        type: 'manual',
+      });
+
+      return checkpoint;
+    },
+    [userClient, siteId, branchId, debouncedSave, performSave, enableRealtime, realtime]
+  );
+
+  // Publish current document
+  const publishDocument = useCallback(
+    async (): Promise<Checkpoint> => {
+      const doc = currentDocumentRef.current;
+      if (!doc) {
+        throw new Error('No document loaded to publish');
+      }
+
+      // Send any pending changes before publish
+      if (pendingDataRef.current) {
+        if (enableRealtime && realtimeConnectedRef.current) {
+          const currentPath = currentDocumentRef.current?.path ?? null;
+          if (currentDataDocumentPathRef.current === currentPath) {
+            realtime.applyLocalChange(pendingDataRef.current);
+          }
+          pendingDataRef.current = null;
+        } else {
+          debouncedSave.cancel();
+          await performSave();
+        }
+      }
+
+      // When realtime is connected, use WebSocket-driven publish.
+      // The DO handles the entire flow: flush CRDT to Postgres, then
+      // create the checkpoint. TCP ordering guarantees all preceding
+      // binary CRDT updates are processed before the publish_request.
+      if (enableRealtime && realtimeConnectedRef.current) {
+        const publishResult = await realtime.requestPublish();
+        if (!publishResult.success) {
+          throw new Error(publishResult.error ?? 'Publish failed');
+        }
+        if (!publishResult.checkpoint) {
+          throw new Error('Publish succeeded but no checkpoint returned');
+        }
+        return publishResult.checkpoint;
+      }
+
+      // Fallback: HTTP publish when realtime is not connected
+      const result = await userClient.documents.publish(siteId, branchId, doc.id);
+      return result.checkpoint;
+    },
+    [userClient, siteId, branchId, debouncedSave, performSave, enableRealtime, realtime]
+  );
+
+  // Tracks the currently in-flight switchBranch flush (everything after the
+  // synchronous branch-selection commit), so a rapid re-selection can await
+  // the prior call instead of racing it. See switchBranch below.
+  const switchBranchInFlightRef = useRef<Promise<void> | null>(null);
+
+  // Switch branch
+  const switchBranch = useCallback(
+    async (newBranchId: string) => {
+      // Commit the new workstream selection FIRST, synchronously, before the
+      // async save-flush below. The UI (WorkstreamSwitcher) fires this inside
+      // startTransition without awaiting it, so its "Switching..." busy state
+      // clears as soon as this function's synchronous portion returns — well
+      // before a save-flush of the outgoing document would resolve. If the
+      // user navigates to a different document in that window, this provider
+      // can remount (the editor route has no layout.tsx to shield it across
+      // param changes), and its branchId initializer re-reads sessionStorage.
+      // Persisting here — before the flush, not after — guarantees that read
+      // always sees the newly selected branch instead of a stale one,
+      // preventing the workstream selector from snapping back to Live/main.
+      setBranchId(newBranchId);
+      persistBranchId(newBranchId);
+      const branch = branches.find((b) => b.id === newBranchId);
+      setCurrentBranch(branch ?? null);
+
+      // Serialize the flush portion below against any switchBranch call
+      // still in flight. Because the branch commit above is synchronous but
+      // the flush is not, a rapid second call (the switcher fires onSwitch
+      // fire-and-forget, so its busy state clears well before the flush
+      // resolves) can otherwise start its own flush while pendingDataRef
+      // still holds the first call's outgoing edit — grabbing a performSave
+      // closure already pointed at the intermediate branch and saving that
+      // same edit a second time, to the wrong branch. Awaiting the prior
+      // in-flight flush first guarantees only one flush ever reads/clears
+      // pendingDataRef at a time, and that each flush's performSave targets
+      // the branch that was current when that flush actually started.
+      const previousSwitch = switchBranchInFlightRef.current;
+      const thisSwitch = (async () => {
+        if (previousSwitch) {
+          // A prior switch's flush failure shouldn't block this one.
+          await previousSwitch.catch(() => undefined);
+        }
+
+        // Cancel any pending remote sync - we're switching to a different branch
+        cancelPendingRemoteSync();
+
+        // Save any pending changes on the outgoing document/branch first
+        if (pendingDataRef.current) {
+          debouncedSave.cancel();
+          await performSave();
+        }
+
+        // IMPORTANT: Update the ref BEFORE state updates
+        viewingVersionRef.current = null;
+
+        setCurrentDocument(null);
+        currentDataDocumentPathRef.current = null;
+        setCurrentData(null);
+        setViewingVersion(null);
+        // Clear remoteSyncKey so new branch document sync takes priority
+        setRemoteSyncKey(null);
+        pendingDataRef.current = null;
+        setSaveStatus('idle');
+        setSaveError(null);
+      })();
+
+      switchBranchInFlightRef.current = thisSwitch;
+      try {
+        await thisSwitch;
+      } finally {
+        if (switchBranchInFlightRef.current === thisSwitch) {
+          switchBranchInFlightRef.current = null;
+        }
+      }
+    },
+    [branches, debouncedSave, performSave, cancelPendingRemoteSync, persistBranchId]
+  );
+
+  // Presence context value (for hooks like useFocusRegionReporting)
+  const presenceContextValue: PresenceContextValue | null = useMemo(() => {
+    if (!presenceEnabled) return null;
+
+    const actors = presenceState?.actors ?? [];
+    return {
+      client: userClient,
+      siteId,
+      branchId,
+      documentPath: currentDocument?.path ?? null,
+      userId,
+      currentUserId: userId,
+      isConnected: realtime.connected,
+      presence: actors,
+      actors,
+      activeAgents: presenceState?.agents?.filter(a => a.state === 'editing') ?? [],
+      agentEditingRegions: presenceState?.agents
+        ?.filter(a => a.state === 'editing')
+        ?.flatMap(a => a.focusRegions ?? []) ?? [],
+      isAgentEditing: presenceState?.hasActiveAgents ?? false,
+      // Agent edit functions - placeholder implementations
+      // These are handled by agentEditCapabilities in the main context
+      canEdit: async () => ({ allowed: true }),
+      startEdit: async () => ({ sessionId: '' }),
+      completeEdit: async () => ({ success: true }),
+      abortEdit: async () => ({ success: true }),
+      subscribe: () => () => {},
+    };
+  }, [
+    presenceEnabled,
+    userClient,
+    siteId,
+    branchId,
+    currentDocument?.path,
+    userId,
+    realtime.connected,
+    presenceState,
+  ]);
+
+  // =========================================================================
+  // Stable Callback Wrappers
+  // =========================================================================
+  // Wrap volatile callbacks in refs + stable wrappers so consumers don't need
+  // to stabilize them manually. The ref is updated inline during render (safe
+  // because it's a ref write, not a state write) and the stable wrapper
+  // delegates to ref.current, ensuring the latest implementation is always used.
+
+  const saveDataRef = useRef(saveData);
+  saveDataRef.current = saveData;
+  const stableSaveData = useCallback(
+    (data: PuckData) => saveDataRef.current(data),
+    []
+  );
+
+  const saveNowRef = useRef(saveNow);
+  saveNowRef.current = saveNow;
+  const stableSaveNow = useCallback(
+    () => saveNowRef.current(),
+    []
+  );
+
+  const persistCurrentEditsRef = useRef(persistCurrentEdits);
+  persistCurrentEditsRef.current = persistCurrentEdits;
+  const stablePersistCurrentEdits = useCallback(
+    () => persistCurrentEditsRef.current(),
+    []
+  );
+
+  const createCheckpointRef = useRef(createCheckpoint);
+  createCheckpointRef.current = createCheckpoint;
+  const stableCreateCheckpoint = useCallback(
+    (name?: string) => createCheckpointRef.current(name),
+    []
+  );
+
+  const publishDocumentRef = useRef(publishDocument);
+  publishDocumentRef.current = publishDocument;
+  const stablePublishDocument = useCallback(
+    () => publishDocumentRef.current(),
+    []
+  );
+
+  const pauseAutoSaveRef = useRef(pauseAutoSave);
+  pauseAutoSaveRef.current = pauseAutoSave;
+  const stablePauseAutoSave = useCallback(
+    () => pauseAutoSaveRef.current(),
+    []
+  );
+
+  const resumeAutoSaveRef = useRef(resumeAutoSave);
+  resumeAutoSaveRef.current = resumeAutoSave;
+  const stableResumeAutoSave = useCallback(
+    () => resumeAutoSaveRef.current(),
+    []
+  );
+
+  const switchBranchRef = useRef(switchBranch);
+  switchBranchRef.current = switchBranch;
+  const stableSwitchBranch = useCallback(
+    (newBranchId: string) => switchBranchRef.current(newBranchId),
+    []
+  );
+
+  // Get pending actions for forwarding to backend
+  const getPendingActions = useCallback(() => {
+    return [...pendingActionsRef.current]; // Return copy to prevent external mutation
+  }, []);
+
+  const loadDocumentRef = useRef(loadDocument);
+  loadDocumentRef.current = loadDocument;
+  const stableLoadDocument = useCallback(
+    (path: string) => loadDocumentRef.current(path),
+    []
+  );
+
+  const loadVersionRef = useRef(loadVersion);
+  loadVersionRef.current = loadVersion;
+  const stableLoadVersion = useCallback(
+    (version: DocumentVersion) => loadVersionRef.current(version),
+    []
+  );
+
+  const returnToLatestRef = useRef(returnToLatest);
+  returnToLatestRef.current = returnToLatest;
+  const stableReturnToLatest = useCallback(
+    () => returnToLatestRef.current(),
+    []
+  );
+
+  const handleStopAgentRef = useRef(handleStopAgent);
+  handleStopAgentRef.current = handleStopAgent;
+  const stableStopAgent = useCallback(
+    (agent: ActorPresence) => handleStopAgentRef.current(agent),
+    []
+  );
+
+  // =========================================================================
+  // Stable Getters (Items 2 & 3)
+  // =========================================================================
+  // Refs updated inline during render, exposed as stable getter callbacks.
+
+  const saveStatusGetterRef = useRef(saveStatus);
+  saveStatusGetterRef.current = saveStatus;
+  const getSaveStatus = useCallback(() => saveStatusGetterRef.current, []);
+
+  const lastSavedGetterRef = useRef(lastSaved);
+  lastSavedGetterRef.current = lastSaved;
+  const getLastSaved = useCallback(() => lastSavedGetterRef.current, []);
+
+  const saveErrorGetterRef = useRef(saveError);
+  saveErrorGetterRef.current = saveError;
+  const getSaveError = useCallback(() => saveErrorGetterRef.current, []);
+
+  const getHasUnsavedChanges = useCallback(
+    () => pendingDataRef.current !== null,
+    []
+  );
+
+  // Data sync getters (Item 3)
+  const currentDataGetterRef = useRef(currentData);
+  currentDataGetterRef.current = currentData;
+  const remoteSyncKeyGetterRef = useRef(remoteSyncKey);
+  remoteSyncKeyGetterRef.current = remoteSyncKey;
+  const currentDocumentGetterRef = useRef(currentDocument);
+  currentDocumentGetterRef.current = currentDocument;
+  const viewingVersionGetterRef = useRef(viewingVersion);
+  viewingVersionGetterRef.current = viewingVersion;
+
+  const getSyncData = useCallback(
+    (): PuckData | undefined => currentDataGetterRef.current ?? undefined,
+    []
+  );
+
+  const getDataSyncKey = useCallback((): string | undefined => {
+    const syncKey = remoteSyncKeyGetterRef.current;
+    const doc = currentDocumentGetterRef.current;
+    const version = viewingVersionGetterRef.current;
+
+    if (syncKey) return syncKey;
+    if (version) return `version-${version.id}`;
+    if (doc) return `doc-${doc.id}-latest`;
+    return undefined;
+  }, []);
+
+  // =========================================================================
+  // Plugin Composition (B.4)
+  // =========================================================================
+
+  const resolvedFeatureConfig = useMemo(() => {
+    if (featureConfig) return resolveFeatureConfig(featureConfig);
+    return resolveFeatureConfig({
+      enableRealtime,
+      presenceEnabled,
+      agentModeEnabled,
+    });
+  }, [featureConfig, enableRealtime, presenceEnabled, agentModeEnabled]);
+
+  const activePlugins = useMemo(() => {
+    const plugins = featurePlugins ?? DEFAULT_CSS_FEATURE_PLUGINS;
+    return resolveActivePlugins(plugins, resolvedFeatureConfig);
+  }, [featurePlugins, resolvedFeatureConfig]);
+
+  const pluginDeps: P1FeaturePluginDeps = useMemo(() => ({
+    client: userClient,
+    siteId,
+    branchId,
+    userId,
+    config: resolvedFeatureConfig,
+  }), [userClient, siteId, branchId, userId, resolvedFeatureConfig]);
+
+  const ComposedPluginProviders = useMemo(
+    () => composeProviders(activePlugins, resolvedFeatureConfig, pluginDeps),
+    [activePlugins, resolvedFeatureConfig, pluginDeps],
+  );
+
+  // =========================================================================
+  // safeData (Item 4) — never null
+  // =========================================================================
+
+  const EMPTY_PUCK_DATA: PuckData = useMemo(
+    () => ({ content: [], root: { props: {} } }),
+    []
+  );
+
+  const lastGoodDataRef = useRef<PuckData>(EMPTY_PUCK_DATA);
+  if (currentDocument && currentData) {
+    lastGoodDataRef.current = currentData;
+  }
+  const safeData = lastGoodDataRef.current;
+
+  // Context value
+  const contextValue: P1PuckContextValue = useMemo(
+    () => ({
+      client: userClient,
+      notifications: notificationContext,
+      siteId,
+      siteName,
+      branchId,
+      userId,
+      currentDocument,
+      currentData,
+      documentLoading,
+      saveStatus,
+      lastSaved,
+      saveError,
+      loadDocument: stableLoadDocument,
+      saveData: stableSaveData,
+      saveNow: stableSaveNow,
+      persistCurrentEdits: stablePersistCurrentEdits,
+      createCheckpoint: stableCreateCheckpoint,
+      publishDocument: stablePublishDocument,
+      switchBranch: stableSwitchBranch,
+      // Stable getters (Items 2, 3)
+      getSaveStatus,
+      getLastSaved,
+      getSaveError,
+      getHasUnsavedChanges,
+      getSyncData,
+      getDataSyncKey,
+      // safeData (Item 4)
+      safeData,
+      // Documents (Item 8)
+      documents: branchDocuments,
+      documentsLoading,
+      refreshDocuments,
+      createDocument: stableCreateDocument,
+      deleteDocument: stableDeleteDocument,
+      createTemplate: stableCreateTemplate,
+      updateTemplate: stableUpdateTemplate,
+      branches,
+      currentBranch,
+      refreshBranches,
+      createBranch,
+      branchesLoading,
+      autoSavePaused,
+      pauseAutoSave: stablePauseAutoSave,
+      resumeAutoSave: stableResumeAutoSave,
+      viewingVersion,
+      // Exposed for type/back-compat only — nothing renders from it. Read from
+      // the ref; the memo already recomputes each save (via lastSaved), so this
+      // stays adequately fresh without being a reactive dependency.
+      latestVersionData: latestVersionDataRef.current,
+      isViewingHistoricalVersion,
+      isReturningToLatest,
+      loadVersion: stableLoadVersion,
+      returnToLatest: stableReturnToLatest,
+      realtimeEnabled: enableRealtime,
+      realtimeConnected: realtime.connected,
+      remoteSyncKey,
+      // WebSocket presence - send focus regions via WebSocket when connected
+      sendFocusRegions: realtime.sendFocusRegions,
+      // Puck action metadata capture - pass as onAction to <Puck>
+      handleAction,
+      // Get pending actions for backend forwarding (PROPOSAL-010)
+      getPendingActions,
+      // Phase 9: Presence & Agent values
+      // Use getter to avoid context recreation on every focus-region update.
+      // Expose humanPresenceCount/hasActiveHumans/hasActiveAgents directly so every
+      // join/leave triggers context re-renders and causes consumers to re-invoke the getter.
+      get presence() { return presenceStateRef.current; },
+      hasActiveHumans: presenceState?.hasActiveHumans ?? false,
+      humanPresenceCount: presenceState?.humans.length ?? 0,
+      hasActiveAgents: presenceState?.hasActiveAgents ?? false,
+      agentEdit: agentEditCapabilities,
+      triggerAgent: triggerAgentFn,
+      stopAgent: stableStopAgent,
+      conflicts,
+      dismissConflict,
+      // Feature configuration (Phase B.5)
+      featureConfig: resolvedFeatureConfig,
+      // Internal: realtime data capture for catch-up (sends missed keystrokes)
+      _realtimeDataCaptureRef: enableRealtime ? realtimeDataCaptureRef : null,
+      _onRealtimeDataCapture: enableRealtime ? handleRealtimeDataCapture : null,
+      // Content Type Templates (PROPOSAL-010)
+      userRole,
+      templates: branchTemplates,
+      templatesLoading,
+      templatesError,
+      refreshTemplates,
+      currentTemplate,
+      resolvePermissions,
+    }),
+    [
+      userClient,
+      notificationContext,
+      siteId,
+      branchId,
+      userId,
+      currentDocument,
+      currentData,
+      documentLoading,
+      saveStatus,
+      lastSaved,
+      saveError,
+      stableLoadDocument,
+      stableSaveData,
+      stableSaveNow,
+      stablePersistCurrentEdits,
+      stableCreateCheckpoint,
+      stablePublishDocument,
+      stableSwitchBranch,
+      getSaveStatus,
+      getLastSaved,
+      getSaveError,
+      getHasUnsavedChanges,
+      getSyncData,
+      getDataSyncKey,
+      safeData,
+      branchDocuments,
+      documentsLoading,
+      stableCreateDocument,
+      stableDeleteDocument,
+      stableCreateTemplate,
+      stableUpdateTemplate,
+      branches,
+      currentBranch,
+      refreshBranches,
+      branchesLoading,
+      autoSavePaused,
+      stablePauseAutoSave,
+      stableResumeAutoSave,
+      viewingVersion,
+      isViewingHistoricalVersion,
+      isReturningToLatest,
+      stableLoadVersion,
+      stableReturnToLatest,
+      enableRealtime,
+      realtime.connected,
+      remoteSyncKey,
+      realtime.sendFocusRegions,
+      handleAction,
+      getPendingActions,
+      handleRealtimeDataCapture,
+      // Phase 9 dependencies (full presenceState excluded — accessed via getter/ref,
+      // but humanPresenceCount/hasActiveHumans/hasActiveAgents are direct values so every
+      // join/leave triggers re-renders regardless of how many actors are present)
+      presenceState?.humans.length,
+      presenceState?.hasActiveHumans,
+      presenceState?.hasActiveAgents,
+      agentEditCapabilities,
+      triggerAgentFn,
+      stableStopAgent,
+      conflicts,
+      dismissConflict,
+      enableRealtime,
+      resolvedFeatureConfig,
+      // Content Type Templates
+      userRole,
+      branchTemplates,
+      templatesLoading,
+      templatesError,
+      refreshTemplates,
+      currentTemplate,
+      resolvePermissions,
+    ]
+  );
+
+  // Wrap with PresenceContext.Provider when presence is enabled
+  const wrappedChildren = presenceContextValue ? (
+    <PresenceContext.Provider value={presenceContextValue}>
+      {children}
+    </PresenceContext.Provider>
+  ) : (
+    children
+  );
+
+  return (
+    <P1PuckContext.Provider value={contextValue}>
+      <ComposedPluginProviders>
+        {wrappedChildren}
+      </ComposedPluginProviders>
+    </P1PuckContext.Provider>
+  );
+}

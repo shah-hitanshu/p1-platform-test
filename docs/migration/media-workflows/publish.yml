@@ -1,0 +1,56 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (leave empty to use packages/plugin/package.json)"
+        required: false
+        type: string
+
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for npm OIDC trusted publishing (no token)
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b # v5.0.0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set package version
+        if: ${{ inputs.version != '' }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          jq --arg v "$VERSION" '.version = $v' packages/plugin/package.json > tmp.json
+          mv tmp.json packages/plugin/package.json
+
+      - name: Build plugin
+        run: pnpm --filter @pantheon-systems/p1-media build
+
+      - name: Refuse to publish a README
+        run: |
+          if [ -f packages/plugin/README.md ]; then
+            echo "packages/plugin/README.md exists — npm always bundles it regardless of the files field. Remove it (docs live in docs/plugin-usage.md) before publishing." >&2
+            exit 1
+          fi
+
+      - name: Publish
+        working-directory: packages/plugin
+        run: npm publish --access public

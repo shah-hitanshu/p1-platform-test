@@ -1,0 +1,43 @@
+{
+  "name": "p1-platform",
+  "version": "0.0.0",
+  "private": true,
+  "description": "P1 platform monorepo: collaborative state system, Puck CSS SDK, AI chat, and media",
+  "scripts": {
+    "dev:starter": "dotenv -e .env.fullstack.local -- turbo run dev --filter=@pantheon-systems/p1-starter",
+    "dev:agent": "turbo run dev --filter=@p1/agent",
+    "dev:media": "turbo run dev --filter=p1-media-worker",
+    "dev:mcp": "turbo run dev --filter=css-mcp-server",
+    "dev:stack": "make docker-up db-ready && dotenv -e .env.fullstack.local -- turbo run dev:stack --filter='!@p1/agent' --filter='!p1-media-worker'",
+    "dev:stack:full": "make docker-up db-ready && dotenv -e .env.fullstack.local -- turbo run dev:stack",
+    "dev:starter:staging": "dotenv -e .env.staging.local -- turbo run dev --filter=@pantheon-systems/p1-starter",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "clean": "pnpm -r run clean",
+    "ci:version": "changeset version",
+    "ci:publish": "changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0",
+    "@pantheon-systems/eslint-config": "workspace:*",
+    "@playwright/test": "^1.58.0",
+    "@types/node": "^20.19.30",
+    "@vitest/coverage-v8": "^4.1.5",
+    "eslint": "^9.27.0",
+    "prettier": "^3.8.1",
+    "tsx": "^4.23.1",
+    "turbo": "^2.9.14",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5",
+    "ws": "^8.21.0",
+    "dotenv-cli": "^11.0.0"
+  },
+  "packageManager": "pnpm@11.15.1",
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

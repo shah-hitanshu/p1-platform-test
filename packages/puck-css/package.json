@@ -1,0 +1,139 @@
+{
+  "name": "@pantheon-systems/puck-css",
+  "version": "0.8.0",
+  "description": "Puck editor integration with Collaborative State System",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "provenance": false
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pantheon-systems/puck-css-integration.git",
+    "directory": "packages/puck-css"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "config": [
+        "./dist/config.d.ts"
+      ],
+      "utils/path": [
+        "./dist/utils/path.d.ts"
+      ],
+      "pds": [
+        "./dist/pds/index.d.ts"
+      ],
+      "fields": [
+        "./dist/data/fields.d.ts"
+      ]
+    }
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./config": {
+      "import": "./dist/config.js",
+      "default": "./dist/config.js",
+      "types": "./dist/config.d.ts"
+    },
+    "./utils/path": {
+      "import": "./dist/utils/path.js",
+      "default": "./dist/utils/path.js",
+      "types": "./dist/utils/path.d.ts"
+    },
+    "./styles.css": "./src/styles.css",
+    "./server": {
+      "import": "./dist/server.js",
+      "default": "./dist/server.js",
+      "types": "./dist/server.d.ts"
+    },
+    "./registry-sync": {
+      "import": "./dist/registry-sync.js",
+      "default": "./dist/registry-sync.js",
+      "types": "./dist/registry-sync.d.ts"
+    },
+    "./auth-gate": {
+      "import": "./dist/auth/AuthGate.js",
+      "default": "./dist/auth/AuthGate.js",
+      "types": "./dist/auth/AuthGate.d.ts"
+    },
+    "./connectable": {
+      "import": "./dist/editor/components/connectable.js",
+      "default": "./dist/editor/components/connectable.js",
+      "types": "./dist/editor/components/connectable.d.ts"
+    },
+    "./pds": {
+      "import": "./dist/pds/index.js",
+      "default": "./dist/pds/index.js",
+      "types": "./dist/pds/index.d.ts"
+    },
+    "./pds/styles.css": "./src/pds/theme/PuckEditorTheme.css",
+    "./fields": {
+      "import": "./dist/data/fields.js",
+      "default": "./dist/data/fields.js",
+      "types": "./dist/data/fields.d.ts"
+    },
+    "./routes": {
+      "import": "./dist/data/route-templates.js",
+      "default": "./dist/data/route-templates.js",
+      "types": "./dist/data/route-templates.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src/**/*.css",
+    "!src/**/*.module.css",
+    "src/pds/theme"
+  ],
+  "scripts": {
+    "dev": "vite --config vite.config.preview.ts",
+    "build": "pnpm run clean && tsc && find src -name '*.module.css' | while read f; do dest=\"dist/${f#src/}\"; mkdir -p \"$(dirname \"$dest\")\"; cp \"$f\" \"$dest\"; done; (cp node_modules/@pantheon-systems/pds-toolkit-react/dist/css/pds-core.css src/pds/theme/pds-core.css && node scripts/generate-pds-content.cjs) || true",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pantheon-systems/css-client": "workspace:*",
+    "fast-json-patch": "^3.1.1",
+    "jsep": "^1.4.0",
+    "lodash.isequal": "^4.5.0",
+    "yjs": "^13.6.29"
+  },
+  "devDependencies": {
+    "@floating-ui/react": "^0.27.19",
+    "@pantheon-systems/eslint-config": "workspace:*",
+    "@pantheon-systems/pds-toolkit-react": "2.0.0-alpha.51",
+    "@tanstack/react-query": "^5.99.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/lodash.isequal": "^4.5.8",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "jsdom": "^24.1.3",
+    "react-toastify": "^11.0.5",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.3",
+    "vitest": "^4.1.5"
+  },
+  "peerDependencies": {
+    "@pantheon-systems/pds-toolkit-react": ">=2.0.0-alpha.0",
+    "@puckeditor/core": ">=0.21.0",
+    "@tanstack/react-query": ">=5.0.0",
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "license": "MIT"
+}

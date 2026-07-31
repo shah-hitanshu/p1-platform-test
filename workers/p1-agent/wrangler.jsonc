@@ -1,0 +1,55 @@
+{
+  "name": "p1-chatbot-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      { "name": "CHAT_AGENT", "class_name": "ChatAgent" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ChatAgent"] }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "ENVIRONMENT": "local",
+    "CSS_BACKEND_URL": "http://localhost:8787",
+    // Model calls go through the AI Gateway REST API at
+    // api.cloudflare.com/client/v4/accounts/{AI_GATEWAY_ACCOUNT_ID}/ai/v1/{chat/completions|messages}.
+    // AI_GATEWAY_ACCOUNT_ID = Cloudflare account id (URL path); AI_GATEWAY_NAME = gateway
+    // id (sent as the cf-aig-gateway-id header). Put AI_GATEWAY_API_TOKEN in .env locally.
+    "AI_GATEWAY_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
+    "AI_GATEWAY_NAME": "p1-chatbot",
+    // Model as "provider/model" (must contain a slash). anthropic/... -> /messages
+    // (cache_control breakpoints); everything else, incl. bare @cf/... Workers AI ids,
+    // -> /chat/completions (automatic prompt caching). Providers bill through the
+    // gateway's unified billing — no per-provider key needed.
+    "AGENT_MODEL": "@cf/moonshotai/kimi-k2.7-code",
+    // Local dev: the media worker now lives in this repo (workers/p1-media, dev port 8788)
+    "MEDIA_WORKER_URL": "http://localhost:8788"
+  },
+  "env": {
+    "staging": {
+      "account_id": "69bc76f4866aaaa3400ea7fbbd9d7da2",
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "CSS_BACKEND_URL": "https://collaborative-state-worker-staging.pantheon-content-publisher.workers.dev",
+        "AI_GATEWAY_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
+        "AI_GATEWAY_NAME": "p1-chatbot",
+        "AGENT_MODEL": "@cf/moonshotai/kimi-k2.7-code",
+        "MEDIA_WORKER_URL": "https://p1-media-worker-staging.pantheon-content-publisher.workers.dev"
+      },
+      "durable_objects": {
+        "bindings": [
+          { "name": "CHAT_AGENT", "class_name": "ChatAgent" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["ChatAgent"] }
+      ]
+    }
+  }
+}

@@ -1,0 +1,165 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: corepack enable pnpm
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: corepack enable pnpm
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+        env:
+          NEXT_PUBLIC_CSS_BASE_URL: http://localhost:4444
+          NEXT_PUBLIC_CSS_SITE_ID: test-site
+          CSS_API_KEY: test-api-key
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: corepack enable pnpm
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+        env:
+          NEXT_PUBLIC_CSS_BASE_URL: http://localhost:4444
+          NEXT_PUBLIC_CSS_SITE_ID: test-site
+          CSS_API_KEY: test-api-key
+      - run: pnpm test
+
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: corepack enable pnpm
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+        env:
+          NEXT_PUBLIC_CSS_BASE_URL: http://localhost:4444
+          NEXT_PUBLIC_CSS_SITE_ID: test-site
+          CSS_API_KEY: test-api-key
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
+      # demo-ui tests require a running CSS backend (not available in CI yet)
+      - name: Run E2E tests (p1-starter, p1-editor)
+        run: npx playwright test --project p1-starter --project p1-editor
+        env:
+          CSS_API_KEY: ${{ secrets.CSS_API_KEY }}
+          CSS_BASE_URL: ${{ secrets.CSS_BASE_URL }}
+          CSS_SITE_ID: ${{ secrets.CSS_SITE_ID }}
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+  verify-starter-install:
+    name: Verify Starter Kit Install (${{ matrix.pm }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pm: [npm, yarn, pnpm]
+        include:
+          - pm: npm
+            install: npm install
+            verify: npm ls
+          - pm: yarn
+            install: yarn install
+            verify: yarn info --name-only
+          - pm: pnpm
+            install: pnpm install
+            verify: pnpm ls
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: corepack enable pnpm
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build packages and starter kit template
+        run: pnpm build
+
+      # No prepack hooks, so dist has to exist first — hence the full build above.
+      - name: Pack suite packages
+        run: |
+          mkdir -p /tmp/suite-tarballs
+          for pkg in css-client puck-css p1-next-sdk; do
+            (cd "packages/$pkg" && pnpm pack --pack-destination /tmp/suite-tarballs)
+          done
+
+      - name: Prepare scaffolded project
+        run: |
+          cp -r packages/create-p1-starter-kit/template /tmp/test-starter-kit
+          sed -i 's/PLACEHOLDER_PROJECT_NAME/test-p1-starter/' /tmp/test-starter-kit/package.json
+          mkdir -p /tmp/test-starter-kit/vendor
+          cp /tmp/suite-tarballs/*.tgz /tmp/test-starter-kit/vendor/
+          node .github/scripts/use-local-suite-tarballs.mjs /tmp/test-starter-kit
+
+      - name: Install dependencies (${{ matrix.pm }})
+        working-directory: /tmp/test-starter-kit
+        run: ${{ matrix.install }}
+
+      - name: Verify dependency tree
+        working-directory: /tmp/test-starter-kit
+        run: ${{ matrix.verify }}

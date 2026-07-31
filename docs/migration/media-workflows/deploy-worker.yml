@@ -1,0 +1,106 @@
+name: Deploy Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - sandbox
+          - staging
+          - production
+      dry_run:
+        description: "Dry run (no actual deploy)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b # v5.0.0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: worker
+
+      - name: Authenticate to GCP
+        uses: pantheon-systems/common-gh/auth-wif@0a1dafc525b4ffa9fcfbfcf1c889dc0251c0c4e4 # main @ 2026-06
+        with:
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Fetch Cloudflare API token
+        id: secrets
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+        with:
+          secrets: |-
+            cf_token:${{ vars.GCP_PROJECT_ID }}/P1_CF_DEPLOY_TOKEN
+
+      # R2 S3-API credentials for presigned-upload signing (worker/src/r2-presign.ts) —
+      # distinct from the Cloudflare API token above: these get pushed onto the WORKER
+      # ITSELF as persistent secrets (not just used ephemerally by this CI job), since
+      # the worker needs them at request time to sign presigned PUT URLs. Not yet
+      # provisioned for sandbox (deprioritized), hence the environment guard.
+      - name: Fetch R2 API credentials
+        id: r2_secrets
+        if: ${{ inputs.environment != 'sandbox' }}
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+        with:
+          secrets: |-
+            r2_access_key_id:${{ vars.GCP_PROJECT_ID }}/MEDIA_WORKER_R2_ACCESS_KEY_ID
+            r2_secret_access_key:${{ vars.GCP_PROJECT_ID }}/MEDIA_WORKER_R2_SECRET_ACCESS_KEY
+
+      # Apply D1 schema migrations before deploying. Additive-only, so running ahead
+      # of the new worker code is safe. Skipped on dry-run. Requires the CF token to
+      # carry D1 edit scope in addition to Workers/R2.
+      - name: Apply D1 migrations
+        if: ${{ !inputs.dry_run }}
+        run: >
+          pnpm exec wrangler d1 migrations apply
+          "p1-media-${{ inputs.environment == 'production' && 'prod' || inputs.environment }}"
+          --env ${{ inputs.environment }}
+          --remote
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Idempotent — safe to push on every deploy, same reasoning as the migrations
+      # step above. Skipped for sandbox alongside the fetch step.
+      - name: Push R2 credentials to the Worker
+        if: ${{ !inputs.dry_run && inputs.environment != 'sandbox' }}
+        run: |
+          echo -n "$R2_ACCESS_KEY_ID" | pnpm exec wrangler secret put R2_ACCESS_KEY_ID --env ${{ inputs.environment }}
+          echo -n "$R2_SECRET_ACCESS_KEY" | pnpm exec wrangler secret put R2_SECRET_ACCESS_KEY --env ${{ inputs.environment }}
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ steps.r2_secrets.outputs.r2_access_key_id }}
+          R2_SECRET_ACCESS_KEY: ${{ steps.r2_secrets.outputs.r2_secret_access_key }}
+
+      - name: Deploy
+        run: >
+          pnpm exec wrangler deploy
+          --env ${{ inputs.environment }}
+          ${{ inputs.dry_run && '--dry-run' || '' }}
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

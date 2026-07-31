@@ -1,0 +1,10 @@
+-- Migration 047: Query Index (no-op)
+--
+-- Originally created idx_documents_site_template on app.documents(site_id, template_id).
+-- Migration 042 moved template associations to app.document_relations and dropped
+-- template_id from app.documents. The indexes created by migration 042 already cover
+-- the query execution lookup patterns:
+--   - UNIQUE(source_document_id, relation_type) covers the JOIN from document to template
+--   - idx_document_relations_target(target_document_id) covers filtering by template ID
+--
+-- This migration is intentionally empty to preserve migration numbering.

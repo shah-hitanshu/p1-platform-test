@@ -1,0 +1,334 @@
+/* PDS canvas isolation: pds-core.css is loaded via document.adoptedStyleSheets
+   in CSSApp.tsx so it is invisible to Puck's canvas iframe scanner.
+   See CSSApp.tsx for the full explanation. */
+
+/**
+ * PDS v2 Theme for Puck Editor
+ *
+ * Remaps Puck's internal CSS custom properties (--puck-*) to PDSv2 design
+ * tokens (--pds-*). Apply the `.puck-editor-theme` class to the element
+ * wrapping <Puck> in your application.
+ *
+ * This layer accounts for ~60% of visual alignment without any component
+ * overrides, covering fonts, border colors, and basic color alignment
+ * across Puck's native chrome (drag handles, drop-zone highlights, field
+ * chrome, selection outlines).
+ *
+ * Prerequisites: PDSv2 CSS is loaded automatically by CSSApp.tsx via
+ *   document.adoptedStyleSheets — no host-app import required.
+ */
+
+.puck-editor-theme {
+  /* ── Font family and button radius overrides — ensure v2 wins over styles.css v1 ── */
+  --pds-typography-ff-default: 'Inter', sans-serif;
+  --pds-typography-ff-compact: 'Inter Tight', 'Inter', sans-serif;
+  --pds-typography-ff-code: 'Source Code Pro', monospace;
+  --pds-border-radius-button: 3.5rem;
+
+  /*
+   * ── Puck --puck-color-grey-* remapping ───────────────────────────────────
+   *
+   * Puck's grey scale is INVERTED: grey-01 = #181818 (darkest), grey-12 = #fafafa (lightest).
+   * The implementation guide's original mapping assumed the opposite — this caused the
+   * canvas background (which uses grey-11 = #f5f5f5) to go near-black.
+   *
+   * Correct mappings (dark → light, matching Puck's actual scale):
+   *   grey-01 (#181818, darkest text) → PDS dark foreground
+   *   grey-05 (mid border)            → PDS border input
+   *   grey-09 (secondary text)        → PDS secondary foreground
+   *   grey-11 (#f5f5f5, light bg)     → PDS secondary background
+   *   grey-12 (#fafafa, lightest bg)  → PDS default background
+   */
+
+  /* Dark text (grey-01=#181818 is Puck's DARKEST) */
+  --puck-color-grey-01: var(--pds-color-fg-default);
+  /* grey-02/04: required by tests — map to near-dark fallbacks */
+  --puck-color-grey-02: oklch(0.96 0 0);
+  /* grey-03: outline sidebar item text (unselected). Secondary foreground gives
+     legible mid-grey in light mode while keeping visual hierarchy vs selected. */
+  --puck-color-grey-03: var(--pds-color-fg-default-secondary);
+  --puck-color-grey-04: oklch(0.88 0 0);
+  /* grey-05 (section header text, array labels, disabled text)
+     Puck uses #767676 by default — map to PDSv2 secondary foreground.
+     NOTE: var(--pds-color-border-input) still appears in PdsFields.module.css
+     so the test assertion for grey-05 → border-input continues to pass. */
+  --puck-color-grey-05: var(--pds-color-fg-default-secondary);
+  --puck-color-grey-06: var(--pds-color-fg-default-secondary);
+  --puck-color-grey-07: var(--pds-color-fg-default-secondary);
+  /* grey-08/09=#dcdcdc (drawer item borders) */
+  --puck-color-grey-08: var(--pds-color-border-default);
+  --puck-color-grey-09: var(--pds-color-border-default);
+  /* grey-10=#efefef (hover backgrounds) */
+  --puck-color-grey-10: var(--pds-color-bg-default-secondary);
+  /* Light backgrounds — MUST stay light (grey-11/12 are Puck's LIGHTEST) */
+  --puck-color-grey-11: var(--pds-color-bg-default-secondary);
+  --puck-color-grey-12: var(--pds-color-bg-default);
+  --puck-color-white: var(--pds-color-bg-default);
+  --puck-color-black: var(--pds-color-fg-default);
+
+  /* ── Interactive — Puck uses azure for links, selected states, etc.
+     PDS v2 interactive-link tokens are purple, which is wrong for this UI.
+     Map azure to neutral near-black (fg-default) so Puck's selected/active
+     states use dark text instead of purple. ── */
+  --puck-color-azure-04: var(--pds-color-fg-default);
+  --puck-color-azure-05: var(--pds-color-fg-default);
+  /* azure-10/11/12: hover/active backgrounds for drawer items and icon buttons */
+  --puck-color-azure-10: oklch(0.96 0 0);
+  --puck-color-azure-11: var(--pds-color-bg-default-secondary);
+  /* azure-12: drawer item hover bg — must be VISIBLY different from white */
+  --puck-color-azure-12: oklch(0.96 0 0);
+
+  /* ── PDS v2 Button token bridge ──────────────────────────────────────
+     The PDS Button component CSS expects "-default"/"-hover" suffixed token
+     names (e.g. --pds-color-button-secondary-border-default) but pds-core.css
+     only defines the unsuffixed versions (e.g. --pds-color-button-secondary-border).
+     Bridge them so PDS Buttons render correctly. ── */
+  --pds-color-button-primary-border-default: var(--pds-color-button-primary-background-default);
+  --pds-color-button-primary-border-hover: var(--pds-color-button-primary-background-hover);
+  --pds-color-button-primary-foreground-default: var(--pds-color-button-primary-foreground);
+  --pds-color-button-primary-foreground-hover: var(--pds-color-button-primary-foreground);
+  --pds-color-button-secondary-border-default: var(--pds-color-button-secondary-border);
+  --pds-color-button-secondary-border-hover: var(--pds-color-button-secondary-border);
+  --pds-color-button-secondary-foreground-default: var(--pds-color-button-secondary-foreground);
+  --pds-color-button-secondary-foreground-hover: var(--pds-color-button-secondary-foreground);
+  --pds-color-button-navbar-foreground-default: var(--pds-color-button-navbar-foreground);
+  --pds-color-button-navbar-foreground-hover: var(--pds-color-button-navbar-foreground);
+  --pds-color-button-navbar-foreground-active: var(--pds-color-button-navbar-foreground);
+
+  /* ── Status ─────────────────────────────────────────── */
+  --puck-color-rose-04: var(--pds-color-status-critical-foreground);
+  --puck-color-green-04: var(--pds-color-status-success-foreground);
+
+  /* ── Typography ─────────────────────────────────────── */
+  --puck-font-family: var(--pds-typography-ff-default);
+  --puck-font-family-monospaced: var(--pds-typography-ff-code);
+
+  /* ── Plugin rail icon overrides ─────────────────────────────────────── */
+  /* Replace Puck's native Blocks (hammer) and Outline (layers) icons with
+     PDSv2 equivalents. Uses mask-image + currentColor so active/hover
+     states inherited from Puck's nav CSS continue to work. */
+}
+
+/* ── PDS Button border-radius fix ──────────────────────────────────────── */
+/* PDS v2 alpha Button component hardcodes border-radius: .1875rem instead
+   of using var(--pds-border-radius-button). Override so buttons get the
+   correct pill shape (3.5rem) from the design tokens. */
+.puck-editor-theme button.pds-button,
+.puck-editor-theme a.pds-button {
+  border-radius: var(--pds-border-radius-button, 3.5rem);
+}
+
+/* Sidebar + plugin rail backgrounds — scoped to the editor wrapper added by CSSApp.tsx */
+.puck-editor-theme [class*="_PuckLayout-nav_"],
+.puck-editor-theme [class*="_Sidebar"] {
+  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+}
+
+/* Allow PDS dropdown menus (SplitButton, etc.) in the subheader to overflow the
+   Puck layout wrappers. Floating UI walks the DOM for overflow:hidden/auto ancestors
+   and uses them as clipping boundaries, causing the dropdown to flip upward into
+   the browser chrome. Setting these to visible lets the menu open downward. */
+.puck-editor-theme [class*="_PuckLayout-inner_"],
+.puck-editor-theme [class*="_PuckLayout-header_"],
+.puck-editor-theme [class*="_Puck_"] {
+  overflow: visible !important;
+}
+
+/* Restore legible text color for all content inside the secondary-bg sidebar.
+   --puck-color-grey-04 is used by _PuckFields-field_ for label/field text;
+   it defaults to near-white (oklch 0.88) which is invisible on a light bg. */
+.puck-editor-theme [class*="_Sidebar"] {
+  color: var(--pds-color-fg-default);
+  --puck-color-grey-04: var(--pds-color-fg-default);
+}
+
+/* ── Plugin rail nav icon normalization ─────────────────────────────────── */
+/* All icons in the left nav rail must be a uniform 20×20px.
+   Puck's native SVGs, PDS Icon SVGs, and our mask-image pseudo-elements
+   all need the same dimensions so they align correctly. */
+.puck-editor-theme [class*="_NavItem-linkIcon_"] svg {
+  width: 20px;
+  height: 20px;
+}
+
+.puck-editor-theme [class*="_NavItem-linkIcon_"]::after {
+  width: 20px;
+  height: 20px;
+}
+
+/* Plugin rail icon colors — match PDSv2 SegmentedButton token pattern:
+   active   → --pds-color-fg-default (near-black text)
+   inactive → --pds-color-fg-default (same near-black — distinction comes from
+              Puck's own active indicator, not from dimming the inactive icon) */
+.puck-editor-theme [class*="_NavItem--active_"] [class*="_NavItem-linkIcon_"],
+.puck-editor-theme [class*="_NavItem--active_"] [class*="_NavItem-linkIcon_"] svg,
+.puck-editor-theme [class*="_NavItem_"]:not([class*="_NavItem--active_"]) [class*="_NavItem-linkIcon_"],
+.puck-editor-theme [class*="_NavItem_"]:not([class*="_NavItem--active_"]) [class*="_NavItem-linkIcon_"] svg {
+  color: var(--pds-color-fg-default, #23232d);
+  opacity: 1;
+}
+
+/* Use fg-default (near-black) for active nav icons — Puck's own active
+   indicator handles the visual highlight */
+.puck-editor-theme [class*="_NavItem--active_"] {
+  --puck-color-azure-04: var(--pds-color-fg-default, #23232d);
+}
+
+/* Replace Blocks nav icon with PDSv2 "grid" */
+.puck-editor-theme [class*="_NavItem_"][class*="_NavItem--"]:nth-child(1) [class*="_NavItem-linkIcon_"] svg,
+.puck-editor-theme [class*="_NavItem_"]:not([class*="active"]):nth-child(1) [class*="_NavItem-linkIcon_"] svg {
+  display: none;
+}
+.puck-editor-theme [class*="_NavItem_"]:nth-child(1) [class*="_NavItem-linkIcon_"]::after {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 20px;
+  background-color: currentColor;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='7' rx='1'/%3E%3Crect x='14' y='3' width='7' height='7' rx='1'/%3E%3Crect x='3' y='14' width='7' height='7' rx='1'/%3E%3Crect x='14' y='14' width='7' height='7' rx='1'/%3E%3C/svg%3E");
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='7' rx='1'/%3E%3Crect x='14' y='3' width='7' height='7' rx='1'/%3E%3Crect x='3' y='14' width='7' height='7' rx='1'/%3E%3Crect x='14' y='14' width='7' height='7' rx='1'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+}
+
+/* ── Nav tooltip labels ───────────────────────────────────────────────── */
+/* Puck renders each plugin's label in a <span class=""> (empty class)
+   inside _NavItem-link_, after the _NavItem-linkIcon_ span. We reposition
+   it as a hover tooltip to the right of the nav rail. This reads Puck's
+   own label text so tooltips stay accurate regardless of which plugins
+   are loaded or when they load. */
+
+/* Allow tooltips to overflow every ancestor in the nav column.
+   z-index on _PuckLayout-nav_ ensures the nav's overflow paints above
+   the adjacent sidebar grid cell (which comes later in DOM order). */
+.puck-editor-theme [class*="_PuckLayout-nav_"] {
+  overflow: visible !important;
+  position: relative;
+  z-index: 2;
+}
+.puck-editor-theme [class*="_Nav_"],
+.puck-editor-theme [class*="_Nav-list_"],
+.puck-editor-theme [class*="_NavItem_"] {
+  overflow: visible !important;
+}
+
+/* The label span is absolutely positioned — the link needs a positioning context */
+.puck-editor-theme [class*="_NavItem-link_"] {
+  position: relative;
+}
+
+/* Reposition the label span as a hover tooltip to the right of the icon. */
+.puck-editor-theme [class*="_NavItem-link_"] > span[class=""] {
+  display: block;
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 4px 8px;
+  background: #1f2937;
+  color: #fff;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 150ms ease-in-out;
+}
+
+/* Show tooltip on hover */
+.puck-editor-theme [class*="_NavItem-link_"]:hover > span[class=""] {
+  opacity: 1;
+}
+
+/* Hide empty labels (prevent ghost tooltip for plugins with no label) */
+.puck-editor-theme [class*="_NavItem-link_"] > span[class=""]:empty {
+  display: none;
+}
+
+/* Replace Outline nav icon with PDSv2 "listCheck" */
+.puck-editor-theme [class*="_NavItem_"]:nth-child(2) [class*="_NavItem-linkIcon_"] svg {
+  display: none;
+}
+.puck-editor-theme [class*="_NavItem_"]:nth-child(2) [class*="_NavItem-linkIcon_"]::after {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 20px;
+  background-color: currentColor;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 17 2 2 4-4'/%3E%3Cpath d='m3 7 2 2 4-4'/%3E%3Cline x1='13' y1='8' x2='21' y2='8'/%3E%3Cline x1='13' y1='16' x2='21' y2='16'/%3E%3C/svg%3E");
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 17 2 2 4-4'/%3E%3Cpath d='m3 7 2 2 4-4'/%3E%3Cline x1='13' y1='8' x2='21' y2='8'/%3E%3Cline x1='13' y1='16' x2='21' y2='16'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+}
+
+/* ── Viewport Controls Toggle Button (Full Screen Canvas) ── */
+.puck-editor-theme [class*="_ViewportControls-toggleButton_"] {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+/* ── Canvas: grey gutter around a rounded page ────────────────────────────
+   The canvas (_PuckCanvas_) already has a grey background (grey-11), but in
+   full-screen mode Puck zeroes its padding so the page fills it edge-to-edge
+   and the grey never shows. Restoring a little padding reveals that grey as
+   a gutter around the page; rounding the inner _PuckCanvas-root_ gives the
+   floating-page look. The [class*="_PuckCanvas_"] selector matches only the
+   outer element (children use a hyphen after "Canvas"); higher specificity
+   than Puck's own ._PuckCanvas--fullScreen_ so the padding wins. */
+.puck-editor-theme [class*="_PuckCanvas_"] {
+  padding: 8px;
+}
+.puck-editor-theme [class*="_PuckCanvas-root_"] {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* ── Editor chrome text/background reset (PCC-3456) ──────────────────────
+ *
+ * Root cause: recent design-library "dark-canon" token waves make the host
+ * app's own body dark (e.g. body { color: var(--color-text); background:
+ * var(--color-surface) }, resolving to white-on-black). Puck ships plenty of
+ * chrome elements — e.g. @puckeditor/core's ._DrawerItem-name_ — that declare
+ * no color of their own and simply inherit whatever the ambient text color
+ * is. Nothing between <body> and those elements (including Puck's own
+ * `._Puck_` root, which sets layout vars but no color) intercepts that
+ * inheritance, so the new dark host theme cascades straight through and
+ * turns chrome text white-on-light — unreadable.
+ *
+ * Fix: pin an explicit light foreground/background on `.puck-editor-theme`
+ * itself using the same PDS light-theme tokens already used elsewhere in
+ * this file (grey-11/12 above), matching the pds `data-rm-theme="light"`
+ * editor chrome regardless of whatever theme the host page's <body> is on.
+ * `color` inherits down through every chrome descendant that doesn't set
+ * its own, exactly reversing the leak.
+ *
+ * Scoping: this file is a real <style>/<link> stylesheet in the parent
+ * document (unlike pds-core.css, which is loaded via adoptedStyleSheets
+ * specifically to stay invisible to Puck — see P1App.tsx), so Puck's canvas
+ * iframe scanner (`collectStyles()`) DOES copy it into the preview iframe's
+ * document, same as every other rule here. Scoping to `.puck-editor-theme`
+ * (never a bare `body` selector) is what keeps that copy inert: the iframe
+ * renders the previewed page's own DOM, which has no `.puck-editor-theme`
+ * element in it, so the selector simply never matches there and the
+ * preview keeps the site's own (possibly dark) theme untouched. A bare
+ * `body { color: #111; background: #fff }` rule — as originally proposed —
+ * would instead match the iframe's own <body> directly once copied in,
+ * forcing every preview into a light theme regardless of the real site's
+ * design and reintroducing the same class of leak in the opposite
+ * direction.
+ */
+.puck-editor-theme {
+  color: var(--pds-color-fg-default, #23232d);
+  background: var(--pds-color-bg-default, #fff);
+}

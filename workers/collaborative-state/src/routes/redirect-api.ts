@@ -1,0 +1,375 @@
+import type { AuthenticatedPrincipal, RedirectSnapshot } from '../types';
+import { isRedirectBody, isValidRedirectType, toDocumentActorType } from '../types';
+import {
+  createDocumentOnBranch,
+  listDocumentsOnBranch,
+  getDocument,
+  getLatestDocumentVersion,
+  createDocumentVersion,
+  deleteDocumentOnBranch,
+  getDocumentByPath,
+  updateDocumentPath,
+  DuplicateDocumentPathError,
+} from '../services';
+import { assertPermission, AuthorizationError } from '../auth/authorization';
+import { jsonResponse, errorResponse } from '../utils/http-helpers';
+
+function stripTrailingSlashes(path: string): string {
+  let end = path.length;
+  while (end > 0 && path[end - 1] === '/') end--;
+  return end === 0 ? '/' : path.slice(0, end);
+}
+
+const MAX_REDIRECT_PATH_LENGTH = 1024;
+
+export interface RedirectRouteContext {
+  siteId: string;
+  branchId?: string;
+  redirectId?: string;
+  principal: AuthenticatedPrincipal;
+}
+
+interface InvalidParam {
+  name: string;
+  message: string;
+}
+
+function validationErrorResponse(invalidParams: InvalidParam[]): Response {
+  return jsonResponse({ error: 'Validation failed', invalidParams }, 400);
+}
+
+async function handleListRedirects(branchId: string): Promise<Response> {
+  const documents = await listDocumentsOnBranch(branchId, {
+    pathPrefix: '_registry/redirects/',
+  });
+
+  const redirects = await Promise.all(
+    documents.map(async (doc) => {
+      const version = await getLatestDocumentVersion(doc.id, branchId);
+      if (!version?.snapshot) return null;
+      const snapshot = version.snapshot as RedirectSnapshot;
+      return {
+        id: doc.id,
+        fromPath: snapshot.fromPath ?? snapshot.origin,
+        destination: snapshot.destination,
+        redirectType: snapshot.redirectType,
+        parenting: snapshot.parenting,
+        updatedAt: version.createdAt,
+      };
+    }),
+  );
+
+  return jsonResponse({
+    redirects: redirects.filter((r): r is NonNullable<typeof r> => r !== null),
+  });
+}
+
+async function handleGetRedirect(
+  redirectId: string,
+  branchId: string,
+  siteId: string,
+): Promise<Response> {
+  const document = await getDocument(redirectId);
+  if (!document) {
+    return errorResponse('Redirect not found', 404);
+  }
+
+  if (document.siteId !== siteId) {
+    return errorResponse('Redirect not found', 404);
+  }
+
+  if (!document.path.startsWith('_registry/redirects/')) {
+    return errorResponse('Document is not a redirect', 400);
+  }
+
+  const version = await getLatestDocumentVersion(redirectId, branchId);
+  if (!version) {
+    return errorResponse('Redirect version not found', 404);
+  }
+
+  const snapshot = version.snapshot as RedirectSnapshot;
+  return jsonResponse({
+    id: document.id,
+    fromPath: snapshot.fromPath ?? snapshot.origin,
+    destination: snapshot.destination,
+    redirectType: snapshot.redirectType,
+    parenting: snapshot.parenting,
+    updatedAt: version.createdAt,
+  });
+}
+
+async function handleCreateRedirect(
+  request: Request,
+  siteId: string,
+  branchId: string,
+  principal: AuthenticatedPrincipal,
+): Promise<Response> {
+  const body: unknown = await request.json();
+
+  if (!isRedirectBody(body)) {
+    return errorResponse('Invalid request body shape', 400);
+  }
+
+  const errors: InvalidParam[] = [];
+
+  if (body.fromPath === undefined || body.fromPath === '') {
+    errors.push({ name: 'fromPath', message: 'fromPath is required' });
+  } else {
+    if (body.fromPath.length > MAX_REDIRECT_PATH_LENGTH) {
+      errors.push({ name: 'fromPath', message: 'fromPath exceeds maximum length' });
+    }
+    if (body.fromPath.trim() === '') {
+      errors.push({ name: 'fromPath', message: 'fromPath must not be blank' });
+    }
+    if (!body.fromPath.startsWith('/')) {
+      errors.push({ name: 'fromPath', message: 'fromPath must start with /' });
+    }
+  }
+
+  if (body.destination === undefined || body.destination.trim() === '') {
+    errors.push({ name: 'destination', message: 'destination is required' });
+  }
+
+  if (body.redirectType !== undefined && !isValidRedirectType(body.redirectType)) {
+    errors.push({ name: 'redirectType', message: 'redirectType must be permanent or temporary' });
+  }
+
+  if (errors.length > 0) {
+    return validationErrorResponse(errors);
+  }
+
+  const normalizedFromPath = stripTrailingSlashes(body.fromPath!) || '/';
+  if (normalizedFromPath === '/') {
+    return validationErrorResponse([{ name: 'fromPath', message: 'fromPath must not be the root path' }]);
+  }
+
+  const redirectType = body.redirectType ?? 'permanent';
+  const parenting = body.parenting ?? false;
+  const originPath = normalizedFromPath.slice(1);
+
+  const existingPage = await getDocumentByPath(siteId, originPath);
+  if (existingPage && !existingPage.path.startsWith('_registry/')) {
+    return errorResponse('A page already exists at this origin path', 409);
+  }
+
+  const snapshot: RedirectSnapshot = {
+    fromPath: normalizedFromPath,
+    destination: body.destination!,
+    redirectType,
+    parenting,
+  };
+
+  const result = await createDocumentOnBranch({
+    siteId,
+    branchId,
+    path: `_registry/redirects/${originPath}`,
+    snapshot: { ...snapshot },
+    createdById: principal.dbUserId ?? principal.id,
+    createdByType: toDocumentActorType(principal.type),
+  });
+
+  return jsonResponse(
+    {
+      id: result.document.id,
+      fromPath: snapshot.fromPath,
+      destination: snapshot.destination,
+      redirectType: snapshot.redirectType,
+      parenting: snapshot.parenting,
+      updatedAt: result.version.createdAt,
+    },
+    201,
+  );
+}
+
+async function handleUpdateRedirect(
+  request: Request,
+  redirectId: string,
+  branchId: string,
+  principal: AuthenticatedPrincipal,
+  siteId: string,
+): Promise<Response> {
+  const [document, currentVersion] = await Promise.all([
+    getDocument(redirectId),
+    getLatestDocumentVersion(redirectId, branchId),
+  ]);
+
+  if (!document) {
+    return errorResponse('Redirect not found', 404);
+  }
+
+  if (document.siteId !== siteId) {
+    return errorResponse('Redirect not found', 404);
+  }
+
+  if (!document.path.startsWith('_registry/redirects/')) {
+    return errorResponse('Document is not a redirect', 400);
+  }
+
+  if (!currentVersion) {
+    return errorResponse('Redirect version not found', 404);
+  }
+
+  const currentSnapshot = currentVersion.snapshot as RedirectSnapshot;
+  const body: unknown = await request.json();
+
+  if (!isRedirectBody(body)) {
+    return errorResponse('Invalid request body shape', 400);
+  }
+
+  const errors: InvalidParam[] = [];
+
+  if (body.fromPath !== undefined) {
+    if (body.fromPath.length > MAX_REDIRECT_PATH_LENGTH) {
+      errors.push({ name: 'fromPath', message: 'fromPath exceeds maximum length' });
+    }
+    if (body.fromPath.trim() === '') {
+      errors.push({ name: 'fromPath', message: 'fromPath must not be empty' });
+    }
+    if (!body.fromPath.startsWith('/')) {
+      errors.push({ name: 'fromPath', message: 'fromPath must start with /' });
+    }
+  }
+
+  if (body.destination !== undefined && body.destination.trim() === '') {
+    errors.push({ name: 'destination', message: 'destination must not be empty' });
+  }
+
+  if (body.redirectType !== undefined && !isValidRedirectType(body.redirectType)) {
+    errors.push({ name: 'redirectType', message: 'redirectType must be permanent or temporary' });
+  }
+
+  if (errors.length > 0) {
+    return validationErrorResponse(errors);
+  }
+
+  let normalizedFromPath: string | undefined;
+  let newFromPath: string | undefined;
+  if (body.fromPath !== undefined) {
+    normalizedFromPath = stripTrailingSlashes(body.fromPath) || '/';
+    if (normalizedFromPath === '/') {
+      return validationErrorResponse([{ name: 'fromPath', message: 'fromPath must not be the root path' }]);
+    }
+
+    newFromPath = normalizedFromPath.slice(1);
+    const existingPage = await getDocumentByPath(siteId, newFromPath);
+    if (existingPage && !existingPage.path.startsWith('_registry/') && existingPage.id !== redirectId) {
+      return errorResponse('A page already exists at this path', 409);
+    }
+  }
+
+  const resolvedRedirectType = body.redirectType ?? currentSnapshot.redirectType;
+  const updatedSnapshot: RedirectSnapshot = {
+    fromPath: normalizedFromPath ?? currentSnapshot.fromPath ?? currentSnapshot.origin,
+    destination: body.destination ?? currentSnapshot.destination,
+    redirectType: resolvedRedirectType,
+    parenting: body.parenting ?? currentSnapshot.parenting,
+  };
+
+  if (newFromPath !== undefined) {
+    await updateDocumentPath(redirectId, `_registry/redirects/${newFromPath}`);
+  }
+
+  const version = await createDocumentVersion({
+    documentId: redirectId,
+    branchId,
+    snapshot: { ...updatedSnapshot },
+    source: 'edit',
+    createdById: principal.dbUserId ?? principal.id,
+    createdByType: toDocumentActorType(principal.type),
+  });
+
+  return jsonResponse({
+    id: redirectId,
+    fromPath: updatedSnapshot.fromPath,
+    destination: updatedSnapshot.destination,
+    redirectType: updatedSnapshot.redirectType,
+    parenting: updatedSnapshot.parenting,
+    updatedAt: version.createdAt,
+  });
+}
+
+async function handleDeleteRedirect(
+  redirectId: string,
+  branchId: string,
+  principal: AuthenticatedPrincipal,
+  siteId: string,
+): Promise<Response> {
+  const document = await getDocument(redirectId);
+  if (!document) {
+    return errorResponse('Redirect not found', 404);
+  }
+
+  if (document.siteId !== siteId) {
+    return errorResponse('Redirect not found', 404);
+  }
+
+  if (!document.path.startsWith('_registry/redirects/')) {
+    return errorResponse('Document is not a redirect', 400);
+  }
+
+  await deleteDocumentOnBranch({
+    documentId: redirectId,
+    branchId,
+    deletedById: principal.dbUserId ?? principal.id,
+    deletedByType: toDocumentActorType(principal.type),
+  });
+
+  return new Response(null, { status: 204 });
+}
+
+export async function handleRedirectRoutes(
+  request: Request,
+  context: RedirectRouteContext,
+): Promise<Response> {
+  const method = request.method;
+
+  try {
+    if (context.branchId === undefined || context.branchId === '') {
+      return errorResponse('Branch ID is required', 400);
+    }
+
+    const branchId = context.branchId;
+
+    if (method === 'GET') {
+      await assertPermission(context.principal, context.siteId, branchId, 'canView');
+    } else if (method === 'POST' || method === 'PATCH' || method === 'DELETE') {
+      await assertPermission(context.principal, context.siteId, branchId, 'canEdit');
+    } else {
+      return errorResponse('Method not allowed', 405);
+    }
+
+    if (context.redirectId !== undefined) {
+      switch (method) {
+        case 'GET':
+          return await handleGetRedirect(context.redirectId, branchId, context.siteId);
+        case 'PATCH':
+          return await handleUpdateRedirect(request, context.redirectId, branchId, context.principal, context.siteId);
+        case 'DELETE':
+          return await handleDeleteRedirect(context.redirectId, branchId, context.principal, context.siteId);
+        default:
+          return errorResponse('Method not allowed', 405);
+      }
+    }
+
+    switch (method) {
+      case 'GET':
+        return await handleListRedirects(branchId);
+      case 'POST':
+        return await handleCreateRedirect(request, context.siteId, branchId, context.principal);
+      default:
+        return errorResponse('Method not allowed', 405);
+    }
+  } catch (error) {
+    if (error instanceof AuthorizationError) {
+      return errorResponse(error.message, 403);
+    }
+    if (error instanceof DuplicateDocumentPathError) {
+      return errorResponse('A redirect already exists for this fromPath', 409);
+    }
+    if (error instanceof SyntaxError) {
+      return errorResponse('Invalid JSON in request body', 400);
+    }
+    console.error('Redirect API error:', error);
+    return errorResponse('Internal server error', 500);
+  }
+}

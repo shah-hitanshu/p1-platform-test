@@ -1,0 +1,10 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: p1-chatbot
+  description: AI chatbot agent for Puck page editing via the Collaborative State System
+spec:
+  owner: pcc
+  type: service
+  lifecycle: experimental

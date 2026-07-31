@@ -1,0 +1,779 @@
+/**
+ * CreatePageModal styles.
+ *
+ * A lightweight custom modal shell (backdrop + centered panel) styled with PDS
+ * design tokens, plus the single-screen content: starting-point cards, the
+ * title/slug fields, and the (disabled) Advanced panel. (PDS Modal is not used
+ * — see CreatePageModal.tsx.)
+ */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--pds-color-overlay-subtle, rgba(15, 23, 42, 0.45));
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 860px;
+  max-height: 92vh;
+  overflow: hidden;
+  background: var(--pds-color-bg-default, oklch(1 0 0));
+  border-radius: var(--pds-border-radius-large, 12px);
+  box-shadow: var(--pds-box-shadow-l, 0 25px 50px -12px rgba(0, 0, 0, 0.25));
+}
+
+/* ---- Header ---- */
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 24px;
+}
+
+.headerIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+  background: var(--pds-color-bg-interactive-subtle, oklch(0.95 0.03 256));
+  border-radius: var(--pds-border-radius-medium, 8px);
+}
+
+.headerText {
+  flex: 1;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--pds-color-text-default, oklch(0.2 0 0));
+}
+
+.subtitle {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+}
+
+.closeButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  background: transparent;
+  border: none;
+  border-radius: var(--pds-border-radius-medium, 8px);
+}
+
+.closeButton:hover {
+  background: var(--pds-color-bg-subtle, oklch(0.97 0 0));
+}
+
+/* ---- Body ---- */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 0 24px 4px;
+  overflow: auto;
+}
+
+.startFrom {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.sectionLabel {
+  display: block;
+  margin-bottom: 10px;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+}
+
+.optionGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 719px) {
+  .optionGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.optionButton {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  padding: 14px;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
+  border-radius: var(--pds-border-radius-medium, 8px);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.optionButton:hover:not(:disabled) {
+  border-color: var(--pds-color-border-interactive, oklch(0.55 0.18 256));
+}
+
+.optionButtonSelected {
+  border-color: var(--pds-color-border-interactive, oklch(0.55 0.18 256));
+  background: var(--pds-color-bg-subtle, oklch(0.97 0.02 256));
+  box-shadow: inset 0 0 0 1px var(--pds-color-border-interactive, oklch(0.55 0.18 256));
+}
+
+.optionButton:focus-visible {
+  outline: 2px solid var(--pds-color-border-interactive, oklch(0.55 0.18 256));
+  outline-offset: 2px;
+}
+
+.optionButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.optionIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 8px;
+  border-radius: var(--pds-border-radius-medium, 8px);
+  /* Unselected: light blue icon on a subtle chip. */
+  color: var(--pds-color-fg-interactive-subtle, oklch(0.72 0.11 256));
+  background: var(--pds-color-bg-interactive-subtle, oklch(0.96 0.02 256));
+}
+
+.optionButtonSelected .optionIcon {
+  /* Selected: white icon on a deep-blue chip. */
+  color: var(--pds-color-fg-on-emphasis, oklch(1 0 0));
+  background: var(--pds-color-bg-interactive, oklch(0.55 0.18 256));
+}
+
+/* ---- Content types (shown when "Content type template" is selected) ---- */
+
+.contentTypeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 599px) {
+  .contentTypeGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.contentTypeCard {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  background: var(--pds-color-bg-default, oklch(1 0 0));
+  border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
+  border-radius: var(--pds-border-radius-medium, 8px);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.contentTypeCard:hover {
+  border-color: var(--pds-color-border-interactive, oklch(0.55 0.18 256));
+}
+
+.contentTypeCard:focus-visible {
+  outline: 2px solid var(--pds-color-border-interactive, oklch(0.55 0.18 256));
+  outline-offset: 2px;
+}
+
+.contentTypeCardSelected {
+  border-color: var(--pds-color-border-interactive, oklch(0.55 0.18 256));
+  background: var(--pds-color-bg-interactive-subtle, oklch(0.96 0.02 256));
+  box-shadow: inset 0 0 0 1px var(--pds-color-border-interactive, oklch(0.55 0.18 256));
+}
+
+.contentTypeCardNew {
+  border-style: dashed;
+  background: transparent;
+}
+
+.contentTypeCardNew .contentTypeName {
+  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+}
+
+.contentTypeName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--pds-color-text-default, oklch(0.2 0 0));
+}
+
+.contentTypeDescription {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+}
+
+.optionLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--pds-color-text-default, oklch(0.2 0 0));
+}
+
+.optionDescription {
+  font-size: 12px;
+  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+}
+
+/* ---- Fields ---- */
+
+.fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 719px) {
+  .fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fieldFull {
+  grid-column: 1 / -1;
+}
+
+.fieldLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pds-color-text-default, oklch(0.2 0 0));
+}
+
+.required {
+  color: var(--pds-color-text-critical, oklch(0.55 0.2 25));
+}
+
+.backLink {
+  align-self: flex-start;
+  margin-bottom: 4px;
+  padding: 4px 0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+  background: transparent;
+  border: none;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 14px;
+  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  background: var(--pds-color-bg-default, oklch(1 0 0));
+  border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
+  border-radius: var(--pds-border-radius-medium, 8px);
+}
+
+.textarea {
+  min-height: 64px;
+  resize: vertical;
+}
+
+.input:focus-visible,
+.textarea:focus-visible {
+  outline: 2px solid var(--pds-color-border-interactive, oklch(0.55 0.18 256));
+  outline-offset: 1px;
+}
+
+.input:disabled,
+.textarea:disabled {
+  cursor: not-allowed;
+  background: var(--pds-color-bg-subtle, oklch(0.97 0 0));
+  opacity: 0.7;
+}
+
+.slugWrap {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
+  border-radius: var(--pds-border-radius-medium, 8px);
+  overflow: hidden;
+}
+
+.slugPrefix {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  background: var(--pds-color-bg-subtle, oklch(0.97 0 0));
+  border-right: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
+}
+
+.slugInput {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 14px;
+  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  background: transparent;
+  border: none;
+}
+
+.slugInput:focus-visible {
+  outline: none;
+}
+
+/* ---- Route builder (template flow) ---- */
+
+/* No outer border/background — it's a composed URL, not a single field. */
+.routeBuilder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  font-size: 14px;
+}
+
+/* Row label for the Index/Detail routes in the collection flow. */
+.routeLabel {
+  display: inline-block;
+  min-width: 86px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pds-color-text-default, oklch(0.2 0 0));
+}
+
+/* Fixed parts (domain + pattern statics) read as greyed, like the slug prefix. */
+.routeSep,
+.routeStatic {
+  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+}
+
+/* Only the user-typed params look like editable input fields. */
+.routeInput {
+  min-width: 4ch;
+  padding: 6px 8px;
+  font-size: 14px;
+  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  background: var(--pds-color-bg-default, oklch(1 0 0));
+  border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
+  border-radius: var(--pds-border-radius-medium, 8px);
+}
+
+.routeInput:focus-visible {
+  outline: 2px solid var(--pds-color-border-interactive, oklch(0.55 0.18 256));
+  outline-offset: 1px;
+}
+
+.addParam {
+  padding: 2px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+  background: transparent;
+  border: 1px dashed var(--pds-color-border-interactive, oklch(0.55 0.18 256));
+  border-radius: 6px;
+}
+
+/* Each appended param is a chip so its remove (×) clearly belongs to it. */
+.paramChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 1px 4px 1px 6px;
+  background: var(--pds-color-bg-interactive-subtle, oklch(0.96 0.02 256));
+  border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
+  border-radius: 6px;
+}
+
+.paramColon {
+  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+}
+
+.paramChipInput {
+  padding: 2px 2px;
+  font-size: 14px;
+  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  background: transparent;
+  border: none;
+}
+
+.paramChipInput:focus-visible {
+  outline: none;
+}
+
+.paramChipRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+}
+
+.paramChipRemove:hover {
+  color: var(--pds-color-text-critical, oklch(0.55 0.2 25));
+  background: var(--pds-color-bg-default, oklch(1 0 0));
+}
+
+
+/* ---- Advanced ---- */
+
+.advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.advancedToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 4px 0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+  background: transparent;
+  border: none;
+}
+
+.advancedHint {
+  font-weight: 400;
+  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+}
+
+.advancedPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  background: var(--pds-color-bg-subtle, oklch(0.98 0 0));
+  border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
+  border-radius: var(--pds-border-radius-medium, 8px);
+}
+
+.segmented {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 2px;
+  background: var(--pds-color-bg-default, oklch(1 0 0));
+  border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
+  border-radius: var(--pds-border-radius-medium, 8px);
+}
+
+.segmentedActive,
+.segmentedOption {
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: not-allowed;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+}
+
+.segmentedActive {
+  background: var(--pds-color-bg-emphasis, oklch(0.2 0 0));
+  color: var(--pds-color-text-on-emphasis, oklch(1 0 0));
+}
+
+.segmentedOption {
+  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+}
+
+.dynamicRoute {
+  display: flex;
+  gap: 12px;
+}
+
+.toggle {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  cursor: pointer;
+  background: var(--pds-color-bg-subtle, oklch(0.9 0 0));
+  border: none;
+  border-radius: 999px;
+  transition: background-color 0.15s ease;
+}
+
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: var(--pds-color-bg-default, oklch(1 0 0));
+  border-radius: 50%;
+  transition: transform 0.15s ease;
+}
+
+.toggleOn {
+  background: var(--pds-color-bg-interactive, oklch(0.55 0.18 256));
+}
+
+.toggleOn::after {
+  transform: translateX(16px);
+}
+
+/* No own frame — it's a section inside the single Advanced frame, set off by a
+   simple divider above. */
+.collectionBuilder {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
+}
+
+.fieldHint {
+  font-size: 12px;
+  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+}
+
+/* Two-pane data-source workspace: pick configured sources (left) / add on the fly (right). */
+.dsWorkspace {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 560px) {
+  .dsWorkspace {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dsPane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dsChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.collectionSummary {
+  margin: 0;
+  font-size: 12px;
+  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+}
+
+/* Inline creation status / recap — read as the next message in the flow. */
+.creating {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+}
+
+.recap {
+  margin-top: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--pds-color-border-default, oklch(0.9 0 0));
+  border-radius: var(--pds-border-radius-md, 8px);
+  background: var(--pds-color-bg-subtle, oklch(0.98 0 0));
+}
+
+.recapLead {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: var(--pds-color-text-default, oklch(0.2 0 0));
+}
+
+.recapBody {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--pds-color-text-default, oklch(0.3 0 0));
+}
+
+.recapRoutes {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+}
+
+.dynamicRouteLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--pds-color-text-default, oklch(0.2 0 0));
+}
+
+.devBadge {
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+  background: var(--pds-color-bg-subtle, oklch(0.96 0.02 256));
+  border-radius: 4px;
+}
+
+.dynamicRouteDescription {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+}
+
+/* ---- Footer ---- */
+
+.errorMessage {
+  font-size: 13px;
+  color: var(--pds-color-text-critical, oklch(0.55 0.2 25));
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  margin-top: 4px;
+  border-top: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
+}
+
+
+.footerActions {
+  display: flex;
+  gap: 8px;
+}
+
+.cancelButton,
+.submitButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--pds-border-radius-medium, 8px);
+}
+
+.cancelButton {
+  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  background: var(--pds-color-bg-default, oklch(1 0 0));
+  border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
+}
+
+.submitButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--pds-color-text-on-emphasis, oklch(1 0 0));
+  background: var(--pds-color-bg-emphasis, oklch(0.2 0 0));
+  border: 1px solid transparent;
+}
+
+.submitButton:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in oklch, currentColor 35%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: create-page-spin 0.6s linear infinite;
+}
+
+@keyframes create-page-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Generate with AI — "Describe the page" composer + the note below it. */
+.aiCompose {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.aiNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  background: var(--pds-color-bg-interactive-subtle, oklch(0.96 0.02 256));
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+}
+
+.aiNoteIcon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+}
+
+.submitIcon {
+  flex: none;
+}
