@@ -23,6 +23,23 @@ When creating code, you MUST follow these guidelines:
 
 5. Ensure that you're designing systems in such a way that they interface with the infrastructure we have defined in the README.md file. 
 
+# Styling (packages/puck-css)
+
+- New component, new class → CSS Module beside the component. Do not convert existing
+  global class names to modules; consumers theme against names like
+  `p1-inspector-fields`, and hashing them breaks those overrides silently. Rules
+  targeting Puck- or PDS-owned elements cannot be modules at all — the hashed selector
+  would match nothing.
+- Style Puck through its `overrides` API (`fieldTypes`, `fieldLabel`, `fields`,
+  `drawer`, …) before reaching into its DOM. An override is a supported contract; a CSS
+  hook into Puck's internals is not, and it fails silently on upgrade. If no override
+  covers it, match the readable part of the class (`[class*="_NavItem-linkIcon_"]`) and
+  never the generated hash, and comment why.
+- Do not append to `src/styles.css`. When you touch an area, move it to a `.css` file
+  beside its component and `@import` it from `styles.css` — as a pure move, in its own
+  commit, so a cascade regression can't hide inside a reorganisation diff. `files`
+  globs `src/**/*.css`, so nothing else is needed to publish it.
+
 # Build after changes
 Always run `pnpm build` after making code changes and verify a clean build (no errors) before reporting work as complete.
 

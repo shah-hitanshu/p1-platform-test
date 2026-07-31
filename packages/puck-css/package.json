@@ -87,7 +87,8 @@
   },
   "files": [
     "dist",
-    "src/styles.css",
+    "src/**/*.css",
+    "!src/**/*.module.css",
     "src/pds/theme"
   ],
   "scripts": {
