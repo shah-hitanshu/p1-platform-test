@@ -21,3 +21,6 @@ export { MergeEndpoint } from './merge.js';
 // Content Type Templates endpoints
 export { TemplatesEndpoint } from './templates.js';
 export { MigrationConflictsEndpoint } from './migration-conflicts.js';
+
+// Query endpoints
+export { QueriesEndpoint } from './queries.js';

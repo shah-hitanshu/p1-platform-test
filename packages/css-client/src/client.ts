@@ -19,6 +19,7 @@ import {
   MergeEndpoint,
   TemplatesEndpoint,
   MigrationConflictsEndpoint,
+  QueriesEndpoint,
 } from './endpoints/index.js';
 
 /**
@@ -149,6 +150,11 @@ export class P1Client {
    */
   public readonly migrationConflicts: MigrationConflictsEndpoint;
 
+  /**
+   * Query operations (content type queries and results).
+   */
+  public readonly queries: QueriesEndpoint;
+
   constructor(config: P1ClientConfig | InternalConfig) {
     // Check if this is an internal config (has baseEndpoint)
     if ('baseEndpoint' in config) {
@@ -185,6 +191,9 @@ export class P1Client {
     // Template endpoints
     this.templates = new TemplatesEndpoint(this.baseEndpoint);
     this.migrationConflicts = new MigrationConflictsEndpoint(this.baseEndpoint);
+
+    // Query endpoints
+    this.queries = new QueriesEndpoint(this.baseEndpoint);
   }
 
   /**

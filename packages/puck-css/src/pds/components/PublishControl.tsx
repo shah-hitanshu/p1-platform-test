@@ -87,13 +87,13 @@ export function PublishControl({
               void onPublish?.();
             }}
             size="sm"
-            variant={"reverse" as never}
+            variant={"primary" as never}
           />
           <Button
             label="Cancel"
             onClick={() => toastApi.dismiss(PUBLISH_CONFIRM_TOAST_ID)}
             size="sm"
-            variant={"reverse-secondary" as never}
+            variant={"secondary" as never}
           />
         </div>
       </div>,
@@ -114,13 +114,13 @@ export function PublishControl({
               void onDeleteDocument?.();
             }}
             size="sm"
-            variant={"reverse" as never}
+            variant={"primary" as never}
           />
           <Button
             label="Cancel"
             onClick={() => toastApi.dismiss(DELETE_CONFIRM_TOAST_ID)}
             size="sm"
-            variant={"reverse-secondary" as never}
+            variant={"secondary" as never}
           />
         </div>
       </div>,

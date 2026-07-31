@@ -44,6 +44,7 @@ type OverlayState = {
   scrollTop: number;
   scrollLeft: number;
   borderRadius: string;
+  textColor: string;
 };
 
 const hasTemplateToken = (value: string) => value.includes("{{");
@@ -83,6 +84,7 @@ export function TemplateAutocompleteLayer({
   const listRef = useRef<HTMLDivElement>(null);
   const activeControlRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const styledControlRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const originalTextColorRef = useRef<string>("");
   const skipSuggestUntilInputRef = useRef(false);
   /** Last open `{{…` span (from refresh); click can blur the input before mousedown runs, so we must not rely on selection alone. */
   const interpolationRef = useRef<InterpolationSnapshot | null>(null);
@@ -105,16 +107,24 @@ export function TemplateAutocompleteLayer({
     (el: HTMLInputElement | HTMLTextAreaElement | null, enabled: boolean) => {
       if (!el) return;
       if (enabled) {
+        if (!originalTextColorRef.current) {
+          originalTextColorRef.current = window.getComputedStyle(el).color;
+        }
         el.style.color = "transparent";
         el.style.webkitTextFillColor = "transparent";
         el.style.backgroundColor = "transparent";
-        el.style.caretColor = "var(--puck-color-grey-02, #111827)";
+        el.style.caretColor = "var(--puck-color-grey-01, #111827)";
+        el.style.position = "relative";
+        el.style.zIndex = "2";
         return;
       }
+      originalTextColorRef.current = "";
       el.style.color = "";
       el.style.webkitTextFillColor = "";
       el.style.backgroundColor = "";
       el.style.caretColor = "";
+      el.style.position = "";
+      el.style.zIndex = "";
     },
     []
   );
@@ -141,6 +151,10 @@ export function TemplateAutocompleteLayer({
       const rootRect = root.getBoundingClientRect();
       const rect = el.getBoundingClientRect();
 
+      const textColor = styledControlRef.current === el
+        ? (originalTextColorRef.current || cs.color)
+        : cs.color;
+
       setOverlay({
         value,
         rect: {
@@ -160,6 +174,7 @@ export function TemplateAutocompleteLayer({
         scrollTop: el.scrollTop,
         scrollLeft: el.scrollLeft,
         borderRadius: cs.borderRadius,
+        textColor,
       });
       if (styledControlRef.current && styledControlRef.current !== el) {
         setControlHighlightMode(styledControlRef.current, false);
@@ -236,6 +251,15 @@ export function TemplateAutocompleteLayer({
 
       const next = liveValue.slice(0, openIdx) + item.insert + liveValue.slice(cursor);
       onChange(next);
+
+      // Puck's controlled input may not re-render synchronously, so also
+      // push the value into the DOM directly via the native setter so the
+      // textarea visually reflects the change immediately.
+      const nativeSetter =
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set ??
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      if (nativeSetter) nativeSetter.call(el, next);
+
       closeMenu();
 
       const pos = openIdx + item.insert.length;
@@ -528,7 +552,7 @@ export function TemplateAutocompleteLayer({
                           background: "rgba(37, 99, 235, 0.14)",
                           borderRadius: 3,
                         }
-                      : { color: "var(--puck-color-grey-02, #111827)" }
+                      : { color: overlay.textColor }
                   }
                 >
                   {segment.text}

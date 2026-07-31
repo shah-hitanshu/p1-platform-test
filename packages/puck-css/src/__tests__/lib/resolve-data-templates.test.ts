@@ -4,6 +4,7 @@ import {
   resolveDataTemplates,
   resolveStringTemplates,
 } from "../../data/resolve-data-templates";
+import { extractReferencedDatasourceIds } from "../../data/remote-datasources/loader";
 import { encodePagesBlocksTemplate } from "../../data/cross-reference";
 
 vi.mock("../../data/get-page", () => ({
@@ -159,6 +160,155 @@ describe("resolveStringTemplates", () => {
       { id: "1", name: "Luke" },
       { id: "2", name: "Leia" },
     ]);
+  });
+});
+
+describe("templates.* compound datasource IDs", () => {
+  it("resolves {{ templates.news.items }} as a dotted-path lookup on context['templates.news']", async () => {
+    const ctx = {
+      "templates.news": {
+        items: [{ id: "1", title: "Breaking" }],
+        returnedCount: 1,
+      },
+    };
+    expect(
+      await resolveStringTemplates("{{ templates.news.returnedCount }}", ctx)
+    ).toBe("1");
+  });
+
+  it("resolves nested paths within a compound-ID source", async () => {
+    const ctx = {
+      "templates.news": {
+        query: { name: "news", sortedBy: "createdAt" },
+      },
+    };
+    expect(
+      await resolveStringTemplates("{{ templates.news.query.name }}", ctx)
+    ).toBe("news");
+  });
+
+  it("resolves compound-ID array access via jsep expression", async () => {
+    const ctx = {
+      "templates.news": {
+        items: [
+          { title: "First" },
+          { title: "Second" },
+        ],
+      },
+    };
+    expect(
+      await resolveStringTemplates("{{ templates.news.items[0].title }}", ctx)
+    ).toBe("First");
+  });
+
+  it("returns empty string when compound-ID source is missing", async () => {
+    expect(
+      await resolveStringTemplates("{{ templates.missing.field }}", {})
+    ).toBe("");
+  });
+
+  it("resolves bare {{ templates.news }} without a sub-path", async () => {
+    const data: Partial<Data> = {
+      content: [
+        {
+          type: "InfoBlock",
+          props: {
+            id: "info-1",
+            source: "{{ templates.news }}",
+          },
+        },
+      ],
+    };
+    const ctx = {
+      "templates.news": {
+        items: [{ title: "Breaking" }],
+        returnedCount: 1,
+      },
+    };
+    const out = await resolveDataTemplates(data, ctx);
+    expect(out.content?.[0].props.source).toEqual({
+      items: [{ title: "Breaking" }],
+      returnedCount: 1,
+    });
+  });
+
+  it("keeps compound-ID data intact for whole-value resolution in data walk", async () => {
+    const data: Partial<Data> = {
+      content: [
+        {
+          type: "ListBlock",
+          props: {
+            id: "list-1",
+            items: "{{ templates.news.items }}",
+          },
+        },
+      ],
+    };
+    const ctx = {
+      "templates.news": {
+        items: [
+          { id: "1", title: "Breaking" },
+          { id: "2", title: "Update" },
+        ],
+      },
+    };
+    const out = await resolveDataTemplates(data, ctx);
+    expect(out.content?.[0].props.items).toEqual([
+      { id: "1", title: "Breaking" },
+      { id: "2", title: "Update" },
+    ]);
+  });
+});
+
+describe("extractReferencedDatasourceIds — compound IDs", () => {
+  it("extracts templates.X as a single compound ID", () => {
+    const data = {
+      content: [
+        {
+          type: "Block",
+          props: { id: "b1", title: "{{ templates.news.items[0].title }}" },
+        },
+      ],
+    };
+    const ids = extractReferencedDatasourceIds(data);
+    expect(ids.has("templates.news")).toBe(true);
+    expect(ids.has("templates")).toBe(false);
+  });
+
+  it("extracts multiple compound IDs", () => {
+    const data = {
+      content: [
+        {
+          type: "Block",
+          props: {
+            id: "b1",
+            a: "{{ templates.news.items }}",
+            b: "{{ templates.blog.query.name }}",
+          },
+        },
+      ],
+    };
+    const ids = extractReferencedDatasourceIds(data);
+    expect(ids.has("templates.news")).toBe(true);
+    expect(ids.has("templates.blog")).toBe(true);
+  });
+
+  it("still extracts simple IDs alongside compound IDs", () => {
+    const data = {
+      content: [
+        {
+          type: "Block",
+          props: {
+            id: "b1",
+            a: "{{ swapi.name }}",
+            b: "{{ templates.news.items }}",
+          },
+        },
+      ],
+    };
+    const ids = extractReferencedDatasourceIds(data);
+    expect(ids.has("swapi")).toBe(true);
+    expect(ids.has("templates.news")).toBe(true);
   });
 });
 

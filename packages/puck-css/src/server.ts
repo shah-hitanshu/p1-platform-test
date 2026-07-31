@@ -75,7 +75,7 @@ export type { P1StoreConfig, P1StoreClient } from "./data/dal/p1-store.js";
 // root.props._seo the DAL folds in (PCC-3407) without depending on css-client
 // directly.
 export type { SeoMetadata } from "@pantheon-systems/css-client";
-export { ensureInitialized, type P1DataConfig } from "./data/dal/init.js";
+export { ensureInitialized, getSharedP1Client, getSharedSiteId, getSharedBranchId, createAuthenticatedClient, type P1DataConfig } from "./data/dal/init.js";
 export { runWithAuthToken } from "./data/dal/request-auth.js";
 
 export {
@@ -95,6 +95,9 @@ export type {
   HttpJsonRemoteDatasourceDefinition,
   RemoteDatasourceFieldDocInput,
 } from "./data/remote-datasources/user-remote-datasource-types.js";
+
+// --- CSS Query adapters ---
+export { cssQueriesToDatasourceDefinitions, CSS_QUERY_ID_PREFIX } from "./data/css-queries/css-query-registry.js";
 
 export {
   normalizeRemoteDatasourceDefinition,

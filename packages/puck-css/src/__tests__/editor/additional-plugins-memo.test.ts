@@ -12,16 +12,16 @@ describe("useP1Editor additionalPlugins reactivity", () => {
     "utf-8",
   );
 
-  it("tracks additionalPlugins length for plugin memo recomputation", () => {
-    expect(content).toContain("pluginCount");
-  });
-
-  it("uses pluginCount in the plugins useMemo dependency array", () => {
+  it("uses a ref-guarded useMemo so plugin content changes propagate without unstable deps", () => {
     const pluginsBlock = content.slice(
       content.indexOf("const plugins = useMemo"),
       content.indexOf("const plugins = useMemo") + 300,
     );
-    expect(pluginsBlock).toContain("additionalPluginsRef");
-    expect(pluginsBlock).toContain("pluginCount");
+    expect(pluginsBlock).toContain("additionalPluginsRef.current");
+    expect(pluginsBlock).toContain("[p1Plugin, documentSyncPlugin, pluginCount]");
+  });
+
+  it("warns in dev mode when additionalPlugins ref changes every render (unstable caller)", () => {
+    expect(content).toContain("additionalPlugins ref is changing every render");
   });
 });

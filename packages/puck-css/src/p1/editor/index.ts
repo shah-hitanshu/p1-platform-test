@@ -4,6 +4,7 @@ export { createFieldConnectPlugin } from "./connect/field-connect-plugin";
 export {
   wrapConfigForEditorPreview,
   createPreviewResolvePlugin,
+  useResolvedPreviewState,
 } from "./editor-preview-resolve";
 export {
   buildConnectPreviewConfig,

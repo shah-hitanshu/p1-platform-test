@@ -468,6 +468,7 @@ export {
   useEditorContext,
   useRemoteDatasourceContext,
   useP1Plugins,
+  useResolvedPreviewState,
 } from './p1/editor/index.js';
 
 // P1 Client SDK — Pages

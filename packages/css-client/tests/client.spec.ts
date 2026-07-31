@@ -37,6 +37,7 @@ describe('P1Client', () => {
       expect(client.documents).toBeDefined();
       expect(client.versions).toBeDefined();
       expect(client.checkpoints).toBeDefined();
+      expect(client.queries).toBeDefined();
     });
 
     it('should create client with API key', () => {

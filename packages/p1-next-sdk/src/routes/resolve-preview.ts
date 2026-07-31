@@ -7,7 +7,7 @@ import { resolveDataTemplates } from "@pantheon-systems/puck-css/server";
 export { postResolvePreview as POST };
 
 export async function postResolvePreview(request: Request) {
-  let body: { data?: Partial<Data>; datasourceContext?: RemoteDatasourceContext };
+  let body: { data?: Partial<Data>; remoteDatasourceContext?: RemoteDatasourceContext; datasourceContext?: RemoteDatasourceContext };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -15,7 +15,7 @@ export async function postResolvePreview(request: Request) {
   }
 
   const data = body.data ?? {};
-  const datasourceContext = body.datasourceContext ?? {};
+  const datasourceContext = body.remoteDatasourceContext ?? body.datasourceContext ?? {};
 
   const resolved = await resolveDataTemplates(data as Partial<Data>, datasourceContext);
   return NextResponse.json({ data: resolved });

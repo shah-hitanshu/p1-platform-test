@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
+import { extractBearerToken } from "../auth-utils";
 
 import {
   normalizePath,
   listRouteTemplateKeysFromDatabase,
   getPageEditorPreviewParams,
   loadRemoteDatasourceContext,
+  createAuthenticatedClient,
 } from "@pantheon-systems/puck-css/server";
 import type {
   RemoteDatasourceFetcher,
 } from "@pantheon-systems/puck-css/server";
+import { createCssQueryFetchers } from "../css-query-fetchers";
 
 export interface DatasourceContextOptions {
   builtinFetchers?: RemoteDatasourceFetcher[];
@@ -36,16 +39,29 @@ export async function getDatasourceContext(
     Promise.resolve(getPageEditorPreviewParams(path)),
   ]);
 
+  const branchId = url.searchParams.get("branchId");
   const referencedDatasourceIds = new Set([id]);
+
+  const token = extractBearerToken(request);
+  const client = token ? createAuthenticatedClient(token) : null;
+
+  const cssQueryFetchers = await createCssQueryFetchers({
+    client,
+    branchId,
+    filterIds: referencedDatasourceIds,
+  });
+
+  const allFetchers = [...(options.builtinFetchers ?? []), ...cssQueryFetchers];
 
   const context = await loadRemoteDatasourceContext({
     searchParams: Object.fromEntries(url.searchParams.entries()),
     pagePath: path,
     routeTemplateKeys,
     savedPreviewParams,
-    builtinFetchers: options.builtinFetchers,
+    builtinFetchers: allFetchers,
     referencedDatasourceIds,
   });
 
-  return NextResponse.json({ id, data: context[id] ?? {} });
+  const data = context[id] ?? {};
+  return NextResponse.json({ id, data });
 }

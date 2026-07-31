@@ -30,6 +30,7 @@ let _initPromise: Promise<void> | null = null;
 
 let _sharedClient: P1StoreClient | null = null;
 let _sharedSiteId: string | null = null;
+let _sharedBranchId: string | null = null;
 let _sharedCreateAuthClient: ((bearerToken: string) => P1StoreClient) | null = null;
 
 /**
@@ -85,6 +86,7 @@ async function doInit(cfg: P1DataConfig): Promise<void> {
 
   _sharedClient = client as unknown as P1StoreClient;
   _sharedSiteId = p1SiteId;
+  _sharedBranchId = cfg.p1BranchId ?? null;
   _sharedCreateAuthClient = createAuthClient;
 
   const pageStore = createP1PageStore({
@@ -103,6 +105,7 @@ async function doInit(cfg: P1DataConfig): Promise<void> {
       const branches = await authClient.branches.list(p1SiteId);
       const main = branches.find((b: { isMain: boolean }) => b.isMain);
       if (!main) throw new Error("No main branch found for site " + p1SiteId);
+      _sharedBranchId = main.id;
       return main.id;
     },
     createAuthClient: (bearerToken: string) => {
@@ -151,10 +154,31 @@ export function createPageStoreForBranch(branchId: string): PageStore {
   });
 }
 
+export function getSharedP1Client(): P1StoreClient | null {
+  return _sharedClient;
+}
+
+export function getSharedSiteId(): string | null {
+  return _sharedSiteId;
+}
+
+// Returns the branch ID configured via p1BranchId, or auto-detected on
+// first editor request by resolveBranchId. Query fetchers and
+// editor-context use this to target the active branch.
+export function getSharedBranchId(): string | null {
+  return _sharedBranchId;
+}
+
+export function createAuthenticatedClient(bearerToken: string): P1StoreClient | null {
+  if (!_sharedCreateAuthClient) return null;
+  return _sharedCreateAuthClient(bearerToken);
+}
+
 /** Reset for testing. */
 export function _resetInit(): void {
   _initPromise = null;
   _sharedClient = null;
   _sharedSiteId = null;
+  _sharedBranchId = null;
   _sharedCreateAuthClient = null;
 }

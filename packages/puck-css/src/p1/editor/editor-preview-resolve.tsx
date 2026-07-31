@@ -179,4 +179,5 @@ export function createPreviewResolvePlugin(
   };
 }
 
+export { useResolvedPreviewState };
 export { mergeBlockForPreview as _mergeBlockForPreview, mergeRootForPreview as _mergeRootForPreview };

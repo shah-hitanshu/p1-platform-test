@@ -36,6 +36,103 @@ puck-css-integration/
 
 **Decision (scope):** Bug 2 was outside the original ticket scope; user approved fixing it within PCC-3421 and updating the ticket description accordingly.
 
+### CSS Datasource & Query API Integration (2026-07-15) ✅
+
+**Branch:** `feat/datasource-query-api` (from `main`)
+
+**User story:** When a developer creates a content type template (e.g. "Blog Post"), the CSS backend auto-generates datasources and queries. Editors should immediately see these in the View system — both in `{{ }}` template interpolation and in the datasource picker UI — merged alongside codebase-level remote datasources.
+
+**Architecture:** Three-layer, clean dependency direction:
+- **css-client** — Pure API endpoints for datasources and queries
+- **puck-css/server** — Adapter converting CSS Query objects into `RemoteDatasourceDefinition[]`
+- **p1-next-sdk** — Orchestration: fetches CSS queries at request time, merges into editor context registry, creates fetchers for datasource context loading
+
+**Components implemented (TDD):**
+
+1. **Datasource & Query types** (`css-client/src/types.ts`) — `Datasource`, `Query`, `QuerySortField`, `QueryResultItem`, `QueryResultsMeta`, `QueryResults`, `QueryResultsParams`
+2. **QueriesEndpoint** (`css-client/src/endpoints/queries.ts`) — `list`, `get`, `delete`, `getResults` with optional limit/offset params
+3. **P1Client wiring** — `client.queries` endpoint added (`DatasourcesEndpoint` was removed in `959e24a` — no consumers)
+4. **CSS query registry adapter** (`puck-css/src/data/css-queries/css-query-registry.ts`) — `cssQueriesToDatasourceDefinitions()` converts queries into registry entries with structural fields (`items`, `returnedCount`, `query.name`, `query.sortedBy`) and per-item fields (`documentId`, `path`, `createdAt`, `metadata`, `snapshot`)
+5. **Editor context integration** (`p1-next-sdk/src/routes/editor-context.ts`) — Fetches CSS queries sequentially after existing calls (branch ID dependency), converts via adapter, merges into `remoteDatasourceRegistry` response. Uses `createAuthenticatedClient` with the user's bearer token (the shared `sat_` token lacks `queries` scope).
+6. **Datasource context integration** (`p1-next-sdk/src/routes/datasource-context.ts`) — Creates a CSS query fetcher that calls `getResults()` and injects alongside builtin fetchers for `{{ }}` interpolation at render time. Falls back gracefully when no bearer token is present.
+
+**How `{{ }}` interpolation works end-to-end:**
+- Editor types `{{ blog-post. }}` → autocomplete looks up "blog-post" in `remoteDatasourceRegistry` → shows field suggestions like `items[].metadata.title`
+- At render time → `resolve-data-templates.ts` evaluates `{{ blog-post.items[0].metadata.title }}` → looks up `context["blog-post"]` → populated by the CSS query fetcher which called `getResults()`
+
+**Tests:** 11 new endpoint tests (css-client), 7 adapter tests (puck-css), 7 integration tests (p1-next-sdk). All existing tests pass.
+
+**Security review:** No actionable findings. URL construction follows existing `TemplatesEndpoint` pattern; auth model unchanged.
+
+**Commits:**
+- `18e63ad` — test: add tests for DatasourcesEndpoint and QueriesEndpoint
+- `fad165c` — feat: add Datasource and Query API endpoints to css-client
+- `4c6c626` — test: add tests for cssQueriesToDatasourceDefinitions adapter
+- `dbbd890` — feat: add CSS query-to-datasource registry adapter
+- `528461a` — feat: integrate CSS queries into editor context registry
+- `9baf65c` — test: add CSS query integration tests for datasource-context route
+- `8cc547a` — feat: integrate CSS query fetcher into datasource context route
+
+#### Code Review Fixes (2026-07-21) ✅
+
+Post-review fixes addressing 4 findings from an 8-angle code review of the branch diff:
+
+1. **Namespace CSS query IDs with `templates.` prefix** — CSS query datasource IDs now use `templates.news` instead of `news` to prevent collisions with builtin/user datasource IDs. Updated the `{{ }}` resolution pipeline: extraction regex captures `templates.X` as a compound ID, `resolveSourcePath` handles compound path splitting, and `evalTemplateExpression` resolves compound IDs via jsep AST interception. Also enabled computed array index access in jsep evaluator (was blocked by `Array.isArray` guard).
+
+2. **fetchCssQueryDefinitions ordering** — Runs sequentially after the existing `Promise.all` in `editor-context.ts` because `getSharedBranchId()` is only populated after `listRoutes()` resolves.
+
+3. **Deduplicate createCssQueryFetchers with React cache()** — `page.tsx` called `createCssQueryFetchers()` independently in both `generateMetadata` and `Page`, doubling the `queries.list()` API call. Wrapped with `cache()` for per-request deduplication. Also fixed an infinite recursion bug in the cache wrapper.
+
+4. **Extract shared extractBearerToken utility** — Identical token extraction logic existed in 3 places within `p1-next-sdk`. Extracted to `auth-utils.ts`.
+
+**Decision:** User chose dot separator (`templates.news`) over hyphen (`templates-news`) despite the pipeline complexity, because it reads naturally in template expressions (`{{ templates.news.items[0].title }}`).
+
+**Security review:** No actionable findings. Template resolution remains sandboxed via jsep + `isUnsafeKey`. Token handling is pass-through only.
+
+**Commits:**
+- `0233175` — test: add red-state tests for templates.X compound datasource IDs
+- `98c006c` — fix: namespace CSS query IDs, deduplicate fetchers, parallelize context loading
+
+#### PR Review Fixes (2026-07-22 – 2026-07-23) ✅
+
+Addressed 9 review comments from @a11rew on PR #109:
+
+1. **Bare two-segment template IDs** — `{{ templates.news }}` (no further path) silently resolved to empty because `resolveSourcePath` required `segments.length > 2`. Changed to `>= 2`. (`e9253f3`)
+
+2. **PROGRESS.md inaccuracy** — Corrected the claim that `fetchCssQueryDefinitions` was parallelized; it must run after `listRoutes()` due to lazy branch ID resolution. (`03e8a59`)
+
+3. **Redundant queries.list() calls** — Added `listQueriesDeduped()` with an inflight-request map to deduplicate concurrent calls across N datasource-context requests. (`dffaf05`)
+
+4. **pluginCount guard on useP1Editor** — Initially restored per review (`577a3ec`), then reverted after discovering it blocked CSS query datasource context propagation — plugin content changes without length changes were silently swallowed. Replaced with a dev-mode `console.warn` that detects unstable refs from callers. (`787eb99`)
+
+5. **Hardcoded caret color** — Acknowledged; existing behavior, deferred.
+
+6. **Dropped SeoMetadata re-export comment** — Acknowledged; incidental to reformat.
+
+7. **String-matching tests vs render tests** — Acknowledged as intentional structural tests for the current phase.
+
+8. **Missing JSDoc on endpoints** — `DatasourcesEndpoint` removed (`959e24a`). `QueriesEndpoint` JSDoc tracked as follow-up.
+
+9. **DatasourcesEndpoint unused** — Removed since no consumers exist. (`959e24a`)
+
+#### ParagraphEditorText Bug Fixes (2026-07-23) ✅
+
+Three bugs on ParagraphEditorText with `{{ templates.news2.returnedCount }}`:
+
+1. **ReactMarkdown rendering HTML as Markdown** — The richtext field stores values as HTML, but the resolved overlay rendered via `ReactMarkdown` which strips tags. Replaced with `dangerouslySetInnerHTML` + `sanitizeRichtextHtml` to match the published rendering path. (`c3bbc65`)
+
+2. **Click-outside not restoring overlay** — Puck's `InlineEditorWrapper` manages its own focus lifecycle, so `onBlur` didn't fire reliably. Added a `mousedown` document listener for click-outside detection alongside `onBlur` for accessibility. (`c3bbc65`)
+
+3. **Template resolution returning empty string** — Two root causes:
+   - **Auth**: `fetchCssQueryDefinitions` and `getDatasourceContext` fell back to `getSharedP1Client()` (sat_ token) which lacks the `queries` scope, returning 403. Fixed by requiring the user's bearer token. (`787eb99`)
+   - **Context propagation**: The `pluginCount` memo guard in `useP1Editor` blocked plugin content updates when array length was stable (see PR review fix #4 above). (`787eb99`)
+
+**Known remaining issue:** `{{ item.metadata.title }}` resolves to empty because the backend doesn't populate the `metadata` field on `QueryResultItem` — page titles are stored under `snapshot.root.props.title` (Puck's data model), not `metadata`. This is a backend fix outside the scope of this branch.
+
+#### Publish Confirmation Button Fix (2026-07-23) ✅
+
+Cancel button in the "Publish directly to live site?" toast was invisible — used `reverse-secondary` variant (light text for dark backgrounds) on a light toast. Changed both confirmation dialogs (publish and delete) to `primary`/`secondary` variants. (`7262c5c`)
+
 ### Visual Component Sidebar + canvas gutter (2026-07-17) ✅
 
 **Branch:** `feat/visual-component-sidebar`. All changes in `packages/puck-css`.

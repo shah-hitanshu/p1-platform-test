@@ -975,6 +975,7 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
     // Reuses the cached editor-context query, so no extra fetch.
     const { data: editorCtx } = useEditorContext(
       stableOptions.selectedDocumentPath ?? '/',
+      css.branchId,
     );
     // MOCK: datasources don't yet declare their required inputs (prototype — the
     // real version derives/declares them, see PROGRESS data-source notes). Attach

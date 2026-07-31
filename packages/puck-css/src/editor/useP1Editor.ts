@@ -428,6 +428,22 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // Stable plugin array
   // =========================================================================
 
+  if (process.env.NODE_ENV === "development") {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const prev = useRef(additionalPlugins);
+    if (prev.current !== additionalPlugins) {
+      const countChanged =
+        (prev.current?.length ?? 0) !== (additionalPlugins?.length ?? 0);
+      if (!countChanged) {
+        console.warn(
+          "[useP1Editor] additionalPlugins ref is changing every render " +
+            "without a length change — the caller should memoise this array.",
+        );
+      }
+      prev.current = additionalPlugins;
+    }
+  }
+
   const additionalPluginsRef = useRef(additionalPlugins);
   additionalPluginsRef.current = additionalPlugins;
 

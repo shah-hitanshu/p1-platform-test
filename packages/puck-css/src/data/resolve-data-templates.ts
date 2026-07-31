@@ -68,10 +68,18 @@ function resolveSourcePath(
   inner: string,
   context: RemoteDatasourceContext
 ): { resolved: true; value: unknown } | { resolved: false } {
-  if (!/^[\w.]+$/.test(inner)) return { resolved: false };
+  if (!/^[\w.]+$/.test(inner) || inner.endsWith(".")) return { resolved: false };
   const segments = inner.split(".");
-  const sourceName = segments[0] ?? "";
-  const pathWithinSource = segments.slice(1).join(".");
+  let sourceName: string;
+  let pathSegments: string[];
+  if (segments[0] === "templates" && segments.length >= 2) {
+    sourceName = `${segments[0]}.${segments[1]}`;
+    pathSegments = segments.slice(2);
+  } else {
+    sourceName = segments[0] ?? "";
+    pathSegments = segments.slice(1);
+  }
+  const pathWithinSource = pathSegments.join(".");
   const sourceRow = context[sourceName as string];
   if (!sourceRow || typeof sourceRow !== "object" || Array.isArray(sourceRow)) {
     return { resolved: true, value: undefined };
@@ -98,8 +106,21 @@ function evalTemplateExpression(node: unknown, context: RemoteDatasourceContext)
   }
 
   if (n.type === "MemberExpression") {
+    if (!n.computed) {
+      const obj = n.object as Record<string, unknown>;
+      const prop = n.property as Record<string, unknown>;
+      if (obj.type === "Identifier" && obj.name === "templates" && prop.type === "Identifier") {
+        const compoundKey = `templates.${prop.name as string}`;
+        if (compoundKey in context) {
+          return context[compoundKey];
+        }
+      }
+    }
     const base = evalTemplateExpression(n.object, context);
-    if (!base || typeof base !== "object" || Array.isArray(base)) {
+    if (!base || typeof base !== "object") {
+      return undefined;
+    }
+    if (Array.isArray(base) && !n.computed) {
       return undefined;
     }
     let key: string | undefined;

@@ -332,6 +332,12 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     return;
   }
 
+  // GET /api/sites/:siteId/branches/:branchId/queries — list queries
+  const queryList = routeMatch("/api/sites/:siteId/branches/:branchId/queries", pathname);
+  if (queryList && method === "GET") {
+    return json(res, 200, { queries: [] });
+  }
+
   // DELETE /api/sites/:siteId/branches/:branchId/documents/:docId
   const docDelete = routeMatch("/api/sites/:siteId/branches/:branchId/documents/:docId", pathname);
   if (docDelete && method === "DELETE") {

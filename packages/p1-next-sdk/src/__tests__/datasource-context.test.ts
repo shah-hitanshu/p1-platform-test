@@ -74,6 +74,34 @@ describe("handler-actions exports", () => {
   });
 });
 
+describe("CSS query integration in datasource context", () => {
+  it("uses createCssQueryFetchers factory", () => {
+    const content = readFileSync(
+      resolve(srcDir, "routes/datasource-context.ts"),
+      "utf-8",
+    );
+    expect(content).toContain("createCssQueryFetchers");
+  });
+
+  it("passes authenticated client and filter IDs to factory", () => {
+    const content = readFileSync(
+      resolve(srcDir, "routes/datasource-context.ts"),
+      "utf-8",
+    );
+    expect(content).toContain("client");
+    expect(content).toContain("filterIds");
+  });
+
+  it("merges CSS query fetchers with builtin fetchers", () => {
+    const content = readFileSync(
+      resolve(srcDir, "routes/datasource-context.ts"),
+      "utf-8",
+    );
+    expect(content).toContain("cssQueryFetchers");
+    expect(content).toContain("allFetchers");
+  });
+});
+
 describe("editor-context no longer blocks on datasource loading", () => {
   it("editor-context.ts does not call loadRemoteDatasourceContext", () => {
     const content = readFileSync(

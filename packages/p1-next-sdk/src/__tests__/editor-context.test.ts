@@ -88,3 +88,30 @@ describe("handler-actions exports", () => {
     expect(content).toContain("getEditorContext");
   });
 });
+
+describe("CSS query integration in editor context", () => {
+  it("imports cssQueriesToDatasourceDefinitions from puck-css/server", () => {
+    const content = readFileSync(
+      resolve(srcDir, "routes/editor-context.ts"),
+      "utf-8",
+    );
+    expect(content).toContain("cssQueriesToDatasourceDefinitions");
+  });
+
+  it("uses createAuthenticatedClient with the bearer token", () => {
+    const content = readFileSync(
+      resolve(srcDir, "routes/editor-context.ts"),
+      "utf-8",
+    );
+    expect(content).toContain("createAuthenticatedClient");
+    expect(content).toContain("extractBearerToken");
+  });
+
+  it("merges CSS query definitions into the remoteDatasourceRegistry", () => {
+    const content = readFileSync(
+      resolve(srcDir, "routes/editor-context.ts"),
+      "utf-8",
+    );
+    expect(content).toContain("cssQueryDefinitions");
+  });
+});

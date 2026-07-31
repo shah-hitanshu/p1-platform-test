@@ -95,6 +95,14 @@ export type {
   MigrationPreview,
   MigrationPreviewDocument,
   TriggerMigrationParams,
+  // Datasource & Query types
+  Datasource,
+  QuerySortField,
+  Query,
+  QueryResultItem,
+  QueryResultsMeta,
+  QueryResults,
+  QueryResultsParams,
 } from './types.js';
 
 // Auth utilities

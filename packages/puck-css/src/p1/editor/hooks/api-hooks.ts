@@ -2,12 +2,12 @@
 
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useP1Router } from "../../router-context";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import type { Data } from "@puckeditor/core";
 import type { RemoteDatasourceContext } from "../../../data/remote-datasources/loader";
 import type { RemoteDatasourceDefinition } from "../../../data/remote-datasources/remote-datasource-registry";
 import type { RemoteDatasourceScope } from "../../../data/remote-datasources/user-remote-datasource-types";
-import { useP1Auth } from "../../../auth/P1AuthProvider";
+import { useP1Auth, useOptionalP1Auth } from "../../../auth/P1AuthProvider";
 
 const DATASOURCES_KEY = "p1-datasources";
 const PREVIEW_KEY = "p1-preview";
@@ -181,14 +181,20 @@ const DATASOURCE_CONTEXT_KEY = "p1-datasource-context";
 export function useRemoteDatasourceContext(
   path: string,
   registry: RemoteDatasourceDefinition[],
+  branchId?: string,
 ): { context: RemoteDatasourceContext; loadingIds: Set<string>; isLoading: boolean } {
+  const auth = useOptionalP1Auth();
   const queries = useQueries({
     queries: registry.map((def) => ({
-      queryKey: [DATASOURCE_CONTEXT_KEY, path, def.id],
+      queryKey: [DATASOURCE_CONTEXT_KEY, path, def.id, branchId],
       queryFn: async () => {
-        const res = await fetch(
-          `/p1/api/datasource-context?path=${encodeURIComponent(path)}&id=${encodeURIComponent(def.id)}`,
-        );
+        const token = auth ? await auth.getToken() : null;
+        const params = new URLSearchParams({ path, id: def.id });
+        if (branchId) params.set("branchId", branchId);
+        const url = `/p1/api/datasource-context?${params}`;
+        const res = token
+          ? await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+          : await fetch(url);
         if (!res.ok) return { id: def.id, data: {} };
         return (await res.json()) as { id: string; data: Record<string, unknown> };
       },
@@ -201,32 +207,61 @@ export function useRemoteDatasourceContext(
   // flash empty states.
   const lastGoodRef = useRef<Record<string, Record<string, unknown>>>({});
 
-  const result = useMemo(() => {
-    const context: RemoteDatasourceContext = {};
-    const loadingIds = new Set<string>();
-    let isLoading = false;
+  const resultRef: MutableRefObject<{
+    context: RemoteDatasourceContext;
+    loadingIds: Set<string>;
+    isLoading: boolean;
+  }> = useRef({ context: {}, loadingIds: new Set(), isLoading: false });
 
-    for (let i = 0; i < registry.length; i++) {
-      const def = registry[i];
-      const query = queries[i];
-      if (!def || !query) continue;
-      if (query.isLoading || query.isFetching) {
-        loadingIds.add(def.id);
-        isLoading = true;
-      }
-      if (query.data) {
-        context[def.id] = query.data.data;
-      } else if (!query.isError && lastGoodRef.current[def.id]) {
-        context[def.id] = lastGoodRef.current[def.id];
+  const context: RemoteDatasourceContext = {};
+  const newLoadingIds: string[] = [];
+  let isLoading = false;
+
+  for (let i = 0; i < registry.length; i++) {
+    const def = registry[i];
+    const query = queries[i];
+    if (!def || !query) continue;
+    if (query.isLoading || query.isFetching) {
+      newLoadingIds.push(def.id);
+      isLoading = true;
+    }
+    if (query.data) {
+      context[def.id] = query.data.data;
+    } else if (!query.isError && lastGoodRef.current[def.id]) {
+      context[def.id] = lastGoodRef.current[def.id];
+    }
+  }
+
+  const prev = resultRef.current;
+  let changed = isLoading !== prev.isLoading || newLoadingIds.length !== prev.loadingIds.size;
+
+  if (!changed) {
+    const contextKeys = Object.keys(context);
+    const prevContextKeys = Object.keys(prev.context);
+    changed = contextKeys.length !== prevContextKeys.length;
+    if (!changed) {
+      for (const key of contextKeys) {
+        if (context[key] !== prev.context[key]) {
+          changed = true;
+          break;
+        }
       }
     }
+  }
 
-    return { context, loadingIds, isLoading };
-  }, [registry, queries]);
+  if (!changed) {
+    for (const id of newLoadingIds) {
+      if (!prev.loadingIds.has(id)) {
+        changed = true;
+        break;
+      }
+    }
+  }
 
-  // Written from a commit effect, not the memo factory above: useMemo is a
-  // memoization hint rather than a once-per-commit guarantee, so carrying state
-  // forward from inside it is a render-phase side effect.
+  if (changed) {
+    resultRef.current = { context, loadingIds: new Set(newLoadingIds), isLoading };
+  }
+
   useEffect(() => {
     for (let i = 0; i < registry.length; i++) {
       const def = registry[i];
@@ -235,12 +270,10 @@ export function useRemoteDatasourceContext(
       if (query.data) {
         lastGoodRef.current[def.id] = query.data.data;
       } else if (query.isError) {
-        // Settled failure: drop the carried-over entry rather than keep
-        // showing the previous path's data as if it belonged to this page.
         delete lastGoodRef.current[def.id];
       }
     }
   }, [registry, queries]);
 
-  return result;
+  return resultRef.current;
 }

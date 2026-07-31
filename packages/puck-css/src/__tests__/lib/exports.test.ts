@@ -47,6 +47,7 @@ describe('puck-css client exports', () => {
     expect(mod.createRemoteDatasourceExplorerPlugin).toBeDefined();
     expect(mod.createFieldConnectPlugin).toBeDefined();
     expect(mod.wrapConfigForEditorPreview).toBeDefined();
+    expect(mod.useResolvedPreviewState).toBeDefined();
   });
 
   it('exports pages components', async () => {

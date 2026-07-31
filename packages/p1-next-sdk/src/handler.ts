@@ -12,6 +12,7 @@
 
 import type { Config } from "@puckeditor/core";
 import { NextResponse } from "next/server";
+import { extractBearerToken } from "./auth-utils";
 
 import type { RemoteDatasourceFetcher, RemoteDatasourceDefinition } from "@pantheon-systems/puck-css/server";
 import { ensureInitialized, type P1DataConfig } from "@pantheon-systems/puck-css/server";
@@ -42,13 +43,6 @@ export type P1HandlerConfig = P1DataConfig & {
   builtinFetchers?: RemoteDatasourceFetcher[];
   builtinDatasourceRegistry?: RemoteDatasourceDefinition[];
 };
-
-function extractBearerToken(request: Request): string | undefined {
-  const header = request.headers.get("authorization");
-  if (!header) return undefined;
-  const match = header.match(/^Bearer\s+(.+)$/i);
-  return match?.[1];
-}
 
 function withAuth<T>(request: Request, fn: () => T): T | NextResponse {
   const token = extractBearerToken(request);

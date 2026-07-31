@@ -18,7 +18,7 @@ import { fetchHttpJsonRemoteDatasource } from "./fetch-http-json";
 
 export type RemoteDatasourceContext = Record<string, unknown>;
 
-const TEMPLATE_SOURCE_RE = /\{\{\s*([a-zA-Z_]\w*)\./g;
+const TEMPLATE_SOURCE_RE = /\{\{\s*(templates\.[a-zA-Z_]\w*|[a-zA-Z_]\w*)\./g;
 
 export function extractReferencedDatasourceIds(data: unknown): Set<string> {
   const ids = new Set<string>();
