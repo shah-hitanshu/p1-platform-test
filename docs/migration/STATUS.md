@@ -125,6 +125,17 @@ was applied in the Wiz dashboard, so it's scoped to the old repo — the excepti
 re-applying against p1-platform's findings (dashboard action, no code change). Not a
 migration regression; not a Phase 3 gate.
 
+## Wiz secret-scanner note — review during Phase 3 CI authoring
+
+~22 CSS integration specs (now under `workers/collaborative-state/tests/integration/`)
+each hardcode `postgresql://cssuser:csspass@localhost:5432/cssdb`; Wiz flags every new
+copy as a low "Secrets" finding (e.g. 3 on collaborative-state-system PR #215:
+https://github.com/pantheon-systems/collaborative-state-system/pull/215#issuecomment-5072194132).
+Since Phase 3 authors the test/CI wiring fresh, resolve it here rather than porting the
+pattern: one shared test helper resolving `TEST_DATABASE_URL` (CI env) with the local
+default as fallback, specs import it. Kills the recurring findings without dashboard
+ignores. Tracked in Nick's Obsidian "Possible Improvements" / "Retrospective Topics".
+
 ## Phase 3/4 identity plan (per Pantheon WIF practices + A. Glago, 2026-07-23)
 
 Reference: Confluence "Workload Identity Federation (WIF)" (Catalog space, page 3630497808).
