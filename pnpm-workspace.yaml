@@ -28,6 +28,12 @@ overrides:
   'ajv@<7': '^6.15.0'
   form-data: '^4.0.6'
   hono: '^4.12.26'
+  '@remix-run/router': '>=1.23.2'
+  '@babel/runtime': '>=7.26.10'
+  prismjs: '>=1.30.0'
+  markdown-to-jsx: '>=7.4.0'
+  qs: '>=6.14.2'
+  'wrangler>path-to-regexp': '^8.4.0'
   # Scoped: p1-chatbot pinned vitest's vite@8 exactly; puck-css legitimately uses vite@6.
   'vite@^8.0.0': '8.0.16'
   ws: '^8.21.0'
@@ -43,7 +49,7 @@ ignoredOptionalDependencies:
   - '@fortawesome/free-brands-svg-icons'
   - '@fortawesome/fontawesome-common-types'
 
-# The workspace legitimately contains both @types/react 18 (css-frontend) and 19
+# The workspace historically contained both @types/react 18 (css-frontend, since removed) and 19
 # (everything else). These libs' .d.ts import react types without declaring a
 # @types/react peer, so they'd otherwise resolve via pnpm's arbitrary fallback dir.
 packageExtensions:

@@ -8,7 +8,7 @@ pnpm + Turborepo monorepo. Root commands: `pnpm build|test|lint|typecheck` (turb
 - Supported env lanes: **local, staging, production**. sbx1/sandbox is retired — don't add it back.
 - Cross-package deps inside the repo are `workspace:*`. Published packages must not depend on `apps/*` or `workers/*`.
 - pnpm `overrides` in pnpm-workspace.yaml carry parity pins from the repo merge (partysocket, @puckeditor/core, scoped ajv/vite). Don't loosen them casually — each has a comment explaining why; upgrades are deliberate tasks.
-- The CSS worker's typecheck/lint and css-frontend + puck-css tests have known pre-existing failures (counts in docs/migration/STATUS.md). Don't "fix" them incidentally in unrelated PRs.
+- The CSS worker's typecheck/lint and puck-css tests have known pre-existing failures (counts in docs/migration/STATUS.md). Don't "fix" them incidentally in unrelated PRs.
 
 ## Where things came from
 
@@ -16,6 +16,6 @@ Merged from collaborative-state-system, puck-css-integration, p1-chatbot, p1-med
 
 ## Local dev pointers
 
-- CSS backend: `make dev` (Docker Postgres) → `make worker-dev`; frontend: `make frontend-dev`.
+- CSS backend: `make dev` (Docker Postgres) → `make worker-dev`. (The CSS admin frontend was removed upstream, PCC-3158.)
 - Chat agent: `workers/p1-agent`, `wrangler dev` on :8787-adjacent; expects CSS at localhost:8787, media at localhost:8788, secrets in `.env`.
 - Media worker: `workers/p1-media`, dev port 8788 (note: css-mcp-server also defaults to 8788 — don't run both locally at once).

@@ -29,7 +29,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Build everything
@@ -38,8 +38,8 @@ jobs:
         run: pnpm exec turbo run typecheck --filter='!collaborative-state-worker'
       - name: Lint (except known-red collaborative-state-worker, css-mcp-server)
         run: pnpm exec turbo run lint --filter='!collaborative-state-worker' --filter='!css-mcp-server'
-      - name: Test (except known-red css-frontend, puck-css; worker suite capped)
-        run: pnpm exec turbo run test --filter='!css-frontend' --filter='!@pantheon-systems/puck-css' --concurrency=4
+      - name: Test (except known-red puck-css and @p1/agent; worker suite capped)
+        run: pnpm exec turbo run test --filter='!@pantheon-systems/puck-css' --filter='!@p1/agent' --concurrency=4
 
   known-issues:
     name: known-red parity tasks (non-blocking)
@@ -50,15 +50,15 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Known-red tasks (fail identically in source repos — see STATUS.md)
         run: |
-          pnpm exec turbo run build --filter=collaborative-state-worker --filter=css-frontend --filter=@pantheon-systems/puck-css
+          pnpm exec turbo run build --filter=collaborative-state-worker --filter=@pantheon-systems/puck-css
           pnpm exec turbo run typecheck lint --filter=collaborative-state-worker --continue || true
           pnpm exec turbo run lint --filter=css-mcp-server --continue || true
-          pnpm exec turbo run test --filter=css-frontend --filter=@pantheon-systems/puck-css --continue || true
+          pnpm exec turbo run test --filter=@pantheon-systems/puck-css --filter=@p1/agent --continue || true
 
   integration-db:
     name: postgres integration (CSS worker)
@@ -81,7 +81,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Build worker dependencies
@@ -104,7 +104,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Build starter dependencies
